@@ -212,9 +212,6 @@ var _ = Context("creating resourceOverride with multiple jsonPatchOverrides to o
 				Namespace: roNamespace,
 			},
 			Spec: placementv1alpha1.ResourceOverrideSpec{
-				Placement: &placementv1alpha1.PlacementRef{
-					Name: crpName, // assigned CRP name
-				},
 				ResourceSelectors: configMapSelector(),
 				Policy: &placementv1alpha1.OverridePolicy{
 					OverrideRules: []placementv1alpha1.OverrideRule{
@@ -653,9 +650,6 @@ var _ = Context("creating resourceOverride with a templated rules with cluster n
 				Namespace: roNamespace,
 			},
 			Spec: placementv1alpha1.ResourceOverrideSpec{
-				Placement: &placementv1alpha1.PlacementRef{
-					Name: crpName, // assigned CRP name
-				},
 				ResourceSelectors: configMapSelector(),
 				Policy: &placementv1alpha1.OverridePolicy{
 					OverrideRules: []placementv1alpha1.OverrideRule{
@@ -750,9 +744,6 @@ var _ = Context("creating resourceOverride with delete configMap", Ordered, func
 				Namespace: roNamespace,
 			},
 			Spec: placementv1alpha1.ResourceOverrideSpec{
-				Placement: &placementv1alpha1.PlacementRef{
-					Name: crpName, // assigned CRP name
-				},
 				ResourceSelectors: configMapSelector(),
 				Policy: &placementv1alpha1.OverridePolicy{
 					OverrideRules: []placementv1alpha1.OverrideRule{
