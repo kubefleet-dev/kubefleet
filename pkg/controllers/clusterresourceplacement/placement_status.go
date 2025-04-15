@@ -339,7 +339,7 @@ func (r *Reconciler) setResourcePlacementStatusPerCluster(
 		meta.SetStatusCondition(&status.Conditions, cond)
 		res[condition.RolloutStartedCondition] = metav1.ConditionFalse
 		return res
-	case binding.Spec.ResourceSnapshotName != latestResourceSnapshot.Name:
+	case binding.Spec.ResourceSnapshotName != latestResourceSnapshot.Name && crp.Spec.Strategy.Type != fleetv1beta1.ExternalRolloutStrategyType:
 		// The binding uses an out of date resource snapshot, and the RolloutStarted condition is
 		// set to True, Unknown, or has become stale. Fleet might be observing an in-between state.
 		meta.SetStatusCondition(&status.Conditions, condition.RolloutStartedCondition.UnknownResourceConditionPerCluster(crp.Generation))
