@@ -59,14 +59,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, key controller.QueueKey) (ct
 		return ctrl.Result{}, nil // ignore this unexpected error
 	}
 	startTime := time.Now()
-	crp := fleetv1beta1.ClusterResourcePlacement{}
 	klog.V(2).InfoS("ClusterResourcePlacement reconciliation starts", "clusterResourcePlacement", name)
 	defer func() {
 		latency := time.Since(startTime).Milliseconds()
 		klog.V(2).InfoS("ClusterResourcePlacement reconciliation ends", "clusterResourcePlacement", name, "latency", latency)
-		emitPlacementStatusMetric(&crp)
 	}()
 
+	crp := fleetv1beta1.ClusterResourcePlacement{}
 	if err := r.Client.Get(ctx, types.NamespacedName{Name: name}, &crp); err != nil {
 		if apierrors.IsNotFound(err) {
 			klog.V(4).InfoS("Ignoring NotFound clusterResourcePlacement", "clusterResourcePlacement", name)
@@ -88,7 +87,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, key controller.QueueKey) (ct
 			return ctrl.Result{}, controller.NewUpdateIgnoreConflictError(err)
 		}
 	}
-
+	defer emitPlacementStatusMetric(&crp)
 	return r.handleUpdate(ctx, &crp)
 }
 
@@ -114,7 +113,6 @@ func (r *Reconciler) handleDelete(ctx context.Context, crp *fleetv1beta1.Cluster
 	}
 	klog.V(2).InfoS("Removed crp-cleanup finalizer", "clusterResourcePlacement", crpKObj)
 	r.Recorder.Event(crp, corev1.EventTypeNormal, "PlacementCleanupFinalizerRemoved", "Deleted the snapshots and removed the placement cleanup finalizer")
-
 	return ctrl.Result{}, nil
 }
 
