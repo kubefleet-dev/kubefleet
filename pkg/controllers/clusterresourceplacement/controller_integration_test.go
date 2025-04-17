@@ -319,7 +319,7 @@ func checkClusterResourceSnapshot() *placementv1beta1.ClusterResourceSnapshot {
 	return retrieveAndValidateResourceSnapshot(crp, wantResourceSnapshot)
 }
 
-func updateClusterSchedulingPolicySnapshotStatus(status metav1.ConditionStatus, clustersSelected bool) {
+func updateClusterSchedulingPolicySnapshotStatus(status metav1.ConditionStatus, clustersSelected bool) *placementv1beta1.ClusterSchedulingPolicySnapshot {
 	reason := ResourceScheduleSucceededReason
 	if status == metav1.ConditionFalse {
 		reason = ResourceScheduleFailedReason
@@ -360,6 +360,7 @@ func updateClusterSchedulingPolicySnapshotStatus(status metav1.ConditionStatus, 
 
 	// Apply status update
 	Expect(k8sClient.Status().Update(ctx, gotPolicySnapshot)).Should(Succeed(), "Failed to update the policy snapshot status")
+	return retrieveAndValidatePolicySnapshot(gotCRP, gotPolicySnapshot)
 }
 
 var _ = Describe("Test ClusterResourcePlacement Controller", func() {
@@ -745,7 +746,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 
 		It("Emit metrics when CRP spec updates with different generations", func() {
 			By("Update clusterSchedulingPolicySnapshot status to schedule success")
-			updateClusterSchedulingPolicySnapshotStatus(metav1.ConditionTrue, true)
+			gotPolicySnapshot = updateClusterSchedulingPolicySnapshotStatus(metav1.ConditionTrue, true)
 
 			By("Create an overridden clusterResourceBinding on member-1")
 			member1Binding = createOverriddenClusterResourceBinding(member1Name, gotPolicySnapshot, gotResourceSnapshot)
@@ -1002,6 +1003,124 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 				},
 			})
 			checkPlacementStatusMetric(customRegistry, wantMetrics)
+
+			By("Update clusterSchedulingPolicySnapshot status to schedule success")
+			// Update the annotation to match the CRP generation, which is now 2
+			gotPolicySnapshot.Annotations[placementv1beta1.CRPGenerationAnnotation] = strconv.FormatInt(gotCRP.Generation, 10)
+			gotPolicySnapshot = retrieveAndValidatePolicySnapshot(gotCRP, gotPolicySnapshot)
+			gotPolicySnapshot = updateClusterSchedulingPolicySnapshotStatus(metav1.ConditionTrue, true)
+
+			By("Validate CRP status with new observed generations for conditions")
+			wantCRP.Status.Conditions = []metav1.Condition{
+				{
+					Status:             metav1.ConditionTrue,
+					Type:               string(placementv1beta1.ClusterResourcePlacementScheduledConditionType),
+					Reason:             ResourceScheduleSucceededReason,
+					ObservedGeneration: 2,
+				},
+				{
+					Status:             metav1.ConditionTrue,
+					Type:               string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType),
+					Reason:             condition.RolloutStartedReason,
+					ObservedGeneration: 2,
+				},
+				{
+					Status:             metav1.ConditionTrue,
+					Type:               string(placementv1beta1.ClusterResourcePlacementOverriddenConditionType),
+					Reason:             condition.OverrideNotSpecifiedReason,
+					ObservedGeneration: 2,
+				},
+				{
+					Status:             metav1.ConditionUnknown,
+					Type:               string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType),
+					Reason:             condition.WorkSynchronizedUnknownReason,
+					ObservedGeneration: 2,
+				},
+			}
+			wantCRP.Status.PlacementStatuses = []placementv1beta1.ResourcePlacementStatus{
+				{
+					ClusterName: member1Name,
+					Conditions: []metav1.Condition{
+						{
+							Status:             metav1.ConditionTrue,
+							Type:               string(placementv1beta1.ResourceScheduledConditionType),
+							Reason:             condition.ScheduleSucceededReason,
+							ObservedGeneration: 2,
+						},
+						{
+							Status:             metav1.ConditionTrue,
+							Type:               string(placementv1beta1.ResourceRolloutStartedConditionType),
+							Reason:             condition.RolloutStartedReason,
+							ObservedGeneration: 2,
+						},
+						{
+							Status:             metav1.ConditionTrue,
+							Type:               string(placementv1beta1.ResourceOverriddenConditionType),
+							Reason:             condition.OverriddenSucceededReason,
+							ObservedGeneration: 2,
+						},
+						{
+							Status:             metav1.ConditionUnknown,
+							Type:               string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+							Reason:             condition.WorkSynchronizedUnknownReason,
+							ObservedGeneration: 2,
+						},
+					},
+				},
+				{
+					ClusterName: member2Name,
+					Conditions: []metav1.Condition{
+						{
+							Status:             metav1.ConditionTrue,
+							Type:               string(placementv1beta1.ResourceScheduledConditionType),
+							Reason:             condition.ScheduleSucceededReason,
+							ObservedGeneration: 2,
+						},
+						{
+							Status:             metav1.ConditionTrue,
+							Type:               string(placementv1beta1.ResourceRolloutStartedConditionType),
+							Reason:             condition.RolloutStartedReason,
+							ObservedGeneration: 2,
+						},
+						{
+							Status:             metav1.ConditionTrue,
+							Type:               string(placementv1beta1.ResourceOverriddenConditionType),
+							Reason:             condition.OverriddenSucceededReason,
+							ObservedGeneration: 2,
+						},
+						{
+							Status:             metav1.ConditionTrue,
+							Type:               string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+							Reason:             condition.WorkSynchronizedReason,
+							ObservedGeneration: 2,
+						},
+						{
+							Status:             metav1.ConditionUnknown,
+							Type:               string(placementv1beta1.ResourcesAppliedConditionType),
+							Reason:             condition.ApplyPendingReason,
+							ObservedGeneration: 2,
+						},
+					},
+				},
+			}
+			gotCRP = retrieveAndValidateClusterResourcePlacement(testCRPName, wantCRP)
+
+			By("Ensure placement status metric was emitted with different generations")
+			// When a CRP spec is updated, the generation of the CRP changes. Therefore, the observed generation for the conditions will also change.
+			// Should have multiples of same condition type with different generations.
+			// In this case we have 2 metrics for different condition types as crp updates and its generation goes from 1 to 2.
+			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
+				Label: []*prometheusclientmodel.LabelPair{
+					{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
+					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
+					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
+					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+				},
+				Gauge: &prometheusclientmodel.Gauge{
+					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+				},
+			})
+			checkPlacementStatusMetric(customRegistry, wantMetrics)
 		})
 
 		It("Emit metrics for complete CRP", func() {
@@ -1181,7 +1300,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					Label: []*prometheusclientmodel.LabelPair{
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To("ClusterResourcePlacementCompleted")},
+						{Name: ptr.To("conditionType"), Value: ptr.To("Completed")},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionTrue))},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
@@ -1664,7 +1783,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					Label: []*prometheusclientmodel.LabelPair{
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To("ClusterResourcePlacementCompleted")},
+						{Name: ptr.To("conditionType"), Value: ptr.To("Completed")},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionTrue))},
 					},
 					Gauge: &prometheusclientmodel.Gauge{

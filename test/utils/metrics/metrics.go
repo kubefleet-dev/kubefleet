@@ -10,6 +10,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
+// Package metrics provides utilities for metrics.
 package metrics
 
 import (
@@ -19,15 +21,16 @@ import (
 )
 
 var (
+	// MetricsCmpOptions defines comparison options for Prometheus metric structures.
+	// - Sorting metric value and its labels for deterministic ordering,
+	// - Comparing gauge values based on whether they were meaningfully set (i.e., > 0),
+	// - Ignoring unexported fields to avoid false mismatches due to internal state.
 	MetricsCmpOptions = []cmp.Option{
 		cmpopts.SortSlices(func(a, b *prometheusclientmodel.Metric) bool {
 			return a.GetGauge().GetValue() < b.GetGauge().GetValue() // sort by time
 		}),
 		cmpopts.SortSlices(func(a, b *prometheusclientmodel.LabelPair) bool {
-			if a.Name == nil || b.Name == nil {
-				return a.Name == nil
-			}
-			return *a.Name < *b.Name // Sort by label
+			return a.GetName() < b.GetName() // Sort by label
 		}),
 		cmp.Comparer(func(a, b *prometheusclientmodel.Gauge) bool {
 			return (a.GetValue() > 0) == (b.GetValue() > 0)

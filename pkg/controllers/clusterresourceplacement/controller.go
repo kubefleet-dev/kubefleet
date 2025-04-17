@@ -1052,7 +1052,7 @@ func emitPlacementStatusMetric(crp *fleetv1beta1.ClusterResourcePlacement) {
 	status := "nil"
 	cond := crp.GetCondition(string(fleetv1beta1.ClusterResourcePlacementScheduledConditionType))
 	if !condition.IsConditionStatusTrue(cond, crp.Generation) {
-		if cond != nil {
+		if cond != nil && cond.ObservedGeneration == crp.Generation {
 			status = string(cond.Status)
 		}
 		metrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(crp.Name, strconv.FormatInt(crp.Generation, 10), string(fleetv1beta1.ClusterResourcePlacementScheduledConditionType), status).SetToCurrentTime()
@@ -1064,7 +1064,7 @@ func emitPlacementStatusMetric(crp *fleetv1beta1.ClusterResourcePlacement) {
 	for _, condType := range expectedCondTypes {
 		cond = crp.GetCondition(string(condType.ClusterResourcePlacementConditionType()))
 		if !condition.IsConditionStatusTrue(cond, crp.Generation) {
-			if cond != nil {
+			if cond != nil && cond.ObservedGeneration == crp.Generation {
 				status = string(cond.Status)
 			}
 			metrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(crp.Name, strconv.FormatInt(crp.Generation, 10), string(condType.ClusterResourcePlacementConditionType()), status).SetToCurrentTime()
@@ -1072,7 +1072,7 @@ func emitPlacementStatusMetric(crp *fleetv1beta1.ClusterResourcePlacement) {
 		}
 	}
 
-	// Emit the "ClusterResourcePlacementCompleted" condition metric to indicate that the CRP has completed.
+	// Emit the "Completed" condition metric to indicate that the CRP has completed.
 	// This condition is used solely for metric reporting purposes.
-	metrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(crp.Name, strconv.FormatInt(crp.Generation, 10), "ClusterResourcePlacementCompleted", string(metav1.ConditionTrue)).SetToCurrentTime()
+	metrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(crp.Name, strconv.FormatInt(crp.Generation, 10), "Completed", string(metav1.ConditionTrue)).SetToCurrentTime()
 }
