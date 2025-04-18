@@ -21,6 +21,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -161,6 +162,11 @@ var (
 			regionLabelName: regionSouth,
 		},
 	}
+)
+
+var (
+	drainBinaryPath    = filepath.Join("../../", "hack", "tools", "bin", "kubectl-draincluster")
+	uncordonBinaryPath = filepath.Join("../../", "hack", "tools", "bin", "kubectl-uncordoncluster")
 )
 
 var (

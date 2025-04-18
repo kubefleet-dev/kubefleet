@@ -29,12 +29,14 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workapplier"
 	scheduler "github.com/kubefleet-dev/kubefleet/pkg/scheduler/framework"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
+	toolsutils "github.com/kubefleet-dev/kubefleet/tools/utils"
 )
 
 func validateWorkNamespaceOnCluster(cluster *framework.Cluster, name types.NamespacedName) error {
@@ -1262,6 +1264,38 @@ func updateRunStrategyRemovedActual(strategyName string) func() error {
 	return func() error {
 		if err := hubClient.Get(ctx, types.NamespacedName{Name: strategyName}, &placementv1beta1.ClusterStagedUpdateStrategy{}); !errors.IsNotFound(err) {
 			return fmt.Errorf("ClusterStagedUpdateStrategy still exists or an unexpected error occurred: %w", err)
+		}
+		return nil
+	}
+}
+
+func memberClusterCordonTaintAddedActual(mcName string) func() error {
+	return func() error {
+		var mc clusterv1beta1.MemberCluster
+		if err := hubClient.Get(ctx, types.NamespacedName{Name: mcName}, &mc); err != nil {
+			return fmt.Errorf("failed to get member cluster %s: %w", mcName, err)
+		}
+
+		for _, taint := range mc.Spec.Taints {
+			if taint == toolsutils.CordonTaint {
+				return nil
+			}
+		}
+		return fmt.Errorf("cordon taint not found on member cluster %s", mcName)
+	}
+}
+
+func memberClusterCordonTaintRemovedActual(mcName string) func() error {
+	return func() error {
+		var mc clusterv1beta1.MemberCluster
+		if err := hubClient.Get(ctx, types.NamespacedName{Name: mcName}, &mc); err != nil {
+			return fmt.Errorf("failed to get member cluster %s: %w", mcName, err)
+		}
+
+		for _, taint := range mc.Spec.Taints {
+			if taint == toolsutils.CordonTaint {
+				return fmt.Errorf("cordon taint found on member cluster %s", mcName)
+			}
 		}
 		return nil
 	}
