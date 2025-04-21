@@ -162,6 +162,39 @@ var _ = Describe("Test Work Generator Controller", func() {
 			}, timeout, interval).Should(BeTrue(), "Get() member cluster, want not found")
 		})
 
+		It("Should not create work when no resources are selected", func() {
+			// create master resource snapshot with 0 resources
+			masterSnapshot := generateResourceSnapshot(1, 1, 0, [][]byte{})
+			Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
+			// create a scheduled binding
+			spec := placementv1beta1.ResourceBindingSpec{
+				State:                placementv1beta1.BindingStateScheduled,
+				ResourceSnapshotName: masterSnapshot.Name,
+				TargetCluster:        memberClusterName,
+			}
+			createClusterResourceBinding(&binding, spec)
+			// check the work is not created since the binding state is not bound
+			work := placementv1beta1.Work{}
+			Consistently(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName), Namespace: memberClusterNamespaceName}, &work)
+				return errors.IsNotFound(err)
+			}, duration, interval).Should(BeTrue(), "controller should not create work in hub cluster until all resources are created")
+			// binding should not have any finalizers
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding)).Should(Succeed())
+			Expect(len(binding.Finalizers)).Should(Equal(0))
+			// flip the binding state to bound
+			binding.Spec.State = placementv1beta1.BindingStateBound
+			Expect(k8sClient.Update(ctx, binding)).Should(Succeed())
+			updateRolloutStartedGeneration(&binding)
+			// check the work is not created since no resources are selected
+			Consistently(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName), Namespace: memberClusterNamespaceName}, &work)
+				return errors.IsNotFound(err)
+			}, duration, interval).Should(BeTrue(), "controller should not create work in hub cluster until all resources are created")
+			// check the binding status is available
+			verifyBindStatusAvail(binding, false, false)
+		})
+
 		It("Should not create work for the binding with state scheduled", func() {
 			// create master resource snapshot with 2 number of resources
 			masterSnapshot := generateResourceSnapshot(1, 1, 0, [][]byte{
@@ -4143,6 +4176,10 @@ func generateResourceSnapshot(resourceIndex, numberResource, subIndex int, rawCo
 		clusterResourceSnapshot.Annotations[placementv1beta1.SubindexOfResourceSnapshotAnnotation] = strconv.Itoa(subIndex)
 	}
 	clusterResourceSnapshot.Name = snapshotName
+	if len(rawContents) == 0 {
+		clusterResourceSnapshot.Spec.SelectedResources = []placementv1beta1.ResourceContent{}
+		return clusterResourceSnapshot
+	}
 	for _, rawContent := range rawContents {
 		clusterResourceSnapshot.Spec.SelectedResources = append(clusterResourceSnapshot.Spec.SelectedResources, placementv1beta1.ResourceContent{
 			RawExtension: runtime.RawExtension{Raw: rawContent},
