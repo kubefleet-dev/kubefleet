@@ -88,7 +88,7 @@ func (h *helper) Drain(ctx context.Context) (bool, error) {
 		})
 
 		if err != nil {
-			return false, fmt.Errorf("failed to create eviction for CRP %s targeting member cluster %s: %w", crpName, h.clusterName, err)
+			return false, fmt.Errorf("failed to create eviction %s for CRP %s targeting member cluster %s: %w", evictionName, crpName, h.clusterName, err)
 		}
 
 		log.Printf("Created eviction %s for CRP %s targeting member cluster %s", evictionName, crpName, h.clusterName)

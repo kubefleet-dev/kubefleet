@@ -23,12 +23,15 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
+	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
 	testutilseviction "github.com/kubefleet-dev/kubefleet/test/utils/eviction"
+	toolsutils "github.com/kubefleet-dev/kubefleet/tools/utils"
 )
 
 var _ = Describe("Drain cluster successfully", Ordered, Serial, func() {
@@ -46,21 +49,7 @@ var _ = Describe("Drain cluster successfully", Ordered, Serial, func() {
 		createWorkResources()
 
 		// Create the CRP.
-		crp := &placementv1beta1.ClusterResourcePlacement{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: crpName,
-				// Add a custom finalizer; this would allow us to better observe
-				// the behavior of the controllers.
-				Finalizers: []string{customDeletionBlockerFinalizer},
-			},
-			Spec: placementv1beta1.ClusterResourcePlacementSpec{
-				Policy: &placementv1beta1.PlacementPolicy{
-					PlacementType: placementv1beta1.PickAllPlacementType,
-				},
-				ResourceSelectors: workResourceSelector(),
-			},
-		}
-		Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP %s", crpName)
+		createCRP(crpName)
 	})
 
 	AfterAll(func() {
@@ -137,21 +126,7 @@ var _ = Describe("Drain cluster blocked - ClusterResourcePlacementDisruptionBudg
 		createWorkResources()
 
 		// Create the CRP.
-		crp := &placementv1beta1.ClusterResourcePlacement{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: crpName,
-				// Add a custom finalizer; this would allow us to better observe
-				// the behavior of the controllers.
-				Finalizers: []string{customDeletionBlockerFinalizer},
-			},
-			Spec: placementv1beta1.ClusterResourcePlacementSpec{
-				Policy: &placementv1beta1.PlacementPolicy{
-					PlacementType: placementv1beta1.PickAllPlacementType,
-				},
-				ResourceSelectors: workResourceSelector(),
-			},
-		}
-		Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP %s", crpName)
+		createCRP(crpName)
 	})
 
 	AfterAll(func() {
@@ -210,6 +185,7 @@ var _ = Describe("Drain cluster blocked - ClusterResourcePlacementDisruptionBudg
 	It("should ensure cluster resource placement status remains unchanged", func() {
 		crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0")
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update cluster resource placement status as expected")
+		Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update cluster resource placement status as expected")
 	})
 
 	It("should still place resources on all available member clusters", checkIfPlacedWorkResourcesOnAllMemberClusters)
@@ -237,21 +213,7 @@ var _ = Describe("Drain is allowed on one cluster, blocked on others - ClusterRe
 		createWorkResources()
 
 		// Create the CRP.
-		crp := &placementv1beta1.ClusterResourcePlacement{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: crpName,
-				// Add a custom finalizer; this would allow us to better observe
-				// the behavior of the controllers.
-				Finalizers: []string{customDeletionBlockerFinalizer},
-			},
-			Spec: placementv1beta1.ClusterResourcePlacementSpec{
-				Policy: &placementv1beta1.PlacementPolicy{
-					PlacementType: placementv1beta1.PickAllPlacementType,
-				},
-				ResourceSelectors: workResourceSelector(),
-			},
-		}
-		Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP %s", crpName)
+		createCRP(crpName)
 	})
 
 	AfterAll(func() {
@@ -392,4 +354,36 @@ func fetchDrainEvictions() ([]placementv1beta1.ClusterResourcePlacementEviction,
 		return nil, err
 	}
 	return evictionList.Items, nil
+}
+
+func memberClusterCordonTaintAddedActual(mcName string) func() error {
+	return func() error {
+		var mc clusterv1beta1.MemberCluster
+		if err := hubClient.Get(ctx, types.NamespacedName{Name: mcName}, &mc); err != nil {
+			return fmt.Errorf("failed to get member cluster %s: %w", mcName, err)
+		}
+
+		for _, taint := range mc.Spec.Taints {
+			if taint == toolsutils.CordonTaint {
+				return nil
+			}
+		}
+		return fmt.Errorf("cordon taint not found on member cluster %s", mcName)
+	}
+}
+
+func memberClusterCordonTaintRemovedActual(mcName string) func() error {
+	return func() error {
+		var mc clusterv1beta1.MemberCluster
+		if err := hubClient.Get(ctx, types.NamespacedName{Name: mcName}, &mc); err != nil {
+			return fmt.Errorf("failed to get member cluster %s: %w", mcName, err)
+		}
+
+		for _, taint := range mc.Spec.Taints {
+			if taint == toolsutils.CordonTaint {
+				return fmt.Errorf("cordon taint found on member cluster %s", mcName)
+			}
+		}
+		return nil
+	}
 }
