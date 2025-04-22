@@ -875,7 +875,7 @@ var _ = Context("creating resourceOverride with delete configMap", Ordered, func
 	})
 })
 
-var _ = FContext("creating resourceOverride with a templated rules with cluster label key replacement", Ordered, func() {
+var _ = Context("creating resourceOverride with a templated rules with cluster label key replacement", Ordered, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	roName := fmt.Sprintf(roNameTemplate, GinkgoParallelProcess())
 	roNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
@@ -1001,19 +1001,13 @@ var _ = FContext("creating resourceOverride with a templated rules with cluster 
 				},
 				{
 					Type:               string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType),
-					Status:             metav1.ConditionTrue,
-					Reason:             condition.RolloutStartedReason,
-					ObservedGeneration: crp.Generation,
-				},
-				{
-					Type:               string(placementv1beta1.ClusterResourcePlacementOverriddenConditionType),
 					Status:             metav1.ConditionFalse,
-					Reason:             condition.OverriddenFailedReason,
+					Reason:             condition.RolloutNotStartedYetReason,
 					ObservedGeneration: crp.Generation,
 				},
 			}
 			if diff := cmp.Diff(crp.Status.Conditions, wantCondition, crpStatusCmpOptions...); diff != "" {
-				return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
+				return fmt.Errorf("CRP condition diff (-got, +want): %s", diff)
 			}
 			return nil
 		}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "CRP %s failed to show the override failed and stuck in rollout", crpName)
