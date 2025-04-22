@@ -36,7 +36,7 @@ jobs:
     needs: export-registry
     env:
       REGISTRY: ${{ needs.export-registry.outputs.registry }}
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Set up Go ${{ env.GO_VERSION }}
         uses: actions/setup-go@v5
