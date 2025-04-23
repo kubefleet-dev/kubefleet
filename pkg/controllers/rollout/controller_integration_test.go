@@ -932,7 +932,7 @@ var _ = Describe("Test the rollout Controller", func() {
 			createPlacementRolloutStrategyForTest(fleetv1beta1.ExternalRolloutStrategyType, nil, nil))
 		Expect(k8sClient.Create(ctx, rolloutCRP)).Should(Succeed())
 
-		By("Creating the lastestmaster resource snapshot")
+		By("Creating the latest master resource snapshot")
 		masterSnapshot := generateResourceSnapshot(rolloutCRP.Name, 0, true)
 		Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
 		By(fmt.Sprintf("master resource snapshot %s created", masterSnapshot.Name))
@@ -967,7 +967,7 @@ var _ = Describe("Test the rollout Controller", func() {
 			createPlacementRolloutStrategyForTest(fleetv1beta1.ExternalRolloutStrategyType, nil, nil))
 		Expect(k8sClient.Create(ctx, rolloutCRP)).Should(Succeed())
 
-		By("Creating the lastestmaster resource snapshot")
+		By("Creating the latest master resource snapshot")
 		masterSnapshot := generateResourceSnapshot(rolloutCRP.Name, 0, true)
 		Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
 		By(fmt.Sprintf("master resource snapshot %s created", masterSnapshot.Name))
@@ -1002,7 +1002,7 @@ var _ = Describe("Test the rollout Controller", func() {
 			createPlacementRolloutStrategyForTest(fleetv1beta1.RollingUpdateRolloutStrategyType, generateDefaultRollingUpdateConfig(), nil))
 		Expect(k8sClient.Create(ctx, rolloutCRP)).Should(Succeed())
 
-		By("Creating the lastestmaster resource snapshot")
+		By("Creating the latest master resource snapshot")
 		masterSnapshot := generateResourceSnapshot(rolloutCRP.Name, 0, true)
 		Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
 		By(fmt.Sprintf("master resource snapshot %s created", masterSnapshot.Name))
