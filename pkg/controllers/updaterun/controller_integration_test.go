@@ -300,7 +300,7 @@ func generateInitializationFailedMetric(updateRun *placementv1beta1.ClusterStage
 func generateProgressingMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
 		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionProgressing),
-			string(metav1.ConditionTrue), condition.UpdateRunStartedReason),
+			string(metav1.ConditionTrue), condition.UpdateRunProgressingReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 		},
@@ -627,7 +627,7 @@ func generateTrueCondition(obj client.Object, condType any) metav1.Condition {
 		case placementv1beta1.StagedUpdateRunConditionInitialized:
 			reason = condition.UpdateRunInitializeSucceededReason
 		case placementv1beta1.StagedUpdateRunConditionProgressing:
-			reason = condition.UpdateRunStartedReason
+			reason = condition.UpdateRunProgressingReason
 		case placementv1beta1.StagedUpdateRunConditionSucceeded:
 			reason = condition.UpdateRunSucceededReason
 		}

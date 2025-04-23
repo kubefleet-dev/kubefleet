@@ -144,8 +144,8 @@ const (
 	// UpdateRunInitializeFailedReason is the reason string of condition if the update run is failed to initialize.
 	UpdateRunInitializeFailedReason = "UpdateRunInitializedFailed"
 
-	// UpdateRunStartedReason is the reason string of condition if the staged update run has started.
-	UpdateRunStartedReason = "UpdateRunStarted"
+	// UpdateRunProgressingReason is the reason string of condition if the staged update run is progressing.
+	UpdateRunProgressingReason = "UpdateRunProgressing"
 
 	// UpdateRunFailedReason is the reason string of condition if the staged update run failed.
 	UpdateRunFailedReason = "UpdateRunFailed"

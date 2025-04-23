@@ -59,9 +59,10 @@ func (r *Reconciler) execute(
 	updatingStageIndex int,
 	toBeUpdatedBindings, toBeDeletedBindings []*placementv1beta1.ClusterResourceBinding,
 ) (bool, time.Duration, error) {
-	// Before the execute returns, mark the update run as started in memory if it's not marked as waiting or stuck.
-	// If the update run actually succeeds or fails, it will be remarked later in controller.go.
-	defer markUpdateRunStartedIfNotWaitingOrStuck(updateRun)
+	// Mark updateRun as progressing if it's not already marked as waiting or stuck.
+	// This avoids triggering an unnecessary in-memory transition from stuck (waiting) -> progressing -> stuck (waiting),
+	// which would update the lastTransitionTime even though the status hasn't effectively changed.
+	markUpdateRunProgressingIfNotWaitingOrStuck(updateRun)
 
 	if updatingStageIndex < len(updateRun.Status.StagesStatus) {
 		updatingStage := &updateRun.Status.StagesStatus[updatingStageIndex]
@@ -181,7 +182,7 @@ func (r *Reconciler) executeUpdatingStage(
 		finished, updateErr := checkClusterUpdateResult(binding, clusterStatus, updatingStageStatus, updateRun)
 		if finished {
 			finishedClusterCount++
-			unmarkUpdateRunStuck(updateRun)
+			markUpdateRunProgressing(updateRun)
 			continue
 		} else {
 			// If cluster update has been running for more than "updateRunStuckThreshold", mark the update run as stuck.
@@ -206,7 +207,7 @@ func (r *Reconciler) executeUpdatingStage(
 			return 0, err
 		}
 		if approved {
-			unmarkUpdateRunWaiting(updateRun)
+			markUpdateRunProgressing(updateRun)
 			markStageUpdatingSucceeded(updatingStageStatus, updateRun.Generation)
 			// No need to wait to get to the next stage.
 			return 0, nil
@@ -464,21 +465,26 @@ func checkClusterUpdateResult(
 	return false, nil
 }
 
-// markUpdateRunStartedIfNotWaitingOrStuck marks the update run as started in memory if it's not marked as waiting or stuck already.
-func markUpdateRunStartedIfNotWaitingOrStuck(updateRun *placementv1beta1.ClusterStagedUpdateRun) {
+// markUpdateRunProgressing marks the update run as progressing in memory.
+func markUpdateRunProgressing(updateRun *placementv1beta1.ClusterStagedUpdateRun) {
+	meta.SetStatusCondition(&updateRun.Status.Conditions, metav1.Condition{
+		Type:               string(placementv1beta1.StagedUpdateRunConditionProgressing),
+		Status:             metav1.ConditionTrue,
+		ObservedGeneration: updateRun.Generation,
+		Reason:             condition.UpdateRunProgressingReason,
+		Message:            "The update run is making progress",
+	})
+}
+
+// markUpdateRunProgressingIfNotWaitingOrStuck marks the update run as proegressing in memory if it's not marked as waiting or stuck already.
+func markUpdateRunProgressingIfNotWaitingOrStuck(updateRun *placementv1beta1.ClusterStagedUpdateRun) {
 	progressingCond := meta.FindStatusCondition(updateRun.Status.Conditions, string(placementv1beta1.StagedUpdateRunConditionProgressing))
 	if condition.IsConditionStatusFalse(progressingCond, updateRun.Generation) &&
 		(progressingCond.Reason == condition.UpdateRunWaitingReason || progressingCond.Reason == condition.UpdateRunStuckReason) {
 		// The updateRun is waiting or stuck, no need to mark it as started.
 		return
 	}
-	meta.SetStatusCondition(&updateRun.Status.Conditions, metav1.Condition{
-		Type:               string(placementv1beta1.StagedUpdateRunConditionProgressing),
-		Status:             metav1.ConditionTrue,
-		ObservedGeneration: updateRun.Generation,
-		Reason:             condition.UpdateRunStartedReason,
-		Message:            "The stages started updating",
-	})
+	markUpdateRunProgressing(updateRun)
 }
 
 // markUpdateRunStuck marks the updateRun as stuck in memory.
@@ -492,14 +498,6 @@ func markUpdateRunStuck(updateRun *placementv1beta1.ClusterStagedUpdateRun, stag
 	})
 }
 
-// unmarkUpdateRunStuck unmarks the updateRun as stuck in memory.
-func unmarkUpdateRunStuck(updateRun *placementv1beta1.ClusterStagedUpdateRun) {
-	progressingCond := meta.FindStatusCondition(updateRun.Status.Conditions, string(placementv1beta1.StagedUpdateRunConditionProgressing))
-	if condition.IsConditionStatusFalse(progressingCond, updateRun.Generation) && progressingCond.Reason == condition.UpdateRunStuckReason {
-		meta.RemoveStatusCondition(&updateRun.Status.Conditions, string(placementv1beta1.StagedUpdateRunConditionProgressing))
-	}
-}
-
 // markUpdateRunWaiting marks the updateRun as waiting in memory.
 func markUpdateRunWaiting(updateRun *placementv1beta1.ClusterStagedUpdateRun, stageName string) {
 	meta.SetStatusCondition(&updateRun.Status.Conditions, metav1.Condition{
@@ -509,14 +507,6 @@ func markUpdateRunWaiting(updateRun *placementv1beta1.ClusterStagedUpdateRun, st
 		Reason:             condition.UpdateRunWaitingReason,
 		Message:            fmt.Sprintf("The updateRun is waiting for after-stage tasks in stage %s to complete", stageName),
 	})
-}
-
-// unmarkUpdateRunWaiting unmarks the updateRun as waiting in memory.
-func unmarkUpdateRunWaiting(updateRun *placementv1beta1.ClusterStagedUpdateRun) {
-	progressingCond := meta.FindStatusCondition(updateRun.Status.Conditions, string(placementv1beta1.StagedUpdateRunConditionProgressing))
-	if condition.IsConditionStatusFalse(progressingCond, updateRun.Generation) && progressingCond.Reason == condition.UpdateRunWaitingReason {
-		meta.RemoveStatusCondition(&updateRun.Status.Conditions, string(placementv1beta1.StagedUpdateRunConditionProgressing))
-	}
 }
 
 // markStageUpdatingStarted marks the stage updating status as started in memory.
