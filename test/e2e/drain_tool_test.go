@@ -19,6 +19,7 @@ package e2e
 import (
 	"fmt"
 	"os/exec"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -78,7 +79,7 @@ var _ = Describe("Drain cluster successfully", Ordered, Serial, func() {
 
 	It("should update drain cluster resource placement evictions status as expected", func() {
 		var fetchError error
-		drainEvictions, fetchError = fetchDrainEvictions()
+		drainEvictions, fetchError = fetchDrainEvictions(crpName, memberCluster1EastProdName)
 		Eventually(fetchError).Should(Succeed(), "Failed to fetch drain evictions")
 		for _, eviction := range drainEvictions {
 			crpEvictionStatusUpdatedActual := testutilseviction.StatusUpdatedActual(
@@ -171,7 +172,7 @@ var _ = Describe("Drain cluster blocked - ClusterResourcePlacementDisruptionBudg
 
 	It("should update drain cluster resource placement evictions status as expected", func() {
 		var fetchError error
-		drainEvictions, fetchError = fetchDrainEvictions()
+		drainEvictions, fetchError = fetchDrainEvictions(crpName, memberCluster1EastProdName)
 		Eventually(fetchError).Should(Succeed(), "Failed to fetch drain evictions")
 		for _, eviction := range drainEvictions {
 			crpEvictionStatusUpdatedActual := testutilseviction.StatusUpdatedActual(
@@ -258,7 +259,7 @@ var _ = Describe("Drain is allowed on one cluster, blocked on others - ClusterRe
 
 	It("should update drain cluster resource placement evictions status as expected", func() {
 		var fetchError error
-		drainEvictions, fetchError = fetchDrainEvictions()
+		drainEvictions, fetchError = fetchDrainEvictions(crpName, memberCluster1EastProdName)
 		Eventually(fetchError).Should(Succeed(), "Failed to fetch drain evictions")
 		for _, eviction := range drainEvictions {
 			crpEvictionStatusUpdatedActual := testutilseviction.StatusUpdatedActual(
@@ -284,7 +285,7 @@ var _ = Describe("Drain is allowed on one cluster, blocked on others - ClusterRe
 
 	It("should update drain cluster resource placement evictions status as expected", func() {
 		var fetchError error
-		drainEvictions, fetchError = fetchDrainEvictions()
+		drainEvictions, fetchError = fetchDrainEvictions(crpName, memberCluster2EastCanaryName)
 		Eventually(fetchError).Should(Succeed(), "Failed to fetch drain evictions")
 		for _, eviction := range drainEvictions {
 			crpEvictionStatusUpdatedActual := testutilseviction.StatusUpdatedActual(
@@ -348,12 +349,21 @@ func runUncordonClusterBinary(hubClusterName, memberClusterName string) {
 	Expect(err).ToNot(HaveOccurred(), "Uncordon command failed with error: %v", err)
 }
 
-func fetchDrainEvictions() ([]placementv1beta1.ClusterResourcePlacementEviction, error) {
+func fetchDrainEvictions(crpName, clusterName string) ([]placementv1beta1.ClusterResourcePlacementEviction, error) {
 	var evictionList placementv1beta1.ClusterResourcePlacementEvictionList
 	if err := hubClient.List(ctx, &evictionList); err != nil {
 		return nil, err
 	}
-	return evictionList.Items, nil
+	var filteredDrainEvictions []placementv1beta1.ClusterResourcePlacementEviction
+	thirtySecondsAgo := time.Now().Add(-30 * time.Second)
+	for _, eviction := range evictionList.Items {
+		if eviction.CreationTimestamp.Time.After(thirtySecondsAgo) &&
+			eviction.Spec.PlacementName == crpName &&
+			eviction.Spec.ClusterName == clusterName {
+			filteredDrainEvictions = append(filteredDrainEvictions, eviction)
+		}
+	}
+	return filteredDrainEvictions, nil
 }
 
 func memberClusterCordonTaintAddedActual(mcName string) func() error {
