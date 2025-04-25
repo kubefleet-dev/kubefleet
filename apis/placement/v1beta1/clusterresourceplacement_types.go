@@ -822,6 +822,9 @@ type ClusterResourcePlacementStatus struct {
 	// One resource snapshot can contain multiple clusterResourceSnapshots CRs in order to store large amount of resources.
 	// To get clusterResourceSnapshot of a given resource index, use the following command:
 	// `kubectl get ClusterResourceSnapshot --selector=kubernetes-fleet.io/resource-index=$ObservedResourceIndex `
+	// During rollout, clusters may run different versions of the resource snapshot concurrently.
+	// In this case, ObservedResourceIndex represents the index of the latest resource snapshot installed across all clusters.
+	// Note that this may differ from the index of the latest resource snapshot available in the hub cluster depending on the rollout strategy.
 	// ObservedResourceIndex is the resource index that the conditions in the ClusterResourcePlacementStatus observe.
 	// For example, a condition of `ClusterResourcePlacementWorkSynchronized` type
 	// is observing the synchronization status of the resource snapshot with the resource index $ObservedResourceIndex.
@@ -953,6 +956,13 @@ type ResourcePlacementStatus struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=100
 	DiffedPlacements []DiffedResourcePlacement `json:"diffedPlacements,omitempty"`
+
+	// ObservedResourceIndex is the index of the resource snapshot that is currently rolled out on the given cluster.
+	// During rollout, depending on the rollout strategy, clusters may observe different resource indices.
+	// ObservedResourceIndex is the resource snapshot index observed by the conditions in the ResourcePlacementStatus.
+	// This field is only meaningful if the `ClusterName` is not empty.
+	// +kubebuilder:validation:Optional
+	ObservedResourceIndex string `json:"observedResourceIndex,omitempty"`
 
 	// Conditions is an array of current observed conditions for ResourcePlacementStatus.
 	// +kubebuilder:validation:Optional
