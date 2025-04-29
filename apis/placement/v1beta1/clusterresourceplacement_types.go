@@ -958,7 +958,7 @@ type ResourcePlacementStatus struct {
 	DiffedPlacements []DiffedResourcePlacement `json:"diffedPlacements,omitempty"`
 
 	// ObservedResourceIndex is the index of the resource snapshot that is currently being rolled out to the given cluster.
-	// During rollout, depending on the rollout strategy, clusters may observe different resource indices.
+	// During rollout, depending on the rollout strategy, clusters may observe different resource snapshot indices.
 	// ObservedResourceIndex is the resource snapshot index observed by the conditions in the ResourcePlacementStatus.
 	// This field is only meaningful if the `ClusterName` is not empty.
 	// +kubebuilder:validation:Optional
