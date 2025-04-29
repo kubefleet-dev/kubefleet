@@ -155,11 +155,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req controllerruntime.Reques
 
 	workUpdated := false
 	overrideSucceeded := false
+	resourcesSelected := true
 	// list all the corresponding works
 	works, syncErr := r.listAllWorksAssociated(ctx, &resourceBinding)
 	if syncErr == nil {
 		// generate and apply the workUpdated works if we have all the works
-		overrideSucceeded, workUpdated, syncErr = r.syncAllWork(ctx, &resourceBinding, works, &cluster)
+		overrideSucceeded, workUpdated, resourcesSelected, syncErr = r.syncAllWork(ctx, &resourceBinding, works, &cluster)
 	}
 	// Reset the conditions and failed/drifted/diffed placements.
 	for i := condition.OverriddenCondition; i < condition.TotalCondition; i++ {
@@ -223,7 +224,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req controllerruntime.Reques
 		case !workUpdated:
 			// The Work object itself is unchanged; refresh the cluster resource binding status
 			// based on the status information reported on the Work object(s).
-			setBindingStatus(works, &resourceBinding)
+			setBindingStatus(resourcesSelected, works, &resourceBinding)
 		case resourceBinding.Spec.ApplyStrategy == nil || resourceBinding.Spec.ApplyStrategy.Type != fleetv1beta1.ApplyStrategyTypeReportDiff:
 			// The Work object itself has changed; set a False Applied condition which signals
 			// that resources are in the process of being applied.
@@ -409,8 +410,9 @@ func (r *Reconciler) listAllWorksAssociated(ctx context.Context, resourceBinding
 // it returns
 // 1: if we apply the overrides successfully
 // 2: if we actually made any changes on the hub cluster
-func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1beta1.ClusterResourceBinding, existingWorks map[string]*fleetv1beta1.Work, cluster *clusterv1beta1.MemberCluster) (bool, bool, error) {
+func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1beta1.ClusterResourceBinding, existingWorks map[string]*fleetv1beta1.Work, cluster *clusterv1beta1.MemberCluster) (bool, bool, bool, error) {
 	updateAny := atomic.NewBool(false)
+	resourcesSelected := atomic.NewBool(true)
 	resourceBindingRef := klog.KObj(resourceBinding)
 
 	// Refresh the apply strategy for all existing works.
@@ -435,17 +437,17 @@ func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1be
 		})
 	}
 	if updateErr := errs.Wait(); updateErr != nil {
-		return false, false, updateErr
+		return false, false, false, updateErr
 	}
 
 	// the hash256 function can handle empty list https://go.dev/play/p/_4HW17fooXM
 	resourceOverrideSnapshotHash, err := resource.HashOf(resourceBinding.Spec.ResourceOverrideSnapshots)
 	if err != nil {
-		return false, false, controller.NewUnexpectedBehaviorError(err)
+		return false, false, false, controller.NewUnexpectedBehaviorError(err)
 	}
 	clusterResourceOverrideSnapshotHash, err := resource.HashOf(resourceBinding.Spec.ClusterResourceOverrideSnapshots)
 	if err != nil {
-		return false, false, controller.NewUnexpectedBehaviorError(err)
+		return false, false, false, controller.NewUnexpectedBehaviorError(err)
 	}
 	// TODO: check all work synced first before fetching the snapshots after we put ParentResourceOverrideSnapshotHashAnnotation and ParentClusterResourceOverrideSnapshotHashAnnotation in all the work objects
 
@@ -456,22 +458,22 @@ func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1be
 			// the resourceIndex is deleted but the works might still be up to date with the binding.
 			if areAllWorkSynced(existingWorks, resourceBinding, resourceOverrideSnapshotHash, clusterResourceOverrideSnapshotHash) {
 				klog.V(2).InfoS("All the works are synced with the resourceBinding even if the resource snapshot index is removed", "resourceBinding", resourceBindingRef)
-				return true, updateAny.Load(), nil
+				return true, updateAny.Load(), resourcesSelected.Load(), nil
 			}
-			return false, false, controller.NewUserError(err)
+			return false, false, false, controller.NewUserError(err)
 		}
 		// TODO(RZ): handle errResourceNotFullyCreated error so we don't need to wait for all the snapshots to be created
-		return false, false, err
+		return false, false, false, err
 	}
 
 	croMap, err := r.fetchClusterResourceOverrideSnapshots(ctx, resourceBinding)
 	if err != nil {
-		return false, false, err
+		return false, false, false, err
 	}
 
 	roMap, err := r.fetchResourceOverrideSnapshots(ctx, resourceBinding)
 	if err != nil {
-		return false, false, err
+		return false, false, false, err
 	}
 
 	// issue all the create/update requests for the corresponding works for each snapshot in parallel
@@ -484,7 +486,7 @@ func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1be
 		workNamePrefix, err := getWorkNamePrefixFromSnapshotName(snapshot)
 		if err != nil {
 			klog.ErrorS(err, "Encountered a mal-formatted resource snapshot", "resourceSnapshot", klog.KObj(snapshot))
-			return false, false, err
+			return false, false, false, err
 		}
 		var simpleManifests []fleetv1beta1.Manifest
 		for j := range snapshot.Spec.SelectedResources {
@@ -492,7 +494,7 @@ func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1be
 			// TODO: override the content of the wrapped resource instead of the envelope itself
 			resourceDeleted, overrideErr := r.applyOverrides(selectedResource, cluster, croMap, roMap)
 			if overrideErr != nil {
-				return false, false, overrideErr
+				return false, false, false, overrideErr
 			}
 			if resourceDeleted {
 				klog.V(2).InfoS("The resource is deleted by the override rules", "snapshot", klog.KObj(snapshot), "selectedResource", snapshot.Spec.SelectedResources[j])
@@ -503,14 +505,14 @@ func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1be
 			var uResource unstructured.Unstructured
 			if unMarshallErr := uResource.UnmarshalJSON(selectedResource.Raw); unMarshallErr != nil {
 				klog.ErrorS(unMarshallErr, "work has invalid content", "snapshot", klog.KObj(snapshot), "selectedResource", selectedResource.Raw)
-				return true, false, controller.NewUnexpectedBehaviorError(unMarshallErr)
+				return true, false, false, controller.NewUnexpectedBehaviorError(unMarshallErr)
 			}
 			if uResource.GetObjectKind().GroupVersionKind() == utils.ConfigMapGVK &&
 				len(uResource.GetAnnotations()[fleetv1beta1.EnvelopeConfigMapAnnotation]) != 0 {
 				// get a work object for the enveloped configMap
 				work, err := r.getConfigMapEnvelopWorkObj(ctx, workNamePrefix, resourceBinding, snapshot, &uResource, resourceOverrideSnapshotHash, clusterResourceOverrideSnapshotHash)
 				if err != nil {
-					return true, false, err
+					return true, false, false, err
 				}
 				activeWork[work.Name] = work
 				newWork = append(newWork, work)
@@ -518,12 +520,13 @@ func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1be
 				simpleManifests = append(simpleManifests, fleetv1beta1.Manifest(*selectedResource))
 			}
 		}
-		if len(simpleManifests) == 0 {
-			klog.V(2).InfoS("the snapshot contains no resource to apply either because of override or enveloped resources", "snapshot", klog.KObj(snapshot))
-		} else {
+		if workObjectCreationNeeded(snapshot, simpleManifests, newWork) {
+			// Create a work object if a resource is selected or if an enveloped configMap is selected
 			work := generateSnapshotWorkObj(workNamePrefix, resourceBinding, snapshot, simpleManifests, resourceOverrideSnapshotHash, clusterResourceOverrideSnapshotHash)
 			activeWork[work.Name] = work
 			newWork = append(newWork, work)
+		} else if snapshot.Labels[fleetv1beta1.IsLatestSnapshotLabel] == strconv.FormatBool(true) {
+			resourcesSelected.Store(false)
 		}
 
 		// issue all the create/update requests for the corresponding works for each snapshot in parallel
@@ -549,11 +552,8 @@ func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1be
 			continue
 		}
 		errs.Go(func() error {
-			if err := r.Client.Delete(ctx, work); err != nil {
-				if !apierrors.IsNotFound(err) {
-					klog.ErrorS(err, "Failed to delete the no longer needed work", "work", klog.KObj(work))
-					return controller.NewAPIServerError(false, err)
-				}
+			if err := r.deleteUnnecessaryWork(ctx, work); err != nil {
+				return err
 			}
 			klog.V(2).InfoS("Deleted the work that is not associated with any resource snapshot", "work", klog.KObj(work))
 			updateAny.Store(true)
@@ -563,10 +563,10 @@ func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1be
 
 	// wait for all the create/update/delete requests to finish
 	if updateErr := errs.Wait(); updateErr != nil {
-		return true, false, updateErr
+		return true, false, false, updateErr
 	}
 	klog.V(2).InfoS("Successfully synced all the work associated with the resourceBinding", "updateAny", updateAny.Load(), "resourceBinding", resourceBindingRef)
-	return true, updateAny.Load(), nil
+	return true, updateAny.Load(), resourcesSelected.Load(), nil
 }
 
 // syncApplyStrategy syncs the apply strategy specified on a ClusterResourceBinding object
@@ -589,6 +589,29 @@ func (r *Reconciler) syncApplyStrategy(
 	}
 	klog.V(2).InfoS("Successfully updated the apply strategy on the work", "work", klog.KObj(existingWork), "binding", klog.KObj(resourceBinding))
 	return true, nil
+}
+
+// deleteUnnecessaryWork deletes the work objects that are not associated with any resource snapshot.
+func (r *Reconciler) deleteUnnecessaryWork(ctx context.Context, work *fleetv1beta1.Work) error {
+	if err := r.Client.Delete(ctx, work); err != nil {
+		if !apierrors.IsNotFound(err) {
+			klog.ErrorS(err, "Failed to delete the no longer needed work", "work", klog.KObj(work))
+			return controller.NewAPIServerError(false, err)
+		}
+	}
+	return nil
+}
+
+// workObjectCreationNeeded checks if we need to create a work object for the resource snapshot.
+func workObjectCreationNeeded(snapshot *fleetv1beta1.ClusterResourceSnapshot, simpleManifests []fleetv1beta1.Manifest, newWork []*fleetv1beta1.Work) bool {
+	switch {
+	case len(simpleManifests) == 0 && len(newWork) == 0:
+		klog.V(2).InfoS("No work to create for this snapshot", "snapshot", klog.KObj(snapshot))
+		return false
+	case len(simpleManifests) == 0:
+		klog.V(2).InfoS("The snapshot contains no resource to apply due to overrides or enveloped resources", "snapshot", klog.KObj(snapshot))
+	}
+	return true
 }
 
 // areAllWorkSynced checks if all the works are synced with the resource binding.
@@ -843,7 +866,7 @@ const (
 )
 
 // setBindingStatus sets the binding status based on the works associated with the binding.
-func setBindingStatus(works map[string]*fleetv1beta1.Work, resourceBinding *fleetv1beta1.ClusterResourceBinding) {
+func setBindingStatus(resourcesSelected bool, works map[string]*fleetv1beta1.Work, resourceBinding *fleetv1beta1.ClusterResourceBinding) {
 	bindingRef := klog.KObj(resourceBinding)
 
 	// Note (chenyu1): the work generator will refresh the status of a ClusterResourceBinding using
@@ -869,10 +892,10 @@ func setBindingStatus(works map[string]*fleetv1beta1.Work, resourceBinding *flee
 	} else {
 		// Set the Applied and Available condition if (and only if) a ClientSideApply or ServerSideApply
 		// apply strategy is currently being used.
-		appliedSummarizedStatus = setAllWorkAppliedCondition(works, resourceBinding)
+		appliedSummarizedStatus = setAllWorkAppliedCondition(resourcesSelected, works, resourceBinding)
 		// Note that Fleet will only set the Available condition if the apply op itself is successful, i.e.,
 		// the Applied condition is True.
-		availabilitySummarizedStatus = setAllWorkAvailableCondition(works, resourceBinding)
+		availabilitySummarizedStatus = setAllWorkAvailableCondition(resourcesSelected, works, resourceBinding)
 	}
 
 	resourceBinding.Status.FailedPlacements = nil
@@ -1005,7 +1028,7 @@ func setBindingStatus(works map[string]*fleetv1beta1.Work, resourceBinding *flee
 //
 // The Applied condition of a ClusterResourceBinding object is set to True if and only if all the
 // related Work objects have their Applied condition set to True.
-func setAllWorkAppliedCondition(works map[string]*fleetv1beta1.Work, binding *fleetv1beta1.ClusterResourceBinding) workConditionSummarizedStatus {
+func setAllWorkAppliedCondition(resourcesSelected bool, works map[string]*fleetv1beta1.Work, binding *fleetv1beta1.ClusterResourceBinding) workConditionSummarizedStatus {
 	// Fleet here makes a clear distinction between incomplete, failed, and successful apply operations.
 	// This is to ensure that stale apply information (esp. those set before
 	// an apply strategy change) will not leak into the current apply operations.
@@ -1036,7 +1059,7 @@ func setAllWorkAppliedCondition(works map[string]*fleetv1beta1.Work, binding *fl
 	}
 
 	switch {
-	case !areAllWorksApplyOpsCompleted:
+	case !areAllWorksApplyOpsCompleted && resourcesSelected:
 		// Not all Work objects have completed the apply op.
 		klog.V(2).InfoS("Some works are not yet completed the apply op", "binding", klog.KObj(binding), "firstWorkWithIncompleteApplyOp", klog.KObj(firstWorkWithIncompleteApplyOp))
 		binding.SetConditions(metav1.Condition{
@@ -1047,7 +1070,7 @@ func setAllWorkAppliedCondition(works map[string]*fleetv1beta1.Work, binding *fl
 			ObservedGeneration: binding.GetGeneration(),
 		})
 		return workConditionSummarizedStatusIncomplete
-	case !areAllWorksApplyOpsSuccessful:
+	case !areAllWorksApplyOpsSuccessful && resourcesSelected:
 		// All Work objects have completed the apply op, but at least one of them has failed.
 		klog.V(2).InfoS("Some works have failed to apply", "binding", klog.KObj(binding), "firstWorkWithFailedApplyOp", klog.KObj(firstWorkWithFailedApplyOp))
 		binding.SetConditions(metav1.Condition{
@@ -1059,6 +1082,17 @@ func setAllWorkAppliedCondition(works map[string]*fleetv1beta1.Work, binding *fl
 		})
 		return workConditionSummarizedStatusFalse
 	default:
+		if !resourcesSelected {
+			klog.V(2).InfoS("No resources are selected for the binding", "binding", klog.KObj(binding))
+			binding.SetConditions(metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ResourceBindingApplied),
+				Reason:             condition.AllWorkAppliedReason,
+				Message:            "Work has been deleted. No new work objects need to be applied.",
+				ObservedGeneration: binding.GetGeneration(),
+			})
+			return workConditionSummarizedStatusTrue
+		}
 		// All Work objects have completed the apply op successfully.
 		klog.V(2).InfoS("All works associated with the binding are applied", "binding", klog.KObj(binding))
 		binding.SetConditions(metav1.Condition{
@@ -1149,7 +1183,7 @@ func setAllWorkDiffReportedCondition(works map[string]*fleetv1beta1.Work, bindin
 //
 // The Available condition of a ClusterResourceBinding object is set to True if and only if all the
 // related Work objects have their Available condition set to True.
-func setAllWorkAvailableCondition(works map[string]*fleetv1beta1.Work, binding *fleetv1beta1.ClusterResourceBinding) workConditionSummarizedStatus {
+func setAllWorkAvailableCondition(resourcesSelected bool, works map[string]*fleetv1beta1.Work, binding *fleetv1beta1.ClusterResourceBinding) workConditionSummarizedStatus {
 	// If the Applied condition has been set to False, skip setting the Available condition.
 	appliedCond := meta.FindStatusCondition(binding.Status.Conditions, string(fleetv1beta1.ResourceBindingApplied))
 	if !condition.IsConditionStatusTrue(appliedCond, binding.GetGeneration()) {
@@ -1246,6 +1280,17 @@ func setAllWorkAvailableCondition(works map[string]*fleetv1beta1.Work, binding *
 		})
 		return workConditionSummarizedStatusTrue
 	default:
+		if !resourcesSelected {
+			klog.V(2).InfoS("No resources are selected for the binding", "binding", klog.KObj(binding))
+			meta.SetStatusCondition(&binding.Status.Conditions, metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ResourceBindingAvailable),
+				Reason:             condition.NoResourcesSelectedReason,
+				Message:            "No resources selected.",
+				ObservedGeneration: binding.GetGeneration(),
+			})
+			return workConditionSummarizedStatusTrue
+		}
 		// All Work objects have completed the availability check successfully.
 		klog.V(2).InfoS("All works associated with the binding are available", "binding", klog.KObj(binding))
 		meta.SetStatusCondition(&binding.Status.Conditions, metav1.Condition{

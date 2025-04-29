@@ -18,6 +18,7 @@ package e2e
 import (
 	"fmt"
 
+	"github.com/google/go-cmp/cmp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -690,7 +691,53 @@ var _ = Context("creating clusterResourceOverride with delete rules for one clus
 
 	It("should update CRP status as expected", func() {
 		wantCRONames := []string{fmt.Sprintf(placementv1alpha1.OverrideSnapshotNameFmt, croName, 0)}
-		crpStatusUpdatedActual := crpStatusWithOverrideUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, "0", wantCRONames, nil)
+		crpStatusUpdatedActual := func() error {
+			crp := &placementv1beta1.ClusterResourcePlacement{}
+			if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+				return err
+			}
+
+			workNamespaceName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
+			appConfigMapName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
+			wantStatus := placementv1beta1.ClusterResourcePlacementStatus{
+				Conditions: crpRolloutCompletedConditions(crp.Generation, true),
+				PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+					{
+						ClusterName:                        memberCluster1EastProdName,
+						Conditions:                         resourcePlacementRolloutCompletedConditions(crp.Generation, true, true),
+						ApplicableClusterResourceOverrides: wantCRONames,
+					},
+					{
+						ClusterName:                        memberCluster2EastCanaryName,
+						Conditions:                         resourcePlacementRolloutCompletedConditions(crp.Generation, true, true),
+						ApplicableClusterResourceOverrides: wantCRONames,
+					},
+					{
+						ClusterName:                        memberCluster3WestProdName,
+						Conditions:                         resourcePlacementRolloutCompletedConditionsWithNoSelectedResource(crp.Generation, true),
+						ApplicableClusterResourceOverrides: wantCRONames,
+					},
+				},
+				SelectedResources: []placementv1beta1.ResourceIdentifier{
+					{
+						Kind:    "Namespace",
+						Name:    workNamespaceName,
+						Version: "v1",
+					},
+					{
+						Kind:      "ConfigMap",
+						Name:      appConfigMapName,
+						Version:   "v1",
+						Namespace: workNamespaceName,
+					},
+				},
+				ObservedResourceIndex: "0",
+			}
+			if diff := cmp.Diff(crp.Status, wantStatus, crpStatusCmpOptions...); diff != "" {
+				return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
+			}
+			return nil
+		}
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
 	})
 

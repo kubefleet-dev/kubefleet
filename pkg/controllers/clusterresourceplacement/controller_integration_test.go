@@ -249,7 +249,7 @@ func updateClusterResourceBindingWithAvailable(binding *placementv1beta1.Cluster
 	cond = metav1.Condition{
 		Status:             metav1.ConditionTrue,
 		Type:               string(placementv1beta1.ResourceBindingAvailable),
-		Reason:             condition.AvailableReason,
+		Reason:             condition.NoResourcesSelectedReason,
 		ObservedGeneration: binding.Generation,
 	}
 	meta.SetStatusCondition(&binding.Status.Conditions, cond)
@@ -1338,7 +1338,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantCondition = metav1.Condition{
 				Status: metav1.ConditionTrue,
 				Type:   string(placementv1beta1.ClusterResourcePlacementAvailableConditionType),
-				Reason: condition.AvailableReason,
+				Reason: condition.NoResourcesSelectedReason,
 			}
 			meta.SetStatusCondition(&wantCRP.Status.Conditions, wantCondition)
 			wantCondition.Type = string(placementv1beta1.ResourceBindingAvailable)

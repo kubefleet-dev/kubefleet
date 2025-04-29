@@ -163,36 +163,36 @@ var _ = Describe("Test Work Generator Controller", func() {
 		})
 
 		It("Should not create work when no resources are selected", func() {
-			// create master resource snapshot with 0 resources
+			// Create master resource snapshot with 0 resources.
 			masterSnapshot := generateResourceSnapshot(1, 1, 0, [][]byte{})
 			Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
-			// create a scheduled binding
+			// Create a scheduled binding.
 			spec := placementv1beta1.ResourceBindingSpec{
 				State:                placementv1beta1.BindingStateScheduled,
 				ResourceSnapshotName: masterSnapshot.Name,
 				TargetCluster:        memberClusterName,
 			}
 			createClusterResourceBinding(&binding, spec)
-			// check the work is not created since the binding state is not bound
+			// Check the work is not created since the binding state is not bound.
 			work := placementv1beta1.Work{}
 			Consistently(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName), Namespace: memberClusterNamespaceName}, &work)
 				return errors.IsNotFound(err)
-			}, duration, interval).Should(BeTrue(), "controller should not create work in hub cluster until all resources are created")
-			// binding should not have any finalizers
+			}, duration, interval).Should(BeTrue(), "controller should not create work in hub cluster")
+			// Binding should not have any finalizers.
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding)).Should(Succeed())
 			Expect(len(binding.Finalizers)).Should(Equal(0))
-			// flip the binding state to bound
+			// Flip the binding state to bound.
 			binding.Spec.State = placementv1beta1.BindingStateBound
 			Expect(k8sClient.Update(ctx, binding)).Should(Succeed())
 			updateRolloutStartedGeneration(&binding)
-			// check the work is not created since no resources are selected
+			// Check the work is not created since no resources are selected.
 			Consistently(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName), Namespace: memberClusterNamespaceName}, &work)
 				return errors.IsNotFound(err)
-			}, duration, interval).Should(BeTrue(), "controller should not create work in hub cluster until all resources are created")
-			// check the binding status is available
-			verifyBindStatusAvail(binding, false, false)
+			}, duration, interval).Should(BeTrue(), "controller should not create work in hub cluster")
+			// Check the binding status is not applied.
+			verifyBindStatusNotAppliedWithNoResourcesSelected(binding)
 		})
 
 		It("Should not create work for the binding with state scheduled", func() {
@@ -1291,6 +1291,225 @@ var _ = Describe("Test Work Generator Controller", func() {
 					return errors.IsNotFound(err)
 				}, timeout, interval).Should(BeTrue(), "Failed to get the expected work in hub cluster")
 				By(fmt.Sprintf("work %s is deleted in %s", work.Name, work.Namespace))
+			})
+		})
+
+		Context("Test Bound ClusterResourceBinding with multiple resource snapshots with no selected resources at first", func() {
+			var masterSnapshot, secondSnapshot *placementv1beta1.ClusterResourceSnapshot
+			var binding *placementv1beta1.ClusterResourceBinding
+
+			BeforeEach(func() {
+				masterSnapshot = generateResourceSnapshot(2, 2, 0, [][]byte{})
+				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
+				By(fmt.Sprintf("Master resource snapshot  %s created", masterSnapshot.Name))
+				// Create a bound binding.
+				spec := placementv1beta1.ResourceBindingSpec{
+					State:                placementv1beta1.BindingStateBound,
+					ResourceSnapshotName: masterSnapshot.Name,
+					TargetCluster:        memberClusterName,
+				}
+				createClusterResourceBinding(&binding, spec)
+			})
+
+			AfterEach(func() {
+				// Delete the master resource snapshot.
+				Expect(k8sClient.Delete(ctx, masterSnapshot)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}))
+				By(fmt.Sprintf("Master resource snapshot %s deleted", masterSnapshot.Name))
+				// Delete the second resource snapshot.
+				Expect(k8sClient.Delete(ctx, secondSnapshot)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}))
+				By(fmt.Sprintf("Secondary resource snapshot %s deleted", secondSnapshot.Name))
+				// Delete the binding.
+				Expect(k8sClient.Delete(ctx, binding)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}))
+				By(fmt.Sprintf("Resource binding %s deleted", binding.Name))
+			})
+
+			It("Should create necessary work in the target namespace after a resource snapshot with selected envelope object is created", func() {
+				// Now create the second resource snapshot.
+				secondSnapshot = generateResourceSnapshot(2, 2, 1, [][]byte{
+					testEnvelopConfigMap, testNameSpace,
+				})
+				Expect(k8sClient.Create(ctx, secondSnapshot)).Should(Succeed())
+				By(fmt.Sprintf("Secondary resource snapshot %s created", secondSnapshot.Name))
+				// Update master resource snapshot labels.
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: masterSnapshot.Name}, masterSnapshot)).Should(Succeed())
+				masterSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] = "false"
+				Expect(k8sClient.Update(ctx, masterSnapshot)).Should(Succeed())
+				// Update binding.
+				updateRolloutStartedGeneration(&binding)
+				By(fmt.Sprintf("resource binding %s updated", binding.Name))
+				// Check the work for the master resource snapshot is not created.
+				work := placementv1beta1.Work{}
+				Consistently(func() bool {
+					err := k8sClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName), Namespace: memberClusterNamespaceName}, &work)
+					return errors.IsNotFound(err)
+				}, duration, interval).Should(BeTrue(), "controller should not create work in hub cluster")
+				By("Work for first resource snapshot is not created in hub cluster")
+				// Check the work for the secondary resource snapshot is created, it's name is crp-subindex.
+				secondWork := placementv1beta1.Work{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf(placementv1beta1.WorkNameWithSubindexFmt, testCRPName, 1), Namespace: memberClusterNamespaceName}, &secondWork)
+				}, timeout, interval).Should(Succeed(), "Failed to get the expected work in hub cluster")
+				By(fmt.Sprintf("Work %s for second resource snapshot is created in %s", secondWork.Name, secondWork.Namespace))
+				// Inspect the work that is created.
+				wantWork := placementv1beta1.Work{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      fmt.Sprintf(placementv1beta1.WorkNameWithSubindexFmt, testCRPName, 1),
+						Namespace: memberClusterNamespaceName,
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         placementv1beta1.GroupVersion.String(),
+								Kind:               "ClusterResourceBinding",
+								Name:               binding.Name,
+								UID:                binding.UID,
+								BlockOwnerDeletion: ptr.To(true),
+							},
+						},
+						Labels: map[string]string{
+							placementv1beta1.CRPTrackingLabel:                 testCRPName,
+							placementv1beta1.ParentResourceSnapshotIndexLabel: "2",
+							placementv1beta1.ParentBindingLabel:               binding.Name,
+						},
+						Annotations: map[string]string{
+							placementv1beta1.ParentResourceSnapshotNameAnnotation:                binding.Spec.ResourceSnapshotName,
+							placementv1beta1.ParentClusterResourceOverrideSnapshotHashAnnotation: emptyHash,
+							placementv1beta1.ParentResourceOverrideSnapshotHashAnnotation:        emptyHash,
+						},
+					},
+					Spec: placementv1beta1.WorkSpec{
+						Workload: placementv1beta1.WorkloadTemplate{
+							Manifests: []placementv1beta1.Manifest{
+								{RawExtension: runtime.RawExtension{Raw: testNameSpace}},
+							},
+						},
+					},
+				}
+				diff := cmp.Diff(wantWork, secondWork, ignoreWorkOption, ignoreTypeMeta)
+				Expect(diff).Should(BeEmpty(), fmt.Sprintf("work(%s) mismatch (-want +got):\n%s", secondWork.Name, diff))
+				// Inspect the envelope work.
+				var workList placementv1beta1.WorkList
+				fetchEnvelopedWork(&workList, binding)
+				envWork := workList.Items[0]
+				By(fmt.Sprintf("Enveloped work %s is created in %s", envWork.Name, envWork.Namespace))
+				wantWork = placementv1beta1.Work{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      envWork.Name,
+						Namespace: memberClusterNamespaceName,
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         placementv1beta1.GroupVersion.String(),
+								Kind:               "ClusterResourceBinding",
+								Name:               binding.Name,
+								UID:                binding.UID,
+								BlockOwnerDeletion: ptr.To(true),
+							},
+						},
+						Labels: map[string]string{
+							placementv1beta1.CRPTrackingLabel:                 testCRPName,
+							placementv1beta1.ParentBindingLabel:               binding.Name,
+							placementv1beta1.ParentResourceSnapshotIndexLabel: "2",
+							placementv1beta1.EnvelopeTypeLabel:                string(placementv1beta1.ConfigMapEnvelopeType),
+							placementv1beta1.EnvelopeNameLabel:                "envelop-configmap",
+							placementv1beta1.EnvelopeNamespaceLabel:           "app",
+						},
+						Annotations: map[string]string{
+							placementv1beta1.ParentResourceSnapshotNameAnnotation:                binding.Spec.ResourceSnapshotName,
+							placementv1beta1.ParentClusterResourceOverrideSnapshotHashAnnotation: emptyHash,
+							placementv1beta1.ParentResourceOverrideSnapshotHashAnnotation:        emptyHash,
+						},
+					},
+					Spec: placementv1beta1.WorkSpec{
+						Workload: placementv1beta1.WorkloadTemplate{
+							Manifests: []placementv1beta1.Manifest{
+								{RawExtension: runtime.RawExtension{Raw: testEnvelopeResourceQuota}},
+							},
+						},
+					},
+				}
+				diff = cmp.Diff(wantWork, envWork, ignoreWorkOption, ignoreTypeMeta)
+				Expect(diff).Should(BeEmpty(), fmt.Sprintf("enveloped work(%s) mismatch (-want +got):\n%s", envWork.Name, diff))
+				// Check the binding status that it should be marked as applied false.
+				verifyBindingStatusSyncedNotApplied(binding, false, true)
+				markWorkApplied(&secondWork)
+				markWorkApplied(&envWork)
+				// Check the binding status that it should be marked as applied true eventually.
+				verifyBindStatusAppliedNotAvailable(binding, false)
+				markWorkAvailable(&secondWork)
+				markWorkAvailable(&envWork)
+				// Check the binding status that it should be marked as applied true eventually.
+				verifyBindStatusAvail(binding, false, false)
+			})
+
+			It("Should create necessary work in the target namespace after a resource snapshot with selected resource is created", func() {
+				// Now create the second resource snapshot.
+				secondSnapshot = generateResourceSnapshot(2, 2, 1, [][]byte{
+					testResourceCRD, testNameSpace,
+				})
+				Expect(k8sClient.Create(ctx, secondSnapshot)).Should(Succeed())
+				By(fmt.Sprintf("Secondary resource snapshot %s created", secondSnapshot.Name))
+				// Update master resource snapshot labels.
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: masterSnapshot.Name}, masterSnapshot)).Should(Succeed())
+				masterSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] = "false"
+				Expect(k8sClient.Update(ctx, masterSnapshot)).Should(Succeed())
+				// Update binding.
+				updateRolloutStartedGeneration(&binding)
+				By(fmt.Sprintf("resource binding %s updated", binding.Name))
+				// Check the work for the master resource snapshot is not created.
+				work := placementv1beta1.Work{}
+				Consistently(func() bool {
+					err := k8sClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName), Namespace: memberClusterNamespaceName}, &work)
+					return errors.IsNotFound(err)
+				}, duration, interval).Should(BeTrue(), "controller should not create work in hub cluster")
+				By("Work for first resource snapshot is not created in hub cluster")
+				// Check the work for the secondary resource snapshot is created, it's name is crp-subindex.
+				secondWork := placementv1beta1.Work{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf(placementv1beta1.WorkNameWithSubindexFmt, testCRPName, 1), Namespace: memberClusterNamespaceName}, &secondWork)
+				}, timeout, interval).Should(Succeed(), "Failed to get the expected work in hub cluster")
+				By(fmt.Sprintf("Work %sfor second resource snapshot is created in %s", secondWork.Name, secondWork.Namespace))
+				// Inspect the work that is created.
+				wantWork := placementv1beta1.Work{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      fmt.Sprintf(placementv1beta1.WorkNameWithSubindexFmt, testCRPName, 1),
+						Namespace: memberClusterNamespaceName,
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         placementv1beta1.GroupVersion.String(),
+								Kind:               "ClusterResourceBinding",
+								Name:               binding.Name,
+								UID:                binding.UID,
+								BlockOwnerDeletion: ptr.To(true),
+							},
+						},
+						Labels: map[string]string{
+							placementv1beta1.CRPTrackingLabel:                 testCRPName,
+							placementv1beta1.ParentResourceSnapshotIndexLabel: "2",
+							placementv1beta1.ParentBindingLabel:               binding.Name,
+						},
+						Annotations: map[string]string{
+							placementv1beta1.ParentResourceSnapshotNameAnnotation:                binding.Spec.ResourceSnapshotName,
+							placementv1beta1.ParentClusterResourceOverrideSnapshotHashAnnotation: emptyHash,
+							placementv1beta1.ParentResourceOverrideSnapshotHashAnnotation:        emptyHash,
+						},
+					},
+					Spec: placementv1beta1.WorkSpec{
+						Workload: placementv1beta1.WorkloadTemplate{
+							Manifests: []placementv1beta1.Manifest{
+								{RawExtension: runtime.RawExtension{Raw: testResourceCRD}},
+								{RawExtension: runtime.RawExtension{Raw: testNameSpace}},
+							},
+						},
+					},
+				}
+				diff := cmp.Diff(wantWork, secondWork, ignoreWorkOption, ignoreTypeMeta)
+				Expect(diff).Should(BeEmpty(), fmt.Sprintf("work(%s) mismatch (-want +got):\n%s", secondWork.Name, diff))
+				// Check the binding status that it should be marked as applied false.
+				verifyBindingStatusSyncedNotApplied(binding, false, true)
+				markWorkApplied(&secondWork)
+				// Check the binding status that it should be marked as applied true eventually.
+				verifyBindStatusAppliedNotAvailable(binding, false)
+				markWorkAvailable(&secondWork)
+				// Check the binding status that it should be marked as applied true eventually.
+				verifyBindStatusAvail(binding, false, false)
 			})
 		})
 
@@ -3643,6 +3862,47 @@ func verifyBindStatusAvail(binding *placementv1beta1.ClusterResourceBinding, has
 	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got):\n", binding.Name))
 }
 
+func verifyBindStatusNotAppliedWithNoResourcesSelected(binding *placementv1beta1.ClusterResourceBinding) {
+	Eventually(func() string {
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding)).Should(Succeed())
+		wantStatus := placementv1beta1.ResourceBindingStatus{
+			Conditions: []metav1.Condition{
+				{
+					Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
+					Status:             metav1.ConditionTrue,
+					Reason:             condition.RolloutStartedReason,
+					ObservedGeneration: binding.GetGeneration(),
+				},
+				{
+					Type:               string(placementv1beta1.ResourceBindingOverridden),
+					Status:             metav1.ConditionTrue,
+					Reason:             condition.OverrideNotSpecifiedReason,
+					ObservedGeneration: binding.GetGeneration(),
+				},
+				{
+					Type:               string(placementv1beta1.ResourceBindingWorkSynchronized),
+					Status:             metav1.ConditionTrue,
+					Reason:             condition.AllWorkSyncedReason,
+					ObservedGeneration: binding.GetGeneration(),
+				},
+				{
+					Type:               string(placementv1beta1.ResourceBindingApplied),
+					Status:             metav1.ConditionTrue,
+					Reason:             condition.AllWorkAppliedReason,
+					ObservedGeneration: binding.GetGeneration(),
+				},
+				{
+					Type:               string(placementv1beta1.ResourceBindingAvailable),
+					Status:             metav1.ConditionTrue,
+					Reason:             condition.NoResourcesSelectedReason,
+					ObservedGeneration: binding.GetGeneration(),
+				},
+			},
+		}
+		return cmp.Diff(wantStatus, binding.Status, cmpConditionOption)
+	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got)", binding.Name))
+}
+
 func verifyBindStatusNotAppliedWithTwoPlacements(binding *placementv1beta1.ClusterResourceBinding, hasOverride, hasFailedPlacements, hasDiffedPlacements, hasDriftedPlacements bool) {
 	Eventually(func() string {
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding)).Should(Succeed())
@@ -4160,8 +4420,9 @@ func generateResourceSnapshot(resourceIndex, numberResource, subIndex int, rawCo
 	clusterResourceSnapshot := &placementv1beta1.ClusterResourceSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
-				placementv1beta1.ResourceIndexLabel: strconv.Itoa(resourceIndex),
-				placementv1beta1.CRPTrackingLabel:   testCRPName,
+				placementv1beta1.ResourceIndexLabel:    strconv.Itoa(resourceIndex),
+				placementv1beta1.CRPTrackingLabel:      testCRPName,
+				placementv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
 			},
 			Annotations: map[string]string{
 				placementv1beta1.NumberOfResourceSnapshotsAnnotation: strconv.Itoa(numberResource),
@@ -4654,7 +4915,7 @@ func createClusterResourceBinding(binding **placementv1beta1.ClusterResourceBind
 		}
 		return k8sClient.Status().Update(ctx, *binding)
 	}, timeout, interval).Should(Succeed(), "Failed to update the binding with RolloutStarted condition")
-	By(fmt.Sprintf("resource binding  %s created", (*binding).Name))
+	By(fmt.Sprintf("Resource binding  %s created", (*binding).Name))
 }
 
 func updateRolloutStartedGeneration(binding **placementv1beta1.ClusterResourceBinding) {

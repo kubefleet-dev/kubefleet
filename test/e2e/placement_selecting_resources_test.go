@@ -130,7 +130,8 @@ var _ = Describe("creating CRP and selecting resources by name", Ordered, func()
 		})
 
 		It("should update CRP status as expected", func() {
-			crpStatusUpdatedActual := crpStatusUpdatedActual(nil, allMemberClusterNames, nil, "0")
+			// CRP status will complete but with reason "NoResourceSelected" since the resource does not exist and cannot be selected.
+			crpStatusUpdatedActual := crpStatusUpdatedActual([]placementv1beta1.ResourceIdentifier{}, allMemberClusterNames, nil, "0")
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
 		})
 
@@ -365,7 +366,7 @@ var _ = Describe("validating CRP when cluster-scoped resources become unselected
 	It("should remove the selected resources on member clusters", checkIfRemovedWorkResourcesFromAllMemberClusters)
 
 	It("should update CRP status as expected", func() {
-		// If there are no resources selected, the available condition reason will become "AllWorkAreAvailable".
+		// If there are no resources selected, the available condition reason will become "AllWorkAreAvailable"
 		crpStatusUpdatedActual := crpStatusUpdatedActual([]placementv1beta1.ResourceIdentifier{}, allMemberClusterNames, nil, "1")
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
 	})

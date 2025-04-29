@@ -237,7 +237,8 @@ func setCRPConditions(
 		default:
 			// All the conditions of the given type are True.
 			cond := i.TrueClusterResourcePlacementCondition(crp.Generation, rpsSetCondTypeCounter[i][condition.TrueConditionStatus])
-			if i == condition.OverriddenCondition {
+			switch i {
+			case condition.OverriddenCondition:
 				hasOverride := false
 				for _, status := range allRPS {
 					if len(status.ApplicableResourceOverrides) > 0 || len(status.ApplicableClusterResourceOverrides) > 0 {
@@ -248,6 +249,15 @@ func setCRPConditions(
 				if !hasOverride {
 					cond.Reason = condition.OverrideNotSpecifiedReason
 					cond.Message = "No override rules are configured for the selected resources"
+				}
+			case condition.AppliedCondition:
+				if len(crp.Status.SelectedResources) == 0 {
+					cond.Message = "Previous resources are deleted. No new resources are selected for the placement"
+				}
+			case condition.AvailableCondition:
+				if len(crp.Status.SelectedResources) == 0 {
+					cond.Reason = condition.NoResourcesSelectedReason
+					cond.Message = "No new resources are selected for the placement. Please update crp to select new resources"
 				}
 			}
 			crp.SetConditions(cond)
