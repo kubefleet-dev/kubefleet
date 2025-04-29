@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -380,13 +381,18 @@ func (r *Reconciler) computeRunStageStatus(
 	// Check if the clusters are all placed.
 	if len(allPlacedClusters) != len(allSelectedClusters) {
 		missingErr := controller.NewUserError(fmt.Errorf("some clusters are not placed in any stage"))
+		missingClusters := make([]string, 0, len(allSelectedClusters)-len(allPlacedClusters))
 		for cluster := range allSelectedClusters {
 			if _, ok := allPlacedClusters[cluster]; !ok {
-				klog.ErrorS(missingErr, "Cluster is missing in any stage", "cluster", cluster, "clusterStagedUpdateStrategy", updateStrategyName, "clusterStagedUpdateRun", updateRunRef)
+				missingClusters = append(missingClusters, cluster)
 			}
 		}
+		// Sort the missing clusters by their names to generate a stable error message.
+		sort.StringSlice(missingClusters).Sort()
+		missingClustersStr := strings.Join(missingClusters, ", ")
+		klog.ErrorS(missingErr, "Clusters are missing in any stage", "clusters", missingClustersStr, "clusterStagedUpdateStrategy", updateStrategyName, "clusterStagedUpdateRun", updateRunRef)
 		// no more retries here.
-		return fmt.Errorf("%w: %s", errInitializedFailed, missingErr.Error())
+		return fmt.Errorf("%w: %s", errInitializedFailed, fmt.Sprintf("%s: %s", missingErr.Error(), missingClustersStr))
 	}
 	return nil
 }
