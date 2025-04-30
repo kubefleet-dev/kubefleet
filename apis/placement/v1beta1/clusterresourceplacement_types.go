@@ -822,12 +822,10 @@ type ClusterResourcePlacementStatus struct {
 	// Each snapshot has a different resource index.
 	// One resource snapshot can contain multiple clusterResourceSnapshots CRs in order to store large amount of resources.
 	// To get clusterResourceSnapshot of a given resource index, use the following command:
-	// `kubectl get ClusterResourceSnapshot --selector=kubernetes-fleet.io/resource-index=$ObservedResourceIndex `
-	// ObservedResourceIndex is the resource index that the conditions in the ClusterResourcePlacementStatus observe.
-	// For example, a condition of `ClusterResourcePlacementWorkSynchronized` type
-	// is observing the synchronization status of the resource snapshot with the resource index $ObservedResourceIndex.
+	// `kubectl get ClusterResourceSnapshot --selector=kubernetes-fleet.io/resource-index=$ObservedResourceIndex`
 	// If the rollout strategy type is `RollingUpdate`, `ObservedResourceIndex` is the default-latest resource snapshot index.
-	// If the rollout strategy type is `External`, rollout and version control are managed by an external controller, and this field remains empty.
+	// If the rollout strategy type is `External`, rollout and version control are managed by an external controller,
+	// and this field is not empty only if all targeted clusters observe the same resource index in `PlacementStatuses`.
 	// +kubebuilder:validation:Optional
 	ObservedResourceIndex string `json:"observedResourceIndex,omitempty"`
 
@@ -846,6 +844,11 @@ type ClusterResourcePlacementStatus struct {
 	// +listMapKey=type
 
 	// Conditions is an array of current observed conditions for ClusterResourcePlacement.
+	// All conditions except `ClusterResourcePlacementScheduled` correspond to the resource snapshot at the index specified by `ObservedResourceIndex`.
+	// For example, a condition of `ClusterResourcePlacementWorkSynchronized` type
+	// is observing the synchronization status of the resource snapshot with index `ObservedResourceIndex`.
+	// If the rollout strategy type is `External`, and `ObservedResourceIndex` is unset due to clusters reporting different resource indices,
+	// conditions except `ClusterResourcePlacementScheduled` will be empty or set to Unknown.
 	// +kubebuilder:validation:Optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
@@ -958,13 +961,13 @@ type ResourcePlacementStatus struct {
 	DiffedPlacements []DiffedResourcePlacement `json:"diffedPlacements,omitempty"`
 
 	// ObservedResourceIndex is the index of the resource snapshot that is currently being rolled out to the given cluster.
-	// During rollout, depending on the rollout strategy, clusters may observe different resource snapshot indices.
-	// ObservedResourceIndex is the resource snapshot index observed by the conditions in the ResourcePlacementStatus.
 	// This field is only meaningful if the `ClusterName` is not empty.
 	// +kubebuilder:validation:Optional
 	ObservedResourceIndex string `json:"observedResourceIndex,omitempty"`
 
-	// Conditions is an array of current observed conditions for ResourcePlacementStatus.
+	// Conditions is an array of current observed conditions on the cluster.
+	// Each condition corresponds to the resource snapshot at the index specified by `ObservedResourceIndex`.
+	// For example, the condition of type `RolloutStarted` is observing the rollout status of the resource snapshot with index `ObservedResourceIndex`.
 	// +kubebuilder:validation:Optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
