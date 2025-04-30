@@ -913,6 +913,11 @@ type ResourcePlacementStatus struct {
 	// +kubebuilder:validation:Optional
 	ClusterName string `json:"clusterName,omitempty"`
 
+	// ObservedResourceIndex is the index of the resource snapshot that is currently being rolled out to the given cluster.
+	// This field is only meaningful if the `ClusterName` is not empty.
+	// +kubebuilder:validation:Optional
+	ObservedResourceIndex string `json:"observedResourceIndex,omitempty"`
+
 	// ApplicableResourceOverrides contains a list of applicable ResourceOverride snapshots associated with the selected
 	// resources.
 	//
@@ -959,11 +964,6 @@ type ResourcePlacementStatus struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=100
 	DiffedPlacements []DiffedResourcePlacement `json:"diffedPlacements,omitempty"`
-
-	// ObservedResourceIndex is the index of the resource snapshot that is currently being rolled out to the given cluster.
-	// This field is only meaningful if the `ClusterName` is not empty.
-	// +kubebuilder:validation:Optional
-	ObservedResourceIndex string `json:"observedResourceIndex,omitempty"`
 
 	// Conditions is an array of current observed conditions on the cluster.
 	// Each condition corresponds to the resource snapshot at the index specified by `ObservedResourceIndex`.
