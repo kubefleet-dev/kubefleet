@@ -40,8 +40,10 @@ var _ = Describe("Drain cluster successfully", Ordered, Serial, func() {
 	var drainEvictions []placementv1beta1.ClusterResourcePlacementEviction
 	var drainClusters, noDrainClusters []*framework.Cluster
 	var noDrainClusterNames []string
+	var testStartTime time.Time
 
 	BeforeAll(func() {
+		testStartTime = time.Now()
 		drainClusters = []*framework.Cluster{memberCluster1EastProd}
 		noDrainClusters = []*framework.Cluster{memberCluster2EastCanary, memberCluster3WestProd}
 		noDrainClusterNames = []string{memberCluster2EastCanaryName, memberCluster3WestProdName}
@@ -79,8 +81,8 @@ var _ = Describe("Drain cluster successfully", Ordered, Serial, func() {
 
 	It("should update drain cluster resource placement evictions status as expected", func() {
 		var fetchError error
-		drainEvictions, fetchError = fetchDrainEvictions(crpName, memberCluster1EastProdName)
-		Eventually(fetchError).Should(Succeed(), "Failed to fetch drain evictions")
+		drainEvictions, fetchError = fetchDrainEvictions(crpName, memberCluster1EastProdName, testStartTime)
+		Expect(fetchError).Should(Succeed(), "Failed to fetch drain evictions")
 		for _, eviction := range drainEvictions {
 			crpEvictionStatusUpdatedActual := testutilseviction.StatusUpdatedActual(
 				ctx, hubClient, eviction.Name,
@@ -121,8 +123,10 @@ var _ = Describe("Drain cluster successfully", Ordered, Serial, func() {
 var _ = Describe("Drain cluster blocked - ClusterResourcePlacementDisruptionBudget blocks evictions on all clusters", Ordered, Serial, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	var drainEvictions []placementv1beta1.ClusterResourcePlacementEviction
+	var testStartTime time.Time
 
 	BeforeAll(func() {
+		testStartTime = time.Now()
 		By("creating work resources")
 		createWorkResources()
 
@@ -172,8 +176,8 @@ var _ = Describe("Drain cluster blocked - ClusterResourcePlacementDisruptionBudg
 
 	It("should update drain cluster resource placement evictions status as expected", func() {
 		var fetchError error
-		drainEvictions, fetchError = fetchDrainEvictions(crpName, memberCluster1EastProdName)
-		Eventually(fetchError).Should(Succeed(), "Failed to fetch drain evictions")
+		drainEvictions, fetchError = fetchDrainEvictions(crpName, memberCluster1EastProdName, testStartTime)
+		Expect(fetchError).Should(Succeed(), "Failed to fetch drain evictions")
 		for _, eviction := range drainEvictions {
 			crpEvictionStatusUpdatedActual := testutilseviction.StatusUpdatedActual(
 				ctx, hubClient, eviction.Name,
@@ -204,8 +208,10 @@ var _ = Describe("Drain is allowed on one cluster, blocked on others - ClusterRe
 	var drainEvictions []placementv1beta1.ClusterResourcePlacementEviction
 	var drainClusters, noDrainClusters []*framework.Cluster
 	var noDrainClusterNames []string
+	var testStartTime time.Time
 
 	BeforeAll(func() {
+		testStartTime = time.Now()
 		drainClusters = []*framework.Cluster{memberCluster1EastProd}
 		noDrainClusters = []*framework.Cluster{memberCluster2EastCanary, memberCluster3WestProd}
 		noDrainClusterNames = []string{memberCluster2EastCanaryName, memberCluster3WestProdName}
@@ -259,8 +265,8 @@ var _ = Describe("Drain is allowed on one cluster, blocked on others - ClusterRe
 
 	It("should update drain cluster resource placement evictions status as expected", func() {
 		var fetchError error
-		drainEvictions, fetchError = fetchDrainEvictions(crpName, memberCluster1EastProdName)
-		Eventually(fetchError).Should(Succeed(), "Failed to fetch drain evictions")
+		drainEvictions, fetchError = fetchDrainEvictions(crpName, memberCluster1EastProdName, testStartTime)
+		Expect(fetchError).Should(Succeed(), "Failed to fetch drain evictions")
 		for _, eviction := range drainEvictions {
 			crpEvictionStatusUpdatedActual := testutilseviction.StatusUpdatedActual(
 				ctx, hubClient, eviction.Name,
@@ -285,8 +291,8 @@ var _ = Describe("Drain is allowed on one cluster, blocked on others - ClusterRe
 
 	It("should update drain cluster resource placement evictions status as expected", func() {
 		var fetchError error
-		drainEvictions, fetchError = fetchDrainEvictions(crpName, memberCluster2EastCanaryName)
-		Eventually(fetchError).Should(Succeed(), "Failed to fetch drain evictions")
+		drainEvictions, fetchError = fetchDrainEvictions(crpName, memberCluster2EastCanaryName, testStartTime)
+		Expect(fetchError).Should(Succeed(), "Failed to fetch drain evictions")
 		for _, eviction := range drainEvictions {
 			crpEvictionStatusUpdatedActual := testutilseviction.StatusUpdatedActual(
 				ctx, hubClient, eviction.Name,
@@ -349,15 +355,14 @@ func runUncordonClusterBinary(hubClusterName, memberClusterName string) {
 	Expect(err).ToNot(HaveOccurred(), "Uncordon command failed with error: %v", err)
 }
 
-func fetchDrainEvictions(crpName, clusterName string) ([]placementv1beta1.ClusterResourcePlacementEviction, error) {
+func fetchDrainEvictions(crpName, clusterName string, testStartTime time.Time) ([]placementv1beta1.ClusterResourcePlacementEviction, error) {
 	var evictionList placementv1beta1.ClusterResourcePlacementEvictionList
 	if err := hubClient.List(ctx, &evictionList); err != nil {
 		return nil, err
 	}
 	var filteredDrainEvictions []placementv1beta1.ClusterResourcePlacementEviction
-	thirtySecondsAgo := time.Now().Add(-30 * time.Second)
 	for _, eviction := range evictionList.Items {
-		if eviction.CreationTimestamp.Time.After(thirtySecondsAgo) &&
+		if eviction.CreationTimestamp.Time.After(testStartTime) &&
 			eviction.Spec.PlacementName == crpName &&
 			eviction.Spec.ClusterName == clusterName {
 			filteredDrainEvictions = append(filteredDrainEvictions, eviction)
