@@ -37,6 +37,7 @@ if [ -z "${GIT_TAG}" ]; then
 
     echo "Fetch all tags..."
     git fetch --all
+    echo $(git rev-list --tags --max-count=1)
     GIT_TAG=$(git describe --tags $(git rev-list --tags --max-count=1))
     git checkout $GIT_TAG
     echo "Checked out source code at $GIT_TAG."
