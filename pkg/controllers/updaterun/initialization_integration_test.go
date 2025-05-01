@@ -617,7 +617,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 				Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 				By("Validating the initialization failed")
-				validateFailedInitCondition(ctx, updateRun, "some clusters are not placed in any stage (showing up to 10): cluster-0, cluster-2, cluster-4, cluster-6, cluster-8")
+				validateFailedInitCondition(ctx, updateRun, "some clusters are not placed in any stage, total 5, showing up to 10: cluster-0, cluster-2, cluster-4, cluster-6, cluster-8")
 			})
 
 			It("Should select all scheduled clusters if labelSelector is empty and select no clusters if labelSelector is nil", func() {

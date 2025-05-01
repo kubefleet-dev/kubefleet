@@ -390,10 +390,8 @@ func (r *Reconciler) computeRunStageStatus(
 		// Sort the missing clusters by their names to generate a stable error message.
 		sort.Strings(missingClusters)
 		klog.ErrorS(missingErr, "Clusters are missing in any stage", "clusters", strings.Join(missingClusters, ", "), "clusterStagedUpdateStrategy", updateStrategyName, "clusterStagedUpdateRun", updateRunRef)
-		// Only show the first 10 missing clusters in the CRP status.
-		missingClusters = missingClusters[:min(10, len(missingClusters))]
-		// no more retries here.
-		return fmt.Errorf("%w: %s (showing up to 10): %s", errInitializedFailed, missingErr.Error(), strings.Join(missingClusters, ", "))
+		// no more retries here, only show the first 10 missing clusters in the CRP status.
+		return fmt.Errorf("%w: %s, total %d, showing up to 10: %s", errInitializedFailed, missingErr.Error(), len(missingClusters), strings.Join(missingClusters[:min(10, len(missingClusters))], ", "))
 	}
 	return nil
 }
