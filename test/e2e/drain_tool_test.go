@@ -203,7 +203,7 @@ var _ = Describe("Drain cluster blocked - ClusterResourcePlacementDisruptionBudg
 	})
 })
 
-var _ = Describe("Drain is allowed on one cluster, blocked on others - ClusterResourcePlacementDisruptionBudget blocks evictions on some clusters", Ordered, Serial, func() {
+var _ = FDescribe("Drain is allowed on one cluster, blocked on others - ClusterResourcePlacementDisruptionBudget blocks evictions on some clusters", Ordered, Serial, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	var drainEvictions []placementv1beta1.ClusterResourcePlacementEviction
 	var drainClusters, noDrainClusters []*framework.Cluster
@@ -273,6 +273,26 @@ var _ = Describe("Drain is allowed on one cluster, blocked on others - ClusterRe
 				&testutilseviction.IsValidEviction{IsValid: true, Msg: condition.EvictionValidMessage},
 				&testutilseviction.IsExecutedEviction{IsExecuted: true, Msg: fmt.Sprintf(condition.EvictionAllowedPDBSpecifiedMessageFmt, 3, 3)})
 			Eventually(crpEvictionStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update cluster resource placement eviction status as expected")
+		}
+	})
+
+	It("should ensure no resources exist on drained clusters", func() {
+		for _, cluster := range drainClusters {
+			resourceRemovedActual := workNamespaceRemovedFromClusterActual(cluster)
+			Eventually(resourceRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to check if resources doesn't exist on member cluster")
+		}
+	})
+
+	It("should update cluster resource placement status as expected", func() {
+		crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), noDrainClusterNames, nil, "0")
+		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update cluster resource placement status as expected")
+		Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update cluster resource placement status as expected")
+	})
+
+	It("should still place resources on the selected clusters which were not drained", func() {
+		for _, cluster := range noDrainClusters {
+			resourcePlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(cluster)
+			Eventually(resourcePlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place resources on the selected clusters")
 		}
 	})
 
