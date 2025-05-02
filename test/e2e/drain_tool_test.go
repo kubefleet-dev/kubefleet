@@ -203,7 +203,7 @@ var _ = Describe("Drain cluster blocked - ClusterResourcePlacementDisruptionBudg
 	})
 })
 
-var _ = FDescribe("Drain is allowed on one cluster, blocked on others - ClusterResourcePlacementDisruptionBudget blocks evictions on some clusters", Ordered, Serial, func() {
+var _ = Describe("Drain is allowed on one cluster, blocked on others - ClusterResourcePlacementDisruptionBudget blocks evictions on some clusters", Ordered, Serial, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	var drainEvictions []placementv1beta1.ClusterResourcePlacementEviction
 	var drainClusters, noDrainClusters []*framework.Cluster
