@@ -212,6 +212,17 @@ func TestTrackDeploymentAvailability(t *testing.T) {
 		UpdatedReplicas:   2,
 	}
 
+	// new replicaset due to max surge, is not ready. old replicaset is still ready.
+	unavailableDeployWithMoreReplicasThanRequired := deploy.DeepCopy()
+	unavailableDeployWithMoreReplicasThanRequired.Spec.Replicas = ptr.To(int32(1))
+	unavailableDeployWithMoreReplicasThanRequired.Status = appsv1.DeploymentStatus{
+		Replicas:          2,
+		AvailableReplicas: 1,
+		UpdatedReplicas:   1,
+		// we don't use this field in the availability check, adding for test case clarity.
+		UnavailableReplicas: 1,
+	}
+
 	testCases := []struct {
 		name                                         string
 		deploy                                       *appsv1.Deployment
@@ -240,6 +251,11 @@ func TestTrackDeploymentAvailability(t *testing.T) {
 		{
 			name:   "unavailable deployment with not enough updated replicas",
 			deploy: unavailableDeployWithNotEnoughUpdatedReplicas,
+			wantManifestProcessingAvailabilityResultType: ManifestProcessingAvailabilityResultTypeNotYetAvailable,
+		},
+		{
+			name:   "unavailable deployment with more replicas than required",
+			deploy: unavailableDeployWithMoreReplicasThanRequired,
 			wantManifestProcessingAvailabilityResultType: ManifestProcessingAvailabilityResultTypeNotYetAvailable,
 		},
 	}
