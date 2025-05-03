@@ -39,6 +39,49 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 )
 
+// ApplyOrder is the order in which resources should be applied.
+// Those occurring earlier in the list get applied before those occurring later in the list.
+var ApplyOrder = []string{
+	"PriorityClass",
+	"Namespace",
+	"NetworkPolicy",
+	"ResourceQuota",
+	"LimitRange",
+	"PodSecurityPolicy",
+	"PodDisruptionBudget",
+	"ServiceAccount",
+	"Secret",
+	"SecretList",
+	"ConfigMap",
+	"StorageClass",
+	"PersistentVolume",
+	"PersistentVolumeClaim",
+	"CustomResourceDefinition",
+	"ClusterRole",
+	"ClusterRoleList",
+	"ClusterRoleBinding",
+	"ClusterRoleBindingList",
+	"Role",
+	"RoleList",
+	"RoleBinding",
+	"RoleBindingList",
+	"Service",
+	"DaemonSet",
+	"Pod",
+	"ReplicationController",
+	"ReplicaSet",
+	"Deployment",
+	"HorizontalPodAutoscaler",
+	"StatefulSet",
+	"Job",
+	"CronJob",
+	"IngressClass",
+	"Ingress",
+	"APIService",
+	"MutatingWebhookConfiguration",
+	"ValidatingWebhookConfiguration",
+}
+
 // selectResources selects the resources according to the placement resourceSelectors.
 // It also generates an array of manifests obj based on the selected resources.
 func (r *Reconciler) selectResources(placement *fleetv1alpha1.ClusterResourcePlacement) ([]workv1alpha1.Manifest, error) {
@@ -131,36 +174,50 @@ func (r *Reconciler) gatherSelectedResource(placement string, selectors []fleetv
 
 func sortResources(resources []*unstructured.Unstructured) {
 	sort.Slice(resources, func(i, j int) bool {
+		// build the ordering map.
+		ordering := make(map[string]int, len(ApplyOrder))
+		for v, k := range ApplyOrder {
+			ordering[k] = v
+		}
+
 		obj1 := resources[i]
 		obj2 := resources[j]
-		gvk1 := obj1.GetObjectKind().GroupVersionKind().String()
-		gvk2 := obj2.GetObjectKind().GroupVersionKind().String()
-		// compare group/version;kind for the rest of type of resources
-		gvkComp := strings.Compare(gvk1, gvk2)
-		if gvkComp == 0 {
-			// same gvk, compare namespace/name, no duplication exists
-			return strings.Compare(fmt.Sprintf("%s/%s", obj1.GetNamespace(), obj1.GetName()),
-				fmt.Sprintf("%s/%s", obj2.GetNamespace(), obj2.GetName())) > 0
+		k1 := obj1.GetObjectKind().GroupVersionKind().Kind
+		k2 := obj2.GetObjectKind().GroupVersionKind().Kind
+
+		first, aok := ordering[k1]
+		second, bok := ordering[k2]
+		// if both kinds are unknown.
+		if !aok && !bok {
+			return cmpObjectsIgnoreKind(obj1, obj2)
 		}
-		// sort by the cluster scoped priority resource types first
-		if gvk1 == utils.NamespaceMetaGVK.String() || gvk2 == utils.NamespaceMetaGVK.String() {
-			return gvk1 == utils.NamespaceMetaGVK.String()
+		// unknown kind is last
+		if !aok {
+			return false
 		}
-		if gvk1 == utils.CRDMetaGVK.String() || gvk2 == utils.CRDMetaGVK.String() {
-			return gvk1 == utils.CRDMetaGVK.String()
+		if !bok {
+			return true
 		}
-		// followed by namespaced priority resource types
-		if gvk1 == utils.ConfigMapGVK.String() || gvk2 == utils.ConfigMapGVK.String() {
-			return gvk1 == utils.ConfigMapGVK.String()
+		// same kind, based on order index.
+		if first == second {
+			return cmpObjectsIgnoreKind(obj1, obj2)
 		}
-		if gvk1 == utils.SecretGVK.String() || gvk2 == utils.SecretGVK.String() {
-			return gvk1 == utils.SecretGVK.String()
-		}
-		if gvk1 == utils.PersistentVolumeClaimGVK.String() || gvk2 == utils.PersistentVolumeClaimGVK.String() {
-			return gvk1 == utils.PersistentVolumeClaimGVK.String()
-		}
-		return gvkComp < 0
+		// different known kinds, sort based on order index.
+		return first < second
 	})
+}
+
+func cmpObjectsIgnoreKind(obj1, obj2 *unstructured.Unstructured) bool {
+	gv1 := obj1.GetObjectKind().GroupVersionKind().GroupVersion().String()
+	gv2 := obj2.GetObjectKind().GroupVersionKind().GroupVersion().String()
+	// compare group/version for the resources
+	gvComp := strings.Compare(gv1, gv2)
+	if gvComp == 0 {
+		// same gv, compare namespace/name, no duplication exists
+		return strings.Compare(fmt.Sprintf("%s/%s", obj1.GetNamespace(), obj1.GetName()),
+			fmt.Sprintf("%s/%s", obj2.GetNamespace(), obj2.GetName())) > 0
+	}
+	return gvComp < 0
 }
 
 // fetchClusterScopedResources retrieves the objects based on the selector.
