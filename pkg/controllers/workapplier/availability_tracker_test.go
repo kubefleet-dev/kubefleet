@@ -216,10 +216,10 @@ func TestTrackDeploymentAvailability(t *testing.T) {
 	unavailableDeployWithMoreReplicasThanRequired := deploy.DeepCopy()
 	unavailableDeployWithMoreReplicasThanRequired.Spec.Replicas = ptr.To(int32(1))
 	unavailableDeployWithMoreReplicasThanRequired.Status = appsv1.DeploymentStatus{
-		Replicas:          2,
-		AvailableReplicas: 1,
-		UpdatedReplicas:   1,
 		// we don't use this field in the availability check, adding for test case clarity.
+		Replicas:            2,
+		AvailableReplicas:   1,
+		UpdatedReplicas:     1,
 		UnavailableReplicas: 1,
 	}
 
