@@ -254,7 +254,7 @@ func TestTrackDeploymentAvailability(t *testing.T) {
 			wantManifestProcessingAvailabilityResultType: ManifestProcessingAvailabilityResultTypeNotYetAvailable,
 		},
 		{
-			name:   "unavailable deployment with more replicas than required",
+			name:   "unavailable deployment with unavailable replicas",
 			deploy: unavailableDeployWithMoreReplicasThanRequired,
 			wantManifestProcessingAvailabilityResultType: ManifestProcessingAvailabilityResultTypeNotYetAvailable,
 		},
