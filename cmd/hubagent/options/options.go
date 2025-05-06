@@ -100,8 +100,8 @@ type Options struct {
 	EnableEvictionAPIs bool
 	// EnablePprof enables the pprof profiling.
 	EnablePprof bool
-	// ProfilePort is the port for pprof profiling.
-	ProfilePort int
+	// PprofPort is the port for pprof profiling.
+	PprofPort int
 }
 
 // NewOptions builds an empty options.
@@ -163,7 +163,7 @@ func (o *Options) AddFlags(flags *flag.FlagSet) {
 	flags.BoolVar(&o.EnableStagedUpdateRunAPIs, "enable-staged-update-run-apis", true, "If set, the agents will watch for the ClusterStagedUpdateRun APIs.")
 	flags.BoolVar(&o.EnableEvictionAPIs, "enable-eviction-apis", true, "If set, the agents will watch for the Eviction and PlacementDisruptionBudget APIs.")
 	flags.BoolVar(&o.EnablePprof, "enable-pprof", false, "If set, the pprof profiling is enabled.")
-	flags.IntVar(&o.ProfilePort, "pprof-port", 6065, "The port for pprof profiling.")
+	flags.IntVar(&o.PprofPort, "pprof-port", 6065, "The port for pprof profiling.")
 
 	o.RateLimiterOpts.AddFlags(flags)
 }
