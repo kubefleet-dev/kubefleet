@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"math"
@@ -140,13 +141,16 @@ func main() {
 	}
 
 	if opts.EnablePprof {
-		klog.InfoS("Starting profiling", "port", opts.ProfilePort)
+		klog.InfoS("Starting profiling", "port", opts.PprofPort)
 		go func() {
 			server := &http.Server{
-				Addr:              fmt.Sprintf(":%d", opts.ProfilePort),
+				Addr:              fmt.Sprintf(":%d", opts.PprofPort),
 				ReadHeaderTimeout: 5 * time.Second,
 			}
-			klog.ErrorS(server.ListenAndServe(), "unable to start profiling server")
+			if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+				klog.ErrorS(err, "failed to start profiling server")
+				exitWithErrorFunc()
+			}
 		}()
 	}
 

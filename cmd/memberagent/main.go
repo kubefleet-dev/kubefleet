@@ -91,8 +91,8 @@ var (
 	driftDetectionInterval       = flag.Int("drift-detection-interval", 15, "The interval in seconds between attempts to detect configuration drifts in the cluster.")
 	watchWorkWithPriorityQueue   = flag.Bool("enable-watch-work-with-priority-queue", false, "If set, the apply_work controller will watch/reconcile work objects that are created new or have recent updates")
 	watchWorkReconcileAgeMinutes = flag.Int("watch-work-reconcile-age", 60, "maximum age (in minutes) of work objects for apply_work controller to watch/reconcile")
-	enablePprof               = flag.Bool("enable-pprof", false, "enable pprof profiling")
-	profilePort               = flag.Int("pprof-port", 6065, "port for pprof profiling")
+	enablePprof                  = flag.Bool("enable-pprof", true, "enable pprof profiling")
+	pprofPort                    = flag.Int("pprof-port", 6065, "port for pprof profiling")
 )
 
 func init() {
@@ -132,13 +132,16 @@ func main() {
 	}
 
 	if *enablePprof {
-		klog.InfoS("Starting profiling", "port", *profilePort)
+		klog.InfoS("Starting profiling", "port", *pprofPort)
 		go func() {
 			server := &http.Server{
-				Addr:              fmt.Sprintf(":%d", *profilePort),
+				Addr:              fmt.Sprintf(":%d", *pprofPort),
 				ReadHeaderTimeout: 5 * time.Second,
 			}
-			klog.ErrorS(server.ListenAndServe(), "unable to start profiling server")
+			if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+				klog.ErrorS(err, "Failed to start profiling server")
+				klog.FlushAndExit(klog.ExitFlushTimeout, 1)
+			}
 		}()
 	}
 
