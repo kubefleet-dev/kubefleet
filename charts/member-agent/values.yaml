@@ -61,3 +61,5 @@ useCAAuth: false
 
 enableV1Alpha1APIs: true
 enableV1Beta1APIs: false
+
+enablePprof: false
