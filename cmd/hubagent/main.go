@@ -18,10 +18,13 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"math"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -134,6 +137,17 @@ func main() {
 	if err != nil {
 		klog.ErrorS(err, "unable to start controller manager.")
 		exitWithErrorFunc()
+	}
+
+	if opts.EnablePprof {
+		klog.InfoS("Starting profiling", "port", opts.ProfilePort)
+		go func() {
+			server := &http.Server{
+				Addr:              fmt.Sprintf(":%d", opts.ProfilePort),
+				ReadHeaderTimeout: 5 * time.Second,
+			}
+			klog.ErrorS(server.ListenAndServe(), "unable to start profiling server")
+		}()
 	}
 
 	klog.V(2).InfoS("starting hubagent")
