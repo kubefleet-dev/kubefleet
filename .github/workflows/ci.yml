@@ -56,7 +56,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           ## Comma-separated list of files to upload
           files: ./it-coverage.xml;./ut-coverage.xml
-          gcov_ignore: 'apis, cmd, test'
+          exclude: apis, cmd, test
 
   e2e-tests-v1alpha1:
     runs-on: ubuntu-latest
