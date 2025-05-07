@@ -725,6 +725,54 @@ func TestHandleMemberCluster(t *testing.T) {
 			},
 			wantResponse: admission.Denied(fmt.Sprintf(validation.DeniedModifyFleetLabels)),
 		},
+		"deny label modification by fleet agent when flag is set to true": {
+			enableDenyModifiedLabelsFlag: true,
+			req: admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name: "test-mc",
+					Object: runtime.RawExtension{
+						Raw: func() []byte {
+							updatedMC := &clusterv1beta1.MemberCluster{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:   "test-mc",
+									Labels: map[string]string{"key1": "value1"},
+									Annotations: map[string]string{
+										"fleet.azure.com/cluster-resource-id": "test-cluster-resource-id",
+									},
+								},
+							}
+							raw, _ := json.Marshal(updatedMC)
+							return raw
+						}(),
+					},
+					OldObject: runtime.RawExtension{
+						Raw: func() []byte {
+							oldMC := &clusterv1beta1.MemberCluster{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:   "test-mc",
+									Labels: map[string]string{"key1": "value2"},
+									Annotations: map[string]string{
+										"fleet.azure.com/cluster-resource-id": "test-cluster-resource-id",
+									},
+								},
+							}
+							raw, _ := json.Marshal(oldMC)
+							return raw
+						}(),
+					},
+					UserInfo: authenticationv1.UserInfo{
+						Username: "system:serviceaccount:fleet-system:hub-agent-sa",
+						Groups:   []string{"system:serviceaccounts"},
+					},
+					RequestKind: &utils.MCMetaGVK,
+					Operation:   admissionv1.Update,
+				},
+			},
+			resourceValidator: fleetResourceValidator{
+				decoder: decoder,
+			},
+			wantResponse: admission.Denied(fmt.Sprintf(validation.DeniedModifyFleetLabels)),
+		},
 		"allow label modification by non-RP client when flag is set to false": {
 			enableDenyModifiedLabelsFlag: false,
 			req: admission.Request{
