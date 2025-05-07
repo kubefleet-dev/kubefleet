@@ -44,7 +44,8 @@ const (
 )
 
 var (
-	fleetCRDGroups = []string{"networking.fleet.azure.com", "fleet.azure.com", "multicluster.x-k8s.io", "cluster.kubernetes-fleet.io", "placement.kubernetes-fleet.io"}
+	fleetCRDGroups                 = []string{"networking.fleet.azure.com", "fleet.azure.com", "multicluster.x-k8s.io", "cluster.kubernetes-fleet.io", "placement.kubernetes-fleet.io"}
+	DeniedModifyFleetLabelsEnabled = false
 )
 
 // ValidateUserForFleetCRD checks to see if user is not allowed to modify fleet CRDs.
@@ -110,10 +111,13 @@ func ValidateFleetMemberClusterUpdate(currentMC, oldMC clusterv1beta1.MemberClus
 	}
 
 	// users are no longer allowed to modify labels of fleet member cluster through webhook.
-	isLabelUpdated := isMapFieldUpdated(currentMC.GetLabels(), oldMC.GetLabels())
-	if isLabelUpdated && !isRPClient(userInfo) {
-		klog.V(2).InfoS(DeniedModifyFleetLabels, "user", userInfo.Username, "groups", userInfo.Groups, "operation", req.Operation, "GVK", req.RequestKind, "subResource", req.SubResource, "namespacedName", namespacedName)
-		return admission.Denied(DeniedModifyFleetLabels)
+	// this will be disabled until member labels are accessible through CLI
+	if DeniedModifyFleetLabelsEnabled {
+		isLabelUpdated := isMapFieldUpdated(currentMC.GetLabels(), oldMC.GetLabels())
+		if isLabelUpdated && !isRPClient(userInfo) {
+			klog.V(2).InfoS(DeniedModifyFleetLabels, "user", userInfo.Username, "groups", userInfo.Groups, "operation", req.Operation, "GVK", req.RequestKind, "subResource", req.SubResource, "namespacedName", namespacedName)
+			return admission.Denied(DeniedModifyFleetLabels)
+		}
 	}
 
 	isAnnotationUpdated := isFleetAnnotationUpdated(currentMC.Annotations, oldMC.Annotations)
@@ -294,4 +298,8 @@ func ValidateMCIdentity(ctx context.Context, client client.Client, req admission
 	}
 	klog.V(2).InfoS(deniedModifyResource, "user", userInfo.Username, "groups", userInfo.Groups, "operation", req.Operation, "GVK", req.RequestKind, "subResource", req.SubResource, "namespacedName", namespacedName)
 	return admission.Denied(fmt.Sprintf(ResourceDeniedFormat, userInfo.Username, utils.GenerateGroupString(userInfo.Groups), req.Operation, req.RequestKind, req.SubResource, namespacedName))
+}
+
+func SetDeniedModifyFleetLabelsEnabled(enabled bool) {
+	DeniedModifyFleetLabelsEnabled = enabled
 }

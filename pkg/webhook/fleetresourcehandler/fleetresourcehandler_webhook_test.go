@@ -514,11 +514,13 @@ func TestHandleMemberCluster(t *testing.T) {
 	assert.Nil(t, err)
 
 	testCases := map[string]struct {
-		req               admission.Request
-		resourceValidator fleetResourceValidator
-		wantResponse      admission.Response
+		req                          admission.Request
+		enableDenyModifiedLabelsFlag bool
+		resourceValidator            fleetResourceValidator
+		wantResponse                 admission.Response
 	}{
 		"allow create upstream fleet MC by any user": {
+			enableDenyModifiedLabelsFlag: false,
 			req: admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Name: "test-mc",
@@ -539,6 +541,7 @@ func TestHandleMemberCluster(t *testing.T) {
 			wantResponse: admission.Allowed(allowedMessageMemberCluster),
 		},
 		"deny update of fleet MC spec by non whitelisted user": {
+			enableDenyModifiedLabelsFlag: false,
 			req: admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Name: "test-mc",
@@ -563,6 +566,7 @@ func TestHandleMemberCluster(t *testing.T) {
 			wantResponse: admission.Denied(fmt.Sprintf(validation.ResourceDeniedFormat, "test-user", utils.GenerateGroupString([]string{"test-group"}), admissionv1.Update, &utils.MCMetaGVK, "", types.NamespacedName{Name: "test-mc"})),
 		},
 		"allow whitelisted user to modify fleet MC status": {
+			enableDenyModifiedLabelsFlag: false,
 			req: admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Name: "test-mc",
@@ -588,6 +592,7 @@ func TestHandleMemberCluster(t *testing.T) {
 			wantResponse: admission.Allowed(fmt.Sprintf(validation.ResourceAllowedFormat, "test-user", utils.GenerateGroupString([]string{"test-group"}), admissionv1.Update, &utils.MCMetaGVK, "status", types.NamespacedName{Name: "test-mc"})),
 		},
 		"allow whitelisted user to modify upstream MC status": {
+			enableDenyModifiedLabelsFlag: false,
 			req: admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Name: "test-mc",
@@ -615,6 +620,7 @@ func TestHandleMemberCluster(t *testing.T) {
 		// added as UT since testing this case as an E2E requires
 		// creating a new user called aks-support in our test environment.
 		"allow delete for fleet MC by aks-support user": {
+			enableDenyModifiedLabelsFlag: false,
 			req: admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Name: "test-mc",
@@ -635,7 +641,8 @@ func TestHandleMemberCluster(t *testing.T) {
 			wantResponse: admission.Allowed(fmt.Sprintf(validation.ResourceAllowedFormat, "aks-support", utils.GenerateGroupString([]string{"system:authenticated"}), admissionv1.Delete, &utils.MCMetaGVK, "", types.NamespacedName{Name: "test-mc"})),
 		},
 
-		"allow label modification by RP client": {
+		"allow label modification by RP client when flag is set to true": {
+			enableDenyModifiedLabelsFlag: true,
 			req: admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Name: "test-mc",
@@ -670,7 +677,8 @@ func TestHandleMemberCluster(t *testing.T) {
 			},
 			wantResponse: admission.Allowed(fmt.Sprintf(validation.ResourceAllowedFormat, "aksService", utils.GenerateGroupString([]string{"system:masters"}), admissionv1.Update, &utils.MCMetaGVK, "", types.NamespacedName{Name: "test-mc"})),
 		},
-		"deny label modification by non-RP client": {
+		"deny label modification by non-RP client when flag is set to true": {
+			enableDenyModifiedLabelsFlag: true,
 			req: admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Name: "test-mc",
@@ -717,10 +725,61 @@ func TestHandleMemberCluster(t *testing.T) {
 			},
 			wantResponse: admission.Denied(fmt.Sprintf(validation.DeniedModifyFleetLabels)),
 		},
+		"allow label modification by non-RP client when flag is set to false": {
+			enableDenyModifiedLabelsFlag: false,
+			req: admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name: "test-mc",
+					Object: runtime.RawExtension{
+						Raw: func() []byte {
+							updatedMC := &clusterv1beta1.MemberCluster{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:   "test-mc",
+									Labels: map[string]string{"key1": "value1"},
+									Annotations: map[string]string{
+										"fleet.azure.com/cluster-resource-id": "test-cluster-resource-id",
+									},
+								},
+							}
+							raw, _ := json.Marshal(updatedMC)
+							return raw
+						}(),
+					},
+					OldObject: runtime.RawExtension{
+						Raw: func() []byte {
+							oldMC := &clusterv1beta1.MemberCluster{
+								ObjectMeta: metav1.ObjectMeta{
+									Name:   "test-mc",
+									Labels: map[string]string{"key1": "value2"},
+									Annotations: map[string]string{
+										"fleet.azure.com/cluster-resource-id": "test-cluster-resource-id",
+									},
+								},
+							}
+							raw, _ := json.Marshal(oldMC)
+							return raw
+						}(),
+					},
+					UserInfo: authenticationv1.UserInfo{
+						Username: "nonRPUser",
+						Groups:   []string{"system:authenticated"},
+					},
+					RequestKind: &utils.MCMetaGVK,
+					Operation:   admissionv1.Update,
+				},
+			},
+			resourceValidator: fleetResourceValidator{
+				decoder: decoder,
+			},
+			wantResponse: admission.Allowed(fmt.Sprintf(validation.ResourceAllowedFormat,
+				"nonRPUser", utils.GenerateGroupString([]string{"system:authenticated"}), admissionv1.Update, &utils.MCMetaGVK, "",
+				types.NamespacedName{Name: "test-mc"})),
+		},
 	}
 
 	for testName, testCase := range testCases {
 		t.Run(testName, func(t *testing.T) {
+			validation.SetDeniedModifyFleetLabelsEnabled(testCase.enableDenyModifiedLabelsFlag)
 			gotResult := testCase.resourceValidator.handleMemberCluster(testCase.req)
 			assert.Equal(t, testCase.wantResponse, gotResult, utils.TestCaseMsg, testName)
 		})
