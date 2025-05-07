@@ -94,6 +94,9 @@ const (
 	// diff reporting has been fully completed.
 	DiffReportedStatusTrueReason = "DiffReportingCompleted"
 
+	// NoResourcesSelectedReason is the reason string of placement condition when the resources are not selected.
+	NoResourcesSelectedReason = "NoResourcesSelected"
+
 	// TODO: Add a user error reason
 )
 
