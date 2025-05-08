@@ -161,27 +161,21 @@ func (r *Reconciler) gatherSelectedResource(placement string, selectors []fleetv
 		}
 	}
 	// sort the resources in strict order so that we will get the stable list of manifest so that
-	// the generated work object doesn't change between reconcile loops
-	sortResources(resources)
+	// the generated work object doesn't change between reconcile loops.
+	sortResources(resources, buildApplyOrderMap())
 
 	return resources, nil
 }
 
-func sortResources(resources []*unstructured.Unstructured) {
+func sortResources(resources []*unstructured.Unstructured, applyOrderMap map[string]int) {
 	sort.Slice(resources, func(i, j int) bool {
-		// build the ordering map.
-		ordering := make(map[string]int, len(ApplyOrder))
-		for v, k := range ApplyOrder {
-			ordering[k] = v
-		}
-
 		obj1 := resources[i]
 		obj2 := resources[j]
 		k1 := obj1.GetObjectKind().GroupVersionKind().Kind
 		k2 := obj2.GetObjectKind().GroupVersionKind().Kind
 
-		first, aok := ordering[k1]
-		second, bok := ordering[k2]
+		first, aok := applyOrderMap[k1]
+		second, bok := applyOrderMap[k2]
 		// if both kinds are unknown.
 		if !aok && !bok {
 			return lessByGVK(obj1, obj2, false)
@@ -204,12 +198,12 @@ func sortResources(resources []*unstructured.Unstructured) {
 
 func lessByGVK(obj1, obj2 *unstructured.Unstructured, ignoreKind bool) bool {
 	var gvk1, gvk2 string
-	if !ignoreKind {
-		gvk1 = obj1.GetObjectKind().GroupVersionKind().String()
-		gvk2 = obj2.GetObjectKind().GroupVersionKind().String()
-	} else {
+	if ignoreKind {
 		gvk1 = obj1.GetObjectKind().GroupVersionKind().GroupVersion().String()
 		gvk2 = obj2.GetObjectKind().GroupVersionKind().GroupVersion().String()
+	} else {
+		gvk1 = obj1.GetObjectKind().GroupVersionKind().String()
+		gvk2 = obj2.GetObjectKind().GroupVersionKind().String()
 	}
 	comp := strings.Compare(gvk1, gvk2)
 	if comp == 0 {
@@ -217,6 +211,14 @@ func lessByGVK(obj1, obj2 *unstructured.Unstructured, ignoreKind bool) bool {
 			fmt.Sprintf("%s/%s", obj2.GetNamespace(), obj2.GetName())) < 0
 	}
 	return comp < 0
+}
+
+func buildApplyOrderMap() map[string]int {
+	ordering := make(map[string]int, len(ApplyOrder))
+	for v, k := range ApplyOrder {
+		ordering[k] = v
+	}
+	return ordering
 }
 
 // fetchClusterScopedResources retrieves the objects based on the selector.

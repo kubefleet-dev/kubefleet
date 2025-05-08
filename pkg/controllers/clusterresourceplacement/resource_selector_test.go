@@ -807,7 +807,7 @@ func createResourceContentForTest(t *testing.T, obj interface{}) *fleetv1beta1.R
 	}
 }
 
-func TestSortResource(t *testing.T) {
+func TestSortResources(t *testing.T) {
 	// Create the ingressClass object
 	ingressClass := &unstructured.Unstructured{
 		Object: map[string]interface{}{
@@ -1317,7 +1317,7 @@ func TestSortResource(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// run many times to make sure it's stable
 			for i := 0; i < 10; i++ {
-				sortResources(tt.resources)
+				sortResources(tt.resources, buildApplyOrderMap())
 				// Check that the returned resources match the expected resources
 				diff := cmp.Diff(tt.want, tt.resources)
 				if diff != "" {
