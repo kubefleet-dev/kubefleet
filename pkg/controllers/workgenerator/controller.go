@@ -521,7 +521,6 @@ func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1be
 		if len(simpleManifests) == 0 {
 			klog.V(2).InfoS("the snapshot contains no resource to apply either because of override or enveloped resources", "snapshot", klog.KObj(snapshot))
 		}
-
 		// generate a work object for the manifests even if there is nothing to place
 		// to allow CRP to collect the status of the placement
 		// TODO (RZ): revisit to see if we need this hack

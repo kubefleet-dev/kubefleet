@@ -961,6 +961,17 @@ func TestSortResource(t *testing.T) {
 		},
 	}
 
+	v1beta1Deployment := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "apps/v1beta1",
+			"kind":       "Deployment",
+			"metadata": map[string]interface{}{
+				"name":      "test-nginx1",
+				"namespace": "test",
+			},
+		},
+	}
+
 	// Create the DaemonSet object.
 	daemonSet := &unstructured.Unstructured{
 		Object: map[string]interface{}{
@@ -1251,6 +1262,17 @@ func TestSortResource(t *testing.T) {
 		},
 	}
 
+	v1beta1AnotherTestResource := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "test.kubernetes-fleet.io/v1beta1",
+			"kind":       "AnotherTestResource",
+			"metadata": map[string]interface{}{
+				"name":      "another-test-resource1",
+				"namespace": "test",
+			},
+		},
+	}
+
 	tests := map[string]struct {
 		resources []*unstructured.Unstructured
 		want      []*unstructured.Unstructured
@@ -1267,24 +1289,32 @@ func TestSortResource(t *testing.T) {
 			resources: []*unstructured.Unstructured{ingressClass, clusterRole, clusterRoleBinindg, configMap, cronJob, crd1, daemonSet, deployment, testResource1, ingress, job, limitRange, namespace1, networkPolicy, pv, pvc, pod, pdb, replicaSet, replicationController, resourceQuota, role, roleBinding, secret1, service, serviceAccount, statefulSet, storageClass, apiService, hpa, priorityClass, validatingWebhookConfiguration, mutatingWebhookConfiguration},
 			want:      []*unstructured.Unstructured{priorityClass, namespace1, networkPolicy, resourceQuota, limitRange, pdb, serviceAccount, secret1, configMap, storageClass, pv, pvc, crd1, clusterRole, clusterRoleBinindg, role, roleBinding, service, daemonSet, pod, replicationController, replicaSet, deployment, hpa, statefulSet, job, cronJob, ingressClass, ingress, apiService, mutatingWebhookConfiguration, validatingWebhookConfiguration, testResource1},
 		},
-		"should handle multiple resource of unknown, same kinds": {
+		"should handle multiple unknown resources, same kinds": {
 			resources: []*unstructured.Unstructured{testResource2, testResource1},
 			want:      []*unstructured.Unstructured{testResource1, testResource2},
 		},
-		"should handle multiple resources of unknown, different kinds": {
+		"should handle multiple unknown resources, different kinds": {
 			resources: []*unstructured.Unstructured{testResource1, anotherTestResource},
 			want:      []*unstructured.Unstructured{anotherTestResource, testResource1},
 		},
-		"should handle multiple resources of known, different kinds": {
+		"should handle multiple known resources, different kinds": {
 			resources: []*unstructured.Unstructured{crd2, crd1, secret2, namespace2, namespace1, secret1},
 			want:      []*unstructured.Unstructured{namespace1, namespace2, secret1, secret2, crd1, crd2},
+		},
+		"should handle multiple known resources, same kinds with different versions": {
+			resources: []*unstructured.Unstructured{v1beta1Deployment, deployment, limitRange},
+			want:      []*unstructured.Unstructured{limitRange, deployment, v1beta1Deployment},
+		},
+		"should handle multiple unknown resources, same kinds with different versions": {
+			resources: []*unstructured.Unstructured{testResource2, v1beta1AnotherTestResource, anotherTestResource},
+			want:      []*unstructured.Unstructured{anotherTestResource, v1beta1AnotherTestResource, testResource2},
 		},
 	}
 
 	for testName, tt := range tests {
 		t.Run(testName, func(t *testing.T) {
 			// run many times to make sure it's stable
-			for i := 10; i < 1; i++ {
+			for i := 0; i < 1; i++ {
 				sortResources(tt.resources)
 				// Check that the returned resources match the expected resources
 				diff := cmp.Diff(tt.want, tt.resources)

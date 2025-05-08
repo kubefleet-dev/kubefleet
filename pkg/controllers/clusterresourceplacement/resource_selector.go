@@ -191,7 +191,7 @@ func sortResources(resources []*unstructured.Unstructured) {
 		if !aok && !bok {
 			return cmpObjectsIgnoreKind(obj1, obj2)
 		}
-		// unknown kind is last
+		// unknown kind is last.
 		if !aok {
 			return false
 		}
@@ -215,7 +215,7 @@ func cmpObjectsIgnoreKind(obj1, obj2 *unstructured.Unstructured) bool {
 	if gvComp == 0 {
 		// same gv, compare namespace/name, no duplication exists
 		return strings.Compare(fmt.Sprintf("%s/%s", obj1.GetNamespace(), obj1.GetName()),
-			fmt.Sprintf("%s/%s", obj2.GetNamespace(), obj2.GetName())) > 0
+			fmt.Sprintf("%s/%s", obj2.GetNamespace(), obj2.GetName())) < 0
 	}
 	return gvComp < 0
 }
