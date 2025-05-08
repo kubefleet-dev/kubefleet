@@ -185,7 +185,7 @@ func sortResources(resources []*unstructured.Unstructured) {
 		second, bok := ordering[k2]
 		// if both kinds are unknown.
 		if !aok && !bok {
-			return sortByGVK(obj1, obj2, false)
+			return lessByGVK(obj1, obj2, false)
 		}
 		// unknown kind is last.
 		if !aok {
@@ -196,14 +196,14 @@ func sortResources(resources []*unstructured.Unstructured) {
 		}
 		// same kind.
 		if first == second {
-			return sortByGVK(obj1, obj2, true)
+			return lessByGVK(obj1, obj2, true)
 		}
 		// different known kinds, sort based on order index.
 		return first < second
 	})
 }
 
-func sortByGVK(obj1, obj2 *unstructured.Unstructured, ignoreKind bool) bool {
+func lessByGVK(obj1, obj2 *unstructured.Unstructured, ignoreKind bool) bool {
 	var gvk1, gvk2 string
 	if !ignoreKind {
 		gvk1 = obj1.GetObjectKind().GroupVersionKind().String()
