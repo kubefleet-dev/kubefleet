@@ -718,6 +718,7 @@ func crpStatusWithOverrideUpdatedActual(
 				Conditions:                         resourcePlacementRolloutCompletedConditions(crp.Generation, true, hasOverride),
 				ApplicableResourceOverrides:        wantResourceOverrides,
 				ApplicableClusterResourceOverrides: wantClusterResourceOverrides,
+				ObservedResourceIndex:              wantObservedResourceIndex,
 			})
 		}
 		wantStatus := placementv1beta1.ClusterResourcePlacementStatus{
@@ -759,6 +760,7 @@ func crpStatusWithOverrideUpdatedFailedActual(
 				Conditions:                         resourcePlacementOverrideFailedConditions(crp.Generation),
 				ApplicableResourceOverrides:        wantResourceOverrides,
 				ApplicableClusterResourceOverrides: wantClusterResourceOverrides,
+				ObservedResourceIndex:              wantObservedResourceIndex,
 			})
 		}
 
@@ -797,6 +799,7 @@ func crpStatusWithWorkSynchronizedUpdatedFailedActual(
 				Conditions:                         resourcePlacementWorkSynchronizedFailedConditions(crp.Generation, hasOverrides),
 				ApplicableResourceOverrides:        wantResourceOverrides,
 				ApplicableClusterResourceOverrides: wantClusterResourceOverrides,
+				ObservedResourceIndex:              wantObservedResourceIndex,
 			})
 		}
 
@@ -827,8 +830,9 @@ func customizedCRPStatusUpdatedActual(crpName string,
 		wantPlacementStatus := []placementv1beta1.ResourcePlacementStatus{}
 		for _, name := range wantSelectedClusters {
 			wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.ResourcePlacementStatus{
-				ClusterName: name,
-				Conditions:  resourcePlacementRolloutCompletedConditions(crp.Generation, resourceIsTrackable, false),
+				ClusterName:           name,
+				ObservedResourceIndex: wantObservedResourceIndex,
+				Conditions:            resourcePlacementRolloutCompletedConditions(crp.Generation, resourceIsTrackable, false),
 			})
 		}
 		for i := 0; i < len(wantUnselectedClusters); i++ {
@@ -889,6 +893,7 @@ func safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResourceIdentifiers [
 		var wantPlacementStatus []placementv1beta1.ResourcePlacementStatus
 		// We only expect the deployment to not be available on one cluster.
 		unavailableResourcePlacementStatus := placementv1beta1.ResourcePlacementStatus{
+			ObservedResourceIndex: wantObservedResourceIndex,
 			Conditions: []metav1.Condition{
 				{
 					Type:               string(placementv1beta1.ResourceScheduledConditionType),
@@ -943,6 +948,7 @@ func safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResourceIdentifiers [
 
 		// For all the other connected member clusters rollout will be blocked.
 		rolloutBlockedPlacementStatus := placementv1beta1.ResourcePlacementStatus{
+			ObservedResourceIndex: wantObservedResourceIndex,
 			Conditions: []metav1.Condition{
 				{
 					Type:               string(placementv1beta1.ResourceScheduledConditionType),
