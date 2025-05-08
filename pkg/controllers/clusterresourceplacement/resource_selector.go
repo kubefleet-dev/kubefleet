@@ -189,7 +189,7 @@ func sortResources(resources []*unstructured.Unstructured) {
 		second, bok := ordering[k2]
 		// if both kinds are unknown.
 		if !aok && !bok {
-			return cmpObjectsIgnoreKind(obj1, obj2)
+			return sortByGVK(obj1, obj2, false)
 		}
 		// unknown kind is last.
 		if !aok {
@@ -198,26 +198,30 @@ func sortResources(resources []*unstructured.Unstructured) {
 		if !bok {
 			return true
 		}
-		// same kind, based on order index.
+		// same kind.
 		if first == second {
-			return cmpObjectsIgnoreKind(obj1, obj2)
+			return sortByGVK(obj1, obj2, true)
 		}
 		// different known kinds, sort based on order index.
 		return first < second
 	})
 }
 
-func cmpObjectsIgnoreKind(obj1, obj2 *unstructured.Unstructured) bool {
-	gv1 := obj1.GetObjectKind().GroupVersionKind().GroupVersion().String()
-	gv2 := obj2.GetObjectKind().GroupVersionKind().GroupVersion().String()
-	// compare group/version for the resources
-	gvComp := strings.Compare(gv1, gv2)
-	if gvComp == 0 {
-		// same gv, compare namespace/name, no duplication exists
+func sortByGVK(obj1, obj2 *unstructured.Unstructured, ignoreKind bool) bool {
+	var gvk1, gvk2 string
+	if !ignoreKind {
+		gvk1 = obj1.GetObjectKind().GroupVersionKind().String()
+		gvk2 = obj2.GetObjectKind().GroupVersionKind().String()
+	} else {
+		gvk1 = obj1.GetObjectKind().GroupVersionKind().GroupVersion().String()
+		gvk2 = obj2.GetObjectKind().GroupVersionKind().GroupVersion().String()
+	}
+	comp := strings.Compare(gvk1, gvk2)
+	if comp == 0 {
 		return strings.Compare(fmt.Sprintf("%s/%s", obj1.GetNamespace(), obj1.GetName()),
 			fmt.Sprintf("%s/%s", obj2.GetNamespace(), obj2.GetName())) < 0
 	}
-	return gvComp < 0
+	return comp < 0
 }
 
 // fetchClusterScopedResources retrieves the objects based on the selector.
