@@ -48,7 +48,6 @@ var ApplyOrder = []string{
 	"NetworkPolicy",
 	"ResourceQuota",
 	"LimitRange",
-	"PodSecurityPolicy",
 	"PodDisruptionBudget",
 	"ServiceAccount",
 	"Secret",
