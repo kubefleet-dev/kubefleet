@@ -179,11 +179,6 @@ func isUserInGroup(userInfo authenticationv1.UserInfo, groupName string) bool {
 	return slices.Contains(userInfo.Groups, groupName)
 }
 
-// isRPClient returns true if user is aksService and belongs to system:masters group.
-func isRPClient(userInfo authenticationv1.UserInfo) bool {
-	return userInfo.Username == "aksService" && slices.Contains(userInfo.Groups, mastersGroup)
-}
-
 // isMemberClusterMapFieldUpdated return true if member cluster label is updated.
 func isMapFieldUpdated(currentMap, oldMap map[string]string) bool {
 	return !reflect.DeepEqual(currentMap, oldMap)
