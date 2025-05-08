@@ -176,19 +176,17 @@ func sortResources(resources []*unstructured.Unstructured, applyOrderMap map[str
 
 		first, aok := applyOrderMap[k1]
 		second, bok := applyOrderMap[k2]
+		switch {
 		// if both kinds are unknown.
-		if !aok && !bok {
+		case !aok && !bok:
 			return lessByGVK(obj1, obj2, false)
-		}
-		// unknown kind is last.
-		if !aok {
+		// unknown kind should be last.
+		case !aok:
 			return false
-		}
-		if !bok {
+		case !bok:
 			return true
-		}
 		// same kind.
-		if first == second {
+		case first == second:
 			return lessByGVK(obj1, obj2, true)
 		}
 		// different known kinds, sort based on order index.
