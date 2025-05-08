@@ -961,6 +961,7 @@ func TestSortResource(t *testing.T) {
 		},
 	}
 
+	// Create the v1beta1 Deployment object.
 	v1beta1Deployment := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "apps/v1beta1",
@@ -1262,6 +1263,7 @@ func TestSortResource(t *testing.T) {
 		},
 	}
 
+	// Create v1beta1 another test resource.
 	v1beta1AnotherTestResource := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "test.kubernetes-fleet.io/v1beta1",
