@@ -955,24 +955,25 @@ func handleResourceBindingUpdated(objectOld, objectNew client.Object, q workqueu
 // updateStaleBindingsStatus updates the status of the stale bindings to indicate that they are blocked by the rollout strategy.
 // Note: the binding state should be "Scheduled" or "Bound".
 // The desired binding will be ignored.
-func (r *Reconciler) updateStaleBindingsStatus(ctx context.Context, staleBindings []toBeUpdatedBinding) error {
-	if len(staleBindings) == 0 {
-		return nil
-	}
-	// issue all the update requests in parallel
-	errs, cctx := errgroup.WithContext(ctx)
-	for i := 0; i < len(staleBindings); i++ {
-		binding := staleBindings[i]
-		if binding.currentBinding.Spec.State != fleetv1beta1.BindingStateScheduled && binding.currentBinding.Spec.State != fleetv1beta1.BindingStateBound {
-			klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("invalid stale binding state %s", binding.currentBinding.Spec.State)),
-				"Found a stale binding with unexpected state", "clusterResourceBinding", klog.KObj(binding.currentBinding))
-			continue
-		}
-		errs.Go(func() error {
-			return r.updateBindingStatus(cctx, binding.currentBinding, false)
-		})
-	}
-	return errs.Wait()
+func (r *Reconciler) updateStaleBindingsStatus(_ context.Context, _ []toBeUpdatedBinding) error {
+	// if len(staleBindings) == 0 {
+	// 	return nil
+	// }
+	// // issue all the update requests in parallel
+	// errs, cctx := errgroup.WithContext(ctx)
+	// for i := 0; i < len(staleBindings); i++ {
+	// 	binding := staleBindings[i]
+	// 	if binding.currentBinding.Spec.State != fleetv1beta1.BindingStateScheduled && binding.currentBinding.Spec.State != fleetv1beta1.BindingStateBound {
+	// 		klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("invalid stale binding state %s", binding.currentBinding.Spec.State)),
+	// 			"Found a stale binding with unexpected state", "clusterResourceBinding", klog.KObj(binding.currentBinding))
+	// 		continue
+	// 	}
+	// 	errs.Go(func() error {
+	// 		return r.updateBindingStatus(cctx, binding.currentBinding, false)
+	// 	})
+	// }
+	// return errs.Wait()
+	return nil
 }
 
 // refreshUpToDateBindingStatus refreshes the status of all up-to-date bindings.
