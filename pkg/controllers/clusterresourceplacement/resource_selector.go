@@ -41,6 +41,7 @@ import (
 
 // ApplyOrder is the order in which resources should be applied.
 // Those occurring earlier in the list get applied before those occurring later in the list.
+// Source: https://github.com/helm/helm/blob/31e22b9866af91e1a0ea2ad381798f6c5eec7f4f/pkg/release/util/kind_sorter.go#L31.
 var ApplyOrder = []string{
 	"PriorityClass",
 	"Namespace",
@@ -51,20 +52,15 @@ var ApplyOrder = []string{
 	"PodDisruptionBudget",
 	"ServiceAccount",
 	"Secret",
-	"SecretList",
 	"ConfigMap",
 	"StorageClass",
 	"PersistentVolume",
 	"PersistentVolumeClaim",
 	"CustomResourceDefinition",
 	"ClusterRole",
-	"ClusterRoleList",
 	"ClusterRoleBinding",
-	"ClusterRoleBindingList",
 	"Role",
-	"RoleList",
 	"RoleBinding",
-	"RoleBindingList",
 	"Service",
 	"DaemonSet",
 	"Pod",
