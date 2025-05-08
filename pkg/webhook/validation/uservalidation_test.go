@@ -259,7 +259,7 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 					Operation:   admissionv1.Update,
 				},
 			},
-			wantResponse: admission.Denied(DeniedModifyFleetLabels),
+			wantResponse: admission.Denied(DeniedModifyMemberClusterLabels),
 		},
 		"deny label modification by fleet agent when flag is set to true": {
 			enableDenyModifiedLabelsFlag: true,
@@ -292,7 +292,7 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 					Operation:   admissionv1.Update,
 				},
 			},
-			wantResponse: admission.Denied(DeniedModifyFleetLabels),
+			wantResponse: admission.Denied(DeniedModifyMemberClusterLabels),
 		},
 		"allow label modification by non-RP client when flag is set to false": {
 			enableDenyModifiedLabelsFlag: false,
@@ -332,8 +332,7 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 
 	for testName, testCase := range testCases {
 		t.Run(testName, func(t *testing.T) {
-			SetDeniedModifyFleetLabelsEnabled(testCase.enableDenyModifiedLabelsFlag)
-			gotResult := ValidateFleetMemberClusterUpdate(*testCase.newMC, *testCase.oldMC, testCase.req, testCase.whiteListedUsers)
+			gotResult := ValidateFleetMemberClusterUpdate(*testCase.newMC, *testCase.oldMC, testCase.req, testCase.whiteListedUsers, testCase.enableDenyModifiedLabelsFlag)
 			assert.Equal(t, testCase.wantResponse, gotResult, utils.TestCaseMsg, testName)
 		})
 	}

@@ -32,11 +32,11 @@ const (
 	aksSupportUser            = "aks-support"
 	serviceAccountFmt         = "system:serviceaccount:fleet-system:%s"
 
-	allowedModifyResource       = "user in groups is allowed to modify resource"
-	deniedModifyResource        = "user in groups is not allowed to modify resource"
-	deniedAddFleetAnnotation    = "no user is allowed to add a fleet pre-fixed annotation to an upstream member cluster"
-	deniedRemoveFleetAnnotation = "no user is allowed to remove all fleet pre-fixed annotations from a fleet member cluster"
-	DeniedModifyFleetLabels     = "users are not allowed to modify labels through hub cluster directly"
+	allowedModifyResource           = "user in groups is allowed to modify resource"
+	deniedModifyResource            = "user in groups is not allowed to modify resource"
+	deniedAddFleetAnnotation        = "no user is allowed to add a fleet pre-fixed annotation to an upstream member cluster"
+	deniedRemoveFleetAnnotation     = "no user is allowed to remove all fleet pre-fixed annotations from a fleet member cluster"
+	DeniedModifyMemberClusterLabels = "users are not allowed to modify labels through hub cluster directly"
 
 	ResourceAllowedFormat      = "user: '%s' in '%s' is allowed to %s resource %+v/%s: %+v"
 	ResourceDeniedFormat       = "user: '%s' in '%s' is not allowed to %s resource %+v/%s: %+v"
@@ -44,8 +44,7 @@ const (
 )
 
 var (
-	fleetCRDGroups                 = []string{"networking.fleet.azure.com", "fleet.azure.com", "multicluster.x-k8s.io", "cluster.kubernetes-fleet.io", "placement.kubernetes-fleet.io"}
-	DeniedModifyFleetLabelsEnabled = false
+	fleetCRDGroups = []string{"networking.fleet.azure.com", "fleet.azure.com", "multicluster.x-k8s.io", "cluster.kubernetes-fleet.io", "placement.kubernetes-fleet.io"}
 )
 
 // ValidateUserForFleetCRD checks to see if user is not allowed to modify fleet CRDs.
@@ -95,7 +94,7 @@ func ValidateV1Alpha1MemberClusterUpdate(currentMC, oldMC fleetv1alpha1.MemberCl
 }
 
 // ValidateFleetMemberClusterUpdate checks to see if user had updated the fleet member cluster resource and allows/denies the request.
-func ValidateFleetMemberClusterUpdate(currentMC, oldMC clusterv1beta1.MemberCluster, req admission.Request, whiteListedUsers []string) admission.Response {
+func ValidateFleetMemberClusterUpdate(currentMC, oldMC clusterv1beta1.MemberCluster, req admission.Request, whiteListedUsers []string, enableDenyModificationMemberClusterLabels bool) admission.Response {
 	namespacedName := types.NamespacedName{Name: currentMC.GetName()}
 	userInfo := req.UserInfo
 	if areAllFleetAnnotationsRemoved(currentMC.Annotations, oldMC.Annotations) {
@@ -112,11 +111,11 @@ func ValidateFleetMemberClusterUpdate(currentMC, oldMC clusterv1beta1.MemberClus
 
 	// users are no longer allowed to modify labels of fleet member cluster through webhook.
 	// this will be disabled until member labels are accessible through CLI
-	if DeniedModifyFleetLabelsEnabled {
+	if enableDenyModificationMemberClusterLabels {
 		isLabelUpdated := isMapFieldUpdated(currentMC.GetLabels(), oldMC.GetLabels())
 		if isLabelUpdated && !isRPClient(userInfo) {
-			klog.V(2).InfoS(DeniedModifyFleetLabels, "user", userInfo.Username, "groups", userInfo.Groups, "operation", req.Operation, "GVK", req.RequestKind, "subResource", req.SubResource, "namespacedName", namespacedName)
-			return admission.Denied(DeniedModifyFleetLabels)
+			klog.V(2).InfoS(DeniedModifyMemberClusterLabels, "user", userInfo.Username, "groups", userInfo.Groups, "operation", req.Operation, "GVK", req.RequestKind, "subResource", req.SubResource, "namespacedName", namespacedName)
+			return admission.Denied(DeniedModifyMemberClusterLabels)
 		}
 	}
 
@@ -298,8 +297,4 @@ func ValidateMCIdentity(ctx context.Context, client client.Client, req admission
 	}
 	klog.V(2).InfoS(deniedModifyResource, "user", userInfo.Username, "groups", userInfo.Groups, "operation", req.Operation, "GVK", req.RequestKind, "subResource", req.SubResource, "namespacedName", namespacedName)
 	return admission.Denied(fmt.Sprintf(ResourceDeniedFormat, userInfo.Username, utils.GenerateGroupString(userInfo.Groups), req.Operation, req.RequestKind, req.SubResource, namespacedName))
-}
-
-func SetDeniedModifyFleetLabelsEnabled(enabled bool) {
-	DeniedModifyFleetLabelsEnabled = enabled
 }
