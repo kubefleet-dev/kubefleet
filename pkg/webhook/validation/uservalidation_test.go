@@ -187,15 +187,15 @@ func TestValidateUserForResource(t *testing.T) {
 
 func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 	testCases := map[string]struct {
-		enableDenyModifiedLabelsFlag bool
-		oldMC                        *clusterv1beta1.MemberCluster
-		newMC                        *clusterv1beta1.MemberCluster
-		req                          admission.Request
-		whiteListedUsers             []string
-		wantResponse                 admission.Response
+		denyModifyMemberClusterLabels bool
+		oldMC                         *clusterv1beta1.MemberCluster
+		newMC                         *clusterv1beta1.MemberCluster
+		req                           admission.Request
+		whiteListedUsers              []string
+		wantResponse                  admission.Response
 	}{
 		"allow label modification by RP client when flag is set to true": {
-			enableDenyModifiedLabelsFlag: true,
+			denyModifyMemberClusterLabels: true,
 			oldMC: &clusterv1beta1.MemberCluster{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   "test-mc",
@@ -229,7 +229,7 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 				admissionv1.Update, &utils.MCMetaGVK, "", types.NamespacedName{Name: "test-mc"})),
 		},
 		"deny label modification by non-RP client when flag is set to true": {
-			enableDenyModifiedLabelsFlag: true,
+			denyModifyMemberClusterLabels: true,
 			oldMC: &clusterv1beta1.MemberCluster{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   "test-mc",
@@ -262,7 +262,7 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 			wantResponse: admission.Denied(DeniedModifyMemberClusterLabels),
 		},
 		"deny label modification by fleet agent when flag is set to true": {
-			enableDenyModifiedLabelsFlag: true,
+			denyModifyMemberClusterLabels: true,
 			oldMC: &clusterv1beta1.MemberCluster{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   "test-mc",
@@ -295,7 +295,7 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 			wantResponse: admission.Denied(DeniedModifyMemberClusterLabels),
 		},
 		"allow label modification by non-RP client when flag is set to false": {
-			enableDenyModifiedLabelsFlag: false,
+			denyModifyMemberClusterLabels: false,
 			oldMC: &clusterv1beta1.MemberCluster{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   "test-mc",
@@ -332,7 +332,7 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 
 	for testName, testCase := range testCases {
 		t.Run(testName, func(t *testing.T) {
-			gotResult := ValidateFleetMemberClusterUpdate(*testCase.newMC, *testCase.oldMC, testCase.req, testCase.whiteListedUsers, testCase.enableDenyModifiedLabelsFlag)
+			gotResult := ValidateFleetMemberClusterUpdate(*testCase.newMC, *testCase.oldMC, testCase.req, testCase.whiteListedUsers, testCase.denyModifyMemberClusterLabels)
 			assert.Equal(t, testCase.wantResponse, gotResult, utils.TestCaseMsg, testName)
 		})
 	}

@@ -35,14 +35,14 @@ const (
 )
 
 // Add registers the webhook for K8s built-in object types.
-func Add(mgr manager.Manager, whiteListedUsers []string, isFleetV1Beta1API bool, enableDenyModifyMemberClusterLabels bool) error {
+func Add(mgr manager.Manager, whiteListedUsers []string, isFleetV1Beta1API bool, denyModifyMemberClusterLabels bool) error {
 	hookServer := mgr.GetWebhookServer()
 	handler := &fleetResourceValidator{
 		client:                        mgr.GetClient(),
 		whiteListedUsers:              whiteListedUsers,
 		isFleetV1Beta1API:             isFleetV1Beta1API,
 		decoder:                       admission.NewDecoder(mgr.GetScheme()),
-		denyModifyMemberClusterLabels: enableDenyModifyMemberClusterLabels,
+		denyModifyMemberClusterLabels: denyModifyMemberClusterLabels,
 	}
 	hookServer.Register(ValidationPath, &webhook.Admission{Handler: handler})
 	return nil

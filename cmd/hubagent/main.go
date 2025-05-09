@@ -198,9 +198,9 @@ func main() {
 }
 
 // SetupWebhook generates the webhook cert and then set up the webhook configurator.
-func SetupWebhook(mgr manager.Manager, webhookClientConnectionType options.WebhookClientConnectionType, webhookServiceName string, whiteListedUsers []string, enableGuardRail, isFleetV1Beta1API bool, enableDenyModifyMemberClusterLabels bool) error {
+func SetupWebhook(mgr manager.Manager, webhookClientConnectionType options.WebhookClientConnectionType, webhookServiceName string, whiteListedUsers []string, enableGuardRail, isFleetV1Beta1API bool, denyModifyMemberClusterLabels bool) error {
 	// Generate self-signed key and crt files in FleetWebhookCertDir for the webhook server to start.
-	w, err := webhook.NewWebhookConfig(mgr, webhookServiceName, FleetWebhookPort, &webhookClientConnectionType, FleetWebhookCertDir, enableGuardRail, enableDenyModifyMemberClusterLabels)
+	w, err := webhook.NewWebhookConfig(mgr, webhookServiceName, FleetWebhookPort, &webhookClientConnectionType, FleetWebhookCertDir, enableGuardRail, denyModifyMemberClusterLabels)
 	if err != nil {
 		klog.ErrorS(err, "fail to generate WebhookConfig")
 		return err
@@ -209,7 +209,7 @@ func SetupWebhook(mgr manager.Manager, webhookClientConnectionType options.Webho
 		klog.ErrorS(err, "unable to add WebhookConfig")
 		return err
 	}
-	if err = webhook.AddToManager(mgr, whiteListedUsers, isFleetV1Beta1API, enableDenyModifyMemberClusterLabels); err != nil {
+	if err = webhook.AddToManager(mgr, whiteListedUsers, isFleetV1Beta1API, denyModifyMemberClusterLabels); err != nil {
 		klog.ErrorS(err, "unable to register webhooks to the manager")
 		return err
 	}
