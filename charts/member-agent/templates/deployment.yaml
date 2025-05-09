@@ -34,6 +34,10 @@ spec:
             - -add_dir_header
             - --enable-v1alpha1-apis={{ .Values.enableV1Alpha1APIs }}
             - --enable-v1beta1-apis={{ .Values.enableV1Beta1APIs }}
+            {{- if .Values.enablePprof }}
+            - --enable-pprof={{ .Values.enablePprof }}
+            - --pprof-port={{ .Values.pprofPort | default 6065 }}
+            {{- end }}
             {{- if .Values.propertyProvider }}
             - --property-provider={{ .Values.propertyProvider }}
             {{- end }}
@@ -74,6 +78,9 @@ spec:
               protocol: TCP
             - containerPort: 8091
               name: memberhealthz
+              protocol: TCP
+            - containerPort: 6065
+              name: pprof
               protocol: TCP
           livenessProbe:
             httpGet:

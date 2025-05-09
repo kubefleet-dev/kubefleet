@@ -33,6 +33,10 @@ spec:
             - --enable-cluster-inventory-apis={{ .Values.enableClusterInventoryAPI }}
             - --enable-staged-update-run-apis={{ .Values.enableStagedUpdateRunAPIs }}
             - --enable-eviction-apis={{ .Values.enableEvictionAPIs}}
+            {{- if .Values.enablePprof }}
+            - --enable-pprof={{ .Values.enablePprof }}
+            - --pprof-port={{ .Values.pprofPort | default 6065 }}
+            {{- end }}
             - --max-concurrent-cluster-placement={{ .Values.MaxConcurrentClusterPlacement }}
             - --concurrent-resource-change-syncs={{ .Values.ConcurrentResourceChangeSyncs }}
             - --log_file_max_size={{ .Values.logFileMaxSize }}
@@ -47,6 +51,9 @@ spec:
               protocol: TCP
             - name: healthz
               containerPort: 8081
+              protocol: TCP
+            - containerPort: 6065
+              name: pprof
               protocol: TCP
           livenessProbe:
             httpGet:
