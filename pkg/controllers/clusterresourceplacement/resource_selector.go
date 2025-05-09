@@ -39,43 +39,46 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 )
 
-// ApplyOrder is the order in which resources should be applied.
-// Those occurring earlier in the list get applied before those occurring later in the list.
-// Source: https://github.com/helm/helm/blob/31e22b9866af91e1a0ea2ad381798f6c5eec7f4f/pkg/release/util/kind_sorter.go#L31.
-var ApplyOrder = []string{
-	"PriorityClass",
-	"Namespace",
-	"NetworkPolicy",
-	"ResourceQuota",
-	"LimitRange",
-	"PodDisruptionBudget",
-	"ServiceAccount",
-	"Secret",
-	"ConfigMap",
-	"StorageClass",
-	"PersistentVolume",
-	"PersistentVolumeClaim",
-	"CustomResourceDefinition",
-	"ClusterRole",
-	"ClusterRoleBinding",
-	"Role",
-	"RoleBinding",
-	"Service",
-	"DaemonSet",
-	"Pod",
-	"ReplicationController",
-	"ReplicaSet",
-	"Deployment",
-	"HorizontalPodAutoscaler",
-	"StatefulSet",
-	"Job",
-	"CronJob",
-	"IngressClass",
-	"Ingress",
-	"APIService",
-	"MutatingWebhookConfiguration",
-	"ValidatingWebhookConfiguration",
-}
+var (
+	// ApplyOrder is the order in which resources should be applied.
+	// Those occurring earlier in the list get applied before those occurring later in the list.
+	// Source: https://github.com/helm/helm/blob/31e22b9866af91e1a0ea2ad381798f6c5eec7f4f/pkg/release/util/kind_sorter.go#L31.
+	applyOrder = []string{
+		"PriorityClass",
+		"Namespace",
+		"NetworkPolicy",
+		"ResourceQuota",
+		"LimitRange",
+		"PodDisruptionBudget",
+		"ServiceAccount",
+		"Secret",
+		"ConfigMap",
+		"StorageClass",
+		"PersistentVolume",
+		"PersistentVolumeClaim",
+		"CustomResourceDefinition",
+		"ClusterRole",
+		"ClusterRoleBinding",
+		"Role",
+		"RoleBinding",
+		"Service",
+		"DaemonSet",
+		"Pod",
+		"ReplicationController",
+		"ReplicaSet",
+		"Deployment",
+		"HorizontalPodAutoscaler",
+		"StatefulSet",
+		"Job",
+		"CronJob",
+		"IngressClass",
+		"Ingress",
+		"APIService",
+		"MutatingWebhookConfiguration",
+		"ValidatingWebhookConfiguration",
+	}
+	applyOrderMap = buildApplyOrderMap()
+)
 
 // selectResources selects the resources according to the placement resourceSelectors.
 // It also generates an array of manifests obj based on the selected resources.
@@ -162,12 +165,12 @@ func (r *Reconciler) gatherSelectedResource(placement string, selectors []fleetv
 	}
 	// sort the resources in strict order so that we will get the stable list of manifest so that
 	// the generated work object doesn't change between reconcile loops.
-	sortResources(resources, buildApplyOrderMap())
+	sortResources(resources)
 
 	return resources, nil
 }
 
-func sortResources(resources []*unstructured.Unstructured, applyOrderMap map[string]int) {
+func sortResources(resources []*unstructured.Unstructured) {
 	sort.Slice(resources, func(i, j int) bool {
 		obj1 := resources[i]
 		obj2 := resources[j]
@@ -212,8 +215,8 @@ func lessByGVK(obj1, obj2 *unstructured.Unstructured, ignoreKind bool) bool {
 }
 
 func buildApplyOrderMap() map[string]int {
-	ordering := make(map[string]int, len(ApplyOrder))
-	for v, k := range ApplyOrder {
+	ordering := make(map[string]int, len(applyOrder))
+	for v, k := range applyOrder {
 		ordering[k] = v
 	}
 	return ordering
