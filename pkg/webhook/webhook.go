@@ -156,7 +156,7 @@ type Config struct {
 
 	enableGuardRail bool
 
-	enableDenyModifyMemberClusterLabels bool
+	denyModifyMemberClusterLabels bool
 }
 
 func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32, clientConnectionType *options.WebhookClientConnectionType, certDir string, enableGuardRail bool, enableDenyModifyMemberClusterLabels bool) (*Config, error) {
@@ -166,14 +166,14 @@ func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32
 		return nil, errors.New("fail to obtain Pod namespace from POD_NAMESPACE")
 	}
 	w := Config{
-		mgr:                                 mgr,
-		servicePort:                         port,
-		serviceNamespace:                    namespace,
-		serviceName:                         webhookServiceName,
-		serviceURL:                          fmt.Sprintf("https://%s.%s.svc.cluster.local:%d", webhookServiceName, namespace, port),
-		clientConnectionType:                clientConnectionType,
-		enableGuardRail:                     enableGuardRail,
-		enableDenyModifyMemberClusterLabels: enableDenyModifyMemberClusterLabels,
+		mgr:                           mgr,
+		servicePort:                   port,
+		serviceNamespace:              namespace,
+		serviceName:                   webhookServiceName,
+		serviceURL:                    fmt.Sprintf("https://%s.%s.svc.cluster.local:%d", webhookServiceName, namespace, port),
+		clientConnectionType:          clientConnectionType,
+		enableGuardRail:               enableGuardRail,
+		denyModifyMemberClusterLabels: enableDenyModifyMemberClusterLabels,
 	}
 	caPEM, err := w.genCertificate(certDir)
 	if err != nil {

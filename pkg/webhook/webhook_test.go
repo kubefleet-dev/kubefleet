@@ -61,33 +61,33 @@ func TestBuildFleetGuardRailValidatingWebhooks(t *testing.T) {
 
 func TestNewWebhookConfig(t *testing.T) {
 	tests := []struct {
-		name                                string
-		mgr                                 manager.Manager
-		webhookServiceName                  string
-		port                                int32
-		clientConnectionType                *options.WebhookClientConnectionType
-		certDir                             string
-		enableGuardRail                     bool
-		enableDenyModifyMemberClusterLabels bool
-		want                                *Config
-		wantErr                             bool
+		name                          string
+		mgr                           manager.Manager
+		webhookServiceName            string
+		port                          int32
+		clientConnectionType          *options.WebhookClientConnectionType
+		certDir                       string
+		enableGuardRail               bool
+		denyModifyMemberClusterLabels bool
+		want                          *Config
+		wantErr                       bool
 	}{
 		{
-			name:                                "valid input",
-			mgr:                                 nil,
-			webhookServiceName:                  "test-webhook",
-			port:                                8080,
-			clientConnectionType:                nil,
-			certDir:                             "/tmp/cert",
-			enableGuardRail:                     true,
-			enableDenyModifyMemberClusterLabels: true,
+			name:                          "valid input",
+			mgr:                           nil,
+			webhookServiceName:            "test-webhook",
+			port:                          8080,
+			clientConnectionType:          nil,
+			certDir:                       "/tmp/cert",
+			enableGuardRail:               true,
+			denyModifyMemberClusterLabels: true,
 			want: &Config{
-				serviceNamespace:                    "test-namespace",
-				serviceName:                         "test-webhook",
-				servicePort:                         8080,
-				clientConnectionType:                nil,
-				enableGuardRail:                     true,
-				enableDenyModifyMemberClusterLabels: true,
+				serviceNamespace:              "test-namespace",
+				serviceName:                   "test-webhook",
+				servicePort:                   8080,
+				clientConnectionType:          nil,
+				enableGuardRail:               true,
+				denyModifyMemberClusterLabels: true,
 			},
 			wantErr: false,
 		},
@@ -95,7 +95,7 @@ func TestNewWebhookConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Setenv("POD_NAMESPACE", "test-namespace")
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewWebhookConfig(tt.mgr, tt.webhookServiceName, tt.port, tt.clientConnectionType, tt.certDir, tt.enableGuardRail, tt.enableDenyModifyMemberClusterLabels)
+			got, err := NewWebhookConfig(tt.mgr, tt.webhookServiceName, tt.port, tt.clientConnectionType, tt.certDir, tt.enableGuardRail, tt.denyModifyMemberClusterLabels)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewWebhookConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -111,7 +111,7 @@ func TestNewWebhookConfig(t *testing.T) {
 				got.servicePort != tt.want.servicePort ||
 				got.clientConnectionType != tt.want.clientConnectionType ||
 				got.enableGuardRail != tt.want.enableGuardRail ||
-				got.enableDenyModifyMemberClusterLabels != tt.want.enableDenyModifyMemberClusterLabels {
+				got.denyModifyMemberClusterLabels != tt.want.denyModifyMemberClusterLabels {
 				t.Errorf("NewWebhookConfig() = %+v, want %+v", got, tt.want)
 			}
 		})

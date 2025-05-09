@@ -166,7 +166,7 @@ func main() {
 
 	if opts.EnableWebhook {
 		whiteListedUsers := strings.Split(opts.WhiteListedUsers, ",")
-		if err := SetupWebhook(mgr, options.WebhookClientConnectionType(opts.WebhookClientConnectionType), opts.WebhookServiceName, whiteListedUsers, opts.EnableGuardRail, opts.EnableV1Beta1APIs, opts.EnableDenyModifyMemberClusterLabels); err != nil {
+		if err := SetupWebhook(mgr, options.WebhookClientConnectionType(opts.WebhookClientConnectionType), opts.WebhookServiceName, whiteListedUsers, opts.EnableGuardRail, opts.EnableV1Beta1APIs, opts.DenyModifyMemberClusterLabels); err != nil {
 			klog.ErrorS(err, "unable to set up webhook")
 			exitWithErrorFunc()
 		}

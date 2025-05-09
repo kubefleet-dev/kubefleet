@@ -666,8 +666,8 @@ func TestHandleMemberCluster(t *testing.T) {
 				},
 			},
 			resourceValidator: fleetResourceValidator{
-				decoder:                             decoder,
-				enableDenyModifyMemberClusterLabels: true,
+				decoder:                       decoder,
+				denyModifyMemberClusterLabels: true,
 			},
 			wantResponse: admission.Allowed(fmt.Sprintf(validation.ResourceAllowedFormat, "aksService", utils.GenerateGroupString([]string{"system:masters"}), admissionv1.Update, &utils.MCMetaGVK, "", types.NamespacedName{Name: "test-mc"})),
 		},
@@ -714,8 +714,8 @@ func TestHandleMemberCluster(t *testing.T) {
 				},
 			},
 			resourceValidator: fleetResourceValidator{
-				decoder:                             decoder,
-				enableDenyModifyMemberClusterLabels: true,
+				decoder:                       decoder,
+				denyModifyMemberClusterLabels: true,
 			},
 			wantResponse: admission.Denied(fmt.Sprintf(validation.DeniedModifyMemberClusterLabels)),
 		},
@@ -762,8 +762,8 @@ func TestHandleMemberCluster(t *testing.T) {
 				},
 			},
 			resourceValidator: fleetResourceValidator{
-				decoder:                             decoder,
-				enableDenyModifyMemberClusterLabels: true,
+				decoder:                       decoder,
+				denyModifyMemberClusterLabels: true,
 			},
 			wantResponse: admission.Denied(fmt.Sprintf(validation.DeniedModifyMemberClusterLabels)),
 		},
@@ -810,8 +810,8 @@ func TestHandleMemberCluster(t *testing.T) {
 				},
 			},
 			resourceValidator: fleetResourceValidator{
-				decoder:                             decoder,
-				enableDenyModifyMemberClusterLabels: false,
+				decoder:                       decoder,
+				denyModifyMemberClusterLabels: false,
 			},
 			wantResponse: admission.Allowed(fmt.Sprintf(validation.ResourceAllowedFormat,
 				"nonRPUser", utils.GenerateGroupString([]string{"system:authenticated"}), admissionv1.Update, &utils.MCMetaGVK, "",
