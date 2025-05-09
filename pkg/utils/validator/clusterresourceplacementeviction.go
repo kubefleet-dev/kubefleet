@@ -22,37 +22,11 @@ import (
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-// ValidateClusterResourcePlacementEviction validates cluster resource placement eviction fields and returns error.
-func ValidateClusterResourcePlacementEviction(crpe fleetv1beta1.ClusterResourcePlacementEviction) error {
-	allErr := make([]error, 0)
-
-	// Check Cluster Resource Placement Name
-	if crpe.Spec.PlacementName == "" {
-		allErr = append(allErr, fmt.Errorf("cluster resource placement name is required"))
-	}
-
-	// Check Cluster Resource Placement name length
-	if len(crpe.Spec.PlacementName) > 255 {
-		allErr = append(allErr, fmt.Errorf("cluster resource placement name %s is too long", crpe.Spec.PlacementName))
-	}
-
-	// Check Cluster Name
-	if crpe.Spec.ClusterName == "" {
-		allErr = append(allErr, fmt.Errorf("cluster name is required"))
-	}
-
-	// Check Cluster Name length
-	if len(crpe.Spec.ClusterName) > 255 {
-		allErr = append(allErr, fmt.Errorf("cluster name %s is too long", crpe.Spec.ClusterName))
-	}
-
-	return errors.NewAggregate(allErr)
-}
-
 // ValidateClusterResourcePlacementForEviction validates cluster resource placement fields for eviction and returns error.
-func ValidateClusterResourcePlacementForEviction(crp fleetv1beta1.ClusterResourcePlacement) error {
+func ValidateClusterResourcePlacementForEviction(crp fleetv1beta1.ClusterResourcePlacement, db fleetv1beta1.ClusterResourcePlacementDisruptionBudget) error {
 	allErr := make([]error, 0)
 
 	// Check Cluster Resource Placement is not deleting
@@ -64,23 +38,28 @@ func ValidateClusterResourcePlacementForEviction(crp fleetv1beta1.ClusterResourc
 		if crp.Spec.Policy.PlacementType == fleetv1beta1.PickFixedPlacementType {
 			allErr = append(allErr, fmt.Errorf("cluster resource placement policy type %s is not supported", crp.Spec.Policy.PlacementType))
 		}
+
+		// handle special case for PickAll CRP.
+		if crp.Spec.Policy.PlacementType == fleetv1beta1.PickAllPlacementType {
+			if err := validateClusterResourcePlacementDisruptionBudgetForPickAll(db); err != nil {
+				allErr = append(allErr, fmt.Errorf("cluster resource placement policy type %s is not supported with disruption budget", crp.Spec.Policy.PlacementType))
+			}
+		}
 	}
 
 	return errors.NewAggregate(allErr)
 }
 
-func ValidateClusterResourceBindingForEviction(crbList fleetv1beta1.ClusterResourceBindingList, crpe fleetv1beta1.ClusterResourcePlacementEviction) error {
+func validateClusterResourcePlacementDisruptionBudgetForPickAll(db fleetv1beta1.ClusterResourcePlacementDisruptionBudget) error {
 	allErr := make([]error, 0)
 
-	var evictionTargetBinding *fleetv1beta1.ClusterResourceBinding
-	for i := range crbList.Items {
-		if crbList.Items[i].Spec.TargetCluster == crpe.Spec.ClusterName {
-			if evictionTargetBinding == nil {
-				evictionTargetBinding = &crbList.Items[i]
-			} else {
-				allErr = append(allErr, fmt.Errorf("multiple ClusterResourceBindings found for the same target cluster %s", crpe.Spec.ClusterName))
-			}
-		}
+	if db.Spec.MaxUnavailable != nil {
+		allErr = append(allErr, fmt.Errorf("cluster resource placement policy type PickAll is not supported with any specified max unavailable %v", db.Spec.MaxUnavailable))
 	}
+
+	if db.Spec.MinAvailable != nil && db.Spec.MinAvailable.Type == intstr.String {
+		allErr = append(allErr, fmt.Errorf("cluster resource placement policy type PickAll is not supported with min available as a percentage %v", db.Spec.MinAvailable.StrVal))
+	}
+
 	return errors.NewAggregate(allErr)
 }

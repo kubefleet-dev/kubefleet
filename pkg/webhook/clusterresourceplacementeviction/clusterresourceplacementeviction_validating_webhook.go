@@ -41,8 +41,10 @@ var (
 )
 
 type clusterResourcePlacementEvictionValidator struct {
-	client  client.Client
-	decoder webhook.AdmissionDecoder
+	client client.Client
+	// UncachedReader is only used to read disruption budget objects directly from the API server to ensure we can enforce the disruption budget for eviction.
+	UncachedReader client.Reader
+	decoder        webhook.AdmissionDecoder
 }
 
 // Add registers the webhook for K8s bulit-in object types.
@@ -61,35 +63,28 @@ func (v *clusterResourcePlacementEvictionValidator) Handle(ctx context.Context, 
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	if err := validator.ValidateClusterResourcePlacementEviction(crpe); err != nil {
-		klog.V(2).ErrorS(err, "ClusterResourcePlacementEviction has invalid fields, request is denied", "operation", req.Operation)
-		return admission.Denied(err.Error())
-	}
-
 	// Get the ClusterResourcePlacement object
 	var crp fleetv1beta1.ClusterResourcePlacement
 	if err := v.client.Get(ctx, types.NamespacedName{Name: crpe.Spec.PlacementName}, &crp); err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.V(2).InfoS(condition.EvictionInvalidMissingCRPMessage, "clusterResourcePlacementEviction", crpe.Name, "clusterResourcePlacement", crpe.Spec.PlacementName)
-			admission.Denied(err.Error())
+			return admission.Denied(err.Error())
 		}
 		return admission.Errored(http.StatusBadRequest, fmt.Errorf("failed to get clusterResourcePlacement %s: %w", crpe.Spec.PlacementName, err))
 	}
 
-	if err := validator.ValidateClusterResourcePlacementForEviction(crp); err != nil {
+	// Check ClusterResourcePlacementDisruptionBudget object
+	var db fleetv1beta1.ClusterResourcePlacementDisruptionBudget
+	if err := v.UncachedReader.Get(ctx, types.NamespacedName{Name: crp.Name}, &db); err != nil {
+		if k8serrors.IsNotFound(err) {
+			klog.V(2).InfoS(condition.EvictionAllowedNoPDBMessage, "clusterResourcePlacementEviction", crpe.Name, "clusterResourcePlacementDisruptionBudget", crp.Name)
+			return admission.Allowed("clusterResourcePlacementDisruptionBudget not found, eviction is allowed")
+		}
+		return admission.Errored(http.StatusBadRequest, fmt.Errorf("failed to get clusterResourcePlacementDisruptionBudget %s: %w", crp.Name, err))
+	}
+
+	if err := validator.ValidateClusterResourcePlacementForEviction(crp, db); err != nil {
 		klog.V(2).ErrorS(err, "ClusterResourcePlacement has invalid fields, request is denied", "operation", req.Operation)
-		return admission.Denied(err.Error())
-	}
-
-	// Check ClusterResourceBinding object
-	var crbList fleetv1beta1.ClusterResourceBindingList
-	if err := v.client.List(ctx, &crbList, client.MatchingLabels{fleetv1beta1.CRPTrackingLabel: crp.Name}); err != nil {
-		klog.ErrorS(err, "Failed to list clusterResourceBindings when validating")
-		return admission.Errored(http.StatusBadRequest, fmt.Errorf("failed to list clusterResourceBindings, please retry the request: %w", err))
-	}
-
-	if err := validator.ValidateClusterResourceBindingForEviction(crbList, crpe); err != nil {
-		klog.V(2).InfoS(condition.EvictionInvalidMultipleCRBMessage, "clusterResourcePlacementEviction", crpe.Name, "clusterResourcePlacement", crp.Name)
 		return admission.Denied(err.Error())
 	}
 
