@@ -18,7 +18,6 @@ package workapplier
 
 import (
 	"fmt"
-	"strings"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -41,11 +40,11 @@ import (
 
 // Some of the label values for the work/manifest processing request counter metric.
 const (
-	workOrManifestStatusSkipped = "skipped"
-	workOrManifestStatusUnknown = "unknown"
+	workOrManifestStatusSkipped = "Skipped"
+	workOrManifestStatusUnknown = "Unknown"
 
-	manifestDriftOrDiffDetectionStatusFound    = "found"
-	manifestDriftOrDiffDetectionStatusNotFound = "not_found"
+	manifestDriftOrDiffDetectionStatusFound    = "Found"
+	manifestDriftOrDiffDetectionStatusNotFound = "NotFound"
 )
 
 func trackWorkAndManifestProcessingRequestMetrics(work *fleetv1beta1.Work) {
@@ -71,7 +70,7 @@ func trackWorkAndManifestProcessingRequestMetrics(work *fleetv1beta1.Work) {
 		_ = controller.NewUnexpectedBehaviorError(fmt.Errorf("failed to track work metrics: applied condition has no reason (work=%v)", klog.KObj(work)))
 		shouldSkip = true
 	default:
-		workApplyStatus = strings.ToLower(workAppliedCond.Reason)
+		workApplyStatus = workAppliedCond.Reason
 	}
 
 	var workAvailabilityStatus string
@@ -92,7 +91,7 @@ func trackWorkAndManifestProcessingRequestMetrics(work *fleetv1beta1.Work) {
 		// Normally this should never occur; this branch is added just for completeness reasons.
 		_ = controller.NewUnexpectedBehaviorError(fmt.Errorf("failed to track work metrics: available condition has no reason (work=%v)", klog.KObj(work)))
 	default:
-		workAvailabilityStatus = strings.ToLower(workAvailableCond.Reason)
+		workAvailabilityStatus = workAvailableCond.Reason
 	}
 
 	var workDiffReportedStatus string
@@ -113,7 +112,7 @@ func trackWorkAndManifestProcessingRequestMetrics(work *fleetv1beta1.Work) {
 		// Normally this should never occur; this branch is added just for completeness reasons.
 		_ = controller.NewUnexpectedBehaviorError(fmt.Errorf("failed to track work metrics: diff reported condition has no reason (work=%v)", klog.KObj(work)))
 	default:
-		workDiffReportedStatus = strings.ToLower(workDiffReportedCond.Reason)
+		workDiffReportedStatus = workDiffReportedCond.Reason
 	}
 
 	// Do a sanity check; if any of the work conditions is stale; do not emit any metric data point.
@@ -152,7 +151,7 @@ func trackWorkAndManifestProcessingRequestMetrics(work *fleetv1beta1.Work) {
 			_ = controller.NewUnexpectedBehaviorError(fmt.Errorf("failed to track manifest metrics: applied condition has no reason (manifest=%v, work=%v)", manifestCond.Identifier, klog.KObj(work)))
 			continue
 		default:
-			manifestApplyStatus = strings.ToLower(manifestAppliedCond.Reason)
+			manifestApplyStatus = manifestAppliedCond.Reason
 		}
 
 		var manifestAvailabilityStatus string
@@ -169,7 +168,7 @@ func trackWorkAndManifestProcessingRequestMetrics(work *fleetv1beta1.Work) {
 			_ = controller.NewUnexpectedBehaviorError(fmt.Errorf("failed to track manifest metrics: available condition has no reason (manifest=%v, work=%v)", manifestCond.Identifier, klog.KObj(work)))
 			continue
 		default:
-			manifestAvailabilityStatus = strings.ToLower(manifestAvailableCond.Reason)
+			manifestAvailabilityStatus = manifestAvailableCond.Reason
 		}
 
 		var manifestDiffReportedStatus string
@@ -186,7 +185,7 @@ func trackWorkAndManifestProcessingRequestMetrics(work *fleetv1beta1.Work) {
 			_ = controller.NewUnexpectedBehaviorError(fmt.Errorf("failed to track manifest metrics: diff reported condition has no reason (manifest=%v, work=%v)", manifestCond.Identifier, klog.KObj(work)))
 			continue
 		default:
-			manifestDiffReportedStatus = strings.ToLower(manifestDiffReportedCond.Reason)
+			manifestDiffReportedStatus = manifestDiffReportedCond.Reason
 		}
 
 		manifestDriftDetectionStatus := manifestDriftOrDiffDetectionStatusNotFound
