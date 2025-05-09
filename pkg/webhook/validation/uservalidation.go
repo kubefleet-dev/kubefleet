@@ -94,7 +94,7 @@ func ValidateV1Alpha1MemberClusterUpdate(currentMC, oldMC fleetv1alpha1.MemberCl
 }
 
 // ValidateFleetMemberClusterUpdate checks to see if user had updated the fleet member cluster resource and allows/denies the request.
-func ValidateFleetMemberClusterUpdate(currentMC, oldMC clusterv1beta1.MemberCluster, req admission.Request, whiteListedUsers []string, enableDenyModificationMemberClusterLabels bool) admission.Response {
+func ValidateFleetMemberClusterUpdate(currentMC, oldMC clusterv1beta1.MemberCluster, req admission.Request, whiteListedUsers []string, denyModifyMemberClusterLabels bool) admission.Response {
 	namespacedName := types.NamespacedName{Name: currentMC.GetName()}
 	userInfo := req.UserInfo
 	if areAllFleetAnnotationsRemoved(currentMC.Annotations, oldMC.Annotations) {
@@ -111,7 +111,7 @@ func ValidateFleetMemberClusterUpdate(currentMC, oldMC clusterv1beta1.MemberClus
 
 	// users are no longer allowed to modify labels of fleet member cluster through webhook.
 	// this will be disabled until member labels are accessible through CLI
-	if enableDenyModificationMemberClusterLabels {
+	if denyModifyMemberClusterLabels {
 		isLabelUpdated := isMapFieldUpdated(currentMC.GetLabels(), oldMC.GetLabels())
 		if isLabelUpdated && !isUserInGroup(userInfo, mastersGroup) {
 			klog.V(2).InfoS(DeniedModifyMemberClusterLabels, "user", userInfo.Username, "groups", userInfo.Groups, "operation", req.Operation, "GVK", req.RequestKind, "subResource", req.SubResource, "namespacedName", namespacedName)
