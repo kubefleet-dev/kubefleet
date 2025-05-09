@@ -37,7 +37,6 @@ spec:
             - --enable-pprof={{ .Values.enablePprof }}
             - --pprof-port={{ .Values.pprofPort | default 6065 }}
             {{- end }}
-            {{- if .Values.propertyProvider }}
             - --max-concurrent-cluster-placement={{ .Values.MaxConcurrentClusterPlacement }}
             - --concurrent-resource-change-syncs={{ .Values.ConcurrentResourceChangeSyncs }}
             - --log_file_max_size={{ .Values.logFileMaxSize }}
