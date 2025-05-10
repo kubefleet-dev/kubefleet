@@ -78,6 +78,10 @@ const (
 	// The format is {workPrefix}-configMap-uuid.
 	WorkNameWithConfigEnvelopeFmt = "%s-configmap-%s"
 
+	// WorkNameWithEnvelopeCRFmt is the format of the name of a work generated with an envelope CR.
+	// The format is [WORK-PREFIX]-envelope-[UUID].
+	WorkNameWithEnvelopeCRFmt = "%s-envelope-%s"
+
 	// ParentClusterResourceOverrideSnapshotHashAnnotation is the annotation to work that contains the hash of the parent cluster resource override snapshot list.
 	ParentClusterResourceOverrideSnapshotHashAnnotation = fleetPrefix + "parent-cluster-resource-override-snapshot-hash"
 

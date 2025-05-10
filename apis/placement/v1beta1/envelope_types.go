@@ -19,6 +19,7 @@ package v1beta1
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/klog/v2"
 )
 
 // +genclient
@@ -63,4 +64,60 @@ type ResourceEnvelope struct {
 	// +kubebuilder:validation:MinProperties=1
 	// +kubebuilder:validation:MaxProperties=50
 	Data map[string]runtime.RawExtension `json:"data"`
+}
+
+// +kubebuilder:object:generate=false
+// EnvelopeReader is an interface that allows retrieval of common information across all envelope CRs.
+//
+// Note (chenyu1): controller-gen should skip this type.
+type EnvelopeReader interface {
+	// GetData returns the raw data in the envelope.
+	GetData() map[string]runtime.RawExtension
+
+	// GetEnvelopeObjRef returns a klog object reference to the envelope.
+	GetEnvelopeObjRef() klog.ObjectRef
+
+	// GetNamespace returns the namespace of the envelope.
+	GetNamespace() string
+
+	// GetName returns the name of the envelope.
+	GetName() string
+
+	// GetEnvelopeType returns the type of the envelope.
+	GetEnvelopeType() string
+}
+
+// Ensure that both ClusterResourceEnvelope and ResourceEnvelope implement the
+// EnvelopeReader interface at compile time.
+var (
+	_ EnvelopeReader = &ClusterResourceEnvelope{}
+	_ EnvelopeReader = &ResourceEnvelope{}
+)
+
+// Implements the EnvelopeReader interface for ClusterResourceEnvelope.
+
+func (e *ClusterResourceEnvelope) GetData() map[string]runtime.RawExtension {
+	return e.Data
+}
+
+func (e *ClusterResourceEnvelope) GetEnvelopeObjRef() klog.ObjectRef {
+	return klog.KObj(e)
+}
+
+func (e *ClusterResourceEnvelope) GetEnvelopeType() string {
+	return string(ClusterResourceEnvelopeType)
+}
+
+// Implements the EnvelopeReader interface for ResourceEnvelope.
+
+func (e *ResourceEnvelope) GetData() map[string]runtime.RawExtension {
+	return e.Data
+}
+
+func (e *ResourceEnvelope) GetEnvelopeObjRef() klog.ObjectRef {
+	return klog.KObj(e)
+}
+
+func (e *ResourceEnvelope) GetEnvelopeType() string {
+	return string(ResourceEnvelopeType)
 }

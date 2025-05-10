@@ -106,7 +106,7 @@ var _ = Describe("Test member cluster join and leave flow", Ordered, Serial, fun
 		It("should place the resources on all member clusters", func() {
 			for idx := range allMemberClusters {
 				memberCluster := allMemberClusters[idx]
-				workResourcesPlacedActual := checkEnvelopQuotaPlacement(memberCluster)
+				workResourcesPlacedActual := checkAllResourcesPlacement(memberCluster)
 				Eventually(workResourcesPlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster.ClusterName)
 			}
 		})

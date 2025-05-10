@@ -59,13 +59,13 @@ var (
 	cancel    context.CancelFunc
 
 	// pre loaded test manifests
-	testResourceCRD, testNameSpace, testResource, testConfigMap, testEnvelopConfigMap, testEnvelopConfigMap2, testPdb []byte
+	testResourceCRD, testNameSpace, testResource, testConfigMap, testResourceEnvelop, testResourceEnvelop2, testClusterScopedEnvelop, testPdb []byte
 
 	// want overridden manifest which is overridden by cro-1 and ro-1
 	wantOverriddenTestResource []byte
 
 	// the content of the enveloped resources
-	testEnvelopeResourceQuota, testEnvelopeResourceQuota2 []byte
+	testResourceQuotaContent, testResourceQuota2Content, testWebhookContent, testClusterRoleContent []byte
 )
 
 func TestAPIs(t *testing.T) {
@@ -347,16 +347,22 @@ func readTestManifests() {
 	testConfigMap, err = yaml.ToJSON(rawByte)
 	Expect(err).Should(Succeed())
 
-	By("Read testEnvelopConfigMap resource")
-	rawByte, err = os.ReadFile("manifests/test-envelop-configmap.yaml")
+	By("Read testResourceEnvelop resource")
+	rawByte, err = os.ReadFile("manifests/test-resource-envelop.yaml")
 	Expect(err).Should(Succeed())
-	testEnvelopConfigMap, err = yaml.ToJSON(rawByte)
+	testResourceEnvelop, err = yaml.ToJSON(rawByte)
 	Expect(err).Should(Succeed())
 
-	By("Read testEnvelopConfigMap2 resource")
-	rawByte, err = os.ReadFile("manifests/test-envelop-configmap2.yaml")
+	By("Read testResourceEnvelop2 resource")
+	rawByte, err = os.ReadFile("manifests/test-resource-envelop2.yaml")
 	Expect(err).Should(Succeed())
-	testEnvelopConfigMap2, err = yaml.ToJSON(rawByte)
+	testResourceEnvelop2, err = yaml.ToJSON(rawByte)
+	Expect(err).Should(Succeed())
+
+	By("Read testClusterScopedEnvelop resource")
+	rawByte, err = os.ReadFile("manifests/test-clusterscoped-envelop.yaml")
+	Expect(err).Should(Succeed())
+	testClusterScopedEnvelop, err = yaml.ToJSON(rawByte)
 	Expect(err).Should(Succeed())
 
 	By("Read PodDisruptionBudget")
@@ -368,12 +374,24 @@ func readTestManifests() {
 	By("Read ResourceQuota")
 	rawByte, err = os.ReadFile("manifests/resourcequota.yaml")
 	Expect(err).Should(Succeed())
-	testEnvelopeResourceQuota, err = yaml.ToJSON(rawByte)
+	testResourceQuotaContent, err = yaml.ToJSON(rawByte)
 	Expect(err).Should(Succeed())
 
 	By("Read ResourceQuota2")
 	rawByte, err = os.ReadFile("manifests/resourcequota2.yaml")
 	Expect(err).Should(Succeed())
-	testEnvelopeResourceQuota2, err = yaml.ToJSON(rawByte)
+	testResourceQuota2Content, err = yaml.ToJSON(rawByte)
+	Expect(err).Should(Succeed())
+
+	By("Read testWebhookContent")
+	rawByte, err = os.ReadFile("manifests/webhook.yaml")
+	Expect(err).Should(Succeed())
+	testWebhookContent, err = yaml.ToJSON(rawByte)
+	Expect(err).Should(Succeed())
+
+	By("Read testClusterRoleContent")
+	rawByte, err = os.ReadFile("manifests/clusterrole.yaml")
+	Expect(err).Should(Succeed())
+	testClusterRoleContent, err = yaml.ToJSON(rawByte)
 	Expect(err).Should(Succeed())
 }

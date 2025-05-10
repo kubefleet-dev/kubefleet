@@ -17,6 +17,7 @@ limitations under the License.
 package clusterresourceplacement
 
 import (
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -994,6 +995,76 @@ func TestSortResource(t *testing.T) {
 				if diff != "" {
 					t.Errorf("sortResources() mismatch (-want +got):\n%s", diff)
 				}
+			}
+		})
+	}
+}
+
+func TestSelectResourcesForPlacement(t *testing.T) {
+	// fakeReconciler overrides gatherSelectedResource
+	type fakeReconciler struct {
+		*Reconciler
+		selected []*unstructured.Unstructured
+		err      error
+	}
+
+	placement := &fleetv1beta1.ClusterResourcePlacement{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-placement"},
+	}
+
+	tests := []struct {
+		name      string
+		selected  []*unstructured.Unstructured
+		err       error
+		wantCount int
+		wantIDs   []fleetv1beta1.ResourceIdentifier
+		wantErr   bool
+	}{
+		{
+			name:     "propagate error from gatherSelectedResource",
+			selected: nil,
+			err:      fmt.Errorf("fetch failed"),
+			wantErr:  true,
+		},
+		{
+			name: "single resource, no envelopes",
+			selected: []*unstructured.Unstructured{
+				{
+					Object: map[string]interface{}{
+						"apiVersion": "testgroup/v1",
+						"kind":       "Foo",
+						"metadata": map[string]interface{}{
+							"name":      "foo",
+							"namespace": "ns",
+						},
+					},
+				},
+			},
+			wantCount: 0,
+			wantIDs: []fleetv1beta1.ResourceIdentifier{
+				{Group: "testgroup", Version: "v1", Kind: "Foo", Name: "foo", Namespace: "ns"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fr := &fakeReconciler{Reconciler: &Reconciler{}, selected: tt.selected, err: tt.err}
+			count, contents, ids, err := fr.selectResourcesForPlacement(placement)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantErr {
+				return
+			}
+			if count != tt.wantCount {
+				t.Errorf("envelope count = %d, want %d", count, tt.wantCount)
+			}
+			if got, want := len(contents), len(tt.selected); got != want {
+				t.Fatalf("resource contents length = %d, want %d", got, want)
+			}
+			if diff := cmp.Diff(tt.wantIDs, ids); diff != "" {
+				t.Errorf("resource identifiers mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

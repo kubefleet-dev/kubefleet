@@ -32,6 +32,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
@@ -57,12 +58,10 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		workNamespace := appNamespace()
 		var wantSelectedResources []placementv1beta1.ResourceIdentifier
-		var testEnvelopeDeployment corev1.ConfigMap
-		var testDeployment appv1.Deployment
 
 		BeforeAll(func() {
 			readDeploymentTestManifest(&testDeployment)
-			readEnvelopeConfigMapTestManifest(&testEnvelopeDeployment)
+			readEnvelopeResourceTestManifest(&testResourceEnvelope)
 			wantSelectedResources = []placementv1beta1.ResourceIdentifier{
 				{
 					Kind:    utils.NamespaceKind,
@@ -71,7 +70,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 				},
 				{
 					Kind:      utils.ConfigMapKind,
-					Name:      testEnvelopeDeployment.Name,
+					Name:      testResourceEnvelope.Name,
 					Version:   corev1.SchemeGroupVersion.Version,
 					Namespace: workNamespace.Name,
 				},
@@ -79,7 +78,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 		})
 
 		It("Create the wrapped deployment resources in the namespace", func() {
-			createWrappedResourcesForRollout(&testEnvelopeDeployment, &testDeployment, utils.DeploymentKind, workNamespace)
+			createWrappedResourcesForRollout(&testResourceEnvelope, &testDeployment, utils.DeploymentKind, workNamespace)
 		})
 
 		It("Create the CRP that select the namespace", func() {
@@ -251,13 +250,12 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		workNamespace := appNamespace()
 		var wantSelectedResources []placementv1beta1.ResourceIdentifier
-		var testEnvelopeDaemonSet corev1.ConfigMap
 		var testDaemonSet appv1.DaemonSet
 
 		BeforeAll(func() {
 			// Create the test resources.
 			readDaemonSetTestManifest(&testDaemonSet)
-			readEnvelopeConfigMapTestManifest(&testEnvelopeDaemonSet)
+			readEnvelopeResourceTestManifest(&testResourceEnvelope)
 			wantSelectedResources = []placementv1beta1.ResourceIdentifier{
 				{
 					Kind:    utils.NamespaceKind,
@@ -266,7 +264,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 				},
 				{
 					Kind:      utils.ConfigMapKind,
-					Name:      testEnvelopeDaemonSet.Name,
+					Name:      testResourceEnvelope.Name,
 					Version:   corev1.SchemeGroupVersion.Version,
 					Namespace: workNamespace.Name,
 				},
@@ -274,7 +272,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 		})
 
 		It("create the daemonset resource in the namespace", func() {
-			createWrappedResourcesForRollout(&testEnvelopeDaemonSet, &testDaemonSet, utils.DaemonSetKind, workNamespace)
+			createWrappedResourcesForRollout(&testResourceEnvelope, &testDaemonSet, utils.DaemonSetKind, workNamespace)
 		})
 
 		It("create the CRP that select the namespace", func() {
@@ -302,8 +300,8 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 				if err != nil {
 					return nil
 				}
-				testEnvelopeDaemonSet.Data["daemonset.yaml"] = string(daemonSetByte)
-				return hubClient.Update(ctx, &testEnvelopeDaemonSet)
+				testResourceEnvelope.Data["daemonset.yaml"] = runtime.RawExtension{Raw: daemonSetByte}
+				return hubClient.Update(ctx, &testResourceEnvelope)
 			}, eventuallyInterval, eventuallyInterval).Should(Succeed(), "Failed to change the image name of daemonset in envelope object")
 		})
 
@@ -315,9 +313,9 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 				Name:      testDaemonSet.Name,
 				Namespace: testDaemonSet.Namespace,
 				Envelope: &placementv1beta1.EnvelopeIdentifier{
-					Name:      testEnvelopeDaemonSet.Name,
-					Namespace: testEnvelopeDaemonSet.Namespace,
-					Type:      placementv1beta1.ConfigMapEnvelopeType,
+					Name:      testResourceEnvelope.Name,
+					Namespace: testResourceEnvelope.Namespace,
+					Type:      placementv1beta1.ResourceEnvelopeType,
 				},
 			}
 			crpStatusActual := safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResources, failedDaemonSetResourceIdentifier, allMemberClusterNames, "1", 2)
@@ -334,13 +332,12 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		workNamespace := appNamespace()
 		var wantSelectedResources []placementv1beta1.ResourceIdentifier
-		var testEnvelopeStatefulSet corev1.ConfigMap
 		var testStatefulSet appv1.StatefulSet
 
 		BeforeAll(func() {
 			// Create the test resources.
 			readStatefulSetTestManifest(&testStatefulSet, false)
-			readEnvelopeConfigMapTestManifest(&testEnvelopeStatefulSet)
+			readEnvelopeResourceTestManifest(&testResourceEnvelope)
 			wantSelectedResources = []placementv1beta1.ResourceIdentifier{
 				{
 					Kind:    utils.NamespaceKind,
@@ -349,7 +346,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 				},
 				{
 					Kind:      utils.ConfigMapKind,
-					Name:      testEnvelopeStatefulSet.Name,
+					Name:      testResourceEnvelope.Name,
 					Version:   corev1.SchemeGroupVersion.Version,
 					Namespace: workNamespace.Name,
 				},
@@ -357,7 +354,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 		})
 
 		It("create the statefulset resource in the namespace", func() {
-			createWrappedResourcesForRollout(&testEnvelopeStatefulSet, &testStatefulSet, utils.StatefulSetKind, workNamespace)
+			createWrappedResourcesForRollout(&testResourceEnvelope, &testStatefulSet, utils.StatefulSetKind, workNamespace)
 		})
 
 		It("create the CRP that select the namespace", func() {
@@ -385,8 +382,8 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 				if err != nil {
 					return nil
 				}
-				testEnvelopeStatefulSet.Data["statefulset.yaml"] = string(daemonSetByte)
-				return hubClient.Update(ctx, &testEnvelopeStatefulSet)
+				testResourceEnvelope.Data["statefulset.yaml"] = runtime.RawExtension{Raw: daemonSetByte}
+				return hubClient.Update(ctx, &testResourceEnvelope)
 			}, eventuallyInterval, eventuallyInterval).Should(Succeed(), "Failed to change the image name in statefulset")
 		})
 
@@ -398,9 +395,9 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 				Name:      testStatefulSet.Name,
 				Namespace: testStatefulSet.Namespace,
 				Envelope: &placementv1beta1.EnvelopeIdentifier{
-					Name:      testEnvelopeStatefulSet.Name,
-					Namespace: testEnvelopeStatefulSet.Namespace,
-					Type:      placementv1beta1.ConfigMapEnvelopeType,
+					Name:      testResourceEnvelope.Name,
+					Namespace: testResourceEnvelope.Namespace,
+					Type:      placementv1beta1.ResourceEnvelopeType,
 				},
 			}
 			crpStatusActual := safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResources, failedStatefulSetResourceIdentifier, allMemberClusterNames, "1", 2)
@@ -1000,9 +997,9 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 })
 
 // createWrappedResourcesForRollout creates an enveloped resource on the hub cluster with a workload object for testing purposes.
-func createWrappedResourcesForRollout(testEnvelopeObj *corev1.ConfigMap, obj metav1.Object, kind string, namespace corev1.Namespace) {
+func createWrappedResourcesForRollout(testEnvelopeObj *placementv1beta1.ResourceEnvelope, obj metav1.Object, kind string, namespace corev1.Namespace) {
 	Expect(hubClient.Create(ctx, &namespace)).To(Succeed(), "Failed to create namespace %s", namespace.Name)
-	testEnvelopeObj.Data = make(map[string]string)
+	testEnvelopeObj.Data = make(map[string]runtime.RawExtension)
 	constructWrappedResources(testEnvelopeObj, obj, kind, namespace)
 	Expect(hubClient.Create(ctx, testEnvelopeObj)).To(Succeed(), "Failed to create testEnvelop object %s containing %s", testEnvelopeObj.Name, kind)
 }

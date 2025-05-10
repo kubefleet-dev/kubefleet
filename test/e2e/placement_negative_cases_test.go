@@ -13,6 +13,7 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 
@@ -45,15 +46,12 @@ var _ = Describe("handling errors and failures gracefully", func() {
 			Expect(hubClient.Create(ctx, &ns)).To(Succeed(), "Failed to create namespace %s", ns.Name)
 
 			// Create an envelope config map.
-			wrapperCM := &corev1.ConfigMap{
+			wrapperCM := &placementv1beta1.ResourceEnvelope{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      wrapperCMName,
 					Namespace: ns.Name,
-					Annotations: map[string]string{
-						placementv1beta1.EnvelopeConfigMapAnnotation: "true",
-					},
 				},
-				Data: map[string]string{},
+				Data: map[string]runtime.RawExtension{},
 			}
 
 			// Create configMaps as wrapped resources.
@@ -79,14 +77,14 @@ var _ = Describe("handling errors and failures gracefully", func() {
 			}
 			wrappedCM1Bytes, err := json.Marshal(wrappedCM1)
 			Expect(err).To(BeNil(), "Failed to marshal configMap %s", wrappedCM1.Name)
-			wrapperCM.Data["cm1.yaml"] = string(wrappedCM1Bytes)
+			wrapperCM.Data["cm1.yaml"] = runtime.RawExtension{Raw: wrappedCM1Bytes}
 
 			wrappedCM2 := wrappedCM.DeepCopy()
 			wrappedCM2.Name = wrappedCMName2
 			wrappedCM2.Data[cmDataKey] = cmDataVal2
 			wrappedCM2Bytes, err := json.Marshal(wrappedCM2)
 			Expect(err).To(BeNil(), "Failed to marshal configMap %s", wrappedCM2.Name)
-			wrapperCM.Data["cm2.yaml"] = string(wrappedCM2Bytes)
+			wrapperCM.Data["cm2.yaml"] = runtime.RawExtension{Raw: wrappedCM2Bytes}
 
 			Expect(hubClient.Create(ctx, wrapperCM)).To(Succeed(), "Failed to create configMap %s", wrapperCM.Name)
 
@@ -140,7 +138,7 @@ var _ = Describe("handling errors and failures gracefully", func() {
 										Envelope: &placementv1beta1.EnvelopeIdentifier{
 											Name:      wrapperCMName,
 											Namespace: workNamespaceName,
-											Type:      placementv1beta1.ConfigMapEnvelopeType,
+											Type:      placementv1beta1.ResourceEnvelopeType,
 										},
 									},
 									Condition: metav1.Condition{

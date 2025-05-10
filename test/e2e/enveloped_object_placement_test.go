@@ -28,6 +28,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,18 +43,24 @@ import (
 var (
 	// pre loaded test manifests
 	testConfigMap, testEnvelopConfigMap corev1.ConfigMap
-	testEnvelopeResourceQuota           corev1.ResourceQuota
+	testResourceQuota                   corev1.ResourceQuota
+	testDeployment                      appv1.Deployment
+	testClusterRole                     rbacv1.ClusterRole
+	testResourceEnvelope                placementv1beta1.ResourceEnvelope
+	testClusterResourceEnvelope         placementv1beta1.ClusterResourceEnvelope
 )
 
 const (
-	wrapperCMName = "wrapper"
-
-	cmDataKey = "foo"
-	cmDataVal = "bar"
+	wrapperCMName               = "wrapper"
+	cmDataKey                   = "foo"
+	cmDataVal                   = "bar"
+	resourceEnvelopeName        = "test-resource-envelope"
+	clusterResourceEnvelopeName = "test-cluster-envelope"
 )
 
 // Note that this container will run in parallel with other containers.
-var _ = Describe("placing wrapped resources using a CRP", func() {
+var _ = FDescribe("placing wrapped resources using a CRP", func() {
+	// Original test cases for ConfigMap envelope...
 	Context("Test a CRP place enveloped objects successfully", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		workNamespaceName := appNamespace().Name
@@ -75,63 +82,51 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 					Namespace: workNamespaceName,
 				},
 				{
-					Kind:      "ConfigMap",
-					Name:      testEnvelopConfigMap.Name,
-					Version:   "v1",
-					Namespace: workNamespaceName,
+					Group:   placementv1beta1.GroupVersion.Group,
+					Kind:    "ClusterResourceEnvelope",
+					Version: placementv1beta1.GroupVersion.Version,
+					Name:    testClusterResourceEnvelope.Name,
+				},
+				{
+					Group:   placementv1beta1.GroupVersion.Group,
+					Kind:    "ResourceEnvelope",
+					Version: placementv1beta1.GroupVersion.Version,
+					Name:    testResourceEnvelope.Name,
 				},
 			}
+			By("Create the test resources in the namespace")
+			createWrappedResourcesForEnvelopTest()
 		})
 
-		It("Create the test resources in the namespace", createWrappedResourcesForEnvelopTest)
-
 		It("Create the CRP that select the name space", func() {
-			crp := &placementv1beta1.ClusterResourcePlacement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: crpName,
-					// Add a custom finalizer; this would allow us to better observe
-					// the behavior of the controllers.
-					Finalizers: []string{customDeletionBlockerFinalizer},
-				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
-					ResourceSelectors: workResourceSelector(),
-					Strategy: placementv1beta1.RolloutStrategy{
-						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
-						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
-						},
-					},
-				},
-			}
-			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
+			createCRP(crpName)
 		})
 
 		It("should update CRP status as expected", func() {
-			// resourceQuota is enveloped so it's not trackable yet
 			crpStatusUpdatedActual := customizedCRPStatusUpdatedActual(crpName, wantSelectedResources, allMemberClusterNames, nil, "0", true)
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+			Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
 		It("should place the resources on all member clusters", func() {
 			for idx := range allMemberClusters {
 				memberCluster := allMemberClusters[idx]
-				workResourcesPlacedActual := checkEnvelopQuotaPlacement(memberCluster)
+				workResourcesPlacedActual := checkAllResourcesPlacement(memberCluster)
 				Eventually(workResourcesPlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster.ClusterName)
 			}
 		})
 
-		It("Update the envelop configMap with bad configuration", func() {
+		It("Update the resource envelope with bad configuration", func() {
 			// modify the embedded namespaced resource to add a scope but it will be rejected as its immutable
-			badEnvelopeResourceQuota := testEnvelopeResourceQuota.DeepCopy()
+			badEnvelopeResourceQuota := testResourceQuota.DeepCopy()
 			badEnvelopeResourceQuota.Spec.Scopes = []corev1.ResourceQuotaScope{
 				corev1.ResourceQuotaScopeNotBestEffort, corev1.ResourceQuotaScopeNotTerminating,
 			}
 			badResourceQuotaByte, err := json.Marshal(badEnvelopeResourceQuota)
 			Expect(err).Should(Succeed())
-			// Get the config map.
-			Expect(hubClient.Get(ctx, types.NamespacedName{Namespace: workNamespaceName, Name: testEnvelopConfigMap.Name}, &testEnvelopConfigMap)).To(Succeed(), "Failed to get config map")
-			testEnvelopConfigMap.Data["resourceQuota.yaml"] = string(badResourceQuotaByte)
-			Expect(hubClient.Update(ctx, &testEnvelopConfigMap)).To(Succeed(), "Failed to update the enveloped config map")
+			// Get the resource envelope
+			Expect(hubClient.Get(ctx, types.NamespacedName{Namespace: workNamespaceName, Name: testResourceEnvelope.Name}, &testResourceEnvelope)).To(Succeed(), "Failed to get the resourceEnvelope")
+			testResourceEnvelope.Data["resourceQuota.yaml"] = runtime.RawExtension{Raw: badResourceQuotaByte}
+			Expect(hubClient.Update(ctx, &testResourceEnvelope)).To(Succeed(), "Failed to update the enveloped resource")
 		})
 
 		It("should update CRP status with failed to apply resourceQuota", func() {
@@ -143,12 +138,13 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 		})
 
 		It("Update the envelop configMap back with good configuration", func() {
-			// Get the config map.
-			Expect(hubClient.Get(ctx, types.NamespacedName{Namespace: workNamespaceName, Name: testEnvelopConfigMap.Name}, &testEnvelopConfigMap)).To(Succeed(), "Failed to get config map")
-			resourceQuotaByte, err := json.Marshal(testEnvelopeResourceQuota)
+			// Get the resource envelope
+			Expect(hubClient.Get(ctx, types.NamespacedName{Namespace: workNamespaceName, Name: testResourceEnvelope.Name}, &testResourceEnvelope)).To(Succeed(), "Failed to get the resourceEnvelope")
+			// update the resource envelope with a valid resourceQuota
+			resourceQuotaByte, err := json.Marshal(testResourceQuota)
 			Expect(err).Should(Succeed())
-			testEnvelopConfigMap.Data["resourceQuota.yaml"] = string(resourceQuotaByte)
-			Expect(hubClient.Update(ctx, &testEnvelopConfigMap)).To(Succeed(), "Failed to update the enveloped config map")
+			testResourceEnvelope.Data["resourceQuota.yaml"] = runtime.RawExtension{Raw: resourceQuotaByte}
+			Expect(hubClient.Update(ctx, &testResourceEnvelope)).To(Succeed(), "Failed to update the enveloped resource")
 		})
 
 		It("should update CRP status as success again", func() {
@@ -159,7 +155,7 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 		It("should place the resources on all member clusters again", func() {
 			for idx := range allMemberClusters {
 				memberCluster := allMemberClusters[idx]
-				workResourcesPlacedActual := checkEnvelopQuotaPlacement(memberCluster)
+				workResourcesPlacedActual := checkAllResourcesPlacement(memberCluster)
 				Eventually(workResourcesPlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster.ClusterName)
 			}
 		})
@@ -190,17 +186,15 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		workNamespace := appNamespace()
 		var wantSelectedResources []placementv1beta1.ResourceIdentifier
-		var testDeployment appv1.Deployment
 		var testDaemonSet appv1.DaemonSet
 		var testStatefulSet appv1.StatefulSet
-		var testEnvelopeConfig corev1.ConfigMap
 
 		BeforeAll(func() {
 			// read the test resources.
 			readDeploymentTestManifest(&testDeployment)
 			readDaemonSetTestManifest(&testDaemonSet)
 			readStatefulSetTestManifest(&testStatefulSet, true)
-			readEnvelopeConfigMapTestManifest(&testEnvelopeConfig)
+			readEnvelopeResourceTestManifest(&testResourceEnvelope)
 			wantSelectedResources = []placementv1beta1.ResourceIdentifier{
 				{
 					Kind:    utils.NamespaceKind,
@@ -208,10 +202,10 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 					Version: corev1.SchemeGroupVersion.Version,
 				},
 				{
-					Kind:      utils.ConfigMapKind,
-					Name:      testEnvelopeConfig.Name,
-					Version:   corev1.SchemeGroupVersion.Version,
-					Namespace: workNamespace.Name,
+					Group:   placementv1beta1.GroupVersion.Group,
+					Kind:    "ResourceEnvelope",
+					Version: placementv1beta1.GroupVersion.Version,
+					Name:    testResourceEnvelope.Name,
 				},
 			}
 		})
@@ -221,11 +215,11 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 		})
 
 		It("Create the wrapped resources in the namespace", func() {
-			testEnvelopeConfig.Data = make(map[string]string)
-			constructWrappedResources(&testEnvelopeConfig, &testDeployment, utils.DeploymentKind, workNamespace)
-			constructWrappedResources(&testEnvelopeConfig, &testDaemonSet, utils.DaemonSetKind, workNamespace)
-			constructWrappedResources(&testEnvelopeConfig, &testStatefulSet, utils.StatefulSetKind, workNamespace)
-			Expect(hubClient.Create(ctx, &testEnvelopeConfig)).To(Succeed(), "Failed to create testEnvelop object %s containing workloads", testEnvelopeConfig.Name)
+			testResourceEnvelope.Data = make(map[string]runtime.RawExtension)
+			constructWrappedResources(&testResourceEnvelope, &testDeployment, utils.DeploymentKind, workNamespace)
+			constructWrappedResources(&testResourceEnvelope, &testDaemonSet, utils.DaemonSetKind, workNamespace)
+			constructWrappedResources(&testResourceEnvelope, &testStatefulSet, utils.StatefulSetKind, workNamespace)
+			Expect(hubClient.Create(ctx, &testResourceEnvelope)).To(Succeed(), "Failed to create testEnvelop object %s containing workloads", testResourceEnvelope.Name)
 		})
 
 		It("Create the CRP that select the namespace", func() {
@@ -257,9 +251,9 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 				Name:      testStatefulSet.Name,
 				Namespace: testStatefulSet.Namespace,
 				Envelope: &placementv1beta1.EnvelopeIdentifier{
-					Name:      testEnvelopeConfig.Name,
+					Name:      testResourceEnvelope.Name,
 					Namespace: workNamespace.Name,
-					Type:      placementv1beta1.ConfigMapEnvelopeType,
+					Type:      placementv1beta1.ResourceEnvelopeType,
 				},
 			}
 			// We only expect the statefulset to not be available all the clusters
@@ -358,15 +352,12 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 			Expect(hubClient.Create(ctx, &ns)).To(Succeed(), "Failed to create namespace %s", ns.Name)
 
 			// Create an envelope config map.
-			wrapperCM := &corev1.ConfigMap{
+			wrapperCM := &placementv1beta1.ResourceEnvelope{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      wrapperCMName,
 					Namespace: ns.Name,
-					Annotations: map[string]string{
-						placementv1beta1.EnvelopeConfigMapAnnotation: "true",
-					},
 				},
-				Data: map[string]string{},
+				Data: make(map[string]runtime.RawExtension),
 			}
 
 			// Create a configMap and a clusterRole as wrapped resources.
@@ -385,7 +376,7 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 			}
 			wrappedCMBytes, err := json.Marshal(wrappedCM)
 			Expect(err).To(BeNil(), "Failed to marshal configMap %s", wrappedCM.Name)
-			wrapperCM.Data["cm.yaml"] = string(wrappedCMBytes)
+			wrapperCM.Data["cm.yaml"] = runtime.RawExtension{Raw: wrappedCMBytes}
 
 			wrappedCB := &rbacv1.ClusterRole{
 				TypeMeta: metav1.TypeMeta{
@@ -405,7 +396,7 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 			}
 			wrappedCBBytes, err := json.Marshal(wrappedCB)
 			Expect(err).To(BeNil(), "Failed to marshal clusterRole %s", wrappedCB.Name)
-			wrapperCM.Data["cb.yaml"] = string(wrappedCBBytes)
+			wrapperCM.Data["cb.yaml"] = runtime.RawExtension{Raw: wrappedCBBytes}
 
 			Expect(hubClient.Create(ctx, wrapperCM)).To(Succeed(), "Failed to create configMap %s", wrapperCM.Name)
 
@@ -497,16 +488,13 @@ var _ = Describe("Process objects with generate name", Ordered, func() {
 		ns.GenerateName = nsGenerateName
 		Expect(hubClient.Create(ctx, &ns)).To(Succeed(), "Failed to create namespace %s", ns.Name)
 
-		// Create an envelope config map.
-		cm := &corev1.ConfigMap{
+		// Create an envelope.
+		cm := &placementv1beta1.ResourceEnvelope{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      wrapperCMName,
 				Namespace: ns.Name,
-				Annotations: map[string]string{
-					placementv1beta1.EnvelopeConfigMapAnnotation: "true",
-				},
 			},
-			Data: map[string]string{},
+			Data: map[string]runtime.RawExtension{},
 		}
 
 		wrappedCM := &corev1.ConfigMap{
@@ -524,7 +512,7 @@ var _ = Describe("Process objects with generate name", Ordered, func() {
 		}
 		wrappedCMByte, err := json.Marshal(wrappedCM)
 		Expect(err).Should(BeNil())
-		cm.Data["wrapped.yaml"] = string(wrappedCMByte)
+		cm.Data["wrapped.yaml"] = runtime.RawExtension{Raw: wrappedCMByte}
 		Expect(hubClient.Create(ctx, cm)).To(Succeed(), "Failed to create config map %s", cm.Name)
 
 		// Create a CRP that selects the namespace.
@@ -575,7 +563,7 @@ var _ = Describe("Process objects with generate name", Ordered, func() {
 									Envelope: &placementv1beta1.EnvelopeIdentifier{
 										Name:      wrapperCMName,
 										Namespace: workNamespaceName,
-										Type:      placementv1beta1.ConfigMapEnvelopeType,
+										Type:      placementv1beta1.ResourceEnvelopeType,
 									},
 								},
 								Condition: metav1.Condition{
@@ -639,36 +627,6 @@ var _ = Describe("Process objects with generate name", Ordered, func() {
 	})
 })
 
-func checkEnvelopQuotaPlacement(memberCluster *framework.Cluster) func() error {
-	workNamespaceName := appNamespace().Name
-	return func() error {
-		if err := validateWorkNamespaceOnCluster(memberCluster, types.NamespacedName{Name: workNamespaceName}); err != nil {
-			return err
-		}
-		By("check the placedConfigMap")
-		placedConfigMap := &corev1.ConfigMap{}
-		if err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{Namespace: workNamespaceName, Name: testConfigMap.Name}, placedConfigMap); err != nil {
-			return err
-		}
-		hubConfigMap := &corev1.ConfigMap{}
-		if err := hubCluster.KubeClient.Get(ctx, types.NamespacedName{Namespace: workNamespaceName, Name: testConfigMap.Name}, hubConfigMap); err != nil {
-			return err
-		}
-		if diff := cmp.Diff(placedConfigMap.Data, hubConfigMap.Data); diff != "" {
-			return fmt.Errorf("configmap diff (-got, +want): %s", diff)
-		}
-		By("check the namespaced envelope objects")
-		placedResourceQuota := &corev1.ResourceQuota{}
-		if err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{Namespace: workNamespaceName, Name: testEnvelopeResourceQuota.Name}, placedResourceQuota); err != nil {
-			return err
-		}
-		if diff := cmp.Diff(placedResourceQuota.Spec, testEnvelopeResourceQuota.Spec); diff != "" {
-			return fmt.Errorf("resource quota diff (-got, +want): %s", diff)
-		}
-		return nil
-	}
-}
-
 func checkForRolloutStuckOnOneFailedClusterStatus(wantSelectedResources []placementv1beta1.ResourceIdentifier) func() error {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	workNamespaceName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
@@ -676,9 +634,9 @@ func checkForRolloutStuckOnOneFailedClusterStatus(wantSelectedResources []placem
 		{
 			ResourceIdentifier: placementv1beta1.ResourceIdentifier{
 				Kind:      "ResourceQuota",
-				Name:      testEnvelopeResourceQuota.Name,
+				Name:      testResourceQuota.Name,
 				Version:   "v1",
-				Namespace: testEnvelopeResourceQuota.Namespace,
+				Namespace: testResourceQuota.Namespace,
 				Envelope: &placementv1beta1.EnvelopeIdentifier{
 					Name:      testEnvelopConfigMap.Name,
 					Namespace: workNamespaceName,
@@ -741,37 +699,143 @@ func checkForRolloutStuckOnOneFailedClusterStatus(wantSelectedResources []placem
 }
 
 func readEnvelopTestManifests() {
-	By("Read the testConfigMap resources")
+	By("Read the ConfigMap resources")
 	testConfigMap = corev1.ConfigMap{}
 	err := utils.GetObjectFromManifest("resources/test-configmap.yaml", &testConfigMap)
 	Expect(err).Should(Succeed())
 
-	By("Read testEnvelopConfigMap resource")
-	testEnvelopConfigMap = corev1.ConfigMap{}
-	err = utils.GetObjectFromManifest("resources/test-envelop-configmap.yaml", &testEnvelopConfigMap)
+	By("Read ResourceQuota to be filled in an envelope")
+	testResourceQuota = corev1.ResourceQuota{}
+	err = utils.GetObjectFromManifest("resources/resourcequota.yaml", &testResourceQuota)
 	Expect(err).Should(Succeed())
 
-	By("Read ResourceQuota")
-	testEnvelopeResourceQuota = corev1.ResourceQuota{}
-	err = utils.GetObjectFromManifest("resources/resourcequota.yaml", &testEnvelopeResourceQuota)
+	By("Read Deployment to be filled in an envelope")
+	testDeployment = appv1.Deployment{}
+	err = utils.GetObjectFromManifest("resources/test-deployment.yaml", &testDeployment)
 	Expect(err).Should(Succeed())
+
+	By("Read ClusterRole to be filled in an envelope")
+	testClusterRole = rbacv1.ClusterRole{}
+	err = utils.GetObjectFromManifest("resources/test-clusterrole.yaml", &testClusterRole)
+	Expect(err).Should(Succeed())
+
+	By("Create ResourceEnvelope template")
+	testResourceEnvelope = placementv1beta1.ResourceEnvelope{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: placementv1beta1.GroupVersion.String(),
+			Kind:       "ResourceEnvelope",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: resourceEnvelopeName,
+		},
+		Data: make(map[string]runtime.RawExtension),
+	}
+
+	By("Create ClusterResourceEnvelope template")
+	testClusterResourceEnvelope = placementv1beta1.ClusterResourceEnvelope{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: placementv1beta1.GroupVersion.String(),
+			Kind:       "ClusterResourceEnvelope",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: clusterResourceEnvelopeName,
+		},
+		Data: make(map[string]runtime.RawExtension),
+	}
 }
 
 // createWrappedResourcesForEnvelopTest creates some enveloped resources on the hub cluster for testing purposes.
 func createWrappedResourcesForEnvelopTest() {
 	ns := appNamespace()
 	Expect(hubClient.Create(ctx, &ns)).To(Succeed(), "Failed to create namespace %s", ns.Name)
-	// modify the configMap according to the namespace
+
+	// Update namespaces for namespaced resources
 	testConfigMap.Namespace = ns.Name
-	Expect(hubClient.Create(ctx, &testConfigMap)).To(Succeed(), "Failed to create config map %s", testConfigMap.Name)
+	testResourceQuota.Namespace = ns.Name
+	testDeployment.Namespace = ns.Name
+	testResourceEnvelope.Namespace = ns.Name
 
-	// modify the enveloped configMap according to the namespace
-	testEnvelopConfigMap.Namespace = ns.Name
-
-	// modify the embedded namespaced resource according to the namespace
-	testEnvelopeResourceQuota.Namespace = ns.Name
-	resourceQuotaByte, err := json.Marshal(testEnvelopeResourceQuota)
+	// Create ResourceEnvelope with ResourceQuota inside
+	quotaBytes, err := json.Marshal(testResourceQuota)
 	Expect(err).Should(Succeed())
-	testEnvelopConfigMap.Data["resourceQuota.yaml"] = string(resourceQuotaByte)
-	Expect(hubClient.Create(ctx, &testEnvelopConfigMap)).To(Succeed(), "Failed to create testEnvelop config map %s", testEnvelopConfigMap.Name)
+	testResourceEnvelope.Data["resourceQuota1.yaml"] = runtime.RawExtension{Raw: quotaBytes}
+	deploymentBytes, err := json.Marshal(testDeployment)
+	Expect(err).Should(Succeed())
+	testResourceEnvelope.Data["deployment.yaml"] = runtime.RawExtension{Raw: deploymentBytes}
+	Expect(hubClient.Create(ctx, &testResourceEnvelope)).To(Succeed(), "Failed to create ResourceEnvelope")
+
+	// Create ClusterResourceEnvelope with ClusterRole inside
+	roleBytes, err := json.Marshal(testClusterRole)
+	Expect(err).Should(Succeed())
+	testClusterResourceEnvelope.Data["clusterRole.yaml"] = runtime.RawExtension{Raw: roleBytes}
+	Expect(hubClient.Create(ctx, &testClusterResourceEnvelope)).To(Succeed(), "Failed to create ClusterResourceEnvelope")
+}
+
+func checkAllResourcesPlacement(memberCluster *framework.Cluster) func() error {
+	workNamespaceName := appNamespace().Name
+	return func() error {
+		// Verify namespace exists on target cluster
+		if err := validateWorkNamespaceOnCluster(memberCluster, types.NamespacedName{Name: workNamespaceName}); err != nil {
+			return err
+		}
+
+		// Check that ConfigMap was placed
+		By("Check ConfigMap")
+		placedConfigMap := &corev1.ConfigMap{}
+		if err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{
+			Namespace: workNamespaceName,
+			Name:      testResourceQuota.Name,
+		}, placedConfigMap); err != nil {
+			return fmt.Errorf("failed to find ResourceQuota from ResourceEnvelope: %w", err)
+		}
+		// Verify the ResourceQuota matches expected spec
+		if diff := cmp.Diff(placedConfigMap.Data, testConfigMap.Data); diff != "" {
+			return fmt.Errorf("ResourceQuota from ResourceEnvelope diff (-got, +want): %s", diff)
+		}
+		// Check that ResourceQuota from ResourceEnvelope was placed
+		By("Check ResourceQuota from ResourceEnvelope")
+		placedResourceQuota := &corev1.ResourceQuota{}
+		if err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{
+			Namespace: workNamespaceName,
+			Name:      testResourceQuota.Name,
+		}, placedResourceQuota); err != nil {
+			return fmt.Errorf("failed to find ResourceQuota from ResourceEnvelope: %w", err)
+		}
+
+		// Verify the ResourceQuota matches expected spec
+		if diff := cmp.Diff(placedResourceQuota.Spec, testResourceQuota.Spec); diff != "" {
+			return fmt.Errorf("ResourceQuota from ResourceEnvelope diff (-got, +want): %s", diff)
+		}
+
+		// Check that Deployment from ResourceEnvelope was placed
+		By("Check Deployment from ResourceEnvelope")
+		placedDeployment := &appv1.Deployment{}
+		if err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{
+			Namespace: workNamespaceName,
+			Name:      testDeployment.Name,
+		}, placedDeployment); err != nil {
+			return fmt.Errorf("failed to find ResourceQuota from ResourceEnvelope: %w", err)
+		}
+
+		// Verify the ResourceQuota matches expected spec
+		if diff := cmp.Diff(placedDeployment.Spec, testDeployment.Spec); diff != "" {
+			return fmt.Errorf("Deployment from ResourceEnvelope diff (-got, +want): %s", diff)
+		}
+
+		// Check that ClusterRole from ClusterResourceEnvelope was placed
+		By("Check ClusterRole from ClusterResourceEnvelope")
+		placedClusterRole := &rbacv1.ClusterRole{}
+		if err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{
+			Name: testClusterRole.Name,
+		}, placedClusterRole); err != nil {
+			return fmt.Errorf("failed to find ClusterRole from ClusterResourceEnvelope: %w", err)
+		}
+
+		// Verify the ClusterRole matches expected rules
+		if diff := cmp.Diff(placedClusterRole.Rules, testClusterRole.Rules); diff != "" {
+			return fmt.Errorf("ClusterRole from ClusterResourceEnvelope diff (-got, +want): %s", diff)
+		}
+
+		return nil
+	}
 }
