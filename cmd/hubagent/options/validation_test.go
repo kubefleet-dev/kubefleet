@@ -21,9 +21,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onsi/gomega"
-
 	"github.com/google/go-cmp/cmp"
+	"github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )

@@ -3,10 +3,11 @@ package webhook
 import (
 	"testing"
 
-	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+
+	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 )
 
 func TestBuildFleetValidatingWebhooks(t *testing.T) {
