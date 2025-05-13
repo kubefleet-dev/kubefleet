@@ -143,6 +143,7 @@ type StageConfig struct {
 	// Each task is executed in parallel and there cannot be more than one task of the same type.
 	// +kubebuilder:validation:MaxItems=2
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'Approval' && has(e.waitTime))",message="AfterStageTaskType is Approval, waitTime is not allowed"
 	AfterStageTasks []AfterStageTask `json:"afterStageTasks,omitempty"`
 }
 
@@ -157,7 +158,7 @@ type AfterStageTask struct {
 	// +kubebuilder:validation:Pattern="^0|([0-9]+(\\.[0-9]+)?(s|m|h))+$"
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:Optional
-	WaitTime metav1.Duration `json:"waitTime,omitempty"`
+	WaitTime *metav1.Duration `json:"waitTime,omitempty"`
 }
 
 // StagedUpdateRunStatus defines the observed state of the ClusterStagedUpdateRun.
