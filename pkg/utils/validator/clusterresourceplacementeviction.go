@@ -20,8 +20,9 @@ package validator
 import (
 	"fmt"
 
-	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"k8s.io/apimachinery/pkg/util/errors"
+
+	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
 // ValidateClusterResourcePlacementForEviction validates cluster resource placement fields for eviction and returns error.
