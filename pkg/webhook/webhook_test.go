@@ -96,6 +96,7 @@ func TestNewWebhookConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Setenv("POD_NAMESPACE", "test-namespace")
+		defer t.Setenv("POD_NAMESPACE", "")
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := NewWebhookConfig(tt.mgr, tt.webhookServiceName, tt.port, tt.clientConnectionType, tt.certDir, tt.enableGuardRail, tt.denyModifyMemberClusterLabels)
 			if (err != nil) != tt.wantErr {

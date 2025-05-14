@@ -275,7 +275,7 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 			newMC: &clusterv1beta1.MemberCluster{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   "test-mc",
-					Labels: map[string]string{"key1": "value2"},
+					Labels: map[string]string{"key2": "value2"},
 					Annotations: map[string]string{
 						"fleet.azure.com/cluster-resource-id": "test-cluster-resource-id",
 					},
