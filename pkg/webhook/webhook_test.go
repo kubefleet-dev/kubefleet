@@ -3,6 +3,7 @@ package webhook
 import (
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
@@ -113,7 +114,7 @@ func TestNewWebhookConfig(t *testing.T) {
 				got.clientConnectionType != tt.want.clientConnectionType ||
 				got.enableGuardRail != tt.want.enableGuardRail ||
 				got.denyModifyMemberClusterLabels != tt.want.denyModifyMemberClusterLabels {
-				t.Errorf("NewWebhookConfig() = %+v, want %+v", got, tt.want)
+				t.Errorf("NewWebhookConfig() diff = %s", cmp.Diff(tt.want, got))
 			}
 		})
 	}

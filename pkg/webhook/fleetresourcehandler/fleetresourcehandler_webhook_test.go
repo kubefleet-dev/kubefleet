@@ -658,7 +658,7 @@ func TestHandleMemberCluster(t *testing.T) {
 						Raw: fleetMCObjectBytes,
 					},
 					UserInfo: authenticationv1.UserInfo{
-						Username: "aksService",
+						Username: "mastersUser",
 						Groups:   []string{"system:masters"},
 					},
 					RequestKind: &utils.MCMetaGVK,
@@ -669,7 +669,7 @@ func TestHandleMemberCluster(t *testing.T) {
 				decoder:                       decoder,
 				denyModifyMemberClusterLabels: true,
 			},
-			wantResponse: admission.Allowed(fmt.Sprintf(validation.ResourceAllowedFormat, "aksService", utils.GenerateGroupString([]string{"system:masters"}), admissionv1.Update, &utils.MCMetaGVK, "", types.NamespacedName{Name: "test-mc"})),
+			wantResponse: admission.Allowed(fmt.Sprintf(validation.ResourceAllowedFormat, "mastersUser", utils.GenerateGroupString([]string{"system:masters"}), admissionv1.Update, &utils.MCMetaGVK, "", types.NamespacedName{Name: "test-mc"})),
 		},
 		"deny label modification by non systems:masters user when flag is set to true": {
 			req: admission.Request{
