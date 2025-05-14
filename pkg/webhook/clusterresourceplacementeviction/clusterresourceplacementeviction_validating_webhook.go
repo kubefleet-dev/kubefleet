@@ -56,9 +56,9 @@ func Add(mgr manager.Manager) error {
 // Handle clusterResourcePlacementEvictionValidator checks to see if resource override is valid.
 func (v *clusterResourcePlacementEvictionValidator) Handle(ctx context.Context, req admission.Request) admission.Response {
 	var crpe fleetv1beta1.ClusterResourcePlacementEviction
-	klog.V(2).InfoS("Validating webhook handling cluster resource placement eviction", "operation", req.Operation, "clusterResourcePlacementEviction", crpe.Name)
+	klog.V(2).InfoS("Validating webhook handling cluster resource placement eviction", "operation", req.Operation, "clusterResourcePlacementEviction", req.Name)
 	if err := v.decoder.Decode(req, &crpe); err != nil {
-		klog.ErrorS(err, "Failed to decode cluster resource placement eviction object for validating fields", "userName", req.UserInfo.Username, "groups", req.UserInfo.Groups)
+		klog.ErrorS(err, "Failed to decode cluster resource placement eviction object for validating fields", "userName", req.UserInfo.Username, "groups", req.UserInfo.Groups, "clusterResourcePlacementEviction", req.Name)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
@@ -69,7 +69,7 @@ func (v *clusterResourcePlacementEvictionValidator) Handle(ctx context.Context, 
 			klog.V(2).InfoS(condition.EvictionInvalidMissingCRPMessage, "clusterResourcePlacementEviction", crpe.Name, "clusterResourcePlacement", crpe.Spec.PlacementName)
 			return admission.Denied(err.Error())
 		}
-		return admission.Errored(http.StatusBadRequest, fmt.Errorf("failed to get clusterResourcePlacement %s: %w", crpe.Spec.PlacementName, err))
+		return admission.Errored(http.StatusBadRequest, fmt.Errorf("failed to get clusterResourcePlacement %s for clusterResourcePlacementEviction %s: %w", crpe.Spec.PlacementName, crpe.Name, err))
 	}
 
 	if err := validator.ValidateClusterResourcePlacementForEviction(crp); err != nil {
