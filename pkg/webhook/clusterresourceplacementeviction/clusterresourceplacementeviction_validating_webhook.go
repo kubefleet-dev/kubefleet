@@ -77,5 +77,6 @@ func (v *clusterResourcePlacementEvictionValidator) Handle(ctx context.Context, 
 		return admission.Denied(err.Error())
 	}
 
+	klog.V(2).InfoS("ClusterResourcePlacementEviction has valid fields", "clusterResourcePlacementEviction", crpe.Name)
 	return admission.Allowed("clusterResourcePlacementEviction has valid fields")
 }
