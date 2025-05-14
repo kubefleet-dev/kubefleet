@@ -22,11 +22,10 @@ import (
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"k8s.io/apimachinery/pkg/util/errors"
-	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 // ValidateClusterResourcePlacementForEviction validates cluster resource placement fields for eviction and returns error.
-func ValidateClusterResourcePlacementForEviction(crp fleetv1beta1.ClusterResourcePlacement, db fleetv1beta1.ClusterResourcePlacementDisruptionBudget) error {
+func ValidateClusterResourcePlacementForEviction(crp fleetv1beta1.ClusterResourcePlacement) error {
 	allErr := make([]error, 0)
 
 	// Check Cluster Resource Placement is not deleting
@@ -39,32 +38,6 @@ func ValidateClusterResourcePlacementForEviction(crp fleetv1beta1.ClusterResourc
 		if crp.Spec.Policy.PlacementType == fleetv1beta1.PickFixedPlacementType {
 			allErr = append(allErr, fmt.Errorf("cluster resource placement policy type %s is not supported", crp.Spec.Policy.PlacementType))
 		}
-
-		// handle special case for PickAll CRP.
-		if crp.Spec.Policy.PlacementType == fleetv1beta1.PickAllPlacementType {
-			if err := validateClusterResourcePlacementDisruptionBudgetForPickAll(db); err != nil {
-				allErr = append(allErr, err)
-			}
-		}
-	} else {
-		// Default to PickAll if no policy is specified
-		if err := validateClusterResourcePlacementDisruptionBudgetForPickAll(db); err != nil {
-			allErr = append(allErr, err)
-		}
-	}
-
-	return errors.NewAggregate(allErr)
-}
-
-func validateClusterResourcePlacementDisruptionBudgetForPickAll(db fleetv1beta1.ClusterResourcePlacementDisruptionBudget) error {
-	allErr := make([]error, 0)
-
-	if db.Spec.MaxUnavailable != nil {
-		allErr = append(allErr, fmt.Errorf("cluster resource placement policy type PickAll is not supported with any specified max unavailable %v", db.Spec.MaxUnavailable))
-	}
-
-	if db.Spec.MinAvailable != nil && db.Spec.MinAvailable.Type == intstr.String {
-		allErr = append(allErr, fmt.Errorf("cluster resource placement policy type PickAll is not supported with min available as a percentage %v", db.Spec.MinAvailable.StrVal))
 	}
 
 	return errors.NewAggregate(allErr)

@@ -41,20 +41,14 @@ var (
 )
 
 type clusterResourcePlacementEvictionValidator struct {
-	client client.Client
-	// UncachedReader is only used to read disruption budget objects directly from the API server to ensure we can enforce the disruption budget for eviction.
-	UncachedReader client.Reader
-	decoder        webhook.AdmissionDecoder
+	client  client.Client
+	decoder webhook.AdmissionDecoder
 }
 
 // Add registers the webhook for K8s bulit-in object types.
 func Add(mgr manager.Manager) error {
-	uncachedReader, err := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
-	if err != nil {
-		return err
-	}
 	hookServer := mgr.GetWebhookServer()
-	hookServer.Register(ValidationPath, &webhook.Admission{Handler: &clusterResourcePlacementEvictionValidator{mgr.GetClient(), uncachedReader, admission.NewDecoder(mgr.GetScheme())}})
+	hookServer.Register(ValidationPath, &webhook.Admission{Handler: &clusterResourcePlacementEvictionValidator{mgr.GetClient(), admission.NewDecoder(mgr.GetScheme())}})
 	return nil
 }
 
@@ -77,17 +71,7 @@ func (v *clusterResourcePlacementEvictionValidator) Handle(ctx context.Context, 
 		return admission.Errored(http.StatusBadRequest, fmt.Errorf("failed to get clusterResourcePlacement %s: %w", crpe.Spec.PlacementName, err))
 	}
 
-	// Check ClusterResourcePlacementDisruptionBudget object
-	var db fleetv1beta1.ClusterResourcePlacementDisruptionBudget
-	if err := v.UncachedReader.Get(ctx, types.NamespacedName{Name: crp.Name}, &db); err != nil {
-		if k8serrors.IsNotFound(err) {
-			klog.V(2).InfoS(condition.EvictionAllowedNoPDBMessage, "clusterResourcePlacementEviction", crpe.Name, "clusterResourcePlacementDisruptionBudget", crp.Name)
-			return admission.Allowed("clusterResourcePlacementDisruptionBudget not found, eviction is allowed")
-		}
-		return admission.Errored(http.StatusBadRequest, fmt.Errorf("failed to get clusterResourcePlacementDisruptionBudget %s: %w", crp.Name, err))
-	}
-
-	if err := validator.ValidateClusterResourcePlacementForEviction(crp, db); err != nil {
+	if err := validator.ValidateClusterResourcePlacementForEviction(crp); err != nil {
 		klog.V(2).ErrorS(err, "ClusterResourcePlacement has invalid fields, request is denied", "operation", req.Operation)
 		return admission.Denied(err.Error())
 	}
