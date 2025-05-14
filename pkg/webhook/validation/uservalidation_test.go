@@ -294,7 +294,7 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 			},
 			wantResponse: admission.Denied(DeniedModifyMemberClusterLabels),
 		},
-		"allow label modification by system:masters resource when flag is set to false": {
+		"allow label modification by non system:masters resource when flag is set to false": {
 			denyModifyMemberClusterLabels: false,
 			oldMC: &clusterv1beta1.MemberCluster{
 				ObjectMeta: metav1.ObjectMeta{
