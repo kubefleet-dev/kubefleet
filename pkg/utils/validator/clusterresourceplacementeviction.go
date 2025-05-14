@@ -32,6 +32,7 @@ func ValidateClusterResourcePlacementForEviction(crp fleetv1beta1.ClusterResourc
 	// Check Cluster Resource Placement is not deleting
 	if crp.DeletionTimestamp != nil {
 		allErr = append(allErr, fmt.Errorf("cluster resource placement %s is being deleted", crp.Name))
+		return errors.NewAggregate(allErr)
 	}
 	// Check Cluster Resource Placement Policy
 	if crp.Spec.Policy != nil {
@@ -42,8 +43,13 @@ func ValidateClusterResourcePlacementForEviction(crp fleetv1beta1.ClusterResourc
 		// handle special case for PickAll CRP.
 		if crp.Spec.Policy.PlacementType == fleetv1beta1.PickAllPlacementType {
 			if err := validateClusterResourcePlacementDisruptionBudgetForPickAll(db); err != nil {
-				allErr = append(allErr, fmt.Errorf("cluster resource placement policy type %s is not supported with disruption budget", crp.Spec.Policy.PlacementType))
+				allErr = append(allErr, err)
 			}
+		}
+	} else {
+		// Default to PickAll if no policy is specified
+		if err := validateClusterResourcePlacementDisruptionBudgetForPickAll(db); err != nil {
+			allErr = append(allErr, err)
 		}
 	}
 

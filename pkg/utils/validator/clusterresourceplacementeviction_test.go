@@ -22,98 +22,30 @@ import (
 	"testing"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 )
-
-func TestValidateClusterResourcePlacementEviction(t *testing.T) {
-	tests := map[string]struct {
-		crpe    *placementv1beta1.ClusterResourcePlacementEviction
-		wantErr error
-	}{
-		"valid CRPE": {
-			crpe: &placementv1beta1.ClusterResourcePlacementEviction{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-crpe",
-				},
-				Spec: placementv1beta1.PlacementEvictionSpec{
-					PlacementName: "test-crp",
-					ClusterName:   "test-cluster",
-				},
-			},
-			wantErr: nil,
-		},
-		"CRPE with no placement name ": {
-			crpe: &placementv1beta1.ClusterResourcePlacementEviction{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-crpe",
-				},
-				Spec: placementv1beta1.PlacementEvictionSpec{
-					ClusterName: "test-cluster",
-				},
-			},
-			wantErr: fmt.Errorf("cluster resource placement name is required"),
-		},
-		"CRPE with no cluster name ": {
-			crpe: &placementv1beta1.ClusterResourcePlacementEviction{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-crpe",
-				},
-				Spec: placementv1beta1.PlacementEvictionSpec{
-					PlacementName: "test-crp",
-				},
-			},
-			wantErr: fmt.Errorf("cluster name is required"),
-		},
-		"CRPE with placement name too long": {
-			crpe: &placementv1beta1.ClusterResourcePlacementEviction{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-crpe",
-				},
-				Spec: placementv1beta1.PlacementEvictionSpec{
-					PlacementName: strings.Repeat("a", 256),
-					ClusterName:   "test-cluster",
-				},
-			},
-			wantErr: fmt.Errorf("cluster resource placement name %s is too long", strings.Repeat("a", 256)),
-		},
-		"CRPE with cluster name too long": {
-			crpe: &placementv1beta1.ClusterResourcePlacementEviction{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-crpe",
-				},
-				Spec: placementv1beta1.PlacementEvictionSpec{
-					PlacementName: "test-crp",
-					ClusterName:   strings.Repeat("a", 256),
-				},
-			},
-			wantErr: fmt.Errorf("cluster name %s is too long", strings.Repeat("a", 256)),
-		},
-	}
-	for testName, testCase := range tests {
-		t.Run(testName, func(t *testing.T) {
-			RestMapper = utils.TestMapper{}
-			gotErr := ValidateClusterResourcePlacementEviction(*testCase.crpe)
-			if testCase.wantErr != nil && !strings.Contains(gotErr.Error(), testCase.wantErr.Error()) {
-				t.Errorf("ValidateClusterResourcePlacementEviction() got %v, want %v", gotErr.Error(), testCase.wantErr.Error())
-			}
-			if testCase.wantErr == nil && gotErr != nil {
-				t.Errorf("ValidateClusterResourcePlacementEviction() got %v, want nil", gotErr)
-			}
-		})
-	}
-}
 
 func TestValidateClusterResourcePlacementForEviction(t *testing.T) {
 	tests := map[string]struct {
 		crp     *placementv1beta1.ClusterResourcePlacement
+		db      *placementv1beta1.ClusterResourcePlacementDisruptionBudget
 		wantErr error
 	}{
 		"valid CRP": {
 			crp: &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-crp",
+				},
+			},
+			db: &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp-db",
+				},
+				Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
+					MaxUnavailable: nil,
+					MinAvailable:   nil,
 				},
 			},
 			wantErr: nil,
@@ -126,6 +58,18 @@ func TestValidateClusterResourcePlacementForEviction(t *testing.T) {
 				Spec: placementv1beta1.ClusterResourcePlacementSpec{
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+				},
+			},
+			db: &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp-db",
+				},
+				Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
+					MaxUnavailable: nil,
+					MinAvailable: &intstr.IntOrString{
+						Type:   intstr.Int,
+						IntVal: 1,
 					},
 				},
 			},
@@ -143,6 +87,21 @@ func TestValidateClusterResourcePlacementForEviction(t *testing.T) {
 					},
 				},
 			},
+			db: &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp-db",
+				},
+				Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
+					MaxUnavailable: &intstr.IntOrString{
+						Type:   intstr.Int,
+						IntVal: 1,
+					},
+					MinAvailable: &intstr.IntOrString{
+						Type:   intstr.String,
+						StrVal: "2",
+					},
+				},
+			},
 			wantErr: nil,
 		},
 		"invalid CRP with PickFixed policy": {
@@ -153,7 +112,15 @@ func TestValidateClusterResourcePlacementForEviction(t *testing.T) {
 				Spec: placementv1beta1.ClusterResourcePlacementSpec{
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickFixedPlacementType,
+						ClusterNames: []string{
+							"cluster1",
+						},
 					},
+				},
+			},
+			db: &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp-db",
 				},
 			},
 			wantErr: fmt.Errorf("cluster resource placement policy type PickFixed is not supported"),
@@ -165,12 +132,17 @@ func TestValidateClusterResourcePlacementForEviction(t *testing.T) {
 					DeletionTimestamp: &metav1.Time{},
 				},
 			},
+			db: &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp-db",
+				},
+			},
 			wantErr: fmt.Errorf("cluster resource placement test-crp is being deleted"),
 		},
 	}
 	for testName, testCase := range tests {
 		t.Run(testName, func(t *testing.T) {
-			gotErr := ValidateClusterResourcePlacementForEviction(*testCase.crp)
+			gotErr := ValidateClusterResourcePlacementForEviction(*testCase.crp, *testCase.db)
 			if testCase.wantErr != nil && !strings.Contains(gotErr.Error(), testCase.wantErr.Error()) {
 				t.Errorf("ValidateClusterResourcePlacementForEviction() got %v, want %v", gotErr.Error(), testCase.wantErr.Error())
 			}
@@ -181,80 +153,56 @@ func TestValidateClusterResourcePlacementForEviction(t *testing.T) {
 	}
 }
 
-func TestValidateClusterResourceBindingForEviction(t *testing.T) {
+func TestValidateClusterResourcePlacementDisruptionBudgetForPickAll(t *testing.T) {
 	tests := map[string]struct {
-		crbList *placementv1beta1.ClusterResourceBindingList
-		crpe    *placementv1beta1.ClusterResourcePlacementEviction
+		db      *placementv1beta1.ClusterResourcePlacementDisruptionBudget
 		wantErr error
 	}{
-		"valid CRB": {
-			crbList: &placementv1beta1.ClusterResourceBindingList{
-				Items: []placementv1beta1.ClusterResourceBinding{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "test-crb",
-						},
-						Spec: placementv1beta1.ResourceBindingSpec{
-							State:         placementv1beta1.BindingStateScheduled,
-							TargetCluster: "test-cluster",
-						},
-					},
-				},
-			},
-			crpe: &placementv1beta1.ClusterResourcePlacementEviction{
+		"valid CRP with PickAll policy": {
+			db: &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-crpe",
+					Name: "test-crp-db",
 				},
-				Spec: placementv1beta1.PlacementEvictionSpec{
-					PlacementName: "test-crp",
-					ClusterName:   "test-cluster",
+				Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
+					MaxUnavailable: nil,
+					MinAvailable:   nil,
 				},
 			},
 			wantErr: nil,
 		},
-		"multiple CRB for the same target cluster": {
-			crbList: &placementv1beta1.ClusterResourceBindingList{
-				Items: []placementv1beta1.ClusterResourceBinding{
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "test-crb-1",
-						},
-						Spec: placementv1beta1.ResourceBindingSpec{
-							State:         placementv1beta1.BindingStateScheduled,
-							TargetCluster: "test-cluster",
-						},
-					},
-					{
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "test-crb-2",
-						},
-						Spec: placementv1beta1.ResourceBindingSpec{
-							State:         placementv1beta1.BindingStateScheduled,
-							TargetCluster: "test-cluster",
-						},
-					},
-				},
-			},
-			crpe: &placementv1beta1.ClusterResourcePlacementEviction{
+		"invalid CRP with PickAll policy and MaxUnavailable": {
+			db: &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-crpe",
+					Name: "test-crp-db",
 				},
-				Spec: placementv1beta1.PlacementEvictionSpec{
-					PlacementName: "test-crp",
-					ClusterName:   "test-cluster",
+				Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
+					MaxUnavailable: ptr.To(intstr.FromString("100%")),
+					MinAvailable:   nil,
 				},
 			},
-			wantErr: fmt.Errorf("multiple ClusterResourceBindings found for the same target cluster test-cluster"),
+			wantErr: fmt.Errorf("cluster resource placement policy type PickAll is not supported with any specified max unavailable 1"),
+		},
+		"invalid CRP with PickAll policy and MinAvailable percentage": {
+			db: &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp-db",
+				},
+				Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
+					MaxUnavailable: nil,
+					MinAvailable:   ptr.To(intstr.FromString("50%")),
+				},
+			},
+			wantErr: fmt.Errorf("cluster resource placement policy type PickAll is not supported with min available as a percentage %s", "50%"),
 		},
 	}
 	for testName, testCase := range tests {
 		t.Run(testName, func(t *testing.T) {
-			gotErr := ValidateClusterResourceBindingForEviction(*testCase.crbList, *testCase.crpe)
+			gotErr := validateClusterResourcePlacementDisruptionBudgetForPickAll(*testCase.db)
 			if testCase.wantErr != nil && !strings.Contains(gotErr.Error(), testCase.wantErr.Error()) {
-				t.Errorf("ValidateClusterResourceBindingForEviction() got %v, want %v", gotErr.Error(), testCase.wantErr.Error())
+				t.Errorf("validateClusterResourcePlacementDisruptionBudgetForPickAll() got %v, want %v", gotErr.Error(), testCase.wantErr.Error())
 			}
 			if testCase.wantErr == nil && gotErr != nil {
-				t.Errorf("ValidateClusterResourceBindingForEviction() got %v, want nil", gotErr)
+				t.Errorf("validateClusterResourcePlacementDisruptionBudgetForPickAll() got %v, want nil", gotErr)
 			}
 		})
 	}
