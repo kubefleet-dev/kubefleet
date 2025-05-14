@@ -56,7 +56,7 @@ func Add(mgr manager.Manager) error {
 // Handle clusterResourcePlacementEvictionValidator checks to see if resource override is valid.
 func (v *clusterResourcePlacementEvictionValidator) Handle(ctx context.Context, req admission.Request) admission.Response {
 	var crpe fleetv1beta1.ClusterResourcePlacementEviction
-	klog.V(2).InfoS("Validating webhook handling cluster resource placement eviction", "operation", req.Operation)
+	klog.V(2).InfoS("Validating webhook handling cluster resource placement eviction", "operation", req.Operation, "clusterResourcePlacementEviction", crpe.Name)
 	if err := v.decoder.Decode(req, &crpe); err != nil {
 		klog.ErrorS(err, "Failed to decode cluster resource placement eviction object for validating fields", "userName", req.UserInfo.Username, "groups", req.UserInfo.Groups)
 		return admission.Errored(http.StatusBadRequest, err)
@@ -73,7 +73,7 @@ func (v *clusterResourcePlacementEvictionValidator) Handle(ctx context.Context, 
 	}
 
 	if err := validator.ValidateClusterResourcePlacementForEviction(crp); err != nil {
-		klog.V(2).ErrorS(err, "ClusterResourcePlacement has invalid fields, request is denied", "operation", req.Operation)
+		klog.V(2).ErrorS(err, "ClusterResourcePlacement has invalid fields, request is denied", "operation", req.Operation, "clusterResourcePlacementEviction", crpe.Name)
 		return admission.Denied(err.Error())
 	}
 
