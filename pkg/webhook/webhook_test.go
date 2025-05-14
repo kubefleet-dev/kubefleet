@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/assert"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
@@ -95,9 +96,9 @@ func TestNewWebhookConfig(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		t.Setenv("POD_NAMESPACE", "test-namespace")
-		defer t.Setenv("POD_NAMESPACE", "")
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("POD_NAMESPACE", "test-namespace")
+			defer t.Setenv("POD_NAMESPACE", "")
 			got, err := NewWebhookConfig(tt.mgr, tt.webhookServiceName, tt.port, tt.clientConnectionType, tt.certDir, tt.enableGuardRail, tt.denyModifyMemberClusterLabels)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewWebhookConfig() error = %v, wantErr %v", err, tt.wantErr)
@@ -109,13 +110,13 @@ func TestNewWebhookConfig(t *testing.T) {
 				}
 				return
 			}
-			if got.serviceNamespace != tt.want.serviceNamespace ||
-				got.serviceName != tt.want.serviceName ||
-				got.servicePort != tt.want.servicePort ||
-				got.clientConnectionType != tt.want.clientConnectionType ||
-				got.enableGuardRail != tt.want.enableGuardRail ||
-				got.denyModifyMemberClusterLabels != tt.want.denyModifyMemberClusterLabels {
-				t.Errorf("NewWebhookConfig() diff = %s", cmp.Diff(tt.want, got))
+
+			opts := []cmp.Option{
+				cmpopts.IgnoreFields(Config{}, "caPEM"),
+			}
+			opts = append(opts, cmpopts.IgnoreUnexported(Config{}))
+			if diff := cmp.Diff(tt.want, got, opts...); diff != "" {
+				t.Errorf("NewWebhookConfig() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
