@@ -49,8 +49,12 @@ type clusterResourcePlacementEvictionValidator struct {
 
 // Add registers the webhook for K8s bulit-in object types.
 func Add(mgr manager.Manager) error {
+	uncachedReader, err := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
+	if err != nil {
+		return err
+	}
 	hookServer := mgr.GetWebhookServer()
-	hookServer.Register(ValidationPath, &webhook.Admission{Handler: &clusterResourcePlacementEvictionValidator{mgr.GetClient(), admission.NewDecoder(mgr.GetScheme())}})
+	hookServer.Register(ValidationPath, &webhook.Admission{Handler: &clusterResourcePlacementEvictionValidator{mgr.GetClient(), uncachedReader, admission.NewDecoder(mgr.GetScheme())}})
 	return nil
 }
 
