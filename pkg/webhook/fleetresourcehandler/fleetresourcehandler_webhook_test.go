@@ -635,7 +635,7 @@ func TestHandleMemberCluster(t *testing.T) {
 			wantResponse: admission.Allowed(fmt.Sprintf(validation.ResourceAllowedFormat, "aks-support", utils.GenerateGroupString([]string{"system:authenticated"}), admissionv1.Delete, &utils.MCMetaGVK, "", types.NamespacedName{Name: "test-mc"})),
 		},
 
-		"allow label modification by RP client when flag is set to true": {
+		"allow label modification by non-system:masters when flag is set to true": {
 			req: admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Name: "test-mc",
@@ -671,7 +671,7 @@ func TestHandleMemberCluster(t *testing.T) {
 			},
 			wantResponse: admission.Allowed(fmt.Sprintf(validation.ResourceAllowedFormat, "aksService", utils.GenerateGroupString([]string{"system:masters"}), admissionv1.Update, &utils.MCMetaGVK, "", types.NamespacedName{Name: "test-mc"})),
 		},
-		"deny label modification by non-RP client when flag is set to true": {
+		"deny label modification by non systems:masters user when flag is set to true": {
 			req: admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Name: "test-mc",
@@ -706,7 +706,7 @@ func TestHandleMemberCluster(t *testing.T) {
 						}(),
 					},
 					UserInfo: authenticationv1.UserInfo{
-						Username: "nonRPUser",
+						Username: "nonSystemMastersUser",
 						Groups:   []string{"system:authenticated"},
 					},
 					RequestKind: &utils.MCMetaGVK,
@@ -767,7 +767,7 @@ func TestHandleMemberCluster(t *testing.T) {
 			},
 			wantResponse: admission.Denied(fmt.Sprintf(validation.DeniedModifyMemberClusterLabels)),
 		},
-		"allow label modification by non-RP client when flag is set to false": {
+		"allow label modification by non system:masters resources when flag is set to false": {
 			req: admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Name: "test-mc",
@@ -802,7 +802,7 @@ func TestHandleMemberCluster(t *testing.T) {
 						}(),
 					},
 					UserInfo: authenticationv1.UserInfo{
-						Username: "nonRPUser",
+						Username: "nonMastersUser",
 						Groups:   []string{"system:authenticated"},
 					},
 					RequestKind: &utils.MCMetaGVK,
@@ -814,7 +814,7 @@ func TestHandleMemberCluster(t *testing.T) {
 				denyModifyMemberClusterLabels: false,
 			},
 			wantResponse: admission.Allowed(fmt.Sprintf(validation.ResourceAllowedFormat,
-				"nonRPUser", utils.GenerateGroupString([]string{"system:authenticated"}), admissionv1.Update, &utils.MCMetaGVK, "",
+				"nonMastersUser", utils.GenerateGroupString([]string{"system:authenticated"}), admissionv1.Update, &utils.MCMetaGVK, "",
 				types.NamespacedName{Name: "test-mc"})),
 		},
 	}

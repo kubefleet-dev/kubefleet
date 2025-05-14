@@ -109,8 +109,8 @@ func ValidateFleetMemberClusterUpdate(currentMC, oldMC clusterv1beta1.MemberClus
 		return admission.Denied(err.Error())
 	}
 
-	// users are no longer allowed to modify labels of fleet member cluster through webhook.
-	// this will be disabled until member labels are accessible through CLI
+	// Users are no longer allowed to modify labels of fleet member cluster through webhook.
+	// This will be disabled until member labels are accessible through CLI
 	if denyModifyMemberClusterLabels {
 		isLabelUpdated := isMapFieldUpdated(currentMC.GetLabels(), oldMC.GetLabels())
 		if isLabelUpdated && !isUserInGroup(userInfo, mastersGroup) {

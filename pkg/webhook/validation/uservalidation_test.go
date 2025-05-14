@@ -194,7 +194,7 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 		whiteListedUsers              []string
 		wantResponse                  admission.Response
 	}{
-		"allow label modification by RP client when flag is set to true": {
+		"allow label modification by system:masters resources when flag is set to true": {
 			denyModifyMemberClusterLabels: true,
 			oldMC: &clusterv1beta1.MemberCluster{
 				ObjectMeta: metav1.ObjectMeta{
@@ -218,17 +218,17 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Name: "test-mc",
 					UserInfo: authenticationv1.UserInfo{
-						Username: "aksService",
+						Username: "mastersUser",
 						Groups:   []string{"system:masters"},
 					},
 					RequestKind: &utils.MCMetaGVK,
 					Operation:   admissionv1.Update,
 				},
 			},
-			wantResponse: admission.Allowed(fmt.Sprintf(ResourceAllowedFormat, "aksService", utils.GenerateGroupString([]string{"system:masters"}),
+			wantResponse: admission.Allowed(fmt.Sprintf(ResourceAllowedFormat, "mastersUser", utils.GenerateGroupString([]string{"system:masters"}),
 				admissionv1.Update, &utils.MCMetaGVK, "", types.NamespacedName{Name: "test-mc"})),
 		},
-		"deny label modification by non-RP client when flag is set to true": {
+		"deny label modification by non-system:masters resource when flag is set to true": {
 			denyModifyMemberClusterLabels: true,
 			oldMC: &clusterv1beta1.MemberCluster{
 				ObjectMeta: metav1.ObjectMeta{
@@ -252,7 +252,7 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Name: "test-mc",
 					UserInfo: authenticationv1.UserInfo{
-						Username: "nonRPUser",
+						Username: "nonSystemMastersUser",
 						Groups:   []string{"system:authenticated"},
 					},
 					RequestKind: &utils.MCMetaGVK,
@@ -294,7 +294,7 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 			},
 			wantResponse: admission.Denied(DeniedModifyMemberClusterLabels),
 		},
-		"allow label modification by non-RP client when flag is set to false": {
+		"allow label modification by system:masters resource when flag is set to false": {
 			denyModifyMemberClusterLabels: false,
 			oldMC: &clusterv1beta1.MemberCluster{
 				ObjectMeta: metav1.ObjectMeta{
@@ -319,14 +319,14 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Name: "test-mc",
 					UserInfo: authenticationv1.UserInfo{
-						Username: "nonRPUser",
+						Username: "nonSystemMastersUser",
 						Groups:   []string{"system:authenticated"},
 					},
 					RequestKind: &utils.MCMetaGVK,
 					Operation:   admissionv1.Update,
 				},
 			},
-			wantResponse: admission.Allowed(fmt.Sprintf(ResourceAllowedFormat, "nonRPUser", utils.GenerateGroupString([]string{"system:authenticated"}), admissionv1.Update, &utils.MCMetaGVK, "", types.NamespacedName{Name: "test-mc"})),
+			wantResponse: admission.Allowed(fmt.Sprintf(ResourceAllowedFormat, "nonSystemMastersUser", utils.GenerateGroupString([]string{"system:authenticated"}), admissionv1.Update, &utils.MCMetaGVK, "", types.NamespacedName{Name: "test-mc"})),
 		},
 	}
 
