@@ -144,6 +144,7 @@ type StageConfig struct {
 	// +kubebuilder:validation:MaxItems=2
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'Approval' && has(e.waitTime))",message="AfterStageTaskType is Approval, waitTime is not allowed"
+	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'TimedWait' && !has(e.waitTime))",message="AfterStageTaskType is TimedWait, waitTime is required"
 	AfterStageTasks []AfterStageTask `json:"afterStageTasks,omitempty"`
 }
 
