@@ -91,8 +91,9 @@ var (
 	driftDetectionInterval       = flag.Int("drift-detection-interval", 15, "The interval in seconds between attempts to detect configuration drifts in the cluster.")
 	watchWorkWithPriorityQueue   = flag.Bool("enable-watch-work-with-priority-queue", false, "If set, the apply_work controller will watch/reconcile work objects that are created new or have recent updates")
 	watchWorkReconcileAgeMinutes = flag.Int("watch-work-reconcile-age", 60, "maximum age (in minutes) of work objects for apply_work controller to watch/reconcile")
-	enablePprof                  = flag.Bool("enable-pprof", true, "enable pprof profiling")
+	enablePprof                  = flag.Bool("enable-pprof", false, "enable pprof profiling")
 	pprofPort                    = flag.Int("pprof-port", 6065, "port for pprof profiling")
+	hubPprofPort                 = flag.Int("hub-pprof-port", 6066, "port for hub pprof profiling")
 )
 
 func init() {
@@ -129,20 +130,6 @@ func main() {
 	if !*enableV1Alpha1APIs && !*enableV1Beta1APIs {
 		klog.ErrorS(errors.New("either enable-v1alpha1-apis or enable-v1beta1-apis is required"), "Invalid APIs flags")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
-	}
-
-	if *enablePprof {
-		klog.InfoS("Starting profiling", "port", *pprofPort)
-		go func() {
-			server := &http.Server{
-				Addr:              fmt.Sprintf(":%d", *pprofPort),
-				ReadHeaderTimeout: 5 * time.Second,
-			}
-			if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-				klog.ErrorS(err, "Failed to start profiling server")
-				klog.FlushAndExit(klog.ExitFlushTimeout, 1)
-			}
-		}()
 	}
 
 	hubURL := os.Getenv("HUB_SERVER_URL")
@@ -201,6 +188,10 @@ func main() {
 		LeaderElectionID:        "136224848560.member.fleet.azure.com",
 	}
 	//+kubebuilder:scaffold:builder
+	if *enablePprof {
+		memberOpts.PprofBindAddress = fmt.Sprintf(":%d", *pprofPort)
+		hubOpts.PprofBindAddress = fmt.Sprintf(":%d", *hubPprofPort)
+	}
 
 	if err := Start(ctrl.SetupSignalHandler(), hubConfig, memberConfig, hubOpts, memberOpts); err != nil {
 		klog.ErrorS(err, "Failed to start the controllers for the member agent")

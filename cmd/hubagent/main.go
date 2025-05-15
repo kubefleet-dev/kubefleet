@@ -17,15 +17,12 @@ limitations under the License.
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"math"
-	"net/http"
 	"os"
 	"strings"
 	"sync"
-	"time"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -117,7 +114,7 @@ func main() {
 	config := ctrl.GetConfigOrDie()
 	config.QPS, config.Burst = float32(opts.HubQPS), opts.HubBurst
 
-	mgr, err := ctrl.NewManager(config, ctrl.Options{
+	mgrOpts := ctrl.Options{
 		Scheme: scheme,
 		Cache: cache.Options{
 			SyncPeriod: &opts.ResyncPeriod.Duration,
@@ -134,24 +131,14 @@ func main() {
 			Port:    FleetWebhookPort,
 			CertDir: FleetWebhookCertDir,
 		}),
-	})
+	}
+	if opts.EnablePprof {
+		mgrOpts.PprofBindAddress = fmt.Sprintf(":%d", opts.PprofPort)
+	}
+	mgr, err := ctrl.NewManager(config, mgrOpts)
 	if err != nil {
 		klog.ErrorS(err, "unable to start controller manager.")
 		exitWithErrorFunc()
-	}
-
-	if opts.EnablePprof {
-		klog.InfoS("Starting profiling", "port", opts.PprofPort)
-		go func() {
-			server := &http.Server{
-				Addr:              fmt.Sprintf(":%d", opts.PprofPort),
-				ReadHeaderTimeout: 5 * time.Second,
-			}
-			if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-				klog.ErrorS(err, "failed to start profiling server")
-				exitWithErrorFunc()
-			}
-		}()
 	}
 
 	klog.V(2).InfoS("starting hubagent")
