@@ -155,11 +155,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req controllerruntime.Reques
 
 	workUpdated := false
 	overrideSucceeded := false
+	workDeleted := make(map[string]*fleetv1beta1.Work)
 	// list all the corresponding works
 	works, syncErr := r.listAllWorksAssociated(ctx, &resourceBinding)
 	if syncErr == nil {
 		// generate and apply the workUpdated works if we have all the works
-		overrideSucceeded, workUpdated, syncErr = r.syncAllWork(ctx, &resourceBinding, works, &cluster)
+		overrideSucceeded, workUpdated, workDeleted, syncErr = r.syncAllWork(ctx, &resourceBinding, works, &cluster)
 	}
 	// Reset the conditions and failed/drifted/diffed placements.
 	for i := condition.OverriddenCondition; i < condition.TotalCondition; i++ {
@@ -220,10 +221,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req controllerruntime.Reques
 			Message:            "All of the works are synchronized to the latest",
 		})
 		switch {
+		case len(workDeleted) != 0:
+			// Some Work object(s) are being deleted; set a False Applied condition which signals
+			// that resources are in the process of being deleted.
+			klog.V(2).InfoS("Some work being deleted", "resourceBinding", bindingRef, "works", workDeleted)
+			setBindingStatus(workDeleted, works, &resourceBinding)
+			syncErr = controller.NewUserError(fmt.Errorf("some work objects are being deleted"))
 		case !workUpdated:
 			// The Work object itself is unchanged; refresh the cluster resource binding status
 			// based on the status information reported on the Work object(s).
-			setBindingStatus(works, &resourceBinding)
+			setBindingStatus(workDeleted, works, &resourceBinding)
 		case resourceBinding.Spec.ApplyStrategy == nil || resourceBinding.Spec.ApplyStrategy.Type != fleetv1beta1.ApplyStrategyTypeReportDiff:
 			// The Work object itself has changed; set a False Applied condition which signals
 			// that resources are in the process of being applied.
@@ -397,9 +404,7 @@ func (r *Reconciler) listAllWorksAssociated(ctx context.Context, resourceBinding
 		return nil, controller.NewAPIServerError(true, err)
 	}
 	for _, work := range workList.Items {
-		if work.DeletionTimestamp == nil {
-			currentWork[work.Name] = work.DeepCopy()
-		}
+		currentWork[work.Name] = work.DeepCopy()
 	}
 	klog.V(2).InfoS("Get all the work associated", "numOfWork", len(currentWork), "resourceBinding", klog.KObj(resourceBinding))
 	return currentWork, nil
@@ -409,8 +414,11 @@ func (r *Reconciler) listAllWorksAssociated(ctx context.Context, resourceBinding
 // it returns
 // 1: if we apply the overrides successfully
 // 2: if we actually made any changes on the hub cluster
-func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1beta1.ClusterResourceBinding, existingWorks map[string]*fleetv1beta1.Work, cluster *clusterv1beta1.MemberCluster) (bool, bool, error) {
+// 3: the deleted work objects if any
+// 4: an error if any
+func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1beta1.ClusterResourceBinding, existingWorks map[string]*fleetv1beta1.Work, cluster *clusterv1beta1.MemberCluster) (bool, bool, map[string]*fleetv1beta1.Work, error) {
 	updateAny := atomic.NewBool(false)
+	deletedWork := make(map[string]*fleetv1beta1.Work)
 	resourceBindingRef := klog.KObj(resourceBinding)
 
 	// Refresh the apply strategy for all existing works.
@@ -435,17 +443,17 @@ func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1be
 		})
 	}
 	if updateErr := errs.Wait(); updateErr != nil {
-		return false, false, updateErr
+		return false, false, deletedWork, updateErr
 	}
 
 	// the hash256 function can handle empty list https://go.dev/play/p/_4HW17fooXM
 	resourceOverrideSnapshotHash, err := resource.HashOf(resourceBinding.Spec.ResourceOverrideSnapshots)
 	if err != nil {
-		return false, false, controller.NewUnexpectedBehaviorError(err)
+		return false, false, deletedWork, controller.NewUnexpectedBehaviorError(err)
 	}
 	clusterResourceOverrideSnapshotHash, err := resource.HashOf(resourceBinding.Spec.ClusterResourceOverrideSnapshots)
 	if err != nil {
-		return false, false, controller.NewUnexpectedBehaviorError(err)
+		return false, false, deletedWork, controller.NewUnexpectedBehaviorError(err)
 	}
 	// TODO: check all work synced first before fetching the snapshots after we put ParentResourceOverrideSnapshotHashAnnotation and ParentClusterResourceOverrideSnapshotHashAnnotation in all the work objects
 
@@ -456,22 +464,22 @@ func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1be
 			// the resourceIndex is deleted but the works might still be up to date with the binding.
 			if areAllWorkSynced(existingWorks, resourceBinding, resourceOverrideSnapshotHash, clusterResourceOverrideSnapshotHash) {
 				klog.V(2).InfoS("All the works are synced with the resourceBinding even if the resource snapshot index is removed", "resourceBinding", resourceBindingRef)
-				return true, updateAny.Load(), nil
+				return true, updateAny.Load(), deletedWork, nil
 			}
-			return false, false, controller.NewUserError(err)
+			return false, false, deletedWork, controller.NewUserError(err)
 		}
 		// TODO(RZ): handle errResourceNotFullyCreated error so we don't need to wait for all the snapshots to be created
-		return false, false, err
+		return false, false, deletedWork, err
 	}
 
 	croMap, err := r.fetchClusterResourceOverrideSnapshots(ctx, resourceBinding)
 	if err != nil {
-		return false, false, err
+		return false, false, deletedWork, err
 	}
 
 	roMap, err := r.fetchResourceOverrideSnapshots(ctx, resourceBinding)
 	if err != nil {
-		return false, false, err
+		return false, false, deletedWork, err
 	}
 
 	// issue all the create/update requests for the corresponding works for each snapshot in parallel
@@ -484,7 +492,7 @@ func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1be
 		workNamePrefix, err := getWorkNamePrefixFromSnapshotName(snapshot)
 		if err != nil {
 			klog.ErrorS(err, "Encountered a mal-formatted resource snapshot", "resourceSnapshot", klog.KObj(snapshot))
-			return false, false, err
+			return false, false, deletedWork, err
 		}
 		var simpleManifests []fleetv1beta1.Manifest
 		for j := range snapshot.Spec.SelectedResources {
@@ -492,7 +500,7 @@ func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1be
 			// TODO: override the content of the wrapped resource instead of the envelope itself
 			resourceDeleted, overrideErr := r.applyOverrides(selectedResource, cluster, croMap, roMap)
 			if overrideErr != nil {
-				return false, false, overrideErr
+				return false, false, deletedWork, overrideErr
 			}
 			if resourceDeleted {
 				klog.V(2).InfoS("The resource is deleted by the override rules", "snapshot", klog.KObj(snapshot), "selectedResource", snapshot.Spec.SelectedResources[j])
@@ -503,14 +511,14 @@ func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1be
 			var uResource unstructured.Unstructured
 			if unMarshallErr := uResource.UnmarshalJSON(selectedResource.Raw); unMarshallErr != nil {
 				klog.ErrorS(unMarshallErr, "work has invalid content", "snapshot", klog.KObj(snapshot), "selectedResource", selectedResource.Raw)
-				return true, false, controller.NewUnexpectedBehaviorError(unMarshallErr)
+				return true, false, deletedWork, controller.NewUnexpectedBehaviorError(unMarshallErr)
 			}
 			if uResource.GetObjectKind().GroupVersionKind() == utils.ConfigMapGVK &&
 				len(uResource.GetAnnotations()[fleetv1beta1.EnvelopeConfigMapAnnotation]) != 0 {
 				// get a work object for the enveloped configMap
 				work, err := r.getConfigMapEnvelopWorkObj(ctx, workNamePrefix, resourceBinding, snapshot, &uResource, resourceOverrideSnapshotHash, clusterResourceOverrideSnapshotHash)
 				if err != nil {
-					return true, false, err
+					return true, false, deletedWork, err
 				}
 				activeWork[work.Name] = work
 				newWork = append(newWork, work)
@@ -551,24 +559,38 @@ func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding *fleetv1be
 			continue
 		}
 		errs.Go(func() error {
-			if err := r.Client.Delete(ctx, work); err != nil {
-				if !apierrors.IsNotFound(err) {
-					klog.ErrorS(err, "Failed to delete the no longer needed work", "work", klog.KObj(work))
-					return controller.NewAPIServerError(false, err)
-				}
+			if err := r.deleteWork(cctx, work, updateAny); err != nil {
+				klog.ErrorS(err, "Failed to delete the work", "work", klog.KObj(work))
+				return controller.NewAPIServerError(false, err)
 			}
-			klog.V(2).InfoS("Deleted the work that is not associated with any resource snapshot", "work", klog.KObj(work))
-			updateAny.Store(true)
+			deletedWork[work.Name] = work
 			return nil
 		})
 	}
 
 	// wait for all the create/update/delete requests to finish
 	if updateErr := errs.Wait(); updateErr != nil {
-		return true, false, updateErr
+		return true, false, deletedWork, updateErr
 	}
-	klog.V(2).InfoS("Successfully synced all the work associated with the resourceBinding", "updateAny", updateAny.Load(), "resourceBinding", resourceBindingRef)
-	return true, updateAny.Load(), nil
+	klog.V(2).InfoS("Successfully synced all the work associated with the resourceBinding", "updateAny", updateAny.Load(), "numOfDeletedWork", len(deletedWork), "resourceBinding", resourceBindingRef)
+	return true, updateAny.Load(), deletedWork, nil
+}
+
+// deleteWork deletes the work object if it is not associated with any resource snapshot.
+func (r *Reconciler) deleteWork(ctx context.Context, work *fleetv1beta1.Work, updateAny *atomic.Bool) error {
+	if work.DeletionTimestamp == nil {
+		if err := r.Client.Delete(ctx, work); err != nil {
+			if !apierrors.IsNotFound(err) {
+				klog.ErrorS(err, "Failed to delete the no longer needed work", "work", klog.KObj(work))
+				return err
+			}
+		}
+		klog.V(2).InfoS("Deleted the work that is not associated with any resource snapshot", "work", klog.KObj(work))
+	} else {
+		klog.V(2).InfoS("Work is in the process of being deleted", "work", klog.KObj(work), "deletionTimestamp", work.DeletionTimestamp)
+		updateAny.Store(true)
+	}
+	return nil
 }
 
 // syncApplyStrategy syncs the apply strategy specified on a ClusterResourceBinding object
@@ -845,7 +867,7 @@ const (
 )
 
 // setBindingStatus sets the binding status based on the works associated with the binding.
-func setBindingStatus(works map[string]*fleetv1beta1.Work, resourceBinding *fleetv1beta1.ClusterResourceBinding) {
+func setBindingStatus(workDeleted map[string]*fleetv1beta1.Work, works map[string]*fleetv1beta1.Work, resourceBinding *fleetv1beta1.ClusterResourceBinding) {
 	bindingRef := klog.KObj(resourceBinding)
 
 	// Note (chenyu1): the work generator will refresh the status of a ClusterResourceBinding using
@@ -871,7 +893,7 @@ func setBindingStatus(works map[string]*fleetv1beta1.Work, resourceBinding *flee
 	} else {
 		// Set the Applied and Available condition if (and only if) a ClientSideApply or ServerSideApply
 		// apply strategy is currently being used.
-		appliedSummarizedStatus = setAllWorkAppliedCondition(works, resourceBinding)
+		appliedSummarizedStatus = setAllWorkAppliedCondition(workDeleted, works, resourceBinding)
 		// Note that Fleet will only set the Available condition if the apply op itself is successful, i.e.,
 		// the Applied condition is True.
 		availabilitySummarizedStatus = setAllWorkAvailableCondition(works, resourceBinding)
@@ -1007,7 +1029,7 @@ func setBindingStatus(works map[string]*fleetv1beta1.Work, resourceBinding *flee
 //
 // The Applied condition of a ClusterResourceBinding object is set to True if and only if all the
 // related Work objects have their Applied condition set to True.
-func setAllWorkAppliedCondition(works map[string]*fleetv1beta1.Work, binding *fleetv1beta1.ClusterResourceBinding) workConditionSummarizedStatus {
+func setAllWorkAppliedCondition(workDeleted map[string]*fleetv1beta1.Work, works map[string]*fleetv1beta1.Work, binding *fleetv1beta1.ClusterResourceBinding) workConditionSummarizedStatus {
 	// Fleet here makes a clear distinction between incomplete, failed, and successful apply operations.
 	// This is to ensure that stale apply information (esp. those set before
 	// an apply strategy change) will not leak into the current apply operations.
@@ -1017,30 +1039,51 @@ func setAllWorkAppliedCondition(works map[string]*fleetv1beta1.Work, binding *fl
 	var firstWorkWithIncompleteApplyOp *fleetv1beta1.Work
 	var firstWorkWithFailedApplyOp *fleetv1beta1.Work
 
-	for _, w := range works {
-		applyCond := meta.FindStatusCondition(w.Status.Conditions, fleetv1beta1.WorkConditionTypeApplied)
-		switch {
-		case condition.IsConditionStatusTrue(applyCond, w.GetGeneration()):
-			// The Work object has completed the apply op successfully.
-		case condition.IsConditionStatusFalse(applyCond, w.GetGeneration()):
-			// An error has occurred during the apply op.
-			areAllWorksApplyOpsSuccessful = false
-			if firstWorkWithFailedApplyOp == nil {
-				firstWorkWithFailedApplyOp = w
-			}
-		default:
-			// The Work object has not yet completed the apply op.
-			areAllWorksApplyOpsCompleted = false
-			if firstWorkWithIncompleteApplyOp == nil {
-				firstWorkWithIncompleteApplyOp = w
+	var firstWorkDeleted *fleetv1beta1.Work
+
+	for _, w := range workDeleted {
+		if firstWorkDeleted == nil {
+			firstWorkDeleted = w
+		}
+	}
+
+	if firstWorkDeleted == nil {
+		for _, w := range works {
+			applyCond := meta.FindStatusCondition(w.Status.Conditions, fleetv1beta1.WorkConditionTypeApplied)
+			switch {
+			case condition.IsConditionStatusTrue(applyCond, w.GetGeneration()):
+				// The Work object has completed the apply op successfully.
+			case condition.IsConditionStatusFalse(applyCond, w.GetGeneration()):
+				// An error has occurred during the apply op.
+				areAllWorksApplyOpsSuccessful = false
+				if firstWorkWithFailedApplyOp == nil {
+					firstWorkWithFailedApplyOp = w
+				}
+			default:
+				// The Work object has not yet completed the apply op.
+				areAllWorksApplyOpsCompleted = false
+				if firstWorkWithIncompleteApplyOp == nil {
+					firstWorkWithIncompleteApplyOp = w
+				}
 			}
 		}
 	}
 
 	switch {
+	case len(workDeleted) != 0:
+		// Some work objects are being deleted.
+		klog.V(2).InfoS("Some works have not yet completed the apply op as some are deleting", "binding", klog.KObj(binding), "firstWorkDeleted", klog.KObj(firstWorkDeleted))
+		binding.SetConditions(metav1.Condition{
+			Status:             metav1.ConditionFalse,
+			Type:               string(fleetv1beta1.ResourceBindingApplied),
+			Reason:             condition.WorkNotAppliedReason,
+			Message:            fmt.Sprintf("Some work objects have been deleted. Work object %s is deleting", firstWorkDeleted.Name),
+			ObservedGeneration: binding.GetGeneration(),
+		})
+		return workConditionSummarizedStatusFalse
 	case !areAllWorksApplyOpsCompleted:
 		// Not all Work objects have completed the apply op.
-		klog.V(2).InfoS("Some works are not yet completed the apply op", "binding", klog.KObj(binding), "firstWorkWithIncompleteApplyOp", klog.KObj(firstWorkWithIncompleteApplyOp))
+		klog.V(2).InfoS("Some works have not yet completed the apply op", "binding", klog.KObj(binding), "firstWorkWithIncompleteApplyOp", klog.KObj(firstWorkWithIncompleteApplyOp))
 		binding.SetConditions(metav1.Condition{
 			Status:             metav1.ConditionFalse,
 			Type:               string(fleetv1beta1.ResourceBindingApplied),

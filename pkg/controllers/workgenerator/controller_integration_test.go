@@ -598,6 +598,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 
 		Context("Test Bound ClusterResourceBinding with a single resource snapshot with envelop objects", func() {
 			var masterSnapshot *placementv1beta1.ClusterResourceSnapshot
+			var envelopWorkLabelMatcher client.MatchingLabels
 
 			BeforeEach(func() {
 				masterSnapshot = generateResourceSnapshot(1, 1, 0, [][]byte{
@@ -611,6 +612,13 @@ var _ = Describe("Test Work Generator Controller", func() {
 					TargetCluster:        memberClusterName,
 				}
 				createClusterResourceBinding(&binding, spec)
+				envelopWorkLabelMatcher = client.MatchingLabels{
+					placementv1beta1.ParentBindingLabel:     binding.Name,
+					placementv1beta1.CRPTrackingLabel:       testCRPName,
+					placementv1beta1.EnvelopeTypeLabel:      string(placementv1beta1.ConfigMapEnvelopeType),
+					placementv1beta1.EnvelopeNameLabel:      "envelop-configmap",
+					placementv1beta1.EnvelopeNamespaceLabel: "app",
+				}
 			})
 
 			AfterEach(func() {
@@ -863,13 +871,6 @@ var _ = Describe("Test Work Generator Controller", func() {
 				By(fmt.Sprintf("resource binding  %s is reconciled", binding.Name))
 				// check the enveloped work is deleted
 				Eventually(func() error {
-					envelopWorkLabelMatcher := client.MatchingLabels{
-						placementv1beta1.ParentBindingLabel:     binding.Name,
-						placementv1beta1.CRPTrackingLabel:       testCRPName,
-						placementv1beta1.EnvelopeTypeLabel:      string(placementv1beta1.ConfigMapEnvelopeType),
-						placementv1beta1.EnvelopeNameLabel:      "envelop-configmap",
-						placementv1beta1.EnvelopeNamespaceLabel: "app",
-					}
 					if err := k8sClient.List(ctx, &workList, envelopWorkLabelMatcher); err != nil {
 						return err
 					}
@@ -878,6 +879,168 @@ var _ = Describe("Test Work Generator Controller", func() {
 					}
 					return nil
 				}, timeout, interval).Should(Succeed(), "Failed to delete the expected enveloped work in hub cluster")
+				// check the work that contains none enveloped objects
+				work := placementv1beta1.Work{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName), Namespace: memberClusterNamespaceName}, &work)
+				}, timeout, interval).Should(Succeed(), "Failed to get the expected work in hub cluster")
+				By(fmt.Sprintf("normal work %s is created in %s", work.Name, work.Namespace))
+				//inspect the work
+				wantWork := placementv1beta1.Work{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName),
+						Namespace: memberClusterNamespaceName,
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         placementv1beta1.GroupVersion.String(),
+								Kind:               "ClusterResourceBinding",
+								Name:               binding.Name,
+								UID:                binding.UID,
+								BlockOwnerDeletion: ptr.To(true),
+							},
+						},
+						Labels: map[string]string{
+							placementv1beta1.CRPTrackingLabel:                 testCRPName,
+							placementv1beta1.ParentBindingLabel:               binding.Name,
+							placementv1beta1.ParentResourceSnapshotIndexLabel: "2",
+						},
+						Annotations: map[string]string{
+							placementv1beta1.ParentResourceSnapshotNameAnnotation:                binding.Spec.ResourceSnapshotName,
+							placementv1beta1.ParentClusterResourceOverrideSnapshotHashAnnotation: emptyHash,
+							placementv1beta1.ParentResourceOverrideSnapshotHashAnnotation:        emptyHash,
+						},
+					},
+					Spec: placementv1beta1.WorkSpec{
+						Workload: placementv1beta1.WorkloadTemplate{
+							Manifests: []placementv1beta1.Manifest{
+								{RawExtension: runtime.RawExtension{Raw: testResourceCRD}},
+								{RawExtension: runtime.RawExtension{Raw: testNameSpace}},
+							},
+						},
+					},
+				}
+				diff := cmp.Diff(wantWork, work, ignoreWorkOption, ignoreTypeMeta)
+				Expect(diff).Should(BeEmpty(), fmt.Sprintf("work(%s) mismatch (-want +got):\n%s", work.Name, diff))
+				// Check the binding status that it should be not applied now, but will be eventually later.
+				verifyBindingStatusSyncedNotApplied(binding, false, false)
+				markWorkApplied(&work)
+				verifyBindStatusAppliedNotAvailable(binding, false)
+				markWorkAvailable(&work)
+				verifyBindStatusAvail(binding, false, false)
+			})
+
+			It("should keep all work until fully deleted (stuck in deletion then resolved) ", func() {
+				// Make sure the enveloped work is created.
+				var workList placementv1beta1.WorkList
+				fetchEnvelopedWork(&workList, binding)
+				envWork := workList.Items[0]
+				envWork.Finalizers = append(envWork.Finalizers, "example.com/finalizer")
+				Expect(k8sClient.Update(ctx, &envWork)).Should(Succeed())
+				By("create a second snapshot without an enveloped object")
+				// Create a second snapshot without an enveloped object.
+				masterSnapshot = generateResourceSnapshot(2, 1, 0, [][]byte{
+					testResourceCRD, testNameSpace,
+				})
+				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
+				By(fmt.Sprintf("Another master resource snapshot %s created", masterSnapshot.Name))
+				// update binding
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding)).Should(Succeed())
+				binding.Spec.ResourceSnapshotName = masterSnapshot.Name
+				Expect(k8sClient.Update(ctx, binding)).Should(Succeed())
+				By(fmt.Sprintf("Resource binding %s updated", binding.Name))
+				updateRolloutStartedGeneration(&binding)
+				// Check the binding status till the bound condition is true for the second binding generation.
+				Eventually(func() bool {
+					if err := k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding); err != nil {
+						return false
+					}
+					if binding.GetGeneration() <= 1 {
+						return false
+					}
+					// Only check the work created status as the applied status reason changes depends on where the reconcile logic is.
+					return condition.IsConditionStatusTrue(
+						meta.FindStatusCondition(binding.Status.Conditions, string(placementv1beta1.ResourceBindingWorkSynchronized)), binding.GetGeneration())
+				}, timeout, interval).Should(BeTrue(), fmt.Sprintf("binding(%s) condition should be true", binding.Name))
+				By(fmt.Sprintf("Resource binding  %s is reconciled", binding.Name))
+				// Check the enveloped work is being deleted but not yet removed.
+				Eventually(func() error {
+					if err := k8sClient.List(ctx, &workList, envelopWorkLabelMatcher); err != nil {
+						return err
+					}
+					if len(workList.Items) != 1 {
+						return fmt.Errorf("expect to get an enveloped work but got %d", len(workList.Items))
+					}
+					if workList.Items[0].DeletionTimestamp.IsZero() {
+						return fmt.Errorf("expect to get an enveloped work with deletion timestamp but got %s", workList.Items[0].DeletionTimestamp)
+					}
+					envWork = workList.Items[0]
+					return nil
+				}, timeout, interval).Should(Succeed(), "Failed to get deleting enveloped work in hub cluster")
+				verifyBindingStatusSyncedNotApplied(binding, false, false)
+				// Check the work that contains none enveloped objects.
+				work := placementv1beta1.Work{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName), Namespace: memberClusterNamespaceName}, &work)
+				}, timeout, interval).Should(Succeed(), "Failed to get the expected work in hub cluster")
+				By(fmt.Sprintf("Normal work %s is created in %s", work.Name, work.Namespace))
+				// Inspect the work.
+				wantWork := placementv1beta1.Work{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName),
+						Namespace: memberClusterNamespaceName,
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion:         placementv1beta1.GroupVersion.String(),
+								Kind:               "ClusterResourceBinding",
+								Name:               binding.Name,
+								UID:                binding.UID,
+								BlockOwnerDeletion: ptr.To(true),
+							},
+						},
+						Labels: map[string]string{
+							placementv1beta1.CRPTrackingLabel:                 testCRPName,
+							placementv1beta1.ParentBindingLabel:               binding.Name,
+							placementv1beta1.ParentResourceSnapshotIndexLabel: "2",
+						},
+						Annotations: map[string]string{
+							placementv1beta1.ParentResourceSnapshotNameAnnotation:                binding.Spec.ResourceSnapshotName,
+							placementv1beta1.ParentClusterResourceOverrideSnapshotHashAnnotation: emptyHash,
+							placementv1beta1.ParentResourceOverrideSnapshotHashAnnotation:        emptyHash,
+						},
+					},
+					Spec: placementv1beta1.WorkSpec{
+						Workload: placementv1beta1.WorkloadTemplate{
+							Manifests: []placementv1beta1.Manifest{
+								{RawExtension: runtime.RawExtension{Raw: testResourceCRD}},
+								{RawExtension: runtime.RawExtension{Raw: testNameSpace}},
+							},
+						},
+					},
+				}
+				diff := cmp.Diff(wantWork, work, ignoreWorkOption, ignoreTypeMeta)
+				Expect(diff).Should(BeEmpty(), fmt.Sprintf("work(%s) mismatch (-want +got):\n%s", work.Name, diff))
+				verifyBindingStatusSyncedNotApplied(binding, false, false)
+				markWorkApplied(&work)
+				// Check binding status is still not applied since the enveloped work is not deleted yet.
+				verifyBindingStatusSyncedNotApplied(binding, false, false)
+				By("Binding status is still not applied since the enveloped work is not deleted yet")
+				// Remove finalizer on the enveloped work.
+				envWork.Finalizers = []string{}
+				Expect(k8sClient.Update(ctx, &envWork)).Should(Succeed())
+				// Check enveloped work is deleted.
+				Eventually(func() error {
+					if err := k8sClient.List(ctx, &workList, envelopWorkLabelMatcher); err != nil {
+						return err
+					}
+					if len(workList.Items) != 0 {
+						return fmt.Errorf("expect to not get an enveloped work but got %d", len(workList.Items))
+					}
+					return nil
+				}, timeout, interval).Should(Succeed(), "Failed to get deleted enveloped work in hub cluster")
+				By("Enveloped work is deleted")
+				verifyBindStatusAppliedNotAvailable(binding, false)
+				markWorkAvailable(&work)
+				verifyBindStatusAvail(binding, false, false)
 			})
 		})
 
@@ -890,7 +1053,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 					testResourceCRD, testNameSpace, testResource,
 				})
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
-				By(fmt.Sprintf("master resource snapshot  %s created", masterSnapshot.Name))
+				By(fmt.Sprintf("master resource snapshot %s created", masterSnapshot.Name))
 				// create binding
 				spec := placementv1beta1.ResourceBindingSpec{
 					State:                placementv1beta1.BindingStateBound,
@@ -903,7 +1066,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 					testConfigMap, testPdb,
 				})
 				Expect(k8sClient.Create(ctx, secondSnapshot)).Should(Succeed())
-				By(fmt.Sprintf("secondary resource snapshot  %s created", secondSnapshot.Name))
+				By(fmt.Sprintf("secondary resource snapshot %s created", secondSnapshot.Name))
 			})
 
 			AfterEach(func() {
@@ -1159,30 +1322,30 @@ var _ = Describe("Test Work Generator Controller", func() {
 			})
 
 			It("Should remove the work in the target namespace when resource snapshots change", func() {
-				// check the work for the master resource snapshot is created
+				// Check the work for the master resource snapshot is created.
 				work := placementv1beta1.Work{}
 				Eventually(func() error {
 					return k8sClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName), Namespace: memberClusterNamespaceName}, &work)
 				}, timeout, interval).Should(Succeed(), "Failed to get the expected work in hub cluster")
 				By(fmt.Sprintf("first work %s is created in %s", work.Name, work.Namespace))
-				// check the work for the secondary resource snapshot is created, it's name is crp-subindex
+				// Check the work for the secondary resource snapshot is created, it's name is crp-subindex.
 				Eventually(func() error {
 					return k8sClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf(placementv1beta1.WorkNameWithSubindexFmt, testCRPName, 1), Namespace: memberClusterNamespaceName}, &work)
 				}, timeout, interval).Should(Succeed(), "Failed to get the expected work in hub cluster")
 				By(fmt.Sprintf("second work %s is created in %s", work.Name, work.Namespace))
-				// update the master resource snapshot with only 1 resource snapshot that contains everything in it
+				// Update the master resource snapshot with only 1 resource snapshot that contains everything in it.
 				masterSnapshot = generateResourceSnapshot(3, 1, 0, [][]byte{
 					testResourceCRD, testNameSpace, testResource, testConfigMap, testPdb,
 				})
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
 				By(fmt.Sprintf("new master resource snapshot  %s created", masterSnapshot.Name))
-				// update binding
+				// Update binding.
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding)).Should(Succeed())
 				binding.Spec.ResourceSnapshotName = masterSnapshot.Name
 				Expect(k8sClient.Update(ctx, binding)).Should(Succeed())
 				updateRolloutStartedGeneration(&binding)
 				By(fmt.Sprintf("resource binding  %s updated", binding.Name))
-				//inspect the work manifest that should have been updated to contain all
+				// Inspect the work manifest that should have been updated to contain all.
 				expectedManifest := []placementv1beta1.Manifest{
 					{RawExtension: runtime.RawExtension{Raw: testResourceCRD}},
 					{RawExtension: runtime.RawExtension{Raw: testNameSpace}},
@@ -1202,7 +1365,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 					return nil
 				}, timeout, interval).Should(Succeed(), "Failed to get the expected work in hub cluster")
 				By(fmt.Sprintf("first work %s is updated in %s", work.Name, work.Namespace))
-				// check the second work is removed since we have less resource snapshot now
+				// Check the second work is removed since we have less resource snapshot now.
 				Eventually(func() bool {
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      fmt.Sprintf(placementv1beta1.WorkNameWithSubindexFmt, testCRPName, 1),
@@ -1210,6 +1373,11 @@ var _ = Describe("Test Work Generator Controller", func() {
 					return errors.IsNotFound(err)
 				}, duration, interval).Should(BeTrue(), "controller should remove work in hub cluster that is no longer needed")
 				By(fmt.Sprintf("second work %s is deleted in %s", work.Name, work.Namespace))
+				verifyBindingStatusSyncedNotApplied(binding, false, false)
+				markWorkApplied(&work)
+				verifyBindStatusAppliedNotAvailable(binding, false)
+				markWorkAvailable(&work)
+				verifyBindStatusAvail(binding, false, false)
 			})
 
 			It("Should remove binding after all work associated with deleted bind are deleted", func() {
@@ -1229,7 +1397,6 @@ var _ = Describe("Test Work Generator Controller", func() {
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding)).Should(Succeed())
 				Expect(k8sClient.Delete(ctx, binding)).Should(Succeed())
 				By(fmt.Sprintf("resource binding  %s is deleted", binding.Name))
-
 				// verify that all associated works have been deleted
 				Eventually(func() error {
 					workKey1 := types.NamespacedName{
