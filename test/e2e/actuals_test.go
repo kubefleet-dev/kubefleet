@@ -419,6 +419,51 @@ func crpRolloutCompletedConditions(generation int64, hasOverride bool) []metav1.
 	}
 }
 
+func crpNoResourcesSelectedConditions(generation int64, hasOverride bool) []metav1.Condition {
+	overrideConditionReason := condition.OverrideNotSpecifiedReason
+	if hasOverride {
+		overrideConditionReason = condition.OverriddenSucceededReason
+	}
+	return []metav1.Condition{
+		{
+			Type:               string(placementv1beta1.ClusterResourcePlacementScheduledConditionType),
+			Status:             metav1.ConditionTrue,
+			Reason:             scheduler.FullyScheduledReason,
+			ObservedGeneration: generation,
+		},
+		{
+			Type:               string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType),
+			Status:             metav1.ConditionTrue,
+			Reason:             condition.RolloutStartedReason,
+			ObservedGeneration: generation,
+		},
+		{
+			Type:               string(placementv1beta1.ClusterResourcePlacementOverriddenConditionType),
+			Status:             metav1.ConditionTrue,
+			Reason:             overrideConditionReason,
+			ObservedGeneration: generation,
+		},
+		{
+			Type:               string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType),
+			Status:             metav1.ConditionTrue,
+			Reason:             condition.WorkSynchronizedReason,
+			ObservedGeneration: generation,
+		},
+		{
+			Type:               string(placementv1beta1.ClusterResourcePlacementAppliedConditionType),
+			Status:             metav1.ConditionTrue,
+			Reason:             condition.ApplySucceededReason,
+			ObservedGeneration: generation,
+		},
+		{
+			Type:               string(placementv1beta1.ClusterResourcePlacementAvailableConditionType),
+			Status:             metav1.ConditionTrue,
+			Reason:             condition.NoResourcesSelectedReason,
+			ObservedGeneration: generation,
+		},
+	}
+}
+
 func resourcePlacementSyncPendingConditions(generation int64) []metav1.Condition {
 	return []metav1.Condition{
 		{
@@ -551,6 +596,52 @@ func resourcePlacementRolloutCompletedConditions(generation int64, resourceIsTra
 			Type:               string(placementv1beta1.ResourcesAvailableConditionType),
 			Status:             metav1.ConditionTrue,
 			Reason:             availableConditionReason,
+			ObservedGeneration: generation,
+		},
+	}
+}
+
+func resourcePlacementRolloutCompletedConditionsWithNoSelectedResource(generation int64, hasOverride bool) []metav1.Condition {
+	overrideConditionReason := condition.OverrideNotSpecifiedReason
+	if hasOverride {
+		overrideConditionReason = condition.OverriddenSucceededReason
+	}
+
+	return []metav1.Condition{
+		{
+			Type:               string(placementv1beta1.ResourceScheduledConditionType),
+			Status:             metav1.ConditionTrue,
+			Reason:             condition.ScheduleSucceededReason,
+			ObservedGeneration: generation,
+		},
+		{
+			Type:               string(placementv1beta1.ResourceRolloutStartedConditionType),
+			Status:             metav1.ConditionTrue,
+			Reason:             condition.RolloutStartedReason,
+			ObservedGeneration: generation,
+		},
+		{
+			Type:               string(placementv1beta1.ResourceOverriddenConditionType),
+			Status:             metav1.ConditionTrue,
+			Reason:             overrideConditionReason,
+			ObservedGeneration: generation,
+		},
+		{
+			Type:               string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+			Status:             metav1.ConditionTrue,
+			Reason:             condition.AllWorkSyncedReason,
+			ObservedGeneration: generation,
+		},
+		{
+			Type:               string(placementv1beta1.ResourcesAppliedConditionType),
+			Status:             metav1.ConditionTrue,
+			Reason:             condition.AllWorkAppliedReason,
+			ObservedGeneration: generation,
+		},
+		{
+			Type:               string(placementv1beta1.ResourcesAvailableConditionType),
+			Status:             metav1.ConditionTrue,
+			Reason:             condition.NoResourcesSelectedReason,
 			ObservedGeneration: generation,
 		},
 	}
@@ -826,10 +917,17 @@ func customizedCRPStatusUpdatedActual(crpName string,
 
 		wantPlacementStatus := []placementv1beta1.ResourcePlacementStatus{}
 		for _, name := range wantSelectedClusters {
-			wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.ResourcePlacementStatus{
-				ClusterName: name,
-				Conditions:  resourcePlacementRolloutCompletedConditions(crp.Generation, resourceIsTrackable, false),
-			})
+			if len(wantSelectedResourceIdentifiers) == 0 || wantSelectedResourceIdentifiers == nil {
+				wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.ResourcePlacementStatus{
+					ClusterName: name,
+					Conditions:  resourcePlacementRolloutCompletedConditionsWithNoSelectedResource(crp.Generation, false),
+				})
+			} else {
+				wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.ResourcePlacementStatus{
+					ClusterName: name,
+					Conditions:  resourcePlacementRolloutCompletedConditions(crp.Generation, resourceIsTrackable, false),
+				})
+			}
 		}
 		for i := 0; i < len(wantUnselectedClusters); i++ {
 			wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.ResourcePlacementStatus{
@@ -839,7 +937,11 @@ func customizedCRPStatusUpdatedActual(crpName string,
 
 		var wantCRPConditions []metav1.Condition
 		if len(wantSelectedClusters) > 0 {
-			wantCRPConditions = crpRolloutCompletedConditions(crp.Generation, false)
+			if len(wantSelectedResourceIdentifiers) == 0 || wantSelectedResourceIdentifiers == nil {
+				wantCRPConditions = crpNoResourcesSelectedConditions(crp.Generation, false)
+			} else {
+				wantCRPConditions = crpRolloutCompletedConditions(crp.Generation, false)
+			}
 		} else {
 			wantCRPConditions = []metav1.Condition{
 				// we don't set the remaining resource conditions.

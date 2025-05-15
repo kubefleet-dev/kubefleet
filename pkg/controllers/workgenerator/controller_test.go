@@ -529,6 +529,7 @@ func TestSetAllWorkAppliedCondition(t *testing.T) {
 	tests := map[string]struct {
 		works                            map[string]*fleetv1beta1.Work
 		generation                       int64
+		resourcesSelected                bool
 		wantAppliedCond                  metav1.Condition
 		wantWorkAppliedCondSummaryStatus workConditionSummarizedStatus
 	}{
@@ -565,7 +566,8 @@ func TestSetAllWorkAppliedCondition(t *testing.T) {
 					},
 				},
 			},
-			generation: 1,
+			generation:        1,
+			resourcesSelected: true,
 			wantAppliedCond: metav1.Condition{
 				Status:             metav1.ConditionTrue,
 				Type:               string(fleetv1beta1.ResourceBindingApplied),
@@ -607,7 +609,8 @@ func TestSetAllWorkAppliedCondition(t *testing.T) {
 					},
 				},
 			},
-			generation: 1,
+			generation:        1,
+			resourcesSelected: true,
 			wantAppliedCond: metav1.Condition{
 				Status:             metav1.ConditionFalse,
 				Type:               string(fleetv1beta1.ResourceBindingApplied),
@@ -649,7 +652,8 @@ func TestSetAllWorkAppliedCondition(t *testing.T) {
 					},
 				},
 			},
-			generation: 1,
+			generation:        1,
+			resourcesSelected: true,
 			wantAppliedCond: metav1.Condition{
 				Status:             metav1.ConditionFalse,
 				Type:               string(fleetv1beta1.ResourceBindingApplied),
@@ -685,7 +689,8 @@ func TestSetAllWorkAppliedCondition(t *testing.T) {
 					},
 				},
 			},
-			generation: 1,
+			generation:        1,
+			resourcesSelected: true,
 			wantAppliedCond: metav1.Condition{
 				Status:             metav1.ConditionFalse,
 				Type:               string(fleetv1beta1.ResourceBindingApplied),
@@ -693,6 +698,76 @@ func TestSetAllWorkAppliedCondition(t *testing.T) {
 				ObservedGeneration: 1,
 			},
 			wantWorkAppliedCondSummaryStatus: workConditionSummarizedStatusIncomplete,
+		},
+		"applied is successful when no work is created due to no resources being selected": {
+			works:             map[string]*fleetv1beta1.Work{},
+			generation:        1,
+			resourcesSelected: false,
+			wantAppliedCond: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ResourceBindingApplied),
+				Reason:             condition.AllWorkAppliedReason,
+				ObservedGeneration: 1,
+			},
+			wantWorkAppliedCondSummaryStatus: workConditionSummarizedStatusTrue,
+		},
+		"applied is successful when no new work is created due to no resources being selected": {
+			works: map[string]*fleetv1beta1.Work{
+				"appliedWork1": {
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "work1",
+						Generation: 123,
+					},
+					Status: fleetv1beta1.WorkStatus{
+						Conditions: []metav1.Condition{
+							{
+								Type:               fleetv1beta1.WorkConditionTypeApplied,
+								Status:             metav1.ConditionTrue,
+								ObservedGeneration: 123,
+							},
+						},
+					},
+				},
+				// No new work object is created because resource selection was zero
+			},
+			generation:        1,
+			resourcesSelected: false,
+			wantAppliedCond: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ResourceBindingApplied),
+				Reason:             condition.AllWorkAppliedReason,
+				ObservedGeneration: 1,
+			},
+			wantWorkAppliedCondSummaryStatus: workConditionSummarizedStatusTrue,
+		},
+		"should succeed after when no new work is created due to no resources being selected": {
+			works: map[string]*fleetv1beta1.Work{
+				"appliedWork1": {
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "work1",
+						Generation: 123,
+					},
+					Status: fleetv1beta1.WorkStatus{
+						Conditions: []metav1.Condition{
+							{
+								Type:               fleetv1beta1.WorkConditionTypeApplied,
+								Status:             metav1.ConditionFalse,
+								ObservedGeneration: 123,
+							},
+						},
+					},
+				},
+				// No new work object is created because resource selection was zero
+			},
+			generation:        1,
+			resourcesSelected: false,
+			wantAppliedCond: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ResourceBindingApplied),
+				Reason:             condition.AllWorkAppliedReason,
+				ObservedGeneration: 1,
+			},
+			wantWorkAppliedCondSummaryStatus: workConditionSummarizedStatusTrue,
 		},
 	}
 	for name, tt := range tests {
@@ -703,7 +778,7 @@ func TestSetAllWorkAppliedCondition(t *testing.T) {
 					Generation: tt.generation,
 				},
 			}
-			workAppliedCondSummaryStatus := setAllWorkAppliedCondition(tt.works, binding)
+			workAppliedCondSummaryStatus := setAllWorkAppliedCondition(tt.resourcesSelected, tt.works, binding)
 			if workAppliedCondSummaryStatus != tt.wantWorkAppliedCondSummaryStatus {
 				t.Errorf("setAllWorkAppliedCondition() = %v, want %v", workAppliedCondSummaryStatus, tt.wantWorkAppliedCondSummaryStatus)
 			}
@@ -911,6 +986,7 @@ func TestSetAllWorkAvailableCondition(t *testing.T) {
 	tests := map[string]struct {
 		works                              map[string]*fleetv1beta1.Work
 		binding                            *fleetv1beta1.ClusterResourceBinding
+		resourcesSelected                  bool
 		wantAvailableCond                  *metav1.Condition
 		wantWorkAvailableCondSummaryStatus workConditionSummarizedStatus
 	}{
@@ -959,6 +1035,7 @@ func TestSetAllWorkAvailableCondition(t *testing.T) {
 					},
 				},
 			},
+			resourcesSelected: true,
 			wantAvailableCond: &metav1.Condition{
 				Status:             metav1.ConditionTrue,
 				Type:               string(fleetv1beta1.ResourceBindingAvailable),
@@ -1012,6 +1089,7 @@ func TestSetAllWorkAvailableCondition(t *testing.T) {
 					},
 				},
 			},
+			resourcesSelected: true,
 			wantAvailableCond: &metav1.Condition{
 				Status:             metav1.ConditionTrue,
 				Type:               string(fleetv1beta1.ResourceBindingAvailable),
@@ -1065,6 +1143,7 @@ func TestSetAllWorkAvailableCondition(t *testing.T) {
 					},
 				},
 			},
+			resourcesSelected: true,
 			wantAvailableCond: &metav1.Condition{
 				Status:             metav1.ConditionTrue,
 				Type:               string(fleetv1beta1.ResourceBindingAvailable),
@@ -1110,6 +1189,7 @@ func TestSetAllWorkAvailableCondition(t *testing.T) {
 					},
 				},
 			},
+			resourcesSelected: true,
 			wantAvailableCond: &metav1.Condition{
 				Status:             metav1.ConditionFalse,
 				Type:               string(fleetv1beta1.ResourceBindingAvailable),
@@ -1156,6 +1236,7 @@ func TestSetAllWorkAvailableCondition(t *testing.T) {
 					},
 				},
 			},
+			resourcesSelected: true,
 			wantAvailableCond: &metav1.Condition{
 				Status:             metav1.ConditionFalse,
 				Type:               string(fleetv1beta1.ResourceBindingAvailable),
@@ -1198,6 +1279,7 @@ func TestSetAllWorkAvailableCondition(t *testing.T) {
 					},
 				},
 			},
+			resourcesSelected: true,
 			wantAvailableCond: &metav1.Condition{
 				Status:             metav1.ConditionFalse,
 				Type:               string(fleetv1beta1.ResourceBindingAvailable),
@@ -1226,6 +1308,7 @@ func TestSetAllWorkAvailableCondition(t *testing.T) {
 					},
 				},
 			},
+			resourcesSelected:                  true,
 			wantAvailableCond:                  nil,
 			wantWorkAvailableCondSummaryStatus: workConditionSummarizedStatusFalse,
 		},
@@ -1242,14 +1325,136 @@ func TestSetAllWorkAvailableCondition(t *testing.T) {
 					Conditions: []metav1.Condition{},
 				},
 			},
+			resourcesSelected:                  true,
 			wantAvailableCond:                  nil,
 			wantWorkAvailableCondSummaryStatus: workConditionSummarizedStatusFalse,
+		},
+		"no work created due to no resources being selected but still available": {
+			works: map[string]*fleetv1beta1.Work{},
+			binding: &fleetv1beta1.ClusterResourceBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 1,
+				},
+				Status: fleetv1beta1.ResourceBindingStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:               string(fleetv1beta1.ResourceBindingApplied),
+							Status:             metav1.ConditionTrue,
+							ObservedGeneration: 1,
+						},
+					},
+				},
+			},
+			resourcesSelected: false,
+			wantAvailableCond: &metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ResourceBindingAvailable),
+				Reason:             condition.NoResourcesSelectedReason,
+				ObservedGeneration: 1,
+			},
+			wantWorkAvailableCondSummaryStatus: workConditionSummarizedStatusTrue,
+		},
+		"no NEW work created due to no resources being selected but still available": {
+			works: map[string]*fleetv1beta1.Work{
+				"work1": {
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "work1",
+					},
+					Status: fleetv1beta1.WorkStatus{
+						Conditions: []metav1.Condition{
+							{
+								Type:   fleetv1beta1.WorkConditionTypeAvailable,
+								Reason: "any",
+								Status: metav1.ConditionTrue,
+							},
+						},
+					},
+				},
+				"work2": {
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "work2",
+					},
+					Status: fleetv1beta1.WorkStatus{
+						Conditions: []metav1.Condition{
+							{
+								Type:   fleetv1beta1.WorkConditionTypeAvailable,
+								Reason: "any",
+								Status: metav1.ConditionTrue,
+							},
+						},
+					},
+				},
+				// No new work object is created because resource selection was zero
+			},
+			binding: &fleetv1beta1.ClusterResourceBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 1,
+				},
+				Status: fleetv1beta1.ResourceBindingStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:               string(fleetv1beta1.ResourceBindingApplied),
+							Status:             metav1.ConditionTrue,
+							ObservedGeneration: 1,
+						},
+					},
+				},
+			},
+			resourcesSelected: false,
+			wantAvailableCond: &metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ResourceBindingAvailable),
+				Reason:             condition.NoResourcesSelectedReason,
+				ObservedGeneration: 1,
+			},
+			wantWorkAvailableCondSummaryStatus: workConditionSummarizedStatusTrue,
+		},
+		"should be available even with no NEW work created due to no resources being selected": {
+			works: map[string]*fleetv1beta1.Work{
+				"work1": {
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "work1",
+					},
+					Status: fleetv1beta1.WorkStatus{
+						Conditions: []metav1.Condition{
+							{
+								Type:   fleetv1beta1.WorkConditionTypeAvailable,
+								Reason: "any",
+								Status: metav1.ConditionTrue,
+							},
+						},
+					},
+				},
+				// No new work object is created because resource selection was zero
+			},
+			binding: &fleetv1beta1.ClusterResourceBinding{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 1,
+				},
+				Status: fleetv1beta1.ResourceBindingStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:               string(fleetv1beta1.ResourceBindingApplied),
+							Status:             metav1.ConditionTrue,
+							ObservedGeneration: 1,
+						},
+					},
+				},
+			},
+			resourcesSelected: false,
+			wantAvailableCond: &metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ResourceBindingAvailable),
+				Reason:             condition.NoResourcesSelectedReason,
+				ObservedGeneration: 1,
+			},
+			wantWorkAvailableCondSummaryStatus: workConditionSummarizedStatusTrue,
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			workAvailableCondSummaryStatus := setAllWorkAvailableCondition(tt.works, tt.binding)
+			workAvailableCondSummaryStatus := setAllWorkAvailableCondition(tt.resourcesSelected, tt.works, tt.binding)
 			if workAvailableCondSummaryStatus != tt.wantWorkAvailableCondSummaryStatus {
 				t.Errorf("buildAllWorkAvailableCondition() = %v, want %v", workAvailableCondSummaryStatus, tt.wantWorkAvailableCondSummaryStatus)
 			}
@@ -1267,6 +1472,7 @@ func TestSetBindingStatus(t *testing.T) {
 	tests := map[string]struct {
 		works                            map[string]*fleetv1beta1.Work
 		applyStrategy                    *fleetv1beta1.ApplyStrategy
+		resourcesSelected                bool
 		maxFailedResourcePlacementLimit  *int
 		wantFailedResourcePlacements     []fleetv1beta1.FailedResourcePlacement
 		maxDriftedResourcePlacementLimit *int
@@ -1352,6 +1558,7 @@ func TestSetBindingStatus(t *testing.T) {
 					},
 				},
 			},
+			resourcesSelected: true,
 		},
 		"One work has one not available and one work has one not applied": {
 			works: map[string]*fleetv1beta1.Work{
@@ -1464,6 +1671,7 @@ func TestSetBindingStatus(t *testing.T) {
 					},
 				},
 			},
+			resourcesSelected: true,
 			wantFailedResourcePlacements: []fleetv1beta1.FailedResourcePlacement{
 				{
 					ResourceIdentifier: fleetv1beta1.ResourceIdentifier{
@@ -1604,6 +1812,7 @@ func TestSetBindingStatus(t *testing.T) {
 					},
 				},
 			},
+			resourcesSelected:               true,
 			maxFailedResourcePlacementLimit: ptr.To(1),
 			wantFailedResourcePlacements: []fleetv1beta1.FailedResourcePlacement{
 				{
@@ -1732,6 +1941,7 @@ func TestSetBindingStatus(t *testing.T) {
 					},
 				},
 			},
+			resourcesSelected: true,
 			wantFailedResourcePlacements: []fleetv1beta1.FailedResourcePlacement{
 				{
 					ResourceIdentifier: fleetv1beta1.ResourceIdentifier{
@@ -1855,6 +2065,7 @@ func TestSetBindingStatus(t *testing.T) {
 					},
 				},
 			},
+			resourcesSelected: true,
 			wantFailedResourcePlacements: []fleetv1beta1.FailedResourcePlacement{
 				{
 					ResourceIdentifier: fleetv1beta1.ResourceIdentifier{
@@ -1995,6 +2206,7 @@ func TestSetBindingStatus(t *testing.T) {
 					},
 				},
 			},
+			resourcesSelected: true,
 			wantFailedResourcePlacements: []fleetv1beta1.FailedResourcePlacement{
 				{
 					ResourceIdentifier: fleetv1beta1.ResourceIdentifier{
@@ -2372,7 +2584,7 @@ func TestSetBindingStatus(t *testing.T) {
 					ApplyStrategy: tt.applyStrategy,
 				},
 			}
-			setBindingStatus(tt.works, binding)
+			setBindingStatus(tt.resourcesSelected, tt.works, binding)
 			got := binding.Status.FailedPlacements
 			// setBindingStatus is using map to populate the placements.
 			// There is no default order in traversing the map.
