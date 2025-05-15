@@ -26,24 +26,24 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 )
 
-func TestGetBindingDiffFromClusterStatus(t *testing.T) {
+func TestIsBindingSyncedWithClusterStatus(t *testing.T) {
 	tests := []struct {
 		name                 string
 		resourceSnapshotName string
 		updateRun            *placementv1beta1.ClusterStagedUpdateRun
 		binding              *placementv1beta1.ClusterResourceBinding
 		cluster              *placementv1beta1.ClusterUpdatingStatus
-		wantDiff             string
+		wantEqual            bool
 	}{
 		{
-			name:                 "getBindingDiffFromClusterStatus should return diff if binding and updateRun have different resourceSnapshot",
+			name:                 "isBindingSyncedWithClusterStatus should return false if binding and updateRun have different resourceSnapshot",
 			resourceSnapshotName: "test-1-snapshot",
 			binding: &placementv1beta1.ClusterResourceBinding{
 				Spec: placementv1beta1.ResourceBindingSpec{
 					ResourceSnapshotName: "test-2-snapshot",
 				},
 			},
-			wantDiff: "binding has different resourceSnapshotName, want: test-1-snapshot, got: test-2-snapshot",
+			wantEqual: false,
 		},
 		{
 			name:                 "isBindingSyncedWithClusterStatus should return false if binding and cluster status have different resourceOverrideSnapshot list",
@@ -75,7 +75,7 @@ func TestGetBindingDiffFromClusterStatus(t *testing.T) {
 					},
 				},
 			},
-			wantDiff: "binding has different resourceOverrideSnapshots, want: [{ro1 ns1} {ro2 ns2}], got: [{ro2 ns2} {ro1 ns1}]",
+			wantEqual: false,
 		},
 		{
 			name:                 "isBindingSyncedWithClusterStatus should return false if binding and cluster status have different clusterResourceOverrideSnapshot list",
@@ -97,7 +97,7 @@ func TestGetBindingDiffFromClusterStatus(t *testing.T) {
 				},
 				ClusterResourceOverrideSnapshots: []string{"cr1"},
 			},
-			wantDiff: "binding has different clusterResourceOverrideSnapshots, want: [cr1], got: [cr1 cr2]",
+			wantEqual: false,
 		},
 		{
 			name:                 "isBindingSyncedWithClusterStatus should return false if binding and updateRun have different applyStrategy",
@@ -129,7 +129,7 @@ func TestGetBindingDiffFromClusterStatus(t *testing.T) {
 				},
 				ClusterResourceOverrideSnapshots: []string{"cr1", "cr2"},
 			},
-			wantDiff: "binding has different applyStrategy, want: &{  ClientSideApply false <nil> }, got: &{  ReportDiff false <nil> }",
+			wantEqual: false,
 		},
 		{
 			name:                 "isBindingSyncedWithClusterStatus should return true if resourceSnapshot, applyStrategy, and override lists are all deep equal",
@@ -161,14 +161,14 @@ func TestGetBindingDiffFromClusterStatus(t *testing.T) {
 				},
 				ClusterResourceOverrideSnapshots: []string{"cr1", "cr2"},
 			},
-			wantDiff: "",
+			wantEqual: true,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := getBindingDiffFromClusterStatus(test.resourceSnapshotName, test.updateRun, test.binding, test.cluster)
-			if got != test.wantDiff {
-				t.Fatalf("getBindingDiffFromClusterStatus() got diff `%s`; want diff `%s`", got, test.wantDiff)
+			got := isBindingSyncedWithClusterStatus(test.resourceSnapshotName, test.updateRun, test.binding, test.cluster)
+			if got != test.wantEqual {
+				t.Fatalf("isBindingSyncedWithClusterStatus() got %v; want %v", got, test.wantEqual)
 			}
 		})
 	}

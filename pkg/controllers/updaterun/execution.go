@@ -122,7 +122,7 @@ func (r *Reconciler) executeUpdatingStage(
 		binding := toBeUpdatedBindingsMap[clusterStatus.ClusterName]
 		if !condition.IsConditionStatusTrue(clusterStartedCond, updateRun.Generation) {
 			// The cluster has not started updating yet.
-			if diff := getBindingDiffFromClusterStatus(resourceSnapshotName, updateRun, binding, clusterStatus); diff != "" {
+			if !isBindingSyncedWithClusterStatus(resourceSnapshotName, updateRun, binding, clusterStatus) {
 				klog.V(2).InfoS("Found the first cluster that needs to be updated", "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "clusterStagedUpdateRun", updateRunRef)
 				// The binding is not up-to-date with the cluster status.
 				binding.Spec.State = placementv1beta1.BindingStateBound
@@ -170,15 +170,12 @@ func (r *Reconciler) executeUpdatingStage(
 		}
 
 		// Now the cluster has to be updating, the binding should point to the right resource snapshot and the binding should be bound.
-		if diff := getBindingDiffFromClusterStatus(resourceSnapshotName, updateRun, binding, clusterStatus); diff != "" || binding.Spec.State != placementv1beta1.BindingStateBound ||
-			!condition.IsConditionStatusTrue(meta.FindStatusCondition(binding.Status.Conditions, string(placementv1beta1.ResourceBindingRolloutStarted)), binding.Generation) {
-			unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the clusterResourceBinding of the updating cluster `%s` in the stage `%s` does not have expected status: "+
-				"binding spec diff: %s; binding state (want Bound): %s; binding RolloutStarted (want true): %t, please check if there is concurrent clusterStagedUpdateRun",
-				clusterStatus.ClusterName, updatingStageStatus.StageName, diff, binding.Spec.State,
-				condition.IsConditionStatusTrue(meta.FindStatusCondition(binding.Status.Conditions, string(placementv1beta1.ResourceBindingRolloutStarted)), binding.Generation)))
-			klog.ErrorS(unexpectedErr, "The binding has been changed during updating, might be preempted by a concurrent clusterStagedUpdateRun", "clusterStagedUpdateRun", updateRunRef)
-			markClusterUpdatingFailed(clusterStatus, updateRun.Generation, unexpectedErr.Error())
-			return 0, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
+		if insync, rolloutStarted := isBindingSyncedWithClusterStatus(resourceSnapshotName, updateRun, binding, clusterStatus), condition.IsConditionStatusTrue(meta.FindStatusCondition(binding.Status.Conditions, string(placementv1beta1.ResourceBindingRolloutStarted)), binding.Generation); !insync || binding.Spec.State != placementv1beta1.BindingStateBound || !rolloutStarted {
+			preemptedErr := controller.NewUserError(fmt.Errorf("the clusterResourceBinding of the updating cluster `%s` in the stage `%s` is not up-to-date with the cluster status, "+
+				"please check the binding status and see if there is a concurrent updateRun updating the same binding", clusterStatus.ClusterName, updatingStageStatus.StageName))
+			klog.ErrorS(preemptedErr, "The binding has been changed during updating", "binding spec insync", insync, "binding state", binding.Spec.State, "binding RolloutStarted", rolloutStarted, "binding", klog.KObj(binding), "clusterStagedUpdateRun", updateRunRef)
+			markClusterUpdatingFailed(clusterStatus, updateRun.Generation, preemptedErr.Error())
+			return 0, fmt.Errorf("%w: %s", errStagedUpdatedAborted, preemptedErr.Error())
 		}
 
 		finished, updateErr := checkClusterUpdateResult(binding, clusterStatus, updatingStageStatus, updateRun)
@@ -421,30 +418,25 @@ func (r *Reconciler) updateApprovalRequestAccepted(ctx context.Context, appReq *
 	return nil
 }
 
-// getBindingDiffFromClusterStatus checks if the binding is up-to-date with the cluster status.
-// It returns an empty string if the binding is up-to-date, otherwise a string about detailed difference message.
-func getBindingDiffFromClusterStatus(resourceSnapshotName string, updateRun *placementv1beta1.ClusterStagedUpdateRun, binding *placementv1beta1.ClusterResourceBinding, cluster *placementv1beta1.ClusterUpdatingStatus) string {
+// isBindingSyncedWithClusterStatus checks if the binding is up-to-date with the cluster status.
+func isBindingSyncedWithClusterStatus(resourceSnapshotName string, updateRun *placementv1beta1.ClusterStagedUpdateRun, binding *placementv1beta1.ClusterResourceBinding, cluster *placementv1beta1.ClusterUpdatingStatus) bool {
 	if binding.Spec.ResourceSnapshotName != resourceSnapshotName {
-		diff := fmt.Sprintf("binding has different resourceSnapshotName, want: %s, got: %s", resourceSnapshotName, binding.Spec.ResourceSnapshotName)
-		klog.V(2).InfoS(diff, "clusterResourceBinding", klog.KObj(binding), "clusterStagedUpdateRun", klog.KObj(updateRun))
-		return diff
+		klog.ErrorS(fmt.Errorf("binding has different resourceSnapshotName, want: %s, got: %s", resourceSnapshotName, binding.Spec.ResourceSnapshotName), "ClusterResourceBinding is not up-to-date", "clusterResourceBinding", klog.KObj(binding), "clusterStagedUpdateRun", klog.KObj(updateRun))
+		return false
 	}
 	if !reflect.DeepEqual(cluster.ResourceOverrideSnapshots, binding.Spec.ResourceOverrideSnapshots) {
-		diff := fmt.Sprintf("binding has different resourceOverrideSnapshots, want: %v, got: %v", cluster.ResourceOverrideSnapshots, binding.Spec.ResourceOverrideSnapshots)
-		klog.V(2).InfoS(diff, "clusterResourceBinding", klog.KObj(binding), "clusterStagedUpdateRun", klog.KObj(updateRun))
-		return diff
+		klog.ErrorS(fmt.Errorf("binding has different resourceOverrideSnapshots, want: %v, got: %v", cluster.ResourceOverrideSnapshots, binding.Spec.ResourceOverrideSnapshots), "ClusterResourceBinding is not up-to-date", "clusterResourceBinding", klog.KObj(binding), "clusterStagedUpdateRun", klog.KObj(updateRun))
+		return false
 	}
 	if !reflect.DeepEqual(cluster.ClusterResourceOverrideSnapshots, binding.Spec.ClusterResourceOverrideSnapshots) {
-		diff := fmt.Sprintf("binding has different clusterResourceOverrideSnapshots, want: %v, got: %v", cluster.ClusterResourceOverrideSnapshots, binding.Spec.ClusterResourceOverrideSnapshots)
-		klog.V(2).InfoS(diff, "clusterResourceBinding", klog.KObj(binding), "clusterStagedUpdateRun", klog.KObj(updateRun))
-		return diff
+		klog.ErrorS(fmt.Errorf("binding has different clusterResourceOverrideSnapshots, want: %v, got: %v", cluster.ClusterResourceOverrideSnapshots, binding.Spec.ClusterResourceOverrideSnapshots), "ClusterResourceBinding is not up-to-date", "clusterResourceBinding", klog.KObj(binding), "clusterStagedUpdateRun", klog.KObj(updateRun))
+		return false
 	}
 	if !reflect.DeepEqual(binding.Spec.ApplyStrategy, updateRun.Status.ApplyStrategy) {
-		diff := fmt.Sprintf("binding has different applyStrategy, want: %v, got: %v", updateRun.Status.ApplyStrategy, binding.Spec.ApplyStrategy)
-		klog.V(2).InfoS(diff, "clusterResourceBinding", klog.KObj(binding), "clusterStagedUpdateRun", klog.KObj(updateRun))
-		return diff
+		klog.ErrorS(fmt.Errorf("binding has different applyStrategy, want: %v, got: %v", updateRun.Status.ApplyStrategy, binding.Spec.ApplyStrategy), "ClusterResourceBinding is not up-to-date", "clusterResourceBinding", klog.KObj(binding), "clusterStagedUpdateRun", klog.KObj(updateRun))
+		return false
 	}
-	return ""
+	return true
 }
 
 // checkClusterUpdateResult checks if the resources have been updated successfully on a given cluster.
