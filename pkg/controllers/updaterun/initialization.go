@@ -410,7 +410,7 @@ func validateAfterStageTask(tasks []placementv1beta1.AfterStageTask) error {
 	}
 	for i, task := range tasks {
 		if task.Type == placementv1beta1.AfterStageTaskTypeTimedWait {
-			if task.WaitTime.Duration <= 0 {
+			if task.WaitTime != nil && task.WaitTime.Duration <= 0 {
 				return fmt.Errorf("task %d has wait duration <= 0", i)
 			}
 		}
