@@ -530,6 +530,63 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 
 			Expect(hubClient.Delete(ctx, &strategy)).Should(Succeed())
 		})
+
+		It("Should deny creation of ClusterStagedUpdateStrategy with AfterStageTask of type TimedWait with waitTime not specified", func() {
+			strategy := placementv1beta1.ClusterStagedUpdateStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.StagedUpdateStrategySpec{
+					Stages: []placementv1beta1.StageConfig{
+						{
+							Name: fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
+							AfterStageTasks: []placementv1beta1.AfterStageTask{
+								{
+									Type: placementv1beta1.AfterStageTaskTypeTimedWait,
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &strategy)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("AfterStageTaskType is TimedWait, waitTime is required"))
+		})
+
+		It("Should deny update of ClusterStagedUpdateStrategy when removing waitTime from AfterStageTask of type TimedWait", func() {
+			strategy := placementv1beta1.ClusterStagedUpdateStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.StagedUpdateStrategySpec{
+					Stages: []placementv1beta1.StageConfig{
+						{
+							Name: fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
+							AfterStageTasks: []placementv1beta1.AfterStageTask{
+								{
+									Type:     placementv1beta1.AfterStageTaskTypeTimedWait,
+									WaitTime: &metav1.Duration{Duration: time.Minute * 10},
+								},
+								{
+									Type: placementv1beta1.AfterStageTaskTypeApproval,
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, &strategy)).Should(Succeed())
+
+			strategy.Spec.Stages[0].AfterStageTasks[0].WaitTime = nil
+			err := hubClient.Update(ctx, &strategy)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterStagedUpdateStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("AfterStageTaskType is TimedWait, waitTime is required"))
+
+			Expect(hubClient.Delete(ctx, &strategy)).Should(Succeed())
+		})
 	})
 
 	Context("Test ClusterApprovalRequest API validation - valid cases", func() {
