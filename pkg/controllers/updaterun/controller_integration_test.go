@@ -466,7 +466,7 @@ func generateTestClusterStagedUpdateStrategy() *placementv1beta1.ClusterStagedUp
 					AfterStageTasks: []placementv1beta1.AfterStageTask{
 						{
 							Type: placementv1beta1.AfterStageTaskTypeTimedWait,
-							WaitTime: metav1.Duration{
+							WaitTime: &metav1.Duration{
 								Duration: time.Second * 4,
 							},
 						},
@@ -490,7 +490,7 @@ func generateTestClusterStagedUpdateStrategy() *placementv1beta1.ClusterStagedUp
 						},
 						{
 							Type: placementv1beta1.AfterStageTaskTypeTimedWait,
-							WaitTime: metav1.Duration{
+							WaitTime: &metav1.Duration{
 								Duration: time.Second * 4,
 							},
 						},
