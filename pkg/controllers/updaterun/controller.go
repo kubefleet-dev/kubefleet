@@ -273,7 +273,7 @@ func (r *Reconciler) SetupWithManager(mgr runtime.Manager) error {
 				klog.V(2).InfoS("Handling a clusterApprovalRequest update event", "clusterApprovalRequest", klog.KObj(e.ObjectNew))
 				handleClusterApprovalRequestUpdate(e.ObjectOld, e.ObjectNew, q)
 			},
-			//
+			// We watch for ClusterApprovalRequest deletion events to recreate it ASAP.
 			DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				klog.V(2).InfoS("Handling a clusterApprovalRequest delete event", "clusterApprovalRequest", klog.KObj(e.Object))
 				handleClusterApprovalRequestDelete(e.Object, q)
@@ -317,6 +317,8 @@ func handleClusterApprovalRequestUpdate(oldObj, newObj client.Object, q workqueu
 	})
 }
 
+// handleClusterApprovalRequestDelete finds the ClusterStagedUpdateRun creating the ClusterApprovalRequest,
+// and enqueues it to the ClusterStagedUpdateRun controller queue when the ClusterApprovalRequest is deleted.
 func handleClusterApprovalRequestDelete(obj client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	appReq, ok := obj.(*placementv1beta1.ClusterApprovalRequest)
 	if !ok {
