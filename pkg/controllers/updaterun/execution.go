@@ -179,8 +179,8 @@ func (r *Reconciler) executeUpdatingStage(
 				"please check the status of binding `%s` and see if there is a concurrent updateRun referencing the same clusterResourcePlacement and updating the same cluster",
 				clusterStatus.ClusterName, updatingStageStatus.StageName, klog.KObj(binding)))
 			klog.ErrorS(preemptedErr, "The binding has been changed during updating",
-				"binding spec insync", inSync, "binding state", binding.Spec.State,
-				"binding RolloutStarted", rolloutStarted, "binding", klog.KObj(binding), "clusterStagedUpdateRun", updateRunRef)
+				"bindingSpecInSync", inSync, "bindingState", binding.Spec.State,
+				"bindingRolloutStarted", rolloutStarted, "binding", klog.KObj(binding), "clusterStagedUpdateRun", updateRunRef)
 			markClusterUpdatingFailed(clusterStatus, updateRun.Generation, preemptedErr.Error())
 			return 0, fmt.Errorf("%w: %s", errStagedUpdatedAborted, preemptedErr.Error())
 		}
