@@ -176,7 +176,8 @@ func (r *Reconciler) executeUpdatingStage(
 			// This issue mostly happens when there are concurrent updateRuns referencing the same clusterResourcePlacement but releasing different versions.
 			// After the 1st updateRun updates the binding, and before the controller re-checks the binding status, the 2nd updateRun updates the same binding, and thus the 1st updateRun is preempted and observes the binding not matching the desired state.
 			preemptedErr := controller.NewUserError(fmt.Errorf("the clusterResourceBinding of the updating cluster `%s` in the stage `%s` is not up-to-date with the desired status, "+
-				"please check the status of binding `%s` and see if there is a concurrent updateRun referencing the same clusterResourcePlacement and updating the same cluster", clusterStatus.ClusterName, updatingStageStatus.StageName, klog.KObj(binding)))
+				"please check the status of binding `%s` and see if there is a concurrent updateRun referencing the same clusterResourcePlacement and updating the same cluster",
+				clusterStatus.ClusterName, updatingStageStatus.StageName, klog.KObj(binding)))
 			klog.ErrorS(preemptedErr, "The binding has been changed during updating",
 				"binding spec insync", inSync, "binding state", binding.Spec.State,
 				"binding RolloutStarted", rolloutStarted, "binding", klog.KObj(binding), "clusterStagedUpdateRun", updateRunRef)
