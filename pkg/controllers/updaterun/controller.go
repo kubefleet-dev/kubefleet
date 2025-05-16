@@ -275,7 +275,7 @@ func (r *Reconciler) SetupWithManager(mgr runtime.Manager) error {
 			},
 			//
 			DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a clusterApprovalRequest update event", "clusterApprovalRequest", klog.KObj(e.Object))
+				klog.V(2).InfoS("Handling a clusterApprovalRequest delete event", "clusterApprovalRequest", klog.KObj(e.Object))
 				handleClusterApprovalRequestDelete(e.Object, q)
 			},
 		}).Complete(r)
