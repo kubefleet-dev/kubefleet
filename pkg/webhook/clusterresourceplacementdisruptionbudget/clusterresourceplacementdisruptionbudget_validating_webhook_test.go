@@ -82,6 +82,15 @@ func TestHandle(t *testing.T) {
 			MinAvailable: nil,
 		},
 	}
+	invalidCRPDBObjectCRPNotFound := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "does-not-exist",
+		},
+		Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
+			MaxUnavailable: nil,
+			MinAvailable:   nil,
+		},
+	}
 
 	validCRPDBObjectBytes, err := json.Marshal(validCRPDBObject)
 	assert.Nil(t, err)
@@ -92,6 +101,8 @@ func TestHandle(t *testing.T) {
 	invalidCRPDBObjectMaxAvailablePercentageBytes, err := json.Marshal(invalidCRPDBObjectMaxAvailablePercentage)
 	assert.Nil(t, err)
 	invalidCRPDBObjectMaxAvailableIntegerBytes, err := json.Marshal(invalidCRPDBObjectMaxAvailableInteger)
+	assert.Nil(t, err)
+	invalidCRPDBObjectCRPNotFoundBytes, err := json.Marshal(invalidCRPDBObjectCRPNotFound)
 	assert.Nil(t, err)
 
 	validCRP := &placementv1beta1.ClusterResourcePlacement{
@@ -255,6 +266,28 @@ func TestHandle(t *testing.T) {
 				client:  fakeClient,
 			},
 			wantResponse: admission.Denied(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with any specified max unavailable %v", invalidCRPDBObjectMaxAvailableInteger.Spec.MaxUnavailable)),
+		},
+		"deny CRPDB create - CRP not found": {
+			req: admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name: "does-not-exist",
+					Object: runtime.RawExtension{
+						Raw:    invalidCRPDBObjectCRPNotFoundBytes,
+						Object: invalidCRPDBObjectCRPNotFound,
+					},
+					UserInfo: authenticationv1.UserInfo{
+						Username: "test-user",
+						Groups:   []string{"system:masters"},
+					},
+					RequestKind: &utils.ClusterResourcePlacementDisruptionBudgetMetaGVK,
+					Operation:   admissionv1.Create,
+				},
+			},
+			resourceValidator: clusterResourcePlacementDisruptionBudgetValidator{
+				decoder: decoder,
+				client:  fakeClient,
+			},
+			wantResponse: admission.Denied(fmt.Sprintf("clusterresourceplacements.placement.kubernetes-fleet.io \"%s\" not found", invalidCRPDBObjectCRPNotFound.Name)),
 		},
 	}
 	for testName, testCase := range testCases {
