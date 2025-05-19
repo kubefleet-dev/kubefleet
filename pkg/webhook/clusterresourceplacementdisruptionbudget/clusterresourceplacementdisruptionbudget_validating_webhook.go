@@ -65,7 +65,7 @@ func (v *clusterResourcePlacementDisruptionBudgetValidator) Handle(ctx context.C
 			klog.V(2).InfoS("The corresponding ClusterResourcePlacement object is missing", "clusterResourcePlacementDisruptionBudget", db.Name, "clusterResourcePlacement", db.Name)
 			return admission.Denied(err.Error())
 		}
-		return admission.Errored(http.StatusBadRequest, fmt.Errorf("failed to get clusterResourcePlacement %s for clusterResourcePlacementDisruptionBudget: %w", db.Name, err))
+		return admission.Errored(http.StatusBadRequest, fmt.Errorf("failed to get clusterResourcePlacement %s for clusterResourcePlacementDisruptionBudget %s: %w", db.Name, db.Name, err))
 	}
 
 	if err := validator.ValidateClusterResourcePlacementDisruptionBudget(&db, &crp); err != nil {
