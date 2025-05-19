@@ -326,6 +326,12 @@ func handleClusterApprovalRequestDelete(obj client.Object, q workqueue.TypedRate
 			"Invalid object type", "object", klog.KObj(obj))
 		return
 	}
+	approved := condition.IsConditionStatusTrue(meta.FindStatusCondition(appReq.Status.Conditions, string(placementv1beta1.ApprovalRequestConditionApproved)), appReq.Generation)
+	approvalAccepted := condition.IsConditionStatusTrue(meta.FindStatusCondition(appReq.Status.Conditions, string(placementv1beta1.ApprovalRequestConditionApprovalAccepted)), appReq.Generation)
+	if approved && approvalAccepted {
+		klog.V(2).InfoS("The approval request has been approved and accepted, ignore queueing for delete event", "clusterApprovalRequest", klog.KObj(appReq))
+		return
+	}
 
 	updateRun := appReq.Spec.TargetUpdateRun
 	if len(updateRun) == 0 {

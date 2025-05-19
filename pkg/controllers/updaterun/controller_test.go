@@ -331,14 +331,63 @@ func TestHandleClusterApprovalRequestDelete(t *testing.T) {
 			},
 			shouldEnqueue: false,
 		},
-		"it should enqueue the targetUpdateRun if obj is valid": {
+		"it should enqueue the targetUpdateRun, if ClusterApprovalRequest has neither Approved/ApprovalAccepted status set": {
 			obj: &placementv1beta1.ClusterApprovalRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 1,
+				},
 				Spec: placementv1beta1.ApprovalRequestSpec{
 					TargetUpdateRun: "test-update-run",
 				},
 			},
 			shouldEnqueue: true,
 			queuedName:    "test-update-run",
+		},
+		"it should enqueue the targetUpdateRun, if ClusterApprovalRequest has only Approved status set": {
+			obj: &placementv1beta1.ClusterApprovalRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 1,
+				},
+				Spec: placementv1beta1.ApprovalRequestSpec{
+					TargetUpdateRun: "test-update-run",
+				},
+				Status: placementv1beta1.ApprovalRequestStatus{
+					Conditions: []metav1.Condition{
+						{
+							Status:             metav1.ConditionTrue,
+							Type:               string(placementv1beta1.ApprovalRequestConditionApproved),
+							ObservedGeneration: 1,
+						},
+					},
+				},
+			},
+			shouldEnqueue: true,
+			queuedName:    "test-update-run",
+		},
+		"it should not enqueue updateRun, if ClusterApprovalRequest has Approved/ApprovalAccepted status set": {
+			obj: &placementv1beta1.ClusterApprovalRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 1,
+				},
+				Spec: placementv1beta1.ApprovalRequestSpec{
+					TargetUpdateRun: "test-update-run",
+				},
+				Status: placementv1beta1.ApprovalRequestStatus{
+					Conditions: []metav1.Condition{
+						{
+							Status:             metav1.ConditionTrue,
+							Type:               string(placementv1beta1.ApprovalRequestConditionApproved),
+							ObservedGeneration: 1,
+						},
+						{
+							Status:             metav1.ConditionTrue,
+							Type:               string(placementv1beta1.ApprovalRequestConditionApprovalAccepted),
+							ObservedGeneration: 1,
+						},
+					},
+				},
+			},
+			shouldEnqueue: false,
 		},
 	}
 
