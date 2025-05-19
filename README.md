@@ -39,7 +39,7 @@ We host bi-weekly community meetings that alternate between US/EU and APAC frien
 
 Please refer to the [KubeFleet CNCF meeting calendar](https://zoom-lfx.platform.linuxfoundation.org/meetings/kubefleet?view=month) for the latest schedule.
 
-For more meeting information, minutes and recordings, please see the [KubeFleet community meeting doc](https://bit.ly/kubefleet-cm-meeting)
+For more meeting information, minutes and recordings, please see the [KubeFleet community meeting doc](https://docs.google.com/document/d/1iMcHn11fPlb9ZGoMHiGEBvdIc44W1CjZvsPH3eBg6pA/edit?usp=sharing)
 
 ## Code of Conduct
 Participation in KubeFleet is governed by the [CNCF Code of Conduct](https://github.com/cncf/foundation/blob/master/code-of-conduct.md). See the [Code of Conduct](CODE_OF_CONDUCT.md) for more information.
