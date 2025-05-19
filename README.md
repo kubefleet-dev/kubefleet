@@ -14,7 +14,7 @@ We are working towards the vision where we will eventually be able to treat each
 ## What is KubeFleet?
 KubeFleet contains a set of Kubernetes controllers and CRDs which provide an advanced cloud-native solution for multi-cluster application management.
 
-Use KubeFleet to schedule workloads smartly, roll out changes progressively, and perform administrative tasks easily, across a group of Kubernetes clusters on any cloud or on-premises. .
+Use KubeFleet to schedule workloads smartly, roll out changes progressively, and perform administrative tasks easily, across a group of Kubernetes clusters on any cloud or on-premises clusters.
 
 
 ## Quickstart
