@@ -23,7 +23,7 @@ Use KubeFleet to schedule workloads smartly, roll out changes progressively, and
 
 ## Documentation
 
-To learn more about KubeFleet go to the [the KubeFleet documentation](https://kubefleet-dev.github.io/website/).
+To learn more about KubeFleet go to the [KubeFleet documentation](https://kubefleet-dev.github.io/website/).
 
 ## Community
 
