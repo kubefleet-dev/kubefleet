@@ -29,17 +29,17 @@ To learn more about KubeFleet go to the [KubeFleet documentation](https://kubefl
 
 You can reach the KubeFleet community and developers via the following channels:
 
-* Q & A: [Github Discussions](https://github.com/kubefleet-dev/kubefleet/discussions)
-* Slack: [The #KubeFleet Slack channel] (https://cloud-native.slack.com/archives/C08KR7589R8) 
-* Mailing list: - [mailing list](https://groups.google.com/g/kubefleet-dev)
+* Q & A: [GitHub Discussions](https://github.com/kubefleet-dev/kubefleet/discussions)
+* Slack: [The #KubeFleet Slack channel](https://cloud-native.slack.com/archives/C08KR7589R8) 
+* Mailing list: [mailing list](https://groups.google.com/g/kubefleet-dev)
 
 ## Community Meetings
 
-We host bi-weekly community meetings that alternate between US/EU and APAC friendly time. The community showcase demos and discuss the current and future state of the project in those meetings.
+We host bi-weekly community meetings that alternate between US/EU and APAC friendly time. In these sessions the community will showcase demos and discuss the current and future state of the project.
 
 Please refer to the [KubeFleet CNCF meeting calendar](https://zoom-lfx.platform.linuxfoundation.org/meetings/kubefleet?view=month) for the latest schedule.
 
-For more meeting information, minutes and recordings, please see the [KubeFleet community meeting doc](https://docs.google.com/document/d/1iMcHn11fPlb9ZGoMHiGEBvdIc44W1CjZvsPH3eBg6pA/edit?usp=sharing)
+For more meeting information, minutes and recordings, please see the [KubeFleet community meeting doc](https://docs.google.com/document/d/1iMcHn11fPlb9ZGoMHiGEBvdIc44W1CjZvsPH3eBg6pA/edit?usp=sharing).
 
 ## Code of Conduct
 Participation in KubeFleet is governed by the [CNCF Code of Conduct](https://github.com/cncf/foundation/blob/master/code-of-conduct.md). See the [Code of Conduct](CODE_OF_CONDUCT.md) for more information.
@@ -49,7 +49,7 @@ Participation in KubeFleet is governed by the [CNCF Code of Conduct](https://git
 The [contribution guide](CONTRIBUTING.md) covers everything you need to know about how you can contribute to KubeFleet.
 
 ## Support
-For more information, see [SUPPORT.md](SUPPORT.md).
+For more information, see [SUPPORT](SUPPORT.md).
 
 
 [1]:  https://img.shields.io/github/v/release/kubefleet-dev/kubefleet
