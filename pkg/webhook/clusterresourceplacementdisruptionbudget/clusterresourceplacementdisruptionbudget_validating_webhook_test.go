@@ -38,7 +38,7 @@ import (
 func TestHandle(t *testing.T) {
 	validCRPDBObject := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-crpdb",
+			Name: "test-crp",
 		},
 		Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
 			MaxUnavailable: nil,
@@ -62,7 +62,7 @@ func TestHandle(t *testing.T) {
 	}
 	invalidCRPDBObjectMinAvailablePercentage := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-crpdb",
+			Name: "test-crp",
 		},
 		Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
 			MaxUnavailable: nil,
@@ -74,7 +74,7 @@ func TestHandle(t *testing.T) {
 	}
 	invalidCRPDBObjectMaxAvailablePercentage := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-crpdb",
+			Name: "test-crp",
 		},
 		Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
 			MaxUnavailable: &intstr.IntOrString{
@@ -86,7 +86,7 @@ func TestHandle(t *testing.T) {
 	}
 	invalidCRPDBObjectMaxAvailableInteger := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-crpdb",
+			Name: "test-crp",
 		},
 		Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
 			MaxUnavailable: &intstr.IntOrString{
@@ -121,7 +121,7 @@ func TestHandle(t *testing.T) {
 
 	validCRP := &placementv1beta1.ClusterResourcePlacement{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-crpdb",
+			Name: "test-crp",
 		},
 		Spec: placementv1beta1.ClusterResourcePlacementSpec{
 			ResourceSelectors: []placementv1beta1.ClusterResourceSelector{},

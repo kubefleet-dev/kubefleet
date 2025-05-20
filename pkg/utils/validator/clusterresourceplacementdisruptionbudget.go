@@ -23,6 +23,7 @@ import (
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
+// ValidateClusterResourcePlacementDisruptionBudget validates cluster resource placement disruption budget fields based on crp placement type and returns error.
 func ValidateClusterResourcePlacementDisruptionBudget(db *fleetv1beta1.ClusterResourcePlacementDisruptionBudget, crp *fleetv1beta1.ClusterResourcePlacement) error {
 	allErr := make([]error, 0)
 
