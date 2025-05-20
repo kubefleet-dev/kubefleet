@@ -1,3 +1,19 @@
+/*
+Copyright 2025 The KubeFleet Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package clusterresourceplacementeviction
 
 import (
@@ -6,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	admissionv1 "k8s.io/api/admission/v1"
 	authenticationv1 "k8s.io/api/authentication/v1"
@@ -133,7 +150,6 @@ func TestHandle(t *testing.T) {
 					Operation:   admissionv1.Create,
 				},
 			},
-
 			resourceValidator: clusterResourcePlacementEvictionValidator{
 				decoder: decoder,
 				client:  fakeClient,
@@ -210,7 +226,9 @@ func TestHandle(t *testing.T) {
 	for testName, testCase := range testCases {
 		t.Run(testName, func(t *testing.T) {
 			gotResult := testCase.resourceValidator.Handle(context.Background(), testCase.req)
-			assert.Equal(t, testCase.wantResponse, gotResult, utils.TestCaseMsg, testName)
+			if diff := cmp.Diff(testCase.wantResponse, gotResult); diff != "" {
+				t.Errorf("ClusterResourcePlacementEvictionValidator Handle() mismatch (-want +got):\n%s", diff)
+			}
 		})
 	}
 }
