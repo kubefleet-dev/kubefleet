@@ -17,10 +17,13 @@ limitations under the License.
 package e2e
 
 import (
+	"errors"
 	"fmt"
+	"reflect"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
@@ -70,7 +73,7 @@ var _ = Describe("ClusterResourcePlacement eviction of bound binding - PickFixed
 
 	It("should place resources on the all available member clusters", checkIfPlacedWorkResourcesOnAllMemberClusters)
 
-	It("create cluster resource placement eviction targeting member cluster 1", func() {
+	It("should deny create cluster resource placement eviction targeting member cluster 1", func() {
 		crpe := &placementv1beta1.ClusterResourcePlacementEviction{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: crpEvictionName,
@@ -80,15 +83,11 @@ var _ = Describe("ClusterResourcePlacement eviction of bound binding - PickFixed
 				ClusterName:   memberCluster1EastProdName,
 			},
 		}
-		Expect(hubClient.Create(ctx, crpe)).To(Succeed(), "Failed to create CRP eviction %s", crpe.Name)
-	})
-
-	It("should update cluster resource placement eviction status as expected", func() {
-		crpEvictionStatusUpdatedActual := testutilseviction.StatusUpdatedActual(
-			ctx, hubClient, crpEvictionName,
-			&testutilseviction.IsValidEviction{IsValid: false, Msg: condition.EvictionInvalidPickFixedCRPMessage},
-			nil)
-		Eventually(crpEvictionStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update cluster resource placement eviction status as expected")
+		By(fmt.Sprintf("expecting denial of CREATE eviction %s", crpName))
+		err := hubClient.Create(ctx, crpe)
+		var statusErr *k8sErrors.StatusError
+		Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPE call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+		Expect(statusErr.Status().Message).Should(MatchRegexp("cluster resource placement policy type PickFixed is not supported"))
 	})
 
 	It("should ensure cluster resource placement status is unchanged", func() {
