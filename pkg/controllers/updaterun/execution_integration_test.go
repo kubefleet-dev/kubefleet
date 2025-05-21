@@ -973,7 +973,7 @@ var _ = Describe("UpdateRun execution tests", func() {
 	})
 })
 
-var _ = FDescribe("UpdateRun execution tests, delete ClusterApprovalRequest, one updateRun stage, two AfterStageTasks", func() {
+var _ = Describe("UpdateRun execution tests - delete ClusterApprovalRequest, don't recreate", func() {
 	var updateRun *placementv1beta1.ClusterStagedUpdateRun
 	var crp *placementv1beta1.ClusterResourcePlacement
 	var policySnapshot *placementv1beta1.ClusterSchedulingPolicySnapshot
@@ -1034,6 +1034,8 @@ var _ = FDescribe("UpdateRun execution tests, delete ClusterApprovalRequest, one
 							{
 								Type: placementv1beta1.AfterStageTaskTypeTimedWait,
 								WaitTime: metav1.Duration{
+									// Set a large wait time to approve, delete the approval request
+									// and trigger an update run reconcile after time elapses.
 									Duration: time.Minute * 1,
 								},
 							},
@@ -1289,6 +1291,7 @@ var _ = FDescribe("UpdateRun execution tests, delete ClusterApprovalRequest, one
 			wantStatus.Conditions[1] = generateFalseProgressingCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, true)
 			wantStatus.Conditions = append(wantStatus.Conditions, generateTrueCondition(updateRun, placementv1beta1.StagedUpdateRunConditionSucceeded))
 			// Need to have a longer wait time for the test to pass, because of the long wait time specified in the update strategy.
+			timeout = time.Second * 90
 			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
 
 			By("Validating the 1st stage has endTime set")
@@ -1308,6 +1311,8 @@ var _ = FDescribe("UpdateRun execution tests, delete ClusterApprovalRequest, one
 			Consistently(func() bool {
 				return apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, approvalRequest))
 			}, timeout, interval).Should(BeTrue(), "failed to ensure the approvalRequest is not recreated")
+			// Reset the timeout to the default value.
+			timeout = time.Second * 10
 		})
 	})
 })
