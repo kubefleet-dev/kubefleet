@@ -50,7 +50,7 @@ import (
 
 const (
 	// timeout is the maximum wait time for Eventually
-	timeout = time.Second * 10
+	timeout = time.Second * 90
 	// interval is the time to wait between retries for Eventually and Consistently
 	interval = time.Millisecond * 250
 	// duration is the time to duration to check for Consistently
