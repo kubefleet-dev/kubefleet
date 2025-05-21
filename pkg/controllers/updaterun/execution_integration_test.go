@@ -335,8 +335,7 @@ var _ = Describe("UpdateRun execution tests", func() {
 			}, timeout, interval).Should(Succeed(), "failed to validate the approvalRequest")
 
 			By("Approving the approvalRequest")
-			meta.SetStatusCondition(&approvalRequest.Status.Conditions, generateTrueCondition(approvalRequest, placementv1beta1.ApprovalRequestConditionApproved))
-			Expect(k8sClient.Status().Update(ctx, approvalRequest)).Should(Succeed(), "failed to update the approvalRequest status")
+			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
 
 			By("Validating both after stage tasks have completed and 2nd stage has started")
 			// Timedwait afterStageTask completed.
@@ -499,8 +498,7 @@ var _ = Describe("UpdateRun execution tests", func() {
 			}, timeout, interval).Should(Succeed(), "failed to validate the approvalRequest")
 
 			By("Approving the approvalRequest")
-			meta.SetStatusCondition(&approvalRequest.Status.Conditions, generateTrueCondition(approvalRequest, placementv1beta1.ApprovalRequestConditionApproved))
-			Expect(k8sClient.Status().Update(ctx, approvalRequest)).Should(Succeed(), "failed to update the approvalRequest status")
+			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
 
 			By("Validating the 2nd stage has completed and the delete stage has started")
 			wantStatus.StagesStatus[1].AfterStageTaskStatus[0].Conditions = append(wantStatus.StagesStatus[1].AfterStageTaskStatus[0].Conditions,
@@ -843,8 +841,7 @@ var _ = Describe("UpdateRun execution tests", func() {
 			}, timeout, interval).Should(Succeed(), "failed to validate the approvalRequest")
 
 			By("Approving the approvalRequest")
-			meta.SetStatusCondition(&approvalRequest.Status.Conditions, generateTrueCondition(approvalRequest, placementv1beta1.ApprovalRequestConditionApproved))
-			Expect(k8sClient.Status().Update(ctx, approvalRequest)).Should(Succeed(), "failed to update the approvalRequest status")
+			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
 
 			By("Validating the 2nd stage has completed and the delete stage has started")
 			wantStatus.StagesStatus[1].AfterStageTaskStatus[0].Conditions = append(wantStatus.StagesStatus[1].AfterStageTaskStatus[0].Conditions,
@@ -1267,17 +1264,16 @@ var _ = Describe("UpdateRun execution tests - delete ClusterApprovalRequest, don
 			}, timeout, interval).Should(Succeed(), "failed to validate the approvalRequest")
 
 			By("Approving the approvalRequest")
-			meta.SetStatusCondition(&approvalRequest.Status.Conditions, generateTrueCondition(approvalRequest, placementv1beta1.ApprovalRequestConditionApproved))
-			Expect(k8sClient.Status().Update(ctx, approvalRequest)).Should(Succeed(), "failed to update the approvalRequest status")
-
-			By("Deleting the approvalRequest")
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, approvalRequest)).Should(Succeed())
-			Expect(k8sClient.Delete(ctx, approvalRequest)).Should(Succeed(), "failed to delete the approvalRequest")
+			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
 
 			By("Check the updateRun status")
 			wantStatus.StagesStatus[0].AfterStageTaskStatus[0].Conditions = append(wantStatus.StagesStatus[0].AfterStageTaskStatus[0].Conditions,
 				generateTrueCondition(updateRun, placementv1beta1.AfterStageTaskConditionApprovalRequestApproved))
 			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
+
+			By("Deleting the approvalRequest")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, approvalRequest)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, approvalRequest)).Should(Succeed(), "failed to delete the approvalRequest")
 
 			By("Validating the 1st stage has completed")
 			wantStatus.StagesStatus[0].AfterStageTaskStatus[1].Conditions = append(wantStatus.StagesStatus[0].AfterStageTaskStatus[1].Conditions,
@@ -1345,4 +1341,15 @@ func validateBindingState(ctx context.Context, binding *placementv1beta1.Cluster
 		}
 		return nil
 	}, timeout, interval).Should(Succeed(), "failed to validate the binding state")
+}
+
+func approveClusterApprovalRequest(ctx context.Context, approvalRequestName string) {
+	Eventually(func() error {
+		var approvalRequest placementv1beta1.ClusterApprovalRequest
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: approvalRequestName}, &approvalRequest); err != nil {
+			return err
+		}
+		meta.SetStatusCondition(&approvalRequest.Status.Conditions, generateTrueCondition(&approvalRequest, placementv1beta1.ApprovalRequestConditionApproved))
+		return k8sClient.Status().Update(ctx, &approvalRequest)
+	}, timeout, interval).Should(Succeed(), "failed to approve the approvalRequest")
 }
