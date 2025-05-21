@@ -20,7 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"knative.dev/pkg/ptr"
 	"strconv"
 	"time"
 
@@ -33,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
@@ -1026,7 +1026,7 @@ var _ = FDescribe("UpdateRun execution tests, delete ClusterApprovalRequest, one
 								"region": "eastus",
 							},
 						},
-						SortingLabelKey: ptr.String("index"),
+						SortingLabelKey: ptr.To("index"),
 						AfterStageTasks: []placementv1beta1.AfterStageTask{
 							{
 								Type: placementv1beta1.AfterStageTaskTypeApproval,
