@@ -343,7 +343,7 @@ func TestHandleClusterApprovalRequestDelete(t *testing.T) {
 			shouldEnqueue: true,
 			queuedName:    "test-update-run",
 		},
-		"it should enqueue the targetUpdateRun, if ClusterApprovalRequest has only Approved status set": {
+		"it should enqueue the targetUpdateRun, if ClusterApprovalRequest has only Approved status set to true": {
 			obj: &placementv1beta1.ClusterApprovalRequest{
 				ObjectMeta: metav1.ObjectMeta{
 					Generation: 1,
@@ -364,7 +364,53 @@ func TestHandleClusterApprovalRequestDelete(t *testing.T) {
 			shouldEnqueue: true,
 			queuedName:    "test-update-run",
 		},
-		"it should not enqueue updateRun, if ClusterApprovalRequest has Approved/ApprovalAccepted status set": {
+		"it should enqueue the targetUpdateRun, if ClusterApprovalRequest has only Approved status set to false": {
+			obj: &placementv1beta1.ClusterApprovalRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 1,
+				},
+				Spec: placementv1beta1.ApprovalRequestSpec{
+					TargetUpdateRun: "test-update-run",
+				},
+				Status: placementv1beta1.ApprovalRequestStatus{
+					Conditions: []metav1.Condition{
+						{
+							Status:             metav1.ConditionTrue,
+							Type:               string(placementv1beta1.ApprovalRequestConditionApproved),
+							ObservedGeneration: 1,
+						},
+					},
+				},
+			},
+			shouldEnqueue: true,
+			queuedName:    "test-update-run",
+		},
+		"it should not enqueue updateRun, if ClusterApprovalRequest has Approved set to false, ApprovalAccepted status set to true": {
+			obj: &placementv1beta1.ClusterApprovalRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: 1,
+				},
+				Spec: placementv1beta1.ApprovalRequestSpec{
+					TargetUpdateRun: "test-update-run",
+				},
+				Status: placementv1beta1.ApprovalRequestStatus{
+					Conditions: []metav1.Condition{
+						{
+							Status:             metav1.ConditionFalse,
+							Type:               string(placementv1beta1.ApprovalRequestConditionApproved),
+							ObservedGeneration: 1,
+						},
+						{
+							Status:             metav1.ConditionTrue,
+							Type:               string(placementv1beta1.ApprovalRequestConditionApprovalAccepted),
+							ObservedGeneration: 1,
+						},
+					},
+				},
+			},
+			shouldEnqueue: false,
+		},
+		"it should not enqueue updateRun, if ClusterApprovalRequest has Approved, ApprovalAccepted status set to true": {
 			obj: &placementv1beta1.ClusterApprovalRequest{
 				ObjectMeta: metav1.ObjectMeta{
 					Generation: 1,
