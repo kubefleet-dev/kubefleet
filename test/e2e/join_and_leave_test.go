@@ -218,6 +218,9 @@ var _ = Describe("Test member cluster join and leave flow", Ordered, Serial, fun
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
+		// When the member cluster leaves, the resources should not be removed from the member cluster.
+		It("should place the selected resources on member clusters", checkIfPlacedWorkResourcesOnAllMemberClusters)
+
 		It("Should be able to rejoin the cluster", func() {
 			By("rejoin all the clusters without deleting the CRP")
 			setAllMemberClustersToJoin()
