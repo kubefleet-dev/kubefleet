@@ -2,7 +2,9 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: pi
+  namespace: test-ns
 spec:
+  suspend: true
   template:
     spec:
       containers:

@@ -417,7 +417,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		Kind:               fleetv1beta1.AppliedWorkKind,
 		Name:               appliedWork.GetName(),
 		UID:                appliedWork.GetUID(),
-		BlockOwnerDeletion: ptr.To(false),
+		BlockOwnerDeletion: ptr.To(true),
 	}
 
 	// Set the default values for the Work object to avoid additional validation logic in the
@@ -487,7 +487,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 // garbageCollectAppliedWork deletes the appliedWork and all the manifests associated with it from the cluster.
 func (r *Reconciler) garbageCollectAppliedWork(ctx context.Context, work *fleetv1beta1.Work) (ctrl.Result, error) {
-	deletePolicy := metav1.DeletePropagationBackground
+	deletePolicy := metav1.DeletePropagationForeground
 	if !controllerutil.ContainsFinalizer(work, fleetv1beta1.WorkFinalizer) {
 		return ctrl.Result{}, nil
 	}
@@ -496,18 +496,22 @@ func (r *Reconciler) garbageCollectAppliedWork(ctx context.Context, work *fleetv
 	appliedWork := fleetv1beta1.AppliedWork{
 		ObjectMeta: metav1.ObjectMeta{Name: work.Name},
 	}
-	err := r.spokeClient.Delete(ctx, &appliedWork, &client.DeleteOptions{PropagationPolicy: &deletePolicy})
-	switch {
-	case apierrors.IsNotFound(err):
-		klog.V(2).InfoS("The appliedWork is already deleted", "appliedWork", work.Name)
-	case err != nil:
-		klog.ErrorS(err, "Failed to delete the appliedWork", "appliedWork", work.Name)
+	if err := r.spokeClient.Delete(ctx, &appliedWork, &client.DeleteOptions{PropagationPolicy: &deletePolicy}); err != nil {
+		if apierrors.IsNotFound(err) {
+			klog.V(2).InfoS("The appliedWork is already deleted", "appliedWork", work.Name)
+			return r.removeWorkFinalizer(ctx, work)
+		}
+		klog.V(2).ErrorS(err, "Failed to delete the appliedWork", "appliedWork", work.Name)
 		return ctrl.Result{}, controller.NewAPIServerError(false, err)
-	default:
-		klog.InfoS("Successfully deleted the appliedWork", "appliedWork", work.Name)
 	}
-	controllerutil.RemoveFinalizer(work, fleetv1beta1.WorkFinalizer)
 
+	klog.V(2).InfoS("Deletion for appliedWork is in progress", "appliedWork", work.Name)
+	return ctrl.Result{Requeue: true}, nil
+}
+
+// removeWorkFinalizer removes the finalizer from the work and updates it in the hub.
+func (r *Reconciler) removeWorkFinalizer(ctx context.Context, work *fleetv1beta1.Work) (ctrl.Result, error) {
+	controllerutil.RemoveFinalizer(work, fleetv1beta1.WorkFinalizer)
 	if err := r.hubClient.Update(ctx, work, &client.UpdateOptions{}); err != nil {
 		klog.ErrorS(err, "Failed to remove the finalizer from the work", "work", klog.KObj(work))
 		return ctrl.Result{}, controller.NewAPIServerError(false, err)
@@ -556,6 +560,10 @@ func (r *Reconciler) ensureAppliedWork(ctx context.Context, work *fleetv1beta1.W
 			klog.ErrorS(err, "Failed to add the finalizer to the work", "work", workRef)
 			return nil, controller.NewAPIServerError(false, err)
 		}
+	}
+	if err := r.spokeClient.Get(ctx, types.NamespacedName{Name: workRef.Name}, appliedWork); err != nil {
+		klog.ErrorS(err, "Failed to get the appliedWork", "appliedWork", appliedWork.Name)
+		return nil, controller.NewAPIServerError(false, err)
 	}
 	klog.InfoS("Recreated the appliedWork resource", "appliedWork", workRef.Name)
 	return appliedWork, nil
