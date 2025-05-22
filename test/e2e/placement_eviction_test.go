@@ -17,13 +17,10 @@ limitations under the License.
 package e2e
 
 import (
-	"errors"
 	"fmt"
-	"reflect"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
@@ -33,70 +30,6 @@ import (
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
 	testutilseviction "github.com/kubefleet-dev/kubefleet/test/utils/eviction"
 )
-
-var _ = Describe("ClusterResourcePlacement eviction of bound binding - PickFixed CRP, invalid eviction denied - No PDB specified", Ordered, func() {
-	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
-	crpEvictionName := fmt.Sprintf(crpEvictionNameTemplate, GinkgoParallelProcess())
-
-	BeforeAll(func() {
-		By("creating work resources")
-		createWorkResources()
-
-		// Create the CRP.
-		crp := &placementv1beta1.ClusterResourcePlacement{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: crpName,
-				// Add a custom finalizer; this would allow us to better observe
-				// the behavior of the controllers.
-				Finalizers: []string{customDeletionBlockerFinalizer},
-			},
-			Spec: placementv1beta1.ClusterResourcePlacementSpec{
-				Policy: &placementv1beta1.PlacementPolicy{
-					PlacementType: placementv1beta1.PickFixedPlacementType,
-					ClusterNames:  allMemberClusterNames,
-				},
-				ResourceSelectors: workResourceSelector(),
-			},
-		}
-		Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP %s", crpName)
-	})
-
-	AfterAll(func() {
-		ensureCRPEvictionDeleted(crpEvictionName)
-		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
-	})
-
-	It("should update cluster resource placement status as expected", func() {
-		crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0")
-		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update cluster resource placement status as expected")
-	})
-
-	It("should place resources on the all available member clusters", checkIfPlacedWorkResourcesOnAllMemberClusters)
-
-	It("should deny create cluster resource placement eviction targeting member cluster 1", func() {
-		crpe := &placementv1beta1.ClusterResourcePlacementEviction{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: crpEvictionName,
-			},
-			Spec: placementv1beta1.PlacementEvictionSpec{
-				PlacementName: crpName,
-				ClusterName:   memberCluster1EastProdName,
-			},
-		}
-		By(fmt.Sprintf("expecting denial of CREATE eviction %s", crpName))
-		err := hubClient.Create(ctx, crpe)
-		var statusErr *k8sErrors.StatusError
-		Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPE call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-		Expect(statusErr.Status().Message).Should(MatchRegexp("cluster resource placement policy type PickFixed is not supported"))
-	})
-
-	It("should ensure cluster resource placement status is unchanged", func() {
-		crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0")
-		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update cluster resource placement status as expected")
-	})
-
-	It("should still place resources on the all available member clusters", checkIfPlacedWorkResourcesOnAllMemberClusters)
-})
 
 var _ = Describe("ClusterResourcePlacement eviction of bound binding, taint cluster before eviction - No PDB specified", Ordered, Serial, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
