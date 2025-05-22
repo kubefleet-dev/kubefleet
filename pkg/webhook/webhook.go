@@ -31,7 +31,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceplacementeviction"
 	admv1 "k8s.io/api/admissionregistration/v1"
 	admv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -60,6 +59,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceoverride"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceplacement"
+	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceplacementeviction"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/fleetresourcehandler"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/membercluster"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/pod"
