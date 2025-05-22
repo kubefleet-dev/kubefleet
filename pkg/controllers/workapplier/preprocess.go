@@ -19,7 +19,6 @@ package workapplier
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -544,7 +543,10 @@ func isInMemberClusterObjectDerivedFromManifestObj(inMemberClusterObj *unstructu
 	// Verify if the owner reference still stands.
 	curOwners := inMemberClusterObj.GetOwnerReferences()
 	for idx := range curOwners {
-		if reflect.DeepEqual(curOwners[idx], *expectedAppliedWorkOwnerRef) {
+		if curOwners[idx].UID == expectedAppliedWorkOwnerRef.UID &&
+			curOwners[idx].Name == expectedAppliedWorkOwnerRef.Name &&
+			curOwners[idx].Kind == expectedAppliedWorkOwnerRef.Kind &&
+			curOwners[idx].APIVersion == expectedAppliedWorkOwnerRef.APIVersion {
 			return true
 		}
 	}
@@ -558,7 +560,10 @@ func removeOwnerRef(obj *unstructured.Unstructured, expectedAppliedWorkOwnerRef 
 
 	// Re-build the owner references; remove the given one from the list.
 	for idx := range ownerRefs {
-		if !reflect.DeepEqual(ownerRefs[idx], *expectedAppliedWorkOwnerRef) {
+		if ownerRefs[idx].UID != expectedAppliedWorkOwnerRef.UID &&
+			ownerRefs[idx].Name != expectedAppliedWorkOwnerRef.Name &&
+			ownerRefs[idx].Kind != expectedAppliedWorkOwnerRef.Kind &&
+			ownerRefs[idx].APIVersion != expectedAppliedWorkOwnerRef.APIVersion {
 			updatedOwnerRefs = append(updatedOwnerRefs, ownerRefs[idx])
 		}
 	}
