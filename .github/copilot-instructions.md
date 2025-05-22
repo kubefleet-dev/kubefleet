@@ -7,7 +7,7 @@ The main idea is that we are creating a multi-cluster application management sol
 ## General Rules
 
 - Use @terminal when answering questions about Git.
-- If your response to me is waiting on "OK", just proceed.
+- If you're waiting for my confirmation ("OK"), proceed without further prompting.
 - Follow the [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md) if possible.
 - Favor using the standard library over third-party libraries.
 - Run goimports on save.
@@ -61,21 +61,21 @@ The main idea is that we are creating a multi-cluster application management sol
 ## Testing Rules
 
 - Unit test files should always be called `<go_file>_test.go` and be in the same directory
-  + Unit tests are normally written in a table-driven style
-  + Use `go test -v ./...` to run all tests under a directory.
-  + Run the tests from the packages that are modified and verify they pass.
-  + Share the analysis as to why a test is failing and propose a fix.
+  - Unit tests are normally written in a table-driven style
+  - Use `go test -v ./...` to run all tests under a directory.
+  - Run the tests from the packages that are modified and verify they pass.
+  - Share the analysis as to why a test is failing and propose a fix.
 - Integration test files should be called `<go_file>_integration_test.go` and can be in the same directory or under the `test` directory.
-  + Integration tests are normally written in a Ginkgo style.
+  - Integration tests are normally written in a Ginkgo style.
 - E2E tests are all under the test/e2e directory.
-  + E2E tests are written in a Ginkgo style.
-  + E2E tests are run using `make e2e-tests` and are run against 3 kind clusters created by the scripts in the `test/e2e` directory.
-  + E2E tests are cleaned up using `make clean-e2e-tests`.
+  - E2E tests are written in a Ginkgo style.
+  - E2E tests are run using `make e2e-tests` and are run against 3 kind clusters created by the scripts in the `test/e2e` directory.
+  - E2E tests are cleaned up using `make clean-e2e-tests`.
 - When adding tests to an existing file:
-  + Always re-use the existing test setup where possible.
-  + Only add imports if absolutely needed.
-  + Add tests to existing Context where it makes sense.
-  + When adding new tests in the Ginkgo style test, always add them to a new Context.
+  - Always re-use the existing test setup where possible.
+  - Only add imports if absolutely needed.
+  - Add tests to existing Context where it makes sense.
+  - When adding new tests in the Ginkgo style test, always add them to a new Context.
 
 ## Domain Knowledge
 
