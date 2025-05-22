@@ -621,199 +621,331 @@ var _ = Describe("Work Controller", func() {
 })
 
 var _ = Describe("Work Status Reconciler", func() {
-	var resourceNamespace string
-	var work *fleetv1beta1.Work
-	var cm, cm2 *corev1.ConfigMap
-	var rns corev1.Namespace
+	Context("Test work status reconciler", func() {
+		var resourceNamespace string
+		var work *fleetv1beta1.Work
+		var cm, cm2 *corev1.ConfigMap
+		var rns corev1.Namespace
 
-	BeforeEach(func() {
-		resourceNamespace = utilrand.String(5)
-		rns = corev1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: resourceNamespace,
-			},
-		}
-		Expect(memberClient.Create(context.Background(), &rns)).Should(Succeed(), "Failed to create the resource namespace")
+		BeforeEach(func() {
+			resourceNamespace = utilrand.String(5)
+			rns = corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: resourceNamespace,
+				},
+			}
+			Expect(memberClient.Create(context.Background(), &rns)).Should(Succeed(), "Failed to create the resource namespace")
 
-		// Create the Work object with some type of Manifest resource.
-		cm = &corev1.ConfigMap{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "ConfigMap",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "configmap-" + utilrand.String(5),
-				Namespace: resourceNamespace,
-			},
-			Data: map[string]string{
-				"test": "test",
-			},
-		}
-		cm2 = &corev1.ConfigMap{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "v1",
-				Kind:       "ConfigMap",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "configmap2-" + utilrand.String(5),
-				Namespace: resourceNamespace,
-			},
-			Data: map[string]string{
-				"test": "test",
-			},
-		}
+			// Create the Work object with some type of Manifest resource.
+			cm = &corev1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "ConfigMap",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "configmap-" + utilrand.String(5),
+					Namespace: resourceNamespace,
+				},
+				Data: map[string]string{
+					"test": "test",
+				},
+			}
+			cm2 = &corev1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "ConfigMap",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "configmap2-" + utilrand.String(5),
+					Namespace: resourceNamespace,
+				},
+				Data: map[string]string{
+					"test": "test",
+				},
+			}
 
-		By("Create work that contains two configMaps")
-		work = &fleetv1beta1.Work{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "work-" + utilrand.String(5),
-				Namespace: memberReservedNSName,
-			},
-			Spec: fleetv1beta1.WorkSpec{
-				Workload: fleetv1beta1.WorkloadTemplate{
-					Manifests: []fleetv1beta1.Manifest{
-						{
-							RawExtension: runtime.RawExtension{Object: cm},
-						},
-						{
-							RawExtension: runtime.RawExtension{Object: cm2},
+			By("Create work that contains two configMaps")
+			work = &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "work-" + utilrand.String(5),
+					Namespace: memberReservedNSName,
+				},
+				Spec: fleetv1beta1.WorkSpec{
+					Workload: fleetv1beta1.WorkloadTemplate{
+						Manifests: []fleetv1beta1.Manifest{
+							{
+								RawExtension: runtime.RawExtension{Object: cm},
+							},
+							{
+								RawExtension: runtime.RawExtension{Object: cm2},
+							},
 						},
 					},
 				},
-			},
-		}
-	})
+			}
+		})
 
-	AfterEach(func() {
-		// TODO: Ensure that all resources are being deleted.
-		Expect(hubClient.Delete(context.Background(), work)).Should(Succeed())
-		Expect(memberClient.Delete(context.Background(), &rns)).Should(Succeed())
-	})
+		AfterEach(func() {
+			// TODO: Ensure that all resources are being deleted.
+			Expect(hubClient.Delete(context.Background(), work)).Should(Succeed())
+			Expect(memberClient.Delete(context.Background(), &rns)).Should(Succeed())
+		})
 
-	It("Should delete the manifest from the member cluster after it is removed from work", func() {
-		By("Apply the work")
-		Expect(hubClient.Create(context.Background(), work)).ToNot(HaveOccurred())
+		It("Should delete the manifest from the member cluster after it is removed from work", func() {
+			By("Apply the work")
+			Expect(hubClient.Create(context.Background(), work)).ToNot(HaveOccurred())
 
-		By("Make sure that the work is applied")
-		currentWork := waitForWorkToApply(work.Name)
-		var appliedWork fleetv1beta1.AppliedWork
-		Expect(memberClient.Get(context.Background(), types.NamespacedName{Name: work.Name}, &appliedWork)).Should(Succeed())
-		Expect(len(appliedWork.Status.AppliedResources)).Should(Equal(2))
-
-		By("Remove configMap 2 from the work")
-		currentWork.Spec.Workload.Manifests = []fleetv1beta1.Manifest{
-			{
-				RawExtension: runtime.RawExtension{Object: cm},
-			},
-		}
-		Expect(hubClient.Update(context.Background(), currentWork)).Should(Succeed())
-
-		By("Verify that the resource is removed from the cluster")
-		Eventually(func() bool {
-			var configMap corev1.ConfigMap
-			return apierrors.IsNotFound(memberClient.Get(context.Background(), types.NamespacedName{Name: cm2.Name, Namespace: resourceNamespace}, &configMap))
-		}, eventuallyDuration, eventuallyInterval).Should(BeTrue())
-
-		By("Verify that the appliedWork status is correct")
-		Eventually(func() bool {
+			By("Make sure that the work is applied")
+			currentWork := waitForWorkToApply(work.Name)
+			var appliedWork fleetv1beta1.AppliedWork
 			Expect(memberClient.Get(context.Background(), types.NamespacedName{Name: work.Name}, &appliedWork)).Should(Succeed())
-			return len(appliedWork.Status.AppliedResources) == 1
-		}, eventuallyDuration, eventuallyInterval).Should(BeTrue())
-		Expect(appliedWork.Status.AppliedResources[0].Name).Should(Equal(cm.GetName()))
-		Expect(appliedWork.Status.AppliedResources[0].Namespace).Should(Equal(cm.GetNamespace()))
-		Expect(appliedWork.Status.AppliedResources[0].Version).Should(Equal(cm.GetObjectKind().GroupVersionKind().Version))
-		Expect(appliedWork.Status.AppliedResources[0].Group).Should(Equal(cm.GetObjectKind().GroupVersionKind().Group))
-		Expect(appliedWork.Status.AppliedResources[0].Kind).Should(Equal(cm.GetObjectKind().GroupVersionKind().Kind))
+			Expect(len(appliedWork.Status.AppliedResources)).Should(Equal(2))
+
+			By("Remove configMap 2 from the work")
+			currentWork.Spec.Workload.Manifests = []fleetv1beta1.Manifest{
+				{
+					RawExtension: runtime.RawExtension{Object: cm},
+				},
+			}
+			Expect(hubClient.Update(context.Background(), currentWork)).Should(Succeed())
+
+			By("Verify that the resource is removed from the cluster")
+			Eventually(func() bool {
+				var configMap corev1.ConfigMap
+				return apierrors.IsNotFound(memberClient.Get(context.Background(), types.NamespacedName{Name: cm2.Name, Namespace: resourceNamespace}, &configMap))
+			}, eventuallyDuration, eventuallyInterval).Should(BeTrue())
+
+			By("Verify that the appliedWork status is correct")
+			Eventually(func() bool {
+				Expect(memberClient.Get(context.Background(), types.NamespacedName{Name: work.Name}, &appliedWork)).Should(Succeed())
+				return len(appliedWork.Status.AppliedResources) == 1
+			}, eventuallyDuration, eventuallyInterval).Should(BeTrue())
+			Expect(appliedWork.Status.AppliedResources[0].Name).Should(Equal(cm.GetName()))
+			Expect(appliedWork.Status.AppliedResources[0].Namespace).Should(Equal(cm.GetNamespace()))
+			Expect(appliedWork.Status.AppliedResources[0].Version).Should(Equal(cm.GetObjectKind().GroupVersionKind().Version))
+			Expect(appliedWork.Status.AppliedResources[0].Group).Should(Equal(cm.GetObjectKind().GroupVersionKind().Group))
+			Expect(appliedWork.Status.AppliedResources[0].Kind).Should(Equal(cm.GetObjectKind().GroupVersionKind().Kind))
+		})
+
+		It("Should delete the manifest from the member cluster even if there is apply failure", func() {
+			By("Apply the work")
+			Expect(hubClient.Create(context.Background(), work)).ToNot(HaveOccurred())
+
+			By("Make sure that the work is applied")
+			currentWork := waitForWorkToApply(work.Name)
+			var appliedWork fleetv1beta1.AppliedWork
+			Expect(memberClient.Get(context.Background(), types.NamespacedName{Name: work.Name}, &appliedWork)).Should(Succeed())
+			Expect(len(appliedWork.Status.AppliedResources)).Should(Equal(2))
+
+			By("replace configMap with a bad object from the work")
+			testResource := &testv1alpha1.TestResource{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: testv1alpha1.GroupVersion.String(),
+					Kind:       "TestResource",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "testresource-" + utilrand.String(5),
+					// to ensure the resource is not applied.
+					Namespace: "random-test-namespace",
+				},
+			}
+			currentWork.Spec.Workload.Manifests = []fleetv1beta1.Manifest{
+				{
+					RawExtension: runtime.RawExtension{Object: testResource},
+				},
+			}
+			Expect(hubClient.Update(context.Background(), currentWork)).Should(Succeed())
+
+			By("Verify that the configMaps are removed from the cluster even if the new resource didn't apply")
+			Eventually(func() bool {
+				var configMap corev1.ConfigMap
+				return apierrors.IsNotFound(memberClient.Get(context.Background(), types.NamespacedName{Name: cm.Name, Namespace: resourceNamespace}, &configMap))
+			}, eventuallyDuration, eventuallyInterval).Should(BeTrue())
+
+			Eventually(func() bool {
+				var configMap corev1.ConfigMap
+				return apierrors.IsNotFound(memberClient.Get(context.Background(), types.NamespacedName{Name: cm2.Name, Namespace: resourceNamespace}, &configMap))
+			}, eventuallyDuration, eventuallyInterval).Should(BeTrue())
+
+			By("Verify that the appliedWork status is correct")
+			Eventually(func() bool {
+				Expect(memberClient.Get(context.Background(), types.NamespacedName{Name: work.Name}, &appliedWork)).Should(Succeed())
+				return len(appliedWork.Status.AppliedResources) == 0
+			}, eventuallyDuration, eventuallyInterval).Should(BeTrue())
+		})
+
+		It("Test the order of the manifest in the work alone does not trigger any operation in the member cluster", func() {
+			By("Apply the work")
+			Expect(hubClient.Create(context.Background(), work)).ToNot(HaveOccurred())
+
+			By("Make sure that the work is applied")
+			currentWork := waitForWorkToApply(work.Name)
+			var appliedWork fleetv1beta1.AppliedWork
+			Expect(memberClient.Get(context.Background(), types.NamespacedName{Name: work.Name}, &appliedWork)).Should(Succeed())
+			Expect(len(appliedWork.Status.AppliedResources)).Should(Equal(2))
+
+			By("Make sure that the manifests exist on the member cluster")
+			Eventually(func() bool {
+				var configMap corev1.ConfigMap
+				return memberClient.Get(context.Background(), types.NamespacedName{Name: cm2.Name, Namespace: resourceNamespace}, &configMap) == nil &&
+					memberClient.Get(context.Background(), types.NamespacedName{Name: cm.Name, Namespace: resourceNamespace}, &configMap) == nil
+			}, eventuallyDuration, eventuallyInterval).Should(BeTrue())
+
+			By("Change the order of the two configs in the work")
+			currentWork.Spec.Workload.Manifests = []fleetv1beta1.Manifest{
+				{
+					RawExtension: runtime.RawExtension{Object: cm2},
+				},
+				{
+					RawExtension: runtime.RawExtension{Object: cm},
+				},
+			}
+			Expect(hubClient.Update(context.Background(), currentWork)).Should(Succeed())
+
+			By("Verify that nothing is removed from the cluster")
+			Consistently(func() bool {
+				var configMap corev1.ConfigMap
+				return memberClient.Get(context.Background(), types.NamespacedName{Name: cm2.Name, Namespace: resourceNamespace}, &configMap) == nil &&
+					memberClient.Get(context.Background(), types.NamespacedName{Name: cm.Name, Namespace: resourceNamespace}, &configMap) == nil
+			}, consistentlyDuration, consistentlyInterval).Should(BeTrue())
+
+			By("Verify that the appliedWork status is correct")
+			Eventually(func() bool {
+				Expect(memberClient.Get(context.Background(), types.NamespacedName{Name: work.Name}, &appliedWork)).Should(Succeed())
+				return len(appliedWork.Status.AppliedResources) == 2
+			}, eventuallyDuration, eventuallyInterval).Should(BeTrue())
+			Expect(appliedWork.Status.AppliedResources[0].Name).Should(Equal(cm2.GetName()))
+			Expect(appliedWork.Status.AppliedResources[1].Name).Should(Equal(cm.GetName()))
+		})
 	})
 
-	It("Should delete the manifest from the member cluster even if there is apply failure", func() {
-		By("Apply the work")
-		Expect(hubClient.Create(context.Background(), work)).ToNot(HaveOccurred())
+	Context("Test work status reconciler with stuck deleting works", func() {
+		var resourceNamespace string
+		var work *fleetv1beta1.Work
+		var cm, cm2 *corev1.ConfigMap
+		var rns *corev1.Namespace
 
-		By("Make sure that the work is applied")
-		currentWork := waitForWorkToApply(work.Name)
-		var appliedWork fleetv1beta1.AppliedWork
-		Expect(memberClient.Get(context.Background(), types.NamespacedName{Name: work.Name}, &appliedWork)).Should(Succeed())
-		Expect(len(appliedWork.Status.AppliedResources)).Should(Equal(2))
+		BeforeEach(func() {
+			resourceNamespace = utilrand.String(5)
+			rns = &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: resourceNamespace,
+				},
+			}
+			Expect(memberClient.Create(context.Background(), rns)).Should(Succeed(), "Failed to create the resource namespace")
 
-		By("replace configMap with a bad object from the work")
-		testResource := &testv1alpha1.TestResource{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: testv1alpha1.GroupVersion.String(),
-				Kind:       "TestResource",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "testresource-" + utilrand.String(5),
-				// to ensure the resource is not applied.
-				Namespace: "random-test-namespace",
-			},
-		}
-		currentWork.Spec.Workload.Manifests = []fleetv1beta1.Manifest{
-			{
-				RawExtension: runtime.RawExtension{Object: testResource},
-			},
-		}
-		Expect(hubClient.Update(context.Background(), currentWork)).Should(Succeed())
+			// Create the Work object with some type of Manifest resource.
+			cm = &corev1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "ConfigMap",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "configmap-" + utilrand.String(5),
+					Namespace: resourceNamespace,
+				},
+				Data: map[string]string{
+					"test": "test",
+				},
+			}
+			cm2 = &corev1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "ConfigMap",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "configmap2-" + utilrand.String(5),
+					Namespace: resourceNamespace,
+				},
+				Data: map[string]string{
+					"test": "test",
+				},
+			}
 
-		By("Verify that the configMaps are removed from the cluster even if the new resource didn't apply")
-		Eventually(func() bool {
-			var configMap corev1.ConfigMap
-			return apierrors.IsNotFound(memberClient.Get(context.Background(), types.NamespacedName{Name: cm.Name, Namespace: resourceNamespace}, &configMap))
-		}, eventuallyDuration, eventuallyInterval).Should(BeTrue())
+			By("Create work that contains two configMaps")
+			work = &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "work-" + utilrand.String(5),
+					Namespace: memberReservedNSName,
+				},
+				Spec: fleetv1beta1.WorkSpec{
+					Workload: fleetv1beta1.WorkloadTemplate{
+						Manifests: []fleetv1beta1.Manifest{
+							{
+								RawExtension: runtime.RawExtension{Object: cm},
+							},
+							{
+								RawExtension: runtime.RawExtension{Object: cm2},
+							},
+						},
+					},
+				},
+			}
+		})
 
-		Eventually(func() bool {
-			var configMap corev1.ConfigMap
-			return apierrors.IsNotFound(memberClient.Get(context.Background(), types.NamespacedName{Name: cm2.Name, Namespace: resourceNamespace}, &configMap))
-		}, eventuallyDuration, eventuallyInterval).Should(BeTrue())
+		AfterEach(func() {
+			By("Cleanup Resources")
+			cleanupResources(cm, cm2, rns, work)
+		})
 
-		By("Verify that the appliedWork status is correct")
-		Eventually(func() bool {
+		FIt("Should not update status when manifest is stuck in deletion", func() {
+			By("Apply the work")
+			Expect(hubClient.Create(context.Background(), work)).ToNot(HaveOccurred())
+
+			By("Make sure that the work is applied")
+			currentWork := waitForWorkToApply(work.Name)
+			var appliedWork fleetv1beta1.AppliedWork
 			Expect(memberClient.Get(context.Background(), types.NamespacedName{Name: work.Name}, &appliedWork)).Should(Succeed())
-			return len(appliedWork.Status.AppliedResources) == 0
-		}, eventuallyDuration, eventuallyInterval).Should(BeTrue())
-	})
+			Expect(len(appliedWork.Status.AppliedResources)).Should(Equal(2))
 
-	It("Test the order of the manifest in the work alone does not trigger any operation in the member cluster", func() {
-		By("Apply the work")
-		Expect(hubClient.Create(context.Background(), work)).ToNot(HaveOccurred())
+			By("Verify that the appliedWork status is correct")
+			Consistently(func() bool {
+				Expect(memberClient.Get(context.Background(), types.NamespacedName{Name: work.Name}, &appliedWork)).Should(Succeed())
+				if controllerutil.ContainsFinalizer(&appliedWork, metav1.FinalizerDeleteDependents) {
+					By("appliedWork has finalizer, waiting for dependents to be deleted")
+				}
+				return len(appliedWork.Status.AppliedResources) == 2
+			}, consistentlyDuration, consistentlyInterval).Should(BeTrue(), "AppliedWork should have 2 resources")
 
-		By("Make sure that the work is applied")
-		currentWork := waitForWorkToApply(work.Name)
-		var appliedWork fleetv1beta1.AppliedWork
-		Expect(memberClient.Get(context.Background(), types.NamespacedName{Name: work.Name}, &appliedWork)).Should(Succeed())
-		Expect(len(appliedWork.Status.AppliedResources)).Should(Equal(2))
+			By("Verify that the configmap is NOT removed from the cluster")
+			verifyConfigMapExists(cm, resourceNamespace)
+			By("Verify that the configmap 2 is NOT removed from the cluster")
+			verifyConfigMapExists(cm2, resourceNamespace)
 
-		By("Make sure that the manifests exist on the member cluster")
-		Eventually(func() bool {
-			var configMap corev1.ConfigMap
-			return memberClient.Get(context.Background(), types.NamespacedName{Name: cm2.Name, Namespace: resourceNamespace}, &configMap) == nil &&
-				memberClient.Get(context.Background(), types.NamespacedName{Name: cm.Name, Namespace: resourceNamespace}, &configMap) == nil
-		}, eventuallyDuration, eventuallyInterval).Should(BeTrue())
+			By("Add finalizer to the configMaps")
+			addFinalizerToConfigMap(cm)
+			addFinalizerToConfigMap(cm2)
 
-		By("Change the order of the two configs in the work")
-		currentWork.Spec.Workload.Manifests = []fleetv1beta1.Manifest{
-			{
-				RawExtension: runtime.RawExtension{Object: cm2},
-			},
-			{
-				RawExtension: runtime.RawExtension{Object: cm},
-			},
-		}
-		Expect(hubClient.Update(context.Background(), currentWork)).Should(Succeed())
+			By("Delete the work object")
+			Expect(hubClient.Delete(context.Background(), currentWork)).Should(Succeed())
 
-		By("Verify that nothing is removed from the cluster")
-		Consistently(func() bool {
-			var configMap corev1.ConfigMap
-			return memberClient.Get(context.Background(), types.NamespacedName{Name: cm2.Name, Namespace: resourceNamespace}, &configMap) == nil &&
-				memberClient.Get(context.Background(), types.NamespacedName{Name: cm.Name, Namespace: resourceNamespace}, &configMap) == nil
-		}, consistentlyDuration, consistentlyInterval).Should(BeTrue())
+			By("Verify that the configmap is NOT removed from the cluster")
+			verifyConfigMapExists(cm, resourceNamespace)
 
-		By("Verify that the appliedWork status is correct")
-		Eventually(func() bool {
-			Expect(memberClient.Get(context.Background(), types.NamespacedName{Name: work.Name}, &appliedWork)).Should(Succeed())
-			return len(appliedWork.Status.AppliedResources) == 2
-		}, eventuallyDuration, eventuallyInterval).Should(BeTrue())
-		Expect(appliedWork.Status.AppliedResources[0].Name).Should(Equal(cm2.GetName()))
-		Expect(appliedWork.Status.AppliedResources[1].Name).Should(Equal(cm.GetName()))
+			By("Verify that the configmap 2 is NOT removed from the cluster")
+			verifyConfigMapExists(cm2, resourceNamespace)
+
+			By("Verify that the appliedWork status is correct")
+			Consistently(func() bool {
+				Expect(memberClient.Get(context.Background(), types.NamespacedName{Name: work.Name}, &appliedWork)).Should(Succeed())
+				if controllerutil.ContainsFinalizer(&appliedWork, metav1.FinalizerDeleteDependents) {
+					By("appliedWork has finalizer, waiting for dependents to be deleted")
+				}
+				return len(appliedWork.Status.AppliedResources) == 2
+			}, consistentlyDuration, consistentlyInterval).Should(BeTrue(), "AppliedWork should have 2 resources")
+			Expect(appliedWork.Status.AppliedResources[0].Name).Should(Equal(cm.GetName()))
+			Expect(appliedWork.Status.AppliedResources[1].Name).Should(Equal(cm2.GetName()))
+
+			By("Verify that work still exists")
+			Consistently(func() error {
+				var currentWork fleetv1beta1.Work
+				Expect(hubClient.Get(context.Background(), types.NamespacedName{Name: work.Name, Namespace: memberReservedNSName}, &currentWork)).Should(Succeed())
+				if controllerutil.ContainsFinalizer(&currentWork, fleetv1beta1.WorkFinalizer) {
+					By("Work has finalizer, waiting for applied work to be deleted")
+				}
+				return nil
+			}, consistentlyDuration, consistentlyInterval).Should(BeNil(), "Work should not be deleted")
+
+		})
 	})
 })

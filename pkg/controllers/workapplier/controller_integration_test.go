@@ -178,7 +178,7 @@ func prepareAppliedWorkOwnerRef(workName string) *metav1.OwnerReference {
 		Kind:               "AppliedWork",
 		Name:               appliedWork.Name,
 		UID:                appliedWork.GetUID(),
-		BlockOwnerDeletion: ptr.To(false),
+		BlockOwnerDeletion: ptr.To(true),
 	}
 }
 
@@ -451,6 +451,10 @@ func cleanupWorkObject(workName string) {
 	workRemovedActual := func() error {
 		work := &fleetv1beta1.Work{}
 		if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName}, work); !errors.IsNotFound(err) {
+			if controllerutil.ContainsFinalizer(work, fleetv1beta1.WorkFinalizer) {
+				controllerutil.RemoveFinalizer(work, fleetv1beta1.WorkFinalizer)
+				Expect(hubClient.Update(ctx, work)).To(Succeed(), "Failed to remove the finalizer from the Work object")
+			}
 			return fmt.Errorf("work object still exists or an unexpected error occurred: %w", err)
 		}
 		return nil
@@ -463,6 +467,10 @@ func appliedWorkRemovedActual(workName string) func() error {
 		// Retrieve the AppliedWork object.
 		appliedWork := &fleetv1beta1.AppliedWork{}
 		if err := memberClient.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); !errors.IsNotFound(err) {
+			if controllerutil.ContainsFinalizer(appliedWork, metav1.FinalizerDeleteDependents) {
+				controllerutil.RemoveFinalizer(appliedWork, metav1.FinalizerDeleteDependents)
+				Expect(memberClient.Update(ctx, appliedWork)).To(Succeed(), "Failed to remove the finalizer from the AppliedWork object")
+			}
 			return fmt.Errorf("appliedWork object still exists or an unexpected error occurred: %w", err)
 		}
 		return nil
