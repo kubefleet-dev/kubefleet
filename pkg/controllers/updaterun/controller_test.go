@@ -301,12 +301,12 @@ func TestHandleClusterApprovalRequestUpdate(t *testing.T) {
 				workqueue.DefaultTypedItemBasedRateLimiter[reconcile.Request]())}
 			handleClusterApprovalRequestUpdate(tt.oldObj, tt.newObj, queue)
 			if got := queue.Len() != 0; got != tt.shouldEnqueue {
-				t.Fatalf("handleClusterApprovalRequest() shouldEnqueue test `%s` got %t, want %t", name, got, tt.shouldEnqueue)
+				t.Fatalf("handleClusterApprovalRequest() shouldEnqueue got %t, want %t", got, tt.shouldEnqueue)
 			}
 			if tt.shouldEnqueue {
 				req, _ := queue.TypedInterface.Get()
 				if req.Name != tt.queuedName {
-					t.Fatalf("handleClusterApprovalRequest() queuedName test `%s` got %s, want %s", name, req.Name, tt.queuedName)
+					t.Fatalf("handleClusterApprovalRequest() queuedName got %s, want %s", req.Name, tt.queuedName)
 				}
 			}
 		})
@@ -443,12 +443,12 @@ func TestHandleClusterApprovalRequestDelete(t *testing.T) {
 				workqueue.DefaultTypedItemBasedRateLimiter[reconcile.Request]())}
 			handleClusterApprovalRequestDelete(tt.obj, queue)
 			if got := queue.Len() != 0; got != tt.shouldEnqueue {
-				t.Fatalf("handleClusterApprovalRequestDelete() shouldEnqueue test `%s` got %t, want %t", name, got, tt.shouldEnqueue)
+				t.Fatalf("handleClusterApprovalRequestDelete() shouldEnqueue got %t, want %t", got, tt.shouldEnqueue)
 			}
 			if tt.shouldEnqueue {
 				req, _ := queue.TypedInterface.Get()
 				if req.Name != tt.queuedName {
-					t.Fatalf("handleClusterApprovalRequestDelete() queuedName test `%s` got %s, want %s", name, req.Name, tt.queuedName)
+					t.Fatalf("handleClusterApprovalRequestDelete() queuedName got %s, want %s", req.Name, tt.queuedName)
 				}
 			}
 		})

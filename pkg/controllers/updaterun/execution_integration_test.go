@@ -306,7 +306,6 @@ var _ = Describe("UpdateRun execution tests", func() {
 
 		It("Should complete the 1st stage after wait time passed and approval request approved and move on to the 2nd stage", func() {
 			By("Validating the approvalRequest has been created")
-			approvalRequest := &placementv1beta1.ClusterApprovalRequest{}
 			wantApprovalRequest := &placementv1beta1.ClusterApprovalRequest{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: updateRun.Status.StagesStatus[0].AfterStageTaskStatus[1].ApprovalRequestName,
@@ -321,18 +320,7 @@ var _ = Describe("UpdateRun execution tests", func() {
 					TargetStage:     updateRun.Status.StagesStatus[0].StageName,
 				},
 			}
-			Eventually(func() error {
-				if err := k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, approvalRequest); err != nil {
-					return err
-				}
-				if diff := cmp.Diff(wantApprovalRequest.Spec, approvalRequest.Spec); diff != "" {
-					return fmt.Errorf("approvalRequest has different spec (-want +got):\n%s", diff)
-				}
-				if diff := cmp.Diff(wantApprovalRequest.Labels, approvalRequest.Labels); diff != "" {
-					return fmt.Errorf("approvalRequest has different labels (-want +got):\n%s", diff)
-				}
-				return nil
-			}, timeout, interval).Should(Succeed(), "failed to validate the approvalRequest")
+			validateApprovalRequestCreated(wantApprovalRequest)
 
 			By("Approving the approvalRequest")
 			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
@@ -469,7 +457,6 @@ var _ = Describe("UpdateRun execution tests", func() {
 
 		It("Should complete the 2nd stage after both after stage tasks are completed and move on to the delete stage", func() {
 			By("Validating the approvalRequest has been created")
-			approvalRequest := &placementv1beta1.ClusterApprovalRequest{}
 			wantApprovalRequest := &placementv1beta1.ClusterApprovalRequest{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: updateRun.Status.StagesStatus[1].AfterStageTaskStatus[0].ApprovalRequestName,
@@ -484,18 +471,7 @@ var _ = Describe("UpdateRun execution tests", func() {
 					TargetStage:     updateRun.Status.StagesStatus[1].StageName,
 				},
 			}
-			Eventually(func() error {
-				if err := k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, approvalRequest); err != nil {
-					return err
-				}
-				if diff := cmp.Diff(wantApprovalRequest.Spec, approvalRequest.Spec); diff != "" {
-					return fmt.Errorf("approvalRequest has different spec (-want +got):\n%s", diff)
-				}
-				if diff := cmp.Diff(wantApprovalRequest.Labels, approvalRequest.Labels); diff != "" {
-					return fmt.Errorf("approvalRequest has different labels (-want +got):\n%s", diff)
-				}
-				return nil
-			}, timeout, interval).Should(Succeed(), "failed to validate the approvalRequest")
+			validateApprovalRequestCreated(wantApprovalRequest)
 
 			By("Approving the approvalRequest")
 			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
@@ -530,7 +506,8 @@ var _ = Describe("UpdateRun execution tests", func() {
 
 			By("Validating the approvalRequest has ApprovalAccepted status")
 			Eventually(func() (bool, error) {
-				if err := k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, approvalRequest); err != nil {
+				var approvalRequest placementv1beta1.ClusterApprovalRequest
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, &approvalRequest); err != nil {
 					return false, err
 				}
 				return condition.IsConditionStatusTrue(meta.FindStatusCondition(approvalRequest.Status.Conditions, string(placementv1beta1.ApprovalRequestConditionApprovalAccepted)), approvalRequest.Generation), nil
@@ -812,7 +789,6 @@ var _ = Describe("UpdateRun execution tests", func() {
 
 		It("Should complete the 2nd stage after the after stage task is completed and move on to the delete stage", func() {
 			By("Validating the approvalRequest has been created")
-			approvalRequest := &placementv1beta1.ClusterApprovalRequest{}
 			wantApprovalRequest := &placementv1beta1.ClusterApprovalRequest{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: updateRun.Status.StagesStatus[1].AfterStageTaskStatus[0].ApprovalRequestName,
@@ -827,18 +803,7 @@ var _ = Describe("UpdateRun execution tests", func() {
 					TargetStage:     updateRun.Status.StagesStatus[1].StageName,
 				},
 			}
-			Eventually(func() error {
-				if err := k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, approvalRequest); err != nil {
-					return err
-				}
-				if diff := cmp.Diff(wantApprovalRequest.Spec, approvalRequest.Spec); diff != "" {
-					return fmt.Errorf("approvalRequest has different spec (-want +got):\n%s", diff)
-				}
-				if diff := cmp.Diff(wantApprovalRequest.Labels, approvalRequest.Labels); diff != "" {
-					return fmt.Errorf("approvalRequest has different labels (-want +got):\n%s", diff)
-				}
-				return nil
-			}, timeout, interval).Should(Succeed(), "failed to validate the approvalRequest")
+			validateApprovalRequestCreated(wantApprovalRequest)
 
 			By("Approving the approvalRequest")
 			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
@@ -861,7 +826,8 @@ var _ = Describe("UpdateRun execution tests", func() {
 
 			By("Validating the approvalRequest has ApprovalAccepted status")
 			Eventually(func() (bool, error) {
-				if err := k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, approvalRequest); err != nil {
+				var approvalRequest placementv1beta1.ClusterApprovalRequest
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, &approvalRequest); err != nil {
 					return false, err
 				}
 				return condition.IsConditionStatusTrue(meta.FindStatusCondition(approvalRequest.Status.Conditions, string(placementv1beta1.ApprovalRequestConditionApprovalAccepted)), approvalRequest.Generation), nil
@@ -1033,7 +999,7 @@ var _ = Describe("UpdateRun execution tests - delete ClusterApprovalRequest, don
 								WaitTime: metav1.Duration{
 									// Set a large wait time to approve, delete the approval request
 									// and trigger an update run reconcile after time elapses.
-									Duration: time.Minute * 1,
+									Duration: time.Second * 90,
 								},
 							},
 						},
@@ -1250,18 +1216,14 @@ var _ = Describe("UpdateRun execution tests - delete ClusterApprovalRequest, don
 					TargetStage:     updateRun.Status.StagesStatus[0].StageName,
 				},
 			}
-			Eventually(func() error {
-				if err := k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, approvalRequest); err != nil {
-					return err
-				}
-				if diff := cmp.Diff(wantApprovalRequest.Spec, approvalRequest.Spec); diff != "" {
-					return fmt.Errorf("approvalRequest has different spec (-want +got):\n%s", diff)
-				}
-				if diff := cmp.Diff(wantApprovalRequest.Labels, approvalRequest.Labels); diff != "" {
-					return fmt.Errorf("approvalRequest has different labels (-want +got):\n%s", diff)
-				}
-				return nil
-			}, timeout, interval).Should(Succeed(), "failed to validate the approvalRequest")
+			validateApprovalRequestCreated(wantApprovalRequest)
+
+			By("Deleting the approvalRequest")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, approvalRequest)).Should(Succeed())
+			Expect(k8sClient.Delete(ctx, approvalRequest)).Should(Succeed())
+
+			By("Validating the approvalRequest has been recreated immediately")
+			validateApprovalRequestCreated(wantApprovalRequest)
 
 			By("Approving the approvalRequest")
 			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
@@ -1274,6 +1236,17 @@ var _ = Describe("UpdateRun execution tests - delete ClusterApprovalRequest, don
 			By("Deleting the approvalRequest")
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, approvalRequest)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, approvalRequest)).Should(Succeed(), "failed to delete the approvalRequest")
+
+			By("Validating the approvalRequest has not been recreated")
+			Eventually(func() bool {
+				return apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, approvalRequest))
+			}, timeout, interval).Should(BeTrue(), "failed to ensure the approvalRequest is not recreated")
+			Consistently(func() bool {
+				return apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, approvalRequest))
+			}, timeout, interval).Should(BeTrue(), "failed to ensure the approvalRequest is not recreated")
+
+			By("Check the updateRun status to ensure the waitTime elapsed condition is not set")
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
 
 			By("Validating the 1st stage has completed")
 			wantStatus.StagesStatus[0].AfterStageTaskStatus[1].Conditions = append(wantStatus.StagesStatus[0].AfterStageTaskStatus[1].Conditions,
@@ -1289,6 +1262,8 @@ var _ = Describe("UpdateRun execution tests - delete ClusterApprovalRequest, don
 			// Need to have a longer wait time for the test to pass, because of the long wait time specified in the update strategy.
 			timeout = time.Second * 90
 			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
+			// Reset the timeout to the default value.
+			timeout = time.Second * 10
 
 			By("Validating the 1st stage has endTime set")
 			Expect(updateRun.Status.StagesStatus[0].EndTime).ShouldNot(BeNil())
@@ -1307,8 +1282,6 @@ var _ = Describe("UpdateRun execution tests - delete ClusterApprovalRequest, don
 			Consistently(func() bool {
 				return apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, approvalRequest))
 			}, timeout, interval).Should(BeTrue(), "failed to ensure the approvalRequest is not recreated")
-			// Reset the timeout to the default value.
-			timeout = time.Second * 10
 		})
 	})
 })
@@ -1352,4 +1325,20 @@ func approveClusterApprovalRequest(ctx context.Context, approvalRequestName stri
 		meta.SetStatusCondition(&approvalRequest.Status.Conditions, generateTrueCondition(&approvalRequest, placementv1beta1.ApprovalRequestConditionApproved))
 		return k8sClient.Status().Update(ctx, &approvalRequest)
 	}, timeout, interval).Should(Succeed(), "failed to approve the approvalRequest")
+}
+
+func validateApprovalRequestCreated(wantApprovalRequest *placementv1beta1.ClusterApprovalRequest) {
+	approvalRequest := &placementv1beta1.ClusterApprovalRequest{}
+	Eventually(func() error {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, approvalRequest); err != nil {
+			return err
+		}
+		if diff := cmp.Diff(wantApprovalRequest.Spec, approvalRequest.Spec); diff != "" {
+			return fmt.Errorf("approvalRequest has different spec (-want +got):\n%s", diff)
+		}
+		if diff := cmp.Diff(wantApprovalRequest.Labels, approvalRequest.Labels); diff != "" {
+			return fmt.Errorf("approvalRequest has different labels (-want +got):\n%s", diff)
+		}
+		return nil
+	}, timeout, interval).Should(Succeed(), "failed to validate the approvalRequest")
 }
