@@ -17,11 +17,10 @@ limitations under the License.
 package updaterun
 
 import (
-	"context"
 	"testing"
 	"time"
 
-	"github.com/crossplane/crossplane-runtime/pkg/test"
+	"github.com/google/go-cmp/cmp"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -461,30 +460,39 @@ func TestHandleClusterApprovalRequestDelete(t *testing.T) {
 func TestRemoveWaitTimeFromUpdateRunStatus(t *testing.T) {
 	waitTime := metav1.Duration{Duration: 5 * time.Minute}
 	tests := map[string]struct {
-		updateRun   *placementv1beta1.ClusterStagedUpdateRun
-		updateError error
-		wantErr     bool
+		inputUpdateRun *placementv1beta1.ClusterStagedUpdateRun
+		wantUpdateRun  *placementv1beta1.ClusterStagedUpdateRun
 	}{
 		"should handle empty stages": {
-			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+			inputUpdateRun: &placementv1beta1.ClusterStagedUpdateRun{
 				Status: placementv1beta1.StagedUpdateRunStatus{
 					StagedUpdateStrategySnapshot: &placementv1beta1.StagedUpdateStrategySpec{
 						Stages: []placementv1beta1.StageConfig{},
 					},
 				},
 			},
-			wantErr: false,
+			wantUpdateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				Status: placementv1beta1.StagedUpdateRunStatus{
+					StagedUpdateStrategySnapshot: &placementv1beta1.StagedUpdateStrategySpec{
+						Stages: []placementv1beta1.StageConfig{},
+					},
+				},
+			},
 		},
 		"should handle nil StagedUpdateStrategySnapshot": {
-			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+			inputUpdateRun: &placementv1beta1.ClusterStagedUpdateRun{
 				Status: placementv1beta1.StagedUpdateRunStatus{
 					StagedUpdateStrategySnapshot: nil,
 				},
 			},
-			wantErr: false,
+			wantUpdateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				Status: placementv1beta1.StagedUpdateRunStatus{
+					StagedUpdateStrategySnapshot: nil,
+				},
+			},
 		},
 		"should remove waitTime from Approval tasks only": {
-			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+			inputUpdateRun: &placementv1beta1.ClusterStagedUpdateRun{
 				Status: placementv1beta1.StagedUpdateRunStatus{
 					StagedUpdateStrategySnapshot: &placementv1beta1.StagedUpdateStrategySpec{
 						Stages: []placementv1beta1.StageConfig{
@@ -504,10 +512,28 @@ func TestRemoveWaitTimeFromUpdateRunStatus(t *testing.T) {
 					},
 				},
 			},
-			wantErr: false,
+			wantUpdateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				Status: placementv1beta1.StagedUpdateRunStatus{
+					StagedUpdateStrategySnapshot: &placementv1beta1.StagedUpdateStrategySpec{
+						Stages: []placementv1beta1.StageConfig{
+							{
+								AfterStageTasks: []placementv1beta1.AfterStageTask{
+									{
+										Type: placementv1beta1.AfterStageTaskTypeApproval,
+									},
+									{
+										Type:     placementv1beta1.AfterStageTaskTypeTimedWait,
+										WaitTime: &waitTime,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 		"should handle multiple stages": {
-			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+			inputUpdateRun: &placementv1beta1.ClusterStagedUpdateRun{
 				Status: placementv1beta1.StagedUpdateRunStatus{
 					StagedUpdateStrategySnapshot: &placementv1beta1.StagedUpdateStrategySpec{
 						Stages: []placementv1beta1.StageConfig{
@@ -535,18 +561,25 @@ func TestRemoveWaitTimeFromUpdateRunStatus(t *testing.T) {
 					},
 				},
 			},
-			wantErr: false,
-		},
-		"should handle update error": {
-			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+			wantUpdateRun: &placementv1beta1.ClusterStagedUpdateRun{
 				Status: placementv1beta1.StagedUpdateRunStatus{
 					StagedUpdateStrategySnapshot: &placementv1beta1.StagedUpdateStrategySpec{
 						Stages: []placementv1beta1.StageConfig{
 							{
 								AfterStageTasks: []placementv1beta1.AfterStageTask{
 									{
-										Type:     placementv1beta1.AfterStageTaskTypeApproval,
+										Type: placementv1beta1.AfterStageTaskTypeApproval,
+									},
+								},
+							},
+							{
+								AfterStageTasks: []placementv1beta1.AfterStageTask{
+									{
+										Type:     placementv1beta1.AfterStageTaskTypeTimedWait,
 										WaitTime: &waitTime,
+									},
+									{
+										Type: placementv1beta1.AfterStageTaskTypeApproval,
 									},
 								},
 							},
@@ -554,39 +587,14 @@ func TestRemoveWaitTimeFromUpdateRunStatus(t *testing.T) {
 					},
 				},
 			},
-			updateError: context.DeadlineExceeded,
-			wantErr:     true,
 		},
 	}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			r := &Reconciler{
-				Client: &test.MockClient{
-					MockStatusUpdate: func(ctx context.Context, obj client.Object, opts ...client.SubResourceUpdateOption) error {
-						if tt.updateError != nil {
-							return tt.updateError
-						}
-						updateRun := obj.(*placementv1beta1.ClusterStagedUpdateRun)
-						if updateRun.Status.StagedUpdateStrategySnapshot != nil {
-							for _, stage := range updateRun.Status.StagedUpdateStrategySnapshot.Stages {
-								for _, task := range stage.AfterStageTasks {
-									if task.Type == placementv1beta1.AfterStageTaskTypeApproval && task.WaitTime != nil {
-										t.Errorf("waitTime should be nil for Approval tasks, got %v", task.WaitTime)
-									}
-									if task.Type == placementv1beta1.AfterStageTaskTypeTimedWait && task.WaitTime == nil {
-										t.Error("waitTime should not be nil for TimedWait tasks")
-									}
-								}
-							}
-						}
-						return nil
-					},
-				},
-			}
-
-			if err := r.removeWaitTimeFromUpdateRunStatus(context.Background(), tt.updateRun); (err != nil) != tt.wantErr {
-				t.Errorf("removeWaitTimeFromUpdateRunStatus() error = %v, wantErr %v", err, tt.wantErr)
+			removeWaitTimeFromUpdateRunStatus(tt.inputUpdateRun)
+			if diff := cmp.Diff(tt.wantUpdateRun, tt.inputUpdateRun); diff != "" {
+				t.Errorf("removeWaitTimeFromUpdateRunStatus() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

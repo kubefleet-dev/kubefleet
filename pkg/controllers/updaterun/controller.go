@@ -80,10 +80,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	runObjRef := klog.KObj(&updateRun)
 
 	// Remove waitTime from the updateRun status for AfterStageTask for type Approval.
-	if err := r.removeWaitTimeFromUpdateRunStatus(ctx, &updateRun); err != nil {
-		klog.ErrorS(err, "Failed to remove waitTime from the updateRun status", "clusterStagedUpdateRun", runObjRef)
-		return runtime.Result{}, err
-	}
+	removeWaitTimeFromUpdateRunStatus(&updateRun)
 
 	// Handle the deletion of the clusterStagedUpdateRun.
 	if !updateRun.DeletionTimestamp.IsZero() {
@@ -381,7 +378,7 @@ func emitUpdateRunStatusMetric(updateRun *placementv1beta1.ClusterStagedUpdateRu
 	klog.V(2).InfoS("There's no valid status condition on updateRun, status updating failed possibly", "updateRun", klog.KObj(updateRun))
 }
 
-func (r *Reconciler) removeWaitTimeFromUpdateRunStatus(ctx context.Context, updateRun *placementv1beta1.ClusterStagedUpdateRun) error {
+func removeWaitTimeFromUpdateRunStatus(updateRun *placementv1beta1.ClusterStagedUpdateRun) {
 	// Remove waitTime from the updateRun status for AfterStageTask for type Approval.
 	if updateRun.Status.StagedUpdateStrategySnapshot != nil {
 		for i := range updateRun.Status.StagedUpdateStrategySnapshot.Stages {
@@ -391,7 +388,5 @@ func (r *Reconciler) removeWaitTimeFromUpdateRunStatus(ctx context.Context, upda
 				}
 			}
 		}
-		return r.Client.Status().Update(ctx, updateRun)
 	}
-	return nil
 }

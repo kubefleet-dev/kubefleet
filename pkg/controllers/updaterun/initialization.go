@@ -250,14 +250,11 @@ func (r *Reconciler) generateStagesByStrategy(
 		// other err can be retried.
 		return controller.NewAPIServerError(true, err)
 	}
-	// Remove waitTime from the after stage tasks of type Approval.
-	if err := r.removeWaitTimeFromAfterStageTasks(ctx, &updateStrategy); err != nil {
-		klog.ErrorS(err, "Failed to remove wait time from after stage tasks", "clusterStagedUpdateStrategy", updateStrategy.Name, "clusterStagedUpdateRun", updateRunRef)
-		return fmt.Errorf("%w: %s", errInitializedFailed, err.Error())
-	}
 
 	// This won't change even if the stagedUpdateStrategy changes or is deleted after the updateRun is initialized.
 	updateRun.Status.StagedUpdateStrategySnapshot = &updateStrategy.Spec
+	// Remove waitTime from the updateRun status for AfterStageTask for type Approval.
+	removeWaitTimeFromUpdateRunStatus(updateRun)
 
 	// Compute the update stages.
 	if err := r.computeRunStageStatus(ctx, scheduledBindings, updateRun); err != nil {
@@ -525,6 +522,7 @@ func (r *Reconciler) recordInitializationFailed(ctx context.Context, updateRun *
 	return nil
 }
 
+// removeWaitTimeFromAfterStageTasks sets the wait time to nil for the after stage tasks of type Approval in the ClusterStagedUpdateStrategy.
 func (r *Reconciler) removeWaitTimeFromAfterStageTasks(ctx context.Context, updateStrategy *placementv1beta1.ClusterStagedUpdateStrategy) error {
 	for i := range updateStrategy.Spec.Stages {
 		for j := range updateStrategy.Spec.Stages[i].AfterStageTasks {
@@ -533,5 +531,10 @@ func (r *Reconciler) removeWaitTimeFromAfterStageTasks(ctx context.Context, upda
 			}
 		}
 	}
-	return r.Update(ctx, updateStrategy)
+	if updateErr := r.Client.Update(ctx, updateStrategy); updateErr != nil {
+		klog.ErrorS(updateErr, "Failed to update the ClusterStagedUpdateStrategy", "clusterStagedUpdateStrategy", klog.KObj(updateStrategy))
+		// updateErr can be retried.
+		return controller.NewUpdateIgnoreConflictError(updateErr)
+	}
+	return nil
 }
