@@ -1353,7 +1353,6 @@ var _ = Describe("webhook tests for ClusterResourcePlacementEviction CREATE oper
 		})
 
 		It("should deny create on CRPE with PickFixed crp", func() {
-			// Create the CRP with deletion timestamp.
 			crp := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: crpName,
