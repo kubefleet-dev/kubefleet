@@ -23,7 +23,7 @@ The main idea is that we are creating a multi-cluster application management sol
 
 ## Repository directory structure
 
-- The `apis/` folder contains all CRD definitions, written in Golang.
+- The `apis/` folder contains all Golang structs from which CRDs are built.
   - CRDs are grouped by the group name and version they belong to.
 - The `charts/` folder contains the helm charts for the member and hub agent.
   - `charts/member-agent` folder contains the helm chart for the member agent.
@@ -52,7 +52,7 @@ The main idea is that we are creating a multi-cluster application management sol
   - `test/e2e` - The end to end tests for the member and hub agent.
   - `test/integration` - The integration tests for the member and hub agent.
   - `test/scheduler` - The integration tests for the scheduler.
-  - `test/utils` - The unit tests for the member and hub agent.
+  - `test/utils` - folder contains the utils code which is used to provide common functions for tests
 - The `tools/` folder contains client-side tools for helping manage the fleet.
 - The `Makefile` is used to build the member and hub agent.
 - The `go.mod` file is used to manage the dependencies for the member and hub agent.
@@ -147,7 +147,7 @@ This practice creates a trail of decision points that document our thought proce
 
 ### Following Plans
 - When coding you need to follow the plan phases and check off the tasks as they are completed.  
-- As you complete a task, update the plan and mark that task complete before you being the next task. 
+- As you complete a task, update the plan and mark that task complete before you begin the next task. 
 - Tasks that involved tests should not be marked complete until the tests pass. 
 
 ### Example Usage
