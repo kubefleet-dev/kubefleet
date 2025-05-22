@@ -38,7 +38,7 @@ import (
 func TestHandle(t *testing.T) {
 	validCRPDBObject := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-crp",
+			Name: "pick-all-crp",
 		},
 		Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
 			MaxUnavailable: nil,
@@ -62,7 +62,7 @@ func TestHandle(t *testing.T) {
 	}
 	invalidCRPDBObjectMinAvailablePercentage := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-crp",
+			Name: "pick-all-crp",
 		},
 		Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
 			MaxUnavailable: nil,
@@ -74,7 +74,7 @@ func TestHandle(t *testing.T) {
 	}
 	invalidCRPDBObjectMaxAvailablePercentage := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-crp",
+			Name: "pick-all-crp",
 		},
 		Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
 			MaxUnavailable: &intstr.IntOrString{
@@ -86,7 +86,7 @@ func TestHandle(t *testing.T) {
 	}
 	invalidCRPDBObjectMaxAvailableInteger := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-crp",
+			Name: "pick-all-crp",
 		},
 		Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
 			MaxUnavailable: &intstr.IntOrString{
@@ -121,7 +121,7 @@ func TestHandle(t *testing.T) {
 
 	validCRP := &placementv1beta1.ClusterResourcePlacement{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-crp",
+			Name: "pick-all-crp",
 		},
 		Spec: placementv1beta1.ClusterResourcePlacementSpec{
 			ResourceSelectors: []placementv1beta1.ClusterResourceSelector{},
@@ -174,7 +174,7 @@ func TestHandle(t *testing.T) {
 		"allow CRPDB create": {
 			req: admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
-					Name: "test-crpdb",
+					Name: "pick-all-crp",
 					Object: runtime.RawExtension{
 						Raw:    validCRPDBObjectBytes,
 						Object: validCRPDBObject,
@@ -199,7 +199,7 @@ func TestHandle(t *testing.T) {
 					Name: "crp-pickn",
 					Object: runtime.RawExtension{
 						Raw:    validCRPDBObjectPickNCRPBytes,
-						Object: validCRPPickN,
+						Object: validCRPDBObjectPickNCRP,
 					},
 					UserInfo: authenticationv1.UserInfo{
 						Username: "test-user",
@@ -218,7 +218,7 @@ func TestHandle(t *testing.T) {
 		"deny CRPDB create - MinAvailable as percentage": {
 			req: admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
-					Name: "test-crpe",
+					Name: "pick-all-crp",
 					Object: runtime.RawExtension{
 						Raw:    invalidCRPDBObjectMinAvailablePercentageBytes,
 						Object: invalidCRPDBObjectMinAvailablePercentage,
@@ -240,7 +240,7 @@ func TestHandle(t *testing.T) {
 		"deny CRPDB create - MaxAvailable as percentage": {
 			req: admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
-					Name: "test-crpe",
+					Name: "pick-all-crp",
 					Object: runtime.RawExtension{
 						Raw:    invalidCRPDBObjectMaxAvailablePercentageBytes,
 						Object: invalidCRPDBObjectMaxAvailablePercentage,
@@ -262,7 +262,7 @@ func TestHandle(t *testing.T) {
 		"deny CRPDB create - MaxAvailable as integer": {
 			req: admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
-					Name: "test-crpe",
+					Name: "pick-all-crp",
 					Object: runtime.RawExtension{
 						Raw:    invalidCRPDBObjectMaxAvailableIntegerBytes,
 						Object: invalidCRPDBObjectMaxAvailableInteger,
