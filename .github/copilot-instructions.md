@@ -28,29 +28,29 @@ The main idea is that we are creating a multi-cluster application management sol
 - The `charts/` folder contains the helm charts for the member and hub agent.
   - `charts/member-agent` folder contains the helm chart for the member agent.
   - `charts/hub-agent` folder contains the helm chart for the hub agent.
-- The `cmd/` folder contains the entry point for the member and hub agent.
+- The `cmd/` folder contains the entry points for the member and hub agent.
   - `cmd/member-agent` The entry point for the member agent.
   - `cmd/hub-agent` The entry point for the hub agent.
-- The `config/` folder contains the actual CRD definitions built from the CRD definitions in the `apis/` folder.
-  - `config/crd/bases` folder contains the CRD definitions for the member and hub agent.
+- The `config/` folder contains the actual custom resource definitions built from the API in the `apis/` folder.
+  - `config/crd/bases` folder contains the CRDs for the member and hub agent.
 - The `docker/` folder contains the Dockerfiles for the member and hub agent.
 - The `examples/` folder contains various YAML files as examples for each CRD.
 - The `hack/` folder contains various scripts and tools for the project.
 - The `pkg/` folder contains the libraries for the member and hub agent.
   - `pkg/authtoken` folder contains the authentication sidecar code which has a provider model.
-  - `pkg/controller` folder contains most of the controllers for the member and hub agent.
+  - `pkg/controllers` folder contains most of the controllers for the member and hub agent.
     - each sub folder is a controller for a specific resource of the same name in most cases.
   - `pkg/metrics` folder contains all the metrics definitions.
   - `pkg/propertyprovider` folder contains the property provider code which is used to get the properties of a member cluster.
-  - `pkg/resourcewatcher` folder contains the resource watcher code which is used to watch for changes in the hub cluster.
+  - `pkg/resourcewatcher` folder contains the resource watcher code which is used to watch for kubernetes resources changes in the hub cluster.
   - `pkg/scheduler` folder contains the scheduler code which is used to schedule workloads across the fleet.
   - `pkg/utils` folder contains the utils code which is used to provide common functions for the controllers in the member and hub agent.
   - `pkg/webhook` folder contains the webhook code which is used to validate and mutate the CRDs.
 - The `test/` folder contains the tests for the member and hub agent.
-  - `test/apis` - The tests for the CRD definitions.
+  - `test/apis` - The tests for the CRDs.
   - `test/upgrade` - The tests for the upgrade tests to test compatibility between versions.
   - `test/e2e` - The end to end tests for the member and hub agent.
-  - `test/integration` - The integration tests for the member and hub agent.
+  - `test/integration` - The integration tests for the v1alpha1 member and hub agent.
   - `test/scheduler` - The integration tests for the scheduler.
   - `test/utils` - folder contains the utils code which is used to provide common functions for tests
 - The `tools/` folder contains client-side tools for helping manage the fleet.
