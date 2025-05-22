@@ -521,20 +521,3 @@ func (r *Reconciler) recordInitializationFailed(ctx context.Context, updateRun *
 	}
 	return nil
 }
-
-// removeWaitTimeFromAfterStageTasks sets the wait time to nil for the after stage tasks of type Approval in the ClusterStagedUpdateStrategy.
-func (r *Reconciler) removeWaitTimeFromAfterStageTasks(ctx context.Context, updateStrategy *placementv1beta1.ClusterStagedUpdateStrategy) error {
-	for i := range updateStrategy.Spec.Stages {
-		for j := range updateStrategy.Spec.Stages[i].AfterStageTasks {
-			if updateStrategy.Spec.Stages[i].AfterStageTasks[j].Type == placementv1beta1.AfterStageTaskTypeApproval {
-				updateStrategy.Spec.Stages[i].AfterStageTasks[j].WaitTime = nil
-			}
-		}
-	}
-	if updateErr := r.Client.Update(ctx, updateStrategy); updateErr != nil {
-		klog.ErrorS(updateErr, "Failed to update the ClusterStagedUpdateStrategy", "clusterStagedUpdateStrategy", klog.KObj(updateStrategy))
-		// updateErr can be retried.
-		return controller.NewUpdateIgnoreConflictError(updateErr)
-	}
-	return nil
-}
