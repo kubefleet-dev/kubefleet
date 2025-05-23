@@ -301,7 +301,7 @@ func TestHandle(t *testing.T) {
 				decoder: decoder,
 				client:  fakeClient,
 			},
-			wantResponse: admission.Allowed("clusterResourcePlacementDisruptionBudget has valid fields"),
+			wantResponse: admission.Allowed("Associated clusterResourcePlacement object for clusterResourcePlacementDisruptionBudget is not found"),
 		},
 	}
 	for testName, testCase := range testCases {

@@ -176,7 +176,7 @@ func TestHandle(t *testing.T) {
 				decoder: decoder,
 				client:  fakeClient,
 			},
-			wantResponse: admission.Allowed("clusterResourcePlacementEviction has valid fields"),
+			wantResponse: admission.Allowed("Associated clusterResourcePlacement object for clusterResourcePlacementDisruptionBudget is not found"),
 		},
 		"deny CRPE create - CRP is deleting": {
 			req: admission.Request{
