@@ -888,7 +888,7 @@ var _ = Describe("Work Status Reconciler", func() {
 			cleanupResources(cm, cm2, rns, work)
 		})
 
-		FIt("Should not update status when manifest is stuck in deletion", func() {
+		It("Should not update status when manifest is stuck in deletion", func() {
 			By("Apply the work")
 			Expect(hubClient.Create(context.Background(), work)).ToNot(HaveOccurred())
 

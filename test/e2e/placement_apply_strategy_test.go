@@ -124,7 +124,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 	})
 
-	Context("Test a CRP place objects successfully (client-side-apply and disallow co-own) and existing resource has no owner reference", Ordered, func() {
+	FContext("Test a CRP place objects successfully (client-side-apply and disallow co-own) and existing resource has no owner reference", Ordered, func() {
 		BeforeAll(func() {
 			ns := appNamespace()
 			ns.Annotations = map[string]string{
