@@ -64,7 +64,7 @@ func TestValidateAfterStageTask(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "task 0 of type TimedWait  has wait duration <= 0",
+			errMsg:  "task 0 of type TimedWait has wait duration <= 0",
 		},
 	}
 
