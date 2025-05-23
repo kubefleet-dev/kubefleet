@@ -24,7 +24,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -137,93 +136,4 @@ func waitForWorkToBeHandled(workName, workNS string) *fleetv1beta1.Work {
 		return controllerutil.ContainsFinalizer(&resultWork, fleetv1beta1.WorkFinalizer)
 	}, eventuallyDuration, eventuallyInterval).Should(BeTrue())
 	return &resultWork
-}
-
-// verifyConfigMapExists verifies that the configmap exists in member cluster
-func verifyConfigMapExists(cm *corev1.ConfigMap, resourceNamespace string) {
-	Consistently(func() bool {
-		var configMap corev1.ConfigMap
-		err := memberClient.Get(context.Background(), types.NamespacedName{Name: cm.Name, Namespace: resourceNamespace}, &configMap)
-		return !apierrors.IsNotFound(err)
-	}, consistentlyDuration, consistentlyInterval).Should(BeTrue(), fmt.Sprintf("ConfigMap %s should not be deleted", cm.Name))
-}
-
-// verifyConfigmapIsRemoved verifies that the configmap is removed from member cluster
-func verifyConfigmapIsRemoved(cm *corev1.ConfigMap, ns string) {
-	Eventually(func() bool {
-		var configMap corev1.ConfigMap
-		err := memberClient.Get(context.Background(), types.NamespacedName{Name: cm.Name, Namespace: ns}, &configMap)
-		return apierrors.IsNotFound(err)
-	}, eventuallyDuration*5, eventuallyInterval).Should(BeTrue(), fmt.Sprintf("ConfigMap %s should be deleted", cm.Name))
-}
-
-// verifyWorkIsDeleted verifies that the work is deleted from the hub cluster
-func verifyWorkIsDeleted(work *fleetv1beta1.Work) {
-	Eventually(func() bool {
-		var currentWork fleetv1beta1.Work
-		return apierrors.IsNotFound(hubClient.Get(context.Background(), types.NamespacedName{Name: work.Name, Namespace: memberReservedNSName}, &currentWork))
-	}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "Work should be deleted")
-}
-
-// verifyAppliedWorkIsDeleted verifies that the applied work is deleted from the hub cluster
-func verifyAppliedWorkIsDeleted(name string) {
-	Eventually(func() bool {
-		var currentAppliedWork fleetv1beta1.AppliedWork
-		return apierrors.IsNotFound(hubClient.Get(context.Background(), types.NamespacedName{Name: name}, &currentAppliedWork))
-	}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "AppliedWork should be deleted")
-}
-
-// verifyNamespaceIsDeleted verifies that the namespace is deleted from the hub cluster
-func verifyNamespaceIsDeleted(nsName string) {
-	Eventually(func() bool {
-		var ns corev1.Namespace
-		return apierrors.IsNotFound(hubClient.Get(context.Background(), types.NamespacedName{Name: nsName}, &ns))
-	}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "Namespace should be deleted")
-}
-
-// removeFinalizersFromResource removes the finalizers from the configmap to delete
-func removeFinalizersFromResource(cm *corev1.ConfigMap) {
-	var configMap corev1.ConfigMap
-	Expect(memberClient.Get(context.Background(), types.NamespacedName{Name: cm.Name, Namespace: cm.Namespace}, &configMap)).Should(Succeed(), "Failed to get configmap")
-	controllerutil.RemoveFinalizer(&configMap, "example.com/finalizer")
-	Expect(memberClient.Update(context.Background(), &configMap)).Should(Succeed(), "Failed to remove finalizers from configmap")
-}
-
-func addFinalizerToConfigMap(cm *corev1.ConfigMap) {
-	// Add finalizer to the configmap
-	var configMap corev1.ConfigMap
-	Expect(memberClient.Get(context.Background(), types.NamespacedName{Name: cm.Name, Namespace: cm.Namespace}, &configMap)).Should(Succeed())
-	controllerutil.AddFinalizer(&configMap, "example.com/finalizer")
-	Expect(memberClient.Update(context.Background(), &configMap)).Should(Succeed())
-	By("Added finalizer to configmap")
-}
-
-func cleanupResources(cm, cm2 *corev1.ConfigMap, ns *corev1.Namespace, work *fleetv1beta1.Work) {
-	// Remove finalizers from the configmap
-	removeFinalizersFromResource(cm)
-	removeFinalizersFromResource(cm2)
-
-	// Delete the configmap
-	Expect(memberClient.Delete(context.Background(), cm)).Should(Succeed())
-	Expect(memberClient.Delete(context.Background(), cm2)).Should(Succeed())
-
-	// Verify the configmap is deleted
-	verifyConfigmapIsRemoved(cm, cm.Namespace)
-	verifyConfigmapIsRemoved(cm2, cm2.Namespace)
-
-	// Delete the namespace
-	Expect(memberClient.Delete(context.Background(), ns)).Should(Succeed())
-	verifyNamespaceIsDeleted(ns.Name)
-
-	// Remove finalizers from the applied work. Needed as there
-	var currentAppliedWork fleetv1beta1.AppliedWork
-	Expect(memberClient.Get(context.Background(), types.NamespacedName{Name: work.Name}, &currentAppliedWork)).Should(Succeed(), "Failed to get applied work")
-	controllerutil.RemoveFinalizer(&currentAppliedWork, metav1.FinalizerDeleteDependents)
-	Expect(memberClient.Update(context.Background(), &currentAppliedWork)).Should(Succeed(), "Failed to remove finalizers from applied work")
-
-	// verify the applied work is deleted
-	verifyAppliedWorkIsDeleted(work.Name)
-
-	// verify the work is deleted
-	verifyWorkIsDeleted(work)
 }
