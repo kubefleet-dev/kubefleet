@@ -6,11 +6,14 @@ spec:
   resourceSelectors:
     - group: ""
       kind: Namespace
-      name: my-namespace
+      name: test-namespace
       version: v1
   policy:
     placementType: PickAll
-  strategy:
-    type: RollingUpdate
-    applyStrategy:
-      allowCoOwnership: true
+    affinity:
+      clusterAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          clusterSelectorTerms:
+            - labelSelector:
+                matchLabels:
+                  test-key: test-value2
