@@ -96,7 +96,7 @@ func TestHandle(t *testing.T) {
 			MinAvailable: nil,
 		},
 	}
-	invalidCRPDBObjectCRPNotFound := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
+	validCRPDBObjectCRPNotFound := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "does-not-exist",
 		},
@@ -116,7 +116,7 @@ func TestHandle(t *testing.T) {
 	assert.Nil(t, err)
 	invalidCRPDBObjectMaxAvailableIntegerBytes, err := json.Marshal(invalidCRPDBObjectMaxAvailableInteger)
 	assert.Nil(t, err)
-	invalidCRPDBObjectCRPNotFoundBytes, err := json.Marshal(invalidCRPDBObjectCRPNotFound)
+	validCRPDBObjectCRPNotFoundBytes, err := json.Marshal(validCRPDBObjectCRPNotFound)
 	assert.Nil(t, err)
 
 	validCRP := &placementv1beta1.ClusterResourcePlacement{
@@ -281,13 +281,13 @@ func TestHandle(t *testing.T) {
 			},
 			wantResponse: admission.Denied(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with any specified max unavailable %v", invalidCRPDBObjectMaxAvailableInteger.Spec.MaxUnavailable)),
 		},
-		"deny CRPDB create - CRP not found": {
+		"allow CRPDB create - CRP not found": {
 			req: admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
 					Name: "does-not-exist",
 					Object: runtime.RawExtension{
-						Raw:    invalidCRPDBObjectCRPNotFoundBytes,
-						Object: invalidCRPDBObjectCRPNotFound,
+						Raw:    validCRPDBObjectCRPNotFoundBytes,
+						Object: validCRPDBObjectCRPNotFound,
 					},
 					UserInfo: authenticationv1.UserInfo{
 						Username: "test-user",
@@ -301,7 +301,7 @@ func TestHandle(t *testing.T) {
 				decoder: decoder,
 				client:  fakeClient,
 			},
-			wantResponse: admission.Denied(fmt.Sprintf("clusterresourceplacements.placement.kubernetes-fleet.io \"%s\" not found", invalidCRPDBObjectCRPNotFound.Name)),
+			wantResponse: admission.Allowed("clusterResourcePlacementDisruptionBudget has valid fields"),
 		},
 	}
 	for testName, testCase := range testCases {

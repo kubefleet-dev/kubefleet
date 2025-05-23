@@ -62,8 +62,8 @@ func (v *clusterResourcePlacementDisruptionBudgetValidator) Handle(ctx context.C
 	var crp fleetv1beta1.ClusterResourcePlacement
 	if err := v.client.Get(ctx, types.NamespacedName{Name: db.Name}, &crp); err != nil {
 		if k8serrors.IsNotFound(err) {
-			klog.V(2).InfoS("The corresponding ClusterResourcePlacement object is missing", "clusterResourcePlacementDisruptionBudget", db.Name, "clusterResourcePlacement", db.Name)
-			return admission.Denied(err.Error())
+			klog.V(2).InfoS("The corresponding ClusterResourcePlacement object does not exist", "clusterResourcePlacementDisruptionBudget", db.Name, "clusterResourcePlacement", db.Name)
+			return admission.Allowed("clusterResourcePlacementDisruptionBudget has valid fields")
 		}
 		return admission.Errored(http.StatusBadRequest, fmt.Errorf("failed to get clusterResourcePlacement %s for clusterResourcePlacementDisruptionBudget %s: %w", db.Name, db.Name, err))
 	}
