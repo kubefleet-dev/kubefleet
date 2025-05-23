@@ -954,6 +954,32 @@ func ensureCRPDisruptionBudgetDeleted(crpDisruptionBudgetName string) {
 	Eventually(removedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "CRP disruption budget still exists")
 }
 
+func removeOtherOwner(cluster *framework.Cluster) {
+	ns := appNamespace()
+	otherOwner := metav1.OwnerReference{
+		APIVersion: "another-api-version",
+		Kind:       "another-kind",
+		Name:       "another-owner",
+		UID:        "another-uid",
+	}
+
+	Eventually(func() error {
+		if err := cluster.KubeClient.Get(ctx, types.NamespacedName{Name: ns.Name}, &ns); err != nil {
+			return err
+		}
+		// Filter out the owner reference you want to remove
+		newOwnerRefs := []metav1.OwnerReference{}
+		for _, ref := range ns.OwnerReferences {
+			if ref != otherOwner {
+				newOwnerRefs = append(newOwnerRefs, ref)
+			}
+		}
+
+		ns.SetOwnerReferences(newOwnerRefs)
+		return cluster.KubeClient.Update(ctx, &ns)
+	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove other owner from namespace %s", ns.Name)
+}
+
 // verifyWorkPropagationAndMarkAsAvailable verifies that works derived from a specific CPR have been created
 // for a specific cluster, and marks these works in the specific member cluster's
 // reserved namespace as applied and available.

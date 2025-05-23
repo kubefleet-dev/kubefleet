@@ -463,14 +463,20 @@ func cleanupWorkObject(workName string) {
 }
 
 func appliedWorkRemovedActual(workName string) func() error {
+
+	// Retrieve the AppliedWork object.
+	currentAppliedWork := &fleetv1beta1.AppliedWork{}
+	if err := memberClient.Get(ctx, client.ObjectKey{Name: workName}, currentAppliedWork); err == nil {
+		if controllerutil.ContainsFinalizer(currentAppliedWork, metav1.FinalizerDeleteDependents) {
+			controllerutil.RemoveFinalizer(currentAppliedWork, metav1.FinalizerDeleteDependents)
+			Expect(memberClient.Update(ctx, currentAppliedWork)).To(Succeed(), "Failed to remove the finalizer from the AppliedWork object")
+		}
+	}
+
 	return func() error {
 		// Retrieve the AppliedWork object.
 		appliedWork := &fleetv1beta1.AppliedWork{}
 		if err := memberClient.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); !errors.IsNotFound(err) {
-			if controllerutil.ContainsFinalizer(appliedWork, metav1.FinalizerDeleteDependents) {
-				controllerutil.RemoveFinalizer(appliedWork, metav1.FinalizerDeleteDependents)
-				Expect(memberClient.Update(ctx, appliedWork)).To(Succeed(), "Failed to remove the finalizer from the AppliedWork object")
-			}
 			return fmt.Errorf("appliedWork object still exists or an unexpected error occurred: %w", err)
 		}
 		return nil
