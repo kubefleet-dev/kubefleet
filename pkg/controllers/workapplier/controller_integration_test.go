@@ -463,7 +463,6 @@ func cleanupWorkObject(workName string) {
 }
 
 func appliedWorkRemovedActual(workName string) func() error {
-
 	// Retrieve the AppliedWork object.
 	currentAppliedWork := &fleetv1beta1.AppliedWork{}
 	if err := memberClient.Get(ctx, client.ObjectKey{Name: workName}, currentAppliedWork); err == nil {
