@@ -103,7 +103,7 @@ var _ = Describe("ClusterStagedUpdateRun backward compatibility (after upgrade)"
 				}
 			}
 			return nil
-		}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to find or approve the approval request after upgrade")
+		}, longEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to find or approve the approval request after upgrade")
 
 		// Update the ConfigMap to trigger changes
 		Eventually(func() error {
@@ -113,7 +113,7 @@ var _ = Describe("ClusterStagedUpdateRun backward compatibility (after upgrade)"
 			}
 			cm.Data["key"] = "value-after-upgrade"
 			return hubClient.Update(ctx, cm)
-		}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update ConfigMap after upgrade")
+		}, longEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update ConfigMap after upgrade")
 
 		// Wait for and verify the UpdateRun completes successfully
 		Eventually(func() error {

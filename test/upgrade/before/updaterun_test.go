@@ -25,7 +25,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -70,7 +69,7 @@ var _ = Describe("ClusterStagedUpdateRun backward compatibility (before upgrade)
 				Name: updateRunBackwardCompatCRPName,
 			},
 			Spec: placementv1beta1.ClusterResourcePlacementSpec{
-				ResourceSelectors: []placementv1beta1.ResourceSelector{
+				ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
 					{
 						Group:   "",
 						Version: "v1",
