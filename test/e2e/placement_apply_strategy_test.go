@@ -77,6 +77,14 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		AfterAll(func() {
+			By("removing the owner reference of the namespace")
+			// Remove the extra owner reference from the namespace to avoid deletion delays.
+			// With the new change to use foreground deletion on applied Work resources, the Work will be blocked
+			// from deleting until the applied work is fully deleted. If the namespace has
+			// multiple owner references, it won’t be deleted immediately, which can cause resource overlap
+			// and flakiness in subsequent tests.
+			removeOtherOwner(allMemberClusters[0])
+
 			By(fmt.Sprintf("deleting placement %s", crpName))
 			cleanupCRP(crpName)
 
@@ -250,6 +258,14 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		AfterAll(func() {
+			By("removing the owner reference of the namespace")
+			// Remove the extra owner reference from the namespace to avoid deletion delays.
+			// With the new change to use foreground deletion on applied Work resources, the Work will be blocked
+			// from deleting until the applied work is fully deleted. If the namespace has
+			// multiple owner references, it won’t be deleted immediately, which can cause resource overlap
+			// and flakiness in subsequent tests.
+			removeOtherOwner(allMemberClusters[0])
+
 			By(fmt.Sprintf("deleting placement %s", crpName))
 			cleanupCRP(crpName)
 
@@ -385,6 +401,14 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		AfterAll(func() {
+			By("removing the owner reference of the namespace")
+			// Remove the extra owner reference from the namespace to avoid deletion delays.
+			// With the new change to use foreground deletion on applied Work resources, the Work will be blocked
+			// from deleting until the applied work is fully deleted. If the namespace has
+			// multiple owner references, it won’t be deleted immediately, which can cause resource overlap
+			// and flakiness in subsequent tests.
+			removeOtherOwner(allMemberClusters[0])
+
 			By(fmt.Sprintf("deleting placement %s", crpName))
 			cleanupCRP(crpName)
 
@@ -613,6 +637,14 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		AfterAll(func() {
+			By("removing the owner reference of the namespace")
+			// Remove the extra owner reference from the namespace to avoid deletion delays.
+			// With the new change to use foreground deletion on applied Work resources, the Work will be blocked
+			// from deleting until the applied work is fully deleted. If the namespace has
+			// multiple owner references, it won’t be deleted immediately, which can cause resource overlap
+			// and flakiness in subsequent tests.
+			removeOtherOwner(allMemberClusters[0])
+
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 
 			ensureCRPAndRelatedResourcesDeleted(conflictedCRPName, allMemberClusters)
