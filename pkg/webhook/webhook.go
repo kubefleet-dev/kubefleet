@@ -31,6 +31,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceplacementdisruptionbudget"
 	admv1 "k8s.io/api/admissionregistration/v1"
 	admv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -115,6 +116,7 @@ const (
 	clusterResourceOverrideName          = "clusterresourceoverrides"
 	resourceOverrideName                 = "resourceoverrides"
 	evictionName                         = "clusterresourceplacementevictions"
+	disruptionBudgetName                 = "clusterresourceplacementdisruptionbudgets"
 )
 
 var (
@@ -376,6 +378,22 @@ func (w *Config) buildFleetValidatingWebhooks() []admv1.ValidatingWebhook {
 						admv1.Create,
 					},
 					Rule: createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{evictionName}, &clusterScope),
+				},
+			},
+			TimeoutSeconds: longWebhookTimeout,
+		},
+		{
+			Name:                    "fleet.clusterresourceplacementdisruptionbudget.validating",
+			ClientConfig:            w.createClientConfig(clusterresourceplacementdisruptionbudget.ValidationPath),
+			FailurePolicy:           &failFailurePolicy,
+			SideEffects:             &sideEffortsNone,
+			AdmissionReviewVersions: admissionReviewVersions,
+			Rules: []admv1.RuleWithOperations{
+				{
+					Operations: []admv1.OperationType{
+						admv1.Create,
+					},
+					Rule: createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{disruptionBudgetName}, &clusterScope),
 				},
 			},
 			TimeoutSeconds: longWebhookTimeout,
