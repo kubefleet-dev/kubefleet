@@ -54,6 +54,18 @@ func TestHandle(t *testing.T) {
 				Type:   intstr.Int,
 				IntVal: 1,
 			},
+			MinAvailable: nil,
+		},
+	}
+	invalidCRPDObject := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "crp-pickn",
+		},
+		Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
+			MaxUnavailable: &intstr.IntOrString{
+				Type:   intstr.Int,
+				IntVal: 1,
+			},
 			MinAvailable: &intstr.IntOrString{
 				Type:   intstr.String,
 				StrVal: "50%",
@@ -107,6 +119,8 @@ func TestHandle(t *testing.T) {
 	}
 
 	validCRPDBObjectBytes, err := json.Marshal(validCRPDBObject)
+	assert.Nil(t, err)
+	invalidCRPDObjectBytes, err := json.Marshal(invalidCRPDObject)
 	assert.Nil(t, err)
 	validCRPDBObjectPickNCRPBytes, err := json.Marshal(validCRPDBObjectPickNCRP)
 	assert.Nil(t, err)
@@ -214,6 +228,28 @@ func TestHandle(t *testing.T) {
 				client:  fakeClient,
 			},
 			wantResponse: admission.Allowed("clusterResourcePlacementDisruptionBudget has valid fields"),
+		},
+		"deny CRPDB create - MinAvailable and MaxUnavailable specified": {
+			req: admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name: "crp-pickn",
+					Object: runtime.RawExtension{
+						Raw:    invalidCRPDObjectBytes,
+						Object: invalidCRPDObject,
+					},
+					UserInfo: authenticationv1.UserInfo{
+						Username: "test-user",
+						Groups:   []string{"system:masters"},
+					},
+					RequestKind: &utils.ClusterResourcePlacementDisruptionBudgetMetaGVK,
+					Operation:   admissionv1.Create,
+				},
+			},
+			resourceValidator: clusterResourcePlacementDisruptionBudgetValidator{
+				decoder: decoder,
+				client:  fakeClient,
+			},
+			wantResponse: admission.Denied(fmt.Sprintf("cannot specify both min available %v and max unavailable %v", invalidCRPDObject.Spec.MinAvailable, invalidCRPDObject.Spec.MaxUnavailable)),
 		},
 		"deny CRPDB create - MinAvailable as percentage": {
 			req: admission.Request{
