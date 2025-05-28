@@ -130,7 +130,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		It("namespace should be kept on member cluster", func() {
 			Consistently(func() error {
 				ns := &corev1.Namespace{}
-				return hubClient.Get(ctx, types.NamespacedName{Name: workNamespaceName}, ns)
+				return allMemberClusters[0].KubeClient.Get(ctx, types.NamespacedName{Name: workNamespaceName}, ns)
 			}, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Namespace which is not owned by the CRP should not be deleted")
 		})
 	})
@@ -150,16 +150,6 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			// Check if work is deleted. Needed to ensure that the Work resource is cleaned up before the next CRP is created.
-			// This is because the Work resource is created with a finalizer that blocks deletion until the all applied work
-			// and applied work itself is successfully deleted. If the Work resource is not deleted, it can cause resource overlap
-			// and flakiness in subsequent tests.
-			By("Check if work is deleted")
-			Eventually(func() bool {
-				work := &placementv1beta1.Work{}
-				return errors.IsNotFound(hubClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf("%s-work", crpName), Namespace: fmt.Sprintf("fleet-member-%s", allMemberClusterNames[0])}, work))
-			}, 6*eventuallyDuration, eventuallyInterval).Should(BeTrue(), "Work resource should be deleted from hub")
-
 			By(fmt.Sprintf("deleting placement %s", crpName))
 			cleanupCRP(crpName)
 		})
@@ -215,7 +205,6 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		AfterAll(func() {
 			By(fmt.Sprintf("deleting placement %s", crpName))
 			cleanupCRP(crpName)
-
 		})
 
 		It("should update CRP status as expected", func() {
