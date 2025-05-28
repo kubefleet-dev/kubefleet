@@ -437,21 +437,6 @@ func appliedWorkStatusUpdated(workName string, appliedResourceMeta []fleetv1beta
 	}
 }
 
-func waitForFinalizerToBeRemoved(workName string) func() error {
-	// Wait for the finalizer to be removed from the Work object.
-	return func() error {
-		work := &fleetv1beta1.Work{}
-		if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName}, work); err != nil {
-			return fmt.Errorf("failed to retrieve the Work object: %w", err)
-		}
-
-		if controllerutil.ContainsFinalizer(work, fleetv1beta1.WorkFinalizer) {
-			return fmt.Errorf("finalizer has not been removed from the Work object")
-		}
-		return nil
-	}
-}
-
 func workRemovedActual(workName string) func() error {
 	// Wait for the removal of the Work object.
 	return func() error {
