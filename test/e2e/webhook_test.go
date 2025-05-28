@@ -1368,7 +1368,7 @@ var _ = Describe("webhook tests for ClusterResourcePlacementEviction CREATE oper
 	})
 })
 
-var _ = FDescribe("webhook tests for ClusterResourcePlacementDisruptionBudget CREATE operations", Ordered, func() {
+var _ = Describe("webhook tests for ClusterResourcePlacementDisruptionBudget CREATE operations", Ordered, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 
 	AfterEach(func() {
