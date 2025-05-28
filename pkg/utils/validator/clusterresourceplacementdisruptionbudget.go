@@ -36,10 +36,5 @@ func ValidateClusterResourcePlacementDisruptionBudget(db *fleetv1beta1.ClusterRe
 			allErr = append(allErr, fmt.Errorf("cluster resource placement policy type PickAll is not supported with min available as a percentage %v", db.Spec.MinAvailable))
 		}
 	}
-
-	if db.Spec.MinAvailable != nil && db.Spec.MaxUnavailable != nil {
-		allErr = append(allErr, fmt.Errorf("cannot specify both min available %v and max unavailable %v", db.Spec.MinAvailable, db.Spec.MaxUnavailable))
-	}
-
 	return errors.NewAggregate(allErr)
 }
