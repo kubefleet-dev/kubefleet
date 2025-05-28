@@ -368,24 +368,24 @@ func FetchAllClusterResourceSnapshots(ctx context.Context, k8Client client.Clien
 func CollectResourceIdentifiersFromClusterResourceSnapshot(
 	ctx context.Context,
 	k8Client client.Client,
-	crp *fleetv1beta1.ClusterResourcePlacement,
+	crpName string,
 	resourceSnapshotIndex string,
 ) ([]fleetv1beta1.ResourceIdentifier, error) {
 	labelMatcher := client.MatchingLabels{
-		fleetv1beta1.CRPTrackingLabel:   crp.Name,
+		fleetv1beta1.CRPTrackingLabel:   crpName,
 		fleetv1beta1.ResourceIndexLabel: resourceSnapshotIndex,
 	}
 	resourceSnapshotList := &fleetv1beta1.ClusterResourceSnapshotList{}
 	if err := k8Client.List(ctx, resourceSnapshotList, labelMatcher); err != nil {
 		klog.ErrorS(err, "Failed to list the clusterResourceSnapshots associated with the clusterResourcePlacement",
-			"clusterResourcePlacement", crp.Name, "resourceSnapshotIndex", resourceSnapshotIndex)
+			"resourceSnapshotIndex", resourceSnapshotIndex, "clusterResourcePlacement", crpName)
 		return nil, NewAPIServerError(true, err)
 	}
 
 	if len(resourceSnapshotList.Items) == 0 {
-		err := NewUserError(fmt.Errorf("no clusterResourceSnapshots with index `%s` found for clusterResourcePlacement `%s`", resourceSnapshotIndex, crp.Name))
-		klog.ErrorS(err, "No clusterResourceSnapshots found for the clusterResourcePlacement, probably deleted due to revision history limit")
-		return nil, err
+		klog.V(2).InfoS("No clusterResourceSnapshots found for the clusterResourcePlacement when collecting resource identifiers",
+			"resourceSnapshotIndex", resourceSnapshotIndex, "clusterResourcePlacement", crpName)
+		return nil, nil
 	}
 
 	// Look for the master clusterResourceSnapshot.
@@ -398,20 +398,18 @@ func CollectResourceIdentifiersFromClusterResourceSnapshot(
 		}
 	}
 	if masterResourceSnapshot == nil {
-		err := NewUserError(fmt.Errorf("no master clusterResourceSnapshot found for clusterResourcePlacement `%s`", crp.Name))
-		klog.ErrorS(err, "Found clusterResourceSnapshots without master snapshot", "clusterResourcePlacement", crp.Name, "resourceSnapshotIndex", resourceSnapshotIndex, "resourceSnapshotCount", len(resourceSnapshotList.Items))
+		err := NewUnexpectedBehaviorError(fmt.Errorf("no master clusterResourceSnapshot found for clusterResourcePlacement `%s`", crpName))
+		klog.ErrorS(err, "Found clusterResourceSnapshots without master snapshot", "clusterResourcePlacement", crpName, "resourceSnapshotIndex", resourceSnapshotIndex, "resourceSnapshotCount", len(resourceSnapshotList.Items))
 		return nil, err
 	}
 
-	allResourceSnapshots, err := FetchAllClusterResourceSnapshots(ctx, k8Client, crp.Name, masterResourceSnapshot)
+	allResourceSnapshots, err := FetchAllClusterResourceSnapshots(ctx, k8Client, crpName, masterResourceSnapshot)
 	if err != nil {
-		klog.ErrorS(err, "Failed to fetch all the clusterResourceSnapshots", "clusterResourcePlacement", crp.Name, "resourceSnapshotIndex", resourceSnapshotIndex)
+		klog.ErrorS(err, "Failed to fetch all the clusterResourceSnapshots", "resourceSnapshotIndex", resourceSnapshotIndex, "clusterResourcePlacement", crpName)
 		return nil, err
 	}
 
-	selectedResourcesMap := make(map[fleetv1beta1.ResourceIdentifier]bool)
 	selectedResources := make([]fleetv1beta1.ResourceIdentifier, 0)
-
 	retrieveResourceIdentifierFromSnapshot := func(snapshot *fleetv1beta1.ClusterResourceSnapshot) error {
 		for _, res := range snapshot.Spec.SelectedResources {
 			var uResource unstructured.Unstructured
@@ -426,10 +424,7 @@ func CollectResourceIdentifiersFromClusterResourceSnapshot(
 				Name:      uResource.GetName(),
 				Namespace: uResource.GetNamespace(),
 			}
-			if !selectedResourcesMap[identifier] {
-				selectedResourcesMap[identifier] = true
-				selectedResources = append(selectedResources, identifier)
-			}
+			selectedResources = append(selectedResources, identifier)
 		}
 		return nil
 	}
@@ -439,15 +434,15 @@ func CollectResourceIdentifiersFromClusterResourceSnapshot(
 		return nil, err
 	}
 	for i := range len(allResourceSnapshots) - 1 {
-		snapshotName := fmt.Sprintf("%s-%s-%d", crp.Name, resourceSnapshotIndex, i)
+		snapshotName := fmt.Sprintf("%s-%s-%d", crpName, resourceSnapshotIndex, i)
 		if resourceSnapshot, ok := allResourceSnapshots[snapshotName]; ok {
 			if err := retrieveResourceIdentifierFromSnapshot(resourceSnapshot); err != nil {
 				return nil, err
 			}
 		} else {
-			err := fmt.Errorf("failed to find clusterResourceSnapshot with name %s", snapshotName)
-			klog.ErrorS(err, "Failed to retrieve resource identifiers from clusterResourceSnapshots", "clusterResourcePlacement", crp.Name, "resourceSnapshotIndex", resourceSnapshotIndex)
-			return nil, NewUnexpectedBehaviorError(err)
+			err := NewUnexpectedBehaviorError(fmt.Errorf("failed to find clusterResourceSnapshot with name %s", snapshotName))
+			klog.ErrorS(err, "Failed to retrieve resource identifiers from clusterResourceSnapshots", "resourceSnapshotIndex", resourceSnapshotIndex, "clusterResourcePlacement", crpName)
+			return nil, err
 		}
 	}
 	return selectedResources, nil

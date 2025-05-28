@@ -467,11 +467,7 @@ func TestFetchAllClusterResourceSnapshots(t *testing.T) {
 }
 
 func TestCollectResourceIdentifiersFromClusterResourceSnapshot(t *testing.T) {
-	crp := &fleetv1beta1.ClusterResourcePlacement{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "my-test-crp",
-		},
-	}
+	crpName := "my-test-crp"
 
 	namespaceResourceContent := *resource.NamespaceResourceContentForTest(t)
 	deploymentResourceContent := *resource.DeploymentResourceContentForTest(t)
@@ -489,8 +485,8 @@ func TestCollectResourceIdentifiersFromClusterResourceSnapshot(t *testing.T) {
 			name:                  "no resource snapshots found",
 			resourceSnapshotIndex: "0",
 			snapshots:             []fleetv1beta1.ClusterResourceSnapshot{},
-			want:                  []fleetv1beta1.ResourceIdentifier{},
-			wantErr:               ErrUserError,
+			want:                  nil,
+			wantErr:               nil,
 		},
 		{
 			name:                  "no master resource snapshot found",
@@ -498,10 +494,10 @@ func TestCollectResourceIdentifiersFromClusterResourceSnapshot(t *testing.T) {
 			snapshots: []fleetv1beta1.ClusterResourceSnapshot{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameWithSubindexFmt, crp.Name, 0, 0),
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameWithSubindexFmt, crpName, 0, 0),
 						Labels: map[string]string{
 							fleetv1beta1.ResourceIndexLabel: "0",
-							fleetv1beta1.CRPTrackingLabel:   crp.Name,
+							fleetv1beta1.CRPTrackingLabel:   crpName,
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "0",
@@ -510,7 +506,7 @@ func TestCollectResourceIdentifiersFromClusterResourceSnapshot(t *testing.T) {
 				},
 			},
 			want:    []fleetv1beta1.ResourceIdentifier{},
-			wantErr: ErrUserError,
+			wantErr: ErrUnexpectedBehavior,
 		},
 		{
 			name:                  "some of resource snapshots have not been created yet",
@@ -518,10 +514,10 @@ func TestCollectResourceIdentifiersFromClusterResourceSnapshot(t *testing.T) {
 			snapshots: []fleetv1beta1.ClusterResourceSnapshot{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, crp.Name, 0),
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, crpName, 0),
 						Labels: map[string]string{
 							fleetv1beta1.ResourceIndexLabel: "0",
-							fleetv1beta1.CRPTrackingLabel:   crp.Name,
+							fleetv1beta1.CRPTrackingLabel:   crpName,
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.ResourceGroupHashAnnotation:         "abc",
@@ -531,10 +527,10 @@ func TestCollectResourceIdentifiersFromClusterResourceSnapshot(t *testing.T) {
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameWithSubindexFmt, crp.Name, 0, 0),
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameWithSubindexFmt, crpName, 0, 0),
 						Labels: map[string]string{
 							fleetv1beta1.ResourceIndexLabel: "0",
-							fleetv1beta1.CRPTrackingLabel:   crp.Name,
+							fleetv1beta1.CRPTrackingLabel:   crpName,
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "0",
@@ -550,10 +546,10 @@ func TestCollectResourceIdentifiersFromClusterResourceSnapshot(t *testing.T) {
 			snapshots: []fleetv1beta1.ClusterResourceSnapshot{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, crp.Name, 0),
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, crpName, 0),
 						Labels: map[string]string{
 							fleetv1beta1.ResourceIndexLabel: "0",
-							fleetv1beta1.CRPTrackingLabel:   crp.Name,
+							fleetv1beta1.CRPTrackingLabel:   crpName,
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.ResourceGroupHashAnnotation:         "abc",
@@ -572,10 +568,10 @@ func TestCollectResourceIdentifiersFromClusterResourceSnapshot(t *testing.T) {
 			snapshots: []fleetv1beta1.ClusterResourceSnapshot{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, crp.Name, 0),
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, crpName, 0),
 						Labels: map[string]string{
 							fleetv1beta1.ResourceIndexLabel: "0",
-							fleetv1beta1.CRPTrackingLabel:   crp.Name,
+							fleetv1beta1.CRPTrackingLabel:   crpName,
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.ResourceGroupHashAnnotation:         "abc",
@@ -632,10 +628,10 @@ func TestCollectResourceIdentifiersFromClusterResourceSnapshot(t *testing.T) {
 			snapshots: []fleetv1beta1.ClusterResourceSnapshot{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, crp.Name, 0),
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, crpName, 0),
 						Labels: map[string]string{
 							fleetv1beta1.ResourceIndexLabel: "0",
-							fleetv1beta1.CRPTrackingLabel:   crp.Name,
+							fleetv1beta1.CRPTrackingLabel:   crpName,
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.ResourceGroupHashAnnotation:         "abc",
@@ -651,10 +647,10 @@ func TestCollectResourceIdentifiersFromClusterResourceSnapshot(t *testing.T) {
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameWithSubindexFmt, crp.Name, 0, 0),
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameWithSubindexFmt, crpName, 0, 0),
 						Labels: map[string]string{
 							fleetv1beta1.ResourceIndexLabel: "0",
-							fleetv1beta1.CRPTrackingLabel:   crp.Name,
+							fleetv1beta1.CRPTrackingLabel:   crpName,
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "0",
@@ -668,10 +664,10 @@ func TestCollectResourceIdentifiersFromClusterResourceSnapshot(t *testing.T) {
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameWithSubindexFmt, crp.Name, 0, 1),
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameWithSubindexFmt, crpName, 0, 1),
 						Labels: map[string]string{
 							fleetv1beta1.ResourceIndexLabel: "0",
-							fleetv1beta1.CRPTrackingLabel:   crp.Name,
+							fleetv1beta1.CRPTrackingLabel:   crpName,
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "1",
@@ -685,10 +681,10 @@ func TestCollectResourceIdentifiersFromClusterResourceSnapshot(t *testing.T) {
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameWithSubindexFmt, crp.Name, 0, 2),
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameWithSubindexFmt, crpName, 0, 2),
 						Labels: map[string]string{
 							fleetv1beta1.ResourceIndexLabel: "0",
-							fleetv1beta1.CRPTrackingLabel:   crp.Name,
+							fleetv1beta1.CRPTrackingLabel:   crpName,
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "2",
@@ -747,7 +743,7 @@ func TestCollectResourceIdentifiersFromClusterResourceSnapshot(t *testing.T) {
 				WithScheme(scheme).
 				WithObjects(objects...).
 				Build()
-			got, err := CollectResourceIdentifiersFromClusterResourceSnapshot(context.Background(), fakeClient, crp, tc.resourceSnapshotIndex)
+			got, err := CollectResourceIdentifiersFromClusterResourceSnapshot(context.Background(), fakeClient, crpName, tc.resourceSnapshotIndex)
 			if gotErr, wantErr := err != nil, tc.wantErr != nil; gotErr != wantErr || !errors.Is(err, tc.wantErr) {
 				t.Fatalf("CollectResourceIdentifiersFromClusterResourceSnapshot() got error %v, want error %v", err, tc.wantErr)
 			}
