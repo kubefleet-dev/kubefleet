@@ -36,5 +36,6 @@ func ValidateClusterResourcePlacementDisruptionBudget(db *fleetv1beta1.ClusterRe
 			allErr = append(allErr, fmt.Errorf("cluster resource placement policy type PickAll is not supported with min available as a percentage %v", db.Spec.MinAvailable))
 		}
 	}
+
 	return errors.NewAggregate(allErr)
 }
