@@ -981,11 +981,8 @@ func (r *Reconciler) setPlacementStatus(
 		// we set RolloutStarted to Unknown without any other conditions since we do not know exactly which version is rolling out.
 		// We also need to reset ObservedResourceIndex and selectedResources.
 		rolloutStartedUnknown, err := r.determineRolloutStateForCRPWithExternalRolloutStrategy(ctx, crp, selected, allRPS, selectedResourceIDs)
-		if err != nil {
+		if err != nil || rolloutStartedUnknown {
 			return true, err
-		}
-		if rolloutStartedUnknown {
-			return true, nil
 		}
 	}
 
@@ -1002,7 +999,9 @@ func (r *Reconciler) determineRolloutStateForCRPWithExternalRolloutStrategy(
 ) (bool, error) {
 	if len(selected) == 0 {
 		// This should not happen as we already checked in setPlacementStatus.
-		return false, nil
+		err := controller.NewUnexpectedBehaviorError(fmt.Errorf("selected cluster list is empty for placement %s when checking per-cluster rollout state", crp.Name))
+		klog.ErrorS(err, "Should not happen: selected cluster list is empty in determineRolloutStateForCRPWithExternalRolloutStrategy()")
+		return false, err
 	}
 
 	differentResourceIndicesObserved := false
@@ -1027,7 +1026,7 @@ func (r *Reconciler) determineRolloutStateForCRPWithExternalRolloutStrategy(
 			Message:            "Rollout is controlled by an external controller and different resource snapshot versions are observed across clusters",
 			ObservedGeneration: crp.Generation,
 		})
-		// As CRP status will refresh even if the spec has not changed, Fleet will reset any unused conditions
+		// As CRP status will refresh even if the spec has not changed, we reset any unused conditions
 		// to avoid confusion.
 		for i := condition.RolloutStartedCondition + 1; i < condition.TotalCondition; i++ {
 			meta.RemoveStatusCondition(&crp.Status.Conditions, string(i.ClusterResourcePlacementConditionType()))
@@ -1048,7 +1047,7 @@ func (r *Reconciler) determineRolloutStateForCRPWithExternalRolloutStrategy(
 			Message:            "Rollout is controlled by an external controller and no resource snapshot name is observed across clusters, probably rollout has not started yet",
 			ObservedGeneration: crp.Generation,
 		})
-		// As CRP status will refresh even if the spec has not changed, Fleet will reset any unused conditions
+		// As CRP status will refresh even if the spec has not changed, we reset any unused conditions
 		// to avoid confusion.
 		for i := condition.RolloutStartedCondition + 1; i < condition.TotalCondition; i++ {
 			meta.RemoveStatusCondition(&crp.Status.Conditions, string(i.ClusterResourcePlacementConditionType()))
@@ -1063,7 +1062,7 @@ func (r *Reconciler) determineRolloutStateForCRPWithExternalRolloutStrategy(
 		crp.Status.SelectedResources = selectedResourceIDs
 	} else {
 		crp.Status.ObservedResourceIndex = observedResourceIndex
-		selectedResources, err := controller.CollectResourceIdentifiersFromClusterResourceSnapshot(ctx, r.Client, crp, observedResourceIndex)
+		selectedResources, err := controller.CollectResourceIdentifiersFromClusterResourceSnapshot(ctx, r.Client, crp.Name, observedResourceIndex)
 		if err != nil {
 			klog.ErrorS(err, "Failed to collect resource identifiers from clusterResourceSnapshot", "clusterResourcePlacement", klog.KObj(crp), "resourceSnapshotIndex", observedResourceIndex)
 			return false, err
@@ -1084,7 +1083,7 @@ func (r *Reconciler) determineRolloutStateForCRPWithExternalRolloutStrategy(
 				Message:            fmt.Sprintf("Rollout is controlled by an external controller and cluster %s is in RolloutStarted Unknown state", allRPS[i].ClusterName),
 				ObservedGeneration: crp.Generation,
 			})
-			// As CRP status will refresh even if the spec has not changed, Fleet will reset any unused conditions
+			// As CRP status will refresh even if the spec has not changed, we reset any unused conditions
 			// to avoid confusion.
 			for i := condition.RolloutStartedCondition + 1; i < condition.TotalCondition; i++ {
 				meta.RemoveStatusCondition(&crp.Status.Conditions, string(i.ClusterResourcePlacementConditionType()))

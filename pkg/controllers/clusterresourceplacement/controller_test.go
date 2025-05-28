@@ -3297,16 +3297,12 @@ func TestDetermineRolloutStateForCRPWithExternalRolloutStrategy(t *testing.T) {
 		wantErr                       bool
 	}{
 		{
-			name:                      "no selected clusters", // This should not happen in normal cases.
-			selected:                  []*fleetv1beta1.ClusterDecision{},
-			allRPS:                    []fleetv1beta1.ResourcePlacementStatus{},
-			resourceSnapshots:         []*fleetv1beta1.ClusterResourceSnapshot{},
-			existingConditions:        []metav1.Condition{},
-			wantRolloutUnknown:        false,
-			wantObservedResourceIndex: "",
-			wantSelectedResources:     nil,
-			wantConditions:            []metav1.Condition{},
-			wantErr:                   false,
+			name:               "no selected clusters", // This should not happen in normal cases.
+			selected:           []*fleetv1beta1.ClusterDecision{},
+			allRPS:             []fleetv1beta1.ResourcePlacementStatus{},
+			resourceSnapshots:  []*fleetv1beta1.ClusterResourceSnapshot{},
+			existingConditions: []metav1.Condition{},
+			wantErr:            true,
 		},
 		{
 			name: "selected clusters with different observed resource indices",
@@ -3617,16 +3613,28 @@ func TestDetermineRolloutStateForCRPWithExternalRolloutStrategy(t *testing.T) {
 				{
 					ClusterName:           "cluster1",
 					ObservedResourceIndex: "2",
+					Conditions: []metav1.Condition{
+						{
+							Type:               string(fleetv1beta1.ResourceRolloutStartedConditionType),
+							Status:             metav1.ConditionTrue,
+							ObservedGeneration: 1,
+						},
+					},
 				},
 				{
 					ClusterName:           "cluster-unselected",
 					ObservedResourceIndex: "1", // This should not be considered.
 				},
 			},
-			wantErr: true,
+			existingConditions:        []metav1.Condition{},
+			wantRolloutUnknown:        false,
+			wantObservedResourceIndex: "2",
+			wantSelectedResources:     nil,
+			wantConditions:            []metav1.Condition{},
+			wantErr:                   false,
 		},
 		{
-			name: "single selected cluster with valid ObservedResourceIndex but no clusterResourceSnapshots with the specified index found",
+			name: "single selected cluster with valid ObservedResourceIndex but no master clusterResourceSnapshots with the specified index found",
 			selected: []*fleetv1beta1.ClusterDecision{
 				{
 					ClusterName: "cluster1",
@@ -3646,13 +3654,12 @@ func TestDetermineRolloutStateForCRPWithExternalRolloutStrategy(t *testing.T) {
 			resourceSnapshots: []*fleetv1beta1.ClusterResourceSnapshot{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, testCRPName, 2),
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameWithSubindexFmt, testCRPName, 2, 1),
 						Labels: map[string]string{
-							fleetv1beta1.ResourceIndexLabel: "1",
+							fleetv1beta1.ResourceIndexLabel: "2",
 							fleetv1beta1.CRPTrackingLabel:   testCRPName,
 						},
 						Annotations: map[string]string{
-							fleetv1beta1.ResourceGroupHashAnnotation:         "abc",
 							fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "1",
 						},
 					},
