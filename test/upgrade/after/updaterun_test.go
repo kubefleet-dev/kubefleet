@@ -46,18 +46,18 @@ var _ = Describe("ClusterStagedUpdateRun backward compatibility (after upgrade)"
 
 		// Verify the UpdateRun still has the StagedUpdateStrategySnapshot
 		Expect(updateRun.Status.StagedUpdateStrategySnapshot).ToNot(BeNil(), "StagedUpdateStrategySnapshot should not be nil after upgrade")
-		
+
 		// Verify stages are preserved
 		Expect(updateRun.Status.StagesStatus).To(HaveLen(2), "Should have 2 stages after upgrade")
-		
+
 		// Verify the policy snapshot index is preserved
 		Expect(updateRun.Status.PolicySnapshotIndexUsed).ToNot(BeEmpty(), "PolicySnapshotIndexUsed should not be empty after upgrade")
-		
+
 		// Verify the UpdateRun is still in a valid state (either progressing or completed)
 		var validConditionFound bool
 		for _, cond := range updateRun.Status.Conditions {
 			if (cond.Type == string(placementv1beta1.StagedUpdateRunConditionProgressing) && cond.Status == metav1.ConditionTrue) ||
-			   (cond.Type == string(placementv1beta1.StagedUpdateRunConditionSucceeded) && cond.Status == metav1.ConditionTrue) {
+				(cond.Type == string(placementv1beta1.StagedUpdateRunConditionSucceeded) && cond.Status == metav1.ConditionTrue) {
 				validConditionFound = true
 				break
 			}
@@ -87,7 +87,7 @@ var _ = Describe("ClusterStagedUpdateRun backward compatibility (after upgrade)"
 						break
 					}
 				}
-				
+
 				if !alreadyApproved {
 					// Approve the request
 					meta.SetStatusCondition(&appReq.Status.Conditions, metav1.Condition{
@@ -142,11 +142,11 @@ var _ = Describe("ClusterStagedUpdateRun backward compatibility (after upgrade)"
 						break
 					}
 				}
-				
+
 				if progressingCondFound {
 					return fmt.Errorf("updateRun still progressing with reason: %s", progressingReason)
 				}
-				
+
 				return fmt.Errorf("updateRun neither succeeded nor progressing")
 			}
 
