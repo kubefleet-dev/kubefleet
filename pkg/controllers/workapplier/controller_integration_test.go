@@ -442,10 +442,6 @@ func workRemovedActual(workName string) func() error {
 	return func() error {
 		work := &fleetv1beta1.Work{}
 		if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName}, work); !errors.IsNotFound(err) {
-			By(fmt.Sprintf("DeletionTimestamps %v", work.DeletionTimestamp))
-			if controllerutil.ContainsFinalizer(work, fleetv1beta1.WorkFinalizer) {
-				By("Work Contains finzalier")
-			}
 			return fmt.Errorf("work object still exists or an unexpected error occurred: %w", err)
 		}
 		return nil
@@ -463,9 +459,9 @@ func deleteWorkObject(workName string) {
 	Expect(hubClient.Delete(ctx, work)).To(Succeed(), "Failed to delete the Work object")
 }
 func removeAppliedWorkFinalizer(appliedWork *fleetv1beta1.AppliedWork) error {
-	// Remove the finalizer from the AppliedWork object.
+	// Remove the finalizer from the AppliedWork object. Finalizer needs to be removed manually because placed namespace
+	// is not deleted in the envtest environment. Therefore, the AppliedWork object finalizer is not removed automatically.
 	if controllerutil.ContainsFinalizer(appliedWork, metav1.FinalizerDeleteDependents) {
-		By("Applied work Contains Finalizer")
 		controllerutil.RemoveFinalizer(appliedWork, metav1.FinalizerDeleteDependents)
 		return memberClient.Update(ctx, appliedWork)
 	}
@@ -477,8 +473,9 @@ func appliedWorkRemovedActual(workName string) func() error {
 		// Retrieve the AppliedWork object.
 		appliedWork := &fleetv1beta1.AppliedWork{}
 		if err := memberClient.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); !errors.IsNotFound(err) {
-			By(fmt.Sprintf("Applied Work DeletionTimestamps2 %v", appliedWork.DeletionTimestamp))
-			Expect(removeAppliedWorkFinalizer(appliedWork)).To(Succeed(), "Failed to remove the finalizer from the AppliedWork object")
+			if !appliedWork.DeletionTimestamp.IsZero() {
+				Expect(removeAppliedWorkFinalizer(appliedWork)).To(Succeed(), "Failed to remove the finalizer from the AppliedWork object")
+			}
 			return fmt.Errorf("appliedWork object still exists or an unexpected error occurred: %w", err)
 		}
 		return nil
@@ -716,10 +713,11 @@ var _ = Describe("applying manifests", func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
 
+			// Ensure applied manifest has been removed.
 			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
 			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
@@ -974,7 +972,7 @@ var _ = Describe("applying manifests", func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
@@ -1167,7 +1165,7 @@ var _ = Describe("applying manifests", func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
@@ -1355,10 +1353,11 @@ var _ = Describe("applying manifests", func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
 
+			// Ensure applied manifest has been removed.
 			regularConfigMapRemovedActual := regularConfigMapRemovedActual(nsName, configMapName)
 			Eventually(regularConfigMapRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the ConfigMap object")
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
@@ -1542,10 +1541,11 @@ var _ = Describe("drift detection and takeover", func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
 
+			// Ensure applied manifest has been removed.
 			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
 			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
@@ -1807,10 +1807,11 @@ var _ = Describe("drift detection and takeover", func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
 
-			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
-			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+			// Ensure that the Deployment object has been left alone.
+			regularDeployNotRemovedActual := regularDeployNotRemovedActual(nsName, deployName)
+			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
@@ -2083,6 +2084,10 @@ var _ = Describe("drift detection and takeover", func() {
 		AfterAll(func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
+
+			// Ensure that the Deployment object has been left alone.
+			regularDeployNotRemovedActual := regularDeployNotRemovedActual(nsName, deployName)
+			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
@@ -2494,10 +2499,11 @@ var _ = Describe("drift detection and takeover", func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
 
-			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
-			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+			// Ensure that the Deployment object has been left alone.
+			regularDeployNotRemovedActual := regularDeployNotRemovedActual(nsName, deployName)
+			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
@@ -2735,7 +2741,7 @@ var _ = Describe("drift detection and takeover", func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
@@ -2989,7 +2995,7 @@ var _ = Describe("drift detection and takeover", func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
@@ -3346,7 +3352,7 @@ var _ = Describe("drift detection and takeover", func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
@@ -3620,7 +3626,7 @@ var _ = Describe("drift detection and takeover", func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
@@ -3798,10 +3804,11 @@ var _ = Describe("drift detection and takeover", func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
 
+			// Ensure applied manifest has been removed.
 			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
 			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
@@ -4235,7 +4242,7 @@ var _ = Describe("report diff", func() {
 			regularDeployNotRemovedActual := regularDeployNotRemovedActual(nsName, deployName)
 			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
@@ -4446,10 +4453,11 @@ var _ = Describe("report diff", func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
 
+			// Ensure applied manifest has been removed.
 			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
 			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
@@ -4807,10 +4815,11 @@ var _ = Describe("switch apply strategies", func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
 
+			// Ensure applied manifest has been removed.
 			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
 			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
@@ -5063,10 +5072,11 @@ var _ = Describe("switch apply strategies", func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
 
+			// Ensure applied manifest has been removed.
 			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
 			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
@@ -5443,10 +5453,11 @@ var _ = Describe("switch apply strategies", func() {
 			// Delete the Work object and related resources.
 			deleteWorkObject(workName)
 
+			// Ensure applied manifest has been removed.
 			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
 			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
