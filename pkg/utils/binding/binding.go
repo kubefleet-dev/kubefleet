@@ -25,7 +25,7 @@ import (
 
 // HasBindingFailed checks if ClusterResourceBinding has failed based on its conditions.
 func HasBindingFailed(binding *placementv1beta1.ClusterResourceBinding) bool {
-	for i := condition.OverriddenCondition; i <= condition.AvailableCondition; i++ {
+	for i := condition.OverriddenCondition; i < condition.TotalCondition; i++ {
 		if condition.IsConditionStatusFalse(binding.GetCondition(string(i.ResourceBindingConditionType())), binding.Generation) {
 			// TODO: parse the reason of the condition to see if the failure is recoverable/retriable or not
 			klog.V(2).Infof("binding %s has condition %s with status false", binding.Name, string(i.ResourceBindingConditionType()))

@@ -460,8 +460,10 @@ func checkClusterUpdateResult(
 	updateRun *placementv1beta1.ClusterStagedUpdateRun,
 ) (bool, error) {
 	availCond := binding.GetCondition(string(placementv1beta1.ResourceBindingAvailable))
-	if condition.IsConditionStatusTrue(availCond, binding.Generation) {
-		// The resource updated on the cluster is available.
+	diffReportCondition := binding.GetCondition(string(placementv1beta1.ResourceBindingDiffReported))
+	if condition.IsConditionStatusTrue(availCond, binding.Generation) ||
+		condition.IsConditionStatusTrue(diffReportCondition, binding.Generation) {
+		// The resource updated on the cluster is available or diff is successfully reported.
 		klog.InfoS("The cluster has been updated", "cluster", clusterStatus.ClusterName, "stage", updatingStage.StageName, "clusterStagedUpdateRun", klog.KObj(updateRun))
 		markClusterUpdatingSucceeded(clusterStatus, updateRun.Generation)
 		return true, nil
