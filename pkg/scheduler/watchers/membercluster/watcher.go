@@ -80,7 +80,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	//     a) the cluster's setup (e.g., its labels) or status (e.g., resource/non-resource properties),
 	//        has changed; and/or
 	//     b) an unexpected development (e.g., agents failing, network partition, etc.) has occurred.
-	//     c) the cluster, which may or may not have resources placed on it, has left the fleet (deleting).
+	//     c) the cluster, which may or may not have resources placed on it, has left the fleet (deleted).
 	//
 	// Among the cases,
 	//
@@ -185,10 +185,9 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			return false
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
-			// Ignore deletion events; the removal of a cluster is first signaled by adding a deleteTimeStamp,
-			// which is an update event
-			klog.V(3).InfoS("Ignoring delete events for member cluster objects", "eventObject", klog.KObj(e.Object))
-			return false
+			// We only notify the scheduler when a member cluster is deleted which means the member agent has finished the leaving process.
+			klog.V(2).InfoS("member cluster object is deleted", "eventObject", klog.KObj(e.Object))
+			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			// Check if the update event is valid.
@@ -208,9 +207,9 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 			clusterKObj := klog.KObj(newCluster)
 			// The cluster is being deleted.
-			if oldCluster.GetDeletionTimestamp().IsZero() && !newCluster.GetDeletionTimestamp().IsZero() {
-				klog.V(2).InfoS("A member cluster is leaving the fleet", "memberCluster", clusterKObj)
-				return true
+			if !newCluster.GetDeletionTimestamp().IsZero() {
+				klog.V(2).InfoS("A member cluster is leaving the fleet, ignore until it is left", "memberCluster", clusterKObj)
+				return false
 			}
 
 			// Capture label changes.

@@ -222,7 +222,7 @@ var _ = Describe("Test member cluster join and leave flow", Ordered, Serial, fun
 			for idx := range allMemberClusters {
 				memberCluster := allMemberClusters[idx]
 				workResourcesPlacedActual := checkAllResourcesPlacement(memberCluster)
-				Consistently(workResourcesPlacedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster.ClusterName)
+				Consistently(workResourcesPlacedActual, 3*consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster.ClusterName)
 			}
 		})
 
