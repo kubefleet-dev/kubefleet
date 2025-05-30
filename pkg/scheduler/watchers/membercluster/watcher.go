@@ -123,9 +123,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	memberClusterGetErr := r.Client.Get(ctx, memberClusterKey, memberCluster)
 	switch {
 	case errors.IsNotFound(memberClusterGetErr):
-		// On very unlikely occasions, it could happen that the member cluster is deleted
-		// before this controller gets a chance to process it, it may happen when a member cluster
-		// leaves the fleet. In such cases, this controller will request the scheduler to check
+		// This could happen when the member cluster is deleted. In this case, controller will request the scheduler to check
 		// all CRPs just in case.
 		isMemberClusterMissing = true
 	case memberClusterGetErr != nil:
@@ -186,7 +184,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			// We only notify the scheduler when a member cluster is deleted which means the member agent has finished the leaving process.
-			klog.V(2).InfoS("member cluster object is deleted", "eventObject", klog.KObj(e.Object))
+			klog.V(2).InfoS("Member cluster object is deleted", "eventObject", klog.KObj(e.Object))
 			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {

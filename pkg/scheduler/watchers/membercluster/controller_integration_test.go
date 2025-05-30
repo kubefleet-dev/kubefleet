@@ -513,7 +513,7 @@ var _ = Describe("scheduler member cluster source controller", Serial, Ordered, 
 		})
 	})
 
-	FContext("ready cluster is leaving should not trigger any reschedule but left should", func() {
+	Context("leaving clusters should not trigger rescheduling until the member cluster object is fully deleted", func() {
 		BeforeAll(func() {
 			Consistently(noKeyEnqueuedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Workqueue is not empty")
 
