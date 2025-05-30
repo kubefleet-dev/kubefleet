@@ -161,6 +161,7 @@ var (
 		ignoreRPSClusterNameField,
 		availableDueToUntrackableResCondAcyclicTransformer,
 		cmpopts.EquateEmpty(),
+		ignoreRPSObservedResourceIndexField,
 	}
 )
 

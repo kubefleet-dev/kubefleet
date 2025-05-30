@@ -136,6 +136,7 @@ var (
 		utils.IgnoreConditionLTTAndMessageFields,
 		ignoreRPSClusterNameField,
 		cmpopts.EquateEmpty(),
+		ignoreRPSObservedResourceIndexField,
 	}
 )
 
