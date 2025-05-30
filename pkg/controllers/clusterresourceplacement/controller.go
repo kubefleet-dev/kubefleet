@@ -1074,7 +1074,7 @@ func (r *Reconciler) determineRolloutStateForCRPWithExternalRolloutStrategy(
 		rolloutStartedCond := meta.FindStatusCondition(allRPS[i].Conditions, string(fleetv1beta1.ResourceRolloutStartedConditionType))
 		if !condition.IsConditionStatusTrue(rolloutStartedCond, crp.Generation) &&
 			!condition.IsConditionStatusFalse(rolloutStartedCond, crp.Generation) {
-			klog.V(2).InfoS("Placement has External rollout strategy and some cluster is in RolloutStarted Unknown state, set RolloutStarted condition to True",
+			klog.V(2).InfoS("Placement has External rollout strategy and some cluster is in RolloutStarted Unknown state, set RolloutStarted condition to Unknown",
 				"clusterName", allRPS[i].ClusterName, "observedResourceIndex", observedResourceIndex, "clusterResourcePlacement", klog.KObj(crp))
 			crp.SetConditions(metav1.Condition{
 				Type:               string(fleetv1beta1.ClusterResourcePlacementRolloutStartedConditionType),
