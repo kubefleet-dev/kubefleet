@@ -47,7 +47,7 @@ const (
 // The naming convention of a ClusterSchedulingPolicySnapshot is {CRPName}-{PolicySnapshotIndex}.
 // PolicySnapshotIndex will begin with 0.
 // Each snapshot must have the following labels:
-//   - `CRPTrackingLabel` which points to its owner CRP.
+//   - `PlacementTrackingLabel` which points to its owner CRP.
 //   - `PolicyIndexLabel` which is the index of the policy snapshot.
 //   - `IsLatestSnapshotLabel` which indicates whether the snapshot is the latest one.
 type ClusterSchedulingPolicySnapshot struct {
@@ -180,6 +180,66 @@ func (m *ClusterSchedulingPolicySnapshot) GetCondition(conditionType string) *me
 	return meta.FindStatusCondition(m.Status.Conditions, conditionType)
 }
 
+// +genclient
+// +genclient:Namespaced
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:scope="Namespace",shortName=sps,categories={fleet,fleet-placement}
+// +kubebuilder:subresource:status
+// +kubebuilder:storageversion
+// +kubebuilder:printcolumn:JSONPath=`.metadata.generation`,name="Gen",type=string
+// +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// SchedulingPolicySnapshot is used to store a snapshot of cluster placement policy.
+// Its spec is immutable.
+// The naming convention of a SchedulingPolicySnapshot is {RPName}-{PolicySnapshotIndex}.
+// PolicySnapshotIndex will begin with 0.
+// Each snapshot must have the following labels:
+//   - `PlacementTrackingLabel` which points to its placement owner.
+//   - `PolicyIndexLabel` which is the index of the policy snapshot.
+//   - `IsLatestSnapshotLabel` which indicates whether the snapshot is the latest one.
+type SchedulingPolicySnapshot struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	// The desired state of SchedulingPolicySnapshot.
+	// +required
+	Spec SchedulingPolicySnapshotSpec `json:"spec"`
+
+	// The observed status of SchedulingPolicySnapshot.
+	// +optional
+	Status SchedulingPolicySnapshotStatus `json:"status,omitempty"`
+}
+
+// SchedulingPolicySnapshotList contains a list of SchedulingPolicySnapshotList.
+// +kubebuilder:resource:scope="Namespace"
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type SchedulingPolicySnapshotList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []SchedulingPolicySnapshot `json:"items"`
+}
+
+// Tolerations returns tolerations for ClusterSchedulingPolicySnapshot.
+func (m *SchedulingPolicySnapshot) Tolerations() []Toleration {
+	if m.Spec.Policy != nil {
+		return m.Spec.Policy.Tolerations
+	}
+	return nil
+}
+
+// SetConditions sets the given conditions on the ClusterSchedulingPolicySnapshot.
+func (m *SchedulingPolicySnapshot) SetConditions(conditions ...metav1.Condition) {
+	for _, c := range conditions {
+		meta.SetStatusCondition(&m.Status.Conditions, c)
+	}
+}
+
+// GetCondition returns the condition of the given type if exists.
+func (m *SchedulingPolicySnapshot) GetCondition(conditionType string) *metav1.Condition {
+	return meta.FindStatusCondition(m.Status.Conditions, conditionType)
+}
+
 func init() {
-	SchemeBuilder.Register(&ClusterSchedulingPolicySnapshot{}, &ClusterSchedulingPolicySnapshotList{})
+	SchemeBuilder.Register(&ClusterSchedulingPolicySnapshot{}, &ClusterSchedulingPolicySnapshotList{}, &SchedulingPolicySnapshot{}, &SchedulingPolicySnapshotList{})
 }
