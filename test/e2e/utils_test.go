@@ -1265,7 +1265,7 @@ func buildOwnerReference(cluster *framework.Cluster, crpName string) *metav1.Own
 		Kind:               "AppliedWork",
 		Name:               workName,
 		UID:                appliedWork.UID,
-		BlockOwnerDeletion: ptr.To(false),
+		BlockOwnerDeletion: ptr.To(true),
 	}
 }
 

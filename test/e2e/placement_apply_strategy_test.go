@@ -23,6 +23,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -77,11 +78,21 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		AfterAll(func() {
+			By("deleting created work resources on member cluster")
+			cleanWorkResourcesOnCluster(allMemberClusters[0])
+
 			By(fmt.Sprintf("deleting placement %s", crpName))
 			cleanupCRP(crpName)
 
-			By("deleting created work resources on member cluster")
-			cleanWorkResourcesOnCluster(allMemberClusters[0])
+			// Check if work is deleted. Needed to ensure that the Work resource is cleaned up before the next CRP is created.
+			// This is because the Work resource is created with a finalizer that blocks deletion until the all applied work
+			// and applied work itself is successfully deleted. If the Work resource is not deleted, it can cause resource overlap
+			// and flakiness in subsequent tests.
+			By("Check if work is deleted")
+			Eventually(func() bool {
+				work := &placementv1beta1.Work{}
+				return errors.IsNotFound(hubClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf("%s-work", crpName), Namespace: fmt.Sprintf("fleet-member-%s", allMemberClusterNames[0])}, work))
+			}, 6*eventuallyDuration, eventuallyInterval).Should(BeTrue(), "Work resource should be deleted from hub")
 		})
 
 		It("should update CRP status as expected", func() {
@@ -250,11 +261,21 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		AfterAll(func() {
+			By("deleting created work resources on member cluster")
+			cleanWorkResourcesOnCluster(allMemberClusters[0])
+
 			By(fmt.Sprintf("deleting placement %s", crpName))
 			cleanupCRP(crpName)
 
-			By("deleting created work resources on member cluster")
-			cleanWorkResourcesOnCluster(allMemberClusters[0])
+			// Check if work is deleted. Needed to ensure that the Work resource is cleaned up before the next CRP is created.
+			// This is because the Work resource is created with a finalizer that blocks deletion until the all applied work
+			// and applied work itself is successfully deleted. If the Work resource is not deleted, it can cause resource overlap
+			// and flakiness in subsequent tests.
+			By("Check if work is deleted")
+			Eventually(func() bool {
+				work := &placementv1beta1.Work{}
+				return errors.IsNotFound(hubClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf("%s-work", crpName), Namespace: fmt.Sprintf("fleet-member-%s", allMemberClusterNames[0])}, work))
+			}, 6*eventuallyDuration, eventuallyInterval).Should(BeTrue(), "Work resource should be deleted from hub")
 		})
 
 		It("should update CRP status as expected", func() {
@@ -385,11 +406,21 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		AfterAll(func() {
+			By("deleting created work resources on member cluster")
+			cleanWorkResourcesOnCluster(allMemberClusters[0])
+
 			By(fmt.Sprintf("deleting placement %s", crpName))
 			cleanupCRP(crpName)
 
-			By("deleting created work resources on member cluster")
-			cleanWorkResourcesOnCluster(allMemberClusters[0])
+			// Check if work is deleted. Needed to ensure that the Work resource is cleaned up before the next CRP is created.
+			// This is because the Work resource is created with a finalizer that blocks deletion until the all applied work
+			// and applied work itself is successfully deleted. If the Work resource is not deleted, it can cause resource overlap
+			// and flakiness in subsequent tests.
+			By("Check if work is deleted")
+			Eventually(func() bool {
+				work := &placementv1beta1.Work{}
+				return errors.IsNotFound(hubClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf("%s-work", crpName), Namespace: fmt.Sprintf("fleet-member-%s", allMemberClusterNames[0])}, work))
+			}, 7*eventuallyDuration, eventuallyInterval).Should(BeTrue(), "Work resource should be deleted from hub")
 		})
 
 		It("should update CRP status as expected", func() {
