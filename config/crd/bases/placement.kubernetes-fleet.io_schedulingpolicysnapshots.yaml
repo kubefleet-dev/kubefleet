@@ -17,7 +17,7 @@ spec:
     shortNames:
     - sps
     singular: schedulingpolicysnapshot
-  scope: Namespace
+  scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - jsonPath: .metadata.generation
@@ -35,7 +35,7 @@ spec:
           The naming convention of a SchedulingPolicySnapshot is {RPName}-{PolicySnapshotIndex}.
           PolicySnapshotIndex will begin with 0.
           Each snapshot must have the following labels:
-            - `PlacementTrackingLabel` which points to its owner RP.
+            - `CRPTrackingLabel` which points to its placement owner.
             - `PolicyIndexLabel` which is the index of the policy snapshot.
             - `IsLatestSnapshotLabel` which indicates whether the snapshot is the latest one.
         properties:

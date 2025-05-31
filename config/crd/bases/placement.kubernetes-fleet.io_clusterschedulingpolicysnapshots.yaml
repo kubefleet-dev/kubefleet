@@ -651,7 +651,7 @@ spec:
           The naming convention of a ClusterSchedulingPolicySnapshot is {CRPName}-{PolicySnapshotIndex}.
           PolicySnapshotIndex will begin with 0.
           Each snapshot must have the following labels:
-            - `PlacementTrackingLabel` which points to its owner CRP.
+            - `CRPTrackingLabel` which points to its owner CRP.
             - `PolicyIndexLabel` which is the index of the policy snapshot.
             - `IsLatestSnapshotLabel` which indicates whether the snapshot is the latest one.
         properties:

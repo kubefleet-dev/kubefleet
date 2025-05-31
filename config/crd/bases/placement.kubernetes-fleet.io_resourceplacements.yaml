@@ -56,8 +56,8 @@ spec:
         description: |-
           ResourcePlacement is used to select namespace scoped resources, including built-in resources and custom resources,
           and placement them onto selected member clusters in a fleet.
-          `SchedulingPolicySnapshot`, `ResourceSnapshot` and `ResourceBinding` objects are created in the same namespace when there are changes in the
-          system to keep the history of the changes affecting a `ResourcePlacement`.
+          `SchedulingPolicySnapshot` and `ResourceSnapshot` objects are created in the same namespace when there are changes in the
+          system to keep the history of the changes affecting a `ResourcePlacement`. We will also create `ResourceBinding` objects in the same namespace.
         properties:
           apiVersion:
             description: |-

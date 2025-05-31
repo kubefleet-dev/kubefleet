@@ -37,7 +37,7 @@ const (
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 
 // ClusterResourceBinding represents a scheduling decision that binds a group of resources to a cluster.
-// It MUST have a label named `PlacementTrackingLabel` that points to the cluster resource policy that creates it.
+// It MUST have a label named `CRPTrackingLabel` that points to the cluster resource policy that creates it.
 type ClusterResourceBinding struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -221,7 +221,7 @@ type ClusterResourceBindingList struct {
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 
 // ResourceBinding represents a scheduling decision that binds a group of resources to a cluster.
-// It MUST have a label named `PlacementTrackingLabel` that points to the resource placement that creates it.
+// It MUST have a label named `CRPTrackingLabel` that points to the resource placement that creates it.
 type ResourceBinding struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

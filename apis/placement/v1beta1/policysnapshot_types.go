@@ -47,7 +47,7 @@ const (
 // The naming convention of a ClusterSchedulingPolicySnapshot is {CRPName}-{PolicySnapshotIndex}.
 // PolicySnapshotIndex will begin with 0.
 // Each snapshot must have the following labels:
-//   - `PlacementTrackingLabel` which points to its owner CRP.
+//   - `CRPTrackingLabel` which points to its owner CRP.
 //   - `PolicyIndexLabel` which is the index of the policy snapshot.
 //   - `IsLatestSnapshotLabel` which indicates whether the snapshot is the latest one.
 type ClusterSchedulingPolicySnapshot struct {
@@ -183,7 +183,7 @@ func (m *ClusterSchedulingPolicySnapshot) GetCondition(conditionType string) *me
 // +genclient
 // +genclient:Namespaced
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:scope="Namespace",shortName=sps,categories={fleet,fleet-placement}
+// +kubebuilder:resource:scope="Namespaced",shortName=sps,categories={fleet,fleet-placement}
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
 // +kubebuilder:printcolumn:JSONPath=`.metadata.generation`,name="Gen",type=string
@@ -195,7 +195,7 @@ func (m *ClusterSchedulingPolicySnapshot) GetCondition(conditionType string) *me
 // The naming convention of a SchedulingPolicySnapshot is {RPName}-{PolicySnapshotIndex}.
 // PolicySnapshotIndex will begin with 0.
 // Each snapshot must have the following labels:
-//   - `PlacementTrackingLabel` which points to its placement owner.
+//   - `CRPTrackingLabel` which points to its placement owner.
 //   - `PolicyIndexLabel` which is the index of the policy snapshot.
 //   - `IsLatestSnapshotLabel` which indicates whether the snapshot is the latest one.
 type SchedulingPolicySnapshot struct {
@@ -212,7 +212,7 @@ type SchedulingPolicySnapshot struct {
 }
 
 // SchedulingPolicySnapshotList contains a list of SchedulingPolicySnapshotList.
-// +kubebuilder:resource:scope="Namespace"
+// +kubebuilder:resource:scope="Namespaced"
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type SchedulingPolicySnapshotList struct {
 	metav1.TypeMeta `json:",inline"`

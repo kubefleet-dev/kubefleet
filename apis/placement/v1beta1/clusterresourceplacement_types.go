@@ -1336,7 +1336,7 @@ type ResourcePlacement struct {
 }
 
 // ResourcePlacementList contains a list of ResourcePlacement.
-// +kubebuilder:resource:scope="Cluster"
+// +kubebuilder:resource:scope="Namespaced"
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type ResourcePlacementList struct {
 	metav1.TypeMeta `json:",inline"`
