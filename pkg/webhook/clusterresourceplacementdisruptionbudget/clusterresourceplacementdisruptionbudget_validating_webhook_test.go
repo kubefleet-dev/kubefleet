@@ -54,10 +54,7 @@ func TestHandle(t *testing.T) {
 				Type:   intstr.Int,
 				IntVal: 1,
 			},
-			MinAvailable: &intstr.IntOrString{
-				Type:   intstr.String,
-				StrVal: "50%",
-			},
+			MinAvailable: nil,
 		},
 	}
 	invalidCRPDBObjectMinAvailablePercentage := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
