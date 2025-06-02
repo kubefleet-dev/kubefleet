@@ -124,7 +124,7 @@ func NewNodeTracker(pp PricingProvider) *NodeTracker {
 //
 // b) if a node is of an unrecognizable SKU, i.e., the SKU is absent from the Azure Retail Prices
 // API reportings, the node is considered to be free of charge. This should be a very rare occurrence;
-// a waring will be issued in this case.
+// a warning will be issued in this case.
 //
 // Note that this method assumes that the access lock has been acquired.
 func (nt *NodeTracker) calculateCosts() {
