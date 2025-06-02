@@ -59,6 +59,9 @@ type costInfo struct {
 
 	// lastUpdated is the timestamp when the per-resource-unit costs above are last calculated.
 	lastUpdated time.Time
+	// warnings is a list of warnings in the form of strings that signals a downgraded
+	// state of the cost calculation.
+	warnings []string
 	// err tracks any error that occurs during cost calculation.
 	err error
 }
@@ -120,7 +123,8 @@ func NewNodeTracker(pp PricingProvider) *NodeTracker {
 // at this moment.
 //
 // b) if a node is of an unrecognizable SKU, i.e., the SKU is absent from the Azure Retail Prices
-// API reportings, the node is considered to be free of charge. This should be a very rare occurrence.
+// API reportings, the node is considered to be free of charge. This should be a very rare occurrence;
+// a waring will be issued in this case.
 //
 // Note that this method assumes that the access lock has been acquired.
 func (nt *NodeTracker) calculateCosts() {
@@ -129,10 +133,13 @@ func (nt *NodeTracker) calculateCosts() {
 
 	// Sum up the total costs.
 	totalHourlyRate := 0.0
+	missingSKUs := make([]string, 0)
 	for sku, ns := range nt.nodeSetBySKU {
 		hourlyRate, found := nt.pricingProvider.OnDemandPrice(sku)
 		if !found {
 			// The SKU is not found in the pricing data.
+			missingSKUs = append(missingSKUs, sku)
+			klog.Warning("SKU is not found in the retail pricing data", "SKU", sku, "nodes", ns)
 			continue
 		}
 		totalHourlyRate += hourlyRate * float64(len(ns))
@@ -142,6 +149,36 @@ func (nt *NodeTracker) calculateCosts() {
 
 	// Calculate the per CPU core and per GB memory costs.
 	ci := nt.costs
+	// Reset the warnings and errors.
+	ci.warnings = make([]string, 0)
+	ci.err = nil
+
+	switch {
+	case len(nt.nodeSetBySKU) == 0:
+		// No nodes are present in the cluster. This is not considered as an error.
+
+		// Reset the cost data.
+		ci.lastUpdated = time.Now()
+		ci.perCPUCoreHourlyCost = 0.0
+		ci.perGBMemoryHourlyCost = 0.0
+		return
+	case totalHourlyRate == 0.0:
+		// A special case: at least one node is present, but none of the node SKUs has pricing data.
+		err := fmt.Errorf("nodes are present, but no pricing data is available for any node SKUs (%v)", missingSKUs)
+		klog.ErrorS(err, "Failed to calculate costs", "nodeSetBySKU", nt.nodeSetBySKU)
+		ci.err = err
+
+		// Reset the cost data.
+		ci.lastUpdated = time.Now()
+		ci.perCPUCoreHourlyCost = 0.0
+		ci.perGBMemoryHourlyCost = 0.0
+		return
+	case len(missingSKUs) > 0:
+		// Cannot find pricing data for some (but not all) SKUs in the cluster. Cost calculation
+		// will proceed in a downgraded manner.
+		ci.warnings = append(ci.warnings, fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", missingSKUs))
+		klog.Warningf("Some SKUs (%v) are ignored in the cost calculation as pricing data is unavailable", missingSKUs)
+	}
 
 	// Cast the CPU resource quantity into a float64 value. Precision might suffer a bit of loss,
 	// but it should be mostly acceptable in the case of cost calculation.
@@ -158,6 +195,7 @@ func (nt *NodeTracker) calculateCosts() {
 		ci.err = costErr
 
 		// Reset the cost data.
+		ci.lastUpdated = time.Now()
 		ci.perCPUCoreHourlyCost = 0.0
 		ci.perGBMemoryHourlyCost = 0.0
 		return
@@ -179,6 +217,7 @@ func (nt *NodeTracker) calculateCosts() {
 		ci.err = costErr
 
 		// Reset the cost data.
+		ci.lastUpdated = time.Now()
 		ci.perCPUCoreHourlyCost = 0.0
 		ci.perGBMemoryHourlyCost = 0.0
 		return
@@ -187,13 +226,14 @@ func (nt *NodeTracker) calculateCosts() {
 	klog.V(2).InfoS("Calculated per GB memory hourly cost", "perGBMemoryHourlyCost", ci.perGBMemoryHourlyCost)
 
 	ci.lastUpdated = time.Now()
-	ci.err = nil
 }
 
 // trackSKU tracks the SKU of a node. It returns true if a recalculation of costs is needed.
 //
 // Note that this method assumes that the access lock has been acquired.
 func (nt *NodeTracker) trackSKU(node *corev1.Node) bool {
+	// It could happen that the label is absent from the node; empty string is handled as a regular
+	// SKU string by the provider and is not considered an error.
 	sku := node.Labels[AKSClusterNodeSKULabelName]
 	registeredSKU, found := nt.skuByNode[node.Name]
 
@@ -470,12 +510,12 @@ func (nt *NodeTracker) TotalAllocatable() corev1.ResourceList {
 }
 
 // Costs returns the per CPU core and per GB memory costs in the cluster.
-func (nt *NodeTracker) Costs() (perCPUCoreCost, perGBMemoryCost float64, err error) {
+func (nt *NodeTracker) Costs() (perCPUCoreCost, perGBMemoryCost float64, warnings []string, err error) {
 	nt.mu.Lock()
 	defer nt.mu.Unlock()
 
 	if nt.costs.lastUpdated.Before(nt.pricingProvider.LastUpdated()) {
 		nt.calculateCosts()
 	}
-	return nt.costs.perCPUCoreHourlyCost, nt.costs.perGBMemoryHourlyCost, nt.costs.err
+	return nt.costs.perCPUCoreHourlyCost, nt.costs.perGBMemoryHourlyCost, nt.costs.warnings, nt.costs.err
 }

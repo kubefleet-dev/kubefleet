@@ -44,9 +44,11 @@ const (
 const (
 	region = "eastus"
 
-	aksNodeSKU1 = "Standard_B4ms"
-	aksNodeSKU2 = "Standard_A4_v2"
-	aksNodeSKU3 = "Standard_F4s"
+	aksNodeSKU1     = "Standard_B4ms"
+	aksNodeSKU2     = "Standard_A4_v2"
+	aksNodeSKU3     = "Standard_F4s"
+	unsupportedSKU1 = "Unsupported_SKU_1"
+	unsupportedSKU2 = "Unsupported_SKU_2"
 )
 
 var (
