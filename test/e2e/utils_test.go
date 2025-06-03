@@ -801,17 +801,15 @@ func cleanupCRP(name string) {
 
 // cleanupCRPDB deletes the CRPDB and waits until the resource is not found.
 func cleanupCRPDB(name string) {
-	Eventually(func() bool {
-		crpdb := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{}
-		err := hubClient.Get(ctx, types.NamespacedName{Name: name}, crpdb)
-		if k8serrors.IsNotFound(err) {
-			return true
-		}
-		if err == nil {
-			return k8serrors.IsNotFound(hubClient.Delete(ctx, crpdb))
-		}
+	crpdb := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+	}
+	Expect(hubClient.Delete(ctx, crpdb)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}), "Failed to delete CRPDB %s", name)
 
-		return false
+	Eventually(func() bool {
+		return k8serrors.IsNotFound(hubClient.Get(ctx, types.NamespacedName{Name: name}, crpdb))
 	}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "Failed to delete CRPDB %s", name)
 }
 

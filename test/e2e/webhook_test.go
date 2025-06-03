@@ -1515,63 +1515,68 @@ var _ = Describe("webhook tests for ClusterResourcePlacementDisruptionBudget UPD
 		cleanupCRPDB(crpName)
 	})
 
+	It("should deny update on CRPDB with MinAvailable as percentage and PickAll CRP", func() {
+		// Update the CRPDB.
+		Eventually(func(g Gomega) error {
+			var crpdb placementv1beta1.ClusterResourcePlacementDisruptionBudget
+			g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crpdb)).Should(Succeed(), "Failed to get CRPDB %s", crpName)
+			crpdb.Spec.MinAvailable = &intstr.IntOrString{
+				Type:   intstr.String,
+				StrVal: "50%",
+			}
+			By(fmt.Sprintf("expecting denial of UPDATE disruption budget %s", crpName))
+			err := hubClient.Update(ctx, &crpdb)
+			if k8sErrors.IsConflict(err) {
+				return err
+			}
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with min available as a percentage %v", crpdb.Spec.MinAvailable)))
+			return nil
+		}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
+	})
+
 	It("should deny update on CRPDB with MaxUnavailable as percentage and PickAll CRP", func() {
 		// Update the CRPDB.
-		crpdb := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: crpName,
-			},
-			Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
-				MaxUnavailable: &intstr.IntOrString{
-					Type:   intstr.String,
-					StrVal: "75%",
-				},
-			},
-		}
-		By(fmt.Sprintf("expecting denial of UPDATE disruption budget %s", crpName))
-		err := hubClient.Update(ctx, crpdb)
-		var statusErr *k8sErrors.StatusError
-		Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-		Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with any specified max unavailable %v", crpdb.Spec.MaxUnavailable)))
+		Eventually(func(g Gomega) error {
+			var crpdb placementv1beta1.ClusterResourcePlacementDisruptionBudget
+			g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crpdb)).Should(Succeed(), "Failed to get CRPDB %s", crpName)
+			crpdb.Spec.MaxUnavailable = &intstr.IntOrString{
+				Type:   intstr.String,
+				StrVal: "75%",
+			}
+			crpdb.Spec.MinAvailable = nil // Clear MinAvailable to test MaxUnavailable
+			By(fmt.Sprintf("expecting denial of UPDATE disruption budget %s", crpName))
+			err := hubClient.Update(ctx, &crpdb)
+			if k8sErrors.IsConflict(err) {
+				return err
+			}
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with any specified max unavailable %v", crpdb.Spec.MaxUnavailable)))
+			return nil
+		}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 	})
 
 	It("should deny update on CRPDB with MaxUnavailable as integer and PickAll CRP", func() {
 		// Update the CRPDB.
-		crpdb := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: crpName,
-			},
-			Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
-				MaxUnavailable: &intstr.IntOrString{
-					Type:   intstr.Int,
-					IntVal: 2,
-				},
-			},
-		}
-		By(fmt.Sprintf("expecting denial of UPDATE disruption budget %s", crpName))
-		err := hubClient.Update(ctx, crpdb)
-		var statusErr *k8sErrors.StatusError
-		Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-		Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with any specified max unavailable %v", crpdb.Spec.MaxUnavailable)))
-	})
-
-	It("should deny update on CRPDB with MinAvailable as percentage and PickAll CRP", func() {
-		// Update the CRPDB.
-		crpdb := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: crpName,
-			},
-			Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
-				MinAvailable: &intstr.IntOrString{
-					Type:   intstr.String,
-					StrVal: "50%",
-				},
-			},
-		}
-		By(fmt.Sprintf("expecting denial of UPDATE disruption budget %s", crpName))
-		err := hubClient.Update(ctx, crpdb)
-		var statusErr *k8sErrors.StatusError
-		Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-		Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with min available as a percentage %v", crpdb.Spec.MinAvailable)))
+		Eventually(func(g Gomega) error {
+			var crpdb placementv1beta1.ClusterResourcePlacementDisruptionBudget
+			g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crpdb)).Should(Succeed(), "Failed to get CRPDB %s", crpName)
+			crpdb.Spec.MaxUnavailable = &intstr.IntOrString{
+				Type:   intstr.Int,
+				IntVal: 1,
+			}
+			crpdb.Spec.MinAvailable = nil // Clear MinAvailable to test MaxUnavailable
+			By(fmt.Sprintf("expecting denial of UPDATE disruption budget %s", crpName))
+			err := hubClient.Update(ctx, &crpdb)
+			if k8sErrors.IsConflict(err) {
+				return err
+			}
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with any specified max unavailable %v", crpdb.Spec.MaxUnavailable)))
+			return nil
+		}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 	})
 })
