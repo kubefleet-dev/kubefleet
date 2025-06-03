@@ -391,7 +391,7 @@ func (w *Config) buildFleetValidatingWebhooks() []admv1.ValidatingWebhook {
 			Rules: []admv1.RuleWithOperations{
 				{
 					Operations: []admv1.OperationType{
-						admv1.Create,
+						admv1.Create, admv1.Update,
 					},
 					Rule: createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{disruptionBudgetName}, &clusterScope),
 				},
