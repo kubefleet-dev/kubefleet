@@ -45,7 +45,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: crpName,
 			},
-			Spec: placementv1beta1.ClusterResourcePlacementSpec{
+			Spec: placementv1beta1.PlacementSpec{
 				ResourceSelectors: selector,
 			},
 		}
@@ -63,7 +63,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: crpName,
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickFixedPlacementType,
@@ -86,7 +86,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: crpName,
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickNPlacementType,
@@ -137,7 +137,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
 						{
 							Group:   "",
@@ -167,7 +167,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
 						{
 							Group:   "apps",
@@ -200,7 +200,7 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: crpName,
 			},
-			Spec: placementv1beta1.ClusterResourcePlacementSpec{
+			Spec: placementv1beta1.PlacementSpec{
 				ResourceSelectors: workResourceSelector(),
 			},
 		}
@@ -305,7 +305,7 @@ var _ = Describe("webhook tests for CRP tolerations", Ordered, func() {
 			ObjectMeta: metav1.ObjectMeta{
 				Name: crpName,
 			},
-			Spec: placementv1beta1.ClusterResourcePlacementSpec{
+			Spec: placementv1beta1.PlacementSpec{
 				ResourceSelectors: workResourceSelector(),
 				Policy: &placementv1beta1.PlacementPolicy{
 					Tolerations: []placementv1beta1.Toleration{
@@ -1289,5 +1289,80 @@ var _ = Describe("webhook tests for ResourceOverride UPDATE operations", Ordered
 			Expect(statusErr.Status().Message).Should(MatchRegexp("cannot override metadata fields except annotations and labels"))
 			return nil
 		}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
+	})
+})
+
+var _ = Describe("webhook tests for ClusterResourcePlacementEviction CREATE operations", Ordered, func() {
+	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+	crpeName := fmt.Sprintf(crpEvictionNameTemplate, GinkgoParallelProcess())
+
+	AfterEach(func() {
+		By("deleting CRP")
+		cleanupCRP(crpName)
+	})
+
+	It("should deny create on CRPE with deleting crp", func() {
+		// Create the CRP with deletion timestamp.
+		crp := &placementv1beta1.ClusterResourcePlacement{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       crpName,
+				Finalizers: []string{"example.com/finalizer"},
+			},
+			Spec: placementv1beta1.PlacementSpec{
+				ResourceSelectors: workResourceSelector(),
+				Policy: &placementv1beta1.PlacementPolicy{
+					PlacementType: placementv1beta1.PickAllPlacementType,
+				},
+			},
+		}
+		Expect(hubClient.Create(ctx, crp)).Should(Succeed(), "Failed to create CRP %s", crpName)
+		// Delete the CRP to add deletion timestamp for check
+		Expect(hubClient.Delete(ctx, crp)).Should(Succeed(), "Failed to delete CRP %s", crpName)
+
+		// Create the CRPE.
+		crpe := &placementv1beta1.ClusterResourcePlacementEviction{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: crpeName,
+			},
+			Spec: placementv1beta1.PlacementEvictionSpec{
+				PlacementName: crpName,
+			},
+		}
+		By(fmt.Sprintf("expecting denial of CREATE eviction %s", crpeName))
+		err := hubClient.Create(ctx, crpe)
+		var statusErr *k8sErrors.StatusError
+		Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPE call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+		Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("cluster resource placement %s is being deleted", crpName)))
+	})
+
+	It("should deny create on CRPE with PickFixed crp", func() {
+		crp := &placementv1beta1.ClusterResourcePlacement{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: crpName,
+			},
+			Spec: placementv1beta1.PlacementSpec{
+				ResourceSelectors: workResourceSelector(),
+				Policy: &placementv1beta1.PlacementPolicy{
+					PlacementType: placementv1beta1.PickFixedPlacementType,
+					ClusterNames:  []string{"cluster1", "cluster2"},
+				},
+			},
+		}
+		Expect(hubClient.Create(ctx, crp)).Should(Succeed(), "Failed to create CRP %s", crpName)
+
+		// Create the CRPE.
+		crpe := &placementv1beta1.ClusterResourcePlacementEviction{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: crpeName,
+			},
+			Spec: placementv1beta1.PlacementEvictionSpec{
+				PlacementName: crpName,
+			},
+		}
+		By(fmt.Sprintf("expecting denial of CREATE eviction %s", crpName))
+		err := hubClient.Create(ctx, crpe)
+		var statusErr *k8sErrors.StatusError
+		Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPE call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+		Expect(statusErr.Status().Message).Should(MatchRegexp("cluster resource placement policy type PickFixed is not supported"))
 	})
 })

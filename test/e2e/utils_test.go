@@ -1296,7 +1296,7 @@ func createCRPWithApplyStrategy(crpName string, applyStrategy *placementv1beta1.
 			// the behavior of the controllers.
 			Finalizers: []string{customDeletionBlockerFinalizer},
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			ResourceSelectors: workResourceSelector(),
 			Strategy: placementv1beta1.RolloutStrategy{
 				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
