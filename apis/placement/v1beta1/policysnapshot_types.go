@@ -63,6 +63,30 @@ type ClusterSchedulingPolicySnapshot struct {
 	Status SchedulingPolicySnapshotStatus `json:"status,omitempty"`
 }
 
+// GetPolicySnapshotSpec returns the policy snapshot spec.
+func (m *ClusterSchedulingPolicySnapshot) GetPolicySnapshotSpec() *SchedulingPolicySnapshotSpec {
+	return &m.Spec
+}
+
+// SetPolicySnapshotSpec sets the policy snapshot spec.
+func (m *ClusterSchedulingPolicySnapshot) SetPolicySnapshotSpec(spec *SchedulingPolicySnapshotSpec) {
+	if spec != nil {
+		m.Spec = *spec
+	}
+}
+
+// GetPolicySnapshotStatus returns the policy snapshot status.
+func (m *ClusterSchedulingPolicySnapshot) GetPolicySnapshotStatus() *SchedulingPolicySnapshotStatus {
+	return &m.Status
+}
+
+// SetPolicySnapshotStatus sets the policy snapshot status.
+func (m *ClusterSchedulingPolicySnapshot) SetPolicySnapshotStatus(status *SchedulingPolicySnapshotStatus) {
+	if status != nil {
+		m.Status = *status
+	}
+}
+
 // SchedulingPolicySnapshotSpec defines the desired state of SchedulingPolicySnapshot.
 type SchedulingPolicySnapshotSpec struct {
 	// Policy defines how to select member clusters to place the selected resources.
@@ -209,6 +233,30 @@ type SchedulingPolicySnapshot struct {
 	// The observed status of SchedulingPolicySnapshot.
 	// +optional
 	Status SchedulingPolicySnapshotStatus `json:"status,omitempty"`
+}
+
+// GetPolicySnapshotSpec returns the policy snapshot spec.
+func (m *SchedulingPolicySnapshot) GetPolicySnapshotSpec() *SchedulingPolicySnapshotSpec {
+	return &m.Spec
+}
+
+// SetPolicySnapshotSpec sets the policy snapshot spec.
+func (m *SchedulingPolicySnapshot) SetPolicySnapshotSpec(spec *SchedulingPolicySnapshotSpec) {
+	if spec != nil {
+		m.Spec = *spec
+	}
+}
+
+// GetPolicySnapshotStatus returns the policy snapshot status.
+func (m *SchedulingPolicySnapshot) GetPolicySnapshotStatus() *SchedulingPolicySnapshotStatus {
+	return &m.Status
+}
+
+// SetPolicySnapshotStatus sets the policy snapshot status.
+func (m *SchedulingPolicySnapshot) SetPolicySnapshotStatus(status *SchedulingPolicySnapshotStatus) {
+	if status != nil {
+		m.Status = *status
+	}
 }
 
 // SchedulingPolicySnapshotList contains a list of SchedulingPolicySnapshotList.

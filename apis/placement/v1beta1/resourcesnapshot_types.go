@@ -186,6 +186,30 @@ func (m *ClusterResourceSnapshot) GetCondition(conditionType string) *metav1.Con
 	return meta.FindStatusCondition(m.Status.Conditions, conditionType)
 }
 
+// GetResourceSnapshotSpec returns the resource snapshot spec.
+func (m *ClusterResourceSnapshot) GetResourceSnapshotSpec() *ResourceSnapshotSpec {
+	return &m.Spec
+}
+
+// SetResourceSnapshotSpec sets the resource snapshot spec.
+func (m *ClusterResourceSnapshot) SetResourceSnapshotSpec(spec *ResourceSnapshotSpec) {
+	if spec != nil {
+		m.Spec = *spec
+	}
+}
+
+// GetResourceSnapshotStatus returns the resource snapshot status.
+func (m *ClusterResourceSnapshot) GetResourceSnapshotStatus() *ResourceSnapshotStatus {
+	return &m.Status
+}
+
+// SetResourceSnapshotStatus sets the resource snapshot status.
+func (m *ClusterResourceSnapshot) SetResourceSnapshotStatus(status *ResourceSnapshotStatus) {
+	if status != nil {
+		m.Status = *status
+	}
+}
+
 // SetConditions sets the conditions for a ResourceSnapshot.
 func (m *ResourceSnapshot) SetConditions(conditions ...metav1.Condition) {
 	for _, c := range conditions {
@@ -196,6 +220,30 @@ func (m *ResourceSnapshot) SetConditions(conditions ...metav1.Condition) {
 // GetCondition gets the condition for a ResourceSnapshot.
 func (m *ResourceSnapshot) GetCondition(conditionType string) *metav1.Condition {
 	return meta.FindStatusCondition(m.Status.Conditions, conditionType)
+}
+
+// GetResourceSnapshotSpec returns the resource snapshot spec.
+func (m *ResourceSnapshot) GetResourceSnapshotSpec() *ResourceSnapshotSpec {
+	return &m.Spec
+}
+
+// SetResourceSnapshotSpec sets the resource snapshot spec.
+func (m *ResourceSnapshot) SetResourceSnapshotSpec(spec *ResourceSnapshotSpec) {
+	if spec != nil {
+		m.Spec = *spec
+	}
+}
+
+// GetResourceSnapshotStatus returns the resource snapshot status.
+func (m *ResourceSnapshot) GetResourceSnapshotStatus() *ResourceSnapshotStatus {
+	return &m.Status
+}
+
+// SetResourceSnapshotStatus sets the resource snapshot status.
+func (m *ResourceSnapshot) SetResourceSnapshotStatus(status *ResourceSnapshotStatus) {
+	if status != nil {
+		m.Status = *status
+	}
 }
 
 func init() {

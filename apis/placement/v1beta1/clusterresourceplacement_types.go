@@ -1295,6 +1295,31 @@ func (m *ClusterResourcePlacement) GetCondition(conditionType string) *metav1.Co
 	return meta.FindStatusCondition(m.Status.Conditions, conditionType)
 }
 
+// GetPlacementSpec returns the placement spec.
+func (m *ClusterResourcePlacement) GetPlacementSpec() *PlacementSpec {
+	return &m.Spec
+}
+
+// SetPlacementSpec sets the placement spec.
+func (m *ClusterResourcePlacement) SetPlacementSpec(spec *PlacementSpec) {
+	if spec != nil {
+		m.Spec = *spec
+	}
+}
+
+// GetPlacementStatus returns the placement status.
+func (m *ClusterResourcePlacement) GetPlacementStatus() *PlacementStatus {
+	status := m.Status
+	return &status
+}
+
+// SetPlacementStatus sets the placement status.
+func (m *ClusterResourcePlacement) SetPlacementStatus(status *PlacementStatus) {
+	if status != nil {
+		m.Status = *status
+	}
+}
+
 const (
 	// PlacementCleanupFinalizer is a finalizer added by the CRP controller to all CRPs, to make sure
 	// that the CRP controller can react to CRP deletions if necessary.
@@ -1354,6 +1379,30 @@ func (m *ResourcePlacement) SetConditions(conditions ...metav1.Condition) {
 // GetCondition returns the condition of the ResourcePlacement objects.
 func (m *ResourcePlacement) GetCondition(conditionType string) *metav1.Condition {
 	return meta.FindStatusCondition(m.Status.Conditions, conditionType)
+}
+
+// GetPlacementSpec returns the placement spec.
+func (m *ResourcePlacement) GetPlacementSpec() *PlacementSpec {
+	return &m.Spec
+}
+
+// SetPlacementSpec sets the placement spec.
+func (m *ResourcePlacement) SetPlacementSpec(spec *PlacementSpec) {
+	if spec != nil {
+		m.Spec = *spec
+	}
+}
+
+// GetPlacementStatus returns the placement status.
+func (m *ResourcePlacement) GetPlacementStatus() *PlacementStatus {
+	return &m.Status
+}
+
+// SetPlacementStatus sets the placement status.
+func (m *ResourcePlacement) SetPlacementStatus(status *PlacementStatus) {
+	if status != nil {
+		m.Status = *status
+	}
 }
 
 func init() {
