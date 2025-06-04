@@ -1418,3 +1418,59 @@ func ensureUpdateRunStrategyDeletion(strategyName string) {
 	removedActual := updateRunStrategyRemovedActual(strategyName)
 	Eventually(removedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "ClusterStagedUpdateStrategy still exists")
 }
+
+// setSingleMemberClusterToLeave sets a specific member cluster to leave the fleet.
+func setSingleMemberClusterToLeave(memberCluster *framework.Cluster) {
+	mcObj := &clusterv1beta1.MemberCluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: memberCluster.ClusterName,
+		},
+	}
+	Expect(client.IgnoreNotFound(hubClient.Delete(ctx, mcObj))).To(Succeed(), "Failed to set member cluster %s to leave state", memberCluster.ClusterName)
+}
+
+// setSingleMemberClusterToJoin creates a MemberCluster object for a specific member cluster.
+func setSingleMemberClusterToJoin(memberCluster *framework.Cluster) {
+	createMemberCluster(memberCluster.ClusterName, memberCluster.PresentingServiceAccountInHubClusterName, labelsByClusterName[memberCluster.ClusterName], annotationsByClusterName[memberCluster.ClusterName])
+}
+
+// checkIfSingleMemberClusterHasLeft verifies if the specified member cluster has left.
+func checkIfSingleMemberClusterHasLeft(memberCluster *framework.Cluster) {
+	Eventually(func() error {
+		mcObj := &clusterv1beta1.MemberCluster{}
+		if err := hubClient.Get(ctx, types.NamespacedName{Name: memberCluster.ClusterName}, mcObj); !k8serrors.IsNotFound(err) {
+			return fmt.Errorf("member cluster %s still exists or an unexpected error occurred: %w", memberCluster.ClusterName, err)
+		}
+		return nil
+	}, longEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to delete member cluster %s", memberCluster.ClusterName)
+}
+
+// checkIfSingleMemberClusterHasJoined verifies if the specified member cluster has joined.
+func checkIfSingleMemberClusterHasJoined(memberCluster *framework.Cluster) {
+	checkIfMemberClusterHasJoined(memberCluster)
+}
+
+// deleteResourcesFromSingleMemberCluster deletes the applied resources from a specific member cluster.
+func deleteResourcesFromSingleMemberCluster(memberCluster *framework.Cluster) {
+	workNamespaceName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
+
+	// Delete the namespace which will cascade delete all resources in it
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: workNamespaceName,
+		},
+	}
+	Expect(client.IgnoreNotFound(memberCluster.KubeClient.Delete(ctx, ns))).To(Succeed(), "Failed to delete work namespace from member cluster %s", memberCluster.ClusterName)
+
+	// Wait for the namespace to be deleted
+	Eventually(func() error {
+		err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{Name: workNamespaceName}, &corev1.Namespace{})
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("namespace %s still exists", workNamespaceName)
+	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to wait for namespace deletion from member cluster %s", memberCluster.ClusterName)
+}
