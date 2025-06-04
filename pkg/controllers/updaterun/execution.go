@@ -468,7 +468,7 @@ func checkClusterUpdateResult(
 		markClusterUpdatingSucceeded(clusterStatus, updateRun.Generation)
 		return true, nil
 	}
-	if bindingutils.HasBindingFailed(binding) {
+	if bindingutils.HasBindingFailed(binding) || condition.IsConditionStatusFalse(diffReportCondition, binding.Generation) {
 		// We have no way to know if the failed condition is recoverable or not so we just let it run
 		klog.InfoS("The cluster updating encountered an error", "cluster", clusterStatus.ClusterName, "stage", updatingStage.StageName, "clusterStagedUpdateRun", klog.KObj(updateRun))
 		// TODO(wantjian): identify some non-recoverable error and mark the cluster updating as failed

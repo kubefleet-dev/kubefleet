@@ -579,7 +579,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 	})
 })
 
-var _ = Describe("UpdateRun execution tests - fewer clusters with single stage", func() {
+var _ = Describe("UpdateRun execution tests - single stage", func() {
 	var updateRun *placementv1beta1.ClusterStagedUpdateRun
 	var crp *placementv1beta1.ClusterResourcePlacement
 	var policySnapshot *placementv1beta1.ClusterSchedulingPolicySnapshot
@@ -1089,6 +1089,56 @@ var _ = Describe("UpdateRun execution tests - fewer clusters with single stage",
 
 			By("Checking update run status metrics are emitted")
 			validateUpdateRunMetricsEmitted(generateProgressingMetric(updateRun), generateSucceededMetric(updateRun))
+		})
+	})
+
+	Context("Cluster staged update run should be stuck in execution encountering diff reporting failure", Ordered, func() {
+		var oldUpdateRunStuckThreshold time.Duration
+		BeforeAll(func() {
+			// Set the updateRunStuckThreshold to 1 second for this test.
+			oldUpdateRunStuckThreshold = updateRunStuckThreshold
+			updateRunStuckThreshold = 1 * time.Second
+
+			By("Updating the crp to use report diff mode")
+			crp.Spec.Strategy.ApplyStrategy = &placementv1beta1.ApplyStrategy{Type: placementv1beta1.ApplyStrategyTypeReportDiff}
+			Expect(k8sClient.Update(ctx, crp)).To(Succeed())
+
+			By("Creating a new clusterStagedUpdateRun")
+			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
+
+			By("Validating the initialization succeeded and the execution started")
+			initialized := generateSucceededInitializationStatusForSmallClusters(crp, updateRun, policySnapshot, updateStrategy)
+			wantStatus = generateExecutionStartedStatus(updateRun, initialized)
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
+
+			By("Checking update run status metrics are emitted")
+			validateUpdateRunMetricsEmitted(generateProgressingMetric(updateRun))
+		})
+
+		AfterAll(func() {
+			// Restore the updateRunStuckThreshold to the original value.
+			updateRunStuckThreshold = oldUpdateRunStuckThreshold
+		})
+
+		It("Should become stuck if the binding diff reporting fails", func() {
+			By("Validating the 1st clusterResourceBinding is updated to Bound")
+			binding := resourceBindings[0] // cluster-0
+			validateBindingState(ctx, binding, resourceSnapshot.Name, updateRun, 0)
+
+			By("Updating the 1st clusterResourceBinding to diff reported failed")
+			meta.SetStatusCondition(&binding.Status.Conditions, generateFalseCondition(binding, placementv1beta1.ResourceBindingDiffReported))
+			Expect(k8sClient.Status().Update(ctx, binding)).Should(Succeed(), "failed to update the binding status")
+
+			By("Validating the updateRun is stuck in the 1st cluster of the 1st stage")
+			wantStatus.Conditions[1] = generateFalseCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing)
+			wantStatus.Conditions[1].Reason = condition.UpdateRunStuckReason
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
+			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, wantStatus, "")
+		})
+
+		It("Should emit stuck status metrics after time waiting for the 1st cluster reaches threshold", func() {
+			By("Checking update run stuck metrics is emitted")
+			validateUpdateRunMetricsEmitted(generateProgressingMetric(updateRun), generateStuckMetric(updateRun))
 		})
 	})
 

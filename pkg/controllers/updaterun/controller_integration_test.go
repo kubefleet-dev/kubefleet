@@ -771,6 +771,8 @@ func generateFalseCondition(obj client.Object, condType any) metav1.Condition {
 		switch cond {
 		case placementv1beta1.ResourceBindingApplied:
 			reason = condition.ApplyFailedReason
+		case placementv1beta1.ResourceBindingDiffReported:
+			reason = condition.DiffReportedStatusFalseReason
 		}
 		typeStr = string(cond)
 	}
