@@ -1530,8 +1530,8 @@ var _ = Describe("webhook tests for ClusterResourcePlacementDisruptionBudget UPD
 				return err
 			}
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with min available as a percentage %v", crpdb.Spec.MinAvailable)))
+			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			g.Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with min available as a percentage %v", crpdb.Spec.MinAvailable)))
 			return nil
 		}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 	})
@@ -1552,8 +1552,8 @@ var _ = Describe("webhook tests for ClusterResourcePlacementDisruptionBudget UPD
 				return err
 			}
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with any specified max unavailable %v", crpdb.Spec.MaxUnavailable)))
+			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			g.Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with any specified max unavailable %v", crpdb.Spec.MaxUnavailable)))
 			return nil
 		}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 	})
@@ -1574,8 +1574,8 @@ var _ = Describe("webhook tests for ClusterResourcePlacementDisruptionBudget UPD
 				return err
 			}
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with any specified max unavailable %v", crpdb.Spec.MaxUnavailable)))
+			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			g.Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with any specified max unavailable %v", crpdb.Spec.MaxUnavailable)))
 			return nil
 		}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 	})
