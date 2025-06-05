@@ -187,7 +187,11 @@ func (r *Reconciler) findPlacementsSelectedDeletedResV1Beta1(res keys.ClusterWid
 
 	for _, crp := range matchedCrps {
 		klog.V(2).InfoS("change in deleted object triggered v1beta1 placement reconcile", "obj", res, "crp", crp)
-		r.PlacementControllerV1Beta1.Enqueue(crp)
+		// schedule enqueue after 1 minute
+		crpName := crp
+		time.AfterFunc(time.Minute, func() {
+			r.PlacementControllerV1Beta1.Enqueue(crpName)
+		})
 	}
 }
 
@@ -255,7 +259,11 @@ func (r *Reconciler) triggerAffectedPlacementsForUpdatedClusterRes(key keys.Clus
 		// Enqueue the CRPs for reconciliation.
 		for crp := range matchedCRPs {
 			klog.V(2).InfoS("Change in object triggered v1beta1 placement reconcile", "obj", key, "crp", crp)
-			r.PlacementControllerV1Beta1.Enqueue(crp)
+			// schedule enqueue after 1 minute
+			crpName := crp
+			time.AfterFunc(time.Minute, func() {
+				r.PlacementControllerV1Beta1.Enqueue(crpName)
+			})
 		}
 	}
 
