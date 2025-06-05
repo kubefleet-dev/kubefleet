@@ -799,20 +799,6 @@ func cleanupCRP(name string) {
 	Eventually(removedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove CRP %s", name)
 }
 
-// cleanupCRPDB deletes the CRPDB and waits until the resource is not found.
-func cleanupCRPDB(name string) {
-	crpdb := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
-	}
-	Expect(hubClient.Delete(ctx, crpdb)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}), "Failed to delete CRPDB %s", name)
-
-	Eventually(func() bool {
-		return k8serrors.IsNotFound(hubClient.Get(ctx, types.NamespacedName{Name: name}, crpdb))
-	}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "Failed to delete CRPDB %s", name)
-}
-
 // createResourceOverrides creates a number of resource overrides.
 func createResourceOverrides(namespace string, number int) {
 	for i := 0; i < number; i++ {

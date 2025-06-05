@@ -1512,7 +1512,7 @@ var _ = Describe("webhook tests for ClusterResourcePlacementDisruptionBudget UPD
 	AfterAll(func() {
 		By("deleting CRP")
 		cleanupCRP(crpName)
-		cleanupCRPDB(crpName)
+		ensureCRPDisruptionBudgetDeleted(crpName)
 	})
 
 	It("should deny update on CRPDB with MinAvailable as percentage and PickAll CRP", func() {
