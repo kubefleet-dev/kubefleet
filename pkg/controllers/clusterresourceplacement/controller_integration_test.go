@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
@@ -380,7 +381,8 @@ func updateClusterSchedulingPolicySnapshotStatus(status metav1.ConditionStatus, 
 var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 	Context("When creating new pickAll ClusterResourcePlacement", func() {
 		BeforeEach(func() {
-			registerMetrics()
+			// Reset metric before each test
+			metrics.FleetPlacementStatusLastTimeStampSeconds.Reset()
 
 			By("Create a new crp")
 			crp = &placementv1beta1.ClusterResourcePlacement{
@@ -442,8 +444,6 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			if member2Binding != nil {
 				Expect(k8sClient.Delete(ctx, member2Binding)).Should(Succeed())
 			}
-
-			Expect(customRegistry.Unregister(metrics.FleetPlacementStatusLastTimeStampSeconds)).Should(BeTrue())
 		})
 
 		It("None of the clusters are selected", func() {
@@ -481,6 +481,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: ptr.To("reason"), Value: ptr.To(SchedulingUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -492,13 +493,14 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To("nil")},
+						{Name: ptr.To("reason"), Value: ptr.To("nil")},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			}
-			checkPlacementStatusMetric(customRegistry, wantMetrics)
+			checkPlacementStatusMetric(wantMetrics)
 		})
 
 		It("Clusters are not selected", func() {
@@ -535,6 +537,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: ptr.To("reason"), Value: ptr.To(SchedulingUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -546,13 +549,14 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionFalse))},
+						{Name: ptr.To("reason"), Value: ptr.To(ResourceScheduleFailedReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			}
-			checkPlacementStatusMetric(customRegistry, wantMetrics)
+			checkPlacementStatusMetric(wantMetrics)
 		})
 
 		It("Clusters are selected and resources are applied successfully", func() {
@@ -641,6 +645,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: ptr.To("reason"), Value: ptr.To(SchedulingUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -652,13 +657,14 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: ptr.To("reason"), Value: ptr.To(condition.RolloutStartedUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			}
-			checkPlacementStatusMetric(customRegistry, wantMetrics)
+			checkPlacementStatusMetric(wantMetrics)
 
 			By("Create a synchronized clusterResourceBinding on member-2")
 			member2Binding = createSynchronizedClusterResourceBinding(member2Name, gotPolicySnapshot, gotResourceSnapshot)
@@ -754,12 +760,13 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
 					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+					{Name: ptr.To("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
 				},
 				Gauge: &prometheusclientmodel.Gauge{
 					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 				},
 			})
-			checkPlacementStatusMetric(customRegistry, wantMetrics)
+			checkPlacementStatusMetric(wantMetrics)
 		})
 
 		It("Emit metrics when CRP spec updates with different generations", func() {
@@ -846,6 +853,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: ptr.To("reason"), Value: ptr.To(SchedulingUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -857,13 +865,14 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: ptr.To("reason"), Value: ptr.To(condition.RolloutStartedUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			}
-			checkPlacementStatusMetric(customRegistry, wantMetrics)
+			checkPlacementStatusMetric(wantMetrics)
 
 			By("Create a synchronized clusterResourceBinding on member-2")
 			member2Binding = createSynchronizedClusterResourceBinding(member2Name, gotPolicySnapshot, gotResourceSnapshot)
@@ -959,12 +968,13 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
 					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+					{Name: ptr.To("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
 				},
 				Gauge: &prometheusclientmodel.Gauge{
 					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 				},
 			})
-			checkPlacementStatusMetric(customRegistry, wantMetrics)
+			checkPlacementStatusMetric(wantMetrics)
 
 			By("Update CRP spec to add another resource selector")
 			gotCRP.Spec.ResourceSelectors = append(crp.Spec.ResourceSelectors,
@@ -1020,12 +1030,13 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
 					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+					{Name: ptr.To("reason"), Value: ptr.To(SchedulingUnknownReason)},
 				},
 				Gauge: &prometheusclientmodel.Gauge{
 					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 				},
 			})
-			checkPlacementStatusMetric(customRegistry, wantMetrics)
+			checkPlacementStatusMetric(wantMetrics)
 
 			By("Update clusterSchedulingPolicySnapshot status to schedule success")
 			// Update the annotation to match the CRP generation, which is now 2
@@ -1140,12 +1151,13 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
 					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+					{Name: ptr.To("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
 				},
 				Gauge: &prometheusclientmodel.Gauge{
 					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 				},
 			})
-			checkPlacementStatusMetric(customRegistry, wantMetrics)
+			checkPlacementStatusMetric(wantMetrics)
 		})
 
 		It("Emit metrics for complete CRP", func() {
@@ -1260,6 +1272,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: ptr.To("reason"), Value: ptr.To(SchedulingUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -1271,6 +1284,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: ptr.To("reason"), Value: ptr.To(condition.RolloutStartedUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -1282,13 +1296,14 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: ptr.To("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			}
-			checkPlacementStatusMetric(customRegistry, wantMetrics)
+			checkPlacementStatusMetric(wantMetrics)
 
 			By("Update to a synchronized clusterResourceBinding on member-1")
 			member1Binding = updateClusterResourceBindingWithSynchronized(member1Binding)
@@ -1324,6 +1339,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementAppliedConditionType))},
 					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+					{Name: ptr.To("reason"), Value: ptr.To(condition.ApplyPendingReason)},
 				},
 				Gauge: &prometheusclientmodel.Gauge{
 					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -1365,19 +1381,20 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 					{Name: ptr.To("conditionType"), Value: ptr.To("Completed")},
 					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionTrue))},
+					{Name: ptr.To("reason"), Value: ptr.To("CRPCompleted")},
 				},
 				Gauge: &prometheusclientmodel.Gauge{
 					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 				},
 			})
-			checkPlacementStatusMetric(customRegistry, wantMetrics)
+			checkPlacementStatusMetric(wantMetrics)
 		})
 	})
 
 	Context("When creating a ReportDiff ClusterResourcePlacement", func() {
 		BeforeEach(func() {
-			// Create a test registry
-			registerMetrics()
+			// Reset metric before each test
+			metrics.FleetPlacementStatusLastTimeStampSeconds.Reset()
 
 			By("Create a new crp")
 			crp = &placementv1beta1.ClusterResourcePlacement{
@@ -1440,8 +1457,6 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			By("Deleting clusterResourceBindings")
 			Expect(k8sClient.Delete(ctx, member1Binding)).Should(Succeed())
 			Expect(k8sClient.Delete(ctx, member2Binding)).Should(Succeed())
-
-			Expect(customRegistry.Unregister(metrics.FleetPlacementStatusLastTimeStampSeconds)).Should(BeTrue())
 		})
 
 		It("Emit metrics for ReportDiff Incomplete CRP", func() {
@@ -1551,6 +1566,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: ptr.To("reason"), Value: ptr.To(SchedulingUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -1562,6 +1578,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: ptr.To("reason"), Value: ptr.To(condition.RolloutStartedUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -1573,13 +1590,14 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: ptr.To("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			}
-			checkPlacementStatusMetric(customRegistry, wantMetrics)
+			checkPlacementStatusMetric(wantMetrics)
 
 			By("Update to a synchronized clusterResourceBinding on member-1")
 			member1Binding = updateClusterResourceBindingWithSynchronized(member1Binding)
@@ -1615,12 +1633,13 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementDiffReportedConditionType))},
 					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+					{Name: ptr.To("reason"), Value: ptr.To(condition.DiffReportedStatusUnknownReason)},
 				},
 				Gauge: &prometheusclientmodel.Gauge{
 					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 				},
 			})
-			checkPlacementStatusMetric(customRegistry, wantMetrics)
+			checkPlacementStatusMetric(wantMetrics)
 		})
 
 		It("Emit metrics for ReportDiff Complete CRP", func() {
@@ -1730,6 +1749,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: ptr.To("reason"), Value: ptr.To(SchedulingUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -1741,6 +1761,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: ptr.To("reason"), Value: ptr.To(condition.RolloutStartedUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -1752,13 +1773,14 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: ptr.To("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			}
-			checkPlacementStatusMetric(customRegistry, wantMetrics)
+			checkPlacementStatusMetric(wantMetrics)
 
 			By("Create a reportDiff clusterResourceBinding on member-1")
 			member1Binding = updateClusterResourceBindingWithReportDiff(member1Binding)
@@ -1868,26 +1890,90 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To("Completed")},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionTrue))},
+						{Name: ptr.To("reason"), Value: ptr.To("CRPCompleted")},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			)
-			checkPlacementStatusMetric(customRegistry, wantMetrics)
+			checkPlacementStatusMetric(wantMetrics)
+		})
+	})
+
+	Context("When creating an ClusterResourcePlacement with user error", func() {
+		BeforeEach(func() {
+			// Reset metric before each test
+			metrics.FleetPlacementStatusLastTimeStampSeconds.Reset()
+		})
+
+		AfterEach(func() {
+			By("Deleting crp")
+			Expect(k8sClient.Delete(ctx, gotCRP)).Should(Succeed())
+			retrieveAndValidateCRPDeletion(gotCRP)
+		})
+
+		It("Emit metrics for CRP with invalid resource selector", func() {
+			By("Create a new crp with an invalid resource selector")
+			crp = &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testCRPName,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+						{
+							Group:   corev1.GroupName,
+							Version: "v1",
+							Kind:    "InvalidKind", // Invalid kind to trigger user error
+							Name:    "invalid-resource",
+						},
+					},
+					RevisionHistoryLimit: ptr.To(int32(1)),
+				},
+			}
+			Expect(k8sClient.Create(ctx, crp)).Should(Succeed(), "Failed to create crp with user error")
+
+			By("Validate CRP status")
+			wantCRP := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       testCRPName,
+					Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+				},
+				Spec: crp.Spec,
+				Status: placementv1beta1.PlacementStatus{
+					Conditions: []metav1.Condition{
+						{
+							Status: metav1.ConditionFalse,
+							Type:   string(placementv1beta1.ClusterResourcePlacementScheduledConditionType),
+							Reason: InvalidResourceSelectorsReason,
+						},
+					},
+				},
+			}
+			gotCRP = retrieveAndValidateClusterResourcePlacement(crp.Name, wantCRP)
+
+			By("Ensure placement status completed metric was emitted")
+			wantMetrics := []*prometheusclientmodel.Metric{
+				{
+					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
+						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
+						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionFalse))},
+						{Name: ptr.To("reason"), Value: ptr.To(InvalidResourceSelectorsReason)},
+					},
+					Gauge: &prometheusclientmodel.Gauge{
+						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+					},
+				},
+			}
+			checkPlacementStatusMetric(wantMetrics)
 		})
 	})
 })
 
-func registerMetrics() {
-	// Create a test registry
-	customRegistry = prometheus.NewRegistry()
-	Expect(customRegistry.Register(metrics.FleetPlacementStatusLastTimeStampSeconds)).Should(Succeed())
-	metrics.FleetPlacementStatusLastTimeStampSeconds.Reset()
-}
-
-func checkPlacementStatusMetric(registry *prometheus.Registry, wantMetrics []*prometheusclientmodel.Metric) {
-	metricFamilies, err := registry.Gather()
+func checkPlacementStatusMetric(wantMetrics []*prometheusclientmodel.Metric) {
+	metricFamilies, err := ctrlmetrics.Registry.Gather()
 	Expect(err).Should(Succeed())
 	var placementStatusMetrics []*prometheusclientmodel.Metric
 	for _, mf := range metricFamilies {
