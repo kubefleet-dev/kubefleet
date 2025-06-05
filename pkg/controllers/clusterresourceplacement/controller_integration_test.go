@@ -24,7 +24,6 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/prometheus/client_golang/prometheus"
 	prometheusclientmodel "github.com/prometheus/client_model/go"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -88,7 +87,6 @@ var (
 )
 
 var (
-	customRegistry      *prometheus.Registry
 	crp                 *placementv1beta1.ClusterResourcePlacement
 	gotCRP              *placementv1beta1.ClusterResourcePlacement
 	gotPolicySnapshot   *placementv1beta1.ClusterSchedulingPolicySnapshot
