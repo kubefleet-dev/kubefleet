@@ -695,7 +695,7 @@ func TestMarkMemberClusterJoined(t *testing.T) {
 
 	// Check expected conditions.
 	expectedConditions := []metav1.Condition{
-		{Type: string(clusterv1beta1.ConditionTypeMemberClusterJoined), Status: metav1.ConditionTrue, Reason: reasonMemberClusterJoined},
+		{Type: string(clusterv1beta1.ConditionTypeMemberClusterJoined), Status: metav1.ConditionTrue, Reason: reasonMemberClusterJoined, Message: messageMemberClusterJoined},
 	}
 
 	for i := range expectedConditions {
@@ -794,9 +794,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 				Status: clusterv1beta1.MemberClusterStatus{
 					Conditions: []metav1.Condition{
 						{
-							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
-							Status: metav1.ConditionTrue,
-							Reason: reasonMemberClusterJoined,
+							Type:    string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+							Status:  metav1.ConditionTrue,
+							Reason:  reasonMemberClusterJoined,
+							Message: messageMemberClusterJoined,
 						},
 						{
 							Type:    propertyProviderConditionType1,
@@ -913,14 +914,16 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 				Status: clusterv1beta1.MemberClusterStatus{
 					Conditions: []metav1.Condition{
 						{
-							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
-							Status: metav1.ConditionFalse,
-							Reason: reasonMemberClusterLeft,
+							Type:    string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+							Status:  metav1.ConditionFalse,
+							Reason:  reasonMemberClusterLeft,
+							Message: messageMemberClusterLeft,
 						},
 						{
-							Type:   string(clusterv1beta1.ConditionTypeMemberClusterReadyToJoin),
-							Status: metav1.ConditionFalse,
-							Reason: reasonMemberClusterNotReadyToJoin,
+							Type:    string(clusterv1beta1.ConditionTypeMemberClusterReadyToJoin),
+							Status:  metav1.ConditionFalse,
+							Reason:  reasonMemberClusterNotReadyToJoin,
+							Message: messageMemberClusterNotReadyToJoin,
 						},
 					},
 					ResourceUsage: clusterv1beta1.ResourceUsage{
@@ -1011,7 +1014,8 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 						{
 							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
 							Status: metav1.ConditionUnknown,
-							Reason: reasonMemberClusterUnknown,
+							Reason:  reasonMemberClusterUnknown,
+				Message: messageMemberClusterUnknown,
 						},
 					},
 					ResourceUsage: clusterv1beta1.ResourceUsage{
@@ -1084,9 +1088,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 					},
 					Conditions: []metav1.Condition{
 						{
-							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
-							Status: metav1.ConditionUnknown,
-							Reason: reasonMemberClusterUnknown,
+							Type:    string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+							Status:  metav1.ConditionUnknown,
+							Reason:  reasonMemberClusterUnknown,
+							Message: messageMemberClusterUnknown,
 						},
 					},
 				},
@@ -1164,9 +1169,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 				Status: clusterv1beta1.MemberClusterStatus{
 					Conditions: []metav1.Condition{
 						{
-							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
-							Status: metav1.ConditionTrue,
-							Reason: reasonMemberClusterJoined,
+							Type:    string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+							Status:  metav1.ConditionTrue,
+							Reason:  reasonMemberClusterJoined,
+							Message: messageMemberClusterJoined,
 						},
 					},
 					ResourceUsage: clusterv1beta1.ResourceUsage{
@@ -1257,7 +1263,8 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 						{
 							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
 							Status: metav1.ConditionUnknown,
-							Reason: reasonMemberClusterUnknown,
+							Reason:  reasonMemberClusterUnknown,
+				Message: messageMemberClusterUnknown,
 						},
 					},
 					ResourceUsage: clusterv1beta1.ResourceUsage{
@@ -1330,7 +1337,8 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 						{
 							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
 							Status: metav1.ConditionUnknown,
-							Reason: reasonMemberClusterUnknown,
+							Reason:  reasonMemberClusterUnknown,
+				Message: messageMemberClusterUnknown,
 						},
 					},
 					ResourceUsage: clusterv1beta1.ResourceUsage{
@@ -1407,7 +1415,8 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 						{
 							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
 							Status: metav1.ConditionUnknown,
-							Reason: reasonMemberClusterUnknown,
+							Reason:  reasonMemberClusterUnknown,
+				Message: messageMemberClusterUnknown,
 						},
 					},
 					ResourceUsage: clusterv1beta1.ResourceUsage{

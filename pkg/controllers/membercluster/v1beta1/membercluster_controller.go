@@ -63,6 +63,13 @@ const (
 	reasonMemberClusterJoined         = "MemberClusterJoined"
 	reasonMemberClusterLeft           = "MemberClusterLeft"
 	reasonMemberClusterUnknown        = "MemberClusterJoinStateUnknown"
+
+	// Messages for member cluster conditions.
+	messageMemberClusterReadyToJoin    = "Member cluster is ready to join the fleet"
+	messageMemberClusterNotReadyToJoin = "Member cluster is not ready to join the fleet"
+	messageMemberClusterJoined         = "Member cluster has successfully joined the fleet"
+	messageMemberClusterLeft           = "Member cluster has left the fleet"
+	messageMemberClusterUnknown        = "Member cluster join state is unknown"
 )
 
 // Reconciler reconciles a MemberCluster object
@@ -592,6 +599,7 @@ func markMemberClusterReadyToJoin(recorder record.EventRecorder, mc apis.Conditi
 		Type:               string(clusterv1beta1.ConditionTypeMemberClusterReadyToJoin),
 		Status:             metav1.ConditionTrue,
 		Reason:             reasonMemberClusterReadyToJoin,
+		Message:            messageMemberClusterReadyToJoin,
 		ObservedGeneration: mc.GetGeneration(),
 	}
 
@@ -612,6 +620,7 @@ func markMemberClusterJoined(recorder record.EventRecorder, mc apis.ConditionedO
 		Type:               string(clusterv1beta1.ConditionTypeMemberClusterJoined),
 		Status:             metav1.ConditionTrue,
 		Reason:             reasonMemberClusterJoined,
+		Message:            messageMemberClusterJoined,
 		ObservedGeneration: mc.GetGeneration(),
 	}
 
@@ -633,12 +642,14 @@ func markMemberClusterLeft(recorder record.EventRecorder, mc apis.ConditionedObj
 		Type:               string(clusterv1beta1.ConditionTypeMemberClusterJoined),
 		Status:             metav1.ConditionFalse,
 		Reason:             reasonMemberClusterLeft,
+		Message:            messageMemberClusterLeft,
 		ObservedGeneration: mc.GetGeneration(),
 	}
 	notReadyCondition := metav1.Condition{
 		Type:               string(clusterv1beta1.ConditionTypeMemberClusterReadyToJoin),
 		Status:             metav1.ConditionFalse,
 		Reason:             reasonMemberClusterNotReadyToJoin,
+		Message:            messageMemberClusterNotReadyToJoin,
 		ObservedGeneration: mc.GetGeneration(),
 	}
 
@@ -660,6 +671,7 @@ func markMemberClusterUnknown(recorder record.EventRecorder, mc apis.Conditioned
 		Type:               string(clusterv1beta1.ConditionTypeMemberClusterJoined),
 		Status:             metav1.ConditionUnknown,
 		Reason:             reasonMemberClusterUnknown,
+		Message:            messageMemberClusterUnknown,
 		ObservedGeneration: mc.GetGeneration(),
 	}
 
