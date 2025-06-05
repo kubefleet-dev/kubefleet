@@ -1968,6 +1968,162 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			checkPlacementStatusMetric(wantMetrics)
 		})
 	})
+
+	Context("When creating an ClusterResourcePlacement with External RolloutStrategy", func() {
+		BeforeEach(func() {
+			// Reset metric before each test
+			metrics.FleetPlacementStatusLastTimeStampSeconds.Reset()
+
+			By("Create a new crp with external rollout strategy")
+			crp = &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testCRPName,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+						{
+							Group:   corev1.GroupName,
+							Version: "v1",
+							Kind:    "Namespace",
+							LabelSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"region": "east"},
+							},
+						},
+					},
+					RevisionHistoryLimit: ptr.To(int32(1)),
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.ExternalRolloutStrategyType,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, crp)).Should(Succeed(), "Failed to create crp with user error")
+
+			By("Check clusterSchedulingPolicySnapshot")
+			gotPolicySnapshot = checkClusterSchedulingPolicySnapshot()
+
+			By("Check clusterResourceSnapshot")
+			gotResourceSnapshot = checkClusterResourceSnapshot()
+
+			By("Validate CRP status")
+			wantCRP := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       testCRPName,
+					Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+				},
+				Spec: crp.Spec,
+				Status: placementv1beta1.PlacementStatus{
+					ObservedResourceIndex: "0",
+					Conditions: []metav1.Condition{
+						{
+							Status: metav1.ConditionUnknown,
+							Type:   string(placementv1beta1.ClusterResourcePlacementScheduledConditionType),
+							Reason: SchedulingUnknownReason,
+						},
+					},
+				},
+			}
+			gotCRP = retrieveAndValidateClusterResourcePlacement(crp.Name, wantCRP)
+		})
+
+		AfterEach(func() {
+			By("Deleting crp")
+			Expect(k8sClient.Delete(ctx, gotCRP)).Should(Succeed())
+			retrieveAndValidateCRPDeletion(gotCRP)
+		})
+
+		It("Emit metrics for CRP with external rollout strategy", func() {
+			By("Ensure placement status metric was emitted")
+			wantMetrics := []*prometheusclientmodel.Metric{
+				{
+					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
+						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
+						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: ptr.To("reason"), Value: ptr.To(SchedulingUnknownReason)},
+					},
+					Gauge: &prometheusclientmodel.Gauge{
+						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+					},
+				},
+			}
+			checkPlacementStatusMetric(wantMetrics)
+
+			By("Update clusterSchedulingPolicySnapshot status to schedule success")
+			updateClusterSchedulingPolicySnapshotStatus(metav1.ConditionTrue, true)
+
+			By("Validate the CRP status")
+			wantCRP := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       testCRPName,
+					Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+				},
+				Spec: crp.Spec,
+				Status: placementv1beta1.PlacementStatus{
+					Conditions: []metav1.Condition{
+						{
+							Status: metav1.ConditionTrue,
+							Type:   string(placementv1beta1.ClusterResourcePlacementScheduledConditionType),
+							Reason: ResourceScheduleSucceededReason,
+						},
+						{
+							Status: metav1.ConditionUnknown,
+							Type:   string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType),
+							Reason: condition.RolloutControlledByExternalControllerReason,
+						},
+					},
+					PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+						{
+							ClusterName: member1Name,
+							Conditions: []metav1.Condition{
+								{
+									Status: metav1.ConditionTrue,
+									Type:   string(placementv1beta1.ResourceScheduledConditionType),
+									Reason: condition.ScheduleSucceededReason,
+								},
+								{
+									Status: metav1.ConditionUnknown,
+									Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+									Reason: condition.RolloutStartedUnknownReason,
+								},
+							},
+						},
+						{
+							ClusterName: member2Name,
+							Conditions: []metav1.Condition{
+								{
+									Status: metav1.ConditionTrue,
+									Type:   string(placementv1beta1.ResourceScheduledConditionType),
+									Reason: condition.ScheduleSucceededReason,
+								},
+								{
+									Status: metav1.ConditionUnknown,
+									Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+									Reason: condition.RolloutStartedUnknownReason,
+								},
+							},
+						},
+					},
+				},
+			}
+			gotCRP = retrieveAndValidateClusterResourcePlacement(testCRPName, wantCRP)
+
+			By("Ensure placement status metric for rollout external was emitted")
+			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
+				Label: []*prometheusclientmodel.LabelPair{
+					{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
+					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
+					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
+					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+					{Name: ptr.To("reason"), Value: ptr.To(condition.RolloutControlledByExternalControllerReason)},
+				},
+				Gauge: &prometheusclientmodel.Gauge{
+					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+				},
+			})
+			checkPlacementStatusMetric(wantMetrics)
+		})
+	})
 })
 
 func checkPlacementStatusMetric(wantMetrics []*prometheusclientmodel.Metric) {
