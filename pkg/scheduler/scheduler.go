@@ -360,12 +360,12 @@ func (s *Scheduler) lookupLatestPolicySnapshot(ctx context.Context, placement fl
 	case len(policySnapshots) == 0:
 		// There is no latest policy snapshot associated with the placement; it could happen when
 		// * the placement is newly created; or
-		// * the sequence of policy snapshots is in an inconsistent state.
+		// * the new policy snapshots is in the middle of being replaced.
 		//
 		// Either way, it is out of the scheduler's scope to handle such a case; the scheduler will
 		// be triggered again if the situation is corrected.
-		err := controller.NewExpectedBehaviorError(fmt.Errorf("no latest policy snapshot associated with placement"))
-		klog.ErrorS(err, "Failed to find the latest policy snapshot", "placement", placementRef)
+		err := fmt.Errorf("no latest policy snapshot associated with placement")
+		klog.ErrorS(err, "Failed to find the latest policy snapshot, will retry", "placement", placementRef)
 		return nil, err
 	case len(policySnapshots) > 1:
 		// There are multiple active policy snapshots associated with the placement; normally this

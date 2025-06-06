@@ -106,6 +106,14 @@ type SchedulingPolicySnapshotSpec struct {
 	PolicyHash []byte `json:"policyHash"`
 }
 
+// Tolerations returns tolerations for SchedulingPolicySnapshotSpec to handle nil policy case.
+func (s *SchedulingPolicySnapshotSpec) Tolerations() []Toleration {
+	if s.Policy != nil {
+		return s.Policy.Tolerations
+	}
+	return nil
+}
+
 // SchedulingPolicySnapshotStatus defines the observed state of SchedulingPolicySnapshot.
 type SchedulingPolicySnapshotStatus struct {
 	// +patchMergeKey=type
@@ -191,14 +199,6 @@ type ClusterSchedulingPolicySnapshotList struct {
 	Items           []ClusterSchedulingPolicySnapshot `json:"items"`
 }
 
-// Tolerations returns tolerations for ClusterSchedulingPolicySnapshot.
-func (m *ClusterSchedulingPolicySnapshot) Tolerations() []Toleration {
-	if m.Spec.Policy != nil {
-		return m.Spec.Policy.Tolerations
-	}
-	return nil
-}
-
 // SetConditions sets the given conditions on the ClusterSchedulingPolicySnapshot.
 func (m *ClusterSchedulingPolicySnapshot) SetConditions(conditions ...metav1.Condition) {
 	for _, c := range conditions {
@@ -282,14 +282,6 @@ type SchedulingPolicySnapshotList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []SchedulingPolicySnapshot `json:"items"`
-}
-
-// Tolerations returns tolerations for ClusterSchedulingPolicySnapshot.
-func (m *SchedulingPolicySnapshot) Tolerations() []Toleration {
-	if m.Spec.Policy != nil {
-		return m.Spec.Policy.Tolerations
-	}
-	return nil
 }
 
 // SetConditions sets the given conditions on the ClusterSchedulingPolicySnapshot.

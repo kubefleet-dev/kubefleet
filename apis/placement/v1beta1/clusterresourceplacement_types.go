@@ -105,6 +105,14 @@ type PlacementSpec struct {
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
 }
 
+// Tolerations returns tolerations for PlacementSpec to handle nil policy case.
+func (p *PlacementSpec) Tolerations() []Toleration {
+	if p.Policy != nil {
+		return p.Policy.Tolerations
+	}
+	return nil
+}
+
 // TODO: rename this to ResourceSelectorTerm
 // ClusterResourceSelector is used to select cluster scoped resources as the target resources to be placed.
 // All the fields are `ANDed`. In other words, a resource must match all the fields to be selected.
@@ -1273,14 +1281,6 @@ type ClusterResourcePlacementList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ClusterResourcePlacement `json:"items"`
-}
-
-// Tolerations returns tolerations for ClusterResourcePlacement.
-func (m *ClusterResourcePlacement) Tolerations() []Toleration {
-	if m.Spec.Policy != nil {
-		return m.Spec.Policy.Tolerations
-	}
-	return nil
 }
 
 // SetConditions sets the conditions of the ClusterResourcePlacement.

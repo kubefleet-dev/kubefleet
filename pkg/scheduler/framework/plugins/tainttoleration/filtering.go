@@ -23,7 +23,7 @@ func (p *Plugin) Filter(
 	policy placementv1beta1.PolicySnapshotObj,
 	cluster *clusterv1beta1.MemberCluster,
 ) (status *framework.Status) {
-	taint, isUntolerated := findUntoleratedTaint(cluster.Spec.Taints, policy.GetPolicySnapshotSpec().Policy.Tolerations)
+	taint, isUntolerated := findUntoleratedTaint(cluster.Spec.Taints, policy.GetPolicySnapshotSpec().Tolerations())
 	if !isUntolerated {
 		return nil
 	}
