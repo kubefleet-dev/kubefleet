@@ -1195,5 +1195,5 @@ func emitPlacementStatusMetric(crp *fleetv1beta1.ClusterResourcePlacement) {
 
 	// Emit the "Completed" condition metric to indicate that the CRP has completed.
 	// This condition is used solely for metric reporting purposes.
-	metrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(crp.Name, strconv.FormatInt(crp.Generation, 10), "Completed", string(metav1.ConditionTrue), "CRPCompleted").SetToCurrentTime()
+	metrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(crp.Name, strconv.FormatInt(crp.Generation, 10), "Completed", string(metav1.ConditionTrue), "Completed").SetToCurrentTime()
 }

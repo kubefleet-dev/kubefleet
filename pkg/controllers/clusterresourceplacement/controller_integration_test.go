@@ -1379,7 +1379,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 					{Name: ptr.To("conditionType"), Value: ptr.To("Completed")},
 					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionTrue))},
-					{Name: ptr.To("reason"), Value: ptr.To("CRPCompleted")},
+					{Name: ptr.To("reason"), Value: ptr.To("Completed")},
 				},
 				Gauge: &prometheusclientmodel.Gauge{
 					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -1888,7 +1888,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To("Completed")},
 						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionTrue))},
-						{Name: ptr.To("reason"), Value: ptr.To("CRPCompleted")},
+						{Name: ptr.To("reason"), Value: ptr.To("Completed")},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
 						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -1950,7 +1950,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			}
 			gotCRP = retrieveAndValidateClusterResourcePlacement(crp.Name, wantCRP)
 
-			By("Ensure placement status completed metric was emitted")
+			By("Ensure placement status metric was emitted")
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
