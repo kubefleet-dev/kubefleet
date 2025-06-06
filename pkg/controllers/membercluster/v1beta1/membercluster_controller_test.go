@@ -913,7 +913,8 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 						{
 							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
 							Status: metav1.ConditionFalse,
-							Reason: reasonMemberClusterLeft},
+							Reason: reasonMemberClusterLeft,
+						},
 						{
 							Type:   string(clusterv1beta1.ConditionTypeMemberClusterReadyToJoin),
 							Status: metav1.ConditionFalse,
