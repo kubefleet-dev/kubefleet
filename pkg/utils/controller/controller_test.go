@@ -139,7 +139,7 @@ func TestNewAPIServerError(t *testing.T) {
 			name:      "reading from cache: unexpectedBehaviorError",
 			fromCache: true,
 			err:       apierrors.NewConflict(schema.GroupResource{}, "conflict", nil),
-			wantErr:   ErrUnexpectedBehavior,
+			wantErr:   ErrAPIServerError,
 		},
 		{
 			name:      "reading from API server: apiServerError",
