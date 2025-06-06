@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -69,6 +69,9 @@ var (
 // NewUnexpectedBehaviorError returns ErrUnexpectedBehavior type error when err is not nil.
 func NewUnexpectedBehaviorError(err error) error {
 	if err != nil {
+		if !isUnexpectedCacheError(err) {
+			return NewAPIServerError(false, err)
+		}
 		klog.ErrorS(err, "Unexpected behavior identified by the controller", "stackTrace", debug.Stack())
 		return fmt.Errorf("%w: %v", ErrUnexpectedBehavior, err.Error())
 	}
@@ -99,7 +102,8 @@ func NewAPIServerError(fromCache bool, err error) error {
 func isUnexpectedCacheError(err error) bool {
 	// may need to add more error code based on the production
 	// Cache will return notFound for GET.
-	return !apierrors.IsNotFound(err)
+	var statusErr *apierrors.StatusError
+	return !apierrors.IsNotFound(err) && !errors.Is(err, context.Canceled) && !errors.As(err, &statusErr) && !errors.Is(err, context.DeadlineExceeded)
 }
 
 // NewUserError returns ErrUserError type error when err is not nil.
