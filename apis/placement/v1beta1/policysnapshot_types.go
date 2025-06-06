@@ -32,6 +32,13 @@ const (
 	NumberOfClustersAnnotation = fleetPrefix + "number-of-clusters"
 )
 
+// make sure the PolicySnapshotObj and PolicySnapshotList interfaces are implemented by the
+// ClusterSchedulingPolicySnapshot and SchedulingPolicySnapshot types.
+var _ PolicySnapshotObj = &ClusterSchedulingPolicySnapshot{}
+var _ PolicySnapshotObj = &SchedulingPolicySnapshot{}
+var _ PolicySnapshotList = &ClusterSchedulingPolicySnapshotList{}
+var _ PolicySnapshotList = &SchedulingPolicySnapshotList{}
+
 // +genclient
 // +genclient:nonNamespaced
 // +kubebuilder:object:root=true
@@ -61,6 +68,30 @@ type ClusterSchedulingPolicySnapshot struct {
 	// The observed status of SchedulingPolicySnapshot.
 	// +optional
 	Status SchedulingPolicySnapshotStatus `json:"status,omitempty"`
+}
+
+// GetPolicySnapshotSpec returns the policy snapshot spec.
+func (m *ClusterSchedulingPolicySnapshot) GetPolicySnapshotSpec() *SchedulingPolicySnapshotSpec {
+	return &m.Spec
+}
+
+// SetPolicySnapshotSpec sets the policy snapshot spec.
+func (m *ClusterSchedulingPolicySnapshot) SetPolicySnapshotSpec(spec *SchedulingPolicySnapshotSpec) {
+	if spec != nil {
+		m.Spec = *spec
+	}
+}
+
+// GetPolicySnapshotStatus returns the policy snapshot status.
+func (m *ClusterSchedulingPolicySnapshot) GetPolicySnapshotStatus() *SchedulingPolicySnapshotStatus {
+	return &m.Status
+}
+
+// SetPolicySnapshotStatus sets the policy snapshot status.
+func (m *ClusterSchedulingPolicySnapshot) SetPolicySnapshotStatus(status *SchedulingPolicySnapshotStatus) {
+	if status != nil {
+		m.Status = *status
+	}
 }
 
 // SchedulingPolicySnapshotSpec defines the desired state of SchedulingPolicySnapshot.
@@ -180,6 +211,15 @@ func (m *ClusterSchedulingPolicySnapshot) GetCondition(conditionType string) *me
 	return meta.FindStatusCondition(m.Status.Conditions, conditionType)
 }
 
+// GetPolicySnapshotObjs returns the list of PolicySnapshotObj from the ClusterSchedulingPolicySnapshotList.
+func (c *ClusterSchedulingPolicySnapshotList) GetPolicySnapshotObjs() []PolicySnapshotObj {
+	objs := make([]PolicySnapshotObj, 0, len(c.Items))
+	for i := range c.Items {
+		objs = append(objs, &c.Items[i])
+	}
+	return objs
+}
+
 // +genclient
 // +genclient:Namespaced
 // +kubebuilder:object:root=true
@@ -211,6 +251,30 @@ type SchedulingPolicySnapshot struct {
 	Status SchedulingPolicySnapshotStatus `json:"status,omitempty"`
 }
 
+// GetPolicySnapshotSpec returns the policy snapshot spec.
+func (m *SchedulingPolicySnapshot) GetPolicySnapshotSpec() *SchedulingPolicySnapshotSpec {
+	return &m.Spec
+}
+
+// SetPolicySnapshotSpec sets the policy snapshot spec.
+func (m *SchedulingPolicySnapshot) SetPolicySnapshotSpec(spec *SchedulingPolicySnapshotSpec) {
+	if spec != nil {
+		m.Spec = *spec
+	}
+}
+
+// GetPolicySnapshotStatus returns the policy snapshot status.
+func (m *SchedulingPolicySnapshot) GetPolicySnapshotStatus() *SchedulingPolicySnapshotStatus {
+	return &m.Status
+}
+
+// SetPolicySnapshotStatus sets the policy snapshot status.
+func (m *SchedulingPolicySnapshot) SetPolicySnapshotStatus(status *SchedulingPolicySnapshotStatus) {
+	if status != nil {
+		m.Status = *status
+	}
+}
+
 // SchedulingPolicySnapshotList contains a list of SchedulingPolicySnapshotList.
 // +kubebuilder:resource:scope="Namespaced"
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -238,6 +302,15 @@ func (m *SchedulingPolicySnapshot) SetConditions(conditions ...metav1.Condition)
 // GetCondition returns the condition of the given type if exists.
 func (m *SchedulingPolicySnapshot) GetCondition(conditionType string) *metav1.Condition {
 	return meta.FindStatusCondition(m.Status.Conditions, conditionType)
+}
+
+// GetPolicySnapshotObjs returns the list of PolicySnapshotObj from the SchedulingPolicySnapshotList.
+func (c *SchedulingPolicySnapshotList) GetPolicySnapshotObjs() []PolicySnapshotObj {
+	objs := make([]PolicySnapshotObj, 0, len(c.Items))
+	for i := range c.Items {
+		objs = append(objs, &c.Items[i])
+	}
+	return objs
 }
 
 func init() {
