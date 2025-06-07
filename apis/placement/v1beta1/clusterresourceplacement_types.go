@@ -105,6 +105,14 @@ type PlacementSpec struct {
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
 }
 
+// Tolerations returns tolerations for PlacementSpec to handle nil policy case.
+func (p *PlacementSpec) Tolerations() []Toleration {
+	if p.Policy != nil {
+		return p.Policy.Tolerations
+	}
+	return nil
+}
+
 // TODO: rename this to ResourceSelectorTerm
 // ClusterResourceSelector is used to select cluster scoped resources as the target resources to be placed.
 // All the fields are `ANDed`. In other words, a resource must match all the fields to be selected.
@@ -1275,14 +1283,6 @@ type ClusterResourcePlacementList struct {
 	Items           []ClusterResourcePlacement `json:"items"`
 }
 
-// Tolerations returns tolerations for ClusterResourcePlacement.
-func (m *ClusterResourcePlacement) Tolerations() []Toleration {
-	if m.Spec.Policy != nil {
-		return m.Spec.Policy.Tolerations
-	}
-	return nil
-}
-
 // SetConditions sets the conditions of the ClusterResourcePlacement.
 func (m *ClusterResourcePlacement) SetConditions(conditions ...metav1.Condition) {
 	for _, c := range conditions {
@@ -1293,6 +1293,31 @@ func (m *ClusterResourcePlacement) SetConditions(conditions ...metav1.Condition)
 // GetCondition returns the condition of the ClusterResourcePlacement objects.
 func (m *ClusterResourcePlacement) GetCondition(conditionType string) *metav1.Condition {
 	return meta.FindStatusCondition(m.Status.Conditions, conditionType)
+}
+
+// GetPlacementSpec returns the placement spec.
+func (m *ClusterResourcePlacement) GetPlacementSpec() *PlacementSpec {
+	return &m.Spec
+}
+
+// SetPlacementSpec sets the placement spec.
+func (m *ClusterResourcePlacement) SetPlacementSpec(spec *PlacementSpec) {
+	if spec != nil {
+		m.Spec = *spec
+	}
+}
+
+// GetPlacementStatus returns the placement status.
+func (m *ClusterResourcePlacement) GetPlacementStatus() *PlacementStatus {
+	status := m.Status
+	return &status
+}
+
+// SetPlacementStatus sets the placement status.
+func (m *ClusterResourcePlacement) SetPlacementStatus(status *PlacementStatus) {
+	if status != nil {
+		m.Status = *status
+	}
 }
 
 const (
@@ -1354,6 +1379,30 @@ func (m *ResourcePlacement) SetConditions(conditions ...metav1.Condition) {
 // GetCondition returns the condition of the ResourcePlacement objects.
 func (m *ResourcePlacement) GetCondition(conditionType string) *metav1.Condition {
 	return meta.FindStatusCondition(m.Status.Conditions, conditionType)
+}
+
+// GetPlacementSpec returns the placement spec.
+func (m *ResourcePlacement) GetPlacementSpec() *PlacementSpec {
+	return &m.Spec
+}
+
+// SetPlacementSpec sets the placement spec.
+func (m *ResourcePlacement) SetPlacementSpec(spec *PlacementSpec) {
+	if spec != nil {
+		m.Spec = *spec
+	}
+}
+
+// GetPlacementStatus returns the placement status.
+func (m *ResourcePlacement) GetPlacementStatus() *PlacementStatus {
+	return &m.Status
+}
+
+// SetPlacementStatus sets the placement status.
+func (m *ResourcePlacement) SetPlacementStatus(status *PlacementStatus) {
+	if status != nil {
+		m.Status = *status
+	}
 }
 
 func init() {

@@ -40,7 +40,7 @@ type Reconciler struct {
 	// Client is the client the controller uses to access the hub cluster.
 	client.Client
 	// SchedulerWorkQueue is the workqueue in use by the scheduler.
-	SchedulerWorkQueue queue.ClusterResourcePlacementSchedulingQueueWriter
+	SchedulerWorkQueue queue.PlacementSchedulingQueueWriter
 }
 
 // Reconcile reconciles the CRP.
@@ -64,7 +64,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if crp.DeletionTimestamp != nil && controllerutil.ContainsFinalizer(crp, fleetv1beta1.SchedulerCRPCleanupFinalizer) {
 		// The CRP has been deleted and still has the scheduler finalizer;
 		// enqueue it for the scheduler to process.
-		r.SchedulerWorkQueue.AddRateLimited(queue.ClusterResourcePlacementKey(crp.Name))
+		r.SchedulerWorkQueue.AddRateLimited(queue.PlacementKey(crp.Name))
 	}
 
 	// No action is needed for the scheduler to take in other cases.
