@@ -19,6 +19,7 @@ package v1beta1
 import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -246,6 +247,24 @@ type ResourceBindingList struct {
 	Items []ResourceBinding `json:"items"`
 }
 
+// GetBindingObjs returns the binding objects in the list.
+func (c *ClusterResourceBindingList) GetBindingObjs() []BindingObj {
+	objs := make([]BindingObj, 0, len(c.Items))
+	for i := range c.Items {
+		objs = append(objs, &c.Items[i])
+	}
+	return objs
+}
+
+// GetBindingObjs returns the binding objects in the list.
+func (r *ResourceBindingList) GetBindingObjs() []BindingObj {
+	objs := make([]BindingObj, 0, len(r.Items))
+	for i := range r.Items {
+		objs = append(objs, &r.Items[i])
+	}
+	return objs
+}
+
 // SetConditions set the given conditions on the ClusterResourceBinding.
 func (b *ClusterResourceBinding) SetConditions(conditions ...metav1.Condition) {
 	for _, c := range conditions {
@@ -326,6 +345,48 @@ func (b *ResourceBinding) SetBindingStatus(status *ResourceBindingStatus) {
 	if status != nil {
 		b.Status = *status
 	}
+}
+
+// make sure the BindingObj and BindingObjList interfaces are implemented by the
+// ClusterResourceBinding and ResourceBinding types.
+var _ BindingObj = &ClusterResourceBinding{}
+var _ BindingObj = &ResourceBinding{}
+var _ BindingObjList = &ClusterResourceBindingList{}
+var _ BindingObjList = &ResourceBindingList{}
+
+// A BindingSpecGetSetter contains binding spec
+// +kubebuilder:object:generate=false
+type BindingSpecGetSetter interface {
+	GetBindingSpec() *ResourceBindingSpec
+	SetBindingSpec(*ResourceBindingSpec)
+}
+
+// A BindingStatusGetSetter contains binding status
+// +kubebuilder:object:generate=false
+type BindingStatusGetSetter interface {
+	GetBindingStatus() *ResourceBindingStatus
+	SetBindingStatus(*ResourceBindingStatus)
+}
+
+// A BindingObj is for kubernetes resource binding object.
+// +kubebuilder:object:generate=false
+type BindingObj interface {
+	client.Object
+	BindingSpecGetSetter
+	BindingStatusGetSetter
+}
+
+// A BindingListItemGetter contains binding list items
+// +kubebuilder:object:generate=false
+type BindingListItemGetter interface {
+	GetBindingObjs() []BindingObj
+}
+
+// A BindingObjList is for kubernetes resource binding list object.
+// +kubebuilder:object:generate=false
+type BindingObjList interface {
+	client.ObjectList
+	BindingListItemGetter
 }
 
 func init() {

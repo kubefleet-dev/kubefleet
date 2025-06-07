@@ -285,7 +285,12 @@ func (s *Scheduler) cleanUpAllBindingsFor(ctx context.Context, placement fleetv1
 	//
 	// Note that the listing is performed using the uncached client; this is to ensure that all related
 	// bindings can be found, even if they have not been synced to the cache yet.
-	bindingList := &fleetv1beta1.ClusterResourceBindingList{}
+	var bindingList fleetv1beta1.BindingObjList
+	if placement.GetNamespace() == "" {
+		bindingList = &fleetv1beta1.ClusterResourceBindingList{}
+	} else {
+		bindingList = &fleetv1beta1.ResourceBindingList{}
+	}
 	listOptions := client.MatchingLabels{
 		fleetv1beta1.CRPTrackingLabel: string(placementKey),
 	}
@@ -303,15 +308,16 @@ func (s *Scheduler) cleanUpAllBindingsFor(ctx context.Context, placement fleetv1
 	// Also note that for deleted placements, derived bindings are deleted right away by the scheduler;
 	// the scheduler no longer marks them as deleting and waits for another controller to actually
 	// run the deletion.
-	for idx := range bindingList.Items {
-		binding := &bindingList.Items[idx]
+	bindings := bindingList.GetBindingObjs()
+	for idx := range bindings {
+		binding := bindings[idx]
 		controllerutil.RemoveFinalizer(binding, fleetv1beta1.SchedulerCRBCleanupFinalizer)
 		if err := s.client.Update(ctx, binding); err != nil {
 			klog.ErrorS(err, "Failed to remove scheduler reconcile finalizer from cluster resource binding", "clusterResourceBinding", klog.KObj(binding))
 			return controller.NewUpdateIgnoreConflictError(err)
 		}
 		// Delete the binding if it has not been marked for deletion yet.
-		if binding.DeletionTimestamp == nil {
+		if binding.GetDeletionTimestamp() == nil {
 			if err := s.client.Delete(ctx, binding); err != nil && !errors.IsNotFound(err) {
 				klog.ErrorS(err, "Failed to delete binding", "clusterResourceBinding", klog.KObj(binding))
 				return controller.NewAPIServerError(false, err)

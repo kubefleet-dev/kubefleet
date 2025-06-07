@@ -19,6 +19,7 @@ package v1beta1
 import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -249,6 +250,41 @@ type SchedulingPolicySnapshot struct {
 	// The observed status of SchedulingPolicySnapshot.
 	// +optional
 	Status SchedulingPolicySnapshotStatus `json:"status,omitempty"`
+}
+
+// A PolicySnapshotSpecGetSetter contains policy snapshot spec
+// +kubebuilder:object:generate=false
+type PolicySnapshotSpecGetSetter interface {
+	GetPolicySnapshotSpec() *SchedulingPolicySnapshotSpec
+	SetPolicySnapshotSpec(*SchedulingPolicySnapshotSpec)
+}
+
+// A PolicySnapshotStatusGetSetter contains policy snapshot status
+// +kubebuilder:object:generate=false
+type PolicySnapshotStatusGetSetter interface {
+	GetPolicySnapshotStatus() *SchedulingPolicySnapshotStatus
+	SetPolicySnapshotStatus(*SchedulingPolicySnapshotStatus)
+}
+
+// A PolicySnapshotObj is for kubernetes policy snapshot object.
+// +kubebuilder:object:generate=false
+type PolicySnapshotObj interface {
+	client.Object
+	PolicySnapshotSpecGetSetter
+	PolicySnapshotStatusGetSetter
+}
+
+// A PolicySnapshotSpec contains policy snapshot spec
+// +kubebuilder:object:generate=false
+type PolicySnapshotListItemGetter interface {
+	GetPolicySnapshotObjs() []PolicySnapshotObj
+}
+
+// A PolicySnapshotList is for kubernetes policy snapshot list object.
+// +kubebuilder:object:generate=false
+type PolicySnapshotList interface {
+	client.ObjectList
+	PolicySnapshotListItemGetter
 }
 
 // GetPolicySnapshotSpec returns the policy snapshot spec.

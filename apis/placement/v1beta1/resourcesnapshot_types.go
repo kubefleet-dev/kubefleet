@@ -20,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -174,6 +175,48 @@ type ResourceSnapshotList struct {
 	Items           []ResourceSnapshot `json:"items"`
 }
 
+// make sure the ResourceSnapshotObj and ResourceSnapshotList interfaces are implemented by the
+// ClusterResourceSnapshot and ResourceSnapshot types.
+var _ ResourceSnapshotObj = &ResourceSnapshot{}
+var _ ResourceSnapshotObj = &ResourceSnapshot{}
+var _ ResourceSnapshotObjList = &ClusterResourceSnapshotList{}
+var _ ResourceSnapshotObjList = &ResourceSnapshotList{}
+
+// A ResourceSnapshotSpecGetSettter contains resource snapshot spec
+// +kubebuilder:object:generate=false
+type ResourceSnapshotSpecGetSettter interface {
+	GetResourceSnapshotSpec() *ResourceSnapshotSpec
+	SetResourceSnapshotSpec(*ResourceSnapshotSpec)
+}
+
+// A ResourceSnapshotStatusGetSetter contains resource snapshot status
+// +kubebuilder:object:generate=false
+type ResourceSnapshotStatusGetSetter interface {
+	GetResourceSnapshotStatus() *ResourceSnapshotStatus
+	SetResourceSnapshotStatus(*ResourceSnapshotStatus)
+}
+
+// A ResourceSnapshotObj is for kubernetes resource snapshot object.
+// +kubebuilder:object:generate=false
+type ResourceSnapshotObj interface {
+	client.Object
+	ResourceSnapshotSpecGetSettter
+	ResourceSnapshotStatusGetSetter
+}
+
+// A ResourceSnapshotSpec contains resource snapshot spec
+// +kubebuilder:object:generate=false
+type ResourceSnapshotListItemGetter interface {
+	GetResourceSnapshotObjs() []ResourceSnapshotObj
+}
+
+// A ResourceSnapshotObjList is for kubernetes resource snapshot list object.
+// +kubebuilder:object:generate=false
+type ResourceSnapshotObjList interface {
+	client.ObjectList
+	ResourceSnapshotListItemGetter
+}
+
 // SetConditions sets the conditions for a ClusterResourceSnapshot.
 func (m *ClusterResourceSnapshot) SetConditions(conditions ...metav1.Condition) {
 	for _, c := range conditions {
@@ -210,6 +253,15 @@ func (m *ClusterResourceSnapshot) SetResourceSnapshotStatus(status *ResourceSnap
 	}
 }
 
+// ClusterResourceSnapshotList returns the list of ResourceSnapshotObj from the ResourceSnapshotList.
+func (c *ClusterResourceSnapshotList) GetResourceSnapshotObjs() []ResourceSnapshotObj {
+	objs := make([]ResourceSnapshotObj, 0, len(c.Items))
+	for i := range c.Items {
+		objs = append(objs, &c.Items[i])
+	}
+	return objs
+}
+
 // SetConditions sets the conditions for a ResourceSnapshot.
 func (m *ResourceSnapshot) SetConditions(conditions ...metav1.Condition) {
 	for _, c := range conditions {
@@ -244,6 +296,15 @@ func (m *ResourceSnapshot) SetResourceSnapshotStatus(status *ResourceSnapshotSta
 	if status != nil {
 		m.Status = *status
 	}
+}
+
+// GetResourceSnapshotObjs returns the list of ResourceSnapshotObj from the ResourceSnapshotList.
+func (c *ResourceSnapshotList) GetResourceSnapshotObjs() []ResourceSnapshotObj {
+	objs := make([]ResourceSnapshotObj, 0, len(c.Items))
+	for i := range c.Items {
+		objs = append(objs, &c.Items[i])
+	}
+	return objs
 }
 
 func init() {
