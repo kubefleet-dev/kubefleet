@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -178,7 +178,7 @@ func prepareAppliedWorkOwnerRef(workName string) *metav1.OwnerReference {
 		Kind:               "AppliedWork",
 		Name:               appliedWork.Name,
 		UID:                appliedWork.GetUID(),
-		BlockOwnerDeletion: ptr.To(false),
+		BlockOwnerDeletion: ptr.To(true),
 	}
 }
 
@@ -437,7 +437,18 @@ func appliedWorkStatusUpdated(workName string, appliedResourceMeta []fleetv1beta
 	}
 }
 
-func cleanupWorkObject(workName string) {
+func workRemovedActual(workName string) func() error {
+	// Wait for the removal of the Work object.
+	return func() error {
+		work := &fleetv1beta1.Work{}
+		if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName}, work); !errors.IsNotFound(err) {
+			return fmt.Errorf("work object still exists or an unexpected error occurred: %w", err)
+		}
+		return nil
+	}
+}
+
+func deleteWorkObject(workName string) {
 	// Retrieve the Work object.
 	work := &fleetv1beta1.Work{
 		ObjectMeta: metav1.ObjectMeta{
@@ -446,16 +457,15 @@ func cleanupWorkObject(workName string) {
 		},
 	}
 	Expect(hubClient.Delete(ctx, work)).To(Succeed(), "Failed to delete the Work object")
-
-	// Wait for the removal of the Work object.
-	workRemovedActual := func() error {
-		work := &fleetv1beta1.Work{}
-		if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName}, work); !errors.IsNotFound(err) {
-			return fmt.Errorf("work object still exists or an unexpected error occurred: %w", err)
-		}
-		return nil
+}
+func removeAppliedWorkFinalizer(appliedWork *fleetv1beta1.AppliedWork) error {
+	// Remove the finalizer from the AppliedWork object. Finalizer needs to be removed manually because placed namespace
+	// is not deleted in the envtest environment. Therefore, the AppliedWork object finalizer is not removed automatically.
+	if controllerutil.ContainsFinalizer(appliedWork, metav1.FinalizerDeleteDependents) {
+		controllerutil.RemoveFinalizer(appliedWork, metav1.FinalizerDeleteDependents)
+		return memberClient.Update(ctx, appliedWork)
 	}
-	Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
+	return nil
 }
 
 func appliedWorkRemovedActual(workName string) func() error {
@@ -463,6 +473,9 @@ func appliedWorkRemovedActual(workName string) func() error {
 		// Retrieve the AppliedWork object.
 		appliedWork := &fleetv1beta1.AppliedWork{}
 		if err := memberClient.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); !errors.IsNotFound(err) {
+			if !appliedWork.DeletionTimestamp.IsZero() {
+				Expect(removeAppliedWorkFinalizer(appliedWork)).To(Succeed(), "Failed to remove the finalizer from the AppliedWork object")
+			}
 			return fmt.Errorf("appliedWork object still exists or an unexpected error occurred: %w", err)
 		}
 		return nil
@@ -698,14 +711,18 @@ var _ = Describe("applying manifests", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure applied manifest has been removed.
+			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
+			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
-			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
@@ -953,12 +970,14 @@ var _ = Describe("applying manifests", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
 		})
@@ -1144,11 +1163,14 @@ var _ = Describe("applying manifests", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
+
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
@@ -1329,15 +1351,266 @@ var _ = Describe("applying manifests", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
 
-			// Ensure that all applied manifests have been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
-			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
-
+			// Ensure applied manifest has been removed.
 			regularConfigMapRemovedActual := regularConfigMapRemovedActual(nsName, configMapName)
 			Eventually(regularConfigMapRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the ConfigMap object")
 
+			// Ensure that the AppliedWork object has been removed.
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
+
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
+
+			// The environment prepared by the envtest package does not support namespace
+			// deletion; consequently this test suite would not attempt so verify its deletion.
+		})
+	})
+
+	Context("owner reference blockOwnerDeletion update integration", Ordered, func() {
+		workName := fmt.Sprintf(workNameTemplate, utils.RandStr())
+		// The environment prepared by the envtest package does not support namespace
+		// deletion; each test case would use a new namespace.
+		nsName := fmt.Sprintf(nsNameTemplate, utils.RandStr())
+		anotherOwnerReference := metav1.OwnerReference{
+			APIVersion: "another-api-version",
+			Kind:       "another-kind",
+			Name:       "another-owner",
+			UID:        "another-uid",
+		}
+
+		var appliedWorkOwnerRef *metav1.OwnerReference
+		var regularNS *corev1.Namespace
+		var regularDeploy *appsv1.Deployment
+
+		BeforeAll(func() {
+			// Prepare a NS object.
+			regularNS = ns.DeepCopy()
+			regularNS.Name = nsName
+			regularNSJSON := marshalK8sObjJSON(regularNS)
+
+			// Prepare a Deployment object.
+			regularDeploy = deploy.DeepCopy()
+			regularDeploy.Namespace = nsName
+			regularDeploy.Name = deployName
+			regularDeployJSON := marshalK8sObjJSON(regularDeploy)
+
+			// Create a new Work object with all the manifest JSONs.
+			createWorkObject(workName, &fleetv1beta1.ApplyStrategy{AllowCoOwnership: true}, regularNSJSON, regularDeployJSON)
+		})
+
+		It("should add cleanup finalizer to the Work object", func() {
+			finalizerAddedActual := workFinalizerAddedActual(workName)
+			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
+		})
+
+		It("should prepare an AppliedWork object", func() {
+			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
+
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+		})
+
+		It("should apply the manifests", func() {
+			// Ensure that the NS object has been applied as expected.
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
+
+			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+
+			// Ensure that the Deployment object has been applied as expected.
+			regularDeploymentObjectAppliedActual := regularDeploymentObjectAppliedActual(nsName, deployName, appliedWorkOwnerRef)
+			Eventually(regularDeploymentObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the deployment object")
+
+			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
+		})
+
+		It("can mark the deployment as available", func() {
+			markDeploymentAsAvailable(nsName, deployName)
+		})
+
+		It("should update the Work object status", func() {
+			// Prepare the status information.
+			workConds := []metav1.Condition{
+				{
+					Type:   fleetv1beta1.WorkConditionTypeApplied,
+					Status: metav1.ConditionTrue,
+					Reason: WorkAllManifestsAppliedReason,
+				},
+				{
+					Type:   fleetv1beta1.WorkConditionTypeAvailable,
+					Status: metav1.ConditionTrue,
+					Reason: WorkAllManifestsAvailableReason,
+				},
+			}
+			manifestConds := []fleetv1beta1.ManifestCondition{
+				{
+					Identifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:  0,
+						Group:    "",
+						Version:  "v1",
+						Kind:     "Namespace",
+						Resource: "namespaces",
+						Name:     nsName,
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeApplied,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(ManifestProcessingApplyResultTypeApplied),
+							ObservedGeneration: 0,
+						},
+						{
+							Type:               fleetv1beta1.WorkConditionTypeAvailable,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(ManifestProcessingAvailabilityResultTypeAvailable),
+							ObservedGeneration: 0,
+						},
+					},
+				},
+				{
+					Identifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:   1,
+						Group:     "apps",
+						Version:   "v1",
+						Kind:      "Deployment",
+						Resource:  "deployments",
+						Name:      deployName,
+						Namespace: nsName,
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeApplied,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(ManifestProcessingApplyResultTypeApplied),
+							ObservedGeneration: 1,
+						},
+						{
+							Type:               fleetv1beta1.WorkConditionTypeAvailable,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(ManifestProcessingAvailabilityResultTypeAvailable),
+							ObservedGeneration: 1,
+						},
+					},
+				},
+			}
+
+			workStatusUpdatedActual := workStatusUpdated(workName, workConds, manifestConds, nil, nil)
+			Eventually(workStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update work status")
+		})
+
+		It("should update the AppliedWork object status", func() {
+			// Prepare the status information.
+			appliedResourceMeta := []fleetv1beta1.AppliedResourceMeta{
+				{
+					WorkResourceIdentifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:  0,
+						Group:    "",
+						Version:  "v1",
+						Kind:     "Namespace",
+						Resource: "namespaces",
+						Name:     nsName,
+					},
+					UID: regularNS.UID,
+				},
+				{
+					WorkResourceIdentifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:   1,
+						Group:     "apps",
+						Version:   "v1",
+						Kind:      "Deployment",
+						Resource:  "deployments",
+						Name:      deployName,
+						Namespace: nsName,
+					},
+					UID: regularDeploy.UID,
+				},
+			}
+
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
+		})
+
+		It("can update object to add another owner reference", func() {
+			// Retrieve the Deployment object.
+			gotDeploy := &appsv1.Deployment{}
+			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
+
+			// Add another owner reference to the Deployment object.
+			gotDeploy.OwnerReferences = append(gotDeploy.OwnerReferences, anotherOwnerReference)
+			Expect(memberClient.Update(ctx, gotDeploy)).To(Succeed(), "Failed to update the Deployment object with another owner reference")
+
+			// Ensure that the Deployment object has been updated as expected.
+			Eventually(func() error {
+				// Retrieve the Deployment object again.
+				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy); err != nil {
+					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
+				}
+
+				// Check that the Deployment object has been updated as expected.
+				if len(gotDeploy.OwnerReferences) != 2 {
+					return fmt.Errorf("expected 2 owner references, got %d", len(gotDeploy.OwnerReferences))
+				}
+				for _, ownerRef := range gotDeploy.OwnerReferences {
+					if ownerRef.UID == anotherOwnerReference.UID {
+						return nil
+					}
+				}
+				return fmt.Errorf("another owner reference not found in the Deployment object")
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to find another owner reference on Deployment")
+		})
+
+		It("should start deleting the Work object", func() {
+			// Start deleting the Work object.
+			deleteWorkObject(workName)
+		})
+
+		It("should start deleting the AppliedWork object", func() {
+			// Ensure that the Work object is being deleted.
+			Eventually(func() error {
+				appliedWork := &fleetv1beta1.AppliedWork{}
+				if err := memberClient.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); err != nil {
+					return err
+				}
+				if !appliedWork.DeletionTimestamp.IsZero() {
+					return fmt.Errorf("appliedWork object still is not being deleted")
+				}
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to start deleting the AppliedWork object")
+		})
+
+		It("should update owner reference from the Deployment object", func() {
+			// Ensure that the Deployment object has been updated to remove the owner reference.
+			Eventually(func() error {
+				// Retrieve the Deployment object again.
+				gotDeploy := &appsv1.Deployment{}
+				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy); err != nil {
+					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
+				}
+				// Check that the Deployment object has been updated as expected.
+				for _, ownerRef := range gotDeploy.OwnerReferences {
+					if ownerRef.UID == appliedWorkOwnerRef.UID {
+						if *ownerRef.BlockOwnerDeletion {
+							return fmt.Errorf("owner reference from AppliedWork still has BlockOwnerDeletion set to true")
+						}
+					}
+				}
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove owner reference from Deployment")
+		})
+
+		AfterAll(func() {
+			// Delete the Work object and related resources.
+			deleteWorkObject(workName)
+
+			// Ensure that the AppliedWork object has been removed.
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
+
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
 		})
@@ -1513,14 +1786,18 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure applied manifest has been removed.
+			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
+			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
-			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
@@ -1775,15 +2052,18 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
+
+			// Ensure that the Deployment object has been left alone.
+			regularDeployNotRemovedActual := regularDeployNotRemovedActual(nsName, deployName)
+			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			// Ensure that the Deployment object has been left alone.
-			regularDeployNotRemovedActual := regularDeployNotRemovedActual(nsName, deployName)
-			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
@@ -2050,15 +2330,18 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
+
+			// Ensure that the Deployment object has been left alone.
+			regularDeployNotRemovedActual := regularDeployNotRemovedActual(nsName, deployName)
+			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			// Ensure that the Deployment object has been left alone.
-			regularDeployNotRemovedActual := regularDeployNotRemovedActual(nsName, deployName)
-			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
@@ -2461,15 +2744,18 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
+
+			// Ensure that the Deployment object has been left alone.
+			regularDeployNotRemovedActual := regularDeployNotRemovedActual(nsName, deployName)
+			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			// Ensure that the Deployment object has been left alone.
-			regularDeployNotRemovedActual := regularDeployNotRemovedActual(nsName, deployName)
-			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
@@ -2700,11 +2986,14 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
 
 			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
+
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
@@ -2951,11 +3240,14 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
 
 			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
+
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
@@ -3305,11 +3597,14 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
 
 			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
+
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
@@ -3573,6 +3868,21 @@ var _ = Describe("drift detection and takeover", func() {
 			workStatusUpdatedActual := workStatusUpdated(workName, workConds, manifestConds, &driftObservedMustBeforeTimestamp, &firstDriftedMustBeforeTimestamp)
 			Eventually(workStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update work status")
 		})
+
+		AfterAll(func() {
+			// Delete the Work object and related resources.
+			deleteWorkObject(workName)
+
+			// Ensure that the AppliedWork object has been removed.
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
+
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
+
+			// The environment prepared by the envtest package does not support namespace
+			// deletion; consequently this test suite would not attempt so verify its deletion.
+		})
 	})
 
 	Context("never take over", Ordered, func() {
@@ -3739,14 +4049,18 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure applied manifest has been removed.
+			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
+			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
-			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
@@ -3845,11 +4159,14 @@ var _ = Describe("report diff", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
 
 			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
+
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
@@ -4166,15 +4483,18 @@ var _ = Describe("report diff", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
+
+			// Ensure that the Deployment object has been left alone.
+			regularDeployNotRemovedActual := regularDeployNotRemovedActual(nsName, deployName)
+			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			// Ensure that the Deployment object has been left alone.
-			regularDeployNotRemovedActual := regularDeployNotRemovedActual(nsName, deployName)
-			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
@@ -4378,14 +4698,18 @@ var _ = Describe("report diff", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure applied manifest has been removed.
+			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
+			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
-			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
@@ -4736,14 +5060,18 @@ var _ = Describe("switch apply strategies", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure applied manifest has been removed.
+			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
+			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
-			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
@@ -4989,14 +5317,18 @@ var _ = Describe("switch apply strategies", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure applied manifest has been removed.
+			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
+			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
-			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
@@ -5366,14 +5698,18 @@ var _ = Describe("switch apply strategies", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
 
-			// Ensure that all applied manifests have been removed.
+			// Ensure applied manifest has been removed.
+			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
+			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+
+			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
-			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.

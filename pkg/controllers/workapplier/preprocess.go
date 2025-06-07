@@ -544,7 +544,10 @@ func isInMemberClusterObjectDerivedFromManifestObj(inMemberClusterObj *unstructu
 	// Verify if the owner reference still stands.
 	curOwners := inMemberClusterObj.GetOwnerReferences()
 	for idx := range curOwners {
-		if reflect.DeepEqual(curOwners[idx], *expectedAppliedWorkOwnerRef) {
+		if curOwners[idx].UID == expectedAppliedWorkOwnerRef.UID &&
+			curOwners[idx].Name == expectedAppliedWorkOwnerRef.Name &&
+			curOwners[idx].Kind == expectedAppliedWorkOwnerRef.Kind &&
+			curOwners[idx].APIVersion == expectedAppliedWorkOwnerRef.APIVersion {
 			return true
 		}
 	}
