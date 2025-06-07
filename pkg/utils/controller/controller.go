@@ -69,6 +69,9 @@ var (
 // NewUnexpectedBehaviorError returns ErrUnexpectedBehavior type error when err is not nil.
 func NewUnexpectedBehaviorError(err error) error {
 	if err != nil {
+		if !isUnexpectedCacheError(err) {
+			return NewAPIServerError(false, err)
+		}
 		klog.ErrorS(err, "Unexpected behavior identified by the controller", "stackTrace", debug.Stack())
 		return fmt.Errorf("%w: %v", ErrUnexpectedBehavior, err.Error())
 	}
@@ -99,7 +102,8 @@ func NewAPIServerError(fromCache bool, err error) error {
 func isUnexpectedCacheError(err error) bool {
 	// may need to add more error code based on the production
 	// Cache will return notFound for GET.
-	return !apierrors.IsNotFound(err)
+	var statusErr *apierrors.StatusError
+	return !apierrors.IsNotFound(err) && !errors.Is(err, context.Canceled) && !errors.As(err, &statusErr) && !errors.Is(err, context.DeadlineExceeded)
 }
 
 // NewUserError returns ErrUserError type error when err is not nil.
