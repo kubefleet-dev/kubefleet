@@ -263,6 +263,30 @@ func (b *ClusterResourceBinding) GetCondition(conditionType string) *metav1.Cond
 	return meta.FindStatusCondition(b.Status.Conditions, conditionType)
 }
 
+// GetBindingSpec returns the binding spec.
+func (b *ClusterResourceBinding) GetBindingSpec() *ResourceBindingSpec {
+	return &b.Spec
+}
+
+// SetBindingSpec sets the binding spec.
+func (b *ClusterResourceBinding) SetBindingSpec(spec *ResourceBindingSpec) {
+	if spec != nil {
+		b.Spec = *spec
+	}
+}
+
+// GetBindingStatus returns the binding status.
+func (b *ClusterResourceBinding) GetBindingStatus() *ResourceBindingStatus {
+	return &b.Status
+}
+
+// SetBindingStatus sets the binding status.
+func (b *ClusterResourceBinding) SetBindingStatus(status *ResourceBindingStatus) {
+	if status != nil {
+		b.Status = *status
+	}
+}
+
 // SetConditions set the given conditions on the ResourceBinding.
 func (b *ResourceBinding) SetConditions(conditions ...metav1.Condition) {
 	for _, c := range conditions {
@@ -278,6 +302,30 @@ func (b *ResourceBinding) RemoveCondition(conditionType string) {
 // GetCondition returns the condition of the given ResourceBinding.
 func (b *ResourceBinding) GetCondition(conditionType string) *metav1.Condition {
 	return meta.FindStatusCondition(b.Status.Conditions, conditionType)
+}
+
+// GetBindingSpec returns the binding spec.
+func (b *ResourceBinding) GetBindingSpec() *ResourceBindingSpec {
+	return &b.Spec
+}
+
+// SetBindingSpec sets the binding spec.
+func (b *ResourceBinding) SetBindingSpec(spec *ResourceBindingSpec) {
+	if spec != nil {
+		b.Spec = *spec
+	}
+}
+
+// GetBindingStatus returns the binding status.
+func (b *ResourceBinding) GetBindingStatus() *ResourceBindingStatus {
+	return &b.Status
+}
+
+// SetBindingStatus sets the binding status.
+func (b *ResourceBinding) SetBindingStatus(status *ResourceBindingStatus) {
+	if status != nil {
+		b.Status = *status
+	}
 }
 
 func init() {

@@ -55,7 +55,7 @@ type Scheduler struct {
 
 	// queue is the work queue in use by the scheduler; the scheduler pulls items from the queue and
 	// performs scheduling in accordance with them.
-	queue queue.ClusterResourcePlacementSchedulingQueue
+	queue queue.PlacementSchedulingQueue
 
 	// client is the (cached) client in use by the scheduler for accessing Kubernetes API server.
 	client client.Client
@@ -81,7 +81,7 @@ type Scheduler struct {
 func NewScheduler(
 	name string,
 	framework framework.Framework,
-	queue queue.ClusterResourcePlacementSchedulingQueue,
+	queue queue.PlacementSchedulingQueue,
 	manager ctrl.Manager,
 	workerNumber int,
 ) *Scheduler {
@@ -103,7 +103,7 @@ func (s *Scheduler) scheduleOnce(ctx context.Context, worker int) {
 	// Retrieve the next item (name of a CRP) from the work queue.
 	//
 	// Note that this will block if no item is available.
-	crpName, closed := s.queue.NextClusterResourcePlacementKey()
+	crpName, closed := s.queue.NextPlacementKey()
 	if closed {
 		// End the run immediately if the work queue has been closed.
 		klog.InfoS("Work queue has been closed")
