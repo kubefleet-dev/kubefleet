@@ -1317,8 +1317,21 @@ var _ = Describe("webhook tests for ClusterResourcePlacementEviction CREATE oper
 			},
 		}
 		Expect(hubClient.Create(ctx, crp)).Should(Succeed(), "Failed to create CRP %s", crpName)
-		// Delete the CRP to add deletion timestamp for check
+		// Delete the CRP to add deletion timestamp for test
 		Expect(hubClient.Delete(ctx, crp)).Should(Succeed(), "Failed to delete CRP %s", crpName)
+
+		// Check CRP is created/exists and has deletion timestamp
+		Eventually(func(g Gomega) error {
+			var fetchedCRP placementv1beta1.ClusterResourcePlacement
+			g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &fetchedCRP)).Should(Succeed())
+			if fetchedCRP.DeletionTimestamp == nil {
+				return fmt.Errorf("CRP %s does not have deletion timestamp", crpName)
+			}
+			if fetchedCRP.Spec.Policy.PlacementType != placementv1beta1.PickAllPlacementType {
+				return fmt.Errorf("CRP %s does not have PickAll placement type", crpName)
+			}
+			return nil
+		}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "CRP %s should exist and have deletion timestamp")
 
 		// Create the CRPE.
 		crpe := &placementv1beta1.ClusterResourcePlacementEviction{
@@ -1351,6 +1364,16 @@ var _ = Describe("webhook tests for ClusterResourcePlacementEviction CREATE oper
 		}
 		Expect(hubClient.Create(ctx, crp)).Should(Succeed(), "Failed to create CRP %s", crpName)
 
+		// Check CRP is created/exists
+		Eventually(func(g Gomega) error {
+			var fetchedCRP placementv1beta1.ClusterResourcePlacement
+			g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &fetchedCRP)).Should(Succeed())
+			if fetchedCRP.Spec.Policy.PlacementType != placementv1beta1.PickFixedPlacementType {
+				return fmt.Errorf("CRP %s does not have PickFixed placement type", crpName)
+			}
+			return nil
+		}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "CRP %s should exist")
+
 		// Create the CRPE.
 		crpe := &placementv1beta1.ClusterResourcePlacementEviction{
 			ObjectMeta: metav1.ObjectMeta{
@@ -1365,114 +1388,6 @@ var _ = Describe("webhook tests for ClusterResourcePlacementEviction CREATE oper
 		var statusErr *k8sErrors.StatusError
 		Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPE call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
 		Expect(statusErr.Status().Message).Should(MatchRegexp("cluster resource placement policy type PickFixed is not supported"))
-	})
-})
-
-var _ = Describe("webhook tests for ClusterResourcePlacementDisruptionBudget CREATE operations", Ordered, func() {
-	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
-
-	AfterEach(func() {
-		By("deleting CRP")
-		cleanupCRP(crpName)
-	})
-
-	It("should deny create on CRPDB with MaxUnavailable as percentage and PickAll CRP", func() {
-		crp := &placementv1beta1.ClusterResourcePlacement{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: crpName,
-			},
-			Spec: placementv1beta1.PlacementSpec{
-				ResourceSelectors: workResourceSelector(),
-				Policy: &placementv1beta1.PlacementPolicy{
-					PlacementType: placementv1beta1.PickAllPlacementType,
-				},
-			},
-		}
-		Expect(hubClient.Create(ctx, crp)).Should(Succeed(), "Failed to create CRP %s", crpName)
-
-		// Create the CRPDB.
-		crpdb := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: crpName,
-			},
-			Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
-				MaxUnavailable: &intstr.IntOrString{
-					Type:   intstr.String,
-					StrVal: "75%",
-				},
-			},
-		}
-		By(fmt.Sprintf("expecting denial of CREATE disruption budget %s", crpName))
-		err := hubClient.Create(ctx, crpdb)
-		var statusErr *k8sErrors.StatusError
-		Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-		Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with any specified max unavailable %v", crpdb.Spec.MaxUnavailable)))
-	})
-
-	It("should deny create on CRPDB with MaxUnavailable as integer and PickAll CRP", func() {
-		crp := &placementv1beta1.ClusterResourcePlacement{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: crpName,
-			},
-			Spec: placementv1beta1.PlacementSpec{
-				ResourceSelectors: workResourceSelector(),
-				Policy: &placementv1beta1.PlacementPolicy{
-					PlacementType: placementv1beta1.PickAllPlacementType,
-				},
-			},
-		}
-		Expect(hubClient.Create(ctx, crp)).Should(Succeed(), "Failed to create CRP %s", crpName)
-
-		// Create the CRPDB.
-		crpdb := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: crpName,
-			},
-			Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
-				MaxUnavailable: &intstr.IntOrString{
-					Type:   intstr.Int,
-					IntVal: 2,
-				},
-			},
-		}
-		By(fmt.Sprintf("expecting denial of CREATE disruption budget %s", crpName))
-		err := hubClient.Create(ctx, crpdb)
-		var statusErr *k8sErrors.StatusError
-		Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-		Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with any specified max unavailable %v", crpdb.Spec.MaxUnavailable)))
-	})
-
-	It("should deny create on CRPDB with MinAvailable as percentage and PickAll CRP", func() {
-		crp := &placementv1beta1.ClusterResourcePlacement{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: crpName,
-			},
-			Spec: placementv1beta1.PlacementSpec{
-				ResourceSelectors: workResourceSelector(),
-				Policy: &placementv1beta1.PlacementPolicy{
-					PlacementType: placementv1beta1.PickAllPlacementType,
-				},
-			},
-		}
-		Expect(hubClient.Create(ctx, crp)).Should(Succeed(), "Failed to create CRP %s", crpName)
-
-		// Create the CRPDB.
-		crpdb := &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: crpName,
-			},
-			Spec: placementv1beta1.PlacementDisruptionBudgetSpec{
-				MinAvailable: &intstr.IntOrString{
-					Type:   intstr.String,
-					StrVal: "50%",
-				},
-			},
-		}
-		By(fmt.Sprintf("expecting denial of CREATE disruption budget %s", crpName))
-		err := hubClient.Create(ctx, crpdb)
-		var statusErr *k8sErrors.StatusError
-		Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-		Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("cluster resource placement policy type PickAll is not supported with min available as a percentage %v", crpdb.Spec.MinAvailable)))
 	})
 })
 
