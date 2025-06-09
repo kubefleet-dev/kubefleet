@@ -28,6 +28,48 @@ const (
 	SchedulerCRBCleanupFinalizer = fleetPrefix + "scheduler-crb-cleanup"
 )
 
+// make sure the BindingObj and BindingObjList interfaces are implemented by the
+// ClusterResourceBinding and ResourceBinding types.
+var _ BindingObj = &ClusterResourceBinding{}
+var _ BindingObj = &ResourceBinding{}
+var _ BindingObjList = &ClusterResourceBindingList{}
+var _ BindingObjList = &ResourceBindingList{}
+
+// A BindingSpecGetterSetter offers binding spec getter and setter methods.
+// +kubebuilder:object:generate=false
+type BindingSpecGetterSetter interface {
+	GetBindingSpec() *ResourceBindingSpec
+	SetBindingSpec(*ResourceBindingSpec)
+}
+
+// A BindingStatusGetterSetter offers binding status getter and setter methods.
+// +kubebuilder:object:generate=false
+type BindingStatusGetterSetter interface {
+	GetBindingStatus() *ResourceBindingStatus
+	SetBindingStatus(*ResourceBindingStatus)
+}
+
+// A BindingObj offers an abstract way to work with fleet binding objects.
+// +kubebuilder:object:generate=false
+type BindingObj interface {
+	client.Object
+	BindingSpecGetterSetter
+	BindingStatusGetterSetter
+}
+
+// A BindingListItemGetter offers a method to get binding objects from a list.
+// +kubebuilder:object:generate=false
+type BindingListItemGetter interface {
+	GetBindingObjs() []BindingObj
+}
+
+// A BindingObjList offers an abstract way to work with list binding objects.
+// +kubebuilder:object:generate=false
+type BindingObjList interface {
+	client.ObjectList
+	BindingListItemGetter
+}
+
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster,categories={fleet,fleet-placement},shortName=crb
 // +kubebuilder:subresource:status
@@ -290,7 +332,7 @@ func (b *ClusterResourceBinding) GetBindingSpec() *ResourceBindingSpec {
 // SetBindingSpec sets the binding spec.
 func (b *ClusterResourceBinding) SetBindingSpec(spec *ResourceBindingSpec) {
 	if spec != nil {
-		b.Spec = *spec
+		spec.DeepCopyInto(&b.Spec)
 	}
 }
 
@@ -302,7 +344,7 @@ func (b *ClusterResourceBinding) GetBindingStatus() *ResourceBindingStatus {
 // SetBindingStatus sets the binding status.
 func (b *ClusterResourceBinding) SetBindingStatus(status *ResourceBindingStatus) {
 	if status != nil {
-		b.Status = *status
+		status.DeepCopyInto(&b.Status)
 	}
 }
 
@@ -331,7 +373,7 @@ func (b *ResourceBinding) GetBindingSpec() *ResourceBindingSpec {
 // SetBindingSpec sets the binding spec.
 func (b *ResourceBinding) SetBindingSpec(spec *ResourceBindingSpec) {
 	if spec != nil {
-		b.Spec = *spec
+		spec.DeepCopyInto(&b.Spec)
 	}
 }
 
@@ -343,50 +385,8 @@ func (b *ResourceBinding) GetBindingStatus() *ResourceBindingStatus {
 // SetBindingStatus sets the binding status.
 func (b *ResourceBinding) SetBindingStatus(status *ResourceBindingStatus) {
 	if status != nil {
-		b.Status = *status
+		status.DeepCopyInto(&b.Status)
 	}
-}
-
-// make sure the BindingObj and BindingObjList interfaces are implemented by the
-// ClusterResourceBinding and ResourceBinding types.
-var _ BindingObj = &ClusterResourceBinding{}
-var _ BindingObj = &ResourceBinding{}
-var _ BindingObjList = &ClusterResourceBindingList{}
-var _ BindingObjList = &ResourceBindingList{}
-
-// A BindingSpecGetSetter contains binding spec
-// +kubebuilder:object:generate=false
-type BindingSpecGetSetter interface {
-	GetBindingSpec() *ResourceBindingSpec
-	SetBindingSpec(*ResourceBindingSpec)
-}
-
-// A BindingStatusGetSetter contains binding status
-// +kubebuilder:object:generate=false
-type BindingStatusGetSetter interface {
-	GetBindingStatus() *ResourceBindingStatus
-	SetBindingStatus(*ResourceBindingStatus)
-}
-
-// A BindingObj is for kubernetes resource binding object.
-// +kubebuilder:object:generate=false
-type BindingObj interface {
-	client.Object
-	BindingSpecGetSetter
-	BindingStatusGetSetter
-}
-
-// A BindingListItemGetter contains binding list items
-// +kubebuilder:object:generate=false
-type BindingListItemGetter interface {
-	GetBindingObjs() []BindingObj
-}
-
-// A BindingObjList is for kubernetes resource binding list object.
-// +kubebuilder:object:generate=false
-type BindingObjList interface {
-	client.ObjectList
-	BindingListItemGetter
 }
 
 func init() {

@@ -21,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -32,6 +33,48 @@ const (
 	// that all bindings derived from a CRP can be cleaned up after the CRP is deleted.
 	SchedulerCRPCleanupFinalizer = fleetPrefix + "scheduler-cleanup"
 )
+
+// make sure the PlacementObj and PlacementObjList interfaces are implemented by the
+// ClusterResourcePlacement and ResourcePlacement types.
+var _ PlacementObj = &ClusterResourcePlacement{}
+var _ PlacementObj = &ResourcePlacement{}
+var _ PlacementObjList = &ClusterResourcePlacementList{}
+var _ PlacementObjList = &ResourcePlacementList{}
+
+// PlacementSpecGetterSetter offers the functionality to work with the PlacementSpecGetterSetter.
+// +kubebuilder:object:generate=false
+type PlacementSpecGetterSetter interface {
+	GetPlacementSpec() *PlacementSpec
+	SetPlacementSpec(*PlacementSpec)
+}
+
+// PlacementStatusGetterSetter offers the functionality to work with the PlacementStatusGetterSetter.
+// +kubebuilder:object:generate=false
+type PlacementStatusGetterSetter interface {
+	GetPlacementStatus() *PlacementStatus
+	SetPlacementStatus(*PlacementStatus)
+}
+
+// PlacementObj offers the functionality to work with fleet placement object.
+// +kubebuilder:object:generate=false
+type PlacementObj interface {
+	client.Object
+	PlacementSpecGetterSetter
+	PlacementStatusGetterSetter
+}
+
+// PlacementListItemGetter offers the functionality to get a list of PlacementObj items.
+// +kubebuilder:object:generate=false
+type PlacementListItemGetter interface {
+	GetPlacementObjs() []PlacementObj
+}
+
+// PlacementObjList offers the functionality to work with fleet placement object list.
+// +kubebuilder:object:generate=false
+type PlacementObjList interface {
+	client.ObjectList
+	PlacementListItemGetter
+}
 
 // +genclient
 // +genclient:nonNamespaced
@@ -1290,6 +1333,15 @@ func (m *ClusterResourcePlacement) SetConditions(conditions ...metav1.Condition)
 	}
 }
 
+// GetPlacementObjs returns the placement objects in the list.
+func (crpl *ClusterResourcePlacementList) GetPlacementObjs() []PlacementObj {
+	objs := make([]PlacementObj, len(crpl.Items))
+	for i := range crpl.Items {
+		objs[i] = &crpl.Items[i]
+	}
+	return objs
+}
+
 // GetCondition returns the condition of the ClusterResourcePlacement objects.
 func (m *ClusterResourcePlacement) GetCondition(conditionType string) *metav1.Condition {
 	return meta.FindStatusCondition(m.Status.Conditions, conditionType)
@@ -1303,7 +1355,7 @@ func (m *ClusterResourcePlacement) GetPlacementSpec() *PlacementSpec {
 // SetPlacementSpec sets the placement spec.
 func (m *ClusterResourcePlacement) SetPlacementSpec(spec *PlacementSpec) {
 	if spec != nil {
-		m.Spec = *spec
+		spec.DeepCopyInto(&m.Spec)
 	}
 }
 
@@ -1316,14 +1368,14 @@ func (m *ClusterResourcePlacement) GetPlacementStatus() *PlacementStatus {
 // SetPlacementStatus sets the placement status.
 func (m *ClusterResourcePlacement) SetPlacementStatus(status *PlacementStatus) {
 	if status != nil {
-		m.Status = *status
+		status.DeepCopyInto(&m.Status)
 	}
 }
 
 const (
-	// PlacementCleanupFinalizer is a finalizer added by the CRP controller to all CRPs, to make sure
-	// that the CRP controller can react to CRP deletions if necessary.
-	PlacementCleanupFinalizer = fleetPrefix + "rp-cleanup"
+	// ResourcePlacementCleanupFinalizer is a finalizer added by the RP controller to all RPs, to make sure
+	// that the RP controller can react to RP deletions if necessary.
+	ResourcePlacementCleanupFinalizer = fleetPrefix + "rp-cleanup"
 )
 
 // +genclient
@@ -1389,7 +1441,7 @@ func (m *ResourcePlacement) GetPlacementSpec() *PlacementSpec {
 // SetPlacementSpec sets the placement spec.
 func (m *ResourcePlacement) SetPlacementSpec(spec *PlacementSpec) {
 	if spec != nil {
-		m.Spec = *spec
+		spec.DeepCopyInto(&m.Spec)
 	}
 }
 
@@ -1401,8 +1453,17 @@ func (m *ResourcePlacement) GetPlacementStatus() *PlacementStatus {
 // SetPlacementStatus sets the placement status.
 func (m *ResourcePlacement) SetPlacementStatus(status *PlacementStatus) {
 	if status != nil {
-		m.Status = *status
+		status.DeepCopyInto(&m.Status)
 	}
+}
+
+// GetPlacementObjs returns the placement objects in the list.
+func (rpl *ResourcePlacementList) GetPlacementObjs() []PlacementObj {
+	objs := make([]PlacementObj, len(rpl.Items))
+	for i := range rpl.Items {
+		objs[i] = &rpl.Items[i]
+	}
+	return objs
 }
 
 func init() {
