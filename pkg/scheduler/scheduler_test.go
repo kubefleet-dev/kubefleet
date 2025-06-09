@@ -409,13 +409,18 @@ func TestCleanUpAllBindingsForWithInterface(t *testing.T) {
 			}
 
 			// Verify bindings were cleaned up
-			bindingList := &fleetv1beta1.ClusterResourceBindingList{}
+			var bindingList fleetv1beta1.BindingObjList
+			if placement.GetNamespace() == "" {
+				bindingList = &fleetv1beta1.ClusterResourceBindingList{}
+			} else {
+				bindingList = &fleetv1beta1.ResourceBindingList{}
+			}
 			if err := fakeClient.List(ctx, bindingList); err != nil {
 				t.Fatalf("List() bindings = %v, want no error", err)
 			}
 
-			if len(bindingList.Items) != 0 {
-				t.Errorf("binding list length = %d, want 0", len(bindingList.Items))
+			if len(bindingList.GetBindingObjs()) != 0 {
+				t.Errorf("binding list length = %d, want 0", len(bindingList.GetBindingObjs()))
 			}
 		})
 	}
