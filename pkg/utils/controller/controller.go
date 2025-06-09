@@ -103,7 +103,7 @@ func isUnexpectedCacheError(err error) bool {
 	// may need to add more error code based on the production
 	// Cache will return notFound for GET.
 	var statusErr *apierrors.StatusError
-	return !apierrors.IsNotFound(err) && !errors.Is(err, context.Canceled) && !errors.As(err, &statusErr) && !errors.Is(err, context.DeadlineExceeded)
+	return !errors.Is(err, context.Canceled) && !errors.As(err, &statusErr) && !errors.Is(err, context.DeadlineExceeded)
 }
 
 // NewUserError returns ErrUserError type error when err is not nil.
