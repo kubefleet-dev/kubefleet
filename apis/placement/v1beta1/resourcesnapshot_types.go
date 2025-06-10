@@ -58,14 +58,14 @@ var _ ResourceSnapshotObjList = &ResourceSnapshotList{}
 // +kubebuilder:object:generate=false
 type ResourceSnapshotSpecGetterSetter interface {
 	GetResourceSnapshotSpec() *ResourceSnapshotSpec
-	SetResourceSnapshotSpec(*ResourceSnapshotSpec)
+	SetResourceSnapshotSpec(ResourceSnapshotSpec)
 }
 
 // A ResourceSnapshotStatusGetterSetter offers methods to get and set the resource snapshot status.
 // +kubebuilder:object:generate=false
 type ResourceSnapshotStatusGetterSetter interface {
 	GetResourceSnapshotStatus() *ResourceSnapshotStatus
-	SetResourceSnapshotStatus(*ResourceSnapshotStatus)
+	SetResourceSnapshotStatus(ResourceSnapshotStatus)
 }
 
 // A ResourceSnapshotObj offers an abstract way to work with a resource snapshot object.
@@ -184,10 +184,8 @@ func (m *ClusterResourceSnapshot) GetResourceSnapshotSpec() *ResourceSnapshotSpe
 }
 
 // SetResourceSnapshotSpec sets the resource snapshot spec.
-func (m *ClusterResourceSnapshot) SetResourceSnapshotSpec(spec *ResourceSnapshotSpec) {
-	if spec != nil {
-		spec.DeepCopyInto(&m.Spec)
-	}
+func (m *ClusterResourceSnapshot) SetResourceSnapshotSpec(spec ResourceSnapshotSpec) {
+	spec.DeepCopyInto(&m.Spec)
 }
 
 // GetResourceSnapshotStatus returns the resource snapshot status.
@@ -196,10 +194,8 @@ func (m *ClusterResourceSnapshot) GetResourceSnapshotStatus() *ResourceSnapshotS
 }
 
 // SetResourceSnapshotStatus sets the resource snapshot status.
-func (m *ClusterResourceSnapshot) SetResourceSnapshotStatus(status *ResourceSnapshotStatus) {
-	if status != nil {
-		status.DeepCopyInto(&m.Status)
-	}
+func (m *ClusterResourceSnapshot) SetResourceSnapshotStatus(status ResourceSnapshotStatus) {
+	status.DeepCopyInto(&m.Status)
 }
 
 // ClusterResourceSnapshotList returns the list of ResourceSnapshotObj from the ResourceSnapshotList.
@@ -280,10 +276,8 @@ func (m *ResourceSnapshot) GetResourceSnapshotSpec() *ResourceSnapshotSpec {
 }
 
 // SetResourceSnapshotSpec sets the resource snapshot spec.
-func (m *ResourceSnapshot) SetResourceSnapshotSpec(spec *ResourceSnapshotSpec) {
-	if spec != nil {
-		spec.DeepCopyInto(&m.Spec)
-	}
+func (m *ResourceSnapshot) SetResourceSnapshotSpec(spec ResourceSnapshotSpec) {
+	spec.DeepCopyInto(&m.Spec)
 }
 
 // GetResourceSnapshotStatus returns the resource snapshot status.
@@ -292,10 +286,8 @@ func (m *ResourceSnapshot) GetResourceSnapshotStatus() *ResourceSnapshotStatus {
 }
 
 // SetResourceSnapshotStatus sets the resource snapshot status.
-func (m *ResourceSnapshot) SetResourceSnapshotStatus(status *ResourceSnapshotStatus) {
-	if status != nil {
-		status.DeepCopyInto(&m.Status)
-	}
+func (m *ResourceSnapshot) SetResourceSnapshotStatus(status ResourceSnapshotStatus) {
+	status.DeepCopyInto(&m.Status)
 }
 
 // GetResourceSnapshotObjs returns the list of ResourceSnapshotObj from the ResourceSnapshotList.

@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -28,7 +29,7 @@ import (
 )
 
 const (
-	// namespaceSeparator is the separator used between namespace and name in placement keys
+	// namespaceSeparator is the separator used between namespace and name in placement keys.
 	namespaceSeparator = "/"
 )
 
@@ -39,9 +40,9 @@ func FetchPlacementFromKey(ctx context.Context, c client.Client, placementKey qu
 	// Check if the key contains a namespace separator
 	if strings.Contains(keyStr, namespaceSeparator) {
 		// This is a namespaced ResourcePlacement
-		parts := strings.SplitN(keyStr, namespaceSeparator, 2)
+		parts := strings.Split(keyStr, namespaceSeparator)
 		if len(parts) != 2 {
-			return nil, nil
+			return nil, NewUnexpectedBehaviorError(fmt.Errorf("invalid placement key format: %s", keyStr))
 		}
 
 		namespace := parts[0]
@@ -59,6 +60,9 @@ func FetchPlacementFromKey(ctx context.Context, c client.Client, placementKey qu
 
 		return rp, nil
 	} else {
+		if len(keyStr) == 0 {
+			return nil, NewUnexpectedBehaviorError(fmt.Errorf("invalid placement key format: %s", keyStr))
+		}
 		// This is a cluster-scoped ClusterResourcePlacement
 		crp := &fleetv1beta1.ClusterResourcePlacement{}
 		key := types.NamespacedName{

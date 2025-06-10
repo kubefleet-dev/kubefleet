@@ -45,14 +45,14 @@ var _ PlacementObjList = &ResourcePlacementList{}
 // +kubebuilder:object:generate=false
 type PlacementSpecGetterSetter interface {
 	GetPlacementSpec() *PlacementSpec
-	SetPlacementSpec(*PlacementSpec)
+	SetPlacementSpec(PlacementSpec)
 }
 
 // PlacementStatusGetterSetter offers the functionality to work with the PlacementStatusGetterSetter.
 // +kubebuilder:object:generate=false
 type PlacementStatusGetterSetter interface {
 	GetPlacementStatus() *PlacementStatus
-	SetPlacementStatus(*PlacementStatus)
+	SetPlacementStatus(PlacementStatus)
 }
 
 // PlacementObj offers the functionality to work with fleet placement object.
@@ -535,8 +535,8 @@ type ApplyStrategy struct {
 	//   managed by Fleet (i.e., specified in the hub cluster manifest). This is the default
 	//   option.
 	//
-	//   Note that this option would revert any ad-hoc changes made on the member cluster side in
-	//   the managed fields; if you would like to make temporary edits on the member cluster side
+	//   Note that this option would revert any ad-hoc changes made on the member cluster side in the
+	//   managed fields; if you would like to make temporary edits on the member cluster side
 	//   in the managed fields, switch to IfNotDrifted option. Note that changes in unmanaged
 	//   fields will be left alone; if you use the FullDiff compare option, such changes will
 	//   be reported as drifts.
@@ -861,7 +861,7 @@ type RollingUpdateConfig struct {
 	UnavailablePeriodSeconds *int `json:"unavailablePeriodSeconds,omitempty"`
 }
 
-// PlacementStatus defines the observed state of the ClusterResourcePlacement object.
+// PlacementStatus defines the observed status of the ClusterResourcePlacement object.
 type PlacementStatus struct {
 	// SelectedResources contains a list of resources selected by ResourceSelectors.
 	// This field is only meaningful if the `ObservedResourceIndex` is not empty.
@@ -1353,23 +1353,18 @@ func (m *ClusterResourcePlacement) GetPlacementSpec() *PlacementSpec {
 }
 
 // SetPlacementSpec sets the placement spec.
-func (m *ClusterResourcePlacement) SetPlacementSpec(spec *PlacementSpec) {
-	if spec != nil {
-		spec.DeepCopyInto(&m.Spec)
-	}
+func (m *ClusterResourcePlacement) SetPlacementSpec(spec PlacementSpec) {
+	spec.DeepCopyInto(&m.Spec)
 }
 
 // GetPlacementStatus returns the placement status.
 func (m *ClusterResourcePlacement) GetPlacementStatus() *PlacementStatus {
-	status := m.Status
-	return &status
+	return &m.Status
 }
 
 // SetPlacementStatus sets the placement status.
-func (m *ClusterResourcePlacement) SetPlacementStatus(status *PlacementStatus) {
-	if status != nil {
-		status.DeepCopyInto(&m.Status)
-	}
+func (m *ClusterResourcePlacement) SetPlacementStatus(status PlacementStatus) {
+	status.DeepCopyInto(&m.Status)
 }
 
 const (
@@ -1439,10 +1434,8 @@ func (m *ResourcePlacement) GetPlacementSpec() *PlacementSpec {
 }
 
 // SetPlacementSpec sets the placement spec.
-func (m *ResourcePlacement) SetPlacementSpec(spec *PlacementSpec) {
-	if spec != nil {
-		spec.DeepCopyInto(&m.Spec)
-	}
+func (m *ResourcePlacement) SetPlacementSpec(spec PlacementSpec) {
+	spec.DeepCopyInto(&m.Spec)
 }
 
 // GetPlacementStatus returns the placement status.
@@ -1451,10 +1444,8 @@ func (m *ResourcePlacement) GetPlacementStatus() *PlacementStatus {
 }
 
 // SetPlacementStatus sets the placement status.
-func (m *ResourcePlacement) SetPlacementStatus(status *PlacementStatus) {
-	if status != nil {
-		status.DeepCopyInto(&m.Status)
-	}
+func (m *ResourcePlacement) SetPlacementStatus(status PlacementStatus) {
+	status.DeepCopyInto(&m.Status)
 }
 
 // GetPlacementObjs returns the placement objects in the list.

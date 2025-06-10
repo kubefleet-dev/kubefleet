@@ -39,14 +39,14 @@ var _ BindingObjList = &ResourceBindingList{}
 // +kubebuilder:object:generate=false
 type BindingSpecGetterSetter interface {
 	GetBindingSpec() *ResourceBindingSpec
-	SetBindingSpec(*ResourceBindingSpec)
+	SetBindingSpec(ResourceBindingSpec)
 }
 
 // A BindingStatusGetterSetter offers binding status getter and setter methods.
 // +kubebuilder:object:generate=false
 type BindingStatusGetterSetter interface {
 	GetBindingStatus() *ResourceBindingStatus
-	SetBindingStatus(*ResourceBindingStatus)
+	SetBindingStatus(ResourceBindingStatus)
 }
 
 // A BindingObj offers an abstract way to work with fleet binding objects.
@@ -330,10 +330,8 @@ func (b *ClusterResourceBinding) GetBindingSpec() *ResourceBindingSpec {
 }
 
 // SetBindingSpec sets the binding spec.
-func (b *ClusterResourceBinding) SetBindingSpec(spec *ResourceBindingSpec) {
-	if spec != nil {
-		spec.DeepCopyInto(&b.Spec)
-	}
+func (b *ClusterResourceBinding) SetBindingSpec(spec ResourceBindingSpec) {
+	spec.DeepCopyInto(&b.Spec)
 }
 
 // GetBindingStatus returns the binding status.
@@ -342,10 +340,8 @@ func (b *ClusterResourceBinding) GetBindingStatus() *ResourceBindingStatus {
 }
 
 // SetBindingStatus sets the binding status.
-func (b *ClusterResourceBinding) SetBindingStatus(status *ResourceBindingStatus) {
-	if status != nil {
-		status.DeepCopyInto(&b.Status)
-	}
+func (b *ClusterResourceBinding) SetBindingStatus(status ResourceBindingStatus) {
+	status.DeepCopyInto(&b.Status)
 }
 
 // SetConditions set the given conditions on the ResourceBinding.
@@ -371,10 +367,8 @@ func (b *ResourceBinding) GetBindingSpec() *ResourceBindingSpec {
 }
 
 // SetBindingSpec sets the binding spec.
-func (b *ResourceBinding) SetBindingSpec(spec *ResourceBindingSpec) {
-	if spec != nil {
-		spec.DeepCopyInto(&b.Spec)
-	}
+func (b *ResourceBinding) SetBindingSpec(spec ResourceBindingSpec) {
+	spec.DeepCopyInto(&b.Spec)
 }
 
 // GetBindingStatus returns the binding status.
@@ -383,10 +377,8 @@ func (b *ResourceBinding) GetBindingStatus() *ResourceBindingStatus {
 }
 
 // SetBindingStatus sets the binding status.
-func (b *ResourceBinding) SetBindingStatus(status *ResourceBindingStatus) {
-	if status != nil {
-		status.DeepCopyInto(&b.Status)
-	}
+func (b *ResourceBinding) SetBindingStatus(status ResourceBindingStatus) {
+	status.DeepCopyInto(&b.Status)
 }
 
 func init() {

@@ -44,14 +44,14 @@ var _ PolicySnapshotList = &SchedulingPolicySnapshotList{}
 // +kubebuilder:object:generate=false
 type PolicySnapshotSpecGetterSetter interface {
 	GetPolicySnapshotSpec() *SchedulingPolicySnapshotSpec
-	SetPolicySnapshotSpec(*SchedulingPolicySnapshotSpec)
+	SetPolicySnapshotSpec(SchedulingPolicySnapshotSpec)
 }
 
 // A PolicySnapshotStatusGetterSetter offers methods to get and set the policy snapshot status.
 // +kubebuilder:object:generate=false
 type PolicySnapshotStatusGetterSetter interface {
 	GetPolicySnapshotStatus() *SchedulingPolicySnapshotStatus
-	SetPolicySnapshotStatus(*SchedulingPolicySnapshotStatus)
+	SetPolicySnapshotStatus(SchedulingPolicySnapshotStatus)
 }
 
 // A PolicySnapshotObj offers an abstract way to work with a fleet policy snapshot object.
@@ -112,10 +112,8 @@ func (m *ClusterSchedulingPolicySnapshot) GetPolicySnapshotSpec() *SchedulingPol
 }
 
 // SetPolicySnapshotSpec sets the policy snapshot spec.
-func (m *ClusterSchedulingPolicySnapshot) SetPolicySnapshotSpec(spec *SchedulingPolicySnapshotSpec) {
-	if spec != nil {
-		spec.DeepCopyInto(&m.Spec)
-	}
+func (m *ClusterSchedulingPolicySnapshot) SetPolicySnapshotSpec(spec SchedulingPolicySnapshotSpec) {
+	spec.DeepCopyInto(&m.Spec)
 }
 
 // GetPolicySnapshotStatus returns the policy snapshot status.
@@ -124,10 +122,8 @@ func (m *ClusterSchedulingPolicySnapshot) GetPolicySnapshotStatus() *SchedulingP
 }
 
 // SetPolicySnapshotStatus sets the policy snapshot status.
-func (m *ClusterSchedulingPolicySnapshot) SetPolicySnapshotStatus(status *SchedulingPolicySnapshotStatus) {
-	if status != nil {
-		status.DeepCopyInto(&m.Status)
-	}
+func (m *ClusterSchedulingPolicySnapshot) SetPolicySnapshotStatus(status SchedulingPolicySnapshotStatus) {
+	status.DeepCopyInto(&m.Status)
 }
 
 // SchedulingPolicySnapshotSpec defines the desired state of SchedulingPolicySnapshot.
@@ -293,10 +289,8 @@ func (m *SchedulingPolicySnapshot) GetPolicySnapshotSpec() *SchedulingPolicySnap
 }
 
 // SetPolicySnapshotSpec sets the policy snapshot spec.
-func (m *SchedulingPolicySnapshot) SetPolicySnapshotSpec(spec *SchedulingPolicySnapshotSpec) {
-	if spec != nil {
-		spec.DeepCopyInto(&m.Spec)
-	}
+func (m *SchedulingPolicySnapshot) SetPolicySnapshotSpec(spec SchedulingPolicySnapshotSpec) {
+	spec.DeepCopyInto(&m.Spec)
 }
 
 // GetPolicySnapshotStatus returns the policy snapshot status.
@@ -305,10 +299,8 @@ func (m *SchedulingPolicySnapshot) GetPolicySnapshotStatus() *SchedulingPolicySn
 }
 
 // SetPolicySnapshotStatus sets the policy snapshot status.
-func (m *SchedulingPolicySnapshot) SetPolicySnapshotStatus(status *SchedulingPolicySnapshotStatus) {
-	if status != nil {
-		status.DeepCopyInto(&m.Status)
-	}
+func (m *SchedulingPolicySnapshot) SetPolicySnapshotStatus(status SchedulingPolicySnapshotStatus) {
+	status.DeepCopyInto(&m.Status)
 }
 
 // SchedulingPolicySnapshotList contains a list of SchedulingPolicySnapshotList.
