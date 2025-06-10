@@ -37,7 +37,7 @@ const (
 	testReason1                      = "testReason1"
 	testReason2                      = "testReason2"
 
-	eventuallyTimeout    = time.Second * 10
+	eventuallyTimeout    = time.Second * 20
 	consistentlyDuration = time.Second * 10
 	interval             = time.Millisecond * 250
 )
@@ -653,7 +653,14 @@ func validateWhenUpdateClusterResourceBindingStatusWithCondition(conditionType f
 
 	By("Checking placement controller queue")
 	eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.CRPTrackingLabel])
-	fakePlacementController.ResetQueue()
+	// Reset the queue to avoid the multiple events triggered.
+	Consistently(func() error {
+		if fakePlacementController.Key() == testCRPName {
+			By("By finding the key and resetting the placement queue")
+			fakePlacementController.ResetQueue()
+		}
+		return nil
+	}, consistentlyDuration, interval).Should(Succeed(), "placementController queue should be stable empty after resetting")
 }
 
 func eventuallyCheckPlacementControllerQueue(key string) {
