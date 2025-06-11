@@ -29,7 +29,6 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -50,7 +49,6 @@ const (
 
 var (
 	ignoreObjectMetaResourceVersionField = cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion")
-	ignoreTypeMetaAPIVersionKindFields   = cmpopts.IgnoreFields(metav1.TypeMeta{}, "APIVersion", "Kind")
 )
 
 // TestMain sets up the test environment.
@@ -63,201 +61,12 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// TestCleanUpAllBindingsFor tests the cleanUpAllBindingsFor method.
-func TestCleanUpAllBindingsFor(t *testing.T) {
-	now := metav1.Now()
-	crp := &fleetv1beta1.ClusterResourcePlacement{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:              crpName,
-			DeletionTimestamp: &now,
-			Finalizers:        []string{fleetv1beta1.SchedulerCRPCleanupFinalizer},
-		},
-	}
-
-	bindings := []*fleetv1beta1.ClusterResourceBinding{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: bindingName,
-				Labels: map[string]string{
-					fleetv1beta1.CRPTrackingLabel: crpName,
-				},
-				Finalizers: []string{fleetv1beta1.SchedulerCRBCleanupFinalizer},
-			},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: altBindingName,
-				Labels: map[string]string{
-					fleetv1beta1.CRPTrackingLabel: crpName,
-				},
-				Finalizers: []string{fleetv1beta1.SchedulerCRBCleanupFinalizer},
-			},
-		},
-	}
-
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme.Scheme).
-		WithObjects(crp, bindings[0], bindings[1]).
-		Build()
-	// Construct scheduler manually instead of using NewScheduler() to avoid mocking the controller
-	// manager.
-	s := &Scheduler{
-		client:         fakeClient,
-		uncachedReader: fakeClient,
-	}
-
-	ctx := context.Background()
-	if err := s.cleanUpAllBindingsFor(ctx, crp); err != nil {
-		t.Fatalf("cleanUpAllBindingsFor() = %v, want no error", err)
-	}
-
-	if err := fakeClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err == nil {
-		t.Fatalf("Get() CRP = %v, want no error", err)
-	}
-	wantCRP := &fleetv1beta1.ClusterResourcePlacement{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:              crpName,
-			DeletionTimestamp: &now,
-			Finalizers:        []string{},
-		},
-	}
-	if diff := cmp.Diff(crp, wantCRP, ignoreObjectMetaResourceVersionField, ignoreTypeMetaAPIVersionKindFields); diff != "" {
-		t.Errorf("updated CRP diff (-got, +want): %s", diff)
-	}
-
-	bindingList := &fleetv1beta1.ClusterResourceBindingList{}
-	if err := fakeClient.List(ctx, bindingList); err != nil {
-		t.Fatalf("List() bindings = %v, want no error", err)
-	}
-
-	if len(bindingList.Items) != 0 {
-		t.Errorf("binding list length = %d, want 0", len(bindingList.Items))
-	}
-}
-
-// TestLookupLatestPolicySnapshot tests the lookupLatestPolicySnapshot method.
-func TestLookupLatestPolicySnapshot(t *testing.T) {
-	crp := &fleetv1beta1.ClusterResourcePlacement{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       crpName,
-			Finalizers: []string{fleetv1beta1.SchedulerCRPCleanupFinalizer},
-		},
-	}
-
+// TestAddSchedulerCleanUpFinalizer tests the addSchedulerCleanUpFinalizer method with PlacementObj interface.
+func TestAddSchedulerCleanUpFinalizer(t *testing.T) {
 	testCases := []struct {
-		name               string
-		policySnapshots    []fleetv1beta1.PolicySnapshotObj
-		wantPolicySnapshot fleetv1beta1.PolicySnapshotObj
-		expectedToFail     bool
-	}{
-		{
-			name:           "no active policy snapshot",
-			expectedToFail: true,
-		},
-		{
-			name: "multiple active policy snapshots",
-			policySnapshots: []fleetv1beta1.PolicySnapshotObj{
-				&fleetv1beta1.ClusterSchedulingPolicySnapshot{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: policySnapshotName,
-						Labels: map[string]string{
-							fleetv1beta1.CRPTrackingLabel:      crpName,
-							fleetv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
-						},
-					},
-				},
-				&fleetv1beta1.ClusterSchedulingPolicySnapshot{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: altPolicySnapshotName,
-						Labels: map[string]string{
-							fleetv1beta1.CRPTrackingLabel:      crpName,
-							fleetv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
-						},
-					},
-				},
-				&fleetv1beta1.ClusterSchedulingPolicySnapshot{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: anotherPolicySnapshotName,
-						Labels: map[string]string{
-							fleetv1beta1.CRPTrackingLabel: crpName,
-						},
-					},
-				},
-			},
-			expectedToFail: true,
-		},
-		{
-			name: "found one active policy snapshot",
-			policySnapshots: []fleetv1beta1.PolicySnapshotObj{
-				&fleetv1beta1.ClusterSchedulingPolicySnapshot{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: policySnapshotName,
-						Labels: map[string]string{
-							fleetv1beta1.CRPTrackingLabel: crpName,
-						},
-					},
-				},
-				&fleetv1beta1.ClusterSchedulingPolicySnapshot{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: altPolicySnapshotName,
-						Labels: map[string]string{
-							fleetv1beta1.CRPTrackingLabel:      crpName,
-							fleetv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
-						},
-					},
-				},
-			},
-			wantPolicySnapshot: &fleetv1beta1.ClusterSchedulingPolicySnapshot{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: altPolicySnapshotName,
-					Labels: map[string]string{
-						fleetv1beta1.CRPTrackingLabel:      crpName,
-						fleetv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
-					},
-				},
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			fakeClientBuilder := fake.NewClientBuilder().
-				WithScheme(scheme.Scheme).
-				WithObjects(crp)
-			for _, policySnapshot := range tc.policySnapshots {
-				fakeClientBuilder.WithObjects(policySnapshot)
-			}
-			fakeClient := fakeClientBuilder.Build()
-			// Construct scheduler manually instead of using NewScheduler() to avoid mocking the controller
-			// manager.
-			s := &Scheduler{
-				client:         fakeClient,
-				uncachedReader: fakeClient,
-			}
-
-			ctx := context.Background()
-			activePolicySnapshot, err := s.lookupLatestPolicySnapshot(ctx, crp)
-			if tc.expectedToFail {
-				if err == nil {
-					t.Errorf("lookUpLatestPolicySnapshot() = %v, want error", activePolicySnapshot)
-				}
-
-				return
-			}
-
-			if diff := cmp.Diff(activePolicySnapshot, tc.wantPolicySnapshot, ignoreObjectMetaResourceVersionField); diff != "" {
-				t.Errorf("active policy snapshot diff (-got, +want): %s", diff)
-			}
-		})
-	}
-}
-
-// TestAddSchedulerCleanUpFinalizerWithInterface tests the addSchedulerCleanUpFinalizer method with PlacementObj interface.
-func TestAddSchedulerCleanUpFinalizerWithInterface(t *testing.T) {
-	testCases := []struct {
-		name              string
-		placement         func() fleetv1beta1.PlacementObj
-		expectedFinalizer string
+		name           string
+		placement      func() fleetv1beta1.PlacementObj
+		wantFinalizers []string
 	}{
 		{
 			name: "cluster-scoped placement should add CRP finalizer",
@@ -268,10 +77,10 @@ func TestAddSchedulerCleanUpFinalizerWithInterface(t *testing.T) {
 					},
 				}
 			},
-			expectedFinalizer: fleetv1beta1.SchedulerCRPCleanupFinalizer,
+			wantFinalizers: []string{fleetv1beta1.SchedulerCRPCleanupFinalizer},
 		},
 		{
-			name: "namespaced placement should add CRP finalizer",
+			name: "namespaced placement should also add CRP finalizer",
 			placement: func() fleetv1beta1.PlacementObj {
 				return &fleetv1beta1.ResourcePlacement{
 					ObjectMeta: metav1.ObjectMeta{
@@ -280,7 +89,19 @@ func TestAddSchedulerCleanUpFinalizerWithInterface(t *testing.T) {
 					},
 				}
 			},
-			expectedFinalizer: fleetv1beta1.SchedulerCRPCleanupFinalizer,
+			wantFinalizers: []string{fleetv1beta1.SchedulerCRPCleanupFinalizer},
+		},
+		{
+			name: "scheduler should only add finalizer",
+			placement: func() fleetv1beta1.PlacementObj {
+				return &fleetv1beta1.ClusterResourcePlacement{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       crpName,
+						Finalizers: []string{fleetv1beta1.ClusterResourcePlacementCleanupFinalizer},
+					},
+				}
+			},
+			wantFinalizers: []string{fleetv1beta1.ClusterResourcePlacementCleanupFinalizer, fleetv1beta1.SchedulerCRPCleanupFinalizer},
 		},
 	}
 
@@ -302,30 +123,24 @@ func TestAddSchedulerCleanUpFinalizerWithInterface(t *testing.T) {
 			}
 
 			// Verify the finalizer was added
-			finalizers := placement.GetFinalizers()
-			found := false
-			for _, f := range finalizers {
-				if f == tc.expectedFinalizer {
-					found = true
-					break
-				}
-			}
-			if !found {
-				t.Errorf("Expected finalizer %s not found in %v", tc.expectedFinalizer, finalizers)
+			gotFinalizers := placement.GetFinalizers()
+			if !cmp.Equal(gotFinalizers, tc.wantFinalizers) {
+				t.Errorf("Expected finalizer %v, got %v", tc.wantFinalizers, gotFinalizers)
 			}
 		})
 	}
 }
 
-// TestCleanUpAllBindingsForWithInterface tests the cleanUpAllBindingsFor method with PlacementObj interface.
-func TestCleanUpAllBindingsForWithInterface(t *testing.T) {
+// TestCleanUpAllBindingsFor tests the cleanUpAllBindingsFor method with PlacementObj interface.
+func TestCleanUpAllBindingsFor(t *testing.T) {
 	now := metav1.Now()
 
 	testCases := []struct {
-		name              string
-		placement         func() fleetv1beta1.PlacementObj
-		bindings          []*fleetv1beta1.ClusterResourceBinding
-		expectedFinalizer string
+		name                  string
+		placement             func() fleetv1beta1.PlacementObj
+		existingBindings      []fleetv1beta1.BindingObj
+		wantFinalizers        []string
+		wantRemainingBindings []fleetv1beta1.BindingObj
 	}{
 		{
 			name: "cluster-scoped placement cleanup",
@@ -338,18 +153,41 @@ func TestCleanUpAllBindingsForWithInterface(t *testing.T) {
 					},
 				}
 			},
-			bindings: []*fleetv1beta1.ClusterResourceBinding{
-				{
+			existingBindings: []fleetv1beta1.BindingObj{
+				&fleetv1beta1.ClusterResourceBinding{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: bindingName,
+						Name: "bindingName1",
 						Labels: map[string]string{
 							fleetv1beta1.CRPTrackingLabel: crpName,
 						},
-						Finalizers: []string{fleetv1beta1.SchedulerCRBCleanupFinalizer},
+					},
+				},
+				&fleetv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "bindingName2",
+						Labels: map[string]string{
+							fleetv1beta1.CRPTrackingLabel: crpName,
+						},
 					},
 				},
 			},
-			expectedFinalizer: fleetv1beta1.SchedulerCRPCleanupFinalizer,
+			wantFinalizers:        []string{},
+			wantRemainingBindings: []fleetv1beta1.BindingObj{},
+		},
+		{
+			name: "cluster-scoped placement cleanup without bindings but have CRP cleanup finalizer",
+			placement: func() fleetv1beta1.PlacementObj {
+				return &fleetv1beta1.ClusterResourcePlacement{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              crpName,
+						DeletionTimestamp: &now,
+						Finalizers:        []string{fleetv1beta1.SchedulerCRPCleanupFinalizer, fleetv1beta1.ClusterResourcePlacementCleanupFinalizer},
+					},
+				}
+			},
+			existingBindings:      []fleetv1beta1.BindingObj{},
+			wantFinalizers:        []string{fleetv1beta1.ClusterResourcePlacementCleanupFinalizer},
+			wantRemainingBindings: []fleetv1beta1.BindingObj{},
 		},
 		{
 			name: "namespaced placement cleanup",
@@ -363,29 +201,98 @@ func TestCleanUpAllBindingsForWithInterface(t *testing.T) {
 					},
 				}
 			},
-			bindings: []*fleetv1beta1.ClusterResourceBinding{
-				{
+			existingBindings: []fleetv1beta1.BindingObj{
+				&fleetv1beta1.ResourceBinding{
 					ObjectMeta: metav1.ObjectMeta{
-						Name: bindingName,
+						Name:      bindingName,
+						Namespace: "test-namespace",
+						Labels: map[string]string{
+							fleetv1beta1.CRPTrackingLabel: "test-namespace/test-rp",
+						},
+					},
+				},
+			},
+			wantFinalizers:        []string{},
+			wantRemainingBindings: []fleetv1beta1.BindingObj{},
+		},
+		{
+			name: "test placement cleanup only delete the bindings that match the placement",
+			placement: func() fleetv1beta1.PlacementObj {
+				return &fleetv1beta1.ResourcePlacement{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              "test-rp",
+						Namespace:         "test-namespace",
+						DeletionTimestamp: &now,
+						Finalizers:        []string{fleetv1beta1.SchedulerCRPCleanupFinalizer},
+					},
+				}
+			},
+			existingBindings: []fleetv1beta1.BindingObj{
+				&fleetv1beta1.ResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "tobeDeletedBinding",
+						Namespace: "test-namespace",
 						Labels: map[string]string{
 							fleetv1beta1.CRPTrackingLabel: "test-namespace/test-rp",
 						},
 						Finalizers: []string{fleetv1beta1.SchedulerCRBCleanupFinalizer},
 					},
 				},
+				&fleetv1beta1.ResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "remainingBinding",
+						Namespace: "test-namespace",
+						Labels: map[string]string{
+							fleetv1beta1.CRPTrackingLabel: "otherrp",
+						},
+						Finalizers: []string{fleetv1beta1.SchedulerCRBCleanupFinalizer},
+					},
+				},
+				&fleetv1beta1.ResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "remainingBinding2",
+						Namespace: "another-namespace",
+						Labels: map[string]string{
+							fleetv1beta1.CRPTrackingLabel: "another-namespace/test-rp",
+						},
+						Finalizers: []string{fleetv1beta1.SchedulerCRBCleanupFinalizer},
+					},
+				},
 			},
-			expectedFinalizer: fleetv1beta1.SchedulerCRPCleanupFinalizer,
+			wantFinalizers: []string{},
+			wantRemainingBindings: []fleetv1beta1.BindingObj{
+				&fleetv1beta1.ResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "remainingBinding",
+						Namespace: "test-namespace",
+						Labels: map[string]string{
+							fleetv1beta1.CRPTrackingLabel: "otherrp",
+						},
+						Finalizers: []string{fleetv1beta1.SchedulerCRBCleanupFinalizer},
+					},
+				},
+				&fleetv1beta1.ResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "remainingBinding2",
+						Namespace: "another-namespace",
+						Labels: map[string]string{
+							fleetv1beta1.CRPTrackingLabel: "another-namespace/test-rp",
+						},
+						Finalizers: []string{fleetv1beta1.SchedulerCRBCleanupFinalizer},
+					},
+				},
+			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			placement := tc.placement()
-
+			// Create a fake client with the placement and existing bindings
 			fakeClientBuilder := fake.NewClientBuilder().
 				WithScheme(scheme.Scheme).
 				WithObjects(placement)
-			for _, binding := range tc.bindings {
+			for _, binding := range tc.existingBindings {
 				fakeClientBuilder.WithObjects(binding)
 			}
 			fakeClient := fakeClientBuilder.Build()
@@ -401,33 +308,34 @@ func TestCleanUpAllBindingsForWithInterface(t *testing.T) {
 			}
 
 			// Verify the finalizer was removed from placement
-			finalizers := placement.GetFinalizers()
-			for _, f := range finalizers {
-				if f == tc.expectedFinalizer {
-					t.Errorf("Expected finalizer %s should have been removed but still exists", tc.expectedFinalizer)
-				}
+			gotFinalizers := placement.GetFinalizers()
+			if !cmp.Equal(gotFinalizers, tc.wantFinalizers) {
+				t.Errorf("Expected finalizer %v, got %v", tc.wantFinalizers, gotFinalizers)
 			}
 
 			// Verify bindings were cleaned up
-			var bindingList fleetv1beta1.BindingObjList
+			var gotBindings fleetv1beta1.BindingObjList
 			if placement.GetNamespace() == "" {
-				bindingList = &fleetv1beta1.ClusterResourceBindingList{}
+				gotBindings = &fleetv1beta1.ClusterResourceBindingList{}
 			} else {
-				bindingList = &fleetv1beta1.ResourceBindingList{}
+				gotBindings = &fleetv1beta1.ResourceBindingList{}
 			}
-			if err := fakeClient.List(ctx, bindingList); err != nil {
+			if err := fakeClient.List(ctx, gotBindings); err != nil {
 				t.Fatalf("List() bindings = %v, want no error", err)
 			}
 
-			if len(bindingList.GetBindingObjs()) != 0 {
-				t.Errorf("binding list length = %d, want 0", len(bindingList.GetBindingObjs()))
+			if diff := cmp.Diff(gotBindings.GetBindingObjs(), tc.wantRemainingBindings, ignoreObjectMetaResourceVersionField,
+				cmpopts.SortSlices(func(b1, b2 fleetv1beta1.BindingObj) bool {
+					return b1.GetName() < b2.GetName()
+				})); diff != "" {
+				t.Errorf("Remaining bindings diff (+ got, - want): %s", diff)
 			}
 		})
 	}
 }
 
-// TestLookupLatestPolicySnapshotWithInterface tests the lookupLatestPolicySnapshot method with PlacementObj interface.
-func TestLookupLatestPolicySnapshotWithInterface(t *testing.T) {
+// TestLookupLatestPolicySnapshot tests the lookupLatestPolicySnapshot method with PlacementObj interface.
+func TestLookupLatestPolicySnapshot(t *testing.T) {
 	testCases := []struct {
 		name               string
 		placement          func() fleetv1beta1.PlacementObj
@@ -451,6 +359,15 @@ func TestLookupLatestPolicySnapshotWithInterface(t *testing.T) {
 						Name: policySnapshotName,
 						Labels: map[string]string{
 							fleetv1beta1.CRPTrackingLabel:      crpName,
+							fleetv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
+						},
+					},
+				},
+				&fleetv1beta1.ClusterSchedulingPolicySnapshot{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "other-policy-snapshot",
+						Labels: map[string]string{
+							fleetv1beta1.CRPTrackingLabel:      "other-crp",
 							fleetv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
 						},
 					},
@@ -481,6 +398,59 @@ func TestLookupLatestPolicySnapshotWithInterface(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      policySnapshotName,
 						Namespace: "test-namespace",
+						Labels: map[string]string{
+							fleetv1beta1.CRPTrackingLabel:      "test-namespace/test-rp",
+							fleetv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
+						},
+					},
+				},
+				&fleetv1beta1.SchedulingPolicySnapshot{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "other-policy-snapshot",
+						Namespace: "test-namespace",
+						Labels: map[string]string{
+							fleetv1beta1.CRPTrackingLabel:      "test-namespace/other-rp",
+							fleetv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
+						},
+					},
+				},
+			},
+			wantPolicySnapshot: &fleetv1beta1.SchedulingPolicySnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      policySnapshotName,
+					Namespace: "test-namespace",
+					Labels: map[string]string{
+						fleetv1beta1.CRPTrackingLabel:      "test-namespace/test-rp",
+						fleetv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
+					},
+				},
+			},
+		},
+		{
+			name: "namespaced placement with policy snapshot only in its namespace",
+			placement: func() fleetv1beta1.PlacementObj {
+				return &fleetv1beta1.ResourcePlacement{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-rp",
+						Namespace: "test-namespace",
+					},
+				}
+			},
+			policySnapshots: []fleetv1beta1.PolicySnapshotObj{
+				&fleetv1beta1.SchedulingPolicySnapshot{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      policySnapshotName,
+						Namespace: "test-namespace",
+						Labels: map[string]string{
+							fleetv1beta1.CRPTrackingLabel:      "test-namespace/test-rp",
+							fleetv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
+						},
+					},
+				},
+				&fleetv1beta1.SchedulingPolicySnapshot{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      policySnapshotName,
+						Namespace: "other-namespace",
 						Labels: map[string]string{
 							fleetv1beta1.CRPTrackingLabel:      "test-namespace/test-rp",
 							fleetv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
@@ -535,43 +505,6 @@ func TestLookupLatestPolicySnapshotWithInterface(t *testing.T) {
 				t.Errorf("active policy snapshot diff (-got, +want): %s", diff)
 			}
 		})
-	}
-}
-
-func TestAddSchedulerCleanUpFinalizer(t *testing.T) {
-	crp := &fleetv1beta1.ClusterResourcePlacement{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: crpName,
-		},
-	}
-
-	fakeClient := fake.NewClientBuilder().
-		WithScheme(scheme.Scheme).
-		WithObjects(crp).
-		Build()
-	// Construct scheduler manually instead of using NewScheduler() to avoid mocking the controller
-	// manager.
-	s := &Scheduler{
-		client:         fakeClient,
-		uncachedReader: fakeClient,
-	}
-
-	ctx := context.Background()
-	if err := s.addSchedulerCleanUpFinalizer(ctx, crp); err != nil {
-		t.Fatalf("addSchedulerCleanUpFinalizer() = %v, want no error", err)
-	}
-
-	if err := fakeClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
-		t.Fatalf("Get() CRP = %v, want no error", err)
-	}
-	wantCRP := &fleetv1beta1.ClusterResourcePlacement{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       crpName,
-			Finalizers: []string{fleetv1beta1.SchedulerCRPCleanupFinalizer},
-		},
-	}
-	if diff := cmp.Diff(crp, wantCRP, ignoreObjectMetaResourceVersionField, ignoreTypeMetaAPIVersionKindFields); diff != "" {
-		t.Errorf("updated CRP diff (-got, +want): %s", diff)
 	}
 }
 

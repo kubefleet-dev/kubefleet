@@ -285,17 +285,19 @@ func (s *Scheduler) cleanUpAllBindingsFor(ctx context.Context, placement fleetv1
 	//
 	// Note that the listing is performed using the uncached client; this is to ensure that all related
 	// bindings can be found, even if they have not been synced to the cache yet.
+	var listOptions []client.ListOption
+	listOptions = append(listOptions, client.MatchingLabels{
+		fleetv1beta1.CRPTrackingLabel: string(placementKey),
+	})
 	var bindingList fleetv1beta1.BindingObjList
 	if placement.GetNamespace() == "" {
 		bindingList = &fleetv1beta1.ClusterResourceBindingList{}
 	} else {
 		bindingList = &fleetv1beta1.ResourceBindingList{}
-	}
-	listOptions := client.MatchingLabels{
-		fleetv1beta1.CRPTrackingLabel: string(placementKey),
+		listOptions = append(listOptions, client.InNamespace(placement.GetNamespace()))
 	}
 	// TO-DO (chenyu1): this is a very expensive op; explore options for optimization.
-	if err := s.uncachedReader.List(ctx, bindingList, listOptions); err != nil {
+	if err := s.uncachedReader.List(ctx, bindingList, listOptions...); err != nil {
 		klog.ErrorS(err, "Failed to list all bindings", "placement", placementRef)
 		return controller.NewAPIServerError(false, err)
 	}
@@ -337,27 +339,30 @@ func (s *Scheduler) cleanUpAllBindingsFor(ctx context.Context, placement fleetv1
 }
 
 // lookupLatestPolicySnapshot returns the latest (i.e., active) policy snapshot associated with a placement.
+// TODO: move this to a common lib
 func (s *Scheduler) lookupLatestPolicySnapshot(ctx context.Context, placement fleetv1beta1.PlacementObj) (fleetv1beta1.PolicySnapshotObj, error) {
 	placementRef := klog.KObj(placement)
 
 	// Get the placement key which handles both cluster-scoped and namespaced placements
 	placementKey := controller.GetPlacementKeyFromObj(placement)
-
+	var listOptions []client.ListOption
+	labelSelector := labels.SelectorFromSet(labels.Set{
+		fleetv1beta1.CRPTrackingLabel:      string(placementKey),
+		fleetv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
+	})
+	listOptions = append(listOptions, &client.ListOptions{LabelSelector: labelSelector})
 	// Find out the latest policy snapshot associated with the placement.
 	var policySnapshotList fleetv1beta1.PolicySnapshotList
 	if placement.GetNamespace() == "" {
 		policySnapshotList = &fleetv1beta1.ClusterSchedulingPolicySnapshotList{}
 	} else {
 		policySnapshotList = &fleetv1beta1.SchedulingPolicySnapshotList{}
+		listOptions = append(listOptions, client.InNamespace(placement.GetNamespace()))
 	}
-	labelSelector := labels.SelectorFromSet(labels.Set{
-		fleetv1beta1.CRPTrackingLabel:      string(placementKey),
-		fleetv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
-	})
-	listOptions := &client.ListOptions{LabelSelector: labelSelector}
+
 	// The scheduler lists with a cached client; this does not have any consistency concern as sources
 	// will always trigger the scheduler when a new policy snapshot is created.
-	if err := s.client.List(ctx, policySnapshotList, listOptions); err != nil {
+	if err := s.client.List(ctx, policySnapshotList, listOptions...); err != nil {
 		klog.ErrorS(err, "Failed to list policy snapshots of a placement", "placement", placementRef)
 		return nil, controller.NewAPIServerError(true, err)
 	}
