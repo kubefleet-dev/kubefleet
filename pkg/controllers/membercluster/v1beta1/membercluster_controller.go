@@ -532,7 +532,23 @@ func (r *Reconciler) syncInternalMemberClusterStatus(imc *clusterv1beta1.Interna
 
 // updateMemberClusterStatus is used to update member cluster status.
 func (r *Reconciler) updateMemberClusterStatus(ctx context.Context, mc *clusterv1beta1.MemberCluster) error {
-	klog.V(2).InfoS("Update the memberCluster status", "memberCluster", klog.KObj(mc), "status", mc.Status)
+	mcInfo := []interface{}{
+		"memberCluster", klog.KObj(mc),
+	}
+	joinedCond := meta.FindStatusCondition(mc.Status.Conditions, string(clusterv1beta1.ConditionTypeMemberClusterJoined))
+	if joinedCond != nil {
+		mcInfo = append(mcInfo, "joined", joinedCond.Status)
+	}
+	memberAgentStatus := mc.GetAgentStatus(clusterv1beta1.MemberAgent)
+	if memberAgentStatus != nil {
+		healthyCond := meta.FindStatusCondition(memberAgentStatus.Conditions, string(clusterv1beta1.AgentHealthy))
+		if healthyCond != nil {
+			mcInfo = append(mcInfo, "healthy", healthyCond.Status)
+		}
+		mcInfo = append(mcInfo, "lastReceivedHeartbeat", memberAgentStatus.LastReceivedHeartbeat)
+	}
+	klog.V(2).InfoS("Update the memberCluster status", mcInfo...)
+
 	backOffPeriod := retry.DefaultRetry
 	backOffPeriod.Cap = time.Second * time.Duration(mc.Spec.HeartbeatPeriodSeconds/2)
 
