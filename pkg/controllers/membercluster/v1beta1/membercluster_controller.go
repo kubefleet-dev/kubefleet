@@ -311,7 +311,7 @@ func (r *Reconciler) join(ctx context.Context, mc *clusterv1beta1.MemberCluster,
 //
 // Note that leave doesn't delete any of the resources created by join(). Instead, deleting MemberCluster will delete them.
 func (r *Reconciler) leave(ctx context.Context, mc *clusterv1beta1.MemberCluster, imc *clusterv1beta1.InternalMemberCluster) error {
-	klog.V(2).InfoS("Mark the internal cluster state as `Leave`", "memberCluster", klog.KObj(mc))
+	klog.V(4).InfoS("Mark the internal cluster state as `Leave`", "memberCluster", klog.KObj(mc))
 
 	// Copy spec from member cluster to internal member cluster.
 	namespaceName := fmt.Sprintf(utils.NamespaceNameFormat, mc.Name)
@@ -532,7 +532,7 @@ func (r *Reconciler) syncInternalMemberClusterStatus(imc *clusterv1beta1.Interna
 
 // updateMemberClusterStatus is used to update member cluster status.
 func (r *Reconciler) updateMemberClusterStatus(ctx context.Context, mc *clusterv1beta1.MemberCluster) error {
-	klog.V(2).InfoS("Update the memberCluster status", "memberCluster", klog.KObj(mc))
+	klog.V(2).InfoS("Update the memberCluster status", "memberCluster", klog.KObj(mc), "status", mc.Status)
 	backOffPeriod := retry.DefaultRetry
 	backOffPeriod.Cap = time.Second * time.Duration(mc.Spec.HeartbeatPeriodSeconds/2)
 
