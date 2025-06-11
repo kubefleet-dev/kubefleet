@@ -123,7 +123,8 @@ helm install hub-agent ../../charts/hub-agent/ \
     --set webhookClientConnectionType=service \
     --set forceDeleteWaitTime="1m0s" \
     --set clusterUnhealthyThreshold="3m0s" \
-    --set logFileMaxSize=1000000
+    --set logFileMaxSize=1000000 \
+    --set resourceSnapshotCreationInterval="0s"
 
 # Download CRDs from Fleet networking repo
 export ENDPOINT_SLICE_EXPORT_CRD_URL=https://raw.githubusercontent.com/Azure/fleet-networking/v0.2.7/config/crd/bases/networking.fleet.azure.com_endpointsliceexports.yaml
