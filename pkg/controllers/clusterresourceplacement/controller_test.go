@@ -2705,8 +2705,8 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 				cmpopts.IgnoreFields(runtime.RawExtension{}, "Raw"),
 			}
 			if tc.wantRequeue {
-				if res.RequeueAfter == 0 {
-					t.Fatalf("getOrCreateClusterResourceSnapshot() got RequeueAfter %v, want non-zero value", res.RequeueAfter)
+				if res.RequeueAfter <= 0 {
+					t.Fatalf("getOrCreateClusterResourceSnapshot() got RequeueAfter %v, want greater than zero value", res.RequeueAfter)
 				}
 			} else {
 				if diff := cmp.Diff(tc.wantResourceSnapshots[tc.wantLatestSnapshotIndex], *got, options...); diff != "" {
