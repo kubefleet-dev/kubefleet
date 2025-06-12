@@ -90,9 +90,6 @@ func NewExpectedBehaviorError(err error) error {
 // NewAPIServerError returns error types when accessing data from cache or API server.
 func NewAPIServerError(fromCache bool, err error) error {
 	if err != nil {
-		if fromCache && isUnexpectedCacheError(err) {
-			return NewUnexpectedBehaviorError(err)
-		}
 		klog.ErrorS(err, "Error returned by the API server", "fromCache", fromCache, "reason", apierrors.ReasonForError(err))
 		return fmt.Errorf("%w: %v", ErrAPIServerError, err.Error())
 	}
