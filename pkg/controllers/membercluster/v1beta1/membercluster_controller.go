@@ -532,22 +532,14 @@ func (r *Reconciler) syncInternalMemberClusterStatus(imc *clusterv1beta1.Interna
 
 // updateMemberClusterStatus is used to update member cluster status.
 func (r *Reconciler) updateMemberClusterStatus(ctx context.Context, mc *clusterv1beta1.MemberCluster) error {
-	mcInfo := []interface{}{
-		"memberCluster", klog.KObj(mc),
-	}
-	joinedCond := meta.FindStatusCondition(mc.Status.Conditions, string(clusterv1beta1.ConditionTypeMemberClusterJoined))
-	if joinedCond != nil {
-		mcInfo = append(mcInfo, "joined", joinedCond.Status)
-	}
+	joined := condition.IsConditionStatusTrue(meta.FindStatusCondition(mc.Status.Conditions, string(clusterv1beta1.ConditionTypeMemberClusterJoined)), mc.Generation)
+	healthy := condition.IsConditionStatusTrue(mc.GetAgentCondition(clusterv1beta1.MemberAgent, clusterv1beta1.AgentHealthy), mc.Generation)
+	lastReceivedHeartbeat := "nil"
 	memberAgentStatus := mc.GetAgentStatus(clusterv1beta1.MemberAgent)
 	if memberAgentStatus != nil {
-		healthyCond := meta.FindStatusCondition(memberAgentStatus.Conditions, string(clusterv1beta1.AgentHealthy))
-		if healthyCond != nil {
-			mcInfo = append(mcInfo, "healthy", healthyCond.Status)
-		}
-		mcInfo = append(mcInfo, "lastReceivedHeartbeat", memberAgentStatus.LastReceivedHeartbeat)
+		lastReceivedHeartbeat = memberAgentStatus.LastReceivedHeartbeat.Format(time.RFC3339)
 	}
-	klog.V(2).InfoS("Update the memberCluster status", mcInfo...)
+	klog.V(2).InfoS("Update the memberCluster status", "joined", joined, "healthy", healthy, "lastReceivedHeartbeat", lastReceivedHeartbeat)
 
 	backOffPeriod := retry.DefaultRetry
 	backOffPeriod.Cap = time.Second * time.Duration(mc.Spec.HeartbeatPeriodSeconds/2)
