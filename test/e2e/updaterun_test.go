@@ -375,7 +375,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		It("Should still have resources on member-cluster-1 and member-cluster-2 only and completes stage canary", func() {
 			// this check is meaningless as resources were already placed on member-cluster-1 and member-cluster-2
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[0], allMemberClusters[1]})
-			// TODO: need a way to check the status of staged update run that have member-cluster-1 and member-cluster-2 updated
+			// TODO: need a way to check the status of staged update run that is completed partially.
 			checkIfRemovedWorkResourcesFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[2]})
 
 			By("Validating crp status as member-cluster-2 updated")
@@ -453,7 +453,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			// Create a test namespace and a configMap inside it on the hub cluster.
 			createWorkResources()
 
-			// Create the CRP with external rollout strategy and pick fixed policy.
+			// Create the CRP with external rollout strategy and pick N=1 policy.
 			crp := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: crpName,
@@ -563,7 +563,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 
 		It("Should still have resources on member-cluster-2 and member-cluster-3 only and completes stage canary", func() {
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters[1:])
-			// TODO: need a way to check the status of staged update run that have member-cluster-2 and member-cluster-3 updated.
+			// TODO: need a way to check the status of staged update run that is not fully completed yet.
 			checkIfRemovedWorkResourcesFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0]})
 
 			By("Validating crp status as member-cluster-2 updated")
