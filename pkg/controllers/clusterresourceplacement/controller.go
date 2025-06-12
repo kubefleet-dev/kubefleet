@@ -497,9 +497,9 @@ func (r *Reconciler) getOrCreateClusterResourceSnapshot(ctx context.Context, crp
 		// When the latest resource snapshot without the isLastest label, it means it fails to create the new
 		// resource snapshot in the last reconcile and we don't need to check and delay the request.
 		if since := time.Since(latestResourceSnapshot.CreationTimestamp.Time); since < r.ResourceSnapshotCreationInterval {
-			// If the latest resource snapshot is created less than a minute ago, requeue the request to avoid
-			// too frequent update.
-			klog.V(2).InfoS("The latest resource snapshot is created less than a minute ago, skipping the update", "clusterResourcePlacement", crpKObj,
+			// If the latest resource snapshot is created less than configured the resourceSnapshotCreationInterval,
+			//  requeue the request to avoid too frequent update.
+			klog.V(2).InfoS("The latest resource snapshot is just created, skipping the update", "clusterResourcePlacement", crpKObj,
 				"clusterResourceSnapshot", klog.KObj(latestResourceSnapshot), "creationTime", latestResourceSnapshot.CreationTimestamp, "configuredResourceSnapshotCreationInterval", r.ResourceSnapshotCreationInterval, "afterDuration", r.ResourceSnapshotCreationInterval-since)
 			return ctrl.Result{Requeue: true, RequeueAfter: r.ResourceSnapshotCreationInterval - since}, nil, nil
 		}
