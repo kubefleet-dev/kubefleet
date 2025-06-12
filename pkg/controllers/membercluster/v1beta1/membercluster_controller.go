@@ -539,7 +539,7 @@ func (r *Reconciler) updateMemberClusterStatus(ctx context.Context, mc *clusterv
 	if memberAgentStatus != nil {
 		lastReceivedHeartbeat = memberAgentStatus.LastReceivedHeartbeat.Format(time.RFC3339)
 	}
-	klog.V(2).InfoS("Update the memberCluster status", "joined", joined, "healthy", healthy, "lastReceivedHeartbeat", lastReceivedHeartbeat)
+	klog.V(2).InfoS("Update the memberCluster status", "memberCluster", klog.KObj(mc), "joined", joined, "healthy", healthy, "lastReceivedHeartbeat", lastReceivedHeartbeat)
 
 	backOffPeriod := retry.DefaultRetry
 	backOffPeriod.Cap = time.Second * time.Duration(mc.Spec.HeartbeatPeriodSeconds/2)
