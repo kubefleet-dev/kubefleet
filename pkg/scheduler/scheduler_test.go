@@ -77,7 +77,7 @@ func TestAddSchedulerCleanUpFinalizer(t *testing.T) {
 					},
 				}
 			},
-			wantFinalizers: []string{fleetv1beta1.SchedulerCRPCleanupFinalizer},
+			wantFinalizers: []string{fleetv1beta1.SchedulerCleanupFinalizer},
 		},
 		{
 			name: "namespaced placement should also add CRP finalizer",
@@ -89,7 +89,7 @@ func TestAddSchedulerCleanUpFinalizer(t *testing.T) {
 					},
 				}
 			},
-			wantFinalizers: []string{fleetv1beta1.SchedulerCRPCleanupFinalizer},
+			wantFinalizers: []string{fleetv1beta1.SchedulerCleanupFinalizer},
 		},
 		{
 			name: "scheduler should only add finalizer",
@@ -101,7 +101,7 @@ func TestAddSchedulerCleanUpFinalizer(t *testing.T) {
 					},
 				}
 			},
-			wantFinalizers: []string{fleetv1beta1.ClusterResourcePlacementCleanupFinalizer, fleetv1beta1.SchedulerCRPCleanupFinalizer},
+			wantFinalizers: []string{fleetv1beta1.ClusterResourcePlacementCleanupFinalizer, fleetv1beta1.SchedulerCleanupFinalizer},
 		},
 	}
 
@@ -149,7 +149,7 @@ func TestCleanUpAllBindingsFor(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:              crpName,
 						DeletionTimestamp: &now,
-						Finalizers:        []string{fleetv1beta1.SchedulerCRPCleanupFinalizer},
+						Finalizers:        []string{fleetv1beta1.SchedulerCleanupFinalizer},
 					},
 				}
 			},
@@ -181,7 +181,7 @@ func TestCleanUpAllBindingsFor(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:              crpName,
 						DeletionTimestamp: &now,
-						Finalizers:        []string{fleetv1beta1.SchedulerCRPCleanupFinalizer, fleetv1beta1.ClusterResourcePlacementCleanupFinalizer},
+						Finalizers:        []string{fleetv1beta1.SchedulerCleanupFinalizer, fleetv1beta1.ClusterResourcePlacementCleanupFinalizer},
 					},
 				}
 			},
@@ -197,7 +197,7 @@ func TestCleanUpAllBindingsFor(t *testing.T) {
 						Name:              "test-rp",
 						Namespace:         "test-namespace",
 						DeletionTimestamp: &now,
-						Finalizers:        []string{fleetv1beta1.SchedulerCRPCleanupFinalizer},
+						Finalizers:        []string{fleetv1beta1.SchedulerCleanupFinalizer},
 					},
 				}
 			},
@@ -223,7 +223,7 @@ func TestCleanUpAllBindingsFor(t *testing.T) {
 						Name:              "test-rp",
 						Namespace:         "test-namespace",
 						DeletionTimestamp: &now,
-						Finalizers:        []string{fleetv1beta1.SchedulerCRPCleanupFinalizer},
+						Finalizers:        []string{fleetv1beta1.SchedulerCleanupFinalizer},
 					},
 				}
 			},
@@ -349,7 +349,7 @@ func TestLookupLatestPolicySnapshot(t *testing.T) {
 				return &fleetv1beta1.ClusterResourcePlacement{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:       crpName,
-						Finalizers: []string{fleetv1beta1.SchedulerCRPCleanupFinalizer},
+						Finalizers: []string{fleetv1beta1.SchedulerCleanupFinalizer},
 					},
 				}
 			},

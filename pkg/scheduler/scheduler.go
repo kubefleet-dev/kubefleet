@@ -135,17 +135,17 @@ func (s *Scheduler) scheduleOnce(ctx context.Context, worker int) {
 	// Retrieve the placement object (either ClusterResourcePlacement or ResourcePlacement).
 	placement, err := controller.FetchPlacementFromKey(ctx, s.client, placementName)
 	if err != nil {
-		// Wrap the error for metrics; this method does not return an error.
-		klog.ErrorS(controller.NewAPIServerError(true, err), "Failed to get placement", "placement", placementRef)
-
 		if errors.IsNotFound(err) {
 			// The placement has been gone before the scheduler gets a chance to
 			// process it; normally this would not happen as sources would not enqueue any placement that
 			// has been marked for deletion but does not have the scheduler cleanup finalizer to
 			// the work queue. Such placements needs no further processing any way though, as the absence
 			// of the cleanup finalizer implies that bindings derived from the placement are no longer present.
+			klog.ErrorS(err, "placement is already deleted", "placement", placementRef)
 			return
 		}
+		// Wrap the error for metrics; this method does not return an error.
+		klog.ErrorS(controller.NewAPIServerError(true, err), "Failed to get placement", "placement", placementRef)
 
 		// Requeue for later processing.
 		s.queue.AddRateLimited(placementName)
@@ -155,7 +155,7 @@ func (s *Scheduler) scheduleOnce(ctx context.Context, worker int) {
 	// Check if the placement has been marked for deletion, and if it has the scheduler cleanup finalizer.
 	if placement.GetDeletionTimestamp() != nil {
 		// Use SchedulerCRPCleanupFinalizer consistently for all placement types
-		if controllerutil.ContainsFinalizer(placement, fleetv1beta1.SchedulerCRPCleanupFinalizer) {
+		if controllerutil.ContainsFinalizer(placement, fleetv1beta1.SchedulerCleanupFinalizer) {
 			if err := s.cleanUpAllBindingsFor(ctx, placement); err != nil {
 				klog.ErrorS(err, "Failed to clean up all bindings for placement", "placement", placementRef)
 				// Requeue for later processing.
@@ -329,7 +329,7 @@ func (s *Scheduler) cleanUpAllBindingsFor(ctx context.Context, placement fleetv1
 
 	// All bindings have been deleted; remove the scheduler cleanup finalizer from the placement.
 	// Use SchedulerCRPCleanupFinalizer consistently for all placement types.
-	controllerutil.RemoveFinalizer(placement, fleetv1beta1.SchedulerCRPCleanupFinalizer)
+	controllerutil.RemoveFinalizer(placement, fleetv1beta1.SchedulerCleanupFinalizer)
 	if err := s.client.Update(ctx, placement); err != nil {
 		klog.ErrorS(err, "Failed to remove scheduler cleanup finalizer from placement", "placement", placementRef)
 		return controller.NewUpdateIgnoreConflictError(err)
@@ -398,8 +398,8 @@ func (s *Scheduler) lookupLatestPolicySnapshot(ctx context.Context, placement fl
 // have it yet).
 func (s *Scheduler) addSchedulerCleanUpFinalizer(ctx context.Context, placement fleetv1beta1.PlacementObj) error {
 	// Add the finalizer only if the placement does not have one yet.
-	if !controllerutil.ContainsFinalizer(placement, fleetv1beta1.SchedulerCRPCleanupFinalizer) {
-		controllerutil.AddFinalizer(placement, fleetv1beta1.SchedulerCRPCleanupFinalizer)
+	if !controllerutil.ContainsFinalizer(placement, fleetv1beta1.SchedulerCleanupFinalizer) {
+		controllerutil.AddFinalizer(placement, fleetv1beta1.SchedulerCleanupFinalizer)
 
 		if err := s.client.Update(ctx, placement); err != nil {
 			klog.ErrorS(err, "Failed to update placement", "placement", klog.KObj(placement))

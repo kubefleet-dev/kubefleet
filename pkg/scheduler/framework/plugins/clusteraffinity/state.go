@@ -44,8 +44,9 @@ func preparePluginState(state framework.CycleStatePluginReadWriter, policy place
 	// enforceable preferred cluster affinity term, as guaranteed by its caller.
 
 	var cs []clusterv1beta1.MemberCluster
-	for tidx := range policy.GetPolicySnapshotSpec().Policy.Affinity.ClusterAffinity.PreferredDuringSchedulingIgnoredDuringExecution {
-		t := &policy.GetPolicySnapshotSpec().Policy.Affinity.ClusterAffinity.PreferredDuringSchedulingIgnoredDuringExecution[tidx]
+	clusterAffnity := policy.GetPolicySnapshotSpec().Policy.Affinity.ClusterAffinity
+	for tidx := range clusterAffnity.PreferredDuringSchedulingIgnoredDuringExecution {
+		t := &clusterAffnity.PreferredDuringSchedulingIgnoredDuringExecution[tidx]
 		if t.Preference.PropertySorter != nil {
 			if cs == nil {
 				// Do a lazy retrieval of the cluster list; as the copy has some overhead.

@@ -61,7 +61,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	// Check if the CRP has been deleted and has the scheduler finalizer.
-	if crp.DeletionTimestamp != nil && controllerutil.ContainsFinalizer(crp, fleetv1beta1.SchedulerCRPCleanupFinalizer) {
+	if crp.DeletionTimestamp != nil && controllerutil.ContainsFinalizer(crp, fleetv1beta1.SchedulerCleanupFinalizer) {
 		// The CRP has been deleted and still has the scheduler finalizer;
 		// enqueue it for the scheduler to process.
 		r.SchedulerWorkQueue.AddRateLimited(queue.PlacementKey(crp.Name))

@@ -29,9 +29,9 @@ const (
 	// that the CRP controller can react to CRP deletions if necessary.
 	ClusterResourcePlacementCleanupFinalizer = fleetPrefix + "crp-cleanup"
 
-	// SchedulerCRPCleanupFinalizer is a finalizer added by the scheduler to CRPs, to make sure
+	// SchedulerCleanupFinalizer is a finalizer added by the scheduler to CRPs, to make sure
 	// that all bindings derived from a CRP can be cleaned up after the CRP is deleted.
-	SchedulerCRPCleanupFinalizer = fleetPrefix + "scheduler-cleanup"
+	SchedulerCleanupFinalizer = fleetPrefix + "scheduler-cleanup"
 )
 
 // make sure the PlacementObj and PlacementObjList interfaces are implemented by the
@@ -118,7 +118,7 @@ type ClusterResourcePlacement struct {
 	Status PlacementStatus `json:"status,omitempty"`
 }
 
-// PlacementSpec defines the desired state of ClusterResourcePlacement.
+// PlacementSpec defines the desired state of ClusterResourcePlacement and ResourcePlacement.
 type PlacementSpec struct {
 
 	// ResourceSelectors is an array of selectors used to select cluster scoped resources. The selectors are `ORed`.
@@ -861,7 +861,7 @@ type RollingUpdateConfig struct {
 	UnavailablePeriodSeconds *int `json:"unavailablePeriodSeconds,omitempty"`
 }
 
-// PlacementStatus defines the observed status of the ClusterResourcePlacement object.
+// PlacementStatus defines the observed status of the ClusterResourcePlacement and ResourcePlacement object.
 type PlacementStatus struct {
 	// SelectedResources contains a list of resources selected by ResourceSelectors.
 	// This field is only meaningful if the `ObservedResourceIndex` is not empty.
