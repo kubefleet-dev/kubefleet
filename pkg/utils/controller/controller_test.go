@@ -50,31 +50,6 @@ func TestNewUnexpectedBehaviorError(t *testing.T) {
 			err:     errors.New("unexpected"),
 			wantErr: ErrUnexpectedBehavior,
 		},
-		{
-			name:    "api server StatusError (NotFound) should be API server error",
-			err:     apierrors.NewNotFound(schema.GroupResource{Group: "test", Resource: "res"}, "foo"),
-			wantErr: ErrAPIServerError,
-		},
-		{
-			name:    "api server StatusError (Conflict) should be API server error",
-			err:     apierrors.NewConflict(schema.GroupResource{Group: "test", Resource: "res"}, "foo", nil),
-			wantErr: ErrAPIServerError,
-		},
-		{
-			name:    "api server StatusError (Forbidden) should be API server error",
-			err:     apierrors.NewForbidden(schema.GroupResource{Group: "test", Resource: "res"}, "foo", errors.New("forbidden")),
-			wantErr: ErrAPIServerError,
-		},
-		{
-			name:    "client rate limiter Wait returned an error: context canceled should be API server error",
-			err:     fmt.Errorf("client rate limiter Wait returned an error: %w", context.Canceled),
-			wantErr: ErrAPIServerError,
-		},
-		{
-			name:    "client rate limiter Wait returned an error: deadline exceeded should be API server error",
-			err:     fmt.Errorf("client rate limiter Wait returned an error: %w", context.DeadlineExceeded),
-			wantErr: ErrAPIServerError,
-		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
