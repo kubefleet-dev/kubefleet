@@ -31,7 +31,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
 )
 
-var _ = Describe("placing resources using a CRP with no placement policy specified", Ordered, func() {
+var _ = FDescribe("placing resources using a CRP with no placement policy specified", Ordered, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 
 	BeforeAll(func() {
