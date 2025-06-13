@@ -111,10 +111,10 @@ func TestNewAPIServerError(t *testing.T) {
 			wantErr:   ErrAPIServerError,
 		},
 		{
-			name:      "reading from cache: unexpectedBehaviorError",
+			name:      "reading from cache: apiServerError",
 			fromCache: true,
 			err:       apierrors.NewConflict(schema.GroupResource{}, "conflict", nil),
-			wantErr:   ErrUnexpectedBehavior,
+			wantErr:   ErrAPIServerError,
 		},
 		{
 			name:      "reading from API server: apiServerError",
@@ -126,6 +126,18 @@ func TestNewAPIServerError(t *testing.T) {
 			name:      "reading from API server: apiServerError",
 			fromCache: false,
 			err:       apierrors.NewConflict(schema.GroupResource{}, "conflict", nil),
+			wantErr:   ErrAPIServerError,
+		},
+		{
+			name:      "reading from API server: context canceled",
+			fromCache: false,
+			err:       fmt.Errorf("client rate limiter Wait returned an error: %w", context.Canceled),
+			wantErr:   ErrAPIServerError,
+		},
+		{
+			name:      "reading from API server: deadline exceeded",
+			fromCache: false,
+			err:       fmt.Errorf("client rate limiter Wait returned an error: %w", context.DeadlineExceeded),
 			wantErr:   ErrAPIServerError,
 		},
 	}
