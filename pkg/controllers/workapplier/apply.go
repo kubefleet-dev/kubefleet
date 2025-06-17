@@ -19,7 +19,6 @@ package workapplier
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/validation"
@@ -518,7 +517,10 @@ func validateOwnerReferences(
 	// expected AppliedWork object. For safety reasons, Fleet will still do a sanity check.
 	found := false
 	for _, ownerRef := range inMemberClusterObjOwnerRefs {
-		if reflect.DeepEqual(ownerRef, *expectedAppliedWorkOwnerRef) {
+		if ownerRef.UID == expectedAppliedWorkOwnerRef.UID &&
+			ownerRef.Name == expectedAppliedWorkOwnerRef.Name &&
+			ownerRef.Kind == expectedAppliedWorkOwnerRef.Kind &&
+			ownerRef.APIVersion == expectedAppliedWorkOwnerRef.APIVersion {
 			found = true
 			break
 		}
