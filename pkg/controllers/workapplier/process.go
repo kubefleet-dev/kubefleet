@@ -19,7 +19,6 @@ package workapplier
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -357,7 +356,10 @@ func canApplyWithOwnership(inMemberClusterObj *unstructured.Unstructured, expect
 	// Verify if the object is owned by Fleet.
 	curOwners := inMemberClusterObj.GetOwnerReferences()
 	for idx := range curOwners {
-		if reflect.DeepEqual(curOwners[idx], *expectedAppliedWorkOwnerRef) {
+		if curOwners[idx].UID == expectedAppliedWorkOwnerRef.UID &&
+			curOwners[idx].Name == expectedAppliedWorkOwnerRef.Name &&
+			curOwners[idx].Kind == expectedAppliedWorkOwnerRef.Kind &&
+			curOwners[idx].APIVersion == expectedAppliedWorkOwnerRef.APIVersion {
 			return true
 		}
 	}
