@@ -836,7 +836,6 @@ func cleanupCRP(name string) {
 			}
 			// Work object still exists, or some other error occurred, return false to retry.
 			return false
-
 		}
 		return true
 	}, workloadEventuallyDuration, eventuallyInterval).Should(BeTrue(), fmt.Sprintf("Work resource %s from namespace %s should be deleted from hub", work.Name, workNS))
