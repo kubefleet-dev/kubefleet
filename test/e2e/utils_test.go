@@ -830,17 +830,16 @@ func cleanupCRP(name string) {
 	Eventually(func() bool {
 		for i := range allMemberClusters {
 			workNS = fmt.Sprintf("fleet-member-%s", allMemberClusterNames[i])
-			if err := hubClient.Get(ctx, types.NamespacedName{Name: work.Name, Namespace: workNS}, work); err != nil {
-				if k8serrors.IsNotFound(err) {
-					// Work resource is not found, which is expected.
-					continue
-				}
-				// Some other error occurred, return false to retry.
-				return false
+			if err := hubClient.Get(ctx, types.NamespacedName{Name: work.Name, Namespace: workNS}, work); err != nil && k8serrors.IsNotFound(err) {
+				// Work resource is not found, which is expected.
+				continue
 			}
+			// Work object still exists, or some other error occurred, return false to retry.
+			return false
+
 		}
 		return true
-	}, workloadEventuallyDuration, eventuallyInterval).Should(BeTrue(), fmt.Sprintf("Work resource %s from namespace %s should be deleted from hub", fmt.Sprintf("%s-work", name)))
+	}, workloadEventuallyDuration, eventuallyInterval).Should(BeTrue(), fmt.Sprintf("Work resource %s from namespace %s should be deleted from hub", work.Name, workNS))
 }
 
 // createResourceOverrides creates a number of resource overrides.
