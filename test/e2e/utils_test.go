@@ -815,6 +815,32 @@ func cleanupCRP(name string) {
 	// Wait until the CRP is removed.
 	removedActual := crpRemovedActual(name)
 	Eventually(removedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove CRP %s", name)
+
+	// Check if work is deleted. Needed to ensure that the Work resource is cleaned up before the next CRP is created.
+	// This is because the Work resource is created with a finalizer that blocks deletion until the all applied work
+	// and applied work itself is successfully deleted. If the Work resource is not deleted, it can cause resource overlap
+	// and flakiness in subsequent tests.
+	By("Check if work is deleted")
+	var workNS string
+	work := &placementv1beta1.Work{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: fmt.Sprintf("%s-work", name),
+		},
+	}
+	Eventually(func() bool {
+		for i := range allMemberClusters {
+			workNS = fmt.Sprintf("fleet-member-%s", allMemberClusterNames[i])
+			if err := hubClient.Get(ctx, types.NamespacedName{Name: work.Name, Namespace: workNS}, work); err != nil {
+				if k8serrors.IsNotFound(err) {
+					// Work resource is not found, which is expected.
+					continue
+				}
+				// Some other error occurred, return false to retry.
+				return false
+			}
+		}
+		return true
+	}, workloadEventuallyDuration, eventuallyInterval).Should(BeTrue(), fmt.Sprintf("Work resource %s from namespace %s should be deleted from hub", fmt.Sprintf("%s-work", name)))
 }
 
 // createResourceOverrides creates a number of resource overrides.

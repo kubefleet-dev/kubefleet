@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-http://www.apache.org/licenses/LICENSE-2.0
+    http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -488,7 +488,7 @@ func (r *Reconciler) garbageCollectAppliedWork(ctx context.Context, work *fleetv
 			return r.removeWorkFinalizer(ctx, work)
 		}
 		klog.ErrorS(err, "Failed to get AppliedWork", "appliedWork", work.Name)
-		return ctrl.Result{}, controller.NewAPIServerError(false, err)
+		return ctrl.Result{Requeue: true}, controller.NewAPIServerError(false, err)
 	}
 
 	// Delete the appliedWork object.
@@ -555,7 +555,8 @@ func (r *Reconciler) updateOwnerReference(ctx context.Context, appliedWork *flee
 				if ownerRefs[idx].UID == appliedWorkOwnerRef.UID &&
 					ownerRefs[idx].Name == appliedWorkOwnerRef.Name &&
 					ownerRefs[idx].Kind == appliedWorkOwnerRef.Kind &&
-					ownerRefs[idx].APIVersion == appliedWorkOwnerRef.APIVersion {
+					ownerRefs[idx].APIVersion == appliedWorkOwnerRef.APIVersion &&
+					*ownerRefs[idx].BlockOwnerDeletion {
 					ownerRefs[idx].BlockOwnerDeletion = ptr.To(false)
 					updated = true
 				}
@@ -636,7 +637,6 @@ func (r *Reconciler) ensureAppliedWork(ctx context.Context, work *fleetv1beta1.W
 			return nil, controller.NewAPIServerError(false, err)
 		}
 	}
-
 	klog.InfoS("Recreated the appliedWork resource", "appliedWork", workRef.Name)
 	return appliedWork, nil
 }

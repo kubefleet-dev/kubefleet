@@ -560,12 +560,14 @@ func removeOwnerRef(obj *unstructured.Unstructured, expectedAppliedWorkOwnerRef 
 
 	// Re-build the owner references; remove the given one from the list.
 	for idx := range ownerRefs {
-		if ownerRefs[idx].UID != expectedAppliedWorkOwnerRef.UID &&
-			ownerRefs[idx].Name != expectedAppliedWorkOwnerRef.Name &&
-			ownerRefs[idx].Kind != expectedAppliedWorkOwnerRef.Kind &&
-			ownerRefs[idx].APIVersion != expectedAppliedWorkOwnerRef.APIVersion {
-			updatedOwnerRefs = append(updatedOwnerRefs, ownerRefs[idx])
+		if ownerRefs[idx].UID == expectedAppliedWorkOwnerRef.UID &&
+			ownerRefs[idx].Name == expectedAppliedWorkOwnerRef.Name &&
+			ownerRefs[idx].Kind == expectedAppliedWorkOwnerRef.Kind &&
+			ownerRefs[idx].APIVersion == expectedAppliedWorkOwnerRef.APIVersion {
+			// Skip the expected owner reference.
+			continue
 		}
+		updatedOwnerRefs = append(updatedOwnerRefs, ownerRefs[idx])
 	}
 	obj.SetOwnerReferences(updatedOwnerRefs)
 }
