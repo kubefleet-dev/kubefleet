@@ -488,7 +488,7 @@ func (r *Reconciler) garbageCollectAppliedWork(ctx context.Context, work *fleetv
 			return r.removeWorkFinalizer(ctx, work)
 		}
 		klog.ErrorS(err, "Failed to get AppliedWork", "appliedWork", work.Name)
-		return ctrl.Result{Requeue: true}, controller.NewAPIServerError(false, err)
+		return ctrl.Result{}, controller.NewAPIServerError(false, err)
 	}
 
 	// Delete the appliedWork object.
@@ -552,11 +552,7 @@ func (r *Reconciler) updateOwnerReference(ctx context.Context, appliedWork *flee
 			// Re-build the owner reference; update the blockOwnerDeletion field to false.
 			updated := false
 			for idx := range ownerRefs {
-				if ownerRefs[idx].UID == appliedWorkOwnerRef.UID &&
-					ownerRefs[idx].Name == appliedWorkOwnerRef.Name &&
-					ownerRefs[idx].Kind == appliedWorkOwnerRef.Kind &&
-					ownerRefs[idx].APIVersion == appliedWorkOwnerRef.APIVersion &&
-					*ownerRefs[idx].BlockOwnerDeletion {
+				if ownerRefEqualsExpected(&ownerRefs[idx], appliedWorkOwnerRef) {
 					ownerRefs[idx].BlockOwnerDeletion = ptr.To(false)
 					updated = true
 				}
