@@ -356,10 +356,7 @@ func canApplyWithOwnership(inMemberClusterObj *unstructured.Unstructured, expect
 	// Verify if the object is owned by Fleet.
 	curOwners := inMemberClusterObj.GetOwnerReferences()
 	for idx := range curOwners {
-		if curOwners[idx].UID == expectedAppliedWorkOwnerRef.UID &&
-			curOwners[idx].Name == expectedAppliedWorkOwnerRef.Name &&
-			curOwners[idx].Kind == expectedAppliedWorkOwnerRef.Kind &&
-			curOwners[idx].APIVersion == expectedAppliedWorkOwnerRef.APIVersion {
+		if ownerRefEqualsExpected(&curOwners[idx], expectedAppliedWorkOwnerRef) {
 			return true
 		}
 	}

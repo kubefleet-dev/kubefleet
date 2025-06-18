@@ -543,10 +543,7 @@ func isInMemberClusterObjectDerivedFromManifestObj(inMemberClusterObj *unstructu
 	// Verify if the owner reference still stands.
 	curOwners := inMemberClusterObj.GetOwnerReferences()
 	for idx := range curOwners {
-		if curOwners[idx].UID == expectedAppliedWorkOwnerRef.UID &&
-			curOwners[idx].Name == expectedAppliedWorkOwnerRef.Name &&
-			curOwners[idx].Kind == expectedAppliedWorkOwnerRef.Kind &&
-			curOwners[idx].APIVersion == expectedAppliedWorkOwnerRef.APIVersion {
+		if ownerRefEqualsExpected(&curOwners[idx], expectedAppliedWorkOwnerRef) {
 			return true
 		}
 	}
@@ -560,14 +557,19 @@ func removeOwnerRef(obj *unstructured.Unstructured, expectedAppliedWorkOwnerRef 
 
 	// Re-build the owner references; remove the given one from the list.
 	for idx := range ownerRefs {
-		if ownerRefs[idx].UID == expectedAppliedWorkOwnerRef.UID &&
-			ownerRefs[idx].Name == expectedAppliedWorkOwnerRef.Name &&
-			ownerRefs[idx].Kind == expectedAppliedWorkOwnerRef.Kind &&
-			ownerRefs[idx].APIVersion == expectedAppliedWorkOwnerRef.APIVersion {
+		if ownerRefEqualsExpected(&ownerRefs[idx], expectedAppliedWorkOwnerRef) {
 			// Skip the expected owner reference.
 			continue
 		}
 		updatedOwnerRefs = append(updatedOwnerRefs, ownerRefs[idx])
 	}
 	obj.SetOwnerReferences(updatedOwnerRefs)
+}
+
+// ownerRefEquals returns true if two owner references are equal based on UID, Name, Kind, and APIVersion.
+func ownerRefEqualsExpected(a, b *metav1.OwnerReference) bool {
+	return a.UID == b.UID &&
+		a.Name == b.Name &&
+		a.Kind == b.Kind &&
+		a.APIVersion == b.APIVersion
 }

@@ -197,6 +197,7 @@ type Reconciler struct {
 
 	availabilityCheckRequeueAfter time.Duration
 	driftCheckRequeueAfter        time.Duration
+	deletionWaitTime              time.Duration
 }
 
 func NewReconciler(
@@ -207,6 +208,7 @@ func NewReconciler(
 	workerCount int,
 	availabilityCheckRequestAfter time.Duration,
 	driftCheckRequestAfter time.Duration,
+	deletionWaitTime time.Duration,
 	watchWorkWithPriorityQueue bool,
 	watchWorkReconcileAgeMinutes int,
 ) *Reconciler {
@@ -236,6 +238,7 @@ func NewReconciler(
 		joined:                        atomic.NewBool(false),
 		availabilityCheckRequeueAfter: acRequestAfter,
 		driftCheckRequeueAfter:        dcRequestAfter,
+		deletionWaitTime:              deletionWaitTime,
 	}
 }
 
@@ -470,53 +473,51 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	return ctrl.Result{RequeueAfter: r.driftCheckRequeueAfter}, nil
 }
 
-// garbageCollectAppliedWork deletes the appliedWork and all the manifests associated with it from the cluster.
 func (r *Reconciler) garbageCollectAppliedWork(ctx context.Context, work *fleetv1beta1.Work) (ctrl.Result, error) {
 	deletePolicy := metav1.DeletePropagationForeground
 	if !controllerutil.ContainsFinalizer(work, fleetv1beta1.WorkFinalizer) {
 		return ctrl.Result{}, nil
 	}
-	// Delete the appliedWork which will remove all the manifests associated with it, unless they have
-	// other owner references.
-	appliedWork := fleetv1beta1.AppliedWork{
+	appliedWork := &fleetv1beta1.AppliedWork{
 		ObjectMeta: metav1.ObjectMeta{Name: work.Name},
 	}
 	// Get the AppliedWork object
-	if err := r.spokeClient.Get(ctx, types.NamespacedName{Name: work.Name}, &appliedWork); err != nil {
+	if err := r.spokeClient.Get(ctx, types.NamespacedName{Name: work.Name}, appliedWork); err != nil {
 		if apierrors.IsNotFound(err) {
 			klog.V(2).InfoS("The appliedWork is already deleted, removing the finalizer from the work", "appliedWork", work.Name)
 			return r.removeWorkFinalizer(ctx, work)
 		}
 		klog.ErrorS(err, "Failed to get AppliedWork", "appliedWork", work.Name)
-		return ctrl.Result{Requeue: true}, controller.NewAPIServerError(false, err)
+		return ctrl.Result{}, controller.NewAPIServerError(false, err)
 	}
 
-	// Delete the appliedWork object.
-	if appliedWork.DeletionTimestamp.IsZero() {
-		// Update the owner reference in the AppliedWork object.
-		if err := r.updateOwnerReference(ctx, &appliedWork); err != nil {
-			klog.ErrorS(err, "Failed to update owner reference in the appliedWork", "appliedWork", work.Name)
-			return ctrl.Result{}, controller.NewAPIServerError(false, err)
-		}
-		klog.V(2).InfoS("Deleting the appliedWork", "appliedWork", work.Name)
-		if err := r.spokeClient.Delete(ctx, &appliedWork, &client.DeleteOptions{PropagationPolicy: &deletePolicy}); err != nil {
-			if apierrors.IsNotFound(err) {
-				klog.V(2).InfoS("The appliedWork is already deleted", "appliedWork", work.Name)
-				return r.removeWorkFinalizer(ctx, work)
-			}
-			klog.V(2).ErrorS(err, "Failed to delete the appliedWork", "appliedWork", work.Name)
+	// Handle stuck deletion after 5 minutes where the other owner references might not exist or are invalid.
+	if !appliedWork.DeletionTimestamp.IsZero() && time.Since(appliedWork.DeletionTimestamp.Time) >= r.deletionWaitTime {
+		klog.V(2).InfoS("AppliedWork deletion appears stuck; attempting to patch owner references", "appliedWork", work.Name)
+		if err := r.updateOwnerReference(ctx, work, appliedWork); err != nil {
+			klog.ErrorS(err, "Failed to update owner references for AppliedWork", "appliedWork", work.Name)
 			return ctrl.Result{}, controller.NewAPIServerError(false, err)
 		}
 	}
+
+	if err := r.spokeClient.Delete(ctx, appliedWork, &client.DeleteOptions{PropagationPolicy: &deletePolicy}); err != nil {
+		if apierrors.IsNotFound(err) {
+			klog.V(2).InfoS("AppliedWork already deleted", "appliedWork", work.Name)
+			return r.removeWorkFinalizer(ctx, work)
+		}
+		klog.V(2).ErrorS(err, "Failed to delete the appliedWork", "appliedWork", work.Name)
+		return ctrl.Result{}, controller.NewAPIServerError(false, err)
+	}
+
 	klog.V(2).InfoS("AppliedWork deletion in progress", "appliedWork", work.Name)
-	return ctrl.Result{Requeue: true}, fmt.Errorf("AppliedWork %s is being deleted, waiting for the deletion to complete", work.Name)
+	return ctrl.Result{}, fmt.Errorf("AppliedWork %s is being deleted, waiting for the deletion to complete", work.Name)
 }
 
 // updateOwnerReference updates the AppliedWork owner reference in the manifest objects.
-// It changes the `blockOwnerDeletion` field to true, so that the AppliedWork can be deleted in cases where
+// It changes the blockOwnerDeletion field to false, so that the AppliedWork can be deleted in cases where
 // the other owner references do not exist or are invalid.
 // https://kubernetes.io/docs/concepts/overview/working-with-objects/owners-dependents/#owner-references-in-object-specifications
-func (r *Reconciler) updateOwnerReference(ctx context.Context, appliedWork *fleetv1beta1.AppliedWork) error {
+func (r *Reconciler) updateOwnerReference(ctx context.Context, work *fleetv1beta1.Work, appliedWork *fleetv1beta1.AppliedWork) error {
 	appliedWorkOwnerRef := &metav1.OwnerReference{
 		APIVersion: fleetv1beta1.GroupVersion.String(),
 		Kind:       "AppliedWork",
@@ -524,20 +525,26 @@ func (r *Reconciler) updateOwnerReference(ctx context.Context, appliedWork *flee
 		UID:        appliedWork.UID,
 	}
 
-	for _, res := range appliedWork.Status.AppliedResources {
+	if err := r.hubClient.Get(ctx, types.NamespacedName{Name: work.Name, Namespace: work.Namespace}, work); err != nil {
+		if apierrors.IsNotFound(err) {
+			klog.V(2).InfoS("Work object not found, skipping owner reference update", "work", work.Name, "namespace", work.Namespace)
+			return nil
+		}
+		klog.ErrorS(err, "Failed to get Work object for owner reference update", "work", work.Name, "namespace", work.Namespace)
+		return controller.NewAPIServerError(false, err)
+	}
+
+	for _, cond := range work.Status.ManifestConditions {
+		res := cond.Identifier
 		gvr := schema.GroupVersionResource{
 			Group:    res.Group,
 			Version:  res.Version,
 			Resource: res.Resource,
 		}
+
 		var obj *unstructured.Unstructured
 		var err error
-		if res.Namespace != "" {
-			obj, err = r.spokeDynamicClient.Resource(gvr).Namespace(res.Namespace).Get(ctx, res.Name, metav1.GetOptions{})
-		} else {
-			obj, err = r.spokeDynamicClient.Resource(gvr).Get(ctx, res.Name, metav1.GetOptions{})
-		}
-		if err != nil {
+		if obj, err = r.spokeDynamicClient.Resource(gvr).Namespace(res.Namespace).Get(ctx, res.Name, metav1.GetOptions{}); err != nil {
 			if apierrors.IsNotFound(err) {
 				continue
 			}
@@ -548,37 +555,20 @@ func (r *Reconciler) updateOwnerReference(ctx context.Context, appliedWork *flee
 		// Otherwise, at least one other owner reference exists, and we need to leave resource alone.
 		if len(obj.GetOwnerReferences()) > 1 {
 			ownerRefs := obj.GetOwnerReferences()
-
-			// Re-build the owner reference; update the blockOwnerDeletion field to false.
 			updated := false
 			for idx := range ownerRefs {
-				if ownerRefs[idx].UID == appliedWorkOwnerRef.UID &&
-					ownerRefs[idx].Name == appliedWorkOwnerRef.Name &&
-					ownerRefs[idx].Kind == appliedWorkOwnerRef.Kind &&
-					ownerRefs[idx].APIVersion == appliedWorkOwnerRef.APIVersion &&
-					*ownerRefs[idx].BlockOwnerDeletion {
+				if ownerRefEqualsExpected(&ownerRefs[idx], appliedWorkOwnerRef) {
 					ownerRefs[idx].BlockOwnerDeletion = ptr.To(false)
 					updated = true
 				}
 			}
 			if updated {
 				obj.SetOwnerReferences(ownerRefs)
-
-				if res.Namespace != "" {
-					_, err = r.spokeDynamicClient.Resource(gvr).Namespace(res.Namespace).Update(ctx, obj, metav1.UpdateOptions{})
-					if err != nil {
-						klog.ErrorS(err, "Failed to update manifest owner references", "gvr", gvr, "name", res.Name, "namespace", res.Namespace)
-						return err
-					}
-					klog.V(4).InfoS("Updated manifest owner references", "gvr", gvr, "name", res.Name, "namespace", res.Namespace)
-				} else {
-					_, err = r.spokeDynamicClient.Resource(gvr).Update(ctx, obj, metav1.UpdateOptions{})
-					if err != nil {
-						klog.ErrorS(err, "Failed to update manifest owner references", "gvr", gvr, "name", res.Name)
-						return err
-					}
-					klog.V(4).InfoS("Updated manifest owner references", "gvr", gvr, "name", res.Name)
+				if _, err = r.spokeDynamicClient.Resource(gvr).Namespace(obj.GetNamespace()).Update(ctx, obj, metav1.UpdateOptions{}); err != nil {
+					klog.ErrorS(err, "Failed to update manifest owner references", "gvr", gvr, "name", res.Name, "namespace", res.Namespace)
+					return err
 				}
+				klog.V(4).InfoS("Patched manifest owner references", "gvr", gvr, "name", res.Name, "namespace", res.Namespace)
 			}
 		}
 	}
