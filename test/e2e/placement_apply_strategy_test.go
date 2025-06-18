@@ -43,6 +43,12 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 	annotationValue := "annotation-value"
 	annotationUpdatedValue := "annotation-updated-value"
 	workNamespaceName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
+	anotherOwnerReference := metav1.OwnerReference{
+		APIVersion: "another-api-version",
+		Kind:       "another-kind",
+		Name:       "another-owner",
+		UID:        "another-uid",
+	}
 
 	BeforeAll(func() {
 		By("creating work resources on hub cluster")
@@ -58,12 +64,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		BeforeAll(func() {
 			ns := appNamespace()
 			ns.SetOwnerReferences([]metav1.OwnerReference{
-				{
-					APIVersion: "another-api-version",
-					Kind:       "another-kind",
-					Name:       "another-owner",
-					UID:        "another-uid",
-				},
+				anotherOwnerReference,
 			})
 			ns.Annotations = map[string]string{
 				annotationKey: annotationValue,
@@ -119,7 +120,22 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		It("namespace should be kept on member cluster", func() {
 			Consistently(func() error {
 				ns := &corev1.Namespace{}
-				return allMemberClusters[0].KubeClient.Get(ctx, types.NamespacedName{Name: workNamespaceName}, ns)
+				if err := allMemberClusters[0].KubeClient.Get(ctx, types.NamespacedName{Name: workNamespaceName}, ns); err != nil {
+					return fmt.Errorf("failed to get namespace %s: %w", workNamespaceName, err)
+				}
+
+				if len(ns.OwnerReferences) > 0 {
+					for _, ownerRef := range ns.OwnerReferences {
+						if ownerRef.APIVersion == placementv1beta1.GroupVersion.String() &&
+							ownerRef.Kind == placementv1beta1.AppliedWorkKind &&
+							ownerRef.Name == fmt.Sprintf("%s-work", crpName) {
+							if *ownerRef.BlockOwnerDeletion {
+								return fmt.Errorf("namespace %s owner reference for AppliedWork should have been updated to have BlockOwnerDeletion set to false", workNamespaceName)
+							}
+						}
+					}
+				}
+				return nil
 			}, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Namespace which is not owned by the CRP should not be deleted")
 		})
 	})
@@ -231,12 +247,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		BeforeAll(func() {
 			ns := appNamespace()
 			ns.SetOwnerReferences([]metav1.OwnerReference{
-				{
-					APIVersion: "another-api-version",
-					Kind:       "another-kind",
-					Name:       "another-owner",
-					UID:        "another-uid",
-				},
+				anotherOwnerReference,
 			})
 			By(fmt.Sprintf("creating namespace %s on member cluster", ns.Name))
 			Expect(allMemberClusters[0].KubeClient.Create(ctx, &ns)).Should(Succeed(), "Failed to create namespace %s", ns.Name)
@@ -348,7 +359,22 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 			Consistently(func() error {
 				workNamespaceName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 				ns := &corev1.Namespace{}
-				return allMemberClusters[0].KubeClient.Get(ctx, types.NamespacedName{Name: workNamespaceName}, ns)
+				if err := allMemberClusters[0].KubeClient.Get(ctx, types.NamespacedName{Name: workNamespaceName}, ns); err != nil {
+					return fmt.Errorf("failed to get namespace %s: %w", workNamespaceName, err)
+				}
+
+				if len(ns.OwnerReferences) > 0 {
+					for _, ownerRef := range ns.OwnerReferences {
+						if ownerRef.APIVersion == placementv1beta1.GroupVersion.String() &&
+							ownerRef.Kind == placementv1beta1.AppliedWorkKind &&
+							ownerRef.Name == fmt.Sprintf("%s-work", crpName) {
+							if *ownerRef.BlockOwnerDeletion {
+								return fmt.Errorf("namespace %s owner reference for AppliedWork should have been updated to have BlockOwnerDeletion set to false", workNamespaceName)
+							}
+						}
+					}
+				}
+				return nil
 			}, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Namespace which is not owned by the CRP should not be deleted")
 		})
 	})
@@ -357,12 +383,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		BeforeAll(func() {
 			ns := appNamespace()
 			ns.SetOwnerReferences([]metav1.OwnerReference{
-				{
-					APIVersion: "another-api-version",
-					Kind:       "another-kind",
-					Name:       "another-owner",
-					UID:        "another-uid",
-				},
+				anotherOwnerReference,
 			})
 			ns.Annotations = map[string]string{
 				annotationKey: annotationValue,
@@ -432,7 +453,22 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		It("namespace should be kept on member cluster", func() {
 			Consistently(func() error {
 				ns := &corev1.Namespace{}
-				return allMemberClusters[0].KubeClient.Get(ctx, types.NamespacedName{Name: workNamespaceName}, ns)
+				if err := allMemberClusters[0].KubeClient.Get(ctx, types.NamespacedName{Name: workNamespaceName}, ns); err != nil {
+					return fmt.Errorf("failed to get namespace %s: %w", workNamespaceName, err)
+				}
+
+				if len(ns.OwnerReferences) > 0 {
+					for _, ownerRef := range ns.OwnerReferences {
+						if ownerRef.APIVersion == placementv1beta1.GroupVersion.String() &&
+							ownerRef.Kind == placementv1beta1.AppliedWorkKind &&
+							ownerRef.Name == fmt.Sprintf("%s-work", crpName) {
+							if *ownerRef.BlockOwnerDeletion {
+								return fmt.Errorf("namespace %s owner reference for AppliedWork should have been updated to have BlockOwnerDeletion set to false", workNamespaceName)
+							}
+						}
+					}
+				}
+				return nil
 			}, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Namespace which is not owned by the CRP should not be deleted")
 		})
 	})
