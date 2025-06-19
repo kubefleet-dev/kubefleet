@@ -26,6 +26,8 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -1004,120 +1006,219 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 						return "", fmt.Errorf("got %d latest resourcesnapshots, want 1", len(crsList.Items))
 					}
 					return crsList.Items[0].Labels[placementv1beta1.ResourceIndexLabel], nil
-				}, eventuallyDuration, eventuallyInterval).Should(Equal(resourceSnapshotIndex2nd), "Failed to get the new latest resource snapshot")
+				}, eventuallyDuration, eventuallyInterval).Should(Equal(resourceSnapshotIndex2nd), "Failed to wait for new resource snapshot")
 
 				createStagedUpdateRunSucceed(updateRunNames[1], crpName, resourceSnapshotIndex2nd, strategyName)
-			})
-
-			It("Should place new resources to member-1", func() {
 				validateAndApproveClusterApprovalRequests(updateRunNames[1], envCanary)
 
 				updateRunSucceededActual := updateRunStatusSucceededActual(updateRunNames[1], policySnapshotIndex1st, len(allMemberClusters), nil, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 				Eventually(updateRunSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[1])
+			})
 
-				// Verify that the new configmap is updated on member-1
+			It("Should verify new resources are placed to member-1", func() {
+				// Verify the new configmap is placed on member-1
 				configMapActual := configMapPlacedOnClusterActual(allMemberClusters[0], &newConfigMap)
-				Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update to the new configmap on member-1")
+				Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place new configmap %s on member-1 after rejoining", newConfigMap.Name)
+
+				// Verify the new configmap is placed on all clusters
+				for idx := range allMemberClusters {
+					configMapActual := configMapPlacedOnClusterActual(allMemberClusters[idx], &newConfigMap)
+					Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place new configmap %s on cluster %s", newConfigMap.Name, allMemberClusterNames[idx])
+				}
 			})
 		})
 
 		Context("Case 2: Member1 becomes unscheduled", Ordered, func() {
-			It("Should mark member-1 to leave", func() {
-				setSingleMemberClusterToLeave(allMemberClusters[0])
+			It("Should mark member-1 to leave again", func() {
+				setSingleMemberClusterToLeave(allMemberClusters[0]) // member-cluster-1
 				checkIfSingleMemberClusterHasLeft(allMemberClusters[0])
 			})
 
 			It("Should validate the resources are kept on member-1", func() {
 				workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(allMemberClusters[0])
 				Consistently(workResourcesPlacedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep work resources on member-1 after leaving")
+
+				// Verify the new configmap is still on member-1
+				configMapActual := configMapPlacedOnClusterActual(allMemberClusters[0], &newConfigMap)
+				Consistently(configMapActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep new configmap %s on member-1 after leaving", newConfigMap.Name)
 			})
 
 			It("Should update the CRP so that member-1 becomes unscheduled", func() {
 				Eventually(func() error {
-					crp := &placementv1beta1.ClusterResourcePlacement{}
-					if err := hubClient.Get(ctx, client.ObjectKey{Name: crpName}, crp); err != nil {
-						return fmt.Errorf("failed to get the crp: %w", err)
+					var crp placementv1beta1.ClusterResourcePlacement
+					if err := hubClient.Get(ctx, client.ObjectKey{Name: crpName}, &crp); err != nil {
+						return fmt.Errorf("failed to get CRP %s: %w", crpName, err)
 					}
 					crp.Spec.Policy = &placementv1beta1.PlacementPolicy{
-						PlacementType: placementv1beta1.PickFixedPlacementType,
-						ClusterNames:  []string{allMemberClusterNames[1], allMemberClusterNames[2]}, // Exclude member-1
+						PlacementType:    placementv1beta1.PickNPlacementType,
+						NumberOfClusters: ptr.To(int32(2)),
+						Affinity: &placementv1beta1.Affinity{
+							ClusterAffinity: &placementv1beta1.ClusterAffinity{
+								RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
+									ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
+										{
+											LabelSelector: &metav1.LabelSelector{
+												MatchLabels: map[string]string{
+													"name": allMemberClusterNames[1], // Only target member-cluster-2
+												},
+											},
+										},
+										{
+											LabelSelector: &metav1.LabelSelector{
+												MatchLabels: map[string]string{
+													"name": allMemberClusterNames[2], // Only target member-cluster-3
+												},
+											},
+										},
+									},
+								},
+							},
+						},
 					}
-					return hubClient.Update(ctx, crp)
-				}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update the crp to exclude member-1")
+					return hubClient.Update(ctx, &crp)
+				}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP")
 			})
 
 			It("Should create another updateRun for the same CRP", func() {
-				createStagedUpdateRunSucceed(updateRunNames[2], crpName, resourceSnapshotIndex2nd, strategyName)
-			})
+				// Wait for new policy snapshot
+				Eventually(func() (string, error) {
+					crsList := &placementv1beta1.ClusterSchedulingPolicySnapshotList{}
+					if err := hubClient.List(ctx, crsList, client.MatchingLabels{placementv1beta1.CRPTrackingLabel: crpName, placementv1beta1.IsLatestSnapshotLabel: "true"}); err != nil {
+						return "", fmt.Errorf("failed to list the policySnapshot: %w", err)
+					}
+					if len(crsList.Items) != 1 {
+						return "", fmt.Errorf("got %d latest policy snapshots, want 1", len(crsList.Items))
+					}
+					return crsList.Items[0].Labels[placementv1beta1.PolicyIndexLabel], nil
+				}, eventuallyDuration, eventuallyInterval).Should(Equal(policySnapshotIndex2nd), "Failed to wait for new policy snapshot")
 
-			It("Should delete member-1 bindings but keep resources on member-1", func() {
+				createStagedUpdateRunSucceed(updateRunNames[2], crpName, resourceSnapshotIndex2nd, strategyName)
 				validateAndApproveClusterApprovalRequests(updateRunNames[2], envCanary)
 
 				updateRunSucceededActual := updateRunStatusSucceededActual(updateRunNames[2], policySnapshotIndex2nd, 2, nil, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[2]}}, nil, nil, nil)
 				Eventually(updateRunSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[2])
-
-				// Resources should still be kept on member-1
-				workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(allMemberClusters[0])
-				Consistently(workResourcesPlacedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep work resources on member-1 after being unscheduled")
 			})
 
-			It("Should reset CRP to include all clusters for next test", func() {
-				Eventually(func() error {
-					crp := &placementv1beta1.ClusterResourcePlacement{}
-					if err := hubClient.Get(ctx, client.ObjectKey{Name: crpName}, crp); err != nil {
-						return fmt.Errorf("failed to get the crp: %w", err)
+			It("Should verify member-1 bindings are deleted but resources are kept", func() {
+				// Verify CRP bindings for member-1 are deleted
+				Eventually(func() bool {
+					bindingList := &placementv1beta1.ClusterResourceBindingList{}
+					labelSelector := labels.SelectorFromSet(labels.Set{placementv1beta1.CRPTrackingLabel: crpName})
+					listOptions := &client.ListOptions{LabelSelector: labelSelector}
+					if err := hubClient.List(ctx, bindingList, listOptions); err != nil {
+						return false
 					}
-					crp.Spec.Policy = nil // Reset to pick all
-					return hubClient.Update(ctx, crp)
-				}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to reset the crp")
+					// Check if there's any binding for member-1
+					for _, binding := range bindingList.Items {
+						if binding.Spec.TargetCluster == allMemberClusterNames[0] {
+							return false // Found binding for member-1, so it's not deleted yet
+						}
+					}
+					return true // No binding found for member-1
+				}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "Expected member-1 binding to be deleted")
+
+				// Verify the resources are still on member-1
+				workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(allMemberClusters[0])
+				Consistently(workResourcesPlacedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep work resources on member-1 even when unscheduled")
+
+				// Verify the new configmap is still on member-1
+				configMapActual := configMapPlacedOnClusterActual(allMemberClusters[0], &newConfigMap)
+				Consistently(configMapActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep new configmap %s on member-1 even when unscheduled", newConfigMap.Name)
 			})
 		})
 
 		Context("Case 3: Rejoin when resource is unchanged", Ordered, func() {
-			It("Should mark member-1 to leave", func() {
-				setSingleMemberClusterToLeave(allMemberClusters[0])
-				checkIfSingleMemberClusterHasLeft(allMemberClusters[0])
-			})
-
-			It("Should validate the resources are kept on member-1", func() {
-				workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(allMemberClusters[0])
-				Consistently(workResourcesPlacedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep work resources on member-1 after leaving")
-			})
-
 			It("Should rejoin member-1", func() {
 				setSingleMemberClusterToJoin(allMemberClusters[0])
 				checkIfSingleMemberClusterHasJoined(allMemberClusters[0])
 			})
 
-			It("Should create another updateRun for the same CRP", func() {
-				createStagedUpdateRunSucceed(updateRunNames[3], crpName, resourceSnapshotIndex2nd, strategyName)
+			It("Should update CRP back to pickAll policy", func() {
+				Eventually(func() error {
+					var crp placementv1beta1.ClusterResourcePlacement
+					if err := hubClient.Get(ctx, client.ObjectKey{Name: crpName}, &crp); err != nil {
+						return fmt.Errorf("failed to get CRP %s: %w", crpName, err)
+					}
+					crp.Spec.Policy = &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					}
+					return hubClient.Update(ctx, &crp)
+				}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP back to pickAll")
 			})
 
-			It("Should keep resources on member-1 and binding becomes bounded", func() {
+			It("Should create another updateRun for the same CRP", func() {
+				// Wait for new policy snapshot
+				Eventually(func() (string, error) {
+					crsList := &placementv1beta1.ClusterSchedulingPolicySnapshotList{}
+					if err := hubClient.List(ctx, crsList, client.MatchingLabels{placementv1beta1.CRPTrackingLabel: crpName, placementv1beta1.IsLatestSnapshotLabel: "true"}); err != nil {
+						return "", fmt.Errorf("failed to list the policySnapshot: %w", err)
+					}
+					if len(crsList.Items) != 1 {
+						return "", fmt.Errorf("got %d latest policy snapshots, want 1", len(crsList.Items))
+					}
+					return crsList.Items[0].Labels[placementv1beta1.PolicyIndexLabel], nil
+				}, eventuallyDuration, eventuallyInterval).Should(Equal(policySnapshotIndex3rd), "Failed to wait for new policy snapshot")
+
+				createStagedUpdateRunSucceed(updateRunNames[3], crpName, resourceSnapshotIndex2nd, strategyName)
 				validateAndApproveClusterApprovalRequests(updateRunNames[3], envCanary)
 
-				updateRunSucceededActual := updateRunStatusSucceededActual(updateRunNames[3], policySnapshotIndex2nd, len(allMemberClusters), nil, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+				updateRunSucceededActual := updateRunStatusSucceededActual(updateRunNames[3], policySnapshotIndex3rd, len(allMemberClusters), nil, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 				Eventually(updateRunSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[3])
+			})
 
-				// Verify resources are kept on member-1
+			It("Should verify resources are kept on member-1 and binding becomes bounded", func() {
+				// Verify the resources are still on member-1
 				workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(allMemberClusters[0])
 				Eventually(workResourcesPlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to keep work resources on member-1 after rejoining")
+
+				// Verify the new configmap is still on member-1
+				configMapActual := configMapPlacedOnClusterActual(allMemberClusters[0], &newConfigMap)
+				Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to keep new configmap %s on member-1 after rejoining", newConfigMap.Name)
+
+				// Verify CRP binding for member-1 becomes bounded
+				Eventually(func() error {
+					bindingList := &placementv1beta1.ClusterResourceBindingList{}
+					labelSelector := labels.SelectorFromSet(labels.Set{placementv1beta1.CRPTrackingLabel: crpName})
+					listOptions := &client.ListOptions{LabelSelector: labelSelector}
+					if err := hubClient.List(ctx, bindingList, listOptions); err != nil {
+						return fmt.Errorf("failed to list bindings: %w", err)
+					}
+					// Find binding for member-1
+					for _, binding := range bindingList.Items {
+						if binding.Spec.TargetCluster == allMemberClusterNames[0] {
+							if binding.Spec.State != placementv1beta1.BindingStateBound {
+								return fmt.Errorf("binding for member-1 is not bound, current state: %s", binding.Spec.State)
+							}
+							return nil
+						}
+					}
+					return fmt.Errorf("no binding found for member-1")
+				}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate member-1 binding is bounded")
 			})
 		})
 
 		Context("Case 4: Can continue to rollout for a new member-1", Ordered, func() {
-			It("Should mark member-1 to leave", func() {
-				setSingleMemberClusterToLeave(allMemberClusters[0])
+			It("Should mark member-1 to leave again", func() {
+				setSingleMemberClusterToLeave(allMemberClusters[0]) // member-cluster-1
 				checkIfSingleMemberClusterHasLeft(allMemberClusters[0])
 			})
 
 			It("Should validate the resources are kept on member-1", func() {
 				workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(allMemberClusters[0])
 				Consistently(workResourcesPlacedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep work resources on member-1 after leaving")
+
+				// Verify the new configmap is still on member-1
+				configMapActual := configMapPlacedOnClusterActual(allMemberClusters[0], &newConfigMap)
+				Consistently(configMapActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep new configmap %s on member-1 after leaving", newConfigMap.Name)
 			})
 
-			It("Should delete the applied resources on member-1", func() {
+			It("Should delete the applied resources on the member", func() {
 				deleteResourcesFromSingleMemberCluster(allMemberClusters[0])
+				// Verify the resources are removed from member-1
+				workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(allMemberClusters[0])
+				Eventually(func() error {
+					return workResourcesPlacedActual()
+				}, eventuallyDuration, eventuallyInterval).ShouldNot(Succeed(), "Expected work resources to be removed from member-1")
 			})
 
 			It("Should rejoin member-1", func() {
@@ -1127,29 +1228,36 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 
 			It("Should create another updateRun for the same CRP", func() {
 				createStagedUpdateRunSucceed(updateRunNames[4], crpName, resourceSnapshotIndex2nd, strategyName)
-			})
-
-			It("Should re-place resources to member-1", func() {
 				validateAndApproveClusterApprovalRequests(updateRunNames[4], envCanary)
 
-				updateRunSucceededActual := updateRunStatusSucceededActual(updateRunNames[4], policySnapshotIndex2nd, len(allMemberClusters), nil, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+				updateRunSucceededActual := updateRunStatusSucceededActual(updateRunNames[4], policySnapshotIndex3rd, len(allMemberClusters), nil, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 				Eventually(updateRunSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[4])
+			})
 
-				// Verify resources are re-placed on member-1
+			It("Should verify resources are re-placed to member-1", func() {
+				// Verify the resources are placed back on member-1
 				workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(allMemberClusters[0])
-				Eventually(workResourcesPlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to re-place work resources on member-1")
+				Eventually(workResourcesPlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources back on member-1 after rejoining")
+
+				// Verify the new configmap is placed back on member-1
+				configMapActual := configMapPlacedOnClusterActual(allMemberClusters[0], &newConfigMap)
+				Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place new configmap %s back on member-1 after rejoining", newConfigMap.Name)
 			})
 		})
 
 		Context("Case 5: Still support rolling update", Ordered, func() {
-			It("Should mark member-1 to leave", func() {
-				setSingleMemberClusterToLeave(allMemberClusters[0])
+			It("Should mark member-1 to leave again", func() {
+				setSingleMemberClusterToLeave(allMemberClusters[0]) // member-cluster-1
 				checkIfSingleMemberClusterHasLeft(allMemberClusters[0])
 			})
 
 			It("Should validate the resources are kept on member-1", func() {
 				workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(allMemberClusters[0])
 				Consistently(workResourcesPlacedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep work resources on member-1 after leaving")
+
+				// Verify the new configmap is still on member-1
+				configMapActual := configMapPlacedOnClusterActual(allMemberClusters[0], &newConfigMap)
+				Consistently(configMapActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep new configmap %s on member-1 after leaving", newConfigMap.Name)
 			})
 
 			It("Should rejoin member-1", func() {
@@ -1157,26 +1265,30 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 				checkIfSingleMemberClusterHasJoined(allMemberClusters[0])
 			})
 
-			It("Should update the CRP rollout strategy to use rolling update", func() {
+			It("Should update the CRP rollout strategy to use rollingUpdate", func() {
 				Eventually(func() error {
-					crp := &placementv1beta1.ClusterResourcePlacement{}
-					if err := hubClient.Get(ctx, client.ObjectKey{Name: crpName}, crp); err != nil {
-						return fmt.Errorf("failed to get the crp: %w", err)
+					var crp placementv1beta1.ClusterResourcePlacement
+					if err := hubClient.Get(ctx, client.ObjectKey{Name: crpName}, &crp); err != nil {
+						return fmt.Errorf("failed to get CRP %s: %w", crpName, err)
 					}
 					crp.Spec.Strategy = placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
 						},
 					}
-					return hubClient.Update(ctx, crp)
-				}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP to use rolling update strategy")
+					return hubClient.Update(ctx, &crp)
+				}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP rollout strategy to rolling update")
 			})
 
-			It("Should place resources to member-1 and binding status should be bounded", func() {
-				// With rolling update strategy, resources should be automatically placed
+			It("Should verify resources are placed to member-1 and binding status becomes bounded", func() {
+				// Wait for resources to be placed to member-1 due to rolling update
 				workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(allMemberClusters[0])
-				Eventually(workResourcesPlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member-1 with rolling update strategy")
+				Eventually(workResourcesPlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member-1 with rolling update")
+
+				// Verify the new configmap is placed on member-1
+				configMapActual := configMapPlacedOnClusterActual(allMemberClusters[0], &newConfigMap)
+				Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place new configmap %s on member-1 with rolling update", newConfigMap.Name)
 
 				// Verify CRP status shows member-1 as bounded
 				crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, resourceSnapshotIndex2nd)
