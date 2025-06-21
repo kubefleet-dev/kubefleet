@@ -198,7 +198,7 @@ func (s *Scheduler) scheduleOnce(ctx context.Context, worker int) {
 	// Note that the scheduler will enter this cycle as long as the placement is active and an active
 	// policy snapshot has been produced.
 	cycleStartTime := time.Now()
-	res, err := s.framework.RunSchedulingCycleFor(ctx, placement.GetName(), latestPolicySnapshot)
+	res, err := s.framework.RunSchedulingCycleFor(ctx, controller.GetPlacementKeyFromObj(placement), latestPolicySnapshot)
 	if err != nil {
 		klog.ErrorS(err, "Failed to run scheduling cycle", "placement", placementRef)
 		// Requeue for later processing.
@@ -285,19 +285,9 @@ func (s *Scheduler) cleanUpAllBindingsFor(ctx context.Context, placement fleetv1
 	//
 	// Note that the listing is performed using the uncached client; this is to ensure that all related
 	// bindings can be found, even if they have not been synced to the cache yet.
-	var listOptions []client.ListOption
-	listOptions = append(listOptions, client.MatchingLabels{
-		fleetv1beta1.CRPTrackingLabel: string(placementKey),
-	})
-	var bindingList fleetv1beta1.BindingObjList
-	if placement.GetNamespace() == "" {
-		bindingList = &fleetv1beta1.ClusterResourceBindingList{}
-	} else {
-		bindingList = &fleetv1beta1.ResourceBindingList{}
-		listOptions = append(listOptions, client.InNamespace(placement.GetNamespace()))
-	}
 	// TO-DO (chenyu1): this is a very expensive op; explore options for optimization.
-	if err := s.uncachedReader.List(ctx, bindingList, listOptions...); err != nil {
+	bindings, err := controller.ListBindingsFromKey(ctx, s.uncachedReader, placementKey)
+	if err != nil {
 		klog.ErrorS(err, "Failed to list all bindings", "placement", placementRef)
 		return controller.NewAPIServerError(false, err)
 	}
@@ -310,18 +300,17 @@ func (s *Scheduler) cleanUpAllBindingsFor(ctx context.Context, placement fleetv1
 	// Also note that for deleted placements, derived bindings are deleted right away by the scheduler;
 	// the scheduler no longer marks them as deleting and waits for another controller to actually
 	// run the deletion.
-	bindings := bindingList.GetBindingObjs()
 	for idx := range bindings {
 		binding := bindings[idx]
 		controllerutil.RemoveFinalizer(binding, fleetv1beta1.SchedulerCRBCleanupFinalizer)
 		if err := s.client.Update(ctx, binding); err != nil {
-			klog.ErrorS(err, "Failed to remove scheduler reconcile finalizer from cluster resource binding", "clusterResourceBinding", klog.KObj(binding))
+			klog.ErrorS(err, "Failed to remove scheduler reconcile finalizer from cluster resource binding", "binding", klog.KObj(binding))
 			return controller.NewUpdateIgnoreConflictError(err)
 		}
 		// Delete the binding if it has not been marked for deletion yet.
 		if binding.GetDeletionTimestamp() == nil {
 			if err := s.client.Delete(ctx, binding); err != nil && !errors.IsNotFound(err) {
-				klog.ErrorS(err, "Failed to delete binding", "clusterResourceBinding", klog.KObj(binding))
+				klog.ErrorS(err, "Failed to delete binding", "binding", klog.KObj(binding))
 				return controller.NewAPIServerError(false, err)
 			}
 		}
@@ -339,15 +328,13 @@ func (s *Scheduler) cleanUpAllBindingsFor(ctx context.Context, placement fleetv1
 }
 
 // lookupLatestPolicySnapshot returns the latest (i.e., active) policy snapshot associated with a placement.
-// TODO: move this to a common lib
+// TODO(ryan): move this to a common lib
 func (s *Scheduler) lookupLatestPolicySnapshot(ctx context.Context, placement fleetv1beta1.PlacementObj) (fleetv1beta1.PolicySnapshotObj, error) {
 	placementRef := klog.KObj(placement)
-
-	// Get the placement key which handles both cluster-scoped and namespaced placements
-	placementKey := controller.GetPlacementKeyFromObj(placement)
+	// Prepare the list options to filter policy snapshots by the placement name and the latest snapshot label.
 	var listOptions []client.ListOption
 	labelSelector := labels.SelectorFromSet(labels.Set{
-		fleetv1beta1.CRPTrackingLabel:      string(placementKey),
+		fleetv1beta1.CRPTrackingLabel:      placement.GetName(),
 		fleetv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
 	})
 	listOptions = append(listOptions, &client.ListOptions{LabelSelector: labelSelector})
