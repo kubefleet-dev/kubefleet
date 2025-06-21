@@ -189,3 +189,80 @@ func TestGetPlacementKeyFromObj(t *testing.T) {
 		})
 	}
 }
+func TestGetPlacementNameFromKey(t *testing.T) {
+	tests := []struct {
+		name              string
+		placementKey      queue.PlacementKey
+		expectedNamespace string
+		expectedName      string
+		expectedErr       error
+	}{
+		{
+			name:              "cluster resource placement",
+			placementKey:      queue.PlacementKey("test-crp"),
+			expectedNamespace: "",
+			expectedName:      "test-crp",
+			expectedErr:       nil,
+		},
+		{
+			name:              "namespaced resource placement",
+			placementKey:      queue.PlacementKey("test-ns/test-rp"),
+			expectedNamespace: "test-ns",
+			expectedName:      "test-rp",
+			expectedErr:       nil,
+		},
+		{
+			name:         "empty placement key",
+			placementKey: queue.PlacementKey(""),
+			expectedErr:  ErrUnexpectedBehavior,
+		},
+		{
+			name:         "invalid placement key with multiple separators",
+			placementKey: queue.PlacementKey("test-ns/test-rp/extra"),
+			expectedErr:  ErrUnexpectedBehavior,
+		},
+		{
+			name:         "invalid placement key with only separator",
+			placementKey: queue.PlacementKey("/"),
+			expectedErr:  ErrUnexpectedBehavior,
+		},
+		{
+			name:         "invalid placement key starting with separator",
+			placementKey: queue.PlacementKey("/test-rp"),
+			expectedErr:  ErrUnexpectedBehavior,
+		},
+		{
+			name:         "invalid placement key ending with separator",
+			placementKey: queue.PlacementKey("test-ns/"),
+			expectedErr:  ErrUnexpectedBehavior,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			namespace, name, err := ExtractNamespaceNameFromKey(tt.placementKey)
+
+			if tt.expectedErr != nil {
+				if err == nil {
+					t.Fatalf("Expected error but got nil")
+				}
+				if !errors.Is(err, tt.expectedErr) {
+					t.Fatalf("Expected error: %v, but got: %v", tt.expectedErr, err)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			if namespace != tt.expectedNamespace {
+				t.Errorf("Expected namespace: %s, got: %s", tt.expectedNamespace, namespace)
+			}
+
+			if name != tt.expectedName {
+				t.Errorf("Expected name: %s, got: %s", tt.expectedName, name)
+			}
+		})
+	}
+}
