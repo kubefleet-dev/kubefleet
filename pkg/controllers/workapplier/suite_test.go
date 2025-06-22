@@ -181,6 +181,8 @@ var _ = AfterSuite(func() {
 	defer klog.Flush()
 
 	cancel()
+
+	time.Sleep(20 * time.Second) // Allow some time for the controller manager to shut down gracefully.
 	By("Tearing down the test environment")
 	Expect(hubEnv.Stop()).To(Succeed())
 	Expect(memberEnv.Stop()).To(Succeed())

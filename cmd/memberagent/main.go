@@ -381,6 +381,7 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 			return err
 		}
 		// create the work controller, so we can pass it to the internal member cluster reconciler
+		workObjAgeForPrioritizedProcessing := time.Minute * time.Duration(*watchWorkReconcileAgeMinutes)
 		workController := workapplier.NewReconciler(
 			hubMgr.GetClient(),
 			targetNS,
@@ -396,7 +397,7 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 			time.Second*time.Duration(*availabilityCheckInterval),
 			time.Second*time.Duration(*driftDetectionInterval),
 			*watchWorkWithPriorityQueue,
-			*watchWorkReconcileAgeMinutes,
+			workObjAgeForPrioritizedProcessing,
 		)
 
 		if err = workController.SetupWithManager(hubMgr); err != nil {
