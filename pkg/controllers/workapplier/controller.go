@@ -69,8 +69,6 @@ import (
 
 const (
 	patchDetailPerObjLimit = 100
-
-	minRequestAfterDuration = time.Second * 5
 )
 
 const (
@@ -210,47 +208,57 @@ type Reconciler struct {
 	joined                       *atomic.Bool
 	parallelizer                 *parallelizer.Parallerlizer
 
-	availabilityCheckRequeueAfter time.Duration
-	driftCheckRequeueAfter        time.Duration
+	requeueRateLimiter *RequeueFastSlowWithExponentialBackoffRateLimiter
 }
 
+// NewReconciler returns a new Work object reconciler for the work applier.
 func NewReconciler(
 	hubClient client.Client, workNameSpace string,
 	spokeDynamicClient dynamic.Interface, spokeClient client.Client, restMapper meta.RESTMapper,
 	recorder record.EventRecorder,
 	concurrentReconciles int,
 	workerCount int,
-	availabilityCheckRequestAfter time.Duration,
-	driftCheckRequestAfter time.Duration,
+	requeueRateLimiter *RequeueFastSlowWithExponentialBackoffRateLimiter,
 	watchWorkWithPriorityQueue bool,
 	watchWorkReconcileAgeMinutes int,
 ) *Reconciler {
-	acRequestAfter := availabilityCheckRequestAfter
-	if acRequestAfter < minRequestAfterDuration {
-		klog.V(2).InfoS("Availability check requeue after duration is too short; set to the longer default", "availabilityCheckRequestAfter", acRequestAfter)
-		acRequestAfter = minRequestAfterDuration
-	}
-
-	dcRequestAfter := driftCheckRequestAfter
-	if dcRequestAfter < minRequestAfterDuration {
-		klog.V(2).InfoS("Drift check requeue after duration is too short; set to the longer default", "driftCheckRequestAfter", dcRequestAfter)
-		dcRequestAfter = minRequestAfterDuration
+	if requeueRateLimiter == nil {
+		klog.V(2).InfoS("No requeue rate limiter provided; using default rate limiter")
+		requeueRateLimiter = NewRequeueFastSlowWithExponentialBackoffRateLimiter(
+			// Allow fast requeues for 20 attempts (5 seconds each, 100 seconds of fast requeues).
+			20,
+			// Important (chenyu1): before the introduction of the requeue rate limiter, the work
+			// applier uses static requeue intervals, specifically 5 seconds (if the work object is unavailable),
+			// and 15 seconds (if the work object is available). There are a number of test cases that
+			// implicitly assume this behavior (e.g., a test case might expect that the availability check completes
+			// w/in 10 seconds), which is why the rate limiter uses the 5 seconds fast requeue delay by default.
+			// If you need to change this value and see that many test cases begin to fail, update the test
+			// cases accordingly.
+			5,
+			// Then switch to exponential backoff with a base of 1.2 with a cap of 5 minutes.
+			1.2,
+			300,
+			// When the Work object spec does not change and the procesing result remains the same,
+			// the requeue pattern is essentially:
+			// * 10 attempts of fast requeues (5 seconds each, 1 minute and 40 seconds in total); then
+			// * 22 attempts of requeues with exponential backoff (~27 minutes in total); then
+			// * requeue every 5 minutes.
+		)
 	}
 
 	return &Reconciler{
-		hubClient:                     hubClient,
-		spokeDynamicClient:            spokeDynamicClient,
-		spokeClient:                   spokeClient,
-		restMapper:                    restMapper,
-		recorder:                      recorder,
-		concurrentReconciles:          concurrentReconciles,
-		parallelizer:                  parallelizer.NewParallelizer(workerCount),
-		watchWorkWithPriorityQueue:    watchWorkWithPriorityQueue,
-		watchWorkReconcileAgeMinutes:  watchWorkReconcileAgeMinutes,
-		workNameSpace:                 workNameSpace,
-		joined:                        atomic.NewBool(false),
-		availabilityCheckRequeueAfter: acRequestAfter,
-		driftCheckRequeueAfter:        dcRequestAfter,
+		hubClient:                    hubClient,
+		spokeDynamicClient:           spokeDynamicClient,
+		spokeClient:                  spokeClient,
+		restMapper:                   restMapper,
+		recorder:                     recorder,
+		concurrentReconciles:         concurrentReconciles,
+		parallelizer:                 parallelizer.NewParallelizer(workerCount),
+		watchWorkWithPriorityQueue:   watchWorkWithPriorityQueue,
+		watchWorkReconcileAgeMinutes: watchWorkReconcileAgeMinutes,
+		workNameSpace:                workNameSpace,
+		joined:                       atomic.NewBool(false),
+		requeueRateLimiter:           requeueRateLimiter,
 	}
 }
 
@@ -475,14 +483,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	trackWorkAndManifestProcessingRequestMetrics(work)
 
-	// If the Work object is not yet available, reconcile again.
-	if !isWorkObjectAvailable(work) {
-		klog.V(2).InfoS("Work object is not yet in an available state; requeue to monitor its availability", "work", workRef)
-		return ctrl.Result{RequeueAfter: r.availabilityCheckRequeueAfter}, nil
-	}
-	// Otherwise, reconcile again for drift detection purposes.
-	klog.V(2).InfoS("Work object is available; requeue to check for drifts", "work", workRef)
-	return ctrl.Result{RequeueAfter: r.driftCheckRequeueAfter}, nil
+	// Requeue the Work object with a delay based on the requeue rate limiter.
+	requeueDelay := r.requeueRateLimiter.When(work, bundles)
+	klog.V(2).InfoS("Requeue the Work object for re-processing", "work", workRef, "delaySeconds", requeueDelay.Seconds())
+	return ctrl.Result{RequeueAfter: requeueDelay}, nil
 }
 
 // garbageCollectAppliedWork deletes the appliedWork and all the manifests associated with it from the cluster.
