@@ -510,6 +510,10 @@ func (r *Reconciler) garbageCollectAppliedWork(ctx context.Context, work *fleetv
 	default:
 		klog.InfoS("Successfully deleted the appliedWork", "appliedWork", work.Name)
 	}
+
+	// Untrack the Work object from the requeue rate limiter.
+	r.requeueRateLimiter.Forget(work)
+
 	controllerutil.RemoveFinalizer(work, fleetv1beta1.WorkFinalizer)
 
 	if err := r.hubClient.Update(ctx, work, &client.UpdateOptions{}); err != nil {
