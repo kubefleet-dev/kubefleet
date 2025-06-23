@@ -238,7 +238,7 @@ func NewReconciler(
 			// Then switch to exponential backoff with a base of 1.2 with a cap of 5 minutes.
 			1.2,
 			300,
-			// When the Work object spec does not change and the procesing result remains the same,
+			// When the Work object spec does not change and the processing result remains the same,
 			// the requeue pattern is essentially:
 			// * 10 attempts of fast requeues (5 seconds each, 1 minute and 40 seconds in total); then
 			// * 22 attempts of requeues with exponential backoff (~27 minutes in total); then
