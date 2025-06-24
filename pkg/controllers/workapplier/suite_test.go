@@ -165,7 +165,7 @@ var _ = BeforeSuite(func() {
 		workerCount,
 		time.Second*5,
 		time.Second*5,
-		time.Minute,
+		30*time.Second,
 		true,
 		60,
 	)

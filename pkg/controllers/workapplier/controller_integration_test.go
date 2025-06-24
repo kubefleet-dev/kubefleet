@@ -1678,7 +1678,7 @@ var _ = Describe("work applier garbage collection", func() {
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to start deleting the AppliedWork object")
 
 			// Explicitly wait a minute to let the deletion timestamp progress
-			time.Sleep(1 * time.Minute) // Adjust based on your real-world scenario
+			time.Sleep(30 * time.Second)
 		})
 
 		It("should update owner reference from the Deployment object", func() {
@@ -1701,7 +1701,7 @@ var _ = Describe("work applier garbage collection", func() {
 					}
 				}
 				return nil
-			}, 3*eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove owner reference from Deployment")
+			}, 2*eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove owner reference from Deployment")
 		})
 
 		AfterAll(func() {
@@ -1714,7 +1714,7 @@ var _ = Describe("work applier garbage collection", func() {
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
-			Eventually(workRemovedActual, 3*time.Minute, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
+			Eventually(workRemovedActual, 2*time.Minute, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// Ensure that the Deployment object still exists.
 			Consistently(func() error {
@@ -1994,7 +1994,7 @@ var _ = Describe("work applier garbage collection", func() {
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to start deleting the AppliedWork object")
 
 			// Explicitly wait a minute to let the deletion timestamp progress
-			time.Sleep(1 * time.Minute) // Adjust based on your real-world scenario
+			time.Sleep(30 * time.Second)
 		})
 
 		It("should update owner reference from the ClusterRole object", func() {
@@ -2017,7 +2017,7 @@ var _ = Describe("work applier garbage collection", func() {
 				}
 
 				return nil
-			}, 3*eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove owner reference from ClusterRole")
+			}, 2*eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove owner reference from ClusterRole")
 		})
 
 		AfterAll(func() {
@@ -2034,7 +2034,7 @@ var _ = Describe("work applier garbage collection", func() {
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
-			Eventually(workRemovedActual, 3*time.Minute, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
+			Eventually(workRemovedActual, 2*time.Minute, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// Ensure that the ClusterRole object still exists.
 			Consistently(func() error {
@@ -2312,7 +2312,7 @@ var _ = Describe("work applier garbage collection", func() {
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to start deleting the AppliedWork object")
 
 			// Explicitly wait a minute to let the deletion timestamp progress
-			time.Sleep(1 * time.Minute) // Adjust based on your real-world scenario
+			time.Sleep(30 * time.Second)
 		})
 
 		It("should update owner reference from the Deployment object", func() {
@@ -2334,7 +2334,7 @@ var _ = Describe("work applier garbage collection", func() {
 					}
 				}
 				return nil
-			}, 3*eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove owner reference from Deployment")
+			}, 2*eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove owner reference from Deployment")
 		})
 
 		AfterAll(func() {
@@ -2351,7 +2351,7 @@ var _ = Describe("work applier garbage collection", func() {
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
-			Eventually(workRemovedActual, 3*time.Minute, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
+			Eventually(workRemovedActual, 2*time.Minute, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// Ensure that the Deployment object still exists.
 			Consistently(func() error {
