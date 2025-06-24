@@ -730,6 +730,26 @@ func setAllMemberClustersToLeave() {
 	}
 }
 
+func createAnotherValidOwnerReference(nsName string) metav1.OwnerReference {
+	// Create a namespace to be owner.
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: nsName,
+		},
+	}
+	Expect(allMemberClusters[0].KubeClient.Create(ctx, ns)).Should(Succeed(), "Failed to create namespace %s", nsName)
+
+	// Get the namespace to ensure to create a valid owner reference.
+	Expect(allMemberClusters[0].KubeClient.Get(ctx, types.NamespacedName{Name: nsName}, ns)).Should(Succeed(), "Failed to get namespace %s", nsName)
+
+	return metav1.OwnerReference{
+		APIVersion: "v1",
+		Kind:       "Namespace",
+		Name:       nsName,
+		UID:        ns.UID,
+	}
+}
+
 func checkIfAllMemberClustersHaveLeft() {
 	for idx := range allMemberClusters {
 		memberCluster := allMemberClusters[idx]

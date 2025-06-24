@@ -43,16 +43,14 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 	annotationValue := "annotation-value"
 	annotationUpdatedValue := "annotation-updated-value"
 	workNamespaceName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
-	anotherOwnerReference := metav1.OwnerReference{
-		APIVersion: "another-api-version",
-		Kind:       "another-kind",
-		Name:       "another-owner",
-		UID:        "another-uid",
-	}
+	anotherOwnerReference := metav1.OwnerReference{}
 
 	BeforeAll(func() {
 		By("creating work resources on hub cluster")
 		createWorkResources()
+
+		By("creating owner reference for the namespace")
+		anotherOwnerReference = createAnotherValidOwnerReference(fmt.Sprintf(workNamespaceNameTemplate+"-1", GinkgoParallelProcess()))
 	})
 
 	AfterAll(func() {
