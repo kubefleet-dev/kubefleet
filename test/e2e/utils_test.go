@@ -750,6 +750,16 @@ func createAnotherValidOwnerReference(nsName string) metav1.OwnerReference {
 	}
 }
 
+func cleanupAnotherValidOwnerReference(nsName string) {
+	// Cleanup the namespace created for the owner reference.
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: nsName,
+		},
+	}
+	Expect(allMemberClusters[0].KubeClient.Delete(ctx, ns)).Should(Succeed(), "Failed to create namespace %s", nsName)
+}
+
 func checkIfAllMemberClustersHaveLeft() {
 	for idx := range allMemberClusters {
 		memberCluster := allMemberClusters[idx]

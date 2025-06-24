@@ -50,12 +50,15 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		createWorkResources()
 
 		By("creating owner reference for the namespace")
-		anotherOwnerReference = createAnotherValidOwnerReference(fmt.Sprintf(workNamespaceNameTemplate+"-1", GinkgoParallelProcess()))
+		anotherOwnerReference = createAnotherValidOwnerReference(fmt.Sprintf("owner-namespace-%d", GinkgoParallelProcess()))
 	})
 
 	AfterAll(func() {
 		By("deleting created work resources on hub cluster")
 		cleanupWorkResources()
+
+		By("deleting owner reference namespace")
+		cleanupAnotherValidOwnerReference(anotherOwnerReference.Name)
 	})
 
 	Context("Test a CRP place objects successfully (client-side-apply and allow co-own)", Ordered, func() {
