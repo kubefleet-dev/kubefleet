@@ -517,7 +517,7 @@ func validateOwnerReferences(
 	// expected AppliedWork object. For safety reasons, Fleet will still do a sanity check.
 	found := false
 	for _, ownerRef := range inMemberClusterObjOwnerRefs {
-		if ownerRefEqualsExpected(&ownerRef, expectedAppliedWorkOwnerRef) {
+		if areOwnerRefsEqual(&ownerRef, expectedAppliedWorkOwnerRef) {
 			found = true
 			break
 		}

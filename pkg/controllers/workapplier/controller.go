@@ -1,5 +1,5 @@
 /*
-Copyright 2021 The Kubernetes Authors.
+Copyright 2025 The KubeFleet Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -498,6 +498,7 @@ func (r *Reconciler) garbageCollectAppliedWork(ctx context.Context, work *fleetv
 			klog.ErrorS(err, "Failed to update owner references for AppliedWork", "appliedWork", work.Name)
 			return ctrl.Result{}, controller.NewAPIServerError(false, err)
 		}
+		return ctrl.Result{}, fmt.Errorf("AppliedWork %s is being deleted, waiting for the deletion to complete", work.Name)
 	}
 
 	if err := r.spokeClient.Delete(ctx, appliedWork, &client.DeleteOptions{PropagationPolicy: &deletePolicy}); err != nil {
@@ -557,7 +558,7 @@ func (r *Reconciler) updateOwnerReference(ctx context.Context, work *fleetv1beta
 			ownerRefs := obj.GetOwnerReferences()
 			updated := false
 			for idx := range ownerRefs {
-				if ownerRefEqualsExpected(&ownerRefs[idx], appliedWorkOwnerRef) {
+				if areOwnerRefsEqual(&ownerRefs[idx], appliedWorkOwnerRef) {
 					ownerRefs[idx].BlockOwnerDeletion = ptr.To(false)
 					updated = true
 				}

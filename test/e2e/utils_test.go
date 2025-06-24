@@ -818,6 +818,27 @@ func checkIfRemovedWorkResourcesFromMemberClustersConsistently(clusters []*frame
 		Consistently(workResourcesRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove work resources from member cluster %s consistently", memberCluster.ClusterName)
 	}
 }
+func checkNamespaceExistsWithOwnerRefOnMemberCluster(nsName, crpName string) {
+	Consistently(func() error {
+		ns := &corev1.Namespace{}
+		if err := allMemberClusters[0].KubeClient.Get(ctx, types.NamespacedName{Name: nsName}, ns); err != nil {
+			return fmt.Errorf("failed to get namespace %s: %w", nsName, err)
+		}
+
+		if len(ns.OwnerReferences) > 0 {
+			for _, ownerRef := range ns.OwnerReferences {
+				if ownerRef.APIVersion == placementv1beta1.GroupVersion.String() &&
+					ownerRef.Kind == placementv1beta1.AppliedWorkKind &&
+					ownerRef.Name == fmt.Sprintf("%s-work", crpName) {
+					if *ownerRef.BlockOwnerDeletion {
+						return fmt.Errorf("namespace %s owner reference for AppliedWork should have been updated to have BlockOwnerDeletion set to false", nsName)
+					}
+				}
+			}
+		}
+		return nil
+	}, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Namespace which is not owned by the CRP should not be deleted")
+}
 
 // cleanupCRP deletes the CRP and waits until the resources are not found.
 func cleanupCRP(name string) {

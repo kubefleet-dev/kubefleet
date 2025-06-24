@@ -253,10 +253,7 @@ func shouldInitiateTakeOverAttempt(inMemberClusterObj *unstructured.Unstructured
 	// Check if the live object is owned by Fleet.
 	curOwners := inMemberClusterObj.GetOwnerReferences()
 	for idx := range curOwners {
-		if curOwners[idx].UID == expectedAppliedWorkOwnerRef.UID &&
-			curOwners[idx].Name == expectedAppliedWorkOwnerRef.Name &&
-			curOwners[idx].Kind == expectedAppliedWorkOwnerRef.Kind &&
-			curOwners[idx].APIVersion == expectedAppliedWorkOwnerRef.APIVersion {
+		if areOwnerRefsEqual(&curOwners[idx], expectedAppliedWorkOwnerRef) {
 			// The live object is owned by Fleet; no takeover is needed.
 			return false
 		}
@@ -356,7 +353,7 @@ func canApplyWithOwnership(inMemberClusterObj *unstructured.Unstructured, expect
 	// Verify if the object is owned by Fleet.
 	curOwners := inMemberClusterObj.GetOwnerReferences()
 	for idx := range curOwners {
-		if ownerRefEqualsExpected(&curOwners[idx], expectedAppliedWorkOwnerRef) {
+		if areOwnerRefsEqual(&curOwners[idx], expectedAppliedWorkOwnerRef) {
 			return true
 		}
 	}
