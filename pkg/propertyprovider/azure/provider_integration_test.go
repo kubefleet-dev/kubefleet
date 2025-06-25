@@ -18,7 +18,10 @@ package azure
 
 import (
 	"fmt"
+	"slices"
+	"time"
 
+	"github.com/Azure/karpenter-provider-azure/pkg/providers/pricing"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	. "github.com/onsi/ginkgo/v2"
@@ -173,12 +176,21 @@ var (
 				// should seldom occur though.
 				totalCost := 0.0
 				missingSKUSet := map[string]bool{}
+				isPricingDataStale := false
+
+				pricingDataLastUpdated := pp.LastUpdated()
+				pricingDataBestAfter := time.Now().Add(-trackers.PricingDataShelfLife)
+				if pricingDataLastUpdated.Before(pricingDataBestAfter) {
+					isPricingDataStale = true
+				}
+
 				for idx := range nodes {
 					node := nodes[idx]
 					sku := node.Labels[trackers.AKSClusterNodeSKULabelName]
 					cost, found := pp.OnDemandPrice(sku)
-					if !found {
+					if !found || cost == pricing.MissingPrice {
 						missingSKUSet[sku] = true
+						continue
 					}
 					totalCost += cost
 				}
@@ -186,6 +198,7 @@ var (
 				for sku := range missingSKUSet {
 					missingSKUs = append(missingSKUs, sku)
 				}
+				slices.Sort(missingSKUs)
 
 				perCPUCoreCost := "0.0"
 				perGBMemoryCost := "0.0"
@@ -196,15 +209,22 @@ var (
 				case len(nodes) == 0:
 				case totalCost == 0.0:
 					costCollectionErr = fmt.Errorf("nodes are present, but no pricing data is available for any node SKUs (%v)", missingSKUs)
-				case len(missingSKUs) > 0:
-					perCPUCoreCost = fmt.Sprintf(CostPrecisionTemplate, totalCost/totalCPUCores)
-					perGBMemoryCost = fmt.Sprintf(CostPrecisionTemplate, totalCost/totalMemoryGBs)
-					costCollectionWarnings = []string{
-						fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", missingSKUs),
-					}
 				default:
 					perCPUCoreCost = fmt.Sprintf(CostPrecisionTemplate, totalCost/totalCPUCores)
 					perGBMemoryCost = fmt.Sprintf(CostPrecisionTemplate, totalCost/totalMemoryGBs)
+				}
+
+				if len(missingSKUs) > 0 {
+					perCPUCoreCost = fmt.Sprintf(CostPrecisionTemplate, totalCost/totalCPUCores)
+					perGBMemoryCost = fmt.Sprintf(CostPrecisionTemplate, totalCost/totalMemoryGBs)
+					costCollectionWarnings = append(costCollectionWarnings,
+						fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", missingSKUs),
+					)
+				}
+				if isPricingDataStale {
+					costCollectionWarnings = append(costCollectionWarnings,
+						fmt.Sprintf("the pricing data is stale (last updated at %v); the system might have issues connecting to the Azure Retail Prices API, or the current region is unsupported", pricingDataLastUpdated),
+					)
 				}
 
 				wantProperties := map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue{
@@ -517,6 +537,85 @@ var (
 		},
 	}
 
+	nodesWithSomeKnownMissingSKUs = []corev1.Node{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName1,
+				Labels: map[string]string{
+					trackers.AKSClusterNodeSKULabelName: aksNodeSKU1,
+				},
+			},
+			Spec: corev1.NodeSpec{},
+			Status: corev1.NodeStatus{
+				Capacity: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("4"),
+					corev1.ResourceMemory: resource.MustParse("8130080Ki"),
+				},
+				Allocatable: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("3860m"),
+					corev1.ResourceMemory: resource.MustParse("5474848Ki"),
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName2,
+				Labels: map[string]string{
+					trackers.AKSClusterNodeSKULabelName: aksNodeKnownMissingSKU1,
+				},
+			},
+			Status: corev1.NodeStatus{
+				Capacity: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("1000000Ki"),
+				},
+				Allocatable: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("1000000Ki"),
+				},
+			},
+		},
+	}
+
+	nodesWithAllKnownMissingSKUs = []corev1.Node{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName1,
+				Labels: map[string]string{
+					trackers.AKSClusterNodeSKULabelName: aksNodeKnownMissingSKU1,
+				},
+			},
+			Status: corev1.NodeStatus{
+				Capacity: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("1000000Ki"),
+				},
+				Allocatable: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("1000000Ki"),
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName2,
+				Labels: map[string]string{
+					trackers.AKSClusterNodeSKULabelName: aksNodeKnownMissingSKU2,
+				},
+			},
+			Status: corev1.NodeStatus{
+				Capacity: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("1000000Ki"),
+				},
+				Allocatable: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("1"),
+					corev1.ResourceMemory: resource.MustParse("1000000Ki"),
+				},
+			},
+		},
+	}
+
 	pods = []corev1.Pod{
 		{
 			ObjectMeta: metav1.ObjectMeta{
@@ -812,5 +911,25 @@ var _ = Describe("azure property provider", func() {
 		It("should report correct properties", shouldReportCorrectPropertiesForNodes(nodesWithAllEmptySKUs, nil))
 
 		AfterAll(shouldDeleteNodes(nodesWithAllEmptySKUs...))
+	})
+
+	// This covers a known issue with Azure Retail Prices API, where some deprecated SKUs are no longer
+	// reported by the API, but can still be used in an AKS cluster.
+	Context("nodes with some known missing SKUs", Serial, Ordered, func() {
+		BeforeAll(shouldCreateNodes(nodesWithSomeKnownMissingSKUs...))
+
+		It("should report correct properties", shouldReportCorrectPropertiesForNodes(nodesWithSomeKnownMissingSKUs, nil))
+
+		AfterAll(shouldDeleteNodes(nodesWithSomeKnownMissingSKUs...))
+	})
+
+	// This covers a known issue with Azure Retail Prices API, where some deprecated SKUs are no longer
+	// reported by the API, but can still be used in an AKS cluster.
+	Context("nodes with all known missing SKUs", Serial, Ordered, func() {
+		BeforeAll(shouldCreateNodes(nodesWithAllKnownMissingSKUs...))
+
+		It("should report correct properties", shouldReportCorrectPropertiesForNodes(nodesWithAllKnownMissingSKUs, nil))
+
+		AfterAll(shouldDeleteNodes(nodesWithAllKnownMissingSKUs...))
 	})
 })

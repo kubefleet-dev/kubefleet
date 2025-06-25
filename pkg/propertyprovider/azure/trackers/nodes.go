@@ -21,9 +21,11 @@ package trackers
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sync"
 	"time"
 
+	"github.com/Azure/karpenter-provider-azure/pkg/providers/pricing"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog/v2"
@@ -33,6 +35,12 @@ const (
 	// AKSClusterNodeSKULabelName is the node label added by AKS, which indicated the SKU
 	// of the node.
 	AKSClusterNodeSKULabelName = "beta.kubernetes.io/instance-type"
+)
+
+const (
+	// pricingDataShelfLife is a period of time that the Azure property provider would consider
+	// the pricing data as stale if it has not been updated within this period.
+	PricingDataShelfLife = time.Hour * 24
 )
 
 // supportedResourceNames is a list of resource names that the Azure property provider supports.
@@ -133,19 +141,38 @@ func (nt *NodeTracker) calculateCosts() {
 
 	// Sum up the total costs.
 	totalHourlyRate := 0.0
+
 	missingSKUs := make([]string, 0)
+	isPricingDataStale := false
+
+	pricingDataLastUpdated := nt.pricingProvider.LastUpdated()
+	pricingDataBestAfter := time.Now().Add(-PricingDataShelfLife)
+	if pricingDataLastUpdated.Before(pricingDataBestAfter) {
+		// The pricing data is stale; the pricing client might have failed connecting to the
+		// Azure Retail Prices API, or the region is not listed in the API reportings, which
+		// sets the pricing client to fall back to hard-coded fallback pricing data.
+		//
+		// Note that the pricing data is updated in an asynchronous manner; there might be a
+		// rare chance that the pricing data is refreshed right after the check. This should be
+		// fine as the warning will disappear upon the next cost calculation attempt.
+		isPricingDataStale = true
+	}
+
 	for sku, ns := range nt.nodeSetBySKU {
 		hourlyRate, found := nt.pricingProvider.OnDemandPrice(sku)
-		if !found {
+		if !found || hourlyRate == pricing.MissingPrice {
 			// The SKU is not found in the pricing data.
 			missingSKUs = append(missingSKUs, sku)
-			klog.Warning("SKU is not found in the retail pricing data", "SKU", sku, "nodes", ns)
+			klog.Warning("SKU is not found in the retail pricing data", "SKU", sku, "nodes", ns, "isKnownToBeMissingSKU", hourlyRate == pricing.MissingPrice)
 			continue
 		}
 		totalHourlyRate += hourlyRate * float64(len(ns))
 		klog.V(2).InfoS("Tallying total hourly rate of the cluster", "sku", sku, "hourlyRate", hourlyRate, "nodeCount", len(ns))
 	}
 	// TO-DO (chenyu1): add a cap on the total hourly rate to ensure safe division.
+
+	// Sort the missing SKUs for stability reasons.
+	slices.Sort(missingSKUs)
 
 	// Calculate the per CPU core and per GB memory costs.
 	ci := nt.costs
@@ -161,6 +188,7 @@ func (nt *NodeTracker) calculateCosts() {
 		ci.lastUpdated = time.Now()
 		ci.perCPUCoreHourlyCost = 0.0
 		ci.perGBMemoryHourlyCost = 0.0
+		klog.V(2).InfoS("No nodes are present in the cluster; costs are set to 0")
 		return
 	case totalHourlyRate == 0.0:
 		// A special case: at least one node is present, but none of the node SKUs has pricing data.
@@ -173,11 +201,18 @@ func (nt *NodeTracker) calculateCosts() {
 		ci.perCPUCoreHourlyCost = 0.0
 		ci.perGBMemoryHourlyCost = 0.0
 		return
-	case len(missingSKUs) > 0:
+	}
+
+	if len(missingSKUs) > 0 {
 		// Cannot find pricing data for some (but not all) SKUs in the cluster. Cost calculation
 		// will proceed in a downgraded manner.
 		ci.warnings = append(ci.warnings, fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", missingSKUs))
 		klog.Warningf("Some SKUs (%v) are ignored in the cost calculation as pricing data is unavailable", missingSKUs)
+	}
+	if isPricingDataStale {
+		// The pricing data is stale; issue a warning.
+		ci.warnings = append(ci.warnings, fmt.Sprintf("the pricing data is stale (last updated at %v); the system might have issues connecting to the Azure Retail Prices API, or the current region is unsupported", pricingDataLastUpdated))
+		klog.Warningf("The pricing data is stale: last updated at %v, should be later than %v", pricingDataLastUpdated, pricingDataBestAfter)
 	}
 
 	// Cast the CPU resource quantity into a float64 value. Precision might suffer a bit of loss,

@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/karpenter-provider-azure/pkg/providers/pricing"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
@@ -51,6 +52,8 @@ const (
 	nodeSKU2 = "Standard_2"
 	nodeSKU3 = "Standard_3"
 	nodeSKU4 = "Standard_4"
+
+	nodeKnownMissingSKU = "Standard_Missing"
 )
 
 var (
@@ -70,6 +73,8 @@ func (d *dummyPricingProvider) OnDemandPrice(instanceType string) (float64, bool
 		return 5.0, true
 	case nodeSKU3:
 		return 10.0, true
+	case nodeKnownMissingSKU:
+		return pricing.MissingPrice, true
 	default:
 		return 0.0, false
 	}
@@ -77,6 +82,31 @@ func (d *dummyPricingProvider) OnDemandPrice(instanceType string) (float64, bool
 
 func (d *dummyPricingProvider) LastUpdated() time.Time {
 	return currentTime
+}
+
+// dummyPricingProviderWithStaleData is a mock implementation that simulates stale pricing data.
+type dummyPricingProviderWithStaleData struct{}
+
+var _ PricingProvider = &dummyPricingProviderWithStaleData{}
+
+func (d *dummyPricingProviderWithStaleData) OnDemandPrice(instanceType string) (float64, bool) {
+	switch instanceType {
+	case nodeSKU1:
+		return 1.0, true
+	case nodeSKU2:
+		return 5.0, true
+	case nodeSKU3:
+		return 10.0, true
+	case nodeKnownMissingSKU:
+		return pricing.MissingPrice, true
+	default:
+		return 0.0, false
+	}
+}
+
+func (d *dummyPricingProviderWithStaleData) LastUpdated() time.Time {
+	// Simulate a case where the pricing data is updated 2 days ago.
+	return currentTime.Add(-time.Hour * 48)
 }
 
 var (
@@ -232,6 +262,34 @@ func TestCalculateCosts(t *testing.T) {
 			wantPerGBMemoryCost: 0.292,
 		},
 		{
+			name: "degraded (known missing SKU)",
+			nt: &NodeTracker{
+				totalCapacity: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("12"),
+					corev1.ResourceMemory: resource.MustParse("24Gi"),
+				},
+				nodeSetBySKU: map[string]NodeSet{
+					nodeSKU1: {
+						nodeName1: true,
+						nodeName2: true,
+					},
+					nodeSKU2: {
+						nodeName3: true,
+					},
+					nodeKnownMissingSKU: {
+						nodeName4: true,
+					},
+				},
+				pricingProvider: &dummyPricingProvider{},
+				costs:           &costInfo{},
+			},
+			wantWarnings: []string{
+				fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", []string{nodeKnownMissingSKU}),
+			},
+			wantPerCPUCoreCost:  0.583,
+			wantPerGBMemoryCost: 0.292,
+		},
+		{
 			name: "degraded (some nodes have empty SKUs)",
 			nt: &NodeTracker{
 				totalCapacity: corev1.ResourceList{
@@ -320,6 +378,52 @@ func TestCalculateCosts(t *testing.T) {
 				costs:           &costInfo{},
 			},
 			wantCostErrStrPrefix: "failed to calculate costs",
+		},
+		{
+			name: "stale pricing data",
+			nt: &NodeTracker{
+				totalCapacity: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("12"),
+					corev1.ResourceMemory: resource.MustParse("2Gi"),
+				},
+				nodeSetBySKU: map[string]NodeSet{
+					nodeSKU1: {
+						nodeName1: true,
+					},
+				},
+				pricingProvider: &dummyPricingProviderWithStaleData{},
+				costs:           &costInfo{},
+			},
+			wantPerCPUCoreCost:  0.083,
+			wantPerGBMemoryCost: 0.5,
+			wantWarnings: []string{
+				fmt.Sprintf("the pricing data is stale (last updated at %v); the system might have issues connecting to the Azure Retail Prices API, or the current region is unsupported", currentTime.Add(-time.Hour*48)),
+			},
+		},
+		{
+			name: "multiple warnings",
+			nt: &NodeTracker{
+				totalCapacity: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("12"),
+					corev1.ResourceMemory: resource.MustParse("2Gi"),
+				},
+				nodeSetBySKU: map[string]NodeSet{
+					nodeSKU1: {
+						nodeName1: true,
+					},
+					nodeSKU4: {
+						nodeName2: true,
+					},
+				},
+				pricingProvider: &dummyPricingProviderWithStaleData{},
+				costs:           &costInfo{},
+			},
+			wantPerCPUCoreCost:  0.083,
+			wantPerGBMemoryCost: 0.5,
+			wantWarnings: []string{
+				fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", []string{nodeSKU4}),
+				fmt.Sprintf("the pricing data is stale (last updated at %v); the system might have issues connecting to the Azure Retail Prices API, or the current region is unsupported", currentTime.Add(-time.Hour*48)),
+			},
 		},
 	}
 

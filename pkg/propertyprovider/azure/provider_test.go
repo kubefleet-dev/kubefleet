@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/karpenter-provider-azure/pkg/providers/pricing"
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -56,6 +57,8 @@ const (
 	nodeSKU2 = "Standard_2"
 	nodeSKU3 = "Standard_3"
 
+	nodeKnownMissingSKU = "Standard_Missing"
+
 	imageName = "nginx"
 )
 
@@ -69,116 +72,149 @@ type dummyPricingProvider struct{}
 var _ trackers.PricingProvider = &dummyPricingProvider{}
 
 func (d *dummyPricingProvider) OnDemandPrice(instanceType string) (float64, bool) {
-	if instanceType == nodeSKU1 || instanceType == nodeSKU2 {
+	switch instanceType {
+	case nodeSKU1:
 		return 1.0, true
+	case nodeSKU2:
+		return 1.0, true
+	case nodeKnownMissingSKU:
+		return pricing.MissingPrice, true
+	default:
+		return 0.0, false
 	}
-	return 0.0, false
 }
 
 func (d *dummyPricingProvider) LastUpdated() time.Time {
 	return currentTime
 }
 
+// dummyPricingProviderWithStaleData is a mock implementation that implements the PricingProvider interface.
+type dummyPricingProviderWithStaleData struct{}
+
+var _ trackers.PricingProvider = &dummyPricingProviderWithStaleData{}
+
+func (d *dummyPricingProviderWithStaleData) OnDemandPrice(instanceType string) (float64, bool) {
+	switch instanceType {
+	case nodeSKU1:
+		return 1.0, true
+	case nodeSKU2:
+		return 1.0, true
+	case nodeKnownMissingSKU:
+		return pricing.MissingPrice, true
+	default:
+		return 0.0, false
+	}
+}
+
+func (d *dummyPricingProviderWithStaleData) LastUpdated() time.Time {
+	return currentTime.Add(-time.Hour * 48)
+}
+
 func TestCollect(t *testing.T) {
+	nodes := []corev1.Node{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName1,
+				Labels: map[string]string{
+					trackers.AKSClusterNodeSKULabelName: nodeSKU1,
+				},
+			},
+			Spec: corev1.NodeSpec{},
+			Status: corev1.NodeStatus{
+				Capacity: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("4"),
+					corev1.ResourceMemory: resource.MustParse("16Gi"),
+				},
+				Allocatable: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("3.2"),
+					corev1.ResourceMemory: resource.MustParse("15.2Gi"),
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: nodeName2,
+				Labels: map[string]string{
+					trackers.AKSClusterNodeSKULabelName: nodeSKU2,
+				},
+			},
+			Spec: corev1.NodeSpec{},
+			Status: corev1.NodeStatus{
+				Capacity: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("8"),
+					corev1.ResourceMemory: resource.MustParse("32Gi"),
+				},
+				Allocatable: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("7"),
+					corev1.ResourceMemory: resource.MustParse("30Gi"),
+				},
+			},
+		},
+	}
+	pods := []corev1.Pod{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      podName1,
+				Namespace: namespaceName1,
+			},
+			Spec: corev1.PodSpec{
+				NodeName: nodeName1,
+				Containers: []corev1.Container{
+					{
+						Name: containerName1,
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("1"),
+								corev1.ResourceMemory: resource.MustParse("2Gi"),
+							},
+						},
+					},
+					{
+						Name: containerName2,
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("1.5"),
+								corev1.ResourceMemory: resource.MustParse("4Gi"),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      podName2,
+				Namespace: namespaceName1,
+			},
+			Spec: corev1.PodSpec{
+				NodeName: nodeName2,
+				Containers: []corev1.Container{
+					{
+						Name: containerName3,
+						Resources: corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("6"),
+								corev1.ResourceMemory: resource.MustParse("16Gi"),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
 	testCases := []struct {
 		name                         string
 		nodes                        []corev1.Node
 		pods                         []corev1.Pod
+		pricingprovider              trackers.PricingProvider
 		wantMetricCollectionResponse propertyprovider.PropertyCollectionResponse
 	}{
 		{
-			name: "can report properties",
-			nodes: []corev1.Node{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: nodeName1,
-						Labels: map[string]string{
-							trackers.AKSClusterNodeSKULabelName: nodeSKU1,
-						},
-					},
-					Spec: corev1.NodeSpec{},
-					Status: corev1.NodeStatus{
-						Capacity: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("4"),
-							corev1.ResourceMemory: resource.MustParse("16Gi"),
-						},
-						Allocatable: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("3.2"),
-							corev1.ResourceMemory: resource.MustParse("15.2Gi"),
-						},
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: nodeName2,
-						Labels: map[string]string{
-							trackers.AKSClusterNodeSKULabelName: nodeSKU2,
-						},
-					},
-					Spec: corev1.NodeSpec{},
-					Status: corev1.NodeStatus{
-						Capacity: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("8"),
-							corev1.ResourceMemory: resource.MustParse("32Gi"),
-						},
-						Allocatable: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("7"),
-							corev1.ResourceMemory: resource.MustParse("30Gi"),
-						},
-					},
-				},
-			},
-			pods: []corev1.Pod{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      podName1,
-						Namespace: namespaceName1,
-					},
-					Spec: corev1.PodSpec{
-						NodeName: nodeName1,
-						Containers: []corev1.Container{
-							{
-								Name: containerName1,
-								Resources: corev1.ResourceRequirements{
-									Requests: corev1.ResourceList{
-										corev1.ResourceCPU:    resource.MustParse("1"),
-										corev1.ResourceMemory: resource.MustParse("2Gi"),
-									},
-								},
-							},
-							{
-								Name: containerName2,
-								Resources: corev1.ResourceRequirements{
-									Requests: corev1.ResourceList{
-										corev1.ResourceCPU:    resource.MustParse("1.5"),
-										corev1.ResourceMemory: resource.MustParse("4Gi"),
-									},
-								},
-							},
-						},
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      podName2,
-						Namespace: namespaceName1,
-					},
-					Spec: corev1.PodSpec{
-						NodeName: nodeName2,
-						Containers: []corev1.Container{
-							{
-								Name: containerName3,
-								Resources: corev1.ResourceRequirements{
-									Requests: corev1.ResourceList{
-										corev1.ResourceCPU:    resource.MustParse("6"),
-										corev1.ResourceMemory: resource.MustParse("16Gi"),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			name:            "can report properties",
+			nodes:           nodes,
+			pods:            pods,
+			pricingprovider: &dummyPricingProvider{},
 			wantMetricCollectionResponse: propertyprovider.PropertyCollectionResponse{
 				Properties: map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue{
 					propertyprovider.NodeCountProperty: {
@@ -216,47 +252,8 @@ func TestCollect(t *testing.T) {
 			},
 		},
 		{
-			name: "will report zero values if the requested resources exceed the allocatable resources",
-			nodes: []corev1.Node{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: nodeName1,
-						Labels: map[string]string{
-							trackers.AKSClusterNodeSKULabelName: nodeSKU1,
-						},
-					},
-					Spec: corev1.NodeSpec{},
-					Status: corev1.NodeStatus{
-						Capacity: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("4"),
-							corev1.ResourceMemory: resource.MustParse("16Gi"),
-						},
-						Allocatable: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("3.2"),
-							corev1.ResourceMemory: resource.MustParse("15.2Gi"),
-						},
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: nodeName2,
-						Labels: map[string]string{
-							trackers.AKSClusterNodeSKULabelName: nodeSKU2,
-						},
-					},
-					Spec: corev1.NodeSpec{},
-					Status: corev1.NodeStatus{
-						Capacity: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("8"),
-							corev1.ResourceMemory: resource.MustParse("32Gi"),
-						},
-						Allocatable: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("7"),
-							corev1.ResourceMemory: resource.MustParse("30Gi"),
-						},
-					},
-				},
-			},
+			name:  "will report zero values if the requested resources exceed the allocatable resources",
+			nodes: nodes,
 			pods: []corev1.Pod{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -308,6 +305,7 @@ func TestCollect(t *testing.T) {
 					},
 				},
 			},
+			pricingprovider: &dummyPricingProvider{},
 			wantMetricCollectionResponse: propertyprovider.PropertyCollectionResponse{
 				Properties: map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue{
 					propertyprovider.NodeCountProperty: {
@@ -386,7 +384,8 @@ func TestCollect(t *testing.T) {
 					},
 				},
 			},
-			pods: []corev1.Pod{},
+			pods:            []corev1.Pod{},
+			pricingprovider: &dummyPricingProvider{},
 			wantMetricCollectionResponse: propertyprovider.PropertyCollectionResponse{
 				Properties: map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue{
 					propertyprovider.NodeCountProperty: {
@@ -420,7 +419,7 @@ func TestCollect(t *testing.T) {
 			},
 		},
 		{
-			name: "can report cost properties collection warnings",
+			name: "can report cost properties collection warnings (unknown node SKUs)",
 			nodes: []corev1.Node{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -461,7 +460,8 @@ func TestCollect(t *testing.T) {
 					},
 				},
 			},
-			pods: []corev1.Pod{},
+			pods:            []corev1.Pod{},
+			pricingprovider: &dummyPricingProvider{},
 			wantMetricCollectionResponse: propertyprovider.PropertyCollectionResponse{
 				Properties: map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue{
 					propertyprovider.NodeCountProperty: {
@@ -503,7 +503,7 @@ func TestCollect(t *testing.T) {
 			},
 		},
 		{
-			name: "can handle nodes without SKU labels",
+			name: "can report cost properties collection warnings (no SKU labels)",
 			nodes: []corev1.Node{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -541,7 +541,8 @@ func TestCollect(t *testing.T) {
 					},
 				},
 			},
-			pods: []corev1.Pod{},
+			pods:            []corev1.Pod{},
+			pricingprovider: &dummyPricingProvider{},
 			wantMetricCollectionResponse: propertyprovider.PropertyCollectionResponse{
 				Properties: map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue{
 					propertyprovider.NodeCountProperty: {
@@ -582,6 +583,220 @@ func TestCollect(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "can report cost properties collection warnings (known missing node SKU)",
+			nodes: []corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: nodeName1,
+						Labels: map[string]string{
+							trackers.AKSClusterNodeSKULabelName: nodeSKU1,
+						},
+					},
+					Spec: corev1.NodeSpec{},
+					Status: corev1.NodeStatus{
+						Capacity: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("4"),
+							corev1.ResourceMemory: resource.MustParse("16Gi"),
+						},
+						Allocatable: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("3.2"),
+							corev1.ResourceMemory: resource.MustParse("15.2Gi"),
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: nodeName2,
+						Labels: map[string]string{
+							trackers.AKSClusterNodeSKULabelName: nodeKnownMissingSKU,
+						},
+					},
+					Spec: corev1.NodeSpec{},
+					Status: corev1.NodeStatus{
+						Capacity: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("2"),
+							corev1.ResourceMemory: resource.MustParse("2Gi"),
+						},
+						Allocatable: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("2"),
+							corev1.ResourceMemory: resource.MustParse("2Gi"),
+						},
+					},
+				},
+			},
+			pods:            []corev1.Pod{},
+			pricingprovider: &dummyPricingProvider{},
+			wantMetricCollectionResponse: propertyprovider.PropertyCollectionResponse{
+				Properties: map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue{
+					propertyprovider.NodeCountProperty: {
+						Value: "2",
+					},
+					PerCPUCoreCostProperty: {
+						Value: "0.167",
+					},
+					PerGBMemoryCostProperty: {
+						Value: "0.056",
+					},
+				},
+				Resources: clusterv1beta1.ResourceUsage{
+					Capacity: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("6"),
+						corev1.ResourceMemory: resource.MustParse("18Gi"),
+					},
+					Allocatable: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("5.2"),
+						corev1.ResourceMemory: resource.MustParse("17.2Gi"),
+					},
+					Available: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("5.2"),
+						corev1.ResourceMemory: resource.MustParse("17.2Gi"),
+					},
+				},
+				Conditions: []metav1.Condition{
+					{
+						Type:   CostPropertiesCollectionSucceededCondType,
+						Status: metav1.ConditionTrue,
+						Reason: CostPropertiesCollectionDegradedReason,
+						Message: fmt.Sprintf(CostPropertiesCollectionDegradedMsgTemplate,
+							[]string{
+								fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", []string{nodeKnownMissingSKU}),
+							},
+						),
+					},
+				},
+			},
+		},
+		{
+			name:            "can report cost properties collection warnings (stale pricing data)",
+			nodes:           nodes,
+			pods:            pods,
+			pricingprovider: &dummyPricingProviderWithStaleData{},
+			wantMetricCollectionResponse: propertyprovider.PropertyCollectionResponse{
+				Properties: map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue{
+					propertyprovider.NodeCountProperty: {
+						Value: "2",
+					},
+					PerCPUCoreCostProperty: {
+						Value: "0.167",
+					},
+					PerGBMemoryCostProperty: {
+						Value: "0.042",
+					},
+				},
+				Resources: clusterv1beta1.ResourceUsage{
+					Capacity: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("12"),
+						corev1.ResourceMemory: resource.MustParse("48Gi"),
+					},
+					Allocatable: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("10.2"),
+						corev1.ResourceMemory: resource.MustParse("45.2Gi"),
+					},
+					Available: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("1.7"),
+						corev1.ResourceMemory: resource.MustParse("23.2Gi"),
+					},
+				},
+				Conditions: []metav1.Condition{
+					{
+						Type:   CostPropertiesCollectionSucceededCondType,
+						Status: metav1.ConditionTrue,
+						Reason: CostPropertiesCollectionDegradedReason,
+						Message: fmt.Sprintf(CostPropertiesCollectionDegradedMsgTemplate,
+							[]string{
+								fmt.Sprintf("the pricing data is stale (last updated at %v); the system might have issues connecting to the Azure Retail Prices API, or the current region is unsupported", currentTime.Add(-time.Hour*48)),
+							},
+						),
+					},
+				},
+			},
+		},
+		{
+			name: "can report cost properties collection warnings (stale data and missing SKUs)",
+			nodes: []corev1.Node{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: nodeName1,
+						Labels: map[string]string{
+							trackers.AKSClusterNodeSKULabelName: nodeSKU1,
+						},
+					},
+					Spec: corev1.NodeSpec{},
+					Status: corev1.NodeStatus{
+						Capacity: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("4"),
+							corev1.ResourceMemory: resource.MustParse("16Gi"),
+						},
+						Allocatable: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("3.2"),
+							corev1.ResourceMemory: resource.MustParse("15.2Gi"),
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: nodeName2,
+						Labels: map[string]string{
+							trackers.AKSClusterNodeSKULabelName: nodeSKU3,
+						},
+					},
+					Spec: corev1.NodeSpec{},
+					Status: corev1.NodeStatus{
+						Capacity: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("2"),
+							corev1.ResourceMemory: resource.MustParse("2Gi"),
+						},
+						Allocatable: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("2"),
+							corev1.ResourceMemory: resource.MustParse("2Gi"),
+						},
+					},
+				},
+			},
+			pods:            []corev1.Pod{},
+			pricingprovider: &dummyPricingProviderWithStaleData{},
+			wantMetricCollectionResponse: propertyprovider.PropertyCollectionResponse{
+				Properties: map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue{
+					propertyprovider.NodeCountProperty: {
+						Value: "2",
+					},
+					PerCPUCoreCostProperty: {
+						Value: "0.167",
+					},
+					PerGBMemoryCostProperty: {
+						Value: "0.056",
+					},
+				},
+				Resources: clusterv1beta1.ResourceUsage{
+					Capacity: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("6"),
+						corev1.ResourceMemory: resource.MustParse("18Gi"),
+					},
+					Allocatable: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("5.2"),
+						corev1.ResourceMemory: resource.MustParse("17.2Gi"),
+					},
+					Available: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("5.2"),
+						corev1.ResourceMemory: resource.MustParse("17.2Gi"),
+					},
+				},
+				Conditions: []metav1.Condition{
+					{
+						Type:   CostPropertiesCollectionSucceededCondType,
+						Status: metav1.ConditionTrue,
+						Reason: CostPropertiesCollectionDegradedReason,
+						Message: fmt.Sprintf(CostPropertiesCollectionDegradedMsgTemplate,
+							[]string{
+								fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", []string{nodeSKU3}),
+								fmt.Sprintf("the pricing data is stale (last updated at %v); the system might have issues connecting to the Azure Retail Prices API, or the current region is unsupported", currentTime.Add(-time.Hour*48)),
+							},
+						),
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -589,7 +804,7 @@ func TestCollect(t *testing.T) {
 			ctx := context.Background()
 
 			// Build the trackers manually for testing purposes.
-			nodeTracker := trackers.NewNodeTracker(&dummyPricingProvider{})
+			nodeTracker := trackers.NewNodeTracker(tc.pricingprovider)
 			podTracker := trackers.NewPodTracker()
 			for idx := range tc.nodes {
 				nodeTracker.AddOrUpdate(&tc.nodes[idx])
