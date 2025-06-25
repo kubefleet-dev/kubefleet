@@ -77,21 +77,21 @@ func NewRequeueFastSlowWithExponentialBackoffRateLimiter(
 ) *RequeueFastSlowWithExponentialBackoffRateLimiter {
 	if maxFastAttempts < minMaxFastAttempts {
 		maxFastAttempts = minMaxFastAttempts
-		klog.V(2).InfoS("maxFastAttempts is below the minimum value; set it to the minimum value instead", minMaxFastAttempts)
+		klog.Errorf("maxFastAttempts is below the minimum value (%d); set it to the minimum value instead", minMaxFastAttempts)
 	}
 
 	if fastDelaySeconds < minFastDelaySeconds {
 		fastDelaySeconds = minFastDelaySeconds
-		klog.V(2).InfoS("fastDelaySeconds is below the minimum value (%d seconds); set it to the minimum value instead", minFastDelaySeconds)
+		klog.Errorf("fastDelaySeconds is below the minimum value (%d seconds); set it to the minimum value instead", minFastDelaySeconds)
 	}
 
 	if maxDelaySeconds < minFastDelaySeconds {
 		maxDelaySeconds = minFastDelaySeconds
-		klog.V(2).InfoS("maxDelaySeconds is below the minimum value (%d seconds); set it to the minimum value instead", minFastDelaySeconds)
+		klog.Errorf("maxDelaySeconds is below the minimum value (%d seconds); set it to the minimum value instead", minFastDelaySeconds)
 	}
 	if maxDelaySeconds > maxMaxDelaySeconds {
 		maxDelaySeconds = maxMaxDelaySeconds
-		klog.V(2).InfoS("maxDelaySeconds is above the maximum value (%d seconds); set it to the maximum value instead", maxMaxDelaySeconds)
+		klog.Errorf("maxDelaySeconds is above the maximum value (%d seconds); set it to the maximum value instead", maxMaxDelaySeconds)
 	}
 
 	return &RequeueFastSlowWithExponentialBackoffRateLimiter{
@@ -183,18 +183,6 @@ func (r *RequeueFastSlowWithExponentialBackoffRateLimiter) Forget(work *fleetv1b
 	delete(r.requeueCounter, namespacedName)
 	delete(r.lastTrackedGeneration, namespacedName)
 	delete(r.lastTrackedProcessingResultHash, namespacedName)
-}
-
-// NumRequeues returns the number of times a Work object has been requeued.
-func (r *RequeueFastSlowWithExponentialBackoffRateLimiter) NumRequeues(work *fleetv1beta1.Work) int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	// Return the number of times the item has been requeued.
-	return r.requeueCounter[types.NamespacedName{
-		Namespace: work.Namespace,
-		Name:      work.Name,
-	}]
 }
 
 // computeProcessingResultHash returns the hash of the result of a Work object processing attempt,

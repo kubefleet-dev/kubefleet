@@ -29,6 +29,7 @@ import (
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
+// TestWhenWithFullSequence tests the When method.
 func TestWhenWithFullSequence(t *testing.T) {
 	work := &fleetv1beta1.Work{
 		ObjectMeta: metav1.ObjectMeta{
@@ -116,6 +117,7 @@ func TestWhenWithFullSequence(t *testing.T) {
 	}
 }
 
+// TestWhenWithGenerationAndProcessingResultChange tests the When method.
 func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 	rateLimiter := NewRequeueFastSlowWithExponentialBackoffRateLimiter(
 		1,  // 1 fast attempt.
@@ -240,6 +242,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 	}
 }
 
+// TestForget tests the Forget method.
 func TestForget(t *testing.T) {
 	workNamespacedName1 := types.NamespacedName{
 		Namespace: memberReservedNSName,
@@ -388,53 +391,7 @@ func TestForget(t *testing.T) {
 	}
 }
 
-func TestNumRequeues(t *testing.T) {
-	work := &fleetv1beta1.Work{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: memberReservedNSName,
-			Name:      workName,
-		},
-	}
-	bundles := []*manifestProcessingBundle{}
-	rateLimiter := NewRequeueFastSlowWithExponentialBackoffRateLimiter(
-		5,   // 5 fast attempts.
-		20,  // fast delay of 20 seconds.
-		1.5, // exponential base of 1.5.
-		300, // max delay of 300 seconds.
-	)
-
-	testCases := []struct {
-		name            string
-		wantNumRequeues int
-	}{
-		{
-			name:            "requeue #1",
-			wantNumRequeues: 1,
-		},
-		{
-			name:            "requeue #2",
-			wantNumRequeues: 2,
-		},
-		{
-			name:            "requeue #3",
-			wantNumRequeues: 3,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// Register a requeue to the rate limiter to increment the counter; the response is
-			// not important for this test case.
-			rateLimiter.When(work, bundles)
-
-			numRequeues := rateLimiter.NumRequeues(work)
-			if numRequeues != tc.wantNumRequeues {
-				t.Errorf("NumRequeues() = %d, want %d", numRequeues, tc.wantNumRequeues)
-			}
-		})
-	}
-}
-
+// TestComputeProcessingResultHash tests the computeProcessingResultHash function.
 func TestComputeProcessingResultHash(t *testing.T) {
 	work := &fleetv1beta1.Work{
 		ObjectMeta: metav1.ObjectMeta{

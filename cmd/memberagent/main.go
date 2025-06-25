@@ -391,8 +391,6 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 			5,
 			// Use the default worker count (4) for parallelized manifest processing.
 			parallelizer.DefaultNumOfWorkers,
-			// Use the default requeue rate limiter.
-			nil,
 			*watchWorkWithPriorityQueue,
 			*watchWorkReconcileAgeMinutes,
 		)

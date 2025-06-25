@@ -194,6 +194,27 @@ func (h *PriorityQueueEventHandler) Generic(ctx context.Context, evt event.Typed
 	h.AddToPriorityQueue(ctx, evt.Object, false)
 }
 
+var defaultRequeueRateLimiter *RequeueFastSlowWithExponentialBackoffRateLimiter = NewRequeueFastSlowWithExponentialBackoffRateLimiter(
+	// Allow fast requeues for 20 attempts (5 seconds each, 100 seconds of fast requeues).
+	20,
+	// Important (chenyu1): before the introduction of the requeue rate limiter, the work
+	// applier uses static requeue intervals, specifically 5 seconds (if the work object is unavailable),
+	// and 15 seconds (if the work object is available). There are a number of test cases that
+	// implicitly assume this behavior (e.g., a test case might expect that the availability check completes
+	// w/in 10 seconds), which is why the rate limiter uses the 5 seconds fast requeue delay by default.
+	// If you need to change this value and see that many test cases begin to fail, update the test
+	// cases accordingly.
+	5,
+	// Then switch to exponential backoff with a base of 1.2 with a cap of 5 minutes.
+	1.2,
+	300,
+	// When the Work object spec does not change and the processing result remains the same,
+	// the requeue pattern is essentially:
+	// * 20 attempts of fast requeues (5 seconds each, 1 minute and 40 seconds in total); then
+	// * 22 attempts of requeues with exponential backoff (~27 minutes in total); then
+	// * requeue every 5 minutes.
+)
+
 // Reconciler reconciles a Work object.
 type Reconciler struct {
 	hubClient                    client.Client
@@ -212,40 +233,18 @@ type Reconciler struct {
 }
 
 // NewReconciler returns a new Work object reconciler for the work applier.
+//
+// TO-DO (chenyu1): evaluate if KubeFleet needs to expose the requeue rate limiter
+// parameters as command-line arguments for user-side configuration.
 func NewReconciler(
 	hubClient client.Client, workNameSpace string,
 	spokeDynamicClient dynamic.Interface, spokeClient client.Client, restMapper meta.RESTMapper,
 	recorder record.EventRecorder,
 	concurrentReconciles int,
 	workerCount int,
-	requeueRateLimiter *RequeueFastSlowWithExponentialBackoffRateLimiter,
 	watchWorkWithPriorityQueue bool,
 	watchWorkReconcileAgeMinutes int,
 ) *Reconciler {
-	if requeueRateLimiter == nil {
-		klog.V(2).InfoS("No requeue rate limiter provided; using default rate limiter")
-		requeueRateLimiter = NewRequeueFastSlowWithExponentialBackoffRateLimiter(
-			// Allow fast requeues for 20 attempts (5 seconds each, 100 seconds of fast requeues).
-			20,
-			// Important (chenyu1): before the introduction of the requeue rate limiter, the work
-			// applier uses static requeue intervals, specifically 5 seconds (if the work object is unavailable),
-			// and 15 seconds (if the work object is available). There are a number of test cases that
-			// implicitly assume this behavior (e.g., a test case might expect that the availability check completes
-			// w/in 10 seconds), which is why the rate limiter uses the 5 seconds fast requeue delay by default.
-			// If you need to change this value and see that many test cases begin to fail, update the test
-			// cases accordingly.
-			5,
-			// Then switch to exponential backoff with a base of 1.2 with a cap of 5 minutes.
-			1.2,
-			300,
-			// When the Work object spec does not change and the processing result remains the same,
-			// the requeue pattern is essentially:
-			// * 10 attempts of fast requeues (5 seconds each, 1 minute and 40 seconds in total); then
-			// * 22 attempts of requeues with exponential backoff (~27 minutes in total); then
-			// * requeue every 5 minutes.
-		)
-	}
-
 	return &Reconciler{
 		hubClient:                    hubClient,
 		spokeDynamicClient:           spokeDynamicClient,
@@ -258,7 +257,7 @@ func NewReconciler(
 		watchWorkReconcileAgeMinutes: watchWorkReconcileAgeMinutes,
 		workNameSpace:                workNameSpace,
 		joined:                       atomic.NewBool(false),
-		requeueRateLimiter:           requeueRateLimiter,
+		requeueRateLimiter:           defaultRequeueRateLimiter,
 	}
 }
 

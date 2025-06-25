@@ -162,7 +162,6 @@ var _ = BeforeSuite(func() {
 		hubMgr.GetEventRecorderFor("work-applier"),
 		maxConcurrentReconciles,
 		workerCount,
-		nil,
 		true,
 		60,
 	)
