@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -33,7 +34,7 @@ func ListBindingsFromKey(ctx context.Context, c client.Reader, placementKey queu
 	// Extract namespace and name from the placement key
 	namespace, name, err := ExtractNamespaceNameFromKey(placementKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list binding for a placement: %w", err)
 	}
 	var listOptions []client.ListOption
 	var bindingList placementv1beta1.BindingObjList

@@ -167,7 +167,7 @@ func (s *Scheduler) scheduleOnce(ctx context.Context, worker int) {
 			if err := s.cleanUpAllBindingsFor(ctx, placement); err != nil {
 				klog.ErrorS(err, "Failed to clean up all bindings for placement", "placement", placementRef)
 				if errors.Is(err, controller.ErrUnexpectedBehavior) {
-					// The placement is in an unexpected state; this is a scheduler-side error, and
+					// The placement is in an unexpected state, don't requeue it.
 					return
 				}
 				// Requeue for later processing.
@@ -324,7 +324,7 @@ func (s *Scheduler) cleanUpAllBindingsFor(ctx context.Context, placement fleetv1
 		binding := bindings[idx]
 		controllerutil.RemoveFinalizer(binding, fleetv1beta1.SchedulerCRBCleanupFinalizer)
 		if err := s.client.Update(ctx, binding); err != nil {
-			klog.ErrorS(err, "Failed to remove scheduler reconcile finalizer from resource binding", "binding", klog.KObj(binding))
+			klog.ErrorS(err, "Failed to remove scheduler reconcile finalizer from binding", "binding", klog.KObj(binding))
 			return controller.NewUpdateIgnoreConflictError(err)
 		}
 		// Delete the binding if it has not been marked for deletion yet.

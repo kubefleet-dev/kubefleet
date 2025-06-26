@@ -87,7 +87,7 @@ func ExtractNamespaceNameFromKey(placementKey queue.PlacementKey) (string, strin
 			return "", "", NewUnexpectedBehaviorError(fmt.Errorf("invalid placement key format: %s", keyStr))
 		}
 		if len(parts[0]) == 0 || len(parts[1]) == 0 {
-			return "", "", NewUnexpectedBehaviorError(fmt.Errorf("empty placement key"))
+			return "", "", NewUnexpectedBehaviorError(fmt.Errorf("empty placement key <namespace/name>: %s", keyStr))
 		}
 		return parts[0], parts[1], nil
 	} else {

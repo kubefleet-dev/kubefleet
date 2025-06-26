@@ -207,7 +207,7 @@ func crossReferencePickedClustersAndDeDupBindings(
 			}
 			binding, err := generateBinding(placementKey, scored.Cluster.Name)
 			if err != nil {
-				return nil, nil, nil, err
+				return nil, nil, nil, fmt.Errorf("failed to generate binding for cluster %q: %w", scored.Cluster.Name, err)
 			}
 			// Set the binding spec.
 			binding.SetBindingSpec(bindingSpec)
@@ -740,7 +740,7 @@ func crossReferenceValidTargetsWithBindings(
 			binding, err := generateBinding(placementKey, cluster.Name)
 			if err != nil {
 				// Cannot generate a binding; normally this should never happen.
-				return nil, nil, nil, controller.NewUnexpectedBehaviorError(fmt.Errorf("failed to generate binding: %w", err))
+				return nil, nil, nil, fmt.Errorf("failed to generate binding: %w", err)
 			}
 			// Set the binding spec.
 			spec := placementv1beta1.ResourceBindingSpec{
@@ -763,14 +763,9 @@ func crossReferenceValidTargetsWithBindings(
 
 	// Perform the cross-reference to find out bindings that should be deleted.
 	for _, binding := range obsolete {
-		spec := binding.GetBindingSpec()
-		if _, ok := validTargetMap[spec.TargetCluster]; !ok {
+		if _, ok := validTargetMap[binding.GetBindingSpec().TargetCluster]; !ok {
 			// The cluster is no longer a valid target; mark the binding as unscheduled.
-			if crb, ok := binding.(*placementv1beta1.ClusterResourceBinding); ok {
-				toDelete = append(toDelete, crb)
-			} else {
-				return nil, nil, nil, controller.NewUnexpectedBehaviorError(fmt.Errorf("unexpected binding type: %T", binding))
-			}
+			toDelete = append(toDelete, binding)
 		}
 	}
 
