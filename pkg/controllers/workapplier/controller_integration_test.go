@@ -5382,7 +5382,7 @@ var _ = Describe("handling different apply strategies", func() {
 		})
 	})
 
-	FContext("falling back from CSA to SSA", Ordered, func() {
+	Context("falling back from CSA to SSA", Ordered, func() {
 		workName := fmt.Sprintf(workNameTemplate, utils.RandStr())
 		// The environment prepared by the envtest package does not support namespace
 		// deletion; each test case would use a new namespace.
