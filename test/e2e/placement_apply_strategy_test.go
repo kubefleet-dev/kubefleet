@@ -918,7 +918,7 @@ var _ = Describe("SSA", Ordered, func() {
 
 				lastAppliedConf, foundAnnotation := cm.Annotations[placementv1beta1.LastAppliedConfigAnnotation]
 				if !foundAnnotation || len(lastAppliedConf) == 0 {
-					return fmt.Errorf("the configMap object does not have annoation %s in presence or its value is empty", placementv1beta1.LastAppliedConfigAnnotation)
+					return fmt.Errorf("the configMap object does not have annotation %s in presence or its value is empty", placementv1beta1.LastAppliedConfigAnnotation)
 				}
 
 				// Field manager might still be set; this is an expected behavior.
