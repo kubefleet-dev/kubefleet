@@ -212,19 +212,19 @@ func (r *Reconciler) handleUpdate(ctx context.Context, crp *fleetv1beta1.Cluster
 	if createResourceSnapshotRes.Requeue {
 		latestResourceSnapshotKObj := klog.KObj(latestResourceSnapshot)
 		// We cannot create the resource snapshot immediately because of the resource snapshot creation interval.
+		// Rebuild the seletedResourceIDs using the latestResourceSnapshot.
 		latestResourceSnapshotIndex, err := labels.ExtractResourceIndexFromClusterResourceSnapshot(latestResourceSnapshot)
 		if err != nil {
 			klog.ErrorS(err, "Failed to extract the resource index from the clusterResourceSnapshot", "clusterResourcePlacement", crpKObj, "clusterResourceSnapshot", latestResourceSnapshotKObj)
 			return ctrl.Result{}, controller.NewUnexpectedBehaviorError(err)
 		}
-		// Rebuild the seletedResourceIDs using the latestResourceSnapshot.
 		selectedResourceIDs, err = controller.CollectResourceIdentifiersFromClusterResourceSnapshot(ctx, r.Client, crp.Name, strconv.Itoa(latestResourceSnapshotIndex))
 		if err != nil {
 			klog.ErrorS(err, "Failed to collect resource identifiers from the clusterResourceSnapshot", "clusterResourcePlacement", crpKObj, "clusterResourceSnapshot", latestResourceSnapshotKObj)
 			return ctrl.Result{}, err
 		}
 		if selectedResourceIDs == nil {
-			err := controller.NewUnexpectedBehaviorError(fmt.Errorf("Not found clusterResourceSnapshot %s for clusterResourcePlacement %s", latestResourceSnapshot, crp.Name))
+			err := controller.NewUnexpectedBehaviorError(fmt.Errorf("Not found clusterResourceSnapshot %q for clusterResourcePlacement %q", latestResourceSnapshot.Name, crp.Name))
 			klog.ErrorS(err, "Latest resourceSnapshot should not be deleted", "clusterResourcePlacement", crpKObj, "clusterResourceSnapshot", latestResourceSnapshotKObj)
 			return ctrl.Result{}, err
 		}
