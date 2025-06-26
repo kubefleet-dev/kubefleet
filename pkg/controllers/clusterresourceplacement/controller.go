@@ -203,10 +203,32 @@ func (r *Reconciler) handleUpdate(ctx context.Context, crp *fleetv1beta1.Cluster
 		return ctrl.Result{}, err
 	}
 
-	res, latestResourceSnapshot, err := r.getOrCreateClusterResourceSnapshot(ctx, crp, envelopeObjCount,
+	createResourceSnapshotRes, latestResourceSnapshot, err := r.getOrCreateClusterResourceSnapshot(ctx, crp, envelopeObjCount,
 		&fleetv1beta1.ResourceSnapshotSpec{SelectedResources: selectedResources}, int(revisionLimit))
-	if err != nil || res.Requeue {
-		return res, err
+	if err != nil {
+		// We don't requeue the request here immediately so that placement can keep tracking the rollout status.
+		return ctrl.Result{}, err
+	}
+	if createResourceSnapshotRes.Requeue {
+		latestResourceSnapshotKObj := klog.KObj(latestResourceSnapshot)
+		// We cannot create the resource snapshot immediately because of the resource snapshot creation interval.
+		latestResourceSnapshotIndex, err := labels.ExtractResourceIndexFromClusterResourceSnapshot(latestResourceSnapshot)
+		if err != nil {
+			klog.ErrorS(err, "Failed to extract the resource index from the clusterResourceSnapshot", "clusterResourcePlacement", crpKObj, "clusterResourceSnapshot", latestResourceSnapshotKObj)
+			return ctrl.Result{}, controller.NewUnexpectedBehaviorError(err)
+		}
+		// Rebuild the seletedResourceIDs using the latestResourceSnapshot.
+		selectedResourceIDs, err = controller.CollectResourceIdentifiersFromClusterResourceSnapshot(ctx, r.Client, crp.Name, strconv.Itoa(latestResourceSnapshotIndex))
+		if err != nil {
+			klog.ErrorS(err, "Failed to collect resource identifiers from the clusterResourceSnapshot", "clusterResourcePlacement", crpKObj, "clusterResourceSnapshot", latestResourceSnapshotKObj)
+			return ctrl.Result{}, err
+		}
+		if selectedResourceIDs == nil {
+			err := controller.NewUnexpectedBehaviorError(fmt.Errorf("Not found clusterResourceSnapshot %s for clusterResourcePlacement %s", latestResourceSnapshot, crp.Name))
+			klog.ErrorS(err, "Latest resourceSnapshot should not be deleted", "clusterResourcePlacement", crpKObj, "clusterResourceSnapshot", latestResourceSnapshotKObj)
+			return ctrl.Result{}, err
+		}
+		klog.V(2).InfoS("Fetched the selected resources from the lastestResourceSnapshot", "clusterResourcePlacement", crpKObj, "clusterResourceSnapshot", latestResourceSnapshotKObj, "generation", crp.Generation)
 	}
 
 	// isClusterScheduled is to indicate whether we need to requeue the CRP request to track the rollout status.
@@ -239,6 +261,11 @@ func (r *Reconciler) handleUpdate(ctx context.Context, crp *fleetv1beta1.Cluster
 			klog.V(2).InfoS("Placement has finished the rollout process and reached the desired status", "clusterResourcePlacement", crpKObj, "generation", crp.Generation)
 			r.Recorder.Event(crp, corev1.EventTypeNormal, "PlacementRolloutCompleted", "Placement has finished the rollout process and reached the desired status")
 		}
+		if createResourceSnapshotRes.Requeue {
+			klog.V(2).InfoS("Requeue the request to handle the new resource snapshot", "clusterResourcePlacement", crpKObj, "generation", crp.Generation)
+			// We requeue the request to handle the resource snapshot.
+			return createResourceSnapshotRes, nil
+		}
 		// We don't need to requeue any request now by watching the binding changes
 		return ctrl.Result{}, nil
 	}
@@ -256,9 +283,19 @@ func (r *Reconciler) handleUpdate(ctx context.Context, crp *fleetv1beta1.Cluster
 		// Here we requeue the request to prevent a bug in the watcher.
 		klog.V(2).InfoS("Scheduler has not scheduled any cluster yet and requeue the request as a backup",
 			"clusterResourcePlacement", crpKObj, "scheduledCondition", crp.GetCondition(string(fleetv1beta1.ClusterResourcePlacementScheduledConditionType)), "generation", crp.Generation)
+		if createResourceSnapshotRes.Requeue {
+			klog.V(2).InfoS("Requeue the request to handle the new resource snapshot", "clusterResourcePlacement", crpKObj, "generation", crp.Generation)
+			// We requeue the request to handle the resource snapshot.
+			return createResourceSnapshotRes, nil
+		}
 		return ctrl.Result{RequeueAfter: controllerResyncPeriod}, nil
 	}
 	klog.V(2).InfoS("Placement rollout has not finished yet and requeue the request", "clusterResourcePlacement", crpKObj, "status", crp.Status, "generation", crp.Generation)
+	if createResourceSnapshotRes.Requeue {
+		klog.V(2).InfoS("Requeue the request to handle the new resource snapshot", "clusterResourcePlacement", crpKObj, "generation", crp.Generation)
+		// We requeue the request to handle the resource snapshot.
+		return createResourceSnapshotRes, nil
+	}
 	// no need to requeue the request as the binding status will be changed but we add a long resync loop just in case.
 	return ctrl.Result{RequeueAfter: controllerResyncPeriod}, nil
 }
@@ -501,7 +538,7 @@ func (r *Reconciler) getOrCreateClusterResourceSnapshot(ctx context.Context, crp
 			//  requeue the request to avoid too frequent update.
 			klog.V(2).InfoS("The latest resource snapshot is just created, skipping the update", "clusterResourcePlacement", crpKObj,
 				"clusterResourceSnapshot", klog.KObj(latestResourceSnapshot), "creationTime", latestResourceSnapshot.CreationTimestamp, "configuredResourceSnapshotCreationInterval", r.ResourceSnapshotCreationInterval, "afterDuration", r.ResourceSnapshotCreationInterval-since)
-			return ctrl.Result{Requeue: true, RequeueAfter: r.ResourceSnapshotCreationInterval - since}, nil, nil
+			return ctrl.Result{Requeue: true, RequeueAfter: r.ResourceSnapshotCreationInterval - since}, latestResourceSnapshot, nil
 		}
 
 		// set the latest label to false first to make sure there is only one or none active resource snapshot
