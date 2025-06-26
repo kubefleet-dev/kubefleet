@@ -1487,7 +1487,8 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 					Spec: fleetv1beta1.ResourceSnapshotSpec{SelectedResources: []fleetv1beta1.ResourceContent{}},
 				},
 			},
-			wantRequeue: true,
+			wantRequeue:             true,
+			wantLatestSnapshotIndex: 0,
 		},
 		{
 			name:                 "resource has changed and there is an active snapshot with multiple revisionLimit",
@@ -2203,7 +2204,8 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 					Spec: fleetv1beta1.ResourceSnapshotSpec{SelectedResources: []fleetv1beta1.ResourceContent{deploymentResourceContent}},
 				},
 			},
-			wantRequeue: true,
+			wantRequeue:             true,
+			wantLatestSnapshotIndex: 0,
 		},
 		{
 			name:                       "selected resources cross clusterResourceSnapshot limit, revision limit is 1, delete existing clusterResourceSnapshot with missing sub-indexed snapshots & create new clusterResourceSnapshots",
@@ -2708,10 +2710,9 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 				if res.RequeueAfter <= 0 {
 					t.Fatalf("getOrCreateClusterResourceSnapshot() got RequeueAfter %v, want greater than zero value", res.RequeueAfter)
 				}
-			} else {
-				if diff := cmp.Diff(tc.wantResourceSnapshots[tc.wantLatestSnapshotIndex], *got, options...); diff != "" {
-					t.Errorf("getOrCreateClusterResourceSnapshot() mismatch (-want, +got):\n%s", diff)
-				}
+			}
+			if diff := cmp.Diff(tc.wantResourceSnapshots[tc.wantLatestSnapshotIndex], *got, options...); diff != "" {
+				t.Errorf("getOrCreateClusterResourceSnapshot() mismatch (-want, +got):\n%s", diff)
 			}
 			clusterResourceSnapshotList := &fleetv1beta1.ClusterResourceSnapshotList{}
 			if err := fakeClient.List(ctx, clusterResourceSnapshotList); err != nil {

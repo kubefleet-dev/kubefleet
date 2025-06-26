@@ -466,6 +466,8 @@ func (r *Reconciler) deleteRedundantResourceSnapshots(ctx context.Context, crp *
 // getOrCreateClusterResourceSnapshot gets or creates a clusterResourceSnapshot for the given clusterResourcePlacement.
 // It returns the latest clusterResourceSnapshot if it exists and is up to date, otherwise it creates a new one.
 // It also returns the ctrl.Result to indicate whether the request should be requeued or not.
+// Note: when the ctrl.Result.Requeue is true, it still returns the current latest resourceSnapshot so that
+// placement can update the rollout status.
 func (r *Reconciler) getOrCreateClusterResourceSnapshot(ctx context.Context, crp *fleetv1beta1.ClusterResourcePlacement, envelopeObjCount int, resourceSnapshotSpec *fleetv1beta1.ResourceSnapshotSpec, revisionHistoryLimit int) (ctrl.Result, *fleetv1beta1.ClusterResourceSnapshot, error) {
 	resourceHash, err := resource.HashOf(resourceSnapshotSpec)
 	crpKObj := klog.KObj(crp)
