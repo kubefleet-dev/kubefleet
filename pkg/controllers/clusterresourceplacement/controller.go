@@ -224,7 +224,7 @@ func (r *Reconciler) handleUpdate(ctx context.Context, crp *fleetv1beta1.Cluster
 			return ctrl.Result{}, err
 		}
 		if selectedResourceIDs == nil {
-			err := controller.NewUnexpectedBehaviorError(fmt.Errorf("Not found clusterResourceSnapshot %q for clusterResourcePlacement %q", latestResourceSnapshot.Name, crp.Name))
+			err := controller.NewUnexpectedBehaviorError(fmt.Errorf("not found clusterResourceSnapshot %q for clusterResourcePlacement %q", latestResourceSnapshot.Name, crp.Name))
 			klog.ErrorS(err, "Latest resourceSnapshot should not be deleted", "clusterResourcePlacement", crpKObj, "clusterResourceSnapshot", latestResourceSnapshotKObj)
 			return ctrl.Result{}, err
 		}
