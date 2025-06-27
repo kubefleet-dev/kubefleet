@@ -157,6 +157,9 @@ var _ = Describe("Test the rollout Controller", func() {
 							WhenToApply:      fleetv1beta1.WhenToApplyTypeAlways,
 							WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeAlways,
 							Type:             fleetv1beta1.ApplyStrategyTypeClientSideApply,
+							ServerSideApplyConfig: &fleetv1beta1.ServerSideApplyConfig{
+								ForceConflicts: false,
+							},
 						},
 					},
 				}
