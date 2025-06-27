@@ -1487,7 +1487,8 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 					Spec: fleetv1beta1.ResourceSnapshotSpec{SelectedResources: []fleetv1beta1.ResourceContent{}},
 				},
 			},
-			wantRequeue: true,
+			wantRequeue:             true,
+			wantLatestSnapshotIndex: 0,
 		},
 		{
 			name:                 "resource has changed and there is an active snapshot with multiple revisionLimit",
@@ -1513,8 +1514,9 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 							},
 						},
 						Annotations: map[string]string{
-							fleetv1beta1.ResourceGroupHashAnnotation:         resourceSnapshotSpecWithServiceResourceHash,
-							fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "3",
+							fleetv1beta1.ResourceGroupHashAnnotation:                          resourceSnapshotSpecWithServiceResourceHash,
+							fleetv1beta1.NumberOfResourceSnapshotsAnnotation:                  "3",
+							fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation: now.Add(-5 * time.Minute).Format(time.RFC3339),
 						},
 						CreationTimestamp: metav1.NewTime(now.Time.Add(-1 * time.Hour)),
 					},
@@ -1628,8 +1630,9 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 							},
 						},
 						Annotations: map[string]string{
-							fleetv1beta1.ResourceGroupHashAnnotation:         resourceSnapshotSpecWithServiceResourceHash,
-							fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "3",
+							fleetv1beta1.ResourceGroupHashAnnotation:                          resourceSnapshotSpecWithServiceResourceHash,
+							fleetv1beta1.NumberOfResourceSnapshotsAnnotation:                  "3",
+							fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation: now.Add(-5 * time.Minute).Format(time.RFC3339),
 						},
 					},
 					Spec: fleetv1beta1.ResourceSnapshotSpec{SelectedResources: []fleetv1beta1.ResourceContent{serviceResourceContent}},
@@ -1950,9 +1953,10 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 							},
 						},
 						Annotations: map[string]string{
-							fleetv1beta1.ResourceGroupHashAnnotation:         resourceSnapshotSpecWithMultipleResourcesHash,
-							fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "3",
-							fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:  "0",
+							fleetv1beta1.ResourceGroupHashAnnotation:                          resourceSnapshotSpecWithMultipleResourcesHash,
+							fleetv1beta1.NumberOfResourceSnapshotsAnnotation:                  "3",
+							fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:                   "0",
+							fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation: now.Add(-5 * time.Minute).Format(time.RFC3339),
 						},
 						CreationTimestamp: metav1.NewTime(now.Time.Add(-1 * time.Hour)),
 					},
@@ -2203,7 +2207,8 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 					Spec: fleetv1beta1.ResourceSnapshotSpec{SelectedResources: []fleetv1beta1.ResourceContent{deploymentResourceContent}},
 				},
 			},
-			wantRequeue: true,
+			wantRequeue:             true,
+			wantLatestSnapshotIndex: 0,
 		},
 		{
 			name:                       "selected resources cross clusterResourceSnapshot limit, revision limit is 1, delete existing clusterResourceSnapshot with missing sub-indexed snapshots & create new clusterResourceSnapshots",
@@ -2229,9 +2234,10 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 							},
 						},
 						Annotations: map[string]string{
-							fleetv1beta1.ResourceGroupHashAnnotation:         resourceSnapshotSpecWithMultipleResourcesHash,
-							fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "3",
-							fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:  "0",
+							fleetv1beta1.ResourceGroupHashAnnotation:                          resourceSnapshotSpecWithMultipleResourcesHash,
+							fleetv1beta1.NumberOfResourceSnapshotsAnnotation:                  "3",
+							fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:                   "0",
+							fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation: now.Add(-5 * time.Minute).Format(time.RFC3339),
 						},
 						CreationTimestamp: metav1.NewTime(now.Time.Add(-1 * time.Hour)),
 					},
@@ -2313,9 +2319,10 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 							},
 						},
 						Annotations: map[string]string{
-							fleetv1beta1.ResourceGroupHashAnnotation:         resourceSnapshotSpecWithServiceResourceHash,
-							fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "1",
-							fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:  "0",
+							fleetv1beta1.ResourceGroupHashAnnotation:                          resourceSnapshotSpecWithServiceResourceHash,
+							fleetv1beta1.NumberOfResourceSnapshotsAnnotation:                  "1",
+							fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:                   "0",
+							fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation: now.Add(-5 * time.Minute).Format(time.RFC3339),
 						},
 						CreationTimestamp: metav1.NewTime(now.Time.Add(-1 * time.Hour)),
 					},
@@ -2341,9 +2348,10 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 							},
 						},
 						Annotations: map[string]string{
-							fleetv1beta1.ResourceGroupHashAnnotation:         resourceSnapshotSpecWithServiceResourceHash,
-							fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "1",
-							fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:  "0",
+							fleetv1beta1.ResourceGroupHashAnnotation:                          resourceSnapshotSpecWithServiceResourceHash,
+							fleetv1beta1.NumberOfResourceSnapshotsAnnotation:                  "1",
+							fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:                   "0",
+							fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation: now.Add(-5 * time.Minute).Format(time.RFC3339),
 						},
 					},
 					Spec: fleetv1beta1.ResourceSnapshotSpec{SelectedResources: []fleetv1beta1.ResourceContent{serviceResourceContent}},
@@ -2708,10 +2716,9 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 				if res.RequeueAfter <= 0 {
 					t.Fatalf("getOrCreateClusterResourceSnapshot() got RequeueAfter %v, want greater than zero value", res.RequeueAfter)
 				}
-			} else {
-				if diff := cmp.Diff(tc.wantResourceSnapshots[tc.wantLatestSnapshotIndex], *got, options...); diff != "" {
-					t.Errorf("getOrCreateClusterResourceSnapshot() mismatch (-want, +got):\n%s", diff)
-				}
+			}
+			if diff := cmp.Diff(tc.wantResourceSnapshots[tc.wantLatestSnapshotIndex], *got, options...); diff != "" {
+				t.Errorf("getOrCreateClusterResourceSnapshot() mismatch (-want, +got):\n%s", diff)
 			}
 			clusterResourceSnapshotList := &fleetv1beta1.ClusterResourceSnapshotList{}
 			if err := fakeClient.List(ctx, clusterResourceSnapshotList); err != nil {
@@ -4472,6 +4479,120 @@ func TestDetermineRolloutStateForCRPWithExternalRolloutStrategy(t *testing.T) {
 				if diff := cmp.Diff(tc.wantConditions, crp.Status.Conditions, cmpOptions...); diff != "" {
 					t.Errorf("determineRolloutStateForCRPWithExternalRolloutStrategy() got crp.Status.Conditions mismatch (-want, +got):\n%s", diff)
 				}
+			}
+		})
+	}
+}
+
+func TestShouldCreateNewResourceSnapshotNow(t *testing.T) {
+	interval := 60 * time.Second
+	half := interval / 2
+	now := time.Now()
+
+	cases := []struct {
+		name            string
+		interval        time.Duration
+		creationTime    time.Time
+		annotationValue string
+		wantAnnoation   bool
+		wantRequeue     bool
+	}{
+		{
+			name:         "recently created resource snapshot",
+			interval:     interval,
+			creationTime: now.Add(-half + 5*time.Second),
+			wantRequeue:  true,
+		},
+		{
+			name:         "existing resource snapshot without annotation",
+			interval:     interval,
+			creationTime: now.Add(-2 * half),
+			// no annotation → sets it and requeues
+			annotationValue: "",
+			wantAnnoation:   true,
+			wantRequeue:     true,
+		},
+		{
+			name:            "existing resource snapshot with expired annotation",
+			interval:        interval,
+			creationTime:    now.Add(-2 * half),
+			annotationValue: now.Add(-half).Format(time.RFC3339),
+			// annotation far in past → no requeue
+			wantAnnoation: true,
+			wantRequeue:   false,
+		},
+		{
+			name:            "existing resource snapshot with invalid annotation",
+			interval:        interval,
+			creationTime:    now.Add(-2 * half),
+			annotationValue: "invalid-value",
+			// annotation far in past → no requeue
+			wantAnnoation: true,
+			wantRequeue:   true,
+		},
+		{
+			name:            "existing resource snapshot with recently added annotation",
+			interval:        interval,
+			creationTime:    now.Add(-2 * half),
+			annotationValue: now.Add(-half + 5*time.Second).Format(time.RFC3339),
+			// annotation exists but within half interval → requeue
+			wantAnnoation: true,
+			wantRequeue:   true,
+		},
+		{
+			name:        "ResourceSnapshotCreationInterval is 0",
+			interval:    0,
+			wantRequeue: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// initialize a snapshot with given creation time and annotation
+			snapshot := &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "test-snapshot",
+					CreationTimestamp: metav1.Time{Time: tc.creationTime},
+					Annotations:       map[string]string{},
+				},
+			}
+			if tc.annotationValue != "" {
+				snapshot.Annotations[fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation] = tc.annotationValue
+			}
+
+			// use fake client seeded with the snapshot
+			scheme := serviceScheme(t)
+			client := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithRuntimeObjects(snapshot.DeepCopy()).
+				Build()
+
+			r := &Reconciler{
+				Client:                           client,
+				ResourceSnapshotCreationInterval: tc.interval,
+			}
+
+			ctx := context.Background()
+			if err := client.Get(ctx, types.NamespacedName{Name: snapshot.Name}, snapshot); err != nil {
+				t.Fatalf("Failed to get snapshot: %v", err)
+			}
+			got, err := r.shouldCreateNewResourceSnapshotNow(ctx, snapshot)
+			if err != nil {
+				t.Fatalf("shouldCreateNewResourceSnapshotNow() failed: %v", err)
+			}
+			if got.Requeue != tc.wantRequeue {
+				t.Errorf("shouldCreateNewResourceSnapshotNow() = %v, want %v", got.Requeue, tc.wantRequeue)
+			}
+			if tc.wantRequeue {
+				if got.RequeueAfter <= 0 || got.RequeueAfter > half {
+					t.Errorf("shouldCreateNewResourceSnapshotNow() = RequeueAfter got %v, want in (0, %v], ", got.RequeueAfter, half)
+				}
+			}
+			if err := client.Get(ctx, types.NamespacedName{Name: snapshot.Name}, snapshot); err != nil {
+				t.Fatalf("failed to get snapshot after shouldCreateNewResourceSnapshotNow: %v", err)
+			}
+			if gotAnnotation := len(snapshot.Annotations[fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation]) != 0; tc.wantAnnoation != gotAnnotation {
+				t.Errorf("shouldCreateNewResourceSnapshotNow() = annotation %v, want %v", snapshot.Annotations[fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation], tc.wantAnnoation)
 			}
 		})
 	}

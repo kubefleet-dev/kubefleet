@@ -40,6 +40,9 @@ const (
 	// SubindexOfResourceSnapshotAnnotation is the annotation to store the subindex of resource snapshot in the group.
 	SubindexOfResourceSnapshotAnnotation = fleetPrefix + "subindex-of-resource-snapshot"
 
+	// NextResourceSnapshotCandidateDetectionTimeAnnotation is the annotation to store the time of next resourceSnapshot candidate detected by the controller.
+	NextResourceSnapshotCandidateDetectionTimeAnnotation = fleetPrefix + "next-resource-snapshot-candidate-detection-time"
+
 	// ResourceSnapshotNameFmt is resourcePolicySnapshot name format: {CRPName}-{resourceIndex}-snapshot.
 	ResourceSnapshotNameFmt = "%s-%d-snapshot"
 
@@ -119,6 +122,9 @@ type ResourceSnapshotObjList interface {
 //
 // Each snapshot (excluding the first snapshot) MUST have the following annotations:
 //   - `SubindexOfResourceSnapshotAnnotation` to store the subindex of resource snapshot in the group.
+//
+// Snapshot may have the following annotations to indicate the time of next resourceSnapshot candidate detected by the controller:
+//   - `NextResourceSnapshotCandidateDetectionTimeAnnotation` to store the time of next resourceSnapshot candidate detected by the controller.
 type ClusterResourceSnapshot struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
