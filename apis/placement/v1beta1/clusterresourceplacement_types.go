@@ -121,8 +121,8 @@ type ClusterResourcePlacement struct {
 }
 
 // PlacementSpec defines the desired state of ClusterResourcePlacement and ResourcePlacement.
+// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.policy) && !has(self.policy) && self.policy.placementType != oldSelf.policy.placementType)",message="placement type is immutable"
 type PlacementSpec struct {
-
 	// ResourceSelectors is an array of selectors used to select cluster scoped resources. The selectors are `ORed`.
 	// You can have 1-100 selectors.
 	// +kubebuilder:validation:Required
