@@ -4477,3 +4477,106 @@ func TestDetermineRolloutStateForCRPWithExternalRolloutStrategy(t *testing.T) {
 		})
 	}
 }
+
+func TestShouldCreateNewResourceSnapshotNow(t *testing.T) {
+	interval := 60 * time.Second
+	half := interval / 2
+	now := time.Now()
+
+	cases := []struct {
+		name            string
+		creationTime    time.Time
+		annotationValue string
+		wantAnnoation   bool
+		wantRequeue     bool
+	}{
+		{
+			name:         "recently created resource snapshot",
+			creationTime: now.Add(-half + 5*time.Second),
+			wantRequeue:  true,
+		},
+		{
+			name:         "existing resource snapshot without annotation",
+			creationTime: now.Add(-2 * half),
+			// no annotation → sets it and requeues
+			annotationValue: "",
+			wantAnnoation:   true,
+			wantRequeue:     true,
+		},
+		{
+			name:            "existing resource snapshot with expired annotation",
+			creationTime:    now.Add(-2 * half),
+			annotationValue: now.Add(-half).Format(time.RFC3339),
+			// annotation far in past → no requeue
+			wantAnnoation: true,
+			wantRequeue:   false,
+		},
+		{
+			name:            "existing resource snapshot with invalid annotation",
+			creationTime:    now.Add(-2 * half),
+			annotationValue: "invalid-value",
+			// annotation far in past → no requeue
+			wantAnnoation: true,
+			wantRequeue:   true,
+		},
+		{
+			name:            "existing resource snapshot with recently added annotation",
+			creationTime:    now.Add(-2 * half),
+			annotationValue: now.Add(-half + 5*time.Second).Format(time.RFC3339),
+			// annotation exists but within half interval → requeue
+			wantAnnoation: true,
+			wantRequeue:   true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// initialize a snapshot with given creation time and annotation
+			snapshot := &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "test-snapshot",
+					CreationTimestamp: metav1.Time{Time: tc.creationTime},
+					Annotations:       map[string]string{},
+				},
+			}
+			if tc.annotationValue != "" {
+				snapshot.Annotations[fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation] = tc.annotationValue
+			}
+
+			// use fake client seeded with the snapshot
+			scheme := serviceScheme(t)
+			client := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithRuntimeObjects(snapshot.DeepCopy()).
+				Build()
+
+			r := &Reconciler{
+				Client:                           client,
+				ResourceSnapshotCreationInterval: interval,
+			}
+
+			ctx := context.Background()
+			if err := client.Get(ctx, types.NamespacedName{Name: snapshot.Name}, snapshot); err != nil {
+				t.Fatalf("Failed to get snapshot: %v", err)
+			}
+			got, err := r.shouldCreateNewResourceSnapshotNow(ctx, snapshot)
+			if err != nil {
+				t.Fatalf("shouldCreateNewResourceSnapshotNow() failed: %v", err)
+			}
+			if got.Requeue != tc.wantRequeue {
+				t.Errorf("shouldCreateNewResourceSnapshotNow() = %v, want %v", got.Requeue, tc.wantRequeue)
+			}
+			if tc.wantRequeue {
+				if got.RequeueAfter <= 0 || got.RequeueAfter > half {
+					t.Errorf("shouldCreateNewResourceSnapshotNow() = RequeueAfter got %v, want in (0, %v], ", got.RequeueAfter, half)
+				}
+			}
+			if err := client.Get(ctx, types.NamespacedName{Name: snapshot.Name}, snapshot); err != nil {
+				t.Fatalf("failed to get snapshot after shouldCreateNewResourceSnapshotNow: %v", err)
+			}
+			if gotAnnotation := len(snapshot.Annotations[fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation]) != 0; tc.wantAnnoation != gotAnnotation {
+				t.Errorf("shouldCreateNewResourceSnapshotNow() = annotation %v, want %v", snapshot.Annotations[fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation], tc.wantAnnoation)
+			}
+		})
+	}
+}
