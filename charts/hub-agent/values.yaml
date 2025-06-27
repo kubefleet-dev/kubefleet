@@ -18,7 +18,7 @@ enableGuardRail: true
 webhookClientConnectionType: service
 forceDeleteWaitTime: 15m0s
 clusterUnhealthyThreshold: 3m0s
-resourceSnapshotCreationInterval: 1m0s
+resourceSnapshotCreationInterval: 30s
 
 namespace:
   fleet-system
