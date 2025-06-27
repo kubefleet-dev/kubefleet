@@ -206,9 +206,10 @@ func (r *Reconciler) handleUpdate(ctx context.Context, crp *fleetv1beta1.Cluster
 	createResourceSnapshotRes, latestResourceSnapshot, err := r.getOrCreateClusterResourceSnapshot(ctx, crp, envelopeObjCount,
 		&fleetv1beta1.ResourceSnapshotSpec{SelectedResources: selectedResources}, int(revisionLimit))
 	if err != nil {
-		// We don't requeue the request here immediately so that placement can keep tracking the rollout status.
 		return ctrl.Result{}, err
 	}
+
+	// We don't requeue the request here immediately so that placement can keep tracking the rollout status.
 	if createResourceSnapshotRes.Requeue {
 		latestResourceSnapshotKObj := klog.KObj(latestResourceSnapshot)
 		// We cannot create the resource snapshot immediately because of the resource snapshot creation interval.
