@@ -591,6 +591,10 @@ func (r *Reconciler) getOrCreateClusterResourceSnapshot(ctx context.Context, crp
 // shouldCreateNewResourceSnapshotNow checks whether it is ready to create the new resource snapshot to avoid too frequent creation
 // based on the configured ResourceSnapshotCreationInterval.
 func (r *Reconciler) shouldCreateNewResourceSnapshotNow(ctx context.Context, latestResourceSnapshot *fleetv1beta1.ClusterResourceSnapshot) (ctrl.Result, error) {
+	if r.ResourceSnapshotCreationInterval <= 0 {
+		return ctrl.Result{}, nil
+	}
+
 	// We reserve half of the resourceSnapshotCreationInterval to allow the controller to bundle all the resource changes into one snapshot.
 	// For example, if the interval is 1m, the first resource change will be captured starting from 30s.
 	// And then the next 30s will be used to capture all the resource changes into one snapshot.
