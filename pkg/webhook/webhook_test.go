@@ -12,6 +12,31 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 )
 
+func TestBuildFleetMutatingWebhooks(t *testing.T) {
+	url := options.WebhookClientConnectionType("url")
+	testCases := map[string]struct {
+		config     Config
+		wantLength int
+	}{
+		"valid input": {
+			config: Config{
+				serviceNamespace:     "test-namespace",
+				servicePort:          8080,
+				serviceURL:           "test-url",
+				clientConnectionType: &url,
+			},
+			wantLength: 1,
+		},
+	}
+
+	for testName, testCase := range testCases {
+		t.Run(testName, func(t *testing.T) {
+			gotResult := testCase.config.buildFleetMutatingWebhooks()
+			assert.Equal(t, testCase.wantLength, len(gotResult), utils.TestCaseMsg, testName)
+		})
+	}
+}
+
 func TestBuildFleetValidatingWebhooks(t *testing.T) {
 	url := options.WebhookClientConnectionType("url")
 	testCases := map[string]struct {

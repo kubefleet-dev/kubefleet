@@ -15,6 +15,8 @@ import (
 func init() {
 	// AddToManagerFleetResourceValidator is a function to register fleet guard rail resource validator to the webhook server
 	AddToManagerFleetResourceValidator = fleetresourcehandler.Add
+	// AddToManagerFleetResourceMutator is a function to register fleet guard rail resource mutator to the webhook server
+	AddToManagerFuncs = append(AddToManagerFuncs, clusterresourceplacement.AddMutating)
 	// AddToManagerFuncs is a list of functions to register webhook validators to the webhook server
 	AddToManagerFuncs = append(AddToManagerFuncs, clusterresourceplacement.AddV1Alpha1)
 	AddToManagerFuncs = append(AddToManagerFuncs, clusterresourceplacement.Add)
