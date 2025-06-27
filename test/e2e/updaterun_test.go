@@ -913,7 +913,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 	var strategy *placementv1beta1.ClusterStagedUpdateStrategy
 	updateRunNames := []string{}
 
-	BeforeAll(func() {
+	BeforeEach(OncePerOrdered, func() {
 		// Create a test namespace and a configMap inside it on the hub cluster.
 		createWorkResources()
 
@@ -958,20 +958,38 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 			updateRunNames = append(updateRunNames, fmt.Sprintf(updateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 		}
 
-		// Initial setup: Create first update run and deploy resources to all clusters
+		checkIfRemovedWorkResourcesFromAllMemberClustersConsistently()
+
+		By("Validating created resource snapshot and policy snapshot")
 		validateLatestResourceSnapshot(crpName, resourceSnapshotIndex1st)
 		validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 3)
+
+		By("Creating the first staged update run")
 		createStagedUpdateRunSucceed(updateRunNames[0], crpName, resourceSnapshotIndex1st, strategyName)
 
-		// Complete the initial staged update run and rollout resources to all member clusters
+		By("Validating staged update run has succeeded")
 		updateRunSucceededActual := updateRunStatusSucceededActual(updateRunNames[0], policySnapshotIndex1st, 3, nil, &strategy.Spec, [][]string{{allMemberClusterNames[0], allMemberClusterNames[1], allMemberClusterNames[2]}}, nil, nil, nil)
 		Eventually(updateRunSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[0])
 
+		By("Validating CRP status as completed")
 		crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
 			[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil)
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
 
+		By("Validating all work resources are placed on all member clusters")
 		checkIfPlacedWorkResourcesOnAllMemberClusters()
+
+		By("Unjoining member cluster 1")
+		setMemberClusterToLeave(allMemberClusters[0])
+		checkIfMemberClusterHasLeft(allMemberClusters[0])
+
+		By("Validating CRP status as completed on member cluster 2 and member cluster 3 only")
+		crpStatusUpdatedActual = crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames[1:],
+			[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true}, nil, nil)
+		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+
+		By("Validating all work resources are still placed on member cluster 1")
+		checkIfPlacedWorkResourcesOnMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0]})
 	})
 
 	AfterEach(OncePerOrdered, func() {
@@ -991,22 +1009,6 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 	})
 
 	Context("UpdateRun should delete the binding of a left cluster but resources are kept", Ordered, Serial, func() {
-
-		It("Should be able to unjoin member cluster 1", func() {
-			setMemberClusterToLeave(allMemberClusters[0])
-			checkIfMemberClusterHasLeft(allMemberClusters[0])
-		})
-
-		It("Should update CRP status to placing resources the other two member clusters", func() {
-			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames[1:],
-				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true}, nil, nil)
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
-		It("Should validate that resources are still on member cluster 1", func() {
-			checkIfPlacedWorkResourcesOnMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0]})
-		})
-
 		It("Should validate binding for member cluster 1 is set to Unscheduled", func() {
 			bindingUnscheduledActual := bindingStateActual(crpName, allMemberClusterNames[0], placementv1beta1.BindingStateUnscheduled)
 			Eventually(bindingUnscheduledActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to mark binding for member cluster %s as unscheduled", allMemberClusterNames[0])
@@ -1017,7 +1019,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 			createStagedUpdateRunSucceed(updateRunNames[1], crpName, resourceSnapshotIndex1st, strategyName)
 		})
 
-		It("Should complete the second staged update run and delete cluster member 1 binding but keep resources", func() {
+		It("Should complete the second staged update run and complete the CRP", func() {
 			updateRunSucceededActual := updateRunStatusSucceededActual(updateRunNames[1], policySnapshotIndex1st, 2, nil, &strategy.Spec, [][]string{{allMemberClusterNames[1], allMemberClusterNames[2]}}, []string{allMemberClusterNames[0]}, nil, nil)
 			Eventually(updateRunSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[1])
 
@@ -1050,45 +1052,14 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 
 		It("Should be able to rejoin member cluster 1", func() {
 			setMemberClusterToJoin(allMemberClusters[0])
+			checkIfMemberClusterHasJoined(allMemberClusters[0])
 		})
 	})
 
 	Context("Rejoin a member cluster when resources are not changed", Ordered, Serial, func() {
-		It("Should not rollout any resources to member clusters as there's no update run yet", checkIfRemovedWorkResourcesFromAllMemberClustersConsistently)
-
-		It("Should have the latest resource snapshot, policy snapshot and create the staged update run successfully", func() {
-			validateLatestResourceSnapshot(crpName, resourceSnapshotIndex1st)
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 3)
-			createStagedUpdateRunSucceed(updateRunNames[0], crpName, resourceSnapshotIndex1st, strategyName)
-		})
-
-		It("Should complete the staged update run, complete CRP, and rollout resources to all member clusters", func() {
-			updateRunSucceededActual := updateRunStatusSucceededActual(updateRunNames[0], policySnapshotIndex1st, 3, nil, &strategy.Spec, [][]string{{allMemberClusterNames[0], allMemberClusterNames[1], allMemberClusterNames[2]}}, nil, nil, nil)
-			Eventually(updateRunSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[0])
-
-			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
-				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil)
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
-
-			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
-		})
-
-		It("Should be able to unjoin member cluster 1", func() {
-			setMemberClusterToLeave(allMemberClusters[0])
-		})
-
-		It("Should update CRP status to placing resources the other two member clusters", func() {
-			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames[1:],
-				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true}, nil, nil)
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
-		It("Should validate that resources are still on member cluster 1", func() {
-			checkIfPlacedWorkResourcesOnMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0]})
-		})
-
 		It("Should be able to rejoin member cluster 1", func() {
 			setMemberClusterToJoin(allMemberClusters[0])
+			checkIfMemberClusterHasJoined(allMemberClusters[0])
 		})
 
 		It("Should reschedule to member cluster 1 and create a new staged update run successfully", func() {
@@ -1121,41 +1092,9 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 			newConfigMap.Data["data"] = "changed"
 		})
 
-		It("Should not rollout any resources to member clusters as there's no update run yet", checkIfRemovedWorkResourcesFromAllMemberClustersConsistently)
-
-		It("Should have the latest resource snapshot, policy snapshot and create the staged update run successfully", func() {
-			validateLatestResourceSnapshot(crpName, resourceSnapshotIndex1st)
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 3)
-			createStagedUpdateRunSucceed(updateRunNames[0], crpName, resourceSnapshotIndex1st, strategyName)
-		})
-
-		It("Should complete the staged update run, complete CRP, and rollout resources to all member clusters", func() {
-			updateRunSucceededActual := updateRunStatusSucceededActual(updateRunNames[0], policySnapshotIndex1st, 3, nil, &strategy.Spec, [][]string{{allMemberClusterNames[0], allMemberClusterNames[1], allMemberClusterNames[2]}}, nil, nil, nil)
-			Eventually(updateRunSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[0])
-
-			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
-				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil)
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
-
-			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
-		})
-
-		It("Should be able to unjoin member cluster 1", func() {
-			setMemberClusterToLeave(allMemberClusters[0])
-		})
-
-		It("Should update CRP status to placing resources the other two member clusters", func() {
-			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames[1:],
-				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true}, nil, nil)
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
-		It("Should validate that resources are still on member cluster 1", func() {
-			checkIfPlacedWorkResourcesOnMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0]})
-		})
-
 		It("Should be able to rejoin member cluster 1", func() {
 			setMemberClusterToJoin(allMemberClusters[0])
+			checkIfMemberClusterHasJoined(allMemberClusters[0])
 		})
 
 		It("Should update the resources on hub cluster", func() {
@@ -1196,45 +1135,13 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 	})
 
 	Context("Rejoin a member cluster after orphaned resources are deleted on the member cluster", Ordered, Serial, func() {
-		It("Should not rollout any resources to member clusters as there's no update run yet", checkIfRemovedWorkResourcesFromAllMemberClustersConsistently)
-
-		It("Should have the latest resource snapshot, policy snapshot and create the staged update run successfully", func() {
-			validateLatestResourceSnapshot(crpName, resourceSnapshotIndex1st)
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 3)
-			createStagedUpdateRunSucceed(updateRunNames[0], crpName, resourceSnapshotIndex1st, strategyName)
-		})
-
-		It("Should complete the staged update run, complete CRP, and rollout resources to all member clusters", func() {
-			updateRunSucceededActual := updateRunStatusSucceededActual(updateRunNames[0], policySnapshotIndex1st, 3, nil, &strategy.Spec, [][]string{{allMemberClusterNames[0], allMemberClusterNames[1], allMemberClusterNames[2]}}, nil, nil, nil)
-			Eventually(updateRunSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[0])
-
-			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
-				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil)
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
-
-			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
-		})
-
-		It("Should be able to unjoin member cluster 1", func() {
-			setMemberClusterToLeave(allMemberClusters[0])
-		})
-
-		It("Should update CRP status to placing resources the other two member clusters", func() {
-			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames[1:],
-				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true}, nil, nil)
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
-		It("Should validate that resources are still on member cluster 1", func() {
-			checkIfPlacedWorkResourcesOnMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0]})
-		})
-
 		It("Should delete the orphaned resources on member cluster 1", func() {
 			cleanWorkResourcesOnCluster(allMemberClusters[0])
 		})
 
 		It("Should be able to rejoin member cluster 1", func() {
 			setMemberClusterToJoin(allMemberClusters[0])
+			checkIfMemberClusterHasJoined(allMemberClusters[0])
 		})
 
 		It("Should reschedule to member cluster 1 and create a new staged update run successfully", func() {
@@ -1260,39 +1167,9 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 	})
 
 	Context("Rejoin a member cluster and change to rollout CRP with rollingUpdate", Ordered, Serial, func() {
-		It("Should have the latest resource snapshot, policy snapshot and create the staged update run successfully", func() {
-			validateLatestResourceSnapshot(crpName, resourceSnapshotIndex1st)
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 3)
-			createStagedUpdateRunSucceed(updateRunNames[0], crpName, resourceSnapshotIndex1st, strategyName)
-		})
-
-		It("Should complete the staged update run, complete CRP, and rollout resources to all member clusters", func() {
-			updateRunSucceededActual := updateRunStatusSucceededActual(updateRunNames[0], policySnapshotIndex1st, 3, nil, &strategy.Spec, [][]string{{allMemberClusterNames[0], allMemberClusterNames[1], allMemberClusterNames[2]}}, nil, nil, nil)
-			Eventually(updateRunSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[0])
-
-			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
-				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil)
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
-
-			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
-		})
-
-		It("Should be able to unjoin member cluster 1", func() {
-			setMemberClusterToLeave(allMemberClusters[0])
-		})
-
-		It("Should update CRP status to placing resources the other two member clusters", func() {
-			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames[1:],
-				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true}, nil, nil)
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
-		It("Should validate that resources are still on member cluster 1", func() {
-			checkIfPlacedWorkResourcesOnMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0]})
-		})
-
 		It("Should be able to rejoin member cluster 1", func() {
 			setMemberClusterToJoin(allMemberClusters[0])
+			checkIfMemberClusterHasJoined(allMemberClusters[0])
 		})
 
 		It("Should update the CRP rollout strategy to use rollingUpdate", func() {
