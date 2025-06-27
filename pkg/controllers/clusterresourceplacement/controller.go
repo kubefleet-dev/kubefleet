@@ -593,7 +593,7 @@ func (r *Reconciler) getOrCreateClusterResourceSnapshot(ctx context.Context, crp
 func (r *Reconciler) shouldCreateNewResourceSnapshotNow(ctx context.Context, latestResourceSnapshot *fleetv1beta1.ClusterResourceSnapshot) (ctrl.Result, error) {
 	// We reserve half of the resourceSnapshotCreationInterval to allow the controller to bundle all the resource changes into one snapshot.
 	// For example, if the interval is 1m, the first resource change will be captured starting from 30s.
-	// And then the next 30s will be used to caputre all the resource changes into one snapshot.
+	// And then the next 30s will be used to capture all the resource changes into one snapshot.
 	snapshotKObj := klog.KObj(latestResourceSnapshot)
 	now := time.Now()
 	half := r.ResourceSnapshotCreationInterval / 2
@@ -609,7 +609,7 @@ func (r *Reconciler) shouldCreateNewResourceSnapshotNow(ctx context.Context, lat
 		if err != nil {
 			klog.ErrorS(controller.NewUnexpectedBehaviorError(err), "Failed to get the NextResourceSnapshotCandidateDetectionTimeAnnotation", "clusterResourceSnapshot", snapshotKObj)
 		}
-		// If the annoation is not set, set next resource snapshot candidate detection time is now.
+		// If the annotation is not set, set next resource snapshot candidate detection time is now.
 		if latestResourceSnapshot.Annotations == nil {
 			latestResourceSnapshot.Annotations = make(map[string]string)
 		}
