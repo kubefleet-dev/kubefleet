@@ -536,12 +536,13 @@ func (r *Reconciler) getOrCreateClusterResourceSnapshot(ctx context.Context, crp
 	if latestResourceSnapshot != nil && latestResourceSnapshotHash != resourceHash && latestResourceSnapshot.Labels[fleetv1beta1.IsLatestSnapshotLabel] == strconv.FormatBool(true) {
 		// When the latest resource snapshot without the isLastest label, it means it fails to create the new
 		// resource snapshot in the last reconcile and we don't need to check and delay the request.
-		if since := time.Since(latestResourceSnapshot.CreationTimestamp.Time); since < r.ResourceSnapshotCreationInterval {
-			// If the latest resource snapshot is created less than configured the resourceSnapshotCreationInterval,
-			//  requeue the request to avoid too frequent update.
-			klog.V(2).InfoS("The latest resource snapshot is just created, skipping the update", "clusterResourcePlacement", crpKObj,
-				"clusterResourceSnapshot", klog.KObj(latestResourceSnapshot), "creationTime", latestResourceSnapshot.CreationTimestamp, "configuredResourceSnapshotCreationInterval", r.ResourceSnapshotCreationInterval, "afterDuration", r.ResourceSnapshotCreationInterval-since)
-			return ctrl.Result{Requeue: true, RequeueAfter: r.ResourceSnapshotCreationInterval - since}, latestResourceSnapshot, nil
+		res, error := r.shouldCreateNewResourceSnapshotNow(ctx, latestResourceSnapshot)
+		if error != nil {
+			return ctrl.Result{}, nil, error
+		}
+		if res.Requeue {
+			// If the latest resource snapshot is not ready to be updated, we requeue the request.
+			return res, latestResourceSnapshot, nil
 		}
 
 		// set the latest label to false first to make sure there is only one or none active resource snapshot
@@ -585,6 +586,48 @@ func (r *Reconciler) getOrCreateClusterResourceSnapshot(ctx context.Context, crp
 		}
 	}
 	return ctrl.Result{}, latestResourceSnapshot, nil
+}
+
+// shouldCreateNewResourceSnapshotNow checks whether it is ready to create the new resource snapshot to avoid too frequent creation
+// based on the configured ResourceSnapshotCreationInterval.
+func (r *Reconciler) shouldCreateNewResourceSnapshotNow(ctx context.Context, latestResourceSnapshot *fleetv1beta1.ClusterResourceSnapshot) (ctrl.Result, error) {
+	// We reserve half of the resourceSnapshotCreationInterval to allow the controller to bundle all the resource changes into one snapshot.
+	// For example, if the interval is 1m, the first resource change will be captured starting from 30s.
+	// And then the next 30s will be used to caputre all the resource changes into one snapshot.
+	snapshotKObj := klog.KObj(latestResourceSnapshot)
+	now := time.Now()
+	half := r.ResourceSnapshotCreationInterval / 2
+	if since := now.Sub(latestResourceSnapshot.CreationTimestamp.Time); since < half {
+		// If the latest resource snapshot is created less than configured the resourceSnapshotCreationInterval,
+		//  requeue the request to avoid too frequent update.
+		klog.V(2).InfoS("The latest resource snapshot is just created, skipping the update",
+			"clusterResourceSnapshot", snapshotKObj, "creationTime", latestResourceSnapshot.CreationTimestamp, "configuredResourceSnapshotCreationInterval", r.ResourceSnapshotCreationInterval, "afterDuration", half-since)
+		return ctrl.Result{Requeue: true, RequeueAfter: half - since}, nil
+	}
+	nextResourceSnapshotCandidateDetectionTime, err := annotations.ExtractNextResourceSnapshotCandidateDetectionTimeFromResourceSnapshot(latestResourceSnapshot)
+	if nextResourceSnapshotCandidateDetectionTime.IsZero() || err != nil {
+		if err != nil {
+			klog.ErrorS(controller.NewUnexpectedBehaviorError(err), "Failed to get the NextResourceSnapshotCandidateDetectionTimeAnnotation", "clusterResourceSnapshot", snapshotKObj)
+		}
+		// If the annoation is not set, set next resource snapshot candidate detection time is now.
+		if latestResourceSnapshot.Annotations == nil {
+			latestResourceSnapshot.Annotations = make(map[string]string)
+		}
+		latestResourceSnapshot.Annotations[fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation] = now.Format(time.RFC3339)
+		if err := r.Client.Update(ctx, latestResourceSnapshot); err != nil {
+			klog.ErrorS(err, "Failed to update the NextResourceSnapshotCandidateDetectionTimeAnnotation", "clusterResourceSnapshot", snapshotKObj)
+			return ctrl.Result{}, controller.NewUpdateIgnoreConflictError(err)
+		}
+		klog.V(2).InfoS("Set the next-resource-snapshot-candidate-detection-time to now", "clusterResourceSnapshot", snapshotKObj, "nextResourceSnapshotCandidateDetectionTime", now)
+		return ctrl.Result{Requeue: true, RequeueAfter: half}, nil
+	}
+	if delay := now.Sub(nextResourceSnapshotCandidateDetectionTime); delay < half {
+		// If the next resource snapshot candidate detection time is not reached, we requeue the request to avoid too frequent update.
+		klog.V(2).InfoS("The next resource snapshot candidate has not reached the half of the ResourceSnapshotCreationInterval, skipping the creation",
+			"clusterResourceSnapshot", snapshotKObj, "nextResourceSnapshotCandidateDetectionTime", nextResourceSnapshotCandidateDetectionTime, "configuredResourceSnapshotCreationInterval", r.ResourceSnapshotCreationInterval, "afterDuration", half-delay)
+		return ctrl.Result{Requeue: true, RequeueAfter: half - delay}, nil
+	}
+	return ctrl.Result{}, nil
 }
 
 // buildMasterClusterResourceSnapshot builds and returns the master cluster resource snapshot for the latest resource snapshot index and selected resources.
