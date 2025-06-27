@@ -913,7 +913,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 	var strategy *placementv1beta1.ClusterStagedUpdateStrategy
 	updateRunNames := []string{}
 
-	BeforeEach(OncePerOrdered, func() {
+	BeforeAll(func() {
 		// Create a test namespace and a configMap inside it on the hub cluster.
 		createWorkResources()
 
@@ -957,6 +957,21 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 		for i := 0; i < 2; i++ {
 			updateRunNames = append(updateRunNames, fmt.Sprintf(updateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 		}
+
+		// Initial setup: Create first update run and deploy resources to all clusters
+		validateLatestResourceSnapshot(crpName, resourceSnapshotIndex1st)
+		validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 3)
+		createStagedUpdateRunSucceed(updateRunNames[0], crpName, resourceSnapshotIndex1st, strategyName)
+
+		// Complete the initial staged update run and rollout resources to all member clusters
+		updateRunSucceededActual := updateRunStatusSucceededActual(updateRunNames[0], policySnapshotIndex1st, 3, nil, &strategy.Spec, [][]string{{allMemberClusterNames[0], allMemberClusterNames[1], allMemberClusterNames[2]}}, nil, nil, nil)
+		Eventually(updateRunSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[0])
+
+		crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
+			[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil)
+		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
+
+		checkIfPlacedWorkResourcesOnAllMemberClusters()
 	})
 
 	AfterEach(OncePerOrdered, func() {
@@ -976,24 +991,6 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 	})
 
 	Context("UpdateRun should delete the binding of a left cluster but resources are kept", Ordered, Serial, func() {
-		It("Should not rollout any resources to member clusters as there's no update run yet", checkIfRemovedWorkResourcesFromAllMemberClustersConsistently)
-
-		It("Should have the latest resource snapshot, policy snapshot and create the staged update run successfully", func() {
-			validateLatestResourceSnapshot(crpName, resourceSnapshotIndex1st)
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 3)
-			createStagedUpdateRunSucceed(updateRunNames[0], crpName, resourceSnapshotIndex1st, strategyName)
-		})
-
-		It("Should complete the staged update run, complete CRP, and rollout resources to all member clusters", func() {
-			updateRunSucceededActual := updateRunStatusSucceededActual(updateRunNames[0], policySnapshotIndex1st, 3, nil, &strategy.Spec, [][]string{{allMemberClusterNames[0], allMemberClusterNames[1], allMemberClusterNames[2]}}, nil, nil, nil)
-			Eventually(updateRunSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[0])
-
-			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
-				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil)
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
-
-			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
-		})
 
 		It("Should be able to unjoin member cluster 1", func() {
 			setMemberClusterToLeave(allMemberClusters[0])
@@ -1006,7 +1003,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
-		It("Validating the resources are still member cluster 1", func() {
+		It("Should validate that resources are still on member cluster 1", func() {
 			checkIfPlacedWorkResourcesOnMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0]})
 		})
 
@@ -1086,7 +1083,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
-		It("Validating the resources are still member cluster 1", func() {
+		It("Should validate that resources are still on member cluster 1", func() {
 			checkIfPlacedWorkResourcesOnMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0]})
 		})
 
@@ -1153,7 +1150,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
-		It("Validating the resources are still member cluster 1", func() {
+		It("Should validate that resources are still on member cluster 1", func() {
 			checkIfPlacedWorkResourcesOnMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0]})
 		})
 
@@ -1228,7 +1225,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
-		It("Validating the resources are still member cluster 1", func() {
+		It("Should validate that resources are still on member cluster 1", func() {
 			checkIfPlacedWorkResourcesOnMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0]})
 		})
 
@@ -1290,7 +1287,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
-		It("Validating the resources are still member cluster 1", func() {
+		It("Should validate that resources are still on member cluster 1", func() {
 			checkIfPlacedWorkResourcesOnMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0]})
 		})
 
