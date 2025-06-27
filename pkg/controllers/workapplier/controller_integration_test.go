@@ -37,6 +37,7 @@ import (
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 )
 
 const (
@@ -689,12 +690,12 @@ var _ = Describe("applying manifests", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAppliedReason,
+					Reason: condition.WorkAllManifestsAppliedReason,
 				},
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAvailableReason,
+					Reason: condition.WorkAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -871,12 +872,12 @@ var _ = Describe("applying manifests", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAppliedReason,
+					Reason: condition.WorkAllManifestsAppliedReason,
 				},
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAvailableReason,
+					Reason: condition.WorkAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -989,12 +990,12 @@ var _ = Describe("applying manifests", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAppliedReason,
+					Reason: condition.WorkAllManifestsAppliedReason,
 				},
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAvailableReason,
+					Reason: condition.WorkAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -1173,7 +1174,7 @@ var _ = Describe("applying manifests", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionFalse,
-					Reason: WorkNotAllManifestsAppliedReason,
+					Reason: condition.WorkNotAllManifestsAppliedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -1332,7 +1333,7 @@ var _ = Describe("applying manifests", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionFalse,
-					Reason: WorkNotAllManifestsAppliedReason,
+					Reason: condition.WorkNotAllManifestsAppliedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -1531,12 +1532,12 @@ var _ = Describe("work applier garbage collection", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAppliedReason,
+					Reason: condition.WorkAllManifestsAppliedReason,
 				},
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAvailableReason,
+					Reason: condition.WorkAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -1802,12 +1803,12 @@ var _ = Describe("work applier garbage collection", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAppliedReason,
+					Reason: condition.WorkAllManifestsAppliedReason,
 				},
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAvailableReason,
+					Reason: condition.WorkAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -2121,12 +2122,12 @@ var _ = Describe("work applier garbage collection", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAppliedReason,
+					Reason: condition.WorkAllManifestsAppliedReason,
 				},
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAvailableReason,
+					Reason: condition.WorkAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -2438,12 +2439,12 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAppliedReason,
+					Reason: condition.WorkAllManifestsAppliedReason,
 				},
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAvailableReason,
+					Reason: condition.WorkAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -2719,7 +2720,7 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionFalse,
-					Reason: WorkNotAllManifestsAppliedReason,
+					Reason: condition.WorkNotAllManifestsAppliedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -2976,7 +2977,7 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionFalse,
-					Reason: WorkNotAllManifestsAppliedReason,
+					Reason: condition.WorkNotAllManifestsAppliedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -3166,12 +3167,12 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAppliedReason,
+					Reason: condition.WorkAllManifestsAppliedReason,
 				},
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAvailableReason,
+					Reason: condition.WorkAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -3411,7 +3412,7 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionFalse,
-					Reason: WorkNotAllManifestsAppliedReason,
+					Reason: condition.WorkNotAllManifestsAppliedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -3569,12 +3570,12 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAppliedReason,
+					Reason: condition.WorkAllManifestsAppliedReason,
 				},
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAvailableReason,
+					Reason: condition.WorkAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -3697,7 +3698,7 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionFalse,
-					Reason: WorkNotAllManifestsAppliedReason,
+					Reason: condition.WorkNotAllManifestsAppliedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -3809,12 +3810,12 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAppliedReason,
+					Reason: condition.WorkAllManifestsAppliedReason,
 				},
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAvailableReason,
+					Reason: condition.WorkAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -3935,12 +3936,12 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAppliedReason,
+					Reason: condition.WorkAllManifestsAppliedReason,
 				},
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAvailableReason,
+					Reason: condition.WorkAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -4066,12 +4067,12 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAppliedReason,
+					Reason: condition.WorkAllManifestsAppliedReason,
 				},
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAvailableReason,
+					Reason: condition.WorkAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -4194,7 +4195,7 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionFalse,
-					Reason: WorkNotAllManifestsAppliedReason,
+					Reason: condition.WorkNotAllManifestsAppliedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -4296,12 +4297,12 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAppliedReason,
+					Reason: condition.WorkAllManifestsAppliedReason,
 				},
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAvailableReason,
+					Reason: condition.WorkAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -4427,12 +4428,12 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAppliedReason,
+					Reason: condition.WorkAllManifestsAppliedReason,
 				},
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAvailableReason,
+					Reason: condition.WorkAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -4521,7 +4522,7 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionFalse,
-					Reason: WorkNotAllManifestsAppliedReason,
+					Reason: condition.WorkNotAllManifestsAppliedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -4595,7 +4596,7 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionFalse,
-					Reason: WorkNotAllManifestsAppliedReason,
+					Reason: condition.WorkNotAllManifestsAppliedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -4741,7 +4742,7 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionFalse,
-					Reason: WorkNotAllManifestsAppliedReason,
+					Reason: condition.WorkNotAllManifestsAppliedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -4883,7 +4884,7 @@ var _ = Describe("report diff", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeDiffReported,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsDiffReportedReason,
+					Reason: condition.WorkAllManifestsDiffReportedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -5094,7 +5095,7 @@ var _ = Describe("report diff", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeDiffReported,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsDiffReportedReason,
+					Reason: condition.WorkAllManifestsDiffReportedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -5194,7 +5195,7 @@ var _ = Describe("report diff", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeDiffReported,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsDiffReportedReason,
+					Reason: condition.WorkAllManifestsDiffReportedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -5399,7 +5400,7 @@ var _ = Describe("report diff", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeDiffReported,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsDiffReportedReason,
+					Reason: condition.WorkAllManifestsDiffReportedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -5639,7 +5640,7 @@ var _ = Describe("switch apply strategies", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeDiffReported,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsDiffReportedReason,
+					Reason: condition.WorkAllManifestsDiffReportedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -5730,12 +5731,12 @@ var _ = Describe("switch apply strategies", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAppliedReason,
+					Reason: condition.WorkAllManifestsAppliedReason,
 				},
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionFalse,
-					Reason: WorkNotAllManifestsAvailableReason,
+					Reason: condition.WorkNotAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -5944,12 +5945,12 @@ var _ = Describe("switch apply strategies", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsAppliedReason,
+					Reason: condition.WorkAllManifestsAppliedReason,
 				},
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionFalse,
-					Reason: WorkNotAllManifestsAvailableReason,
+					Reason: condition.WorkNotAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -6032,7 +6033,7 @@ var _ = Describe("switch apply strategies", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeDiffReported,
 					Status: metav1.ConditionTrue,
-					Reason: WorkAllManifestsDiffReportedReason,
+					Reason: condition.WorkAllManifestsDiffReportedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -6250,7 +6251,7 @@ var _ = Describe("switch apply strategies", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionFalse,
-					Reason: WorkNotAllManifestsAppliedReason,
+					Reason: condition.WorkNotAllManifestsAppliedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -6389,7 +6390,7 @@ var _ = Describe("switch apply strategies", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeApplied,
 					Status: metav1.ConditionFalse,
-					Reason: WorkNotAllManifestsAppliedReason,
+					Reason: condition.WorkNotAllManifestsAppliedReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
