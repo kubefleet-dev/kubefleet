@@ -21,6 +21,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/kubefleet-dev/kubefleet/apis"
 )
 
 const (
@@ -71,7 +73,7 @@ type ResourceSnapshotStatusGetterSetter interface {
 // A ResourceSnapshotObj offers an abstract way to work with a resource snapshot object.
 // +kubebuilder:object:generate=false
 type ResourceSnapshotObj interface {
-	client.Object
+	apis.ConditionedObj
 	ResourceSnapshotSpecGetterSetter
 	ResourceSnapshotStatusGetterSetter
 }

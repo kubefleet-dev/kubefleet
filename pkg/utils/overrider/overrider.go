@@ -47,7 +47,7 @@ func FetchAllMatchingOverridesForResourceSnapshot(
 	c client.Client,
 	manager informer.Manager,
 	crp string,
-	masterResourceSnapshot *placementv1beta1.ClusterResourceSnapshot,
+	masterResourceSnapshot placementv1beta1.ResourceSnapshotObj,
 ) ([]*placementv1alpha1.ClusterResourceOverrideSnapshot, []*placementv1alpha1.ResourceOverrideSnapshot, error) {
 	// fetch the cro and ro snapshot list first before finding the matched ones.
 	latestSnapshotLabelMatcher := client.MatchingLabels{
@@ -77,7 +77,7 @@ func FetchAllMatchingOverridesForResourceSnapshot(
 	possibleROs := make(map[placementv1beta1.ResourceIdentifier]bool)
 	// List all the possible CROs and ROs based on the selected resources.
 	for _, snapshot := range resourceSnapshots {
-		for _, res := range snapshot.Spec.SelectedResources {
+		for _, res := range snapshot.GetResourceSnapshotSpec().SelectedResources {
 			var uResource unstructured.Unstructured
 			if err := uResource.UnmarshalJSON(res.Raw); err != nil {
 				klog.ErrorS(err, "Resource has invalid content", "snapshot", klog.KObj(snapshot), "selectedResource", res.Raw)
