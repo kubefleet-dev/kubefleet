@@ -1020,7 +1020,7 @@ func customizedCRPStatusUpdatedActual(crpName string,
 			ObservedResourceIndex: wantObservedResourceIndex,
 		}
 		if diff := cmp.Diff(crp.Status, wantStatus, crpStatusCmpOptions...); diff != "" {
-			return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
+			return fmt.Errorf("CRP status diff (-got, +want): %s\ncrp.Status: %v", diff, crp.Status)
 		}
 		return nil
 	}
