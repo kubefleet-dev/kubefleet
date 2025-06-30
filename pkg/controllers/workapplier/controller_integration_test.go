@@ -6692,10 +6692,10 @@ var _ = Describe("handling different apply strategies", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			cleanupWorkObject(workName)
+			deleteWorkObject(workName)
 
 			// Ensure that all applied manifests have been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			Eventually(func() error {
