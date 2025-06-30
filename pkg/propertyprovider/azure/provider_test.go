@@ -343,7 +343,7 @@ func TestCollect(t *testing.T) {
 			},
 		},
 		{
-			name: "can report cost properties collection failures",
+			name: "can report cost properties collection failures (no pricing data for any SKU in presence)",
 			nodes: []corev1.Node{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -419,7 +419,7 @@ func TestCollect(t *testing.T) {
 			},
 		},
 		{
-			name: "can report cost properties collection warnings (unknown node SKUs)",
+			name: "can report cost properties collection failures (no pricing data for some SKUs in presence)",
 			nodes: []corev1.Node{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -467,12 +467,6 @@ func TestCollect(t *testing.T) {
 					propertyprovider.NodeCountProperty: {
 						Value: "2",
 					},
-					PerCPUCoreCostProperty: {
-						Value: "0.167",
-					},
-					PerGBMemoryCostProperty: {
-						Value: "0.056",
-					},
 				},
 				Resources: clusterv1beta1.ResourceUsage{
 					Capacity: corev1.ResourceList{
@@ -491,19 +485,17 @@ func TestCollect(t *testing.T) {
 				Conditions: []metav1.Condition{
 					{
 						Type:   CostPropertiesCollectionSucceededCondType,
-						Status: metav1.ConditionTrue,
-						Reason: CostPropertiesCollectionDegradedReason,
-						Message: fmt.Sprintf(CostPropertiesCollectionDegradedMsgTemplate,
-							[]string{
-								fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", []string{nodeSKU3}),
-							},
+						Status: metav1.ConditionFalse,
+						Reason: CostPropertiesCollectionFailedReason,
+						Message: fmt.Sprintf(CostPropertiesCollectionFailedMsgTemplate,
+							fmt.Sprintf("no pricing data is available for one or more of the node SKUs (%v) in the cluster", []string{nodeSKU3}),
 						),
 					},
 				},
 			},
 		},
 		{
-			name: "can report cost properties collection warnings (no SKU labels)",
+			name: "can report cost properties collection failures (no SKU labels)",
 			nodes: []corev1.Node{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -548,12 +540,6 @@ func TestCollect(t *testing.T) {
 					propertyprovider.NodeCountProperty: {
 						Value: "2",
 					},
-					PerCPUCoreCostProperty: {
-						Value: "0.167",
-					},
-					PerGBMemoryCostProperty: {
-						Value: "0.056",
-					},
 				},
 				Resources: clusterv1beta1.ResourceUsage{
 					Capacity: corev1.ResourceList{
@@ -572,19 +558,17 @@ func TestCollect(t *testing.T) {
 				Conditions: []metav1.Condition{
 					{
 						Type:   CostPropertiesCollectionSucceededCondType,
-						Status: metav1.ConditionTrue,
-						Reason: CostPropertiesCollectionDegradedReason,
-						Message: fmt.Sprintf(CostPropertiesCollectionDegradedMsgTemplate,
-							[]string{
-								fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", []string{}),
-							},
+						Status: metav1.ConditionFalse,
+						Reason: CostPropertiesCollectionFailedReason,
+						Message: fmt.Sprintf(CostPropertiesCollectionFailedMsgTemplate,
+							fmt.Sprintf("no pricing data is available for one or more of the node SKUs (%v) in the cluster", []string{}),
 						),
 					},
 				},
 			},
 		},
 		{
-			name: "can report cost properties collection warnings (known missing node SKU)",
+			name: "can report cost properties collection failures (known missing node SKU)",
 			nodes: []corev1.Node{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -632,12 +616,6 @@ func TestCollect(t *testing.T) {
 					propertyprovider.NodeCountProperty: {
 						Value: "2",
 					},
-					PerCPUCoreCostProperty: {
-						Value: "0.167",
-					},
-					PerGBMemoryCostProperty: {
-						Value: "0.056",
-					},
 				},
 				Resources: clusterv1beta1.ResourceUsage{
 					Capacity: corev1.ResourceList{
@@ -656,12 +634,10 @@ func TestCollect(t *testing.T) {
 				Conditions: []metav1.Condition{
 					{
 						Type:   CostPropertiesCollectionSucceededCondType,
-						Status: metav1.ConditionTrue,
-						Reason: CostPropertiesCollectionDegradedReason,
-						Message: fmt.Sprintf(CostPropertiesCollectionDegradedMsgTemplate,
-							[]string{
-								fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", []string{nodeKnownMissingSKU}),
-							},
+						Status: metav1.ConditionFalse,
+						Reason: CostPropertiesCollectionFailedReason,
+						Message: fmt.Sprintf(CostPropertiesCollectionFailedMsgTemplate,
+							fmt.Sprintf("no pricing data is available for one or more of the node SKUs (%v) in the cluster", []string{nodeKnownMissingSKU}),
 						),
 					},
 				},
@@ -705,91 +681,6 @@ func TestCollect(t *testing.T) {
 						Reason: CostPropertiesCollectionDegradedReason,
 						Message: fmt.Sprintf(CostPropertiesCollectionDegradedMsgTemplate,
 							[]string{
-								fmt.Sprintf("the pricing data is stale (last updated at %v); the system might have issues connecting to the Azure Retail Prices API, or the current region is unsupported", currentTime.Add(-time.Hour*48)),
-							},
-						),
-					},
-				},
-			},
-		},
-		{
-			name: "can report cost properties collection warnings (stale data and missing SKUs)",
-			nodes: []corev1.Node{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: nodeName1,
-						Labels: map[string]string{
-							trackers.AKSClusterNodeSKULabelName: nodeSKU1,
-						},
-					},
-					Spec: corev1.NodeSpec{},
-					Status: corev1.NodeStatus{
-						Capacity: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("4"),
-							corev1.ResourceMemory: resource.MustParse("16Gi"),
-						},
-						Allocatable: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("3.2"),
-							corev1.ResourceMemory: resource.MustParse("15.2Gi"),
-						},
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: nodeName2,
-						Labels: map[string]string{
-							trackers.AKSClusterNodeSKULabelName: nodeSKU3,
-						},
-					},
-					Spec: corev1.NodeSpec{},
-					Status: corev1.NodeStatus{
-						Capacity: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("2"),
-							corev1.ResourceMemory: resource.MustParse("2Gi"),
-						},
-						Allocatable: corev1.ResourceList{
-							corev1.ResourceCPU:    resource.MustParse("2"),
-							corev1.ResourceMemory: resource.MustParse("2Gi"),
-						},
-					},
-				},
-			},
-			pods:            []corev1.Pod{},
-			pricingprovider: &dummyPricingProviderWithStaleData{},
-			wantMetricCollectionResponse: propertyprovider.PropertyCollectionResponse{
-				Properties: map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue{
-					propertyprovider.NodeCountProperty: {
-						Value: "2",
-					},
-					PerCPUCoreCostProperty: {
-						Value: "0.167",
-					},
-					PerGBMemoryCostProperty: {
-						Value: "0.056",
-					},
-				},
-				Resources: clusterv1beta1.ResourceUsage{
-					Capacity: corev1.ResourceList{
-						corev1.ResourceCPU:    resource.MustParse("6"),
-						corev1.ResourceMemory: resource.MustParse("18Gi"),
-					},
-					Allocatable: corev1.ResourceList{
-						corev1.ResourceCPU:    resource.MustParse("5.2"),
-						corev1.ResourceMemory: resource.MustParse("17.2Gi"),
-					},
-					Available: corev1.ResourceList{
-						corev1.ResourceCPU:    resource.MustParse("5.2"),
-						corev1.ResourceMemory: resource.MustParse("17.2Gi"),
-					},
-				},
-				Conditions: []metav1.Condition{
-					{
-						Type:   CostPropertiesCollectionSucceededCondType,
-						Status: metav1.ConditionTrue,
-						Reason: CostPropertiesCollectionDegradedReason,
-						Message: fmt.Sprintf(CostPropertiesCollectionDegradedMsgTemplate,
-							[]string{
-								fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", []string{nodeSKU3}),
 								fmt.Sprintf("the pricing data is stale (last updated at %v); the system might have issues connecting to the Azure Retail Prices API, or the current region is unsupported", currentTime.Add(-time.Hour*48)),
 							},
 						),

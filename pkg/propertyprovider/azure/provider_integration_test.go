@@ -209,18 +209,13 @@ var (
 				case len(nodes) == 0:
 				case totalCost == 0.0:
 					costCollectionErr = fmt.Errorf("nodes are present, but no pricing data is available for any node SKUs (%v)", missingSKUs)
+				case len(missingSKUs) > 0:
+					costCollectionErr = fmt.Errorf("no pricing data is available for one or more of the node SKUs (%v) in the cluster", missingSKUs)
 				default:
 					perCPUCoreCost = fmt.Sprintf(CostPrecisionTemplate, totalCost/totalCPUCores)
 					perGBMemoryCost = fmt.Sprintf(CostPrecisionTemplate, totalCost/totalMemoryGBs)
 				}
 
-				if len(missingSKUs) > 0 {
-					perCPUCoreCost = fmt.Sprintf(CostPrecisionTemplate, totalCost/totalCPUCores)
-					perGBMemoryCost = fmt.Sprintf(CostPrecisionTemplate, totalCost/totalMemoryGBs)
-					costCollectionWarnings = append(costCollectionWarnings,
-						fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", missingSKUs),
-					)
-				}
 				if isPricingDataStale {
 					costCollectionWarnings = append(costCollectionWarnings,
 						fmt.Sprintf("the pricing data is stale (last updated at %v); the system might have issues connecting to the Azure Retail Prices API, or the current region is unsupported", pricingDataLastUpdated),

@@ -234,7 +234,7 @@ func TestCalculateCosts(t *testing.T) {
 			wantPerGBMemoryCost: 0.708,
 		},
 		{
-			name: "degraded (some SKUs do not have pricing data)",
+			name: "multiple SKUs, but some do not have pricing data",
 			nt: &NodeTracker{
 				totalCapacity: corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("12"),
@@ -255,14 +255,10 @@ func TestCalculateCosts(t *testing.T) {
 				pricingProvider: &dummyPricingProvider{},
 				costs:           &costInfo{},
 			},
-			wantWarnings: []string{
-				fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", []string{nodeSKU4}),
-			},
-			wantPerCPUCoreCost:  0.583,
-			wantPerGBMemoryCost: 0.292,
+			wantCostErrStrPrefix: "no pricing data is available for one or more of the node SKUs",
 		},
 		{
-			name: "degraded (known missing SKU)",
+			name: "multiple SKUs, but some are known to be missing from the pricing API",
 			nt: &NodeTracker{
 				totalCapacity: corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("12"),
@@ -283,14 +279,10 @@ func TestCalculateCosts(t *testing.T) {
 				pricingProvider: &dummyPricingProvider{},
 				costs:           &costInfo{},
 			},
-			wantWarnings: []string{
-				fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", []string{nodeKnownMissingSKU}),
-			},
-			wantPerCPUCoreCost:  0.583,
-			wantPerGBMemoryCost: 0.292,
+			wantCostErrStrPrefix: "no pricing data is available for one or more of the node SKUs",
 		},
 		{
-			name: "degraded (some nodes have empty SKUs)",
+			name: "some nodes have empty SKUs",
 			nt: &NodeTracker{
 				totalCapacity: corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("12"),
@@ -311,11 +303,7 @@ func TestCalculateCosts(t *testing.T) {
 				pricingProvider: &dummyPricingProvider{},
 				costs:           &costInfo{},
 			},
-			wantWarnings: []string{
-				fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", []string{}),
-			},
-			wantPerCPUCoreCost:  0.583,
-			wantPerGBMemoryCost: 0.292,
+			wantCostErrStrPrefix: "no pricing data is available for one or more of the node SKUs",
 		},
 		{
 			name: "no SKUs with pricing data",
@@ -397,31 +385,6 @@ func TestCalculateCosts(t *testing.T) {
 			wantPerCPUCoreCost:  0.083,
 			wantPerGBMemoryCost: 0.5,
 			wantWarnings: []string{
-				fmt.Sprintf("the pricing data is stale (last updated at %v); the system might have issues connecting to the Azure Retail Prices API, or the current region is unsupported", currentTime.Add(-time.Hour*48)),
-			},
-		},
-		{
-			name: "multiple warnings",
-			nt: &NodeTracker{
-				totalCapacity: corev1.ResourceList{
-					corev1.ResourceCPU:    resource.MustParse("12"),
-					corev1.ResourceMemory: resource.MustParse("2Gi"),
-				},
-				nodeSetBySKU: map[string]NodeSet{
-					nodeSKU1: {
-						nodeName1: true,
-					},
-					nodeSKU4: {
-						nodeName2: true,
-					},
-				},
-				pricingProvider: &dummyPricingProviderWithStaleData{},
-				costs:           &costInfo{},
-			},
-			wantPerCPUCoreCost:  0.083,
-			wantPerGBMemoryCost: 0.5,
-			wantWarnings: []string{
-				fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", []string{nodeSKU4}),
 				fmt.Sprintf("the pricing data is stale (last updated at %v); the system might have issues connecting to the Azure Retail Prices API, or the current region is unsupported", currentTime.Add(-time.Hour*48)),
 			},
 		},

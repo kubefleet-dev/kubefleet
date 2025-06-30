@@ -191,7 +191,8 @@ func (nt *NodeTracker) calculateCosts() {
 		klog.V(2).InfoS("No nodes are present in the cluster; costs are set to 0")
 		return
 	case totalHourlyRate == 0.0:
-		// A special case: at least one node is present, but none of the node SKUs has pricing data.
+		// The cluster features nodes of a single SKU, but no pricing data is available for the SKU;
+		// or the cluster features nodes of multiple SKUs, but no pricing data is available for any of the SKUs.
 		err := fmt.Errorf("nodes are present, but no pricing data is available for any node SKUs (%v)", missingSKUs)
 		klog.ErrorS(err, "Failed to calculate costs", "nodeSetBySKU", nt.nodeSetBySKU)
 		ci.err = err
@@ -201,14 +202,25 @@ func (nt *NodeTracker) calculateCosts() {
 		ci.perCPUCoreHourlyCost = 0.0
 		ci.perGBMemoryHourlyCost = 0.0
 		return
+	case len(missingSKUs) > 0:
+		// The cluster has nodes of multiple SKUs, but some SKUs do not have pricing data available.
+		//
+		// Note (chenyu1): originally such case is handled by treating the nodes of the missing SKUs as
+		// free of charge nodes; this would yield skewed pricing information, which might be misleading
+		// to the users.
+		//
+		// TO-DO (chenyu1): evaluate if customers would like to have an option to allows usage of such
+		// skewed pricing information.
+		err := fmt.Errorf("no pricing data is available for one or more of the node SKUs (%v) in the cluster", missingSKUs)
+		klog.ErrorS(err, "Failed to calculate costs", "nodeSetBySKU", nt.nodeSetBySKU)
+		ci.err = err
+
+		// Reset the cost data.
+		ci.lastUpdated = time.Now()
+		ci.perCPUCoreHourlyCost = 0.0
+		ci.perGBMemoryHourlyCost = 0.0
 	}
 
-	if len(missingSKUs) > 0 {
-		// Cannot find pricing data for some (but not all) SKUs in the cluster. Cost calculation
-		// will proceed in a downgraded manner.
-		ci.warnings = append(ci.warnings, fmt.Sprintf("failed to find pricing information for one or more of the node SKUs (%v) in the cluster; such SKUs are ignored in cost calculation", missingSKUs))
-		klog.Warningf("Some SKUs (%v) are ignored in the cost calculation as pricing data is unavailable", missingSKUs)
-	}
 	if isPricingDataStale {
 		// The pricing data is stale; issue a warning.
 		ci.warnings = append(ci.warnings, fmt.Sprintf("the pricing data is stale (last updated at %v); the system might have issues connecting to the Azure Retail Prices API, or the current region is unsupported", pricingDataLastUpdated))
