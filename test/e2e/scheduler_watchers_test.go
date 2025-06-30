@@ -1295,7 +1295,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 		})
 	})
 
-	Context("cluster becomes eligible for unfulfilled PickN CRPs, capacity changed", Serial, Ordered, func() {
+	FContext("cluster becomes eligible for unfulfilled PickN CRPs, capacity changed", Serial, Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {

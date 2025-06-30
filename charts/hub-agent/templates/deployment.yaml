@@ -44,6 +44,7 @@ spec:
             - --force-delete-wait-time={{ .Values.forceDeleteWaitTime }}
             - --cluster-unhealthy-threshold={{ .Values.clusterUnhealthyThreshold }}
             - --resource-snapshot-creation-interval={{ .Values.resourceSnapshotCreationInterval }}
+            - --resource-changes-collection-duration={{ .Values.resourceChangesCollectionDuration }}
           ports:
             - name: metrics
               containerPort: 8080

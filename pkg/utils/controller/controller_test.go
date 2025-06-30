@@ -786,3 +786,334 @@ func TestCollectResourceIdentifiersFromClusterResourceSnapshot(t *testing.T) {
 		})
 	}
 }
+
+func TestCollectResourceIdentifiersUsingMasterClusterResourceSnapshot(t *testing.T) {
+	crpName := "my-test-crp"
+
+	namespaceResourceContent := *resource.NamespaceResourceContentForTest(t)
+	deploymentResourceContent := *resource.DeploymentResourceContentForTest(t)
+	clusterResourceEnvelopeContent := *resource.ClusterResourceEnvelopeResourceContentForTest(t)
+	resourceEnvelopeContent := *resource.ResourceEnvelopeResourceContentForTest(t)
+
+	tests := []struct {
+		name                   string
+		masterResourceSnapshot *fleetv1beta1.ClusterResourceSnapshot
+		resourceSnapshotIndex  string
+		snapshots              []fleetv1beta1.ClusterResourceSnapshot
+		want                   []fleetv1beta1.ResourceIdentifier
+		wantErr                error
+	}{
+		{
+			name:                  "some of resource snapshots have not been created yet",
+			resourceSnapshotIndex: "0",
+			masterResourceSnapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, crpName, 0),
+					Labels: map[string]string{
+						fleetv1beta1.ResourceIndexLabel: "0",
+						fleetv1beta1.CRPTrackingLabel:   crpName,
+					},
+					Annotations: map[string]string{
+						fleetv1beta1.ResourceGroupHashAnnotation:         "abc",
+						fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "3",
+					},
+				},
+			},
+			snapshots: []fleetv1beta1.ClusterResourceSnapshot{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, crpName, 0),
+						Labels: map[string]string{
+							fleetv1beta1.ResourceIndexLabel: "0",
+							fleetv1beta1.CRPTrackingLabel:   crpName,
+						},
+						Annotations: map[string]string{
+							fleetv1beta1.ResourceGroupHashAnnotation:         "abc",
+							fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "3",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameWithSubindexFmt, crpName, 0, 0),
+						Labels: map[string]string{
+							fleetv1beta1.ResourceIndexLabel: "0",
+							fleetv1beta1.CRPTrackingLabel:   crpName,
+						},
+						Annotations: map[string]string{
+							fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "0",
+						},
+					},
+				},
+			},
+			wantErr: ErrExpectedBehavior,
+		},
+		{
+			name:                  "resource snapshot without any resources",
+			resourceSnapshotIndex: "0",
+			masterResourceSnapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, crpName, 0),
+					Labels: map[string]string{
+						fleetv1beta1.ResourceIndexLabel: "0",
+						fleetv1beta1.CRPTrackingLabel:   crpName,
+					},
+					Annotations: map[string]string{
+						fleetv1beta1.ResourceGroupHashAnnotation:         "abc",
+						fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "1",
+						fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:  "0",
+					},
+				},
+			},
+			snapshots: []fleetv1beta1.ClusterResourceSnapshot{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, crpName, 0),
+						Labels: map[string]string{
+							fleetv1beta1.ResourceIndexLabel: "0",
+							fleetv1beta1.CRPTrackingLabel:   crpName,
+						},
+						Annotations: map[string]string{
+							fleetv1beta1.ResourceGroupHashAnnotation:         "abc",
+							fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "1",
+							fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:  "0",
+						},
+					},
+				},
+			},
+			want: []fleetv1beta1.ResourceIdentifier{},
+		},
+		{
+			name:                  "only master resource snapshot found with cluster-scoped resource, namespace-scoped resource and resource wrapped with envelope",
+			resourceSnapshotIndex: "0",
+			masterResourceSnapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, crpName, 0),
+					Labels: map[string]string{
+						fleetv1beta1.ResourceIndexLabel: "0",
+						fleetv1beta1.CRPTrackingLabel:   crpName,
+					},
+					Annotations: map[string]string{
+						fleetv1beta1.ResourceGroupHashAnnotation:         "abc",
+						fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "1",
+						fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:  "2",
+					},
+				},
+				Spec: fleetv1beta1.ResourceSnapshotSpec{
+					SelectedResources: []fleetv1beta1.ResourceContent{
+						namespaceResourceContent,
+						deploymentResourceContent,
+						clusterResourceEnvelopeContent,
+						resourceEnvelopeContent,
+					},
+				},
+			},
+			snapshots: []fleetv1beta1.ClusterResourceSnapshot{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, crpName, 0),
+						Labels: map[string]string{
+							fleetv1beta1.ResourceIndexLabel: "0",
+							fleetv1beta1.CRPTrackingLabel:   crpName,
+						},
+						Annotations: map[string]string{
+							fleetv1beta1.ResourceGroupHashAnnotation:         "abc",
+							fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "1",
+							fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:  "2",
+						},
+					},
+					Spec: fleetv1beta1.ResourceSnapshotSpec{
+						SelectedResources: []fleetv1beta1.ResourceContent{
+							namespaceResourceContent,
+							deploymentResourceContent,
+							clusterResourceEnvelopeContent,
+							resourceEnvelopeContent,
+						},
+					},
+				},
+			},
+			want: []fleetv1beta1.ResourceIdentifier{
+				{
+					Group:     "",
+					Version:   "v1",
+					Kind:      "Namespace",
+					Namespace: "",
+					Name:      "namespace-name",
+				},
+				{
+					Group:     "apps",
+					Version:   "v1",
+					Kind:      "Deployment",
+					Namespace: "deployment-namespace",
+					Name:      "deployment-name",
+				},
+				// The envelope resources themselves are included, not the wrapped resources.
+				{
+					Group:     "placement.kubernetes-fleet.io",
+					Version:   "v1beta1",
+					Kind:      "ClusterResourceEnvelope",
+					Namespace: "",
+					Name:      "test-cluster-resource-envelope",
+				},
+				{
+					Group:     "placement.kubernetes-fleet.io",
+					Version:   "v1beta1",
+					Kind:      "ResourceEnvelope",
+					Namespace: "test-namespace",
+					Name:      "test-resource-envelope",
+				},
+			},
+		},
+		{
+			name:                  "both master and subindex resource snapshots found with cluster-scoped resource, namespace-scoped resource and resource wrapped with envelope",
+			resourceSnapshotIndex: "1",
+			masterResourceSnapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, crpName, 1),
+					Labels: map[string]string{
+						fleetv1beta1.ResourceIndexLabel: "1",
+						fleetv1beta1.CRPTrackingLabel:   crpName,
+					},
+					Annotations: map[string]string{
+						fleetv1beta1.ResourceGroupHashAnnotation:         "abc",
+						fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "4",
+						fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:  "2",
+					},
+				},
+				Spec: fleetv1beta1.ResourceSnapshotSpec{
+					SelectedResources: []fleetv1beta1.ResourceContent{
+						namespaceResourceContent,
+					},
+				},
+			},
+			snapshots: []fleetv1beta1.ClusterResourceSnapshot{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, crpName, 1),
+						Labels: map[string]string{
+							fleetv1beta1.ResourceIndexLabel: "1",
+							fleetv1beta1.CRPTrackingLabel:   crpName,
+						},
+						Annotations: map[string]string{
+							fleetv1beta1.ResourceGroupHashAnnotation:         "abc",
+							fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "4",
+							fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:  "2",
+						},
+					},
+					Spec: fleetv1beta1.ResourceSnapshotSpec{
+						SelectedResources: []fleetv1beta1.ResourceContent{
+							namespaceResourceContent,
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameWithSubindexFmt, crpName, 1, 0),
+						Labels: map[string]string{
+							fleetv1beta1.ResourceIndexLabel: "1",
+							fleetv1beta1.CRPTrackingLabel:   crpName,
+						},
+						Annotations: map[string]string{
+							fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "0",
+						},
+					},
+					Spec: fleetv1beta1.ResourceSnapshotSpec{
+						SelectedResources: []fleetv1beta1.ResourceContent{
+							deploymentResourceContent,
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameWithSubindexFmt, crpName, 1, 1),
+						Labels: map[string]string{
+							fleetv1beta1.ResourceIndexLabel: "1",
+							fleetv1beta1.CRPTrackingLabel:   crpName,
+						},
+						Annotations: map[string]string{
+							fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "1",
+						},
+					},
+					Spec: fleetv1beta1.ResourceSnapshotSpec{
+						SelectedResources: []fleetv1beta1.ResourceContent{
+							clusterResourceEnvelopeContent,
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameWithSubindexFmt, crpName, 1, 2),
+						Labels: map[string]string{
+							fleetv1beta1.ResourceIndexLabel: "1",
+							fleetv1beta1.CRPTrackingLabel:   crpName,
+						},
+						Annotations: map[string]string{
+							fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "2",
+						},
+					},
+					Spec: fleetv1beta1.ResourceSnapshotSpec{
+						SelectedResources: []fleetv1beta1.ResourceContent{
+							resourceEnvelopeContent,
+						},
+					},
+				},
+			},
+			want: []fleetv1beta1.ResourceIdentifier{
+				{
+					Group:     "",
+					Version:   "v1",
+					Kind:      "Namespace",
+					Namespace: "",
+					Name:      "namespace-name",
+				},
+				{
+					Group:     "apps",
+					Version:   "v1",
+					Kind:      "Deployment",
+					Namespace: "deployment-namespace",
+					Name:      "deployment-name",
+				},
+				// The envelope resources themselves are included, not the wrapped resources.
+				{
+					Group:     "placement.kubernetes-fleet.io",
+					Version:   "v1beta1",
+					Kind:      "ClusterResourceEnvelope",
+					Namespace: "",
+					Name:      "test-cluster-resource-envelope",
+				},
+				{
+					Group:     "placement.kubernetes-fleet.io",
+					Version:   "v1beta1",
+					Kind:      "ResourceEnvelope",
+					Namespace: "test-namespace",
+					Name:      "test-resource-envelope",
+				},
+			},
+			wantErr: nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			scheme := serviceScheme(t)
+			objects := []client.Object{}
+			for i := range tc.snapshots {
+				objects = append(objects, &tc.snapshots[i])
+			}
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(objects...).
+				Build()
+			got, err := CollectResourceIdentifiersUsingMasterClusterResourceSnapshot(context.Background(), fakeClient, crpName, tc.masterResourceSnapshot, tc.resourceSnapshotIndex)
+			if gotErr, wantErr := err != nil, tc.wantErr != nil; gotErr != wantErr || !errors.Is(err, tc.wantErr) {
+				t.Fatalf("CollectResourceIdentifiersFromClusterResourceSnapshot() got error %v, want error %v", err, tc.wantErr)
+			}
+			if tc.wantErr != nil {
+				return
+			}
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("FetchAllClusterResourceSnapshots() mismatch (-want, +got):\n%s", diff)
+			}
+		})
+	}
+}

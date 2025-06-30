@@ -4485,64 +4485,75 @@ func TestDetermineRolloutStateForCRPWithExternalRolloutStrategy(t *testing.T) {
 }
 
 func TestShouldCreateNewResourceSnapshotNow(t *testing.T) {
-	interval := 60 * time.Second
-	half := interval / 2
 	now := time.Now()
 
 	cases := []struct {
-		name            string
-		interval        time.Duration
-		creationTime    time.Time
-		annotationValue string
-		wantAnnoation   bool
-		wantRequeue     bool
+		name               string
+		creationInterval   time.Duration
+		collectionDuration time.Duration
+		creationTime       time.Time
+		annotationValue    string
+		wantAnnoation      bool
+		wantRequeue        ctrl.Result
 	}{
 		{
-			name:         "recently created resource snapshot",
-			interval:     interval,
-			creationTime: now.Add(-half + 5*time.Second),
-			wantRequeue:  true,
+			name:               "ResourceSnapshotCreationInterval and ResourceChangesCollectionDuration are 0",
+			creationInterval:   0,
+			collectionDuration: 0,
+			wantRequeue:        ctrl.Result{Requeue: false},
 		},
 		{
-			name:         "existing resource snapshot without annotation",
-			interval:     interval,
-			creationTime: now.Add(-2 * half),
+			name:               "ResourceSnapshotCreationInterval is 0",
+			creationInterval:   0,
+			collectionDuration: 30 * time.Second,
+			annotationValue:    now.Add(-10 * time.Second).Format(time.RFC3339),
+			wantAnnoation:      true,
+			wantRequeue:        ctrl.Result{Requeue: true, RequeueAfter: 20 * time.Second},
+		},
+		{
+			name:               "ResourceChangesCollectionDuration is 0",
+			creationInterval:   300 * time.Second,
+			collectionDuration: 0,
+			creationTime:       now.Add(-5 * time.Second),
 			// no annotation → sets it and requeues
 			annotationValue: "",
 			wantAnnoation:   true,
-			wantRequeue:     true,
+			wantRequeue:     ctrl.Result{Requeue: true, RequeueAfter: 295 * time.Second},
 		},
 		{
-			name:            "existing resource snapshot with expired annotation",
-			interval:        interval,
-			creationTime:    now.Add(-2 * half),
-			annotationValue: now.Add(-half).Format(time.RFC3339),
-			// annotation far in past → no requeue
-			wantAnnoation: true,
-			wantRequeue:   false,
+			name:               "next detection time (now) + collection duration < latest resource snapshot creation time + creation interval",
+			creationInterval:   300 * time.Second,
+			collectionDuration: 30 * time.Second,
+			creationTime:       now.Add(-5 * time.Second),
+			// no annotation → sets it and requeues
+			annotationValue: "",
+			wantAnnoation:   true,
+			wantRequeue:     ctrl.Result{Requeue: true, RequeueAfter: 295 * time.Second},
 		},
 		{
-			name:            "existing resource snapshot with invalid annotation",
-			interval:        interval,
-			creationTime:    now.Add(-2 * half),
-			annotationValue: "invalid-value",
-			// annotation far in past → no requeue
-			wantAnnoation: true,
-			wantRequeue:   true,
+			name:               "next detection time (annotation) + collection duration < latest resource snapshot creation time + creation interval",
+			creationInterval:   300 * time.Second,
+			collectionDuration: 30 * time.Second,
+			creationTime:       now.Add(-10 * time.Second),
+			annotationValue:    now.Add(-5 * time.Second).Format(time.RFC3339),
+			wantAnnoation:      true,
+			wantRequeue:        ctrl.Result{Requeue: true, RequeueAfter: 290 * time.Second},
 		},
 		{
-			name:            "existing resource snapshot with recently added annotation",
-			interval:        interval,
-			creationTime:    now.Add(-2 * half),
-			annotationValue: now.Add(-half + 5*time.Second).Format(time.RFC3339),
-			// annotation exists but within half interval → requeue
-			wantAnnoation: true,
-			wantRequeue:   true,
+			name:               "last resource snapshot created long time before",
+			creationInterval:   60 * time.Second,
+			collectionDuration: 30 * time.Second,
+			creationTime:       now.Add(-1 * time.Hour),
+			wantAnnoation:      true,
+			wantRequeue:        ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second},
 		},
 		{
-			name:        "ResourceSnapshotCreationInterval is 0",
-			interval:    0,
-			wantRequeue: false,
+			name:               "next detection time (now) + collection duration >= latest resource snapshot creation time + creation interval",
+			creationInterval:   60 * time.Second,
+			collectionDuration: 60 * time.Second,
+			creationTime:       now.Add(-40 * time.Second),
+			wantAnnoation:      true,
+			wantRequeue:        ctrl.Result{Requeue: true, RequeueAfter: 60 * time.Second},
 		},
 	}
 
@@ -4568,8 +4579,9 @@ func TestShouldCreateNewResourceSnapshotNow(t *testing.T) {
 				Build()
 
 			r := &Reconciler{
-				Client:                           client,
-				ResourceSnapshotCreationInterval: tc.interval,
+				Client:                            client,
+				ResourceSnapshotCreationInterval:  tc.creationInterval,
+				ResourceChangesCollectionDuration: tc.collectionDuration,
 			}
 
 			ctx := context.Background()
@@ -4580,13 +4592,14 @@ func TestShouldCreateNewResourceSnapshotNow(t *testing.T) {
 			if err != nil {
 				t.Fatalf("shouldCreateNewResourceSnapshotNow() failed: %v", err)
 			}
-			if got.Requeue != tc.wantRequeue {
-				t.Errorf("shouldCreateNewResourceSnapshotNow() = %v, want %v", got.Requeue, tc.wantRequeue)
-			}
-			if tc.wantRequeue {
-				if got.RequeueAfter <= 0 || got.RequeueAfter > half {
-					t.Errorf("shouldCreateNewResourceSnapshotNow() = RequeueAfter got %v, want in (0, %v], ", got.RequeueAfter, half)
+			cmpOptions := []cmp.Option{cmp.Comparer(func(d1, d2 time.Duration) bool {
+				if d1 == 0 {
+					return d2 == 0 // both are zero
 				}
+				return time.Duration.Abs(d1-d2) < 3*time.Second // allow 1 second difference
+			})}
+			if !cmp.Equal(got, tc.wantRequeue, cmpOptions...) {
+				t.Errorf("shouldCreateNewResourceSnapshotNow() = %v, want %v", got, tc.wantRequeue)
 			}
 			if err := client.Get(ctx, types.NamespacedName{Name: snapshot.Name}, snapshot); err != nil {
 				t.Fatalf("failed to get snapshot after shouldCreateNewResourceSnapshotNow: %v", err)

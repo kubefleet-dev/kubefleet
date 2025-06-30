@@ -102,8 +102,8 @@ func ExtractNumberOfEnvelopeObjFromResourceSnapshot(snapshot *fleetv1beta1.Clust
 
 // ExtractNextResourceSnapshotCandidateDetectionTimeFromResourceSnapshot extracts the next resource snapshot candidate detection time from the annotations of a clusterResourceSnapshot.
 // If the annotation does not exist, it returns 0 duration.
-func ExtractNextResourceSnapshotCandidateDetectionTimeFromResourceSnapshot(snapshot *fleetv1beta1.ClusterResourceSnapshot) (time.Time, error) {
-	nextDetectionTimeStr, ok := snapshot.Annotations[fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation]
+func ExtractNextResourceSnapshotCandidateDetectionTimeFromResourceSnapshot(snapshot fleetv1beta1.ResourceSnapshotObj) (time.Time, error) {
+	nextDetectionTimeStr, ok := snapshot.GetAnnotations()[fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation]
 	if !ok {
 		return time.Time{}, nil
 	}

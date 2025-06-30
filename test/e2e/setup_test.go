@@ -115,7 +115,8 @@ var (
 	allMemberClusters     []*framework.Cluster
 	allMemberClusterNames = []string{}
 
-	resourceSnapshotCreationInterval time.Duration
+	resourceSnapshotCreationInterval  time.Duration
+	resourceChangesCollectionDuration time.Duration
 )
 
 var (
@@ -314,6 +315,15 @@ func beforeSuiteForAllProcesses() {
 		var err error
 		resourceSnapshotCreationInterval, err = time.ParseDuration(resourceSnapshotCreationIntervalEnv)
 		Expect(err).Should(Succeed(), "failed to parse RESOURCE_SNAPSHOT_CREATION_INTERVAL")
+	}
+	resourceChangesCollectionDurationEnv := os.Getenv("RESOURCE_CHANGES_COLLECTION_DURATION")
+	if resourceChangesCollectionDurationEnv == "" {
+		// If the environment variable is not set, use a default value.
+		resourceChangesCollectionDuration = 0
+	} else {
+		var err error
+		resourceChangesCollectionDuration, err = time.ParseDuration(resourceChangesCollectionDurationEnv)
+		Expect(err).Should(Succeed(), "failed to parse RESOURCE_CHANGES_COLLECTION_DURATION")
 	}
 
 	// Initialize the cluster objects and their clients.
