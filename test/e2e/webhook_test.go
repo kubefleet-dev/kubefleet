@@ -223,7 +223,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						RevisionHistoryLimit: ptr.To(int32(15)),
 					},
 				}
-				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), fmt.Sprintf("Create CRP call should not produce error"))
+				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
 				// Verify that the CRP is created with default values.
 				var createdCRP placementv1beta1.ClusterResourcePlacement
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed())
@@ -257,7 +257,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						RevisionHistoryLimit: ptr.To(int32(15)),
 					},
 				}
-				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), fmt.Sprintf("Create CRP call should not produce error"))
+				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
 				// Verify that the CRP is created with default values.
 				var createdCRP placementv1beta1.ClusterResourcePlacement
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed())
@@ -305,7 +305,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						},
 					},
 				}
-				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), fmt.Sprintf("Create CRP call should not produce error"))
+				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
 				// Verify that the CRP is created with default values.
 				var createdCRP placementv1beta1.ClusterResourcePlacement
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed())
@@ -341,7 +341,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						RevisionHistoryLimit: ptr.To(int32(15)),
 					},
 				}
-				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), fmt.Sprintf("Create CRP call should not produce error"))
+				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
 				// Verify that the CRP is created with default values.
 				var createdCRP placementv1beta1.ClusterResourcePlacement
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed())
@@ -387,7 +387,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						},
 					},
 				}
-				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), fmt.Sprintf("Create CRP call should not produce error"))
+				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
 				// Verify that the CRP is created with default values.
 				var createdCRP placementv1beta1.ClusterResourcePlacement
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed())
@@ -421,7 +421,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						RevisionHistoryLimit: ptr.To(int32(15)),
 					},
 				}
-				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), fmt.Sprintf("Create CRP call should not produce error"))
+				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
 				// Verify that the CRP is created with default values.
 				var createdCRP placementv1beta1.ClusterResourcePlacement
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed())
