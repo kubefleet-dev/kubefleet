@@ -2947,9 +2947,6 @@ func TestProcessApplyStrategyUpdates(t *testing.T) {
 							ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 							WhenToApply:      fleetv1beta1.WhenToApplyTypeAlways,
 							WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeAlways,
-							ServerSideApplyConfig: &fleetv1beta1.ServerSideApplyConfig{
-								ForceConflicts: false,
-							},
 						},
 					},
 				},

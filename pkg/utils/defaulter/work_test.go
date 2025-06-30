@@ -42,9 +42,6 @@ func TestSetDefaultsWork(t *testing.T) {
 						ComparisonOption: placementv1beta1.ComparisonOptionTypePartialComparison,
 						WhenToApply:      placementv1beta1.WhenToApplyTypeAlways,
 						WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeAlways,
-						ServerSideApplyConfig: &placementv1beta1.ServerSideApplyConfig{
-							ForceConflicts: false,
-						},
 					},
 				},
 			},
@@ -63,9 +60,6 @@ func TestSetDefaultsWork(t *testing.T) {
 						ComparisonOption: placementv1beta1.ComparisonOptionTypePartialComparison,
 						WhenToApply:      placementv1beta1.WhenToApplyTypeAlways,
 						WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeAlways,
-						ServerSideApplyConfig: &placementv1beta1.ServerSideApplyConfig{
-							ForceConflicts: false,
-						},
 					},
 				},
 			},
@@ -103,11 +97,10 @@ func TestSetDefaultsWork(t *testing.T) {
 			want: placementv1beta1.Work{
 				Spec: placementv1beta1.WorkSpec{
 					ApplyStrategy: &placementv1beta1.ApplyStrategy{
-						Type:                  placementv1beta1.ApplyStrategyTypeClientSideApply,
-						ComparisonOption:      placementv1beta1.ComparisonOptionTypePartialComparison,
-						WhenToApply:           placementv1beta1.WhenToApplyTypeAlways,
-						WhenToTakeOver:        placementv1beta1.WhenToTakeOverTypeAlways,
-						ServerSideApplyConfig: &placementv1beta1.ServerSideApplyConfig{ForceConflicts: false},
+						Type:             placementv1beta1.ApplyStrategyTypeClientSideApply,
+						ComparisonOption: placementv1beta1.ComparisonOptionTypePartialComparison,
+						WhenToApply:      placementv1beta1.WhenToApplyTypeAlways,
+						WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeAlways,
 					},
 				},
 			},

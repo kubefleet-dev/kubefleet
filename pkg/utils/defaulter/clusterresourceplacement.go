@@ -103,6 +103,12 @@ func SetDefaultsApplyStrategy(obj *fleetv1beta1.ApplyStrategy) {
 	if obj.Type == "" {
 		obj.Type = fleetv1beta1.ApplyStrategyTypeClientSideApply
 	}
+	if obj.Type == fleetv1beta1.ApplyStrategyTypeServerSideApply && obj.ServerSideApplyConfig == nil {
+		obj.ServerSideApplyConfig = &fleetv1beta1.ServerSideApplyConfig{
+			ForceConflicts: false,
+		}
+	}
+
 	if obj.ComparisonOption == "" {
 		obj.ComparisonOption = fleetv1beta1.ComparisonOptionTypePartialComparison
 	}
@@ -111,12 +117,5 @@ func SetDefaultsApplyStrategy(obj *fleetv1beta1.ApplyStrategy) {
 	}
 	if obj.WhenToTakeOver == "" {
 		obj.WhenToTakeOver = fleetv1beta1.WhenToTakeOverTypeAlways
-	}
-	// Always set the ServerSideApplyConfig when it is unset even if
-	// server-side apply itself might not be used, just for completeness reasons.
-	if obj.ServerSideApplyConfig == nil {
-		obj.ServerSideApplyConfig = &fleetv1beta1.ServerSideApplyConfig{
-			ForceConflicts: false,
-		}
 	}
 }
