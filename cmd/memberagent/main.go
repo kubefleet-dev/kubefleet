@@ -89,6 +89,7 @@ var (
 	cloudConfigFile              = flag.String("cloud-config", "/etc/kubernetes/provider/config.json", "The path to the cloud cloudconfig file.")
 	watchWorkWithPriorityQueue   = flag.Bool("enable-watch-work-with-priority-queue", false, "If set, the apply_work controller will watch/reconcile work objects that are created new or have recent updates")
 	watchWorkReconcileAgeMinutes = flag.Int("watch-work-reconcile-age", 60, "maximum age (in minutes) of work objects for apply_work controller to watch/reconcile")
+	deletionWaitTime             = flag.Int("deletion-wait-time", 5, "The time the work-applier will wait for work object to be deleted before updating the applied work owner reference")
 	enablePprof                  = flag.Bool("enable-pprof", false, "enable pprof profiling")
 	pprofPort                    = flag.Int("pprof-port", 6065, "port for pprof profiling")
 	hubPprofPort                 = flag.Int("hub-pprof-port", 6066, "port for hub pprof profiling")
@@ -439,6 +440,7 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 			5,
 			// Use the default worker count (4) for parallelized manifest processing.
 			parallelizer.DefaultNumOfWorkers,
+			time.Minute*time.Duration(*deletionWaitTime),
 			*watchWorkWithPriorityQueue,
 			*watchWorkReconcileAgeMinutes,
 			requeueRateLimiter,

@@ -21,6 +21,7 @@ import (
 	"flag"
 	"path/filepath"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -162,6 +163,7 @@ var _ = BeforeSuite(func() {
 		hubMgr.GetEventRecorderFor("work-applier"),
 		maxConcurrentReconciles,
 		workerCount,
+		5*time.Minute,
 		true,
 		60,
 		defaultRequeueRateLimiter,

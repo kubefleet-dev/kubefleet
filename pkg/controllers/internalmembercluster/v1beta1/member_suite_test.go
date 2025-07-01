@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -378,7 +379,7 @@ var _ = BeforeSuite(func() {
 
 	// This controller is created for testing purposes only; no reconciliation loop is actually
 	// run.
-	workApplier1 = workapplier.NewReconciler(hubClient, member1ReservedNSName, nil, nil, nil, nil, 0, 1, true, 60, nil)
+	workApplier1 = workapplier.NewReconciler(hubClient, member1ReservedNSName, nil, nil, nil, nil, 0, 1, time.Minute, true, 60, nil)
 
 	propertyProvider1 = &manuallyUpdatedProvider{}
 	member1Reconciler, err := NewReconciler(ctx, hubClient, member1Cfg, member1Client, workApplier1, propertyProvider1)
@@ -401,7 +402,7 @@ var _ = BeforeSuite(func() {
 
 	// This controller is created for testing purposes only; no reconciliation loop is actually
 	// run.
-	workApplier2 = workapplier.NewReconciler(hubClient, member2ReservedNSName, nil, nil, nil, nil, 0, 1, true, 60, nil)
+	workApplier2 = workapplier.NewReconciler(hubClient, member2ReservedNSName, nil, nil, nil, nil, 0, 1, time.Minute, true, 60, nil)
 
 	member2Reconciler, err := NewReconciler(ctx, hubClient, member2Cfg, member2Client, workApplier2, nil)
 	Expect(err).NotTo(HaveOccurred())
