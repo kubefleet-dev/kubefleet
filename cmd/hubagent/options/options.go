@@ -104,7 +104,8 @@ type Options struct {
 	PprofPort int
 	// DenyModifyMemberClusterLabels indicates if the member cluster labels cannot be modified by groups (excluding system:masters)
 	DenyModifyMemberClusterLabels bool
-	// ResourceSnapshotCreationInterval is the interval at which resource snapshots are created.
+	// ResourceSnapshotCreationInterval is the interval at which resource snapshots could be created.
+	// Whether the resource snapshot is created or not depends on the both ResourceSnapshotCreationInterval and resourceChangesCollectionDuration.
 	ResourceSnapshotCreationInterval time.Duration
 	// ResourceChangesCollectionDuration is the duration for collecting resource changes into one snapshot.
 	ResourceChangesCollectionDuration time.Duration

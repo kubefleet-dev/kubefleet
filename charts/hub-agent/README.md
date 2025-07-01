@@ -40,5 +40,5 @@ _See [helm install](https://helm.sh/docs/helm/helm_install/) for command documen
 | `ConcurrentResourceChangeSyncs`    | Max concurrent resourceChange reconcilers                                                                           | `20`                                             |
 | `logFileMaxSize`                  | Max log file size before rotation                                                                                   | `1000000`                                        |
 | `MaxFleetSizeSupported`            | Max number of member clusters supported                                                                             | `100`                                            |
-| `resourceSnapshotCreationInterval` | Interval for resource snapshot creation                                                                             | `1m`                                             |
-| `resourceChangesCollectionDuration` | Interval for resource snapshot creation                                                                             | `1m`     
+| `resourceSnapshotCreationInterval` | Interval for resource snapshot creation                                                                             | `30s`                                             |
+| `resourceChangesCollectionDuration` | Interval for resource snapshot creation                                                                             | `30s`     
