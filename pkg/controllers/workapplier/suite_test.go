@@ -164,6 +164,7 @@ var _ = BeforeSuite(func() {
 		workerCount,
 		true,
 		60,
+		defaultRequeueRateLimiter,
 	)
 	Expect(workApplier.SetupWithManager(hubMgr)).To(Succeed())
 

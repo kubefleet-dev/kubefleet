@@ -92,6 +92,15 @@ var (
 	enablePprof                  = flag.Bool("enable-pprof", false, "enable pprof profiling")
 	pprofPort                    = flag.Int("pprof-port", 6065, "port for pprof profiling")
 	hubPprofPort                 = flag.Int("hub-pprof-port", 6066, "port for hub pprof profiling")
+	// Work applier requeue rate limiter settings.
+	workApplierRequeueRateLimiterAttemptsWithFixedDelay                              = flag.Int("work-applier-requeue-rate-limiter-attempts-with-fixed-delay", 2, "If set, the work applier will requeue work objects with a fixed delay for the specified number of attempts before switching to exponential backoff.")
+	workApplierRequeueRateLimiterFixedDelaySeconds                                   = flag.Float64("work-applier-requeue-rate-limiter-fixed-delay-seconds", 5.0, "If set, the work applier will requeue work objects with this fixed delay in seconds for the specified number of attempts before switching to exponential backoff.")
+	workApplierRequeueRateLimiterExponentialBaseForSlowBackoff                       = flag.Float64("work-applier-requeue-rate-limiter-exponential-base-for-slow-backoff", 1.2, "If set, the work applier will start to back off slowly at this factor after it finished requeueing with fixed delays, until it reaches the slow backoff delay cap. Its value should be larger than 1.0 and no larger than 100.0")
+	workApplierRequeueRateLimiterInitialSlowBackoffDelaySeconds                      = flag.Float64("work-applier-requeue-rate-limiter-initial-slow-backoff-delay-seconds", 2, "If set, the work applier will start to back off slowly at this delay in seconds.")
+	workApplierRequeueRateLimiterMaxSlowBackoffDelaySeconds                          = flag.Float64("work-applier-requeue-rate-limiter-max-slow-backoff-delay-seconds", 15, "If set, the work applier will not back off longer than this value in seconds when it is in the slow backoff stage.")
+	workApplierRequeueRateLimiterExponentialBaseForFastBackoff                       = flag.Float64("work-applier-requeue-rate-limiter-exponential-base-for-fast-backoff", 1.2, "If set, the work applier will start to back off fast at this factor after it completes the slow backoff stage, until it reaches the fast backoff delay cap. Its value should be larger than the base value for the slow backoff stage.")
+	workApplierRequeueRateLimiterMaxFastBackoffDelaySeconds                          = flag.Float64("work-applier-requeue-rate-limiter-max-fast-backoff-delay-seconds", 900, "If set, the work applier will not back off longer than this value in seconds when it is in the fast backoff stage.")
+	workApplierRequeueRateLimiterSkipToFastBackoffForAvailableOrDiffReportedWorkObjs = flag.Bool("work-applier-requeue-rate-limiter-skip-to-fast-backoff-for-available-or-diff-reported-work-objs", true, "If set, the rate limiter will skip the slow backoff stage and start fast backoff immediately for work objects that are available or have diff reported.")
 )
 
 func init() {
@@ -379,6 +388,45 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 			return err
 		}
 		// create the work controller, so we can pass it to the internal member cluster reconciler
+
+		// Set up the requeue rate limiter for the work applier.
+		//
+		// With default settings, the rate limiter will:
+		// * allow 2 attempts of fixed delay; this helps give objects a bit of headroom to get available (or have
+		//   diffs reported).
+		// * use a fixed delay of 5 seconds for the first two attempts.
+		//
+		//   Important (chenyu1): before the introduction of the requeue rate limiter, the work
+		//   applier uses static requeue intervals, specifically 5 seconds (if the work object is unavailable),
+		//   and 15 seconds (if the work object is available). There are a number of test cases that
+		//   implicitly assume this behavior (e.g., a test case might expect that the availability check completes
+		//   w/in 10 seconds), which is why the rate limiter uses the 5 seconds fast requeue delay by default.
+		//   If you need to change this value and see that some test cases begin to fail, update the test
+		//   cases accordingly.
+		// * after completing all attempts with fixed delay, switch to slow exponential backoff with a base of
+		//   1.2 with an initial delay of 2 seconds and a cap of 15 seconds (12 requeues in total, ~90 seconds in total);
+		//   this is to allow fast checkups in cases where objects are not yet available or have not yet reported diffs.
+		// * after completing the slow backoff stage, switch to a fast exponential backoff with a base of 1.5
+		//   with an initial delay of 15 seconds and a cap of 15 minutes (10 requeues in total, ~42 minutes in total).
+		// * for Work objects that are available or have diffs reported, skip the slow backoff stage and
+		//   start fast backoff immediately.
+		//
+		// The requeue pattern is essentially:
+		// * 2 attempts of requeues with fixed delays (5 seconds each, 10 seconds in total); then
+		// * 12 attempts of requeues with slow exponential backoff (factor of 1.2, ~90 seconds in total); then
+		// * 10 attempts of requeues with fast exponential backoff (factor of 1.5, ~42 minutes in total);
+		// * afterwards, requeue with a delay of 15 minutes indefinitely.
+		requeueRateLimiter := workapplier.NewRequeueMultiStageWithExponentialBackoffRateLimiter(
+			*workApplierRequeueRateLimiterAttemptsWithFixedDelay,
+			*workApplierRequeueRateLimiterFixedDelaySeconds,
+			*workApplierRequeueRateLimiterExponentialBaseForSlowBackoff,
+			*workApplierRequeueRateLimiterInitialSlowBackoffDelaySeconds,
+			*workApplierRequeueRateLimiterMaxSlowBackoffDelaySeconds,
+			*workApplierRequeueRateLimiterExponentialBaseForFastBackoff,
+			*workApplierRequeueRateLimiterMaxFastBackoffDelaySeconds,
+			*workApplierRequeueRateLimiterSkipToFastBackoffForAvailableOrDiffReportedWorkObjs,
+		)
+
 		workController := workapplier.NewReconciler(
 			hubMgr.GetClient(),
 			targetNS,
@@ -393,6 +441,7 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 			parallelizer.DefaultNumOfWorkers,
 			*watchWorkWithPriorityQueue,
 			*watchWorkReconcileAgeMinutes,
+			requeueRateLimiter,
 		)
 
 		if err = workController.SetupWithManager(hubMgr); err != nil {

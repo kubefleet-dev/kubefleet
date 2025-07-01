@@ -194,25 +194,39 @@ func (h *PriorityQueueEventHandler) Generic(ctx context.Context, evt event.Typed
 	h.AddToPriorityQueue(ctx, evt.Object, false)
 }
 
-var defaultRequeueRateLimiter *RequeueFastSlowWithExponentialBackoffRateLimiter = NewRequeueFastSlowWithExponentialBackoffRateLimiter(
-	// Allow fast requeues for 20 attempts (5 seconds each, 100 seconds of fast requeues).
-	20,
+var defaultRequeueRateLimiter *RequeueMultiStageWithExponentialBackoffRateLimiter = NewRequeueMultiStageWithExponentialBackoffRateLimiter(
+	// Allow 2 attempts of fixed delay; this helps give objects a bit of headroom to get available (or have
+	// diffs reported).
+	2,
+	// Use a fixed delay of 5 seconds for the first two attempts.
+	//
 	// Important (chenyu1): before the introduction of the requeue rate limiter, the work
 	// applier uses static requeue intervals, specifically 5 seconds (if the work object is unavailable),
 	// and 15 seconds (if the work object is available). There are a number of test cases that
 	// implicitly assume this behavior (e.g., a test case might expect that the availability check completes
 	// w/in 10 seconds), which is why the rate limiter uses the 5 seconds fast requeue delay by default.
-	// If you need to change this value and see that many test cases begin to fail, update the test
+	// If you need to change this value and see that some test cases begin to fail, update the test
 	// cases accordingly.
 	5,
-	// Then switch to exponential backoff with a base of 1.2 with a cap of 5 minutes.
+	// Then switch to slow exponential backoff with a base of 1.2 with an initial delay of 2 seconds
+	// and a cap of 15 seconds (12 requeues in total, ~90 seconds in total).
+	// This is to allow fast checkups in cases where objects are not yet available or have not yet reported diffs.
 	1.2,
-	300,
-	// When the Work object spec does not change and the processing result remains the same,
-	// the requeue pattern is essentially:
-	// * 20 attempts of fast requeues (5 seconds each, 1 minute and 40 seconds in total); then
-	// * 22 attempts of requeues with exponential backoff (~27 minutes in total); then
-	// * requeue every 5 minutes.
+	2,
+	15,
+	// Eventually, switch to a fast exponential backoff with a base of 1.5 with an initial delay of 15 seconds
+	// and a cap of 15 minutes (10 requeues in total, ~42 minutes in total).
+	1.5,
+	900,
+	// Allow skipping to the fast exponential backoff stage if the Work object becomes available
+	// or has reported diffs.
+	true,
+	// When the Work object spec does not change and the processing result remains the same (unavailable or failed
+	// to report diffs), the requeue pattern is essentially:
+	// * 2 attempts of requeues with fixed delays (5 seconds each, 10 seconds in total); then
+	// * 12 attempts of requeues with slow exponential backoff (factor of 1.2, ~90 seconds in total); then
+	// * 10 attempts of requeues with fast exponential backoff (factor of 1.5, ~42 minutes in total);
+	// * afterwards, requeue with a delay of 15 minutes indefinitely.
 )
 
 // Reconciler reconciles a Work object.
@@ -229,7 +243,7 @@ type Reconciler struct {
 	joined                       *atomic.Bool
 	parallelizer                 *parallelizer.Parallerlizer
 
-	requeueRateLimiter *RequeueFastSlowWithExponentialBackoffRateLimiter
+	requeueRateLimiter *RequeueMultiStageWithExponentialBackoffRateLimiter
 }
 
 // NewReconciler returns a new Work object reconciler for the work applier.
@@ -244,7 +258,12 @@ func NewReconciler(
 	workerCount int,
 	watchWorkWithPriorityQueue bool,
 	watchWorkReconcileAgeMinutes int,
+	requeueRateLimiter *RequeueMultiStageWithExponentialBackoffRateLimiter,
 ) *Reconciler {
+	if requeueRateLimiter == nil {
+		requeueRateLimiter = defaultRequeueRateLimiter
+	}
+
 	return &Reconciler{
 		hubClient:                    hubClient,
 		spokeDynamicClient:           spokeDynamicClient,
@@ -257,7 +276,7 @@ func NewReconciler(
 		watchWorkReconcileAgeMinutes: watchWorkReconcileAgeMinutes,
 		workNameSpace:                workNameSpace,
 		joined:                       atomic.NewBool(false),
-		requeueRateLimiter:           defaultRequeueRateLimiter,
+		requeueRateLimiter:           requeueRateLimiter,
 	}
 }
 
