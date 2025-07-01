@@ -39,7 +39,7 @@ func maxDuration(a, b time.Duration) time.Duration {
 }
 
 var (
-	resourceSnapshotDiffDuration = maxDuration(resourceSnapshotCreationInterval, resourceChangesCollectionDuration)
+	resourceSnapshotDelayDuration = maxDuration(resourceSnapshotCreationInterval, resourceChangesCollectionDuration)
 )
 
 var _ = Describe("validating CRP when using customized resourceSnapshotCreationInterval and resourceChangesCollectionDuration", Label("custom"), Ordered, func() {
@@ -112,12 +112,12 @@ var _ = Describe("validating CRP when using customized resourceSnapshotCreationI
 
 	It("should not update CRP status immediately", func() {
 		crpStatusUpdatedActual := crpStatusUpdatedActual([]placementv1beta1.ResourceIdentifier{}, allMemberClusterNames, nil, "0")
-		Consistently(crpStatusUpdatedActual, resourceSnapshotDiffDuration-3*time.Second, consistentlyInterval).Should(Succeed(), "CRP %s status should be unchanged", crpName)
+		Consistently(crpStatusUpdatedActual, resourceSnapshotDelayDuration, consistentlyInterval).Should(Succeed(), "CRP %s status should be unchanged", crpName)
 	})
 
 	It("should update CRP status as expected", func() {
 		crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "1")
-		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
+		Eventually(crpStatusUpdatedActual, resourceSnapshotDelayDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
 	})
 
 	It("should place the selected resources on member clusters", checkIfPlacedWorkResourcesOnAllMemberClusters)
@@ -132,7 +132,7 @@ var _ = Describe("validating CRP when using customized resourceSnapshotCreationI
 		// Use math.Abs to get the absolute value of the time difference in seconds.
 		snapshotDiffInSeconds := resourceSnapshotList.Items[0].CreationTimestamp.Time.Sub(resourceSnapshotList.Items[1].CreationTimestamp.Time).Seconds()
 		diff := math.Abs(snapshotDiffInSeconds)
-		Expect(time.Duration(diff)*time.Second >= resourceSnapshotDiffDuration).To(BeTrue(), "The time difference between ClusterResourceSnapshots should be more than resourceSnapshotCreationInterval")
+		Expect(time.Duration(diff)*time.Second >= resourceSnapshotDelayDuration).To(BeTrue(), "The time difference between ClusterResourceSnapshots should be more than resourceSnapshotCreationInterval")
 	})
 
 	It("can delete the CRP", func() {
@@ -237,7 +237,7 @@ var _ = Describe("validating that CRP status can be updated after updating the r
 
 	It("should update CRP status for snapshot 1 as expected", func() {
 		crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "1")
-		Eventually(crpStatusUpdatedActual, resourceSnapshotDiffDuration+eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
+		Eventually(crpStatusUpdatedActual, resourceSnapshotDelayDuration+eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
 	})
 
 	It("should place the selected resources on member clusters", checkIfPlacedWorkResourcesOnAllMemberClusters)
@@ -252,7 +252,7 @@ var _ = Describe("validating that CRP status can be updated after updating the r
 		// Use math.Abs to get the absolute value of the time difference in seconds.
 		snapshotDiffInSeconds := resourceSnapshotList.Items[0].CreationTimestamp.Time.Sub(resourceSnapshotList.Items[1].CreationTimestamp.Time).Seconds()
 		diff := math.Abs(snapshotDiffInSeconds)
-		Expect(time.Duration(diff)*time.Second >= resourceSnapshotDiffDuration).To(BeTrue(), "The time difference between ClusterResourceSnapshots should be more than resourceSnapshotCreationInterval")
+		Expect(time.Duration(diff)*time.Second >= resourceSnapshotDelayDuration).To(BeTrue(), "The time difference between ClusterResourceSnapshots should be more than resourceSnapshotCreationInterval")
 	})
 
 	It("can delete the CRP", func() {

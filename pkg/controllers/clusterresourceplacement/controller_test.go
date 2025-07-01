@@ -1077,6 +1077,7 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 	}
 	resourceSnapshotSpecWithMultipleResourcesHash := fmt.Sprintf("%x", sha256.Sum256(jsonBytes))
 	now := metav1.Now()
+	nowToString := now.Time.Format(time.RFC3339)
 	tests := []struct {
 		name                       string
 		envelopeObjCount           int
@@ -1435,8 +1436,9 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 							},
 						},
 						Annotations: map[string]string{
-							fleetv1beta1.ResourceGroupHashAnnotation:         resourceSnapshotSpecWithServiceResourceHash,
-							fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "3",
+							fleetv1beta1.ResourceGroupHashAnnotation:                          resourceSnapshotSpecWithServiceResourceHash,
+							fleetv1beta1.NumberOfResourceSnapshotsAnnotation:                  "3",
+							fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation: nowToString,
 						},
 						CreationTimestamp: now,
 					},
@@ -2154,9 +2156,10 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 							},
 						},
 						Annotations: map[string]string{
-							fleetv1beta1.ResourceGroupHashAnnotation:         resourceSnapshotSpecWithMultipleResourcesHash,
-							fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "3",
-							fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:  "0",
+							fleetv1beta1.ResourceGroupHashAnnotation:                          resourceSnapshotSpecWithMultipleResourcesHash,
+							fleetv1beta1.NumberOfResourceSnapshotsAnnotation:                  "3",
+							fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:                   "0",
+							fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation: nowToString,
 						},
 						CreationTimestamp: now,
 					},
@@ -2724,7 +2727,22 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 			if err := fakeClient.List(ctx, clusterResourceSnapshotList); err != nil {
 				t.Fatalf("clusterResourceSnapshot List() got error %v, want no error", err)
 			}
-			options = append(options, sortClusterResourceSnapshotOption)
+			annotationOption := cmp.Transformer("NormalizeAnnotations", func(m map[string]string) map[string]string {
+				normalized := map[string]string{}
+				for k, v := range m {
+					if k == fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation {
+						// Normalize the resource group hash annotation to a fixed value for comparison.
+						if _, err := time.Parse(time.RFC3339, v); err != nil {
+							normalized[k] = ""
+						}
+						normalized[k] = nowToString
+					} else {
+						normalized[k] = v
+					}
+				}
+				return normalized
+			})
+			options = append(options, sortClusterResourceSnapshotOption, annotationOption)
 			if diff := cmp.Diff(tc.wantResourceSnapshots, clusterResourceSnapshotList.Items, options...); diff != "" {
 				t.Errorf("clusterResourceSnapshot List() mismatch (-want, +got):\n%s", diff)
 			}
