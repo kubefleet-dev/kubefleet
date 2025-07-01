@@ -226,41 +226,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
 				// Verify that the CRP is created with default values.
 				var createdCRP placementv1beta1.ClusterResourcePlacement
-				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed())
-				Expect(createdCRP.Spec.Policy).To(Equal(&placementv1beta1.PlacementPolicy{PlacementType: placementv1beta1.PickAllPlacementType}), "CRP should have default policy type PickAll")
-				return nil
-			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
-		})
-
-		It("should allow create CRP with nil policy and update fields with default values", func() {
-			Eventually(func(g Gomega) error {
-				crp := placementv1beta1.ClusterResourcePlacement{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: crpName,
-					},
-					Spec: placementv1beta1.PlacementSpec{
-						ResourceSelectors: workResourceSelector(),
-						Strategy: placementv1beta1.RolloutStrategy{
-							Type: placementv1beta1.RollingUpdateRolloutStrategyType,
-							RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-								MaxUnavailable:           ptr.To(intstr.FromString("30%")),
-								MaxSurge:                 ptr.To(intstr.FromString("10%")),
-								UnavailablePeriodSeconds: ptr.To(2),
-							},
-							ApplyStrategy: &placementv1beta1.ApplyStrategy{
-								Type:             placementv1beta1.ApplyStrategyTypeClientSideApply,
-								ComparisonOption: placementv1beta1.ComparisonOptionTypePartialComparison,
-								WhenToApply:      placementv1beta1.WhenToApplyTypeAlways,
-								WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeAlways,
-							},
-						},
-						RevisionHistoryLimit: ptr.To(int32(15)),
-					},
-				}
-				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
-				// Verify that the CRP is created with default values.
-				var createdCRP placementv1beta1.ClusterResourcePlacement
-				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed())
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
 				Expect(createdCRP.Spec.Policy).To(Equal(&placementv1beta1.PlacementPolicy{PlacementType: placementv1beta1.PickAllPlacementType}), "CRP should have default policy type PickAll")
 				return nil
 			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
@@ -308,7 +274,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
 				// Verify that the CRP is created with default values.
 				var createdCRP placementv1beta1.ClusterResourcePlacement
-				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed())
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
 				Expect(createdCRP.Spec.Policy.TopologySpreadConstraints).To(Equal([]placementv1beta1.TopologySpreadConstraint{
 					{
 						TopologyKey:       "kubernetes.io/hostname",
@@ -344,7 +310,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
 				// Verify that the CRP is created with default values.
 				var createdCRP placementv1beta1.ClusterResourcePlacement
-				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed())
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
 				Expect(createdCRP.Spec.Strategy).To(Equal(placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
@@ -390,7 +356,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
 				// Verify that the CRP is created with default values.
 				var createdCRP placementv1beta1.ClusterResourcePlacement
-				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed())
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
 				Expect(*createdCRP.Spec.RevisionHistoryLimit).To(Equal(int32(defaulter.DefaultRevisionHistoryLimitValue)), "CRP should have default revision history limit value")
 				return nil
 			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
@@ -424,7 +390,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
 				// Verify that the CRP is created with default values.
 				var createdCRP placementv1beta1.ClusterResourcePlacement
-				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed())
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
 				Expect(createdCRP.Spec.Strategy.ApplyStrategy.Type).To(Equal(placementv1beta1.ApplyStrategyTypeServerSideApply), "CRP should have serverside apply strategy type")
 				Expect(createdCRP.Spec.Strategy.ApplyStrategy.ServerSideApplyConfig).ToNot(BeNil(), "CRP should have serverside apply config")
 				Expect(createdCRP.Spec.Strategy.ApplyStrategy.ServerSideApplyConfig).To(Equal(&placementv1beta1.ServerSideApplyConfig{
@@ -439,61 +405,63 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 
-	BeforeAll(func() {
-		By("creating work resources")
-		createWorkResources()
+	Context("validation webhooks tests", func() {
+		BeforeAll(func() {
+			By("creating work resources")
+			createWorkResources()
 
-		// Create the CRP.
-		crp := &placementv1beta1.ClusterResourcePlacement{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: crpName,
-			},
-			Spec: placementv1beta1.PlacementSpec{
-				ResourceSelectors: workResourceSelector(),
-			},
-		}
-		By(fmt.Sprintf("creating placement %s", crpName))
-		Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP %s", crpName)
-	})
-
-	AfterAll(func() {
-		By(fmt.Sprintf("deleting placement %s and related resources", crpName))
-		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
-	})
-
-	It("should deny update on CRP with invalid label selector", func() {
-		Eventually(func(g Gomega) error {
-			selector := invalidWorkResourceSelector()
-			var crp placementv1beta1.ClusterResourcePlacement
-			g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
-			crp.Spec.ResourceSelectors = selector
-			err := hubClient.Update(ctx, &crp)
-			if k8sErrors.IsConflict(err) {
-				return err
+			// Create the CRP.
+			crp := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: workResourceSelector(),
+				},
 			}
-			var statusErr *k8sErrors.StatusError
-			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("the labelSelector and name fields are mutually exclusive"))
-			return nil
-		}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
-	})
+			By(fmt.Sprintf("creating placement %s", crpName))
+			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP %s", crpName)
+		})
 
-	It("should deny update on CRP with invalid placement policy for PickAll", func() {
-		Eventually(func(g Gomega) error {
-			var crp placementv1beta1.ClusterResourcePlacement
-			g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
-			crp.Spec.Policy = &placementv1beta1.PlacementPolicy{
-				PlacementType: placementv1beta1.PickAllPlacementType,
-				Affinity: &placementv1beta1.Affinity{
-					ClusterAffinity: &placementv1beta1.ClusterAffinity{
-						RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
-							ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
-								{
-									LabelSelector: &metav1.LabelSelector{
-										MatchExpressions: []metav1.LabelSelectorRequirement{
-											{
-												Key:      "test-key",
-												Operator: metav1.LabelSelectorOpIn,
+		AfterAll(func() {
+			By(fmt.Sprintf("deleting placement %s and related resources", crpName))
+			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+		})
+
+		It("should deny update on CRP with invalid label selector", func() {
+			Eventually(func(g Gomega) error {
+				selector := invalidWorkResourceSelector()
+				var crp placementv1beta1.ClusterResourcePlacement
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
+				crp.Spec.ResourceSelectors = selector
+				err := hubClient.Update(ctx, &crp)
+				if k8sErrors.IsConflict(err) {
+					return err
+				}
+				var statusErr *k8sErrors.StatusError
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("the labelSelector and name fields are mutually exclusive"))
+				return nil
+			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
+		})
+
+		It("should deny update on CRP with invalid placement policy for PickAll", func() {
+			Eventually(func(g Gomega) error {
+				var crp placementv1beta1.ClusterResourcePlacement
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
+				crp.Spec.Policy = &placementv1beta1.PlacementPolicy{
+					PlacementType: placementv1beta1.PickAllPlacementType,
+					Affinity: &placementv1beta1.Affinity{
+						ClusterAffinity: &placementv1beta1.ClusterAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
+								ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
+									{
+										LabelSelector: &metav1.LabelSelector{
+											MatchExpressions: []metav1.LabelSelectorRequirement{
+												{
+													Key:      "test-key",
+													Operator: metav1.LabelSelectorOpIn,
+												},
 											},
 										},
 									},
@@ -501,43 +469,211 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 							},
 						},
 					},
+					TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
+						{
+							TopologyKey: "test-key",
+						},
+					},
+				}
+				err := hubClient.Update(ctx, &crp)
+				if k8sErrors.IsConflict(err) {
+					return err
+				}
+				var statusErr *k8sErrors.StatusError
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta(fmt.Sprintf("the labelSelector in cluster selector %+v is invalid:", crp.Spec.Policy.Affinity.ClusterAffinity.RequiredDuringSchedulingIgnoredDuringExecution.ClusterSelectorTerms[0].LabelSelector))))
+				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("topology spread constraints needs to be empty for policy type PickAll"))
+				return nil
+			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
+		})
+
+		It("should deny update on CRP with placement policy type update", func() {
+			Eventually(func(g Gomega) error {
+				var numOfClusters int32 = 1
+				var crp placementv1beta1.ClusterResourcePlacement
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
+				crp.Spec.Policy = &placementv1beta1.PlacementPolicy{
+					PlacementType:    placementv1beta1.PickNPlacementType,
+					NumberOfClusters: &numOfClusters,
+				}
+				err := hubClient.Update(ctx, &crp)
+				if k8sErrors.IsConflict(err) {
+					return err
+				}
+				var statusErr *k8sErrors.StatusError
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("placement type is immutable"))
+				return nil
+			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
+		})
+	})
+
+	Context("mutation webhooks tests", func() {
+		BeforeAll(func() {
+			By("creating work resources")
+			createWorkResources()
+
+			// Create the CRP.
+			crp := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
 				},
-				TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
-					{
-						TopologyKey: "test-key",
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: workResourceSelector(),
+				},
+			}
+			By(fmt.Sprintf("creating placement %s", crpName))
+			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP %s", crpName)
+		})
+
+		AfterAll(func() {
+			// Ensure that the CRP and related resources are deleted after the tests.
+			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+		})
+
+		It("should allow update CRP with nil policy and update fields with default values", func() {
+			Eventually(func(g Gomega) error {
+				var createdCRP placementv1beta1.ClusterResourcePlacement
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
+				// Update the CRP with nil policy.
+				g.Expect(createdCRP.Spec.Policy).ToNot(BeNil(), "CRP should have a policy")
+				createdCRP.Spec.Policy = nil
+				g.Expect(hubClient.Update(ctx, &createdCRP)).Should(Succeed(), "Failed to update CRP %s", crpName)
+				// Verify that the CRP is created with default values.
+				var updatedCRP placementv1beta1.ClusterResourcePlacement
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &updatedCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
+				Expect(updatedCRP.Spec.Policy).To(Equal(&placementv1beta1.PlacementPolicy{PlacementType: placementv1beta1.PickAllPlacementType}), "CRP should have default policy type PickAll")
+				return nil
+			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
+		})
+
+		It("should allow create CRP with empty strategy and update fields with default values", func() {
+			Eventually(func(g Gomega) error {
+				var createdCRP placementv1beta1.ClusterResourcePlacement
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
+				createdCRP.Spec.Strategy = placementv1beta1.RolloutStrategy{}
+				g.Expect(hubClient.Update(ctx, &createdCRP)).Should(Succeed(), "Failed to update CRP %s", crpName)
+				// Verify that the CRP is created with default values.
+				var updatedCRP placementv1beta1.ClusterResourcePlacement
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &updatedCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
+				Expect(updatedCRP.Spec.Strategy).To(Equal(placementv1beta1.RolloutStrategy{
+					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+						MaxUnavailable:           ptr.To(intstr.FromString(defaulter.DefaultMaxUnavailableValue)),
+						MaxSurge:                 ptr.To(intstr.FromString(defaulter.DefaultMaxSurgeValue)),
+						UnavailablePeriodSeconds: ptr.To(defaulter.DefaultUnavailablePeriodSeconds),
+					},
+					ApplyStrategy: &placementv1beta1.ApplyStrategy{
+						Type:             placementv1beta1.ApplyStrategyTypeClientSideApply,
+						ComparisonOption: placementv1beta1.ComparisonOptionTypePartialComparison,
+						WhenToApply:      placementv1beta1.WhenToApplyTypeAlways,
+						WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeAlways,
+					},
+				}), "CRP should have default strategy type RollingUpdate with default values")
+				return nil
+			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
+		})
+
+		It("should allow create CRP with nil revision history limit and update fields with default values", func() {
+			Eventually(func(g Gomega) error {
+				var createdCRP placementv1beta1.ClusterResourcePlacement
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
+				createdCRP.Spec.RevisionHistoryLimit = nil
+				g.Expect(hubClient.Update(ctx, &createdCRP)).Should(Succeed(), "Failed to update CRP %s", crpName)
+				// Verify that the CRP is created with default values.
+				var updatedCRP placementv1beta1.ClusterResourcePlacement
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &updatedCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
+				Expect(*createdCRP.Spec.RevisionHistoryLimit).To(Equal(int32(defaulter.DefaultRevisionHistoryLimitValue)), "CRP should have default revision history limit value")
+				return nil
+			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
+		})
+
+		It("should allow create CRP with nil serverside apply config and update fields with default values", func() {
+			Eventually(func(g Gomega) error {
+				var createdCRP placementv1beta1.ClusterResourcePlacement
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
+				// Update the CRP with nil serverside apply config and serverside apply strategy type.
+				createdCRP.Spec.Strategy.ApplyStrategy.Type = placementv1beta1.ApplyStrategyTypeServerSideApply
+				createdCRP.Spec.Strategy.ApplyStrategy.ServerSideApplyConfig = nil
+				g.Expect(hubClient.Update(ctx, &createdCRP)).Should(Succeed(), "Failed to update CRP %s", crpName)
+				// Verify that the CRP is created with default values.
+				var updatedCRP placementv1beta1.ClusterResourcePlacement
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &updatedCRP)).Should(Succeed())
+				Expect(updatedCRP.Spec.Strategy.ApplyStrategy.Type).To(Equal(placementv1beta1.ApplyStrategyTypeServerSideApply), "CRP should have serverside apply strategy type")
+				Expect(updatedCRP.Spec.Strategy.ApplyStrategy.ServerSideApplyConfig).ToNot(BeNil(), "CRP should have serverside apply config")
+				Expect(updatedCRP.Spec.Strategy.ApplyStrategy.ServerSideApplyConfig).To(Equal(&placementv1beta1.ServerSideApplyConfig{
+					ForceConflicts: false,
+				}), "CRP should have default serverside apply config")
+				return nil
+			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
+		})
+	})
+
+	Context("mutation webhooks tests for CRP with Tolerations & Topology Constraints", func() {
+		BeforeAll(func() {
+			// Create the CRP.
+			crp := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: workResourceSelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType:    placementv1beta1.PickNPlacementType,
+						NumberOfClusters: ptr.To(int32(2)),
 					},
 				},
 			}
-			err := hubClient.Update(ctx, &crp)
-			if k8sErrors.IsConflict(err) {
-				return err
-			}
-			var statusErr *k8sErrors.StatusError
-			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta(fmt.Sprintf("the labelSelector in cluster selector %+v is invalid:", crp.Spec.Policy.Affinity.ClusterAffinity.RequiredDuringSchedulingIgnoredDuringExecution.ClusterSelectorTerms[0].LabelSelector))))
-			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("topology spread constraints needs to be empty for policy type PickAll"))
-			return nil
-		}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
-	})
+			By(fmt.Sprintf("creating placement %s", crpName))
+			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP %s", crpName)
+		})
 
-	It("should deny update on CRP with placement policy type update", func() {
-		Eventually(func(g Gomega) error {
-			var numOfClusters int32 = 1
-			var crp placementv1beta1.ClusterResourcePlacement
-			g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
-			crp.Spec.Policy = &placementv1beta1.PlacementPolicy{
-				PlacementType:    placementv1beta1.PickNPlacementType,
-				NumberOfClusters: &numOfClusters,
-			}
-			err := hubClient.Update(ctx, &crp)
-			if k8sErrors.IsConflict(err) {
-				return err
-			}
-			var statusErr *k8sErrors.StatusError
-			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("placement type is immutable"))
-			return nil
-		}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
+		AfterAll(func() {
+			// Ensure that the CRP and related resources are deleted after the tests.
+			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+		})
+
+		It("should allow create CRP with TopologySpreadConstraints & Tolerations fields and update fields with default values", func() {
+			Eventually(func(g Gomega) error {
+				var createdCRP placementv1beta1.ClusterResourcePlacement
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
+				// Update the CRP with nil policy.
+				createdCRP.Spec.Policy = &placementv1beta1.PlacementPolicy{
+					PlacementType:    placementv1beta1.PickNPlacementType,
+					NumberOfClusters: ptr.To(int32(2)),
+					TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
+						{
+							TopologyKey: "kubernetes.io/hostname",
+						},
+					},
+					Tolerations: []placementv1beta1.Toleration{
+						{
+							Key:   "key",
+							Value: "value",
+						},
+					},
+				}
+				g.Expect(hubClient.Update(ctx, &createdCRP)).Should(Succeed(), "Failed to update CRP %s", crpName)
+				// Verify that the CRP is created with default values.
+				var updatedCRP placementv1beta1.ClusterResourcePlacement
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &updatedCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
+				Expect(updatedCRP.Spec.Policy.TopologySpreadConstraints).To(Equal([]placementv1beta1.TopologySpreadConstraint{
+					{
+						TopologyKey:       "kubernetes.io/hostname",
+						MaxSkew:           ptr.To(int32(defaulter.DefaultMaxSkewValue)),
+						WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
+					},
+				}), "CRP should have default topology spread constraint fields")
+				Expect(updatedCRP.Spec.Policy.Tolerations).To(Equal([]placementv1beta1.Toleration{
+					{
+						Key:      "key",
+						Value:    "value",
+						Operator: corev1.TolerationOpEqual,
+					},
+				}), "CRP should have default tolerations fields")
+				return nil
+			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
+		})
 	})
 })
 

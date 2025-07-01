@@ -249,7 +249,7 @@ func (w *Config) buildFleetMutatingWebhooks() []admv1.MutatingWebhook {
 		{
 			Name:                    "fleet.clusterresourceplacementv1beta1.mutating",
 			ClientConfig:            w.createClientConfig(clusterresourceplacement.MutatingPath),
-			FailurePolicy:           &failFailurePolicy,
+			FailurePolicy:           &ignoreFailurePolicy,
 			SideEffects:             &sideEffortsNone,
 			AdmissionReviewVersions: admissionReviewVersions,
 			Rules: []admv1.RuleWithOperations{
@@ -258,12 +258,7 @@ func (w *Config) buildFleetMutatingWebhooks() []admv1.MutatingWebhook {
 						admv1.Create,
 						admv1.Update,
 					},
-					Rule: createRule(
-						[]string{placementv1beta1.GroupVersion.Group},
-						[]string{placementv1beta1.GroupVersion.Version},
-						[]string{placementv1beta1.ClusterResourcePlacementResource},
-						&clusterScope,
-					),
+					Rule: createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{placementv1beta1.ClusterResourcePlacementResource}, &clusterScope),
 				},
 			},
 			TimeoutSeconds: longWebhookTimeout,
