@@ -31,17 +31,6 @@ import (
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
-func maxDuration(a, b time.Duration) time.Duration {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-var (
-	resourceSnapshotDelayDuration = maxDuration(resourceSnapshotCreationInterval, resourceChangesCollectionDuration)
-)
-
 var _ = Describe("validating CRP when using customized resourceSnapshotCreationInterval and resourceChangesCollectionDuration", Label("custom"), Ordered, func() {
 	// skip entire suite if interval is zero
 	BeforeAll(func() {
@@ -117,7 +106,7 @@ var _ = Describe("validating CRP when using customized resourceSnapshotCreationI
 
 	It("should update CRP status as expected", func() {
 		crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "1")
-		Eventually(crpStatusUpdatedActual, resourceSnapshotDelayDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
+		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
 	})
 
 	It("should place the selected resources on member clusters", checkIfPlacedWorkResourcesOnAllMemberClusters)

@@ -117,6 +117,8 @@ var (
 
 	resourceSnapshotCreationInterval  time.Duration
 	resourceChangesCollectionDuration time.Duration
+
+	resourceSnapshotDelayDuration time.Duration
 )
 
 var (
@@ -325,6 +327,7 @@ func beforeSuiteForAllProcesses() {
 		resourceChangesCollectionDuration, err = time.ParseDuration(resourceChangesCollectionDurationEnv)
 		Expect(err).Should(Succeed(), "failed to parse RESOURCE_CHANGES_COLLECTION_DURATION")
 	}
+	resourceSnapshotDelayDuration = maxDuration(resourceSnapshotCreationInterval, resourceChangesCollectionDuration)
 
 	// Initialize the cluster objects and their clients.
 	hubCluster = framework.NewCluster(hubClusterName, "", scheme, nil)
@@ -379,6 +382,13 @@ func beforeSuiteForAllProcesses() {
 		_, err = os.Stat(uncordonBinaryPath)
 		Expect(os.IsNotExist(err)).To(BeFalse(), fmt.Sprintf("uncordon binary not found at %s", uncordonBinaryPath))
 	})
+}
+
+func maxDuration(a, b time.Duration) time.Duration {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func beforeSuiteForProcess1() {
