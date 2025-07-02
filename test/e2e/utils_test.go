@@ -81,7 +81,7 @@ func createMemberCluster(name, svcAccountName string, labels, annotations map[st
 				Kind:      "ServiceAccount",
 				Namespace: fleetSystemNS,
 			},
-			HeartbeatPeriodSeconds: 60,
+			HeartbeatPeriodSeconds: memberClusterHeartbeatPeriodSeconds,
 		},
 	}
 	Expect(hubClient.Create(ctx, mcObj)).To(Succeed(), "Failed to create member cluster object %s", name)
@@ -422,7 +422,7 @@ func summarizeAKSClusterProperties(memberCluster *framework.Cluster, mcObj *clus
 				ObservedGeneration: mcObj.Generation,
 			},
 			{
-				Type:               azure.PropertyCollectionSucceededConditionType,
+				Type:               azure.CostPropertiesCollectionSucceededCondType,
 				Status:             metav1.ConditionTrue,
 				ObservedGeneration: mcObj.Generation,
 			},

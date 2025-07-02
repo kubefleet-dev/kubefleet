@@ -587,8 +587,8 @@ func (r *Reconciler) processOneSelectedResource(
 	}
 
 	uGVK := uResource.GetObjectKind().GroupVersionKind().GroupKind()
-	switch {
-	case uGVK == utils.ClusterResourceEnvelopeGK:
+	switch uGVK {
+	case utils.ClusterResourceEnvelopeGK:
 		// The resource is a ClusterResourceEnvelope; extract its contents.
 		var clusterResourceEnvelope fleetv1beta1.ClusterResourceEnvelope
 		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(uResource.Object, &clusterResourceEnvelope); err != nil {
@@ -608,7 +608,7 @@ func (r *Reconciler) processOneSelectedResource(
 		}
 		activeWork[work.Name] = work
 		newWork = append(newWork, work)
-	case uGVK == utils.ResourceEnvelopeGK:
+	case utils.ResourceEnvelopeGK:
 		// The resource is a ResourceEnvelope; extract its contents.
 		var resourceEnvelope fleetv1beta1.ResourceEnvelope
 		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(uResource.Object, &resourceEnvelope); err != nil {
