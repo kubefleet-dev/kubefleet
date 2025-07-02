@@ -180,9 +180,9 @@ func (h *PriorityQueueEventHandler) Generic(ctx context.Context, evt event.Typed
 }
 
 var defaultRequeueRateLimiter *RequeueMultiStageWithExponentialBackoffRateLimiter = NewRequeueMultiStageWithExponentialBackoffRateLimiter(
-	// Allow 2 attempts of fixed delay; this helps give objects a bit of headroom to get available (or have
+	// Allow 1 attempt of fixed delay; this helps give objects a bit of headroom to get available (or have
 	// diffs reported).
-	2,
+	1,
 	// Use a fixed delay of 5 seconds for the first two attempts.
 	//
 	// Important (chenyu1): before the introduction of the requeue rate limiter, the work
@@ -208,7 +208,7 @@ var defaultRequeueRateLimiter *RequeueMultiStageWithExponentialBackoffRateLimite
 	true,
 	// When the Work object spec does not change and the processing result remains the same (unavailable or failed
 	// to report diffs), the requeue pattern is essentially:
-	// * 2 attempts of requeues with fixed delays (5 seconds each, 10 seconds in total); then
+	// * 1 attempt of requeue with fixed delays (5 seconds); then
 	// * 12 attempts of requeues with slow exponential backoff (factor of 1.2, ~90 seconds in total); then
 	// * 10 attempts of requeues with fast exponential backoff (factor of 1.5, ~42 minutes in total);
 	// * afterwards, requeue with a delay of 15 minutes indefinitely.

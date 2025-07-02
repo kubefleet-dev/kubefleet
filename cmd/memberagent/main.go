@@ -94,7 +94,7 @@ var (
 	pprofPort                    = flag.Int("pprof-port", 6065, "port for pprof profiling")
 	hubPprofPort                 = flag.Int("hub-pprof-port", 6066, "port for hub pprof profiling")
 	// Work applier requeue rate limiter settings.
-	workApplierRequeueRateLimiterAttemptsWithFixedDelay                              = flag.Int("work-applier-requeue-rate-limiter-attempts-with-fixed-delay", 2, "If set, the work applier will requeue work objects with a fixed delay for the specified number of attempts before switching to exponential backoff.")
+	workApplierRequeueRateLimiterAttemptsWithFixedDelay                              = flag.Int("work-applier-requeue-rate-limiter-attempts-with-fixed-delay", 1, "If set, the work applier will requeue work objects with a fixed delay for the specified number of attempts before switching to exponential backoff.")
 	workApplierRequeueRateLimiterFixedDelaySeconds                                   = flag.Float64("work-applier-requeue-rate-limiter-fixed-delay-seconds", 5.0, "If set, the work applier will requeue work objects with this fixed delay in seconds for the specified number of attempts before switching to exponential backoff.")
 	workApplierRequeueRateLimiterExponentialBaseForSlowBackoff                       = flag.Float64("work-applier-requeue-rate-limiter-exponential-base-for-slow-backoff", 1.2, "If set, the work applier will start to back off slowly at this factor after it finished requeueing with fixed delays, until it reaches the slow backoff delay cap. Its value should be larger than 1.0 and no larger than 100.0")
 	workApplierRequeueRateLimiterInitialSlowBackoffDelaySeconds                      = flag.Float64("work-applier-requeue-rate-limiter-initial-slow-backoff-delay-seconds", 2, "If set, the work applier will start to back off slowly at this delay in seconds.")
@@ -393,15 +393,15 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 		// Set up the requeue rate limiter for the work applier.
 		//
 		// With default settings, the rate limiter will:
-		// * allow 2 attempts of fixed delay; this helps give objects a bit of headroom to get available (or have
+		// * allow 1 attempt of fixed delay; this helps give objects a bit of headroom to get available (or have
 		//   diffs reported).
-		// * use a fixed delay of 5 seconds for the first two attempts.
+		// * use a fixed delay of 5 seconds for the first attempt.
 		//
 		//   Important (chenyu1): before the introduction of the requeue rate limiter, the work
 		//   applier uses static requeue intervals, specifically 5 seconds (if the work object is unavailable),
 		//   and 15 seconds (if the work object is available). There are a number of test cases that
 		//   implicitly assume this behavior (e.g., a test case might expect that the availability check completes
-		//   w/in 10 seconds), which is why the rate limiter uses the 5 seconds fast requeue delay by default.
+		//   w/in 10 seconds), which is why the rate limiter uses the 5 seconds fixed requeue delay by default.
 		//   If you need to change this value and see that some test cases begin to fail, update the test
 		//   cases accordingly.
 		// * after completing all attempts with fixed delay, switch to slow exponential backoff with a base of
@@ -413,7 +413,7 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 		//   start fast backoff immediately.
 		//
 		// The requeue pattern is essentially:
-		// * 2 attempts of requeues with fixed delays (5 seconds each, 10 seconds in total); then
+		// * 1 attempts of requeue with fixed delay (5 seconds); then
 		// * 12 attempts of requeues with slow exponential backoff (factor of 1.2, ~90 seconds in total); then
 		// * 10 attempts of requeues with fast exponential backoff (factor of 1.5, ~42 minutes in total);
 		// * afterwards, requeue with a delay of 15 minutes indefinitely.
