@@ -2691,10 +2691,10 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 				WithObjects(objects...).
 				Build()
 			r := Reconciler{
-				Client:                           fakeClient,
-				Scheme:                           scheme,
-				Recorder:                         record.NewFakeRecorder(10),
-				ResourceSnapshotCreationInterval: 1 * time.Minute,
+				Client:                                  fakeClient,
+				Scheme:                                  scheme,
+				Recorder:                                record.NewFakeRecorder(10),
+				ResourceSnapshotCreationMinimumInterval: 1 * time.Minute,
 			}
 			limit := int32(defaulter.DefaultRevisionHistoryLimitValue)
 			if tc.revisionHistoryLimit != nil {
@@ -4515,13 +4515,13 @@ func TestShouldCreateNewResourceSnapshotNow(t *testing.T) {
 		wantRequeue        ctrl.Result
 	}{
 		{
-			name:               "ResourceSnapshotCreationInterval and ResourceChangesCollectionDuration are 0",
+			name:               "ResourceSnapshotCreationMinimumInterval and ResourceChangesCollectionDuration are 0",
 			creationInterval:   0,
 			collectionDuration: 0,
 			wantRequeue:        ctrl.Result{Requeue: false},
 		},
 		{
-			name:               "ResourceSnapshotCreationInterval is 0",
+			name:               "ResourceSnapshotCreationMinimumInterval is 0",
 			creationInterval:   0,
 			collectionDuration: 30 * time.Second,
 			annotationValue:    now.Add(-10 * time.Second).Format(time.RFC3339),
@@ -4597,9 +4597,9 @@ func TestShouldCreateNewResourceSnapshotNow(t *testing.T) {
 				Build()
 
 			r := &Reconciler{
-				Client:                            client,
-				ResourceSnapshotCreationInterval:  tc.creationInterval,
-				ResourceChangesCollectionDuration: tc.collectionDuration,
+				Client:                                  client,
+				ResourceSnapshotCreationMinimumInterval: tc.creationInterval,
+				ResourceChangesCollectionDuration:       tc.collectionDuration,
 			}
 
 			ctx := context.Background()

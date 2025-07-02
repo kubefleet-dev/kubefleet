@@ -70,9 +70,9 @@ type Reconciler struct {
 
 	Scheme *runtime.Scheme
 
-	// ResourceSnapshotCreationInterval is the interval to create a new resourcesnapshot
+	// ResourceSnapshotCreationMinimumInterval is the minimum interval to create a new resourcesnapshot
 	// to avoid too frequent updates.
-	ResourceSnapshotCreationInterval time.Duration
+	ResourceSnapshotCreationMinimumInterval time.Duration
 
 	// ResourceChangesCollectionDuration is the duration for collecting resource changes into one snapshot.
 	ResourceChangesCollectionDuration time.Duration

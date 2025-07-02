@@ -16,8 +16,8 @@ test suites, follow the steps below:
     export OUTPUT_TYPE=type=docker
     # optional, used to test the placement features with custom configurations
     # It defaults to 0m.
-    # export RESOURCE_SNAPSHOT_CREATION_INTERVAL=30s
-    # export RESOURCE_CHANGES_COLLECTION_DURATION=30s
+    # export RESOURCE_SNAPSHOT_CREATION_MINIMUM_INTERVAL=30s
+    # export RESOURCE_CHANGES_COLLECTION_DURATION=15s
     ./setup.sh ${number of member clusters}
     ```
 
@@ -54,8 +54,8 @@ test suites, follow the steps below:
             "args": [],
             "env": {
                 "KUBECONFIG": "~/.kube/config",
-                #"RESOURCE_SNAPSHOT_CREATION_INTERVAL": "30s",
-                #"RESOURCE_CHANGES_COLLECTION_DURATION": "30s",
+                #"RESOURCE_SNAPSHOT_CREATION_MINIMUM_INTERVAL": "30s",
+                #"RESOURCE_CHANGES_COLLECTION_DURATION": "15s",
             },
             "buildFlags": "-tags=e2e",
             "showLog": true

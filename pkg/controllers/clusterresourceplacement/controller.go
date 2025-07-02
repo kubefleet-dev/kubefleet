@@ -585,9 +585,9 @@ func (r *Reconciler) getOrCreateClusterResourceSnapshot(ctx context.Context, crp
 }
 
 // shouldCreateNewResourceSnapshotNow checks whether it is ready to create the new resource snapshot to avoid too frequent creation
-// based on the configured ResourceSnapshotCreationInterval.
+// based on the configured resourceSnapshotCreationMinimumInterval and resourceChangesCollectionDuration.
 func (r *Reconciler) shouldCreateNewResourceSnapshotNow(ctx context.Context, latestResourceSnapshot fleetv1beta1.ResourceSnapshotObj) (ctrl.Result, error) {
-	if r.ResourceSnapshotCreationInterval <= 0 && r.ResourceChangesCollectionDuration <= 0 {
+	if r.ResourceSnapshotCreationMinimumInterval <= 0 && r.ResourceChangesCollectionDuration <= 0 {
 		return ctrl.Result{}, nil
 	}
 
@@ -611,12 +611,12 @@ func (r *Reconciler) shouldCreateNewResourceSnapshotNow(ctx context.Context, lat
 		nextResourceSnapshotCandidateDetectionTime = now
 		klog.V(2).InfoS("Updated the NextResourceSnapshotCandidateDetectionTime annotation", "clusterResourceSnapshot", snapshotKObj, "nextResourceSnapshotCandidateDetectionTimeAnnotation", now.Format(time.RFC3339))
 	}
-	nextCreationTime := fleettime.MaxTime(nextResourceSnapshotCandidateDetectionTime.Add(r.ResourceChangesCollectionDuration), latestResourceSnapshot.GetCreationTimestamp().Add(r.ResourceSnapshotCreationInterval))
+	nextCreationTime := fleettime.MaxTime(nextResourceSnapshotCandidateDetectionTime.Add(r.ResourceChangesCollectionDuration), latestResourceSnapshot.GetCreationTimestamp().Add(r.ResourceSnapshotCreationMinimumInterval))
 	if now.Before(nextCreationTime) {
 		// If the next resource snapshot creation time is not reached, we requeue the request to avoid too frequent update.
 		klog.V(2).InfoS("Delaying the new resourceSnapshot creation",
 			"clusterResourceSnapshot", snapshotKObj, "nextCreationTime", nextCreationTime, "latestResourceSnapshotCreationTime", latestResourceSnapshot.GetCreationTimestamp(),
-			"resourceSnapshotCreationInterval", r.ResourceSnapshotCreationInterval, "resourceChangesCollectionDuration", r.ResourceChangesCollectionDuration,
+			"resourceSnapshotCreationMinimumInterval", r.ResourceSnapshotCreationMinimumInterval, "resourceChangesCollectionDuration", r.ResourceChangesCollectionDuration,
 			"afterDuration", nextCreationTime.Sub(now))
 		return ctrl.Result{Requeue: true, RequeueAfter: nextCreationTime.Sub(now)}, nil
 	}

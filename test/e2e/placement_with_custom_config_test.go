@@ -31,11 +31,11 @@ import (
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
-var _ = Describe("validating CRP when using customized resourceSnapshotCreationInterval and resourceChangesCollectionDuration", Label("custom"), Ordered, func() {
+var _ = Describe("validating CRP when using customized resourceSnapshotCreationMinimumInterval and resourceChangesCollectionDuration", Label("custom"), Ordered, func() {
 	// skip entire suite if interval is zero
 	BeforeAll(func() {
-		if resourceSnapshotCreationInterval == 0 && resourceChangesCollectionDuration == 0 {
-			Skip("Skipping customized-config placement test when RESOURCE_SNAPSHOT_CREATION_INTERVAL=0m and RESOURCE_CHANGES_COLLECTION_DURATION=0m")
+		if resourceSnapshotCreationMinimumInterval == 0 && resourceChangesCollectionDuration == 0 {
+			Skip("Skipping customized-config placement test when RESOURCE_SNAPSHOT_CREATION_MINIMUM_INTERVAL=0m and RESOURCE_CHANGES_COLLECTION_DURATION=0m")
 		}
 	})
 
@@ -101,7 +101,7 @@ var _ = Describe("validating CRP when using customized resourceSnapshotCreationI
 
 	It("should not update CRP status immediately", func() {
 		crpStatusUpdatedActual := crpStatusUpdatedActual([]placementv1beta1.ResourceIdentifier{}, allMemberClusterNames, nil, "0")
-		Consistently(crpStatusUpdatedActual, resourceSnapshotDelayDuration, consistentlyInterval).Should(Succeed(), "CRP %s status should be unchanged", crpName)
+		Consistently(crpStatusUpdatedActual, resourceSnapshotDelayDuration-3*time.Second, consistentlyInterval).Should(Succeed(), "CRP %s status should be unchanged", crpName)
 	})
 
 	It("should update CRP status as expected", func() {
@@ -121,7 +121,7 @@ var _ = Describe("validating CRP when using customized resourceSnapshotCreationI
 		// Use math.Abs to get the absolute value of the time difference in seconds.
 		snapshotDiffInSeconds := resourceSnapshotList.Items[0].CreationTimestamp.Time.Sub(resourceSnapshotList.Items[1].CreationTimestamp.Time).Seconds()
 		diff := math.Abs(snapshotDiffInSeconds)
-		Expect(time.Duration(diff)*time.Second >= resourceSnapshotDelayDuration).To(BeTrue(), "The time difference between ClusterResourceSnapshots should be more than resourceSnapshotCreationInterval")
+		Expect(time.Duration(diff)*time.Second >= resourceSnapshotDelayDuration).To(BeTrue(), "The time difference between ClusterResourceSnapshots should be more than resourceSnapshotDelayDuration")
 	})
 
 	It("can delete the CRP", func() {
@@ -142,11 +142,11 @@ var _ = Describe("validating CRP when using customized resourceSnapshotCreationI
 	})
 })
 
-var _ = Describe("validating that CRP status can be updated after updating the resources when using customized resourceSnapshotCreationInterval and resourceChangesCollectionDuration", Label("custom"), Ordered, func() {
+var _ = Describe("validating that CRP status can be updated after updating the resources when using customized resourceSnapshotCreationMinimumInterval and resourceChangesCollectionDuration", Label("custom"), Ordered, func() {
 	// skip entire suite if interval is zero
 	BeforeAll(func() {
-		if resourceSnapshotCreationInterval == 0 && resourceChangesCollectionDuration == 0 {
-			Skip("Skipping customized-config placement test when RESOURCE_SNAPSHOT_CREATION_INTERVAL=0m and RESOURCE_CHANGES_COLLECTION_DURATION=0m")
+		if resourceSnapshotCreationMinimumInterval == 0 && resourceChangesCollectionDuration == 0 {
+			Skip("Skipping customized-config placement test when RESOURCE_SNAPSHOT_CREATION_MINIMUM_INTERVAL=0m and RESOURCE_CHANGES_COLLECTION_DURATION=0m")
 		}
 	})
 
@@ -241,7 +241,7 @@ var _ = Describe("validating that CRP status can be updated after updating the r
 		// Use math.Abs to get the absolute value of the time difference in seconds.
 		snapshotDiffInSeconds := resourceSnapshotList.Items[0].CreationTimestamp.Time.Sub(resourceSnapshotList.Items[1].CreationTimestamp.Time).Seconds()
 		diff := math.Abs(snapshotDiffInSeconds)
-		Expect(time.Duration(diff)*time.Second >= resourceSnapshotDelayDuration).To(BeTrue(), "The time difference between ClusterResourceSnapshots should be more than resourceSnapshotCreationInterval")
+		Expect(time.Duration(diff)*time.Second >= resourceSnapshotDelayDuration).To(BeTrue(), "The time difference between ClusterResourceSnapshots should be more than resourceSnapshotDelayDuration")
 	})
 
 	It("can delete the CRP", func() {

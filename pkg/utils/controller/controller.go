@@ -421,7 +421,7 @@ func CollectResourceIdentifiersUsingMasterClusterResourceSnapshot(
 ) ([]fleetv1beta1.ResourceIdentifier, error) {
 	allResourceSnapshots, err := FetchAllClusterResourceSnapshots(ctx, k8Client, crpName, masterResourceSnapshot)
 	if err != nil {
-		klog.ErrorS(err, "Failed to fetch all the clusterResourceSnapshots", "clusterResourcePlacement", crpName)
+		klog.ErrorS(err, "Failed to fetch all the clusterResourceSnapshots", "resourceSnapshotIndex", resourceSnapshotIndex, "clusterResourcePlacement", crpName)
 		return nil, err
 	}
 

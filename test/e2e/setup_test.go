@@ -115,8 +115,8 @@ var (
 	allMemberClusters     []*framework.Cluster
 	allMemberClusterNames = []string{}
 
-	resourceSnapshotCreationInterval  time.Duration
-	resourceChangesCollectionDuration time.Duration
+	resourceSnapshotCreationMinimumInterval time.Duration
+	resourceChangesCollectionDuration       time.Duration
 
 	resourceSnapshotDelayDuration time.Duration
 )
@@ -309,13 +309,13 @@ func beforeSuiteForAllProcesses() {
 	// Check if the required environment variable, which specifies the path to kubeconfig file, has been set.
 	Expect(os.Getenv(kubeConfigPathEnvVarName)).NotTo(BeEmpty(), "Required environment variable KUBECONFIG is not set")
 
-	resourceSnapshotCreationIntervalEnv := os.Getenv("RESOURCE_SNAPSHOT_CREATION_INTERVAL")
-	if resourceSnapshotCreationIntervalEnv == "" {
+	resourceSnapshotCreationMinimumIntervalEnv := os.Getenv("RESOURCE_SNAPSHOT_CREATION_MINIMUM_INTERVAL")
+	if resourceSnapshotCreationMinimumIntervalEnv == "" {
 		// If the environment variable is not set, use a default value.
-		resourceSnapshotCreationInterval = 0
+		resourceSnapshotCreationMinimumInterval = 0
 	} else {
 		var err error
-		resourceSnapshotCreationInterval, err = time.ParseDuration(resourceSnapshotCreationIntervalEnv)
+		resourceSnapshotCreationMinimumInterval, err = time.ParseDuration(resourceSnapshotCreationMinimumIntervalEnv)
 		Expect(err).Should(Succeed(), "failed to parse RESOURCE_SNAPSHOT_CREATION_INTERVAL")
 	}
 	resourceChangesCollectionDurationEnv := os.Getenv("RESOURCE_CHANGES_COLLECTION_DURATION")
@@ -327,7 +327,7 @@ func beforeSuiteForAllProcesses() {
 		resourceChangesCollectionDuration, err = time.ParseDuration(resourceChangesCollectionDurationEnv)
 		Expect(err).Should(Succeed(), "failed to parse RESOURCE_CHANGES_COLLECTION_DURATION")
 	}
-	resourceSnapshotDelayDuration = maxDuration(resourceSnapshotCreationInterval, resourceChangesCollectionDuration)
+	resourceSnapshotDelayDuration = maxDuration(resourceSnapshotCreationMinimumInterval, resourceChangesCollectionDuration)
 
 	// Initialize the cluster objects and their clients.
 	hubCluster = framework.NewCluster(hubClusterName, "", scheme, nil)
