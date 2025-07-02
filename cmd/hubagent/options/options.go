@@ -178,6 +178,6 @@ func (o *Options) AddFlags(flags *flag.FlagSet) {
 	flags.BoolVar(&o.DenyModifyMemberClusterLabels, "deny-modify-member-cluster-labels", false, "If set, users not in the system:masters cannot modify member cluster labels.")
 	flags.DurationVar(&o.ResourceSnapshotCreationMinimumInterval, "resource-snapshot-creation-minimum-interval", 30*time.Second, "The minimum interval at which resource snapshots could be created.")
 	flags.DurationVar(&o.ResourceChangesCollectionDuration, "resource-changes-collection-duration", 15*time.Second,
-		"The duration for collecting resource changes into one snapshot. The default is 30 seconds, which means that the controller will collect resource changes for 30 seconds before creating a resource snapshot.")
+		"The duration for collecting resource changes into one snapshot. The default is 15 seconds, which means that the controller will collect resource changes for 15 seconds before creating a resource snapshot.")
 	o.RateLimiterOpts.AddFlags(flags)
 }
