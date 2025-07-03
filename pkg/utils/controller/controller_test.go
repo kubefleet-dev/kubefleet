@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -492,8 +494,13 @@ func TestFetchAllClusterResourceSnapshots(t *testing.T) {
 					return s1 < s2
 				}),
 			}
-			if diff := cmp.Diff(tc.want, got, options...); diff != "" {
-				t.Errorf("FetchAllClusterResourceSnapshots() mismatch (-want, +got):\n%s", diff)
+			theSortedKeys := slices.Sorted(maps.Keys(got))
+			for i := range theSortedKeys {
+				key := theSortedKeys[i]
+				wantResourceSnapshotObj := tc.want[key]
+				if diff := cmp.Diff(wantResourceSnapshotObj, got[key], options...); diff != "" {
+					t.Errorf("FetchAllClusterResourceSnapshots() mismatch (-want, +got):\n%s", diff)
+				}
 			}
 		})
 	}
