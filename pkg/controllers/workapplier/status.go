@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
@@ -36,6 +37,8 @@ func (r *Reconciler) refreshWorkStatus(
 	work *fleetv1beta1.Work,
 	bundles []*manifestProcessingBundle,
 ) error {
+	ogStatus := work.Status.DeepCopy()
+
 	// Note (chenyu1): this method can run in parallel; however, for simplicity reasons,
 	// considering that in most of the time the count of manifests would be low, currently
 	// Fleet still does the status refresh sequentially.
@@ -86,6 +89,7 @@ func (r *Reconciler) refreshWorkStatus(
 		}
 	}
 
+	foundDriftsOrDiffs := false
 	for idx := range bundles {
 		bundle := bundles[idx]
 
@@ -114,6 +118,7 @@ func (r *Reconciler) refreshWorkStatus(
 		// Reset the drift details (such details need no port-back).
 		manifestCond.DriftDetails = nil
 		if len(bundle.drifts) > 0 {
+			foundDriftsOrDiffs = true
 			// Populate drift details if there are drifts found.
 			var observedInMemberClusterGen int64
 			if bundle.inMemberClusterObj != nil {
@@ -136,6 +141,7 @@ func (r *Reconciler) refreshWorkStatus(
 		// Reset the diff details (such details need no port-back).
 		manifestCond.DiffDetails = nil
 		if len(bundle.diffs) > 0 {
+			foundDriftsOrDiffs = true
 			// Populate diff details if there are diffs found.
 			var observedInMemberClusterGen *int64
 			if bundle.inMemberClusterObj != nil {
@@ -184,8 +190,16 @@ func (r *Reconciler) refreshWorkStatus(
 	work.Status.ManifestConditions = rebuiltManifestConds
 
 	// Update the Work object status.
-	if err := r.hubClient.Status().Update(ctx, work); err != nil {
-		return controller.NewAPIServerError(false, err)
+	//
+	// As a shortcut, always update the status if there are drifts or diffs found, as KubeFleet needs to
+	// report the latest timestamp when the drifts/diffs were identified.
+	if !foundDriftsOrDiffs && equality.Semantic.DeepEqual(ogStatus, &work.Status) {
+		// No status change; skip the update.
+		klog.V(2).InfoS("No status change needed; skip the status update", "work", klog.KObj(work))
+	} else {
+		if err := r.hubClient.Status().Update(ctx, work); err != nil {
+			return controller.NewAPIServerError(false, err)
+		}
 	}
 	return nil
 }
