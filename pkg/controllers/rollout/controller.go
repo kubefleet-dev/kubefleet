@@ -153,10 +153,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 			"placement", placementObjRef)
 		return runtime.Result{}, err
 	}
-	if masterResourceSnapshot == nil {
-		err := controller.NewUnexpectedBehaviorError(fmt.Errorf("no masterResourceSnapshot found for the placement %s", placementKey))
-		return runtime.Result{}, err
-	}
 	klog.V(2).InfoS("Found the masterResourceSnapshot for the placement", "placement", placementObjRef, "masterResourceSnapshot", klog.KObj(masterResourceSnapshot))
 
 	// Note: there is a corner case that an override is in-between snapshots (the old one is marked as not the latest while the new one is not created yet)
@@ -701,16 +697,6 @@ func (r *Reconciler) SetupWithManager(mgr runtime.Manager) error {
 				handleResourceSnapshot(e.Object, q)
 			},
 		}).
-		Watches(&fleetv1beta1.ResourceSnapshot{}, handler.Funcs{
-			CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a resource snapshot create event", "resourceSnapshot", klog.KObj(e.Object))
-				handleResourceSnapshot(e.Object, q)
-			},
-			GenericFunc: func(ctx context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a resource snapshot generic event", "resourceSnapshot", klog.KObj(e.Object))
-				handleResourceSnapshot(e.Object, q)
-			},
-		}).
 		Watches(&fleetv1alpha1.ClusterResourceOverrideSnapshot{}, handler.Funcs{
 			CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				klog.V(2).InfoS("Handling a clusterResourceOverrideSnapshot create event", "clusterResourceOverrideSnapshot", klog.KObj(e.Object))
@@ -778,29 +764,10 @@ func (r *Reconciler) SetupWithManager(mgr runtime.Manager) error {
 				enqueueResourceBinding(e.Object, q)
 			},
 		}).
-		Watches(&fleetv1beta1.ResourceBinding{}, handler.Funcs{
-			CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a resource binding create event", "resourceBinding", klog.KObj(e.Object))
-				enqueueResourceBinding(e.Object, q)
-			},
-			UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				handleResourceBindingUpdated(e.ObjectNew, e.ObjectOld, q)
-			},
-			GenericFunc: func(ctx context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a resource binding generic event", "resourceBinding", klog.KObj(e.Object))
-				enqueueResourceBinding(e.Object, q)
-			},
-		}).
 		// Aside from resource snapshot and binding objects, the rollout
 		// controller also watches placement objects (ClusterResourcePlacement and ResourcePlacement),
 		// so that it can push apply strategy updates to all bindings right away.
 		Watches(&fleetv1beta1.ClusterResourcePlacement{}, handler.Funcs{
-			// Ignore all Create, Delete, and Generic events; these do not concern the rollout controller.
-			UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				handlePlacement(e.ObjectNew, e.ObjectOld, q)
-			},
-		}).
-		Watches(&fleetv1beta1.ResourcePlacement{}, handler.Funcs{
 			// Ignore all Create, Delete, and Generic events; these do not concern the rollout controller.
 			UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				handlePlacement(e.ObjectNew, e.ObjectOld, q)

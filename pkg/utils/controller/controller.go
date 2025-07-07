@@ -410,9 +410,6 @@ func CollectResourceIdentifiersFromClusterResourceSnapshot(
 		listOptions = append(listOptions, client.InNamespace(namespace))
 	} else {
 		resourceSnapshotList = &fleetv1beta1.ClusterResourceSnapshotList{}
-		listOptions = append(listOptions, client.MatchingLabels{
-			fleetv1beta1.CRPTrackingLabel: name,
-		})
 	}
 	if err := k8Client.List(ctx, resourceSnapshotList, listOptions...); err != nil {
 		klog.ErrorS(err, "Failed to list the clusterResourceSnapshots associated with the clusterResourcePlacement",

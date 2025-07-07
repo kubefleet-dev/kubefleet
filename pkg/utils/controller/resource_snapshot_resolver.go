@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -46,9 +47,6 @@ func FetchMasterResourceSnapshot(ctx context.Context, k8Client client.Reader, pl
 		listOptions = append(listOptions, client.InNamespace(namespace))
 	} else {
 		resourceSnapshotList = &fleetv1beta1.ClusterResourceSnapshotList{}
-		listOptions = append(listOptions, client.MatchingLabels{
-			fleetv1beta1.CRPTrackingLabel: name,
-		})
 	}
 	if err := k8Client.List(ctx, resourceSnapshotList, listOptions...); err != nil {
 		klog.ErrorS(err, "Failed to list the resourceSnapshots associated with the placement", "placement", placementKey)
@@ -70,10 +68,10 @@ func FetchMasterResourceSnapshot(ctx context.Context, k8Client client.Reader, pl
 			break
 		}
 	}
+	// It is possible that no master resourceSnapshot is found, e.g., when the new resourceSnapshot is created but not yet marked as the latest.
 	if masterResourceSnapshot == nil {
-		klog.V(2).InfoS("Found resourceSnapshots without master snapshot", "placement", placementKey, "resourceSnapshotCount", len(items))
-	} else {
-		klog.V(2).InfoS("Found the latest associated clusterResourceSnapshot", "placement", placementKey, "masterResourceSnapshot", klog.KObj(masterResourceSnapshot))
+		return nil, fmt.Errorf("no masterResourceSnapshot found for the placement %s", placementKey)
 	}
+	klog.V(2).InfoS("Found the latest associated masterResourceSnapshot", "placement", placementKey, "masterResourceSnapshot", klog.KObj(masterResourceSnapshot))
 	return masterResourceSnapshot, nil
 }

@@ -490,9 +490,6 @@ func TestFetchAllClusterResourceSnapshots(t *testing.T) {
 			}
 			options := []cmp.Option{
 				cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion"),
-				cmpopts.SortMaps(func(s1, s2 string) bool {
-					return s1 < s2
-				}),
 			}
 			theSortedKeys := slices.Sorted(maps.Keys(got))
 			for i := range theSortedKeys {
