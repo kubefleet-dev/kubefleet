@@ -107,15 +107,30 @@ A breadcrumb is a collaborative scratch pad that allow the user and agent to get
 2. Create the breadcrumb file in the `${REPO}/.github/.copilot/breadcrumbs` folder using the format: `yyyy-mm-dd-HHMM-{title}.md` (*year-month-date-current_time_in-24hr_format-{title}.md* using UTC timezone)
 
 3. Structure the breadcrumb file with these required sections:
-   - **Requirements**: Clear list of what needs to be implemented.
-   - **Additional comments from user**: Any additional input from the user during the conversation.
-   - **Plan**: Strategy and technical plan before implementation.
-   - **Decisions**: Why specific implementation choices were made.
-   - **Implementation Details**: Code snippets with explanations for key files.
-   - **Changes Made**: Summary of files modified and how they changed.
-   - **Before/After Comparison**: Highlighting the improvements.
-   - **References**: List of referred material like domain knowledge files, specification files, URLs and summary of what is was used for. If there is a version in the domain knowledge or in the specifications, record the version in the breadcrumb.
-
+   1. **Understand the Problem**:
+   * Read the relevant parts of the codebase.
+   * List of referred material like domain knowledge files, specification files, URLs and summary of what is was used for.
+   * Browse public API documentation for up-to-date info.
+   * Propose 2–3 implementation options with pros and cons.
+   * Ask clarifying questions about product requirements.
+   * Write a plan to the breadcrumb file.
+  2. **Plan Format**:
+   * Include a checklist of TODO items to track progress.
+  3. **Checkpoint Before Execution**:
+   * Check in with me before starting implementation.
+  4. **Implement Step-by-Step**:
+   * Complete TODO items incrementally.
+   * Test each change for correctness.
+   * Do NOT ask for permission to run unit tests or integration tests.
+   * Log a high-level explanation after each step.
+  5. **Keep Changes Minimal**:
+   * Make tasks and commits as small and simple as possible.
+   * Avoid large or complex changes.
+  6. **Update Plan as Needed**:
+   * Revise the project plan file if the plan changes.
+  7. **Final Summary**:
+   * At the end, summarize all changes in the project plan file.
+   * If there is a version in the domain knowledge or in the specifications, record the version in the breadcrumb.
 4. Workflow rules:
    - Update the breadcrumb **BEFORE** making any code changes.
    - **Get explicit approval** on the plan before implementation.
