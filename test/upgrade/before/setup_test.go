@@ -134,11 +134,7 @@ var (
 	// Note that the aforementioned change is hub side exclusive and is for informational purposes only.
 	availableDueToUntrackableResCondAcyclicTransformer = cmpopts.AcyclicTransformer("AvailableDueToUntrackableResCond", func(cond metav1.Condition) metav1.Condition {
 		transformedCond := cond.DeepCopy()
-<<<<<<< HEAD
 		if cond.Type == string(placementv1beta1.ResourcesAvailableConditionType) && cond.Reason == condition.WorkNotTrackableReason {
-=======
-		if cond.Type == string(placementv1beta1.ResourcesAvailableConditionType) && cond.Reason == WorkNotAllManifestsTrackableReason  {
->>>>>>> 97d07a3 (Constants Used in place of "NotTrackable")
 			transformedCond.Reason = condition.WorkNotAvailabilityTrackableReason
 		}
 		return *transformedCond
