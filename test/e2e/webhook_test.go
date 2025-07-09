@@ -38,7 +38,7 @@ import (
 	testutils "github.com/kubefleet-dev/kubefleet/test/e2e/v1alpha1/utils"
 )
 
-var _ = FDescribe("webhook tests for CRP CREATE operations", func() {
+var _ = Describe("webhook tests for CRP CREATE operations", func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	Context("validation webhooks tests", func() {
 
