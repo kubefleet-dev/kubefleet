@@ -312,7 +312,7 @@ const (
 	// Note that the reason string below uses the same value as kept in the old work applier.
 	ManifestProcessingAvailabilityResultTypeNotYetAvailable ManifestProcessingAvailabilityResultType = "ManifestNotAvailableYet"
 
-	ManifestProcessingAvailabilityResultTypeNotTrackable ManifestProcessingAvailabilityResultType = "NotTrackable"
+	ManifestProcessingAvailabilityResultTypeNotTrackable ManifestProcessingAvailabilityResultType = WorkNotAllManifestsTrackableReason 
 
 	// The descriptions for completed availability checks.
 	ManifestProcessingAvailabilityResultTypeAvailableDescription       = "Manifest is available"
