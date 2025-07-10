@@ -17,15 +17,17 @@ package e2e
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/google/go-cmp/cmp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -870,7 +872,7 @@ var _ = Context("creating resourceOverride with delete configMap", Ordered, func
 			configMapName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
 			configMap := corev1.ConfigMap{}
 			err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{Name: configMapName, Namespace: namespaceName}, &configMap)
-			return errors.IsNotFound(err)
+			return k8serrors.IsNotFound(err)
 		}, consistentlyDuration, consistentlyInterval).Should(BeTrue(), "Failed to delete work resources on member cluster %s", memberCluster.ClusterName)
 	})
 })
@@ -1119,4 +1121,250 @@ var _ = Context("creating resourceOverride with non-exist label", Ordered, func(
 
 	// This check will ignore the annotation of resources.
 	It("should not place the selected resources on member clusters", checkIfRemovedWorkResourcesFromAllMemberClusters)
+})
+
+var _ = Context("creating resourceOverride in one namespace should not override resources in another namespace", Ordered, func() {
+	// Use different parallel process numbers for the two namespaces to ensure uniqueness
+	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+	roName := fmt.Sprintf(roNameTemplate, GinkgoParallelProcess())
+	
+	// First namespace will have the resourceoverride
+	namespace1 := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
+	
+	// Second namespace will not have the resourceoverride
+	namespace2 := fmt.Sprintf("%s-second", fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess()))
+	
+	// ConfigMap names for both namespaces
+	configMap1Name := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
+	configMap2Name := configMap1Name
+
+	BeforeAll(func() {
+		By("creating namespace1 resources")
+		// Create namespace1 with configmap
+		ns1 := corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: namespace1,
+				Labels: map[string]string{
+					workNamespaceLabelName: strconv.Itoa(GinkgoParallelProcess()),
+				},
+			},
+		}
+		Expect(hubClient.Create(ctx, &ns1)).To(Succeed(), "Failed to create namespace %s", ns1.Name)
+
+		cm1 := corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      configMap1Name,
+				Namespace: namespace1,
+			},
+			Data: map[string]string{
+				"data": "test",
+			},
+		}
+		Expect(hubClient.Create(ctx, &cm1)).To(Succeed(), "Failed to create config map %s in namespace %s", configMap1Name, namespace1)
+
+		By("creating namespace2 resources")
+		// Create namespace2 with configmap
+		ns2 := corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: namespace2,
+				Labels: map[string]string{
+					workNamespaceLabelName: strconv.Itoa(GinkgoParallelProcess()),
+				},
+			},
+		}
+		Expect(hubClient.Create(ctx, &ns2)).To(Succeed(), "Failed to create namespace %s", ns2.Name)
+
+		cm2 := corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      configMap2Name,
+				Namespace: namespace2,
+			},
+			Data: map[string]string{
+				"data": "test",
+			},
+		}
+		Expect(hubClient.Create(ctx, &cm2)).To(Succeed(), "Failed to create config map %s in namespace %s", configMap2Name, namespace2)
+
+		By("creating CRP to place both namespaces")
+		crp := &placementv1beta1.ClusterResourcePlacement{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: crpName,
+			},
+			Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+					{
+						Group:   "",
+						Kind:    "Namespace",
+						Version: "v1",
+						Name:    namespace1,
+					},
+					{
+						Group:   "",
+						Kind:    "Namespace",
+						Version: "v1",
+						Name:    namespace2,
+					},
+				},
+				Strategy: placementv1beta1.RolloutStrategy{
+					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+				},
+			},
+		}
+		Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP %s", crpName)
+
+		By(fmt.Sprintf("creating resourceOverride %s in namespace %s only", roName, namespace1))
+		ro := &placementv1alpha1.ResourceOverride{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      roName,
+				Namespace: namespace1,
+			},
+			Spec: placementv1alpha1.ResourceOverrideSpec{
+				Placement: &placementv1alpha1.PlacementRef{
+					Name: crpName,
+				},
+				ResourceSelectors: []placementv1alpha1.ResourceSelector{
+					{
+						Group:   "",
+						Kind:    "ConfigMap",
+						Version: "v1",
+						Name:    configMap1Name,
+					},
+				},
+				Policy: &placementv1alpha1.OverridePolicy{
+					OverrideRules: []placementv1alpha1.OverrideRule{
+						{
+							ClusterSelector: &placementv1beta1.ClusterSelector{
+								ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{},
+							},
+							JSONPatchOverrides: []placementv1alpha1.JSONPatchOverride{
+								{
+									Operator: placementv1alpha1.JSONPatchOverrideOpAdd,
+									Path:     "/metadata/annotations",
+									Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "%s"}`, roTestAnnotationKey, roTestAnnotationValue))},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		Expect(hubClient.Create(ctx, ro)).To(Succeed(), "Failed to create resourceOverride %s", roName)
+	})
+
+	AfterAll(func() {
+		By(fmt.Sprintf("deleting resourceOverride %s", roName))
+		cleanupResourceOverride(roName, namespace1)
+
+		By(fmt.Sprintf("deleting placement %s and related resources", crpName))
+		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+
+		// Clean up namespaces
+		By(fmt.Sprintf("deleting namespace %s", namespace1))
+		ns1 := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: namespace1,
+			},
+		}
+		Expect(client.IgnoreNotFound(hubClient.Delete(ctx, ns1))).To(Succeed(), "Failed to delete namespace %s", namespace1)
+		
+		By(fmt.Sprintf("deleting namespace %s", namespace2))
+		ns2 := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: namespace2,
+			},
+		}
+		Expect(client.IgnoreNotFound(hubClient.Delete(ctx, ns2))).To(Succeed(), "Failed to delete namespace %s", namespace2)
+		
+		// Wait for namespaces to be deleted
+		Eventually(func() error {
+			var ns1Check corev1.Namespace
+			err1 := hubClient.Get(ctx, types.NamespacedName{Name: namespace1}, &ns1Check)
+			if !k8serrors.IsNotFound(err1) {
+				return fmt.Errorf("namespace %s still exists", namespace1)
+			}
+			
+			var ns2Check corev1.Namespace
+			err2 := hubClient.Get(ctx, types.NamespacedName{Name: namespace2}, &ns2Check)
+			if !k8serrors.IsNotFound(err2) {
+				return fmt.Errorf("namespace %s still exists", namespace2)
+			}
+			
+			return nil
+		}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to delete namespaces")
+	})
+
+	It("should place both namespaces and their resources on member clusters", func() {
+		for _, memberCluster := range allMemberClusters {
+			// Check if namespace1 and its configmap are placed
+			Eventually(func() error {
+				var ns1 corev1.Namespace
+				if err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{Name: namespace1}, &ns1); err != nil {
+					return fmt.Errorf("failed to get namespace %s on cluster %s: %w", namespace1, memberCluster.ClusterName, err)
+				}
+				
+				var cm1 corev1.ConfigMap
+				if err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{Namespace: namespace1, Name: configMap1Name}, &cm1); err != nil {
+					return fmt.Errorf("failed to get configmap %s in namespace %s on cluster %s: %w", 
+						configMap1Name, namespace1, memberCluster.ClusterName, err)
+				}
+				
+				// Check if namespace2 and its configmap are placed
+				var ns2 corev1.Namespace
+				if err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{Name: namespace2}, &ns2); err != nil {
+					return fmt.Errorf("failed to get namespace %s on cluster %s: %w", namespace2, memberCluster.ClusterName, err)
+				}
+				
+				var cm2 corev1.ConfigMap
+				if err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{Namespace: namespace2, Name: configMap2Name}, &cm2); err != nil {
+					return fmt.Errorf("failed to get configmap %s in namespace %s on cluster %s: %w", 
+						configMap2Name, namespace2, memberCluster.ClusterName, err)
+				}
+				
+				return nil
+			}, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), 
+				"Failed to place namespaces and resources on member cluster %s", memberCluster.ClusterName)
+		}
+	})
+
+	It("should have override annotations on the configmap in namespace1", func() {
+		wantAnnotations := map[string]string{roTestAnnotationKey: roTestAnnotationValue}
+		
+		for _, memberCluster := range allMemberClusters {
+			Eventually(func() error {
+				var cm1 corev1.ConfigMap
+				if err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{Namespace: namespace1, Name: configMap1Name}, &cm1); err != nil {
+					return fmt.Errorf("failed to get configmap %s in namespace %s on cluster %s: %w", 
+						configMap1Name, namespace1, memberCluster.ClusterName, err)
+				}
+				
+				for key, value := range wantAnnotations {
+					if actualValue, exists := cm1.Annotations[key]; !exists || actualValue != value {
+						return fmt.Errorf("configmap %s in namespace %s on cluster %s does not have expected annotation %s: %s", 
+							configMap1Name, namespace1, memberCluster.ClusterName, key, value)
+					}
+				}
+				
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), 
+				"Failed to override the annotation of configmap in namespace %s on cluster %s", namespace1, memberCluster.ClusterName)
+		}
+	})
+
+	It("should not have override annotations on the configmap in namespace2", func() {
+		// The configmap in namespace2 should not have the annotations
+		for _, memberCluster := range allMemberClusters {
+			Consistently(func() bool {
+				var cm2 corev1.ConfigMap
+				err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{Namespace: namespace2, Name: configMap2Name}, &cm2)
+				if err != nil {
+					return false
+				}
+				
+				// Check that the configmap doesn't have the annotation
+				_, hasAnnotation := cm2.Annotations[roTestAnnotationKey]
+				return !hasAnnotation
+			}, consistentlyDuration, consistentlyInterval).Should(BeTrue(), 
+				"Configmap in namespace %s on cluster %s should not have override annotations", namespace2, memberCluster.ClusterName)
+		}
+	})
 })
