@@ -44,7 +44,6 @@ import (
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workapplier"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
@@ -136,11 +135,7 @@ var (
 	// Note that the aforementioned change is hub side exclusive and is for informational purposes only.
 	availableDueToUntrackableResCondAcyclicTransformer = cmpopts.AcyclicTransformer("AvailableDueToUntrackableResCond", func(cond metav1.Condition) metav1.Condition {
 		transformedCond := cond.DeepCopy()
-<<<<<<< HEAD
 		if cond.Type == string(placementv1beta1.ResourcesAvailableConditionType) && cond.Reason == condition.WorkNotTrackableReason {
-=======
-		if cond.Type == string(placementv1beta1.ResourcesAvailableConditionType) && cond.Reason == workapplier.WorkNotAllManifestsTrackableReason {
->>>>>>> bae0b1b (workapplier.WorkNotAllManifestsTrackableReason constant used instead of "NotTrackable")
 			transformedCond.Reason = condition.WorkNotAvailabilityTrackableReason
 		}
 		return *transformedCond
