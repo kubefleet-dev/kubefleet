@@ -906,10 +906,6 @@ spec:
             required:
             - resourceSelectors
             type: object
-            x-kubernetes-validations:
-            - message: placement type is immutable
-              rule: '!(has(oldSelf.policy) && !has(self.policy) && self.policy.placementType
-                != oldSelf.policy.placementType)'
           status:
             description: The observed status of ResourcePlacement.
             properties:

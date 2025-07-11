@@ -1973,8 +1973,8 @@ spec:
             type: object
             x-kubernetes-validations:
             - message: placement type is immutable
-              rule: '!(has(oldSelf.policy) && !has(self.policy) && self.policy.placementType
-                != oldSelf.policy.placementType)'
+              rule: '!(has(oldSelf.policy) && !has(self.policy)) || (has(self.policy)
+                && has(oldSelf.policy) && self.policy.placementType != oldSelf.policy.placementType)'
           status:
             description: The observed status of ClusterResourcePlacement.
             properties:
