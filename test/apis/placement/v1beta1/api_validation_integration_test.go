@@ -62,8 +62,13 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 							Name:    "test-ns",
 						},
 					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickFixedPlacementType,
+						ClusterNames:  []string{"cluster1", "cluster2"},
+					},
 				},
 			}
+			Expect(hubClient.Create(ctx, &crp)).Should(Succeed())
 		})
 
 		AfterEach(func() {
@@ -71,11 +76,6 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 		})
 
 		It("should deny update of ClusterResourcePlacement with nil policy", func() {
-			crp.Spec.Policy = &placementv1beta1.PlacementPolicy{
-				PlacementType: placementv1beta1.PickFixedPlacementType,
-				ClusterNames:  []string{"cluster1", "cluster2"},
-			}
-			Expect(hubClient.Create(ctx, &crp)).Should(Succeed())
 			Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed(), "Get CRP call failed")
 			crp.Spec.Policy = nil
 			err := hubClient.Update(ctx, &crp)
