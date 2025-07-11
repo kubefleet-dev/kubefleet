@@ -327,6 +327,16 @@ spec:
                                   Path defines the target location.
                                   Note: override will fail if the resource path does not exist.
                                 type: string
+                                x-kubernetes-validations:
+                                - message: Path cannot target typeMeta fields (kind,
+                                    apiVersion)
+                                  rule: '!(self == ''/kind'' || self == ''/apiVersion'')'
+                                - message: Path can only target annotations and labels
+                                    under metadata
+                                  rule: '!(self.startsWith(''/metadata'') && !(self.startsWith(''/metadata/annotations'')
+                                    || self.startsWith(''/metadata/labels'')))'
+                                - message: Path cannot target status fields
+                                  rule: '!self.startsWith(''/status'')'
                               value:
                                 description: |-
                                   Value defines the content to be applied on the target location.
@@ -352,6 +362,15 @@ spec:
                           - Delete
                           type: string
                       type: object
+                      x-kubernetes-validations:
+                      - message: jsonPatchOverrides cannot be set when the override
+                          type is Delete.
+                        rule: '!(self.overrideType == ''Delete'' && has(self.jsonPatchOverrides)
+                          && self.jsonPatchOverrides.size() > 0)'
+                      - message: jsonPatchOverrides must be set when the override
+                          type is JSONPatch.
+                        rule: '!(self.overrideType == ''JSONPatch'' && !has(self.jsonPatchOverrides)
+                          && self.jsonPatchOverrides.size() == 0)'
                     maxItems: 20
                     minItems: 1
                     type: array

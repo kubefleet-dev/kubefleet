@@ -678,11 +678,6 @@ var _ = Describe("webhook tests for ClusterResourceOverride CREATE operations re
 									},
 									{
 										Operator: placementv1alpha1.JSONPatchOverrideOpReplace,
-										Path:     "/kind",
-										Value:    apiextensionsv1.JSON{Raw: []byte(`"new-kind"`)},
-									},
-									{
-										Operator: placementv1alpha1.JSONPatchOverrideOpReplace,
 										Path:     "////",
 										Value:    apiextensionsv1.JSON{Raw: []byte(`"new-kind"`)},
 									},
@@ -699,7 +694,6 @@ var _ = Describe("webhook tests for ClusterResourceOverride CREATE operations re
 			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("invalid resource selector %+v: the resource has been selected by both %v and %v, which is not supported", selector, cro1.Name, croName)))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("only labelSelector is supported"))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("remove operation cannot have value"))
-			Expect(statusErr.Status().Message).Should(MatchRegexp("cannot override typeMeta fields"))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("path cannot contain empty string"))
 			return nil
 		}, consistentlyDuration, consistentlyInterval).Should(Succeed())
@@ -841,10 +835,6 @@ var _ = Describe("webhook tests for CRO UPDATE operations", Ordered, func() {
 			}
 			cro.Spec.Policy.OverrideRules[0].ClusterSelector.ClusterSelectorTerms = append(cro.Spec.Policy.OverrideRules[0].ClusterSelector.ClusterSelectorTerms, clusterSelectorTerm)
 			cro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = append(cro.Spec.Policy.OverrideRules[0].JSONPatchOverrides, placementv1alpha1.JSONPatchOverride{
-				Operator: placementv1alpha1.JSONPatchOverrideOpRemove,
-				Path:     "/kind",
-			})
-			cro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = append(cro.Spec.Policy.OverrideRules[0].JSONPatchOverrides, placementv1alpha1.JSONPatchOverride{
 				Operator: placementv1alpha1.JSONPatchOverrideOpAdd,
 				Path:     "",
 				Value:    apiextensionsv1.JSON{Raw: []byte(`"new-value"`)},
@@ -858,7 +848,6 @@ var _ = Describe("webhook tests for CRO UPDATE operations", Ordered, func() {
 			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
 			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("invalid resource selector %+v: the resource has been selected by both %v and %v, which is not supported", selector, cro.Name, cro1.Name)))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("only labelSelector is supported"))
-			Expect(statusErr.Status().Message).Should(MatchRegexp("cannot override typeMeta fields"))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("path cannot be empty"))
 			return nil
 		}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
@@ -1109,11 +1098,6 @@ var _ = Describe("webhook tests for ResourceOverride CREATE operations resource 
 									},
 									{
 										Operator: placementv1alpha1.JSONPatchOverrideOpReplace,
-										Path:     "/kind",
-										Value:    apiextensionsv1.JSON{Raw: []byte(`"new-kind"`)},
-									},
-									{
-										Operator: placementv1alpha1.JSONPatchOverrideOpReplace,
 										Path:     "////",
 										Value:    apiextensionsv1.JSON{Raw: []byte(`"new-kind"`)},
 									},
@@ -1128,7 +1112,6 @@ var _ = Describe("webhook tests for ResourceOverride CREATE operations resource 
 			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
 			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("invalid resource selector %+v: the resource has been selected by both %v and %v, which is not supported", selector, ro1.Name, roName)))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("remove operation cannot have value"))
-			Expect(statusErr.Status().Message).Should(MatchRegexp("cannot override typeMeta fields"))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("path cannot contain empty string"))
 			return nil
 		}, consistentlyDuration, consistentlyInterval).Should(Succeed())
@@ -1255,23 +1238,14 @@ var _ = Describe("webhook tests for ResourceOverride UPDATE operations", Ordered
 			}
 			ro.Spec.Policy.OverrideRules[0].ClusterSelector.ClusterSelectorTerms = append(ro.Spec.Policy.OverrideRules[0].ClusterSelector.ClusterSelectorTerms, clusterSelectorTerm)
 			ro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = append(ro.Spec.Policy.OverrideRules[0].JSONPatchOverrides, placementv1alpha1.JSONPatchOverride{
-				Operator: placementv1alpha1.JSONPatchOverrideOpRemove,
-				Path:     "/status/conditions/0",
-				Value:    apiextensionsv1.JSON{Raw: []byte(`"new-value"`)},
-			})
-			ro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = append(ro.Spec.Policy.OverrideRules[0].JSONPatchOverrides, placementv1alpha1.JSONPatchOverride{
-				Operator: placementv1alpha1.JSONPatchOverrideOpRemove,
-				Path:     "/status/conditions/0",
-			})
-			ro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = append(ro.Spec.Policy.OverrideRules[0].JSONPatchOverrides, placementv1alpha1.JSONPatchOverride{
 				Operator: placementv1alpha1.JSONPatchOverrideOpAdd,
 				Path:     "////kind",
 				Value:    apiextensionsv1.JSON{Raw: []byte(`"new-value"`)},
 			})
 			ro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = append(ro.Spec.Policy.OverrideRules[0].JSONPatchOverrides, placementv1alpha1.JSONPatchOverride{
 				Operator: placementv1alpha1.JSONPatchOverrideOpAdd,
-				Path:     "/metadata/finalizers/0",
-				Value:    apiextensionsv1.JSON{Raw: []byte(`"new-finalizer"`)},
+				Path:     "/metadata/labels/0",
+				Value:    apiextensionsv1.JSON{Raw: []byte(`"new-label: new-value"`)},
 			})
 
 			By(fmt.Sprintf("expecting denial of UPDATE override %s", roName))
@@ -1283,10 +1257,7 @@ var _ = Describe("webhook tests for ResourceOverride UPDATE operations", Ordered
 			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
 			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("invalid resource selector %+v: the resource has been selected by both %v and %v, which is not supported", newSelector, roName, ro1.Name)))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("only labelSelector is supported"))
-			Expect(statusErr.Status().Message).Should(MatchRegexp("remove operation cannot have value"))
-			Expect(statusErr.Status().Message).Should(MatchRegexp("cannot override status fields"))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("path cannot contain empty string"))
-			Expect(statusErr.Status().Message).Should(MatchRegexp("cannot override metadata fields except annotations and labels"))
 			return nil
 		}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 	})

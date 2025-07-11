@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -91,6 +91,8 @@ type OverridePolicy struct {
 }
 
 // OverrideRule defines how to override the selected resources on the target clusters.
+// +kubebuilder:validation:XValidation:rule="!(self.overrideType == 'Delete' && has(self.jsonPatchOverrides) && self.jsonPatchOverrides.size() > 0)", message="jsonPatchOverrides cannot be set when the override type is Delete."
+// +kubebuilder:validation:XValidation:rule="!(self.overrideType == 'JSONPatch' && !has(self.jsonPatchOverrides) && self.jsonPatchOverrides.size() == 0)", message="jsonPatchOverrides must be set when the override type is JSONPatch."
 type OverrideRule struct {
 	// ClusterSelectors selects the target clusters.
 	// The resources will be overridden before applying to the matching clusters.
@@ -198,6 +200,9 @@ type JSONPatchOverride struct {
 	// Path defines the target location.
 	// Note: override will fail if the resource path does not exist.
 	// +required
+	// +kubebuilder:validation:XValidation:rule="!(self == '/kind' || self == '/apiVersion')",message="Path cannot target typeMeta fields (kind, apiVersion)"
+	// +kubebuilder:validation:XValidation:rule="!(self.startsWith('/metadata') && !(self.startsWith('/metadata/annotations') || self.startsWith('/metadata/labels')))",message="Path can only target annotations and labels under metadata"
+	// +kubebuilder:validation:XValidation:rule="!self.startsWith('/status')",message="Path cannot target status fields"
 	Path string `json:"path"`
 	// Value defines the content to be applied on the target location.
 	// Value should be empty when operator is `remove`.
