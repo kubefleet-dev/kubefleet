@@ -129,6 +129,11 @@ type ResourceBindingSpec struct {
 	// and is owned by other appliers.
 	// +optional
 	ApplyStrategy *ApplyStrategy `json:"applyStrategy,omitempty"`
+
+	// DeleteStrategy controls whether resources should be deleted or orphaned on the member cluster 
+	// when corresponding ClusterResourcePlacement is deleted.
+	// +optional
+	DeleteStrategy *DeleteStrategy `json:"deleteStrategy,omitempty"`
 }
 
 // BindingState is the state of the binding.

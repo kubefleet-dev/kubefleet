@@ -68,6 +68,11 @@ type WorkSpec struct {
 	// and is owned by other appliers.
 	// +optional
 	ApplyStrategy *ApplyStrategy `json:"applyStrategy,omitempty"`
+
+	// DeleteStrategy controls whether resources should be deleted or orphaned on the member cluster 
+	// when corresponding ClusterResourcePlacement is deleted.
+	// +optional
+	DeleteStrategy *DeleteStrategy `json:"deleteStrategy,omitempty"`
 }
 
 // WorkloadTemplate represents the manifest workload to be deployed on spoke cluster
