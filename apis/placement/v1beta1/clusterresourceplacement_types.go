@@ -869,19 +869,19 @@ type RollingUpdateConfig struct {
 
 // DeleteStrategy represents the deletion strategy when a ClusterResourcePlacement is deleted.
 type DeleteStrategy struct {
-    // DeletePolicy defines how resources should be handled when the ClusterResourcePlacement is deleted.
-    // Available options are:
-    //
-    // * Delete: Fleet will delete all resources that were propagated by this CRP from the member clusters
-    //   when the CRP is deleted. This is the default behavior if DeleteStrategy is not specified.
-    //
-    // * Orphan: Fleet will leave all resources that were propagated by this CRP on the member clusters
-    //   when the CRP is deleted. The resources will become "orphaned" and will no longer be managed by Fleet.
-    //
-    // +kubebuilder:validation:Enum=Delete;Orphan;
-    // +kubebuilder:default=Delete
-    // +kubebuilder:validation:Optional
-    DeletePolicy DeletePolicyType `json:"DeletePolicy,omitempty"`
+	// DeletePolicy defines how resources should be handled when the ClusterResourcePlacement is deleted.
+	// Available options are:
+	//
+	// * Delete: Fleet will delete all resources that were propagated by this CRP from the member clusters
+	//   when the CRP is deleted. This is the default behavior if DeleteStrategy is not specified.
+	//
+	// * Orphan: Fleet will leave all resources that were propagated by this CRP on the member clusters
+	//   when the CRP is deleted. The resources will become "orphaned" and will no longer be managed by Fleet.
+	//
+	// +kubebuilder:validation:Enum=Delete;Orphan;
+	// +kubebuilder:default=Delete
+	// +kubebuilder:validation:Optional
+	DeletePolicy DeletePolicyType `json:"deletePolicy,omitempty"`
 }
 
 // DeletePolicyType describes how resources should be handled when a ClusterResourcePlacement is deleted.
@@ -889,13 +889,13 @@ type DeleteStrategy struct {
 type DeletePolicyType string
 
 const (
-    // DeletePolicyTypeDelete represents that all resources propagated by the CRP
-    // will be deleted from member clusters when the CRP is deleted.
-    DeletePolicyTypeDelete DeletePolicyType = "Delete"
+	// DeletePolicyTypeDelete represents that all resources propagated by the CRP
+	// will be deleted from member clusters when the CRP is deleted.
+	DeletePolicyTypeDelete DeletePolicyType = "Delete"
 
-    // DeletePolicyTypeOrphan represents that all resources propagated by the CRP
-    // will be orphaned on member clusters when the CRP is deleted.
-    DeletePolicyTypeOrphan DeletePolicyType = "Orphan"
+	// DeletePolicyTypeOrphan represents that all resources propagated by the CRP
+	// will be orphaned on member clusters when the CRP is deleted.
+	DeletePolicyTypeOrphan DeletePolicyType = "Orphan"
 )
 
 // PlacementStatus defines the observed status of the ClusterResourcePlacement and ResourcePlacement object.
