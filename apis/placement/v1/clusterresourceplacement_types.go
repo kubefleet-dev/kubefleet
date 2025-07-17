@@ -92,6 +92,13 @@ type ClusterResourcePlacementSpec struct {
 	// +kubebuilder:default=10
 	// +optional
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
+
+	// DeletePolicy controls what happens to placed resources when the ClusterResourcePlacement is deleted.
+	// Defaults to "Delete".
+	// +kubebuilder:default=Delete
+	// +kubebuilder:validation:Enum=Delete;Keep
+	// +optional
+	DeletePolicy DeletePolicyType `json:"deletePolicy,omitempty"`
 }
 
 // ClusterResourceSelector is used to select cluster scoped resources as the target resources to be placed.
@@ -828,6 +835,20 @@ const (
 
 	// PickFixedPlacementType picks a fixed set of clusters.
 	PickFixedPlacementType PlacementType = "PickFixed"
+)
+
+// DeletePolicyType defines the policy for deleting placed resources when ClusterResourcePlacement is deleted.
+// +enum
+type DeletePolicyType string
+
+const (
+	// DeletePolicyDelete removes all placed resources when the ClusterResourcePlacement is deleted.
+	// This is the default behavior.
+	DeletePolicyDelete DeletePolicyType = "Delete"
+
+	// DeletePolicyKeep preserves all placed resources when the ClusterResourcePlacement is deleted.
+	// Resources remain on member clusters even after the CRP is removed.
+	DeletePolicyKeep DeletePolicyType = "Keep"
 )
 
 // ClusterResourcePlacementList contains a list of ClusterResourcePlacement.

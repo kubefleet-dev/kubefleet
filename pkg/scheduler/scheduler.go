@@ -299,6 +299,14 @@ func (s *Scheduler) Run(ctx context.Context) {
 func (s *Scheduler) cleanUpAllBindingsFor(ctx context.Context, placement fleetv1beta1.PlacementObj) error {
 	placementRef := klog.KObj(placement)
 
+	// Check the delete policy to determine whether to delete bindings or just remove finalizers
+	placementSpec := placement.GetPlacementSpec()
+	shouldDeleteBindings := true
+	if placementSpec != nil && placementSpec.DeletePolicy == fleetv1beta1.DeletePolicyKeep {
+		shouldDeleteBindings = false
+		klog.V(2).InfoS("DeletePolicy is Keep, preserving bindings", "placement", placementRef)
+	}
+
 	// List all bindings derived from the placement.
 	//
 	// Note that the listing is performed using the uncached client; this is to ensure that all related
@@ -325,8 +333,8 @@ func (s *Scheduler) cleanUpAllBindingsFor(ctx context.Context, placement fleetv1
 			klog.ErrorS(err, "Failed to remove scheduler reconcile finalizer from binding", "binding", klog.KObj(binding))
 			return controller.NewUpdateIgnoreConflictError(err)
 		}
-		// Delete the binding if it has not been marked for deletion yet.
-		if binding.GetDeletionTimestamp() == nil {
+		// Delete the binding if it has not been marked for deletion yet and DeletePolicy allows it.
+		if shouldDeleteBindings && binding.GetDeletionTimestamp() == nil {
 			if err := s.client.Delete(ctx, binding); err != nil && !apiErrors.IsNotFound(err) {
 				klog.ErrorS(err, "Failed to delete binding", "binding", klog.KObj(binding))
 				return controller.NewAPIServerError(false, err)
@@ -334,7 +342,7 @@ func (s *Scheduler) cleanUpAllBindingsFor(ctx context.Context, placement fleetv1
 		}
 	}
 
-	// All bindings have been deleted; remove the scheduler cleanup finalizer from the placement.
+	// All bindings have been processed; remove the scheduler cleanup finalizer from the placement.
 	// Use SchedulerCRPCleanupFinalizer consistently for all placement types.
 	controllerutil.RemoveFinalizer(placement, fleetv1beta1.SchedulerCleanupFinalizer)
 	if err := s.client.Update(ctx, placement); err != nil {

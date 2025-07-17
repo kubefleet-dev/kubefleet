@@ -79,6 +79,15 @@ spec:
           spec:
             description: The desired state of ResourcePlacement.
             properties:
+              deletePolicy:
+                default: Delete
+                description: |-
+                  DeletePolicy controls what happens to placed resources when the ClusterResourcePlacement is deleted.
+                  Defaults to "Delete".
+                enum:
+                - Delete
+                - Keep
+                type: string
               policy:
                 description: |-
                   Policy defines how to select member clusters to place the selected resources.

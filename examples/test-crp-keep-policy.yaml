@@ -1,0 +1,22 @@
+apiVersion: placement.kubernetes-fleet.io/v1beta1
+kind: ClusterResourcePlacement
+metadata:
+  name: crp-with-keep-policy
+spec:
+  resourceSelectors:
+    - group: ""
+      kind: Namespace
+      name: example-app
+      version: v1
+  policy:
+    placementType: PickAll
+    affinity:
+      clusterAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          clusterSelectorTerms:
+            - labelSelector:
+                matchLabels:
+                  environment: dev
+  deletePolicy: Keep
+  strategy:
+    type: RollingUpdate
