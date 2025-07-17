@@ -79,28 +79,6 @@ spec:
           spec:
             description: The desired state of ResourcePlacement.
             properties:
-              deleteOptions:
-                description: DeleteOptions configures the deletion behavior when the
-                  ClusterResourcePlacement is deleted.
-                properties:
-                  propagationPolicy:
-                    default: Abandon
-                    description: |-
-                      PropagationPolicy controls how the deletion is propagated to placed resources.
-                      Defaults to "Abandon".
-
-                      Available options:
-
-                      * Abandon: all placed resources on member clusters will be left intact (abandoned)
-                        when the ClusterResourcePlacement is deleted. This is the default behavior.
-
-                      * Delete: all placed resources on member clusters will be deleted when the
-                        ClusterResourcePlacement is deleted.
-                    enum:
-                    - Abandon
-                    - Delete
-                    type: string
-                type: object
               policy:
                 description: |-
                   Policy defines how to select member clusters to place the selected resources.
@@ -764,8 +742,8 @@ spec:
                             managed by Fleet (i.e., specified in the hub cluster manifest). This is the default
                             option.
 
-                            Note that this option would revert any ad-hoc changes made on the member cluster side in the
-                            managed fields; if you would like to make temporary edits on the member cluster side
+                            Note that this option would revert any ad-hoc changes made on the member cluster side in
+                            the managed fields; if you would like to make temporary edits on the member cluster side
                             in the managed fields, switch to IfNotDrifted option. Note that changes in unmanaged
                             fields will be left alone; if you use the FullDiff compare option, such changes will
                             be reported as drifts.
