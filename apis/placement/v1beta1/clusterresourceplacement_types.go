@@ -148,6 +148,22 @@ type PlacementSpec struct {
 	// +kubebuilder:default=10
 	// +kubebuilder:validation:Optional
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
+
+	// DeletionPolicy controls whether resources placed on member clusters should be deleted
+	// when the ClusterResourcePlacement is deleted. Defaults to "Delete".
+	//
+	// Available options:
+	//
+	// * Delete: all placed resources on member clusters will be deleted when the
+	//   ClusterResourcePlacement is deleted. This is the default behavior.
+	//
+	// * Orphan: all placed resources on member clusters will be left intact (orphaned)
+	//   when the ClusterResourcePlacement is deleted.
+	//
+	// +kubebuilder:validation:Enum=Delete;Orphan
+	// +kubebuilder:default=Delete
+	// +kubebuilder:validation:Optional
+	DeletionPolicy DeletionPolicy `json:"deletionPolicy,omitempty"`
 }
 
 // Tolerations returns tolerations for PlacementSpec to handle nil policy case.
@@ -1317,6 +1333,20 @@ const (
 
 	// PickFixedPlacementType picks a fixed set of clusters.
 	PickFixedPlacementType PlacementType = "PickFixed"
+)
+
+// DeletionPolicy identifies the deletion policy when a placement is deleted.
+// +enum
+type DeletionPolicy string
+
+const (
+	// DeletionPolicyDelete instructs Fleet to delete all placed resources on member clusters
+	// when the ClusterResourcePlacement is deleted. This is the default behavior.
+	DeletionPolicyDelete DeletionPolicy = "Delete"
+
+	// DeletionPolicyOrphan instructs Fleet to leave (orphan) all placed resources on member
+	// clusters when the ClusterResourcePlacement is deleted.
+	DeletionPolicyOrphan DeletionPolicy = "Orphan"
 )
 
 // ClusterResourcePlacementList contains a list of ClusterResourcePlacement.

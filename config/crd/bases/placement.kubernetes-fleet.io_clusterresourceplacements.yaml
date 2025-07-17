@@ -1144,6 +1144,23 @@ spec:
           spec:
             description: The desired state of ClusterResourcePlacement.
             properties:
+              deletionPolicy:
+                default: Delete
+                description: |-
+                  DeletionPolicy controls whether resources placed on member clusters should be deleted
+                  when the ClusterResourcePlacement is deleted. Defaults to "Delete".
+
+                  Available options:
+
+                  * Delete: all placed resources on member clusters will be deleted when the
+                    ClusterResourcePlacement is deleted. This is the default behavior.
+
+                  * Orphan: all placed resources on member clusters will be left intact (orphaned)
+                    when the ClusterResourcePlacement is deleted.
+                enum:
+                - Delete
+                - Orphan
+                type: string
               policy:
                 description: |-
                   Policy defines how to select member clusters to place the selected resources.
@@ -1807,8 +1824,8 @@ spec:
                             managed by Fleet (i.e., specified in the hub cluster manifest). This is the default
                             option.
 
-                            Note that this option would revert any ad-hoc changes made on the member cluster side in
-                            the managed fields; if you would like to make temporary edits on the member cluster side
+                            Note that this option would revert any ad-hoc changes made on the member cluster side in the
+                            managed fields; if you would like to make temporary edits on the member cluster side
                             in the managed fields, switch to IfNotDrifted option. Note that changes in unmanaged
                             fields will be left alone; if you use the FullDiff compare option, such changes will
                             be reported as drifts.
