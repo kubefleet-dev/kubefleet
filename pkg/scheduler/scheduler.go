@@ -299,12 +299,6 @@ func (s *Scheduler) Run(ctx context.Context) {
 func (s *Scheduler) cleanUpAllBindingsFor(ctx context.Context, placement fleetv1beta1.PlacementObj) error {
 	placementRef := klog.KObj(placement)
 
-	// Check the deletion policy to determine whether to delete bindings.
-	deletionPolicy := fleetv1beta1.DeletionPolicyDelete // default value
-	if spec := placement.GetPlacementSpec(); spec != nil && spec.DeletionPolicy != "" {
-		deletionPolicy = spec.DeletionPolicy
-	}
-
 	// List all bindings derived from the placement.
 	//
 	// Note that the listing is performed using the uncached client; this is to ensure that all related
@@ -331,19 +325,13 @@ func (s *Scheduler) cleanUpAllBindingsFor(ctx context.Context, placement fleetv1
 			klog.ErrorS(err, "Failed to remove scheduler reconcile finalizer from binding", "binding", klog.KObj(binding))
 			return controller.NewUpdateIgnoreConflictError(err)
 		}
-
-		// Delete the binding if it has not been marked for deletion yet, but only if the deletion
-		// policy is "Delete". For "Orphan" policy, we skip deletion to leave placed resources intact.
-		if binding.GetDeletionTimestamp() == nil && deletionPolicy == fleetv1beta1.DeletionPolicyDelete {
+		// Delete the binding if it has not been marked for deletion yet.
+		if binding.GetDeletionTimestamp() == nil {
 			if err := s.client.Delete(ctx, binding); err != nil && !apiErrors.IsNotFound(err) {
 				klog.ErrorS(err, "Failed to delete binding", "binding", klog.KObj(binding))
 				return controller.NewAPIServerError(false, err)
 			}
 		}
-	}
-
-	if deletionPolicy == fleetv1beta1.DeletionPolicyOrphan {
-		klog.V(2).InfoS("Skipped deleting bindings due to Orphan deletion policy", "placement", placementRef, "bindingCount", len(bindings))
 	}
 
 	// All bindings have been deleted; remove the scheduler cleanup finalizer from the placement.

@@ -149,21 +149,9 @@ type PlacementSpec struct {
 	// +kubebuilder:validation:Optional
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
 
-	// DeletionPolicy controls whether resources placed on member clusters should be deleted
-	// when the ClusterResourcePlacement is deleted. Defaults to "Delete".
-	//
-	// Available options:
-	//
-	// * Delete: all placed resources on member clusters will be deleted when the
-	//   ClusterResourcePlacement is deleted. This is the default behavior.
-	//
-	// * Orphan: all placed resources on member clusters will be left intact (orphaned)
-	//   when the ClusterResourcePlacement is deleted.
-	//
-	// +kubebuilder:validation:Enum=Delete;Orphan
-	// +kubebuilder:default=Delete
+	// DeleteOptions configures the deletion behavior when the ClusterResourcePlacement is deleted.
 	// +kubebuilder:validation:Optional
-	DeletionPolicy DeletionPolicy `json:"deletionPolicy,omitempty"`
+	DeleteOptions *DeleteOptions `json:"deleteOptions,omitempty"`
 }
 
 // Tolerations returns tolerations for PlacementSpec to handle nil policy case.
@@ -1335,18 +1323,37 @@ const (
 	PickFixedPlacementType PlacementType = "PickFixed"
 )
 
-// DeletionPolicy identifies the deletion policy when a placement is deleted.
+// DeleteOptions configures the deletion behavior when a placement is deleted.
+type DeleteOptions struct {
+	// PropagationPolicy controls how the deletion is propagated to placed resources.
+	// Defaults to "Abandon".
+	//
+	// Available options:
+	//
+	// * Abandon: all placed resources on member clusters will be left intact (abandoned)
+	//   when the ClusterResourcePlacement is deleted. This is the default behavior.
+	//
+	// * Delete: all placed resources on member clusters will be deleted when the
+	//   ClusterResourcePlacement is deleted.
+	//
+	// +kubebuilder:validation:Enum=Abandon;Delete
+	// +kubebuilder:default=Abandon
+	// +kubebuilder:validation:Optional
+	PropagationPolicy DeletePropagationPolicy `json:"propagationPolicy,omitempty"`
+}
+
+// DeletePropagationPolicy identifies the propagation policy when a placement is deleted.
 // +enum
-type DeletionPolicy string
+type DeletePropagationPolicy string
 
 const (
-	// DeletionPolicyDelete instructs Fleet to delete all placed resources on member clusters
-	// when the ClusterResourcePlacement is deleted. This is the default behavior.
-	DeletionPolicyDelete DeletionPolicy = "Delete"
+	// DeletePropagationPolicyAbandon instructs Fleet to leave (abandon) all placed resources on member
+	// clusters when the ClusterResourcePlacement is deleted. This is the default behavior.
+	DeletePropagationPolicyAbandon DeletePropagationPolicy = "Abandon"
 
-	// DeletionPolicyOrphan instructs Fleet to leave (orphan) all placed resources on member
-	// clusters when the ClusterResourcePlacement is deleted.
-	DeletionPolicyOrphan DeletionPolicy = "Orphan"
+	// DeletePropagationPolicyDelete instructs Fleet to delete all placed resources on member clusters
+	// when the ClusterResourcePlacement is deleted.
+	DeletePropagationPolicyDelete DeletePropagationPolicy = "Delete"
 )
 
 // ClusterResourcePlacementList contains a list of ClusterResourcePlacement.
