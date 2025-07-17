@@ -845,18 +845,18 @@ spec:
                       the ClusterResourcePlacement is deleted.
                     properties:
                       propagationPolicy:
-                        default: Abandon
+                        default: Delete
                         description: |-
                           PropagationPolicy controls how the deletion is propagated to placed resources.
-                          Defaults to "Abandon".
+                          Defaults to "Delete".
 
                           Available options:
 
-                          * Abandon: all placed resources on member clusters will be left intact (abandoned)
-                            when the ClusterResourcePlacement is deleted. This is the default behavior.
-
                           * Delete: all placed resources on member clusters will be deleted when the
-                            ClusterResourcePlacement is deleted.
+                            ClusterResourcePlacement is deleted. This is the default behavior.
+
+                          * Abandon: all placed resources on member clusters will be left intact (abandoned)
+                            when the ClusterResourcePlacement is deleted.
                         enum:
                         - Abandon
                         - Delete

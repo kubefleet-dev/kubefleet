@@ -1326,18 +1326,18 @@ const (
 // DeleteStrategy configures the deletion behavior when a placement is deleted.
 type DeleteStrategy struct {
 	// PropagationPolicy controls how the deletion is propagated to placed resources.
-	// Defaults to "Abandon".
+	// Defaults to "Delete".
 	//
 	// Available options:
 	//
-	// * Abandon: all placed resources on member clusters will be left intact (abandoned)
-	//   when the ClusterResourcePlacement is deleted. This is the default behavior.
-	//
 	// * Delete: all placed resources on member clusters will be deleted when the
-	//   ClusterResourcePlacement is deleted.
+	//   ClusterResourcePlacement is deleted. This is the default behavior.
+	//
+	// * Abandon: all placed resources on member clusters will be left intact (abandoned)
+	//   when the ClusterResourcePlacement is deleted.
 	//
 	// +kubebuilder:validation:Enum=Abandon;Delete
-	// +kubebuilder:default=Abandon
+	// +kubebuilder:default=Delete
 	// +kubebuilder:validation:Optional
 	PropagationPolicy DeletePropagationPolicy `json:"propagationPolicy,omitempty"`
 }
@@ -1348,11 +1348,11 @@ type DeletePropagationPolicy string
 
 const (
 	// DeletePropagationPolicyAbandon instructs Fleet to leave (abandon) all placed resources on member
-	// clusters when the ClusterResourcePlacement is deleted. This is the default behavior.
+	// clusters when the ClusterResourcePlacement is deleted.
 	DeletePropagationPolicyAbandon DeletePropagationPolicy = "Abandon"
 
 	// DeletePropagationPolicyDelete instructs Fleet to delete all placed resources on member clusters
-	// when the ClusterResourcePlacement is deleted.
+	// when the ClusterResourcePlacement is deleted. This is the default behavior.
 	DeletePropagationPolicyDelete DeletePropagationPolicy = "Delete"
 )
 
