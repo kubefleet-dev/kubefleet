@@ -34,7 +34,7 @@ import (
 
 // Serial - Ginkgo will guarantee that these specs will never run in parallel with other specs.
 // This test cannot be run in parallel with other specs in the suite as it's leaving, joining, leaving and joining again.
-var _ = Describe("workload orchestration testing with join/leave", Serial, func() {
+var _ = Describe("workload orchestration testing with join/leave", Label("serial"), Serial, func() {
 	var (
 		crp *v1alpha1.ClusterResourcePlacement
 		ctx context.Context

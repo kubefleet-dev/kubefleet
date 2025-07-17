@@ -1213,7 +1213,7 @@ var _ = Describe("validating CRP revision history allowing multiple revisions wh
 })
 
 // running spec in parallel with other specs causes timeouts.
-var _ = Describe("validating CRP when selected resources cross the 1MB limit", Ordered, Serial, func() {
+var _ = Describe("validating CRP when selected resources cross the 1MB limit", Label("serial"), Ordered, Serial, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	BeforeAll(func() {
 		By("creating resources for multiple resource snapshots")
