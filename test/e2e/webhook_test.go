@@ -510,7 +510,7 @@ var _ = Describe("webhook tests for ClusterResourceOverride CREATE operations", 
 	})
 })
 
-var _ = Describe("webhook tests for ClusterResourceOverride CREATE operation limitations", Ordered, Serial, func() {
+var _ = Describe("webhook tests for ClusterResourceOverride CREATE operation limitations", Label("serial"), Ordered, Serial, func() {
 	BeforeAll(func() {
 		By("Create 100 ClusterResourceOverrides")
 		createClusterResourceOverrides(100)
@@ -580,7 +580,7 @@ var _ = Describe("webhook tests for ClusterResourceOverride CREATE operation lim
 	})
 })
 
-var _ = Describe("webhook tests for ClusterResourceOverride CREATE operations resource selection limitations", Ordered, Serial, func() {
+var _ = Describe("webhook tests for ClusterResourceOverride CREATE operations resource selection limitations", Label("serial"), Ordered, Serial, func() {
 	croName := fmt.Sprintf(croNameTemplate, GinkgoParallelProcess())
 	selector := placementv1beta1.ClusterResourceSelector{
 		Group:   "rbac.authorization.k8s.io/v1",
@@ -939,7 +939,7 @@ var _ = Describe("webhook tests for ResourceOverride CREATE operations", func() 
 	})
 })
 
-var _ = Describe("webhook tests for ResourceOverride CREATE operation limitations", Ordered, Serial, func() {
+var _ = Describe("webhook tests for ResourceOverride CREATE operation limitations", Label("serial"), Ordered, Serial, func() {
 	roNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 	BeforeAll(func() {
 		By("creating work resources")
@@ -1017,7 +1017,7 @@ var _ = Describe("webhook tests for ResourceOverride CREATE operation limitation
 	})
 })
 
-var _ = Describe("webhook tests for ResourceOverride CREATE operations resource selection limitations", Ordered, Serial, func() {
+var _ = Describe("webhook tests for ResourceOverride CREATE operations resource selection limitations", Label("serial"), Ordered, Serial, func() {
 	roName := fmt.Sprintf(roNameTemplate, GinkgoParallelProcess())
 	roNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 	selector := placementv1alpha1.ResourceSelector{

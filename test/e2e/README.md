@@ -40,6 +40,11 @@ test suites, follow the steps below:
    ginkgo --label-filter="custom" -v -p .
    ```
 
+   or run the serial e2e tests with the following command
+   ```sh
+   ginkgo --label-filter="serial" -v .
+   ```
+
    or create a launch.json in your vscode workspace.
    ```yaml
    {

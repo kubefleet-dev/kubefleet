@@ -28,7 +28,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
 )
 
-var _ = Describe("placing resource using a cluster resource placement with pickFixed placement policy specified, taint clusters, pick all specified clusters", Serial, Ordered, func() {
+var _ = Describe("placing resource using a cluster resource placement with pickFixed placement policy specified, taint clusters, pick all specified clusters", Label("serial"), Serial, Ordered, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 
 	BeforeAll(func() {
@@ -70,7 +70,7 @@ var _ = Describe("placing resource using a cluster resource placement with pickF
 	})
 })
 
-var _ = Describe("placing resources using a cluster resource placement with no placement policy specified, taint clusters, update cluster resource placement with tolerations", Serial, Ordered, func() {
+var _ = Describe("placing resources using a cluster resource placement with no placement policy specified, taint clusters, update cluster resource placement with tolerations", Label("serial"), Serial, Ordered, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	var taintClusterNames, noTaintClusterNames []string
 	var taintClusters, noTaintClusters []*framework.Cluster
@@ -143,7 +143,7 @@ var _ = Describe("placing resources using a cluster resource placement with no p
 	})
 })
 
-var _ = Describe("placing resources using a cluster resource placement with no placement policy specified, taint clusters, remove taints from cluster, all cluster should be picked", Serial, Ordered, func() {
+var _ = Describe("placing resources using a cluster resource placement with no placement policy specified, taint clusters, remove taints from cluster, all cluster should be picked", Label("serial"), Serial, Ordered, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	var taintClusterNames, noTaintClusterNames []string
 	var taintClusters, noTaintClusters []*framework.Cluster
@@ -214,7 +214,7 @@ var _ = Describe("placing resources using a cluster resource placement with no p
 	})
 })
 
-var _ = Describe("picking N clusters with affinities and topology spread constraints, taint clusters, create cluster resource placement with toleration for one cluster", Serial, Ordered, func() {
+var _ = Describe("picking N clusters with affinities and topology spread constraints, taint clusters, create cluster resource placement with toleration for one cluster", Label("serial"), Serial, Ordered, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	var taintClusterNames, tolerateClusterNames, unSelectedClusterNames []string
 	var tolerateClusters, unSelectedClusters []*framework.Cluster
@@ -311,7 +311,7 @@ var _ = Describe("picking N clusters with affinities and topology spread constra
 	})
 })
 
-var _ = Describe("picking all clusters using pickAll placement policy, add taint to a cluster that's already selected", Serial, Ordered, func() {
+var _ = Describe("picking all clusters using pickAll placement policy, add taint to a cluster that's already selected", Label("serial"), Serial, Ordered, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	taintClusterNames := []string{memberCluster1EastProdName}
 

@@ -35,7 +35,7 @@ import (
 	toolsutils "github.com/kubefleet-dev/kubefleet/tools/utils"
 )
 
-var _ = Describe("Drain cluster successfully", Ordered, Serial, func() {
+var _ = Describe("Drain cluster successfully", Label("serial"), Ordered, Serial, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	var drainEvictions []placementv1beta1.ClusterResourcePlacementEviction
 	var drainClusters, noDrainClusters []*framework.Cluster
@@ -120,7 +120,7 @@ var _ = Describe("Drain cluster successfully", Ordered, Serial, func() {
 	})
 })
 
-var _ = Describe("Drain cluster blocked - ClusterResourcePlacementDisruptionBudget blocks evictions on all clusters", Ordered, Serial, func() {
+var _ = Describe("Drain cluster blocked - ClusterResourcePlacementDisruptionBudget blocks evictions on all clusters", Label("serial"), Ordered, Serial, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	var drainEvictions []placementv1beta1.ClusterResourcePlacementEviction
 	var testStartTime time.Time
@@ -203,7 +203,7 @@ var _ = Describe("Drain cluster blocked - ClusterResourcePlacementDisruptionBudg
 	})
 })
 
-var _ = Describe("Drain is allowed on one cluster, blocked on others - ClusterResourcePlacementDisruptionBudget blocks evictions on some clusters", Ordered, Serial, func() {
+var _ = Describe("Drain is allowed on one cluster, blocked on others - ClusterResourcePlacementDisruptionBudget blocks evictions on some clusters", Label("serial"), Ordered, Serial, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	var drainEvictions []placementv1beta1.ClusterResourcePlacementEviction
 	var drainClusters, noDrainClusters []*framework.Cluster
