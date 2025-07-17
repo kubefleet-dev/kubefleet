@@ -148,10 +148,6 @@ type PlacementSpec struct {
 	// +kubebuilder:default=10
 	// +kubebuilder:validation:Optional
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
-
-	// DeleteOptions configures the deletion behavior when the ClusterResourcePlacement is deleted.
-	// +kubebuilder:validation:Optional
-	DeleteOptions *DeleteOptions `json:"deleteOptions,omitempty"`
 }
 
 // Tolerations returns tolerations for PlacementSpec to handle nil policy case.
@@ -492,6 +488,10 @@ type RolloutStrategy struct {
 	// ApplyStrategy describes when and how to apply the selected resources to the target cluster.
 	// +kubebuilder:validation:Optional
 	ApplyStrategy *ApplyStrategy `json:"applyStrategy,omitempty"`
+
+	// DeleteStrategy configures the deletion behavior when the ClusterResourcePlacement is deleted.
+	// +kubebuilder:validation:Optional
+	DeleteStrategy *DeleteStrategy `json:"deleteStrategy,omitempty"`
 }
 
 // ApplyStrategy describes when and how to apply the selected resource to the target cluster.
@@ -1323,8 +1323,8 @@ const (
 	PickFixedPlacementType PlacementType = "PickFixed"
 )
 
-// DeleteOptions configures the deletion behavior when a placement is deleted.
-type DeleteOptions struct {
+// DeleteStrategy configures the deletion behavior when a placement is deleted.
+type DeleteStrategy struct {
 	// PropagationPolicy controls how the deletion is propagated to placed resources.
 	// Defaults to "Abandon".
 	//
