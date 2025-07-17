@@ -151,7 +151,7 @@ jobs:
       - name: Collect logs
         if: always()
         run: |
-         make collect-e2e-logs
+          make collect-e2e-logs
         env:
           KUBECONFIG: '/home/runner/.kube/config'
           LOG_DIR: 'logs-${{ matrix.customized-settings }}'
