@@ -1325,7 +1325,7 @@ const (
 
 // DeleteStrategy configures the deletion behavior when a placement is deleted.
 type DeleteStrategy struct {
-	// PropagationPolicy controls how we handle placed resources after the CRP no longer place it on the cluster
+	// PropagationPolicy controls whether to delete placed resources when the placement is deleted.
 	// Defaults to "Delete".
 	//
 	// Available options:
