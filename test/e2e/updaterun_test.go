@@ -958,7 +958,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
 		})
 
-		It("Should update CRP to use external rollout strategy", func() {
+		It("Update CRP to use external rollout strategy", func() {
 			Eventually(func() error {
 				crp := &placementv1beta1.ClusterResourcePlacement{}
 				if err := hubClient.Get(ctx, client.ObjectKey{Name: crpName}, crp); err != nil {
@@ -977,7 +977,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status for external strategy", crpName)
 		})
 
-		It("Should update the configmap on hub but not rollout to member clusters", func() {
+		It("Update the configmap on hub but should not rollout to member clusters", func() {
 			Eventually(func() error { return hubClient.Update(ctx, &newConfigMap) }, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update configmap on hub")
 
 			// Verify old configmap is still on all member clusters
@@ -996,7 +996,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep CRP %s status as expected", crpName)
 		})
 
-		It("Should create a staged update run with new resourceSnapshotIndex and verify rollout happens", func() {
+		It("Create a staged update run with new resourceSnapshotIndex and verify rollout happens", func() {
 			createStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex2nd, strategyName)
 
 			// Verify rollout to canary cluster first
@@ -1080,7 +1080,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
 		})
 
-		It("Should create updateRun and verify resources are rolled out", func() {
+		It("Create updateRun and verify resources are rolled out", func() {
 			createStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex1st, strategyName)
 
 			validateAndApproveClusterApprovalRequests(updateRunName, envCanary)
@@ -1097,7 +1097,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
 		})
 
-		It("Should update the configmap on hub but not rollout to member clusters with external strategy", func() {
+		It("Update the configmap on hub but should not rollout to member clusters with external strategy", func() {
 			Eventually(func() error { return hubClient.Update(ctx, &newConfigMap) }, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update configmap on hub")
 
 			// Verify old configmap is still on all member clusters
@@ -1116,7 +1116,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep CRP %s status as expected", crpName)
 		})
 
-		It("Should update CRP to use rollingUpdate strategy", func() {
+		It("Update CRP to use rollingUpdate strategy", func() {
 			Eventually(func() error {
 				crp := &placementv1beta1.ClusterResourcePlacement{}
 				if err := hubClient.Get(ctx, client.ObjectKey{Name: crpName}, crp); err != nil {
