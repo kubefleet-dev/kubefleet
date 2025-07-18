@@ -172,7 +172,7 @@ func createOverrides() {
 		},
 		Spec: placementv1alpha1.ClusterResourceOverrideSnapshotSpec{
 			OverrideSpec: placementv1alpha1.ClusterResourceOverrideSpec{
-				ClusterResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+				ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 					{
 						Group:   utils.NamespaceGVK.Group,
 						Version: utils.NamespaceGVK.Version,
@@ -261,7 +261,7 @@ func createOverrides() {
 		},
 		Spec: placementv1alpha1.ClusterResourceOverrideSnapshotSpec{
 			OverrideSpec: placementv1alpha1.ClusterResourceOverrideSpec{
-				ClusterResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+				ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 					{
 						Group:   utils.NamespaceGVK.Group,
 						Version: utils.NamespaceGVK.Version,

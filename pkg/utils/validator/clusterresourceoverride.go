@@ -52,7 +52,7 @@ func ValidateClusterResourceOverride(cro fleetv1alpha1.ClusterResourceOverride, 
 
 // validateClusterResourceSelectors checks if override is selecting resource by name.
 func validateClusterResourceSelectors(cro fleetv1alpha1.ClusterResourceOverride) error {
-	selectorMap := make(map[fleetv1beta1.ClusterResourceSelector]bool)
+	selectorMap := make(map[fleetv1beta1.ResourceSelectorTerm]bool)
 	allErr := make([]error, 0)
 	for _, selector := range cro.Spec.ClusterResourceSelectors {
 		// Check if the resource is not being selected by label selector
@@ -80,7 +80,7 @@ func validateClusterResourceOverrideResourceLimit(cro fleetv1alpha1.ClusterResou
 	if croList == nil || len(croList.Items) == 0 {
 		return nil
 	}
-	overrideMap := make(map[fleetv1beta1.ClusterResourceSelector]string)
+	overrideMap := make(map[fleetv1beta1.ResourceSelectorTerm]string)
 	// Add overrides and its selectors to the map
 	for _, override := range croList.Items {
 		selectors := override.Spec.ClusterResourceSelectors

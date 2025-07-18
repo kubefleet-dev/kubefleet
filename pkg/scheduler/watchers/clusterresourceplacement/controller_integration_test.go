@@ -45,7 +45,7 @@ const (
 )
 
 var (
-	resourceSelectors = []fleetv1beta1.ClusterResourceSelector{
+	resourceSelectors = []fleetv1beta1.ResourceSelectorTerm{
 		{
 			Group:   "core",
 			Kind:    "Namespace",

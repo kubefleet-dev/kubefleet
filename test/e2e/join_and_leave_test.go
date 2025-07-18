@@ -91,7 +91,7 @@ var _ = Describe("Test member cluster join and leave flow", Ordered, Serial, fun
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
 				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "",
 							Kind:    "Namespace",

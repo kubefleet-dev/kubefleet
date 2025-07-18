@@ -345,7 +345,7 @@ func matchSelectorGVKV1Alpha1(targetGVK schema.GroupVersionKind, selector fleetv
 		selector.Kind == targetGVK.Kind
 }
 
-func matchSelectorGVKV1Beta1(targetGVK schema.GroupVersionKind, selector placementv1beta1.ClusterResourceSelector) bool {
+func matchSelectorGVKV1Beta1(targetGVK schema.GroupVersionKind, selector placementv1beta1.ResourceSelectorTerm) bool {
 	return selector.Group == targetGVK.Group && selector.Version == targetGVK.Version &&
 		selector.Kind == targetGVK.Kind
 }
@@ -360,7 +360,7 @@ func matchSelectorLabelSelectorV1Alpha1(targetLabels map[string]string, selector
 	return s.Matches(labels.Set(targetLabels))
 }
 
-func matchSelectorLabelSelectorV1Beta1(targetLabels map[string]string, selector placementv1beta1.ClusterResourceSelector) bool {
+func matchSelectorLabelSelectorV1Beta1(targetLabels map[string]string, selector placementv1beta1.ResourceSelectorTerm) bool {
 	if selector.LabelSelector == nil {
 		// if the labelselector not set, it means select all
 		return true

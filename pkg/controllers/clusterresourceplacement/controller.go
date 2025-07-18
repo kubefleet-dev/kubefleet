@@ -30,7 +30,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -38,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/queue"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/annotations"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
@@ -58,125 +58,129 @@ var resourceSnapshotResourceSizeLimit = 800 * (1 << 10) // 800KB
 const controllerResyncPeriod = 15 * time.Minute
 
 func (r *Reconciler) Reconcile(ctx context.Context, key controller.QueueKey) (ctrl.Result, error) {
-	name, ok := key.(string)
+	keyStr, ok := key.(string)
 	if !ok {
 		err := fmt.Errorf("get place key %+v not of type string", key)
 		klog.ErrorS(controller.NewUnexpectedBehaviorError(err), "We have encountered a fatal error that can't be retried, requeue after a day")
 		return ctrl.Result{}, nil // ignore this unexpected error
 	}
+
+	placementKey := queue.PlacementKey(keyStr)
 	startTime := time.Now()
-	klog.V(2).InfoS("ClusterResourcePlacement reconciliation starts", "clusterResourcePlacement", name)
+	klog.V(2).InfoS("Placement reconciliation starts", "placementKey", placementKey)
 	defer func() {
 		latency := time.Since(startTime).Milliseconds()
-		klog.V(2).InfoS("ClusterResourcePlacement reconciliation ends", "clusterResourcePlacement", name, "latency", latency)
+		klog.V(2).InfoS("Placement reconciliation ends", "placementKey", placementKey, "latency", latency)
 	}()
 
-	crp := fleetv1beta1.ClusterResourcePlacement{}
-	if err := r.Client.Get(ctx, types.NamespacedName{Name: name}, &crp); err != nil {
+	placementObj, err := controller.FetchPlacementFromKey(ctx, r.Client, placementKey)
+	if err != nil {
 		if apierrors.IsNotFound(err) {
-			klog.V(4).InfoS("Ignoring NotFound clusterResourcePlacement", "clusterResourcePlacement", name)
+			klog.V(4).InfoS("Ignoring NotFound placement", "placementKey", placementKey)
 			return ctrl.Result{}, nil
 		}
-		klog.ErrorS(err, "Failed to get clusterResourcePlacement", "clusterResourcePlacement", name)
+		klog.ErrorS(err, "Failed to get placement", "placementKey", placementKey)
 		return ctrl.Result{}, controller.NewAPIServerError(true, err)
 	}
 
-	if crp.ObjectMeta.DeletionTimestamp != nil {
-		return r.handleDelete(ctx, &crp)
+	if placementObj.GetDeletionTimestamp() != nil {
+		return r.handleDelete(ctx, placementObj)
 	}
 
 	// register finalizer
-	if !controllerutil.ContainsFinalizer(&crp, fleetv1beta1.ClusterResourcePlacementCleanupFinalizer) {
-		controllerutil.AddFinalizer(&crp, fleetv1beta1.ClusterResourcePlacementCleanupFinalizer)
-		if err := r.Client.Update(ctx, &crp); err != nil {
-			klog.ErrorS(err, "Failed to add clusterResourcePlacement finalizer", "clusterResourcePlacement", name)
+	if !controllerutil.ContainsFinalizer(placementObj, fleetv1beta1.ClusterResourcePlacementCleanupFinalizer) {
+		controllerutil.AddFinalizer(placementObj, fleetv1beta1.ClusterResourcePlacementCleanupFinalizer)
+		if err := r.Client.Update(ctx, placementObj); err != nil {
+			klog.ErrorS(err, "Failed to add placement finalizer", "placement", klog.KObj(placementObj))
 			return ctrl.Result{}, controller.NewUpdateIgnoreConflictError(err)
 		}
 	}
-	defer emitPlacementStatusMetric(&crp)
-	return r.handleUpdate(ctx, &crp)
+	defer emitPlacementStatusMetric(placementObj)
+	return r.handleUpdate(ctx, placementObj)
 }
 
-func (r *Reconciler) handleDelete(ctx context.Context, crp *fleetv1beta1.ClusterResourcePlacement) (ctrl.Result, error) {
-	crpKObj := klog.KObj(crp)
-	if !controllerutil.ContainsFinalizer(crp, fleetv1beta1.ClusterResourcePlacementCleanupFinalizer) {
-		klog.V(4).InfoS("clusterResourcePlacement is being deleted and no cleanup work needs to be done by the CRP controller, waiting for the scheduler to cleanup the bindings", "clusterResourcePlacement", crpKObj)
+func (r *Reconciler) handleDelete(ctx context.Context, placementObj fleetv1beta1.PlacementObj) (ctrl.Result, error) {
+	placementKObj := klog.KObj(placementObj)
+	if !controllerutil.ContainsFinalizer(placementObj, fleetv1beta1.ClusterResourcePlacementCleanupFinalizer) {
+		klog.V(4).InfoS("placement is being deleted and no cleanup work needs to be done by the CRP controller, waiting for the scheduler to cleanup the bindings", "placement", placementKObj)
 		return ctrl.Result{}, nil
 	}
-	klog.V(2).InfoS("Removing snapshots created by clusterResourcePlacement", "clusterResourcePlacement", crpKObj)
-	if err := r.deleteClusterSchedulingPolicySnapshots(ctx, crp); err != nil {
+	klog.V(2).InfoS("Removing snapshots created by placement", "placement", placementKObj)
+	if err := r.deleteClusterSchedulingPolicySnapshots(ctx, placementObj); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := r.deleteClusterResourceSnapshots(ctx, crp); err != nil {
+	if err := r.deleteClusterResourceSnapshots(ctx, placementObj); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	metrics.FleetPlacementStatusLastTimeStampSeconds.DeletePartialMatch(prometheus.Labels{"name": crp.Name})
-	controllerutil.RemoveFinalizer(crp, fleetv1beta1.ClusterResourcePlacementCleanupFinalizer)
-	if err := r.Client.Update(ctx, crp); err != nil {
-		klog.ErrorS(err, "Failed to remove crp finalizer", "clusterResourcePlacement", crpKObj)
+	metrics.FleetPlacementStatusLastTimeStampSeconds.DeletePartialMatch(prometheus.Labels{"name": placementObj.GetName()})
+	controllerutil.RemoveFinalizer(placementObj, fleetv1beta1.ClusterResourcePlacementCleanupFinalizer)
+	if err := r.Client.Update(ctx, placementObj); err != nil {
+		klog.ErrorS(err, "Failed to remove placement finalizer", "placement", placementKObj)
 		return ctrl.Result{}, err
 	}
-	klog.V(2).InfoS("Removed crp-cleanup finalizer", "clusterResourcePlacement", crpKObj)
-	r.Recorder.Event(crp, corev1.EventTypeNormal, "PlacementCleanupFinalizerRemoved", "Deleted the snapshots and removed the placement cleanup finalizer")
+	klog.V(2).InfoS("Removed placement-cleanup finalizer", "placement", placementKObj)
+	r.Recorder.Event(placementObj, corev1.EventTypeNormal, "PlacementCleanupFinalizerRemoved", "Deleted the snapshots and removed the placement cleanup finalizer")
 	return ctrl.Result{}, nil
 }
 
-func (r *Reconciler) deleteClusterSchedulingPolicySnapshots(ctx context.Context, crp *fleetv1beta1.ClusterResourcePlacement) error {
+func (r *Reconciler) deleteClusterSchedulingPolicySnapshots(ctx context.Context, placementObj fleetv1beta1.PlacementObj) error {
 	snapshotList := &fleetv1beta1.ClusterSchedulingPolicySnapshotList{}
-	crpKObj := klog.KObj(crp)
-	if err := r.UncachedReader.List(ctx, snapshotList, client.MatchingLabels{fleetv1beta1.PlacementTrackingLabel: crp.Name}); err != nil {
-		klog.ErrorS(err, "Failed to list all clusterSchedulingPolicySnapshots", "clusterResourcePlacement", crpKObj)
+	placementKObj := klog.KObj(placementObj)
+	if err := r.UncachedReader.List(ctx, snapshotList, client.MatchingLabels{fleetv1beta1.PlacementTrackingLabel: placementObj.GetName()}); err != nil {
+		klog.ErrorS(err, "Failed to list all clusterSchedulingPolicySnapshots", "placement", placementKObj)
 		return controller.NewAPIServerError(false, err)
 	}
 	for i := range snapshotList.Items {
 		if err := r.Client.Delete(ctx, &snapshotList.Items[i]); err != nil && !apierrors.IsNotFound(err) {
-			klog.ErrorS(err, "Failed to delete clusterSchedulingPolicySnapshot", "clusterResourcePlacement", crpKObj, "clusterSchedulingPolicySnapshot", klog.KObj(&snapshotList.Items[i]))
+			klog.ErrorS(err, "Failed to delete clusterSchedulingPolicySnapshot", "placement", placementKObj, "clusterSchedulingPolicySnapshot", klog.KObj(&snapshotList.Items[i]))
 			return controller.NewAPIServerError(false, err)
 		}
 	}
-	klog.V(2).InfoS("Deleted clusterSchedulingPolicySnapshots", "clusterResourcePlacement", crpKObj, "numberOfSnapshots", len(snapshotList.Items))
+	klog.V(2).InfoS("Deleted clusterSchedulingPolicySnapshots", "placement", placementKObj, "numberOfSnapshots", len(snapshotList.Items))
 	return nil
 }
 
-func (r *Reconciler) deleteClusterResourceSnapshots(ctx context.Context, crp *fleetv1beta1.ClusterResourcePlacement) error {
+func (r *Reconciler) deleteClusterResourceSnapshots(ctx context.Context, placementObj fleetv1beta1.PlacementObj) error {
 	snapshotList := &fleetv1beta1.ClusterResourceSnapshotList{}
-	crpKObj := klog.KObj(crp)
-	if err := r.UncachedReader.List(ctx, snapshotList, client.MatchingLabels{fleetv1beta1.PlacementTrackingLabel: crp.Name}); err != nil {
-		klog.ErrorS(err, "Failed to list all clusterResourceSnapshots", "clusterResourcePlacement", crpKObj)
+	placementKObj := klog.KObj(placementObj)
+	if err := r.UncachedReader.List(ctx, snapshotList, client.MatchingLabels{fleetv1beta1.PlacementTrackingLabel: placementObj.GetName()}); err != nil {
+		klog.ErrorS(err, "Failed to list all clusterResourceSnapshots", "placement", placementKObj)
 		return controller.NewAPIServerError(false, err)
 	}
 	for i := range snapshotList.Items {
 		if err := r.Client.Delete(ctx, &snapshotList.Items[i]); err != nil && !apierrors.IsNotFound(err) {
-			klog.ErrorS(err, "Failed to delete clusterResourceSnapshots", "clusterResourcePlacement", crpKObj, "clusterResourceSnapshot", klog.KObj(&snapshotList.Items[i]))
+			klog.ErrorS(err, "Failed to delete clusterResourceSnapshots", "placement", placementKObj, "clusterResourceSnapshot", klog.KObj(&snapshotList.Items[i]))
 			return controller.NewAPIServerError(false, err)
 		}
 	}
-	klog.V(2).InfoS("Deleted clusterResourceSnapshots", "clusterResourcePlacement", crpKObj, "numberOfSnapshots", len(snapshotList.Items))
+	klog.V(2).InfoS("Deleted clusterResourceSnapshots", "placement", placementKObj, "numberOfSnapshots", len(snapshotList.Items))
 	return nil
 }
 
-// handleUpdate handles the create/update clusterResourcePlacement event.
+// handleUpdate handles the create/update placement event.
 // It creates corresponding clusterSchedulingPolicySnapshot and clusterResourceSnapshot if needed and updates the status based on
 // clusterSchedulingPolicySnapshot status and work status.
 // If the error type is ErrUnexpectedBehavior, the controller will skip the reconciling.
-func (r *Reconciler) handleUpdate(ctx context.Context, crp *fleetv1beta1.ClusterResourcePlacement) (ctrl.Result, error) {
+func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1.PlacementObj) (ctrl.Result, error) {
 	revisionLimit := int32(defaulter.DefaultRevisionHistoryLimitValue)
-	crpKObj := klog.KObj(crp)
-	oldCRP := crp.DeepCopy()
-	if crp.Spec.RevisionHistoryLimit != nil {
+	placementKObj := klog.KObj(placementObj)
+	oldPlacement := placementObj.DeepCopyObject().(fleetv1beta1.PlacementObj)
+	placementSpec := placementObj.GetPlacementSpec()
+
+	if placementSpec.RevisionHistoryLimit != nil {
 		if revisionLimit <= 0 {
-			err := fmt.Errorf("invalid clusterResourcePlacement %s: invalid revisionHistoryLimit %d", crp.Name, revisionLimit)
-			klog.ErrorS(controller.NewUnexpectedBehaviorError(err), "Invalid revisionHistoryLimit value and using default value instead", "clusterResourcePlacement", crpKObj)
+			err := fmt.Errorf("invalid placement %s: invalid revisionHistoryLimit %d", placementObj.GetName(), revisionLimit)
+			klog.ErrorS(controller.NewUnexpectedBehaviorError(err), "Invalid revisionHistoryLimit value and using default value instead", "placement", placementKObj)
 		} else {
-			revisionLimit = *crp.Spec.RevisionHistoryLimit
+			revisionLimit = *placementSpec.RevisionHistoryLimit
 		}
 	}
 
 	// validate the resource selectors first before creating any snapshot
-	envelopeObjCount, selectedResources, selectedResourceIDs, err := r.selectResourcesForPlacement(crp)
+	envelopeObjCount, selectedResources, selectedResourceIDs, err := r.selectResourcesForPlacement(placementObj)
 	if err != nil {
-		klog.ErrorS(err, "Failed to select the resources", "clusterResourcePlacement", crpKObj)
+		klog.ErrorS(err, "Failed to select the resources", "placement", placementKObj)
 		if !errors.Is(err, controller.ErrUserError) {
 			return ctrl.Result{}, err
 		}
@@ -187,21 +191,28 @@ func (r *Reconciler) handleUpdate(ctx context.Context, crp *fleetv1beta1.Cluster
 			Type:               string(fleetv1beta1.ClusterResourcePlacementScheduledConditionType),
 			Reason:             condition.InvalidResourceSelectorsReason,
 			Message:            fmt.Sprintf("The resource selectors are invalid: %v", err),
-			ObservedGeneration: crp.Generation,
+			ObservedGeneration: placementObj.GetGeneration(),
 		}
-		crp.SetConditions(scheduleCondition)
-		if updateErr := r.Client.Status().Update(ctx, crp); updateErr != nil {
-			klog.ErrorS(updateErr, "Failed to update the status", "clusterResourcePlacement", crpKObj)
+		placementObj.SetConditions(scheduleCondition)
+		if updateErr := r.Client.Status().Update(ctx, placementObj); updateErr != nil {
+			klog.ErrorS(updateErr, "Failed to update the status", "placement", placementKObj)
 			return ctrl.Result{}, controller.NewUpdateIgnoreConflictError(updateErr)
 		}
 		// no need to retry faster, the user needs to fix the resource selectors
 		return ctrl.Result{RequeueAfter: controllerResyncPeriod}, nil
 	}
 
-	latestSchedulingPolicySnapshot, err := r.getOrCreateClusterSchedulingPolicySnapshot(ctx, crp, int(revisionLimit))
+	latestSchedulingPolicySnapshot, err := r.getOrCreateClusterSchedulingPolicySnapshot(ctx, placementObj, int(revisionLimit))
 	if err != nil {
-		klog.ErrorS(err, "Failed to select resources for placement", "clusterResourcePlacement", crpKObj)
+		klog.ErrorS(err, "Failed to select resources for placement", "placement", placementKObj)
 		return ctrl.Result{}, err
+	}
+
+	// For now, we need to work with ClusterResourcePlacement for snapshot management
+	// TODO: Extend this to support namespace-scoped placements when needed
+	crp, ok := placementObj.(*fleetv1beta1.ClusterResourcePlacement)
+	if !ok {
+		return ctrl.Result{}, fmt.Errorf("snapshot management currently supports only ClusterResourcePlacement, got %T", placementObj)
 	}
 
 	createResourceSnapshotRes, latestResourceSnapshot, err := r.getOrCreateClusterResourceSnapshot(ctx, crp, envelopeObjCount,
@@ -217,49 +228,49 @@ func (r *Reconciler) handleUpdate(ctx context.Context, crp *fleetv1beta1.Cluster
 		// Rebuild the seletedResourceIDs using the latestResourceSnapshot.
 		latestResourceSnapshotIndex, err := labels.ExtractResourceIndexFromClusterResourceSnapshot(latestResourceSnapshot)
 		if err != nil {
-			klog.ErrorS(err, "Failed to extract the resource index from the clusterResourceSnapshot", "clusterResourcePlacement", crpKObj, "clusterResourceSnapshot", latestResourceSnapshotKObj)
+			klog.ErrorS(err, "Failed to extract the resource index from the clusterResourceSnapshot", "placement", placementKObj, "clusterResourceSnapshot", latestResourceSnapshotKObj)
 			return ctrl.Result{}, controller.NewUnexpectedBehaviorError(err)
 		}
-		selectedResourceIDs, err = controller.CollectResourceIdentifiersUsingMasterResourceSnapshot(ctx, r.Client, crp.Name, latestResourceSnapshot, strconv.Itoa(latestResourceSnapshotIndex))
+		selectedResourceIDs, err = controller.CollectResourceIdentifiersUsingMasterResourceSnapshot(ctx, r.Client, placementObj.GetName(), latestResourceSnapshot, strconv.Itoa(latestResourceSnapshotIndex))
 		if err != nil {
-			klog.ErrorS(err, "Failed to collect resource identifiers from the clusterResourceSnapshot", "clusterResourcePlacement", crpKObj, "clusterResourceSnapshot", latestResourceSnapshotKObj)
+			klog.ErrorS(err, "Failed to collect resource identifiers from the clusterResourceSnapshot", "placement", placementKObj, "clusterResourceSnapshot", latestResourceSnapshotKObj)
 			return ctrl.Result{}, err
 		}
-		klog.V(2).InfoS("Fetched the selected resources from the lastestResourceSnapshot", "clusterResourcePlacement", crpKObj, "clusterResourceSnapshot", latestResourceSnapshotKObj, "generation", crp.Generation)
+		klog.V(2).InfoS("Fetched the selected resources from the lastestResourceSnapshot", "placement", placementKObj, "clusterResourceSnapshot", latestResourceSnapshotKObj, "generation", placementObj.GetGeneration())
 	}
 
-	// isClusterScheduled is to indicate whether we need to requeue the CRP request to track the rollout status.
-	isClusterScheduled, err := r.setPlacementStatus(ctx, crp, selectedResourceIDs, latestSchedulingPolicySnapshot, latestResourceSnapshot)
+	// isClusterScheduled is to indicate whether we need to requeue the placement request to track the rollout status.
+	isClusterScheduled, err := r.setPlacementStatus(ctx, placementObj, selectedResourceIDs, latestSchedulingPolicySnapshot, latestResourceSnapshot)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	if err := r.Client.Status().Update(ctx, crp); err != nil {
-		klog.ErrorS(err, "Failed to update the status", "clusterResourcePlacement", crpKObj)
+	if err := r.Client.Status().Update(ctx, placementObj); err != nil {
+		klog.ErrorS(err, "Failed to update the status", "placement", placementKObj)
 		return ctrl.Result{}, err
 	}
-	klog.V(2).InfoS("Updated the clusterResourcePlacement status", "clusterResourcePlacement", crpKObj)
+	klog.V(2).InfoS("Updated the placement status", "placement", placementKObj)
 
 	// We skip checking the last resource condition (available) because it will be covered by checking isRolloutCompleted func.
 	for i := condition.RolloutStartedCondition; i < condition.TotalCondition-1; i++ {
-		oldCond := oldCRP.GetCondition(string(i.ClusterResourcePlacementConditionType()))
-		newCond := crp.GetCondition(string(i.ClusterResourcePlacementConditionType()))
-		if !condition.IsConditionStatusTrue(oldCond, oldCRP.Generation) &&
-			condition.IsConditionStatusTrue(newCond, crp.Generation) {
-			klog.V(2).InfoS("Placement resource condition status has been changed to true", "clusterResourcePlacement", crpKObj, "generation", crp.Generation, "condition", i.ClusterResourcePlacementConditionType())
-			r.Recorder.Event(crp, corev1.EventTypeNormal, i.EventReasonForTrue(), i.EventMessageForTrue())
+		oldCond := oldPlacement.GetCondition(string(i.ClusterResourcePlacementConditionType()))
+		newCond := placementObj.GetCondition(string(i.ClusterResourcePlacementConditionType()))
+		if !condition.IsConditionStatusTrue(oldCond, oldPlacement.GetGeneration()) &&
+			condition.IsConditionStatusTrue(newCond, placementObj.GetGeneration()) {
+			klog.V(2).InfoS("Placement resource condition status has been changed to true", "placement", placementKObj, "generation", placementObj.GetGeneration(), "condition", i.ClusterResourcePlacementConditionType())
+			r.Recorder.Event(placementObj, corev1.EventTypeNormal, i.EventReasonForTrue(), i.EventMessageForTrue())
 		}
 	}
 
 	// Rollout is considered to be completed when all the expected condition types are set to the
 	// True status.
-	if isRolloutCompleted(crp) {
-		if !isRolloutCompleted(oldCRP) {
-			klog.V(2).InfoS("Placement has finished the rollout process and reached the desired status", "clusterResourcePlacement", crpKObj, "generation", crp.Generation)
-			r.Recorder.Event(crp, corev1.EventTypeNormal, "PlacementRolloutCompleted", "Placement has finished the rollout process and reached the desired status")
+	if isRolloutCompleted(placementObj) {
+		if !isRolloutCompleted(oldPlacement) {
+			klog.V(2).InfoS("Placement has finished the rollout process and reached the desired status", "placement", placementKObj, "generation", placementObj.GetGeneration())
+			r.Recorder.Event(placementObj, corev1.EventTypeNormal, "PlacementRolloutCompleted", "Placement has finished the rollout process and reached the desired status")
 		}
 		if createResourceSnapshotRes.Requeue {
-			klog.V(2).InfoS("Requeue the request to handle the new resource snapshot", "clusterResourcePlacement", crpKObj, "generation", crp.Generation)
+			klog.V(2).InfoS("Requeue the request to handle the new resource snapshot", "placement", placementKObj, "generation", placementObj.GetGeneration())
 			// We requeue the request to handle the resource snapshot.
 			return createResourceSnapshotRes, nil
 		}
@@ -279,17 +290,17 @@ func (r *Reconciler) handleUpdate(ctx context.Context, crp *fleetv1beta1.Cluster
 		// Once the policy snapshot status changes, the policy snapshot watcher should enqueue the request.
 		// Here we requeue the request to prevent a bug in the watcher.
 		klog.V(2).InfoS("Scheduler has not scheduled any cluster yet and requeue the request as a backup",
-			"clusterResourcePlacement", crpKObj, "scheduledCondition", crp.GetCondition(string(fleetv1beta1.ClusterResourcePlacementScheduledConditionType)), "generation", crp.Generation)
+			"placement", placementKObj, "scheduledCondition", placementObj.GetCondition(string(fleetv1beta1.ClusterResourcePlacementScheduledConditionType)), "generation", placementObj.GetGeneration())
 		if createResourceSnapshotRes.Requeue {
-			klog.V(2).InfoS("Requeue the request to handle the new resource snapshot", "clusterResourcePlacement", crpKObj, "generation", crp.Generation)
+			klog.V(2).InfoS("Requeue the request to handle the new resource snapshot", "placement", placementKObj, "generation", placementObj.GetGeneration())
 			// We requeue the request to handle the resource snapshot.
 			return createResourceSnapshotRes, nil
 		}
 		return ctrl.Result{RequeueAfter: controllerResyncPeriod}, nil
 	}
-	klog.V(2).InfoS("Placement rollout has not finished yet and requeue the request", "clusterResourcePlacement", crpKObj, "status", crp.Status, "generation", crp.Generation)
+	klog.V(2).InfoS("Placement rollout has not finished yet and requeue the request", "placement", placementKObj, "status", placementObj.GetPlacementStatus(), "generation", placementObj.GetGeneration())
 	if createResourceSnapshotRes.Requeue {
-		klog.V(2).InfoS("Requeue the request to handle the new resource snapshot", "clusterResourcePlacement", crpKObj, "generation", crp.Generation)
+		klog.V(2).InfoS("Requeue the request to handle the new resource snapshot", "placement", placementKObj, "generation", placementObj.GetGeneration())
 		// We requeue the request to handle the resource snapshot.
 		return createResourceSnapshotRes, nil
 	}
@@ -297,19 +308,27 @@ func (r *Reconciler) handleUpdate(ctx context.Context, crp *fleetv1beta1.Cluster
 	return ctrl.Result{RequeueAfter: controllerResyncPeriod}, nil
 }
 
-func (r *Reconciler) getOrCreateClusterSchedulingPolicySnapshot(ctx context.Context, crp *fleetv1beta1.ClusterResourcePlacement, revisionHistoryLimit int) (*fleetv1beta1.ClusterSchedulingPolicySnapshot, error) {
-	crpKObj := klog.KObj(crp)
-	schedulingPolicy := crp.Spec.Policy.DeepCopy()
+func (r *Reconciler) getOrCreateClusterSchedulingPolicySnapshot(ctx context.Context, placementObj fleetv1beta1.PlacementObj, revisionHistoryLimit int) (*fleetv1beta1.ClusterSchedulingPolicySnapshot, error) {
+	placementKObj := klog.KObj(placementObj)
+	placementSpec := placementObj.GetPlacementSpec()
+	schedulingPolicy := placementSpec.Policy.DeepCopy()
 	if schedulingPolicy != nil {
 		schedulingPolicy.NumberOfClusters = nil // will exclude the numberOfClusters
 	}
 	policyHash, err := resource.HashOf(schedulingPolicy)
 	if err != nil {
-		klog.ErrorS(err, "Failed to generate policy hash of crp", "clusterResourcePlacement", crpKObj)
+		klog.ErrorS(err, "Failed to generate policy hash of placement", "placement", placementKObj)
 		return nil, controller.NewUnexpectedBehaviorError(err)
 	}
 
 	// latestPolicySnapshotIndex should be -1 when there is no snapshot.
+	// For now, we need to work with ClusterResourcePlacement for snapshot management
+	// TODO: Extend this to support namespace-scoped placements when needed
+	crp, ok := placementObj.(*fleetv1beta1.ClusterResourcePlacement)
+	if !ok {
+		return nil, fmt.Errorf("snapshot management currently supports only ClusterResourcePlacement, got %T", placementObj)
+	}
+
 	latestPolicySnapshot, latestPolicySnapshotIndex, err := r.lookupLatestClusterSchedulingPolicySnapshot(ctx, crp)
 	if err != nil {
 		return nil, err
@@ -319,7 +338,7 @@ func (r *Reconciler) getOrCreateClusterSchedulingPolicySnapshot(ctx context.Cont
 		if err := r.ensureLatestPolicySnapshot(ctx, crp, latestPolicySnapshot); err != nil {
 			return nil, err
 		}
-		klog.V(2).InfoS("Policy has not been changed and updated the existing clusterSchedulingPolicySnapshot", "clusterResourcePlacement", crpKObj, "clusterSchedulingPolicySnapshot", klog.KObj(latestPolicySnapshot))
+		klog.V(2).InfoS("Policy has not been changed and updated the existing clusterSchedulingPolicySnapshot", "placement", placementKObj, "clusterSchedulingPolicySnapshot", klog.KObj(latestPolicySnapshot))
 		return latestPolicySnapshot, nil
 	}
 
@@ -331,10 +350,10 @@ func (r *Reconciler) getOrCreateClusterSchedulingPolicySnapshot(ctx context.Cont
 		// set the latest label to false first to make sure there is only one or none active policy snapshot
 		latestPolicySnapshot.Labels[fleetv1beta1.IsLatestSnapshotLabel] = strconv.FormatBool(false)
 		if err := r.Client.Update(ctx, latestPolicySnapshot); err != nil {
-			klog.ErrorS(err, "Failed to set the isLatestSnapshot label to false", "clusterResourcePlacement", crpKObj, "clusterSchedulingPolicySnapshot", klog.KObj(latestPolicySnapshot))
+			klog.ErrorS(err, "Failed to set the isLatestSnapshot label to false", "placement", placementKObj, "clusterSchedulingPolicySnapshot", klog.KObj(latestPolicySnapshot))
 			return nil, controller.NewUpdateIgnoreConflictError(err)
 		}
-		klog.V(2).InfoS("Marked the existing clusterSchedulingPolicySnapshot as inactive", "clusterResourcePlacement", crpKObj, "clusterSchedulingPolicySnapshot", klog.KObj(latestPolicySnapshot))
+		klog.V(2).InfoS("Marked the existing clusterSchedulingPolicySnapshot as inactive", "placement", placementKObj, "clusterSchedulingPolicySnapshot", klog.KObj(latestPolicySnapshot))
 	}
 
 	// delete redundant snapshot revisions before creating a new snapshot to guarantee that the number of snapshots
@@ -381,7 +400,7 @@ func (r *Reconciler) getOrCreateClusterSchedulingPolicySnapshot(ctx context.Cont
 		klog.ErrorS(err, "Failed to create new clusterSchedulingPolicySnapshot", "clusterSchedulingPolicySnapshot", policySnapshotKObj)
 		return nil, controller.NewAPIServerError(false, err)
 	}
-	klog.V(2).InfoS("Created new clusterSchedulingPolicySnapshot", "clusterResourcePlacement", crpKObj, "clusterSchedulingPolicySnapshot", policySnapshotKObj)
+	klog.V(2).InfoS("Created new clusterSchedulingPolicySnapshot", "placement", placementKObj, "clusterSchedulingPolicySnapshot", policySnapshotKObj)
 	return latestPolicySnapshot, nil
 }
 
@@ -996,16 +1015,25 @@ func parseResourceGroupHashFromAnnotation(s *fleetv1beta1.ClusterResourceSnapsho
 // setPlacementStatus returns if there is a cluster scheduled by the scheduler.
 func (r *Reconciler) setPlacementStatus(
 	ctx context.Context,
-	crp *fleetv1beta1.ClusterResourcePlacement,
+	placementObj fleetv1beta1.PlacementObj,
 	selectedResourceIDs []fleetv1beta1.ResourceIdentifier,
 	latestSchedulingPolicySnapshot *fleetv1beta1.ClusterSchedulingPolicySnapshot,
 	latestResourceSnapshot *fleetv1beta1.ClusterResourceSnapshot,
 ) (bool, error) {
-	crp.Status.SelectedResources = selectedResourceIDs
-	scheduledCondition := buildScheduledCondition(crp, latestSchedulingPolicySnapshot)
-	crp.SetConditions(scheduledCondition)
+	placementStatus := placementObj.GetPlacementStatus()
+	placementStatus.SelectedResources = selectedResourceIDs
+
+	// For now, work with ClusterResourcePlacement for scheduling policy snapshot management
+	// TODO: Extend this to support namespace-scoped placements when needed
+	crp, ok := placementObj.(*fleetv1beta1.ClusterResourcePlacement)
+	if !ok {
+		return false, fmt.Errorf("setPlacementStatus currently supports only ClusterResourcePlacement, got %T", placementObj)
+	}
+
+	scheduledCondition := buildScheduledCondition(placementObj, latestSchedulingPolicySnapshot)
+	placementObj.SetConditions(scheduledCondition)
 	// set ObservedResourceIndex from the latest resource snapshot's resource index label, before we set Synchronized, Applied conditions.
-	crp.Status.ObservedResourceIndex = latestResourceSnapshot.GetLabels()[fleetv1beta1.ResourceIndexLabel]
+	placementStatus.ObservedResourceIndex = latestResourceSnapshot.GetLabels()[fleetv1beta1.ResourceIndexLabel]
 
 	// When scheduledCondition is unknown, appliedCondition should be unknown too.
 	// Note: If the scheduledCondition is failed, it means the placement requirement cannot be satisfied fully. For example,
@@ -1029,7 +1057,7 @@ func (r *Reconciler) setPlacementStatus(
 	selected, unselected := classifyClusterDecisions(latestSchedulingPolicySnapshot.Status.ClusterDecisions)
 	// Calculate the number of clusters that should have been selected yet cannot be, due to
 	// scheduling constraints.
-	failedToScheduleClusterCount := calculateFailedToScheduleClusterCount(crp, selected, unselected)
+	failedToScheduleClusterCount := calculateFailedToScheduleClusterCount(placementObj, selected, unselected)
 
 	// Prepare the resource placement status (status per cluster) in the CRP status.
 	allRPS := make([]fleetv1beta1.ResourcePlacementStatus, 0, len(latestSchedulingPolicySnapshot.Status.ClusterDecisions))
@@ -1181,7 +1209,7 @@ func (r *Reconciler) determineRolloutStateForCRPWithExternalRolloutStrategy(
 	return false, nil
 }
 
-func buildScheduledCondition(crp *fleetv1beta1.ClusterResourcePlacement, latestSchedulingPolicySnapshot *fleetv1beta1.ClusterSchedulingPolicySnapshot) metav1.Condition {
+func buildScheduledCondition(placementObj fleetv1beta1.PlacementObj, latestSchedulingPolicySnapshot *fleetv1beta1.ClusterSchedulingPolicySnapshot) metav1.Condition {
 	scheduledCondition := latestSchedulingPolicySnapshot.GetCondition(string(fleetv1beta1.PolicySnapshotScheduled))
 
 	if scheduledCondition == nil ||
@@ -1189,14 +1217,14 @@ func buildScheduledCondition(crp *fleetv1beta1.ClusterResourcePlacement, latestS
 		scheduledCondition.ObservedGeneration < latestSchedulingPolicySnapshot.Generation ||
 		// We have numberOfCluster annotation added on the CRP and it won't change the CRP generation.
 		// So that we need to compare the CRP observedCRPGeneration reported by the scheduler.
-		latestSchedulingPolicySnapshot.Status.ObservedCRPGeneration < crp.Generation ||
+		latestSchedulingPolicySnapshot.Status.ObservedCRPGeneration < placementObj.GetGeneration() ||
 		scheduledCondition.Status == metav1.ConditionUnknown {
 		return metav1.Condition{
 			Status:             metav1.ConditionUnknown,
 			Type:               string(fleetv1beta1.ClusterResourcePlacementScheduledConditionType),
 			Reason:             condition.SchedulingUnknownReason,
 			Message:            "Scheduling has not completed",
-			ObservedGeneration: crp.Generation,
+			ObservedGeneration: placementObj.GetGeneration(),
 		}
 	}
 	return metav1.Condition{
@@ -1204,7 +1232,7 @@ func buildScheduledCondition(crp *fleetv1beta1.ClusterResourcePlacement, latestS
 		Type:               string(fleetv1beta1.ClusterResourcePlacementScheduledConditionType),
 		Reason:             scheduledCondition.Reason,
 		Message:            scheduledCondition.Message,
-		ObservedGeneration: crp.Generation,
+		ObservedGeneration: placementObj.GetGeneration(),
 	}
 }
 
@@ -1222,8 +1250,9 @@ func classifyClusterDecisions(decisions []fleetv1beta1.ClusterDecision) (selecte
 	return selected, unselected
 }
 
-func buildResourcePlacementStatusMap(crp *fleetv1beta1.ClusterResourcePlacement) map[string][]metav1.Condition {
-	status := crp.Status.PlacementStatuses
+func buildResourcePlacementStatusMap(placementObj fleetv1beta1.PlacementObj) map[string][]metav1.Condition {
+	placementStatus := placementObj.GetPlacementStatus()
+	status := placementStatus.PlacementStatuses
 	m := make(map[string][]metav1.Condition, len(status))
 	for i := range status {
 		if len(status[i].ClusterName) == 0 || len(status[i].Conditions) == 0 {
@@ -1234,53 +1263,53 @@ func buildResourcePlacementStatusMap(crp *fleetv1beta1.ClusterResourcePlacement)
 	return m
 }
 
-func isRolloutCompleted(crp *fleetv1beta1.ClusterResourcePlacement) bool {
-	if !isCRPScheduled(crp) {
+func isRolloutCompleted(placementObj fleetv1beta1.PlacementObj) bool {
+	if !isCRPScheduled(placementObj) {
 		return false
 	}
 
-	expectedCondTypes := determineExpectedCRPAndResourcePlacementStatusCondType(crp)
+	expectedCondTypes := determineExpectedCRPAndResourcePlacementStatusCondType(placementObj)
 	for _, i := range expectedCondTypes {
-		if !condition.IsConditionStatusTrue(crp.GetCondition(string(i.ClusterResourcePlacementConditionType())), crp.Generation) {
+		if !condition.IsConditionStatusTrue(placementObj.GetCondition(string(i.ClusterResourcePlacementConditionType())), placementObj.GetGeneration()) {
 			return false
 		}
 	}
 	return true
 }
 
-func isCRPScheduled(crp *fleetv1beta1.ClusterResourcePlacement) bool {
-	return condition.IsConditionStatusTrue(crp.GetCondition(string(fleetv1beta1.ClusterResourcePlacementScheduledConditionType)), crp.Generation)
+func isCRPScheduled(placementObj fleetv1beta1.PlacementObj) bool {
+	return condition.IsConditionStatusTrue(placementObj.GetCondition(string(fleetv1beta1.ClusterResourcePlacementScheduledConditionType)), placementObj.GetGeneration())
 }
 
-func emitPlacementStatusMetric(crp *fleetv1beta1.ClusterResourcePlacement) {
-	// Check CRP Scheduled condition.
+func emitPlacementStatusMetric(placementObj fleetv1beta1.PlacementObj) {
+	// Check Placement Scheduled condition.
 	status := "nil"
 	reason := "nil"
-	cond := crp.GetCondition(string(fleetv1beta1.ClusterResourcePlacementScheduledConditionType))
-	if !condition.IsConditionStatusTrue(cond, crp.Generation) {
-		if cond != nil && cond.ObservedGeneration == crp.Generation {
+	cond := placementObj.GetCondition(string(fleetv1beta1.ClusterResourcePlacementScheduledConditionType))
+	if !condition.IsConditionStatusTrue(cond, placementObj.GetGeneration()) {
+		if cond != nil && cond.ObservedGeneration == placementObj.GetGeneration() {
 			status = string(cond.Status)
 			reason = cond.Reason
 		}
-		metrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(crp.Name, strconv.FormatInt(crp.Generation, 10), string(fleetv1beta1.ClusterResourcePlacementScheduledConditionType), status, reason).SetToCurrentTime()
+		metrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), string(fleetv1beta1.ClusterResourcePlacementScheduledConditionType), status, reason).SetToCurrentTime()
 		return
 	}
 
-	// Check CRP expected conditions.
-	expectedCondTypes := determineExpectedCRPAndResourcePlacementStatusCondType(crp)
+	// Check placement expected conditions.
+	expectedCondTypes := determineExpectedCRPAndResourcePlacementStatusCondType(placementObj)
 	for _, condType := range expectedCondTypes {
-		cond = crp.GetCondition(string(condType.ClusterResourcePlacementConditionType()))
-		if !condition.IsConditionStatusTrue(cond, crp.Generation) {
-			if cond != nil && cond.ObservedGeneration == crp.Generation {
+		cond = placementObj.GetCondition(string(condType.ClusterResourcePlacementConditionType()))
+		if !condition.IsConditionStatusTrue(cond, placementObj.GetGeneration()) {
+			if cond != nil && cond.ObservedGeneration == placementObj.GetGeneration() {
 				status = string(cond.Status)
 				reason = cond.Reason
 			}
-			metrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(crp.Name, strconv.FormatInt(crp.Generation, 10), string(condType.ClusterResourcePlacementConditionType()), status, reason).SetToCurrentTime()
+			metrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), string(condType.ClusterResourcePlacementConditionType()), status, reason).SetToCurrentTime()
 			return
 		}
 	}
 
-	// Emit the "Completed" condition metric to indicate that the CRP has completed.
+	// Emit the "Completed" condition metric to indicate that the placement has completed.
 	// This condition is used solely for metric reporting purposes.
-	metrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(crp.Name, strconv.FormatInt(crp.Generation, 10), "Completed", string(metav1.ConditionTrue), "Completed").SetToCurrentTime()
+	metrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), "Completed", string(metav1.ConditionTrue), "Completed").SetToCurrentTime()
 }

@@ -128,7 +128,7 @@ type PlacementSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=100
-	ResourceSelectors []ClusterResourceSelector `json:"resourceSelectors"`
+	ResourceSelectors []ResourceSelectorTerm `json:"resourceSelectors"`
 
 	// Policy defines how to select member clusters to place the selected resources.
 	// If unspecified, all the joined member clusters are selected.
@@ -140,7 +140,7 @@ type PlacementSpec struct {
 	// +patchStrategy=retainKeys
 	Strategy RolloutStrategy `json:"strategy,omitempty"`
 
-	// The number of old ClusterSchedulingPolicySnapshot or ClusterResourceSnapshot resources to retain to allow rollback.
+	// The number of old SchedulingPolicySnapshot or ResourceSnapshot resources to retain to allow rollback.
 	// This is a pointer to distinguish between explicit zero and not specified.
 	// Defaults to 10.
 	// +kubebuilder:validation:Minimum=1
@@ -158,10 +158,9 @@ func (p *PlacementSpec) Tolerations() []Toleration {
 	return nil
 }
 
-// TODO: rename this to ResourceSelectorTerm
-// ClusterResourceSelector is used to select cluster scoped resources as the target resources to be placed.
+// ResourceSelectorTerm is used to select resources as the target resources to be placed.
 // All the fields are `ANDed`. In other words, a resource must match all the fields to be selected.
-type ClusterResourceSelector struct {
+type ResourceSelectorTerm struct {
 	// Group name of the cluster-scoped resource.
 	// Use an empty string to select resources under the core API group (e.g., namespaces).
 	// +kubebuilder:validation:Required
