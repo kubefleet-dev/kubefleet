@@ -1325,7 +1325,7 @@ const (
 
 // DeleteStrategy configures the deletion behavior when a placement is deleted.
 type DeleteStrategy struct {
-	// PropagationPolicy controls whether to delete placed resources when the placement is deleted.
+	// PropagationPolicy controls whether to delete placed resources when placement is deleted.
 	//
 	// Available options:
 	//
