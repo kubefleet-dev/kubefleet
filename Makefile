@@ -211,17 +211,12 @@ install-helm:  load-hub-docker-image load-member-docker-image install-member-age
 .PHONY: e2e-tests-v1alpha1
 e2e-tests-v1alpha1: create-kind-cluster run-e2e-v1alpha1
 
+# E2E test label filter (can be overridden)
+LABEL_FILTER ?= !custom
+
 .PHONY: e2e-tests
 e2e-tests: setup-clusters
-	cd ./test/e2e && ginkgo --timeout=70m --label-filter="!custom" -v -p .
-
-# Tests that can be run in parallel
-e2e-tests-parallel: setup-clusters
-	cd ./test/e2e && ginkgo --label-filter="!custom && !serial" -v -p .
-
-# Tests that must be run serially
-e2e-tests-serial: setup-clusters
-	cd ./test/e2e && ginkgo --label-filter="!custom && serial" -v .
+	cd ./test/e2e && ginkgo --timeout=70m --label-filter="$(LABEL_FILTER)" -v -p .
 
 e2e-tests-custom: setup-clusters
 	cd ./test/e2e && ginkgo --label-filter="custom" -v -p . 
