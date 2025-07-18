@@ -64,15 +64,6 @@ make setup-clusters MEMBER_CLUSTER_COUNT=5
 # Run parallel E2E tests (default - excludes custom tests)
 make e2e-tests
 
-# Run tests that can run in parallel
-make e2e-tests-parallel
-
-# Run serial tests (tests that must run sequentially)
-make e2e-tests-serial
-
-# Run custom configuration tests
-make e2e-tests-custom
-
 # Clean up test clusters
 make clean-e2e-tests
 ```
