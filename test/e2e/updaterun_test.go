@@ -151,7 +151,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should update the configmap successfully on hub but not change member clusters", func() {
-			Eventually(func() error { return hubClient.Update(ctx, &newConfigMap) }, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update configmap on hub")
+			updateConfigMapSucceed(&newConfigMap)
 
 			for _, cluster := range allMemberClusters {
 				configMapActual := configMapPlacedOnClusterActual(cluster, &oldConfigMap)
@@ -978,7 +978,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Update the configmap on hub but should not rollout to member clusters", func() {
-			Eventually(func() error { return hubClient.Update(ctx, &newConfigMap) }, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update configmap on hub")
+			updateConfigMapSucceed(&newConfigMap)
 
 			// Verify old configmap is still on all member clusters
 			for _, cluster := range allMemberClusters {
@@ -1098,7 +1098,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Update the configmap on hub but should not rollout to member clusters with external strategy", func() {
-			Eventually(func() error { return hubClient.Update(ctx, &newConfigMap) }, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update configmap on hub")
+			updateConfigMapSucceed(&newConfigMap)
 
 			// Verify old configmap is still on all member clusters
 			for _, cluster := range allMemberClusters {
@@ -1335,7 +1335,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Order
 		})
 
 		It("Should update the resources on hub cluster", func() {
-			Eventually(func() error { return hubClient.Update(ctx, &newConfigMap) }, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update configmap on hub")
+			updateConfigMapSucceed(&newConfigMap)
 		})
 
 		It("Should have the latest resource snapshot with updated resources", func() {
@@ -1572,4 +1572,12 @@ func validateAndApproveClusterApprovalRequests(updateRunName, stageName string) 
 		})
 		return hubClient.Status().Update(ctx, appReq)
 	}, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to get or approve approval request")
+}
+
+func updateConfigMapSucceed(newConfigMap *corev1.ConfigMap) {
+	cm := &corev1.ConfigMap{}
+	key := client.ObjectKey{Namespace: newConfigMap.Namespace, Name: newConfigMap.Name}
+	Expect(hubClient.Get(ctx, key, cm)).To(Succeed(), "Failed to get configmap %s in namespace %s", newConfigMap.Name, newConfigMap.Namespace)
+	cm.Data = newConfigMap.Data
+	Expect(hubClient.Update(ctx, cm)).To(Succeed(), "Failed to update configmap %s in namespace %s", newConfigMap.Name, newConfigMap.Namespace)
 }
