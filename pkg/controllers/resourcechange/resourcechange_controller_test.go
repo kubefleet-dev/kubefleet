@@ -681,7 +681,7 @@ func TestCollectAllAffectedPlacementsV1Beta1(t *testing.T) {
 						Name: "resource-selected",
 					},
 					Spec: placementv1beta1.PlacementSpec{
-						ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 							{
 								Group:   corev1.GroupName,
 								Version: "v1",
@@ -704,7 +704,7 @@ func TestCollectAllAffectedPlacementsV1Beta1(t *testing.T) {
 						Name: "resource-selected",
 					},
 					Spec: placementv1beta1.PlacementSpec{
-						ResourceSelectors: []placementv1beta1.ClusterResourceSelector{},
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{},
 					},
 				},
 			},
@@ -718,7 +718,7 @@ func TestCollectAllAffectedPlacementsV1Beta1(t *testing.T) {
 						Name: "resource-selected",
 					},
 					Spec: placementv1beta1.PlacementSpec{
-						ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 							{
 								Group:   corev1.GroupName,
 								Version: "v1",
@@ -739,7 +739,7 @@ func TestCollectAllAffectedPlacementsV1Beta1(t *testing.T) {
 						Name: "resource-selected",
 					},
 					Spec: placementv1beta1.PlacementSpec{
-						ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 							{
 								Group:   corev1.GroupName,
 								Version: "v1",
@@ -767,7 +767,7 @@ func TestCollectAllAffectedPlacementsV1Beta1(t *testing.T) {
 						Name: "resource-selected",
 					},
 					Spec: placementv1beta1.PlacementSpec{
-						ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 							{
 								Group:   corev1.GroupName,
 								Version: "v1",
@@ -790,7 +790,7 @@ func TestCollectAllAffectedPlacementsV1Beta1(t *testing.T) {
 						Name: "resource-selected",
 					},
 					Spec: placementv1beta1.PlacementSpec{
-						ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 							{
 								Group:   corev1.GroupName,
 								Version: "v1",
@@ -817,7 +817,7 @@ func TestCollectAllAffectedPlacementsV1Beta1(t *testing.T) {
 						Name: "resource-selected",
 					},
 					Spec: placementv1beta1.PlacementSpec{
-						ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 							{
 								Group:   corev1.GroupName,
 								Version: "v1",
@@ -853,7 +853,7 @@ func TestCollectAllAffectedPlacementsV1Beta1(t *testing.T) {
 						Name: "resource-selected",
 					},
 					Spec: placementv1beta1.PlacementSpec{
-						ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 							{
 								Group:   corev1.GroupName,
 								Version: "v1",
@@ -891,7 +891,7 @@ func TestCollectAllAffectedPlacementsV1Beta1(t *testing.T) {
 					},
 					Spec: placementv1beta1.PlacementSpec{
 						// the mis-matching resource selector
-						ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 							{
 								Group:   corev1.GroupName,
 								Version: "v1",
@@ -934,7 +934,7 @@ func TestCollectAllAffectedPlacementsV1Beta1(t *testing.T) {
 						Name: "resource-selected",
 					},
 					Spec: placementv1beta1.PlacementSpec{
-						ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 							{
 								Group:   corev1.GroupName,
 								Version: "v1",
@@ -970,7 +970,7 @@ func TestCollectAllAffectedPlacementsV1Beta1(t *testing.T) {
 						Name: "resource-selected",
 					},
 					Spec: placementv1beta1.PlacementSpec{
-						ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 							{
 								Group:   corev1.GroupName,
 								Version: "v1",
@@ -991,7 +991,7 @@ func TestCollectAllAffectedPlacementsV1Beta1(t *testing.T) {
 						Name: "resource-selected",
 					},
 					Spec: placementv1beta1.PlacementSpec{
-						ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 							{
 								Group:   corev1.GroupName,
 								Version: "v1",

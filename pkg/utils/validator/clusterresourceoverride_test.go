@@ -22,7 +22,7 @@ func TestValidateClusterResourceSelectors(t *testing.T) {
 		"resource selected by label selector": {
 			cro: fleetv1alpha1.ClusterResourceOverride{
 				Spec: fleetv1alpha1.ClusterResourceOverrideSpec{
-					ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+					ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "group",
 							Version: "v1",
@@ -41,7 +41,7 @@ func TestValidateClusterResourceSelectors(t *testing.T) {
 		"resource selected by empty name": {
 			cro: fleetv1alpha1.ClusterResourceOverride{
 				Spec: fleetv1alpha1.ClusterResourceOverrideSpec{
-					ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+					ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "group",
 							Version: "v1",
@@ -56,7 +56,7 @@ func TestValidateClusterResourceSelectors(t *testing.T) {
 		"duplicate resources selected": {
 			cro: fleetv1alpha1.ClusterResourceOverride{
 				Spec: fleetv1alpha1.ClusterResourceOverrideSpec{
-					ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+					ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "group",
 							Version: "v1",
@@ -73,12 +73,12 @@ func TestValidateClusterResourceSelectors(t *testing.T) {
 				},
 			},
 			wantErrMsg: fmt.Errorf("resource selector %+v already exists, and must be unique",
-				fleetv1beta1.ClusterResourceSelector{Group: "group", Version: "v1", Kind: "Kind", Name: "example"}),
+				fleetv1beta1.ResourceSelectorTerm{Group: "group", Version: "v1", Kind: "Kind", Name: "example"}),
 		},
 		"resource selected by name": {
 			cro: fleetv1alpha1.ClusterResourceOverride{
 				Spec: fleetv1alpha1.ClusterResourceOverrideSpec{
-					ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+					ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "rbac.authorization.k8s.io",
 							Version: "v1",
@@ -93,7 +93,7 @@ func TestValidateClusterResourceSelectors(t *testing.T) {
 		"multiple invalid resources selected": {
 			cro: fleetv1alpha1.ClusterResourceOverride{
 				Spec: fleetv1alpha1.ClusterResourceOverrideSpec{
-					ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+					ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "group",
 							Version: "v1",
@@ -125,9 +125,9 @@ func TestValidateClusterResourceSelectors(t *testing.T) {
 					},
 				},
 			},
-			wantErrMsg: apierrors.NewAggregate([]error{fmt.Errorf("label selector is not supported for resource selection %+v", fleetv1beta1.ClusterResourceSelector{Group: "group", Version: "v1", Kind: "Kind", LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"key": "value"}}}),
-				fmt.Errorf("resource name is required for resource selection %+v", fleetv1beta1.ClusterResourceSelector{Group: "group", Version: "v1", Kind: "Kind", Name: ""}),
-				fmt.Errorf("resource selector %+v already exists, and must be unique", fleetv1beta1.ClusterResourceSelector{Group: "group", Version: "v1", Kind: "Kind", Name: "example"})}),
+			wantErrMsg: apierrors.NewAggregate([]error{fmt.Errorf("label selector is not supported for resource selection %+v", fleetv1beta1.ResourceSelectorTerm{Group: "group", Version: "v1", Kind: "Kind", LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"key": "value"}}}),
+				fmt.Errorf("resource name is required for resource selection %+v", fleetv1beta1.ResourceSelectorTerm{Group: "group", Version: "v1", Kind: "Kind", Name: ""}),
+				fmt.Errorf("resource selector %+v already exists, and must be unique", fleetv1beta1.ResourceSelectorTerm{Group: "group", Version: "v1", Kind: "Kind", Name: "example"})}),
 		},
 	}
 	for testName, tt := range tests {
@@ -156,7 +156,7 @@ func TestValidateClusterResourceOverrideResourceLimit(t *testing.T) {
 					Name: "override-1",
 				},
 				Spec: fleetv1alpha1.ClusterResourceOverrideSpec{
-					ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+					ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "rbac.authorization.k8s.io",
 							Version: "v1",
@@ -175,7 +175,7 @@ func TestValidateClusterResourceOverrideResourceLimit(t *testing.T) {
 					Name: "override-2",
 				},
 				Spec: fleetv1alpha1.ClusterResourceOverrideSpec{
-					ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+					ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "group",
 							Version: "v1",
@@ -193,7 +193,7 @@ func TestValidateClusterResourceOverrideResourceLimit(t *testing.T) {
 			},
 			overrideCount: 1,
 			wantErrMsg: fmt.Errorf("invalid resource selector %+v: the resource has been selected by both %v and %v, which is not supported",
-				fleetv1beta1.ClusterResourceSelector{Group: "group", Version: "v1", Kind: "kind", Name: "example-0"}, "override-2", "override-0"),
+				fleetv1beta1.ResourceSelectorTerm{Group: "group", Version: "v1", Kind: "kind", Name: "example-0"}, "override-2", "override-0"),
 		},
 		"one override, which exists": {
 			cro: fleetv1alpha1.ClusterResourceOverride{
@@ -201,7 +201,7 @@ func TestValidateClusterResourceOverrideResourceLimit(t *testing.T) {
 					Name: "override-1",
 				},
 				Spec: fleetv1alpha1.ClusterResourceOverrideSpec{
-					ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+					ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "rbac.authorization.k8s.io",
 							Version: "v1",
@@ -220,7 +220,7 @@ func TestValidateClusterResourceOverrideResourceLimit(t *testing.T) {
 					Name: "override-2",
 				},
 				Spec: fleetv1alpha1.ClusterResourceOverrideSpec{
-					ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+					ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "rbac.authorization.k8s.io",
 							Version: "v1",
@@ -243,7 +243,7 @@ func TestValidateClusterResourceOverrideResourceLimit(t *testing.T) {
 						Name: fmt.Sprintf("override-%d", i),
 					},
 					Spec: fleetv1alpha1.ClusterResourceOverrideSpec{
-						ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+						ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 							{
 								Group:   "group",
 								Version: "v1",
@@ -312,7 +312,7 @@ func TestValidateClusterResourceOverride(t *testing.T) {
 		"valid cluster resource override": {
 			cro: fleetv1alpha1.ClusterResourceOverride{
 				Spec: fleetv1alpha1.ClusterResourceOverrideSpec{
-					ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+					ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "rbac.authorization.k8s.io",
 							Version: "v1",
@@ -329,7 +329,7 @@ func TestValidateClusterResourceOverride(t *testing.T) {
 		"invalid cluster resource override - fail validateResourceSelector": {
 			cro: fleetv1alpha1.ClusterResourceOverride{
 				Spec: fleetv1alpha1.ClusterResourceOverrideSpec{
-					ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+					ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "group",
 							Version: "v1",
@@ -358,9 +358,9 @@ func TestValidateClusterResourceOverride(t *testing.T) {
 			},
 			croList: &fleetv1alpha1.ClusterResourceOverrideList{},
 			wantErrMsg: apierrors.NewAggregate([]error{fmt.Errorf("resource selector %+v already exists, and must be unique",
-				fleetv1beta1.ClusterResourceSelector{Group: "group", Version: "v1", Kind: "kind", Name: "example"}),
+				fleetv1beta1.ResourceSelectorTerm{Group: "group", Version: "v1", Kind: "kind", Name: "example"}),
 				fmt.Errorf("label selector is not supported for resource selection %+v",
-					fleetv1beta1.ClusterResourceSelector{Group: "group", Version: "v1", Kind: "kind",
+					fleetv1beta1.ResourceSelectorTerm{Group: "group", Version: "v1", Kind: "kind",
 						LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"key": "value"}}})}),
 		},
 		"invalid cluster resource override - fail ValidateClusterResourceOverrideResourceLimit": {
@@ -369,7 +369,7 @@ func TestValidateClusterResourceOverride(t *testing.T) {
 					Name: "override-1",
 				},
 				Spec: fleetv1alpha1.ClusterResourceOverrideSpec{
-					ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+					ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "group",
 							Version: "v1",
@@ -385,7 +385,7 @@ func TestValidateClusterResourceOverride(t *testing.T) {
 					{
 						ObjectMeta: metav1.ObjectMeta{Name: "override-0"},
 						Spec: fleetv1alpha1.ClusterResourceOverrideSpec{
-							ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+							ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 								{
 									Group:   "group",
 									Version: "v1",
@@ -399,12 +399,12 @@ func TestValidateClusterResourceOverride(t *testing.T) {
 				},
 			},
 			wantErrMsg: fmt.Errorf("invalid resource selector %+v: the resource has been selected by both %v and %v, which is not supported",
-				fleetv1beta1.ClusterResourceSelector{Group: "group", Version: "v1", Kind: "kind", Name: "duplicate-example"}, "override-1", "override-0"),
+				fleetv1beta1.ResourceSelectorTerm{Group: "group", Version: "v1", Kind: "kind", Name: "duplicate-example"}, "override-1", "override-0"),
 		},
 		"valid cluster resource override - empty croList": {
 			cro: fleetv1alpha1.ClusterResourceOverride{
 				Spec: fleetv1alpha1.ClusterResourceOverrideSpec{
-					ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+					ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "rbac.authorization.k8s.io",
 							Version: "v1",
@@ -421,7 +421,7 @@ func TestValidateClusterResourceOverride(t *testing.T) {
 		"valid cluster resource override - croList nil": {
 			cro: fleetv1alpha1.ClusterResourceOverride{
 				Spec: fleetv1alpha1.ClusterResourceOverrideSpec{
-					ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+					ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "rbac.authorization.k8s.io",
 							Version: "v1",

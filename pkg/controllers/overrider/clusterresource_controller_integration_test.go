@@ -36,7 +36,7 @@ import (
 
 func getClusterResourceOverrideSpec() fleetv1alpha1.ClusterResourceOverrideSpec {
 	return fleetv1alpha1.ClusterResourceOverrideSpec{
-		ClusterResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+		ClusterResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
 			{
 				Group:   "",
 				Version: "v1",

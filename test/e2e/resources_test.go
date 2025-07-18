@@ -55,8 +55,8 @@ const (
 	workNamespaceLabelName         = "process"
 )
 
-func workResourceSelector() []placementv1beta1.ClusterResourceSelector {
-	return []placementv1beta1.ClusterResourceSelector{
+func workResourceSelector() []placementv1beta1.ResourceSelectorTerm {
+	return []placementv1beta1.ResourceSelectorTerm{
 		{
 			Group:   "",
 			Kind:    "Namespace",
@@ -77,8 +77,8 @@ func configMapSelector() []placementv1alpha1.ResourceSelector {
 	}
 }
 
-func invalidWorkResourceSelector() []placementv1beta1.ClusterResourceSelector {
-	return []placementv1beta1.ClusterResourceSelector{
+func invalidWorkResourceSelector() []placementv1beta1.ResourceSelectorTerm {
+	return []placementv1beta1.ResourceSelectorTerm{
 		{
 			Group:   "",
 			Kind:    "Namespace",
