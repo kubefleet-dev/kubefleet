@@ -91,10 +91,10 @@ var (
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ClusterResourceSnapshotKind),
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ClusterSchedulingPolicySnapshotKind),
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.WorkKind),
-		placementv1alpha1.GroupVersion.WithKind(placementv1alpha1.ClusterResourceOverrideKind),
-		placementv1alpha1.GroupVersion.WithKind(placementv1alpha1.ClusterResourceOverrideSnapshotKind),
-		placementv1alpha1.GroupVersion.WithKind(placementv1alpha1.ResourceOverrideKind),
-		placementv1alpha1.GroupVersion.WithKind(placementv1alpha1.ResourceOverrideSnapshotKind),
+		placementv1alpha1.GroupVersion.WithKind(placementv1beta1.ClusterResourceOverrideKind),
+		placementv1alpha1.GroupVersion.WithKind(placementv1beta1.ClusterResourceOverrideSnapshotKind),
+		placementv1alpha1.GroupVersion.WithKind(placementv1beta1.ResourceOverrideKind),
+		placementv1alpha1.GroupVersion.WithKind(placementv1beta1.ResourceOverrideSnapshotKind),
 	}
 
 	clusterStagedUpdateRunGVKs = []schema.GroupVersionKind{

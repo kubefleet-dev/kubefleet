@@ -39,7 +39,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	fleetv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	bindingutils "github.com/kubefleet-dev/kubefleet/pkg/utils/binding"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
@@ -335,8 +334,8 @@ func (r *Reconciler) pickBindingsToRoll(
 	allBindings []fleetv1beta1.BindingObj,
 	masterResourceSnapshot fleetv1beta1.ResourceSnapshotObj,
 	placementObj fleetv1beta1.PlacementObj,
-	matchedCROs []*fleetv1alpha1.ClusterResourceOverrideSnapshot,
-	matchedROs []*fleetv1alpha1.ResourceOverrideSnapshot,
+	matchedCROs []*fleetv1beta1.ClusterResourceOverrideSnapshot,
+	matchedROs []*fleetv1beta1.ResourceOverrideSnapshot,
 ) ([]toBeUpdatedBinding, []toBeUpdatedBinding, []toBeUpdatedBinding, bool, time.Duration, error) {
 	// Those are the bindings that are chosen by the scheduler to be applied to selected clusters.
 	// They include the bindings that are already applied to the clusters and the bindings that are newly selected by the scheduler.
@@ -696,7 +695,7 @@ func (r *Reconciler) SetupWithManager(mgr runtime.Manager) error {
 				handleResourceSnapshot(e.Object, q)
 			},
 		}).
-		Watches(&fleetv1alpha1.ClusterResourceOverrideSnapshot{}, handler.Funcs{
+		Watches(&fleetv1beta1.ClusterResourceOverrideSnapshot{}, handler.Funcs{
 			CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				klog.V(2).InfoS("Handling a clusterResourceOverrideSnapshot create event", "clusterResourceOverrideSnapshot", klog.KObj(e.Object))
 				handleClusterResourceOverrideSnapshot(e.Object, q)
@@ -706,7 +705,7 @@ func (r *Reconciler) SetupWithManager(mgr runtime.Manager) error {
 				handleClusterResourceOverrideSnapshot(e.Object, q)
 			},
 		}).
-		Watches(&fleetv1alpha1.ResourceOverrideSnapshot{}, handler.Funcs{
+		Watches(&fleetv1beta1.ResourceOverrideSnapshot{}, handler.Funcs{
 			CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				klog.V(2).InfoS("Handling a resourceOverrideSnapshot create event", "resourceOverrideSnapshot", klog.KObj(e.Object))
 				handleResourceOverrideSnapshot(e.Object, q)
@@ -716,9 +715,9 @@ func (r *Reconciler) SetupWithManager(mgr runtime.Manager) error {
 				handleResourceOverrideSnapshot(e.Object, q)
 			},
 		}).
-		Watches(&fleetv1alpha1.ClusterResourceOverride{}, handler.Funcs{
+		Watches(&fleetv1beta1.ClusterResourceOverride{}, handler.Funcs{
 			DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				cro, ok := e.Object.(*fleetv1alpha1.ClusterResourceOverride)
+				cro, ok := e.Object.(*fleetv1beta1.ClusterResourceOverride)
 				if !ok {
 					klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("non ClusterResourceOverride type resource: %+v", e.Object)),
 						"Rollout controller received invalid ClusterResourceOverride event", "object", klog.KObj(e.Object))
@@ -733,9 +732,9 @@ func (r *Reconciler) SetupWithManager(mgr runtime.Manager) error {
 				})
 			},
 		}).
-		Watches(&fleetv1alpha1.ResourceOverride{}, handler.Funcs{
+		Watches(&fleetv1beta1.ResourceOverride{}, handler.Funcs{
 			DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				ro, ok := e.Object.(*fleetv1alpha1.ResourceOverride)
+				ro, ok := e.Object.(*fleetv1beta1.ResourceOverride)
 				if !ok {
 					klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("non ResourceOverride type resource: %+v", e.Object)),
 						"Rollout controller received invalid ResourceOverride event", "object", klog.KObj(e.Object))
@@ -778,7 +777,7 @@ func (r *Reconciler) SetupWithManager(mgr runtime.Manager) error {
 // handleClusterResourceOverrideSnapshot parse the clusterResourceOverrideSnapshot label and enqueue the CRP name associated
 // with the clusterResourceOverrideSnapshot if set.
 func handleClusterResourceOverrideSnapshot(o client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-	snapshot, ok := o.(*fleetv1alpha1.ClusterResourceOverrideSnapshot)
+	snapshot, ok := o.(*fleetv1beta1.ClusterResourceOverrideSnapshot)
 	if !ok {
 		klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("non ClusterResourceOverrideSnapshot type resource: %+v", o)),
 			"Rollout controller received invalid ClusterResourceOverrideSnapshot event", "object", klog.KObj(o))
@@ -811,7 +810,7 @@ func handleClusterResourceOverrideSnapshot(o client.Object, q workqueue.TypedRat
 // handleResourceOverrideSnapshot parse the resourceOverrideSnapshot label and enqueue the CRP name associated with the
 // resourceOverrideSnapshot if set.
 func handleResourceOverrideSnapshot(o client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-	snapshot, ok := o.(*fleetv1alpha1.ResourceOverrideSnapshot)
+	snapshot, ok := o.(*fleetv1beta1.ResourceOverrideSnapshot)
 	if !ok {
 		klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("non ResourceOverrideSnapshot type resource: %+v", o)),
 			"Rollout controller received invalid ResourceOverrideSnapshot event", "object", klog.KObj(o))
