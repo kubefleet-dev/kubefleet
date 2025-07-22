@@ -1,4 +1,4 @@
-package webhook
+git package webhook
 
 import (
 	"testing"
