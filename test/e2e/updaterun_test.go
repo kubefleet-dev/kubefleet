@@ -1153,7 +1153,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 })
 
 // Note that this container cannot run in parallel with other containers.
-var _ = Describe("Test member cluster join and leave flow with updateRun", Label("joinleave"), Ordered, Serial, func() {
+var _ = Describe("Test member cluster join and leave flow with updateRun", Label("joinleave"), Serial, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	strategyName := fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess())
 	var strategy *placementv1beta1.ClusterStagedUpdateStrategy
@@ -1177,6 +1177,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Label
 					PlacementType: placementv1beta1.PickAllPlacementType,
 				},
 				Strategy: placementv1beta1.RolloutStrategy{
+					Type: placementv1beta1.ExternalRolloutStrategyType,
 					ApplyStrategy: &placementv1beta1.ApplyStrategy{
 						ComparisonOption: placementv1beta1.ComparisonOptionTypePartialComparison,
 						WhenToApply:      placementv1beta1.WhenToApplyTypeAlways,
