@@ -21,6 +21,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
@@ -29,8 +30,10 @@ import (
 )
 
 const (
-	testCRPName                      = "test-crp"
+	testPlacementName                = "test-placement"
 	testCRBName                      = "test-crb"
+	testRBName                       = "test-rb"
+	testNamespace                    = "test-ns"
 	testResourceSnapshotName         = "test-rs"
 	testSchedulingPolicySnapshotName = "test-sps"
 	testTargetCluster                = "test-cluster"
@@ -58,6 +61,35 @@ var _ = Describe("Test ClusterResourceBinding Watcher - create, delete events", 
 
 		By("Deleting clusterResourceBinding")
 		Expect(k8sClient.Delete(ctx, crb)).Should(Succeed(), "failed to delete cluster resource binding")
+
+		By("Checking placement controller queue")
+		consistentlyCheckPlacementControllerQueueIsEmpty()
+	})
+})
+
+// This container cannot be run in parallel with other ITs because it uses a shared fakePlacementController.
+var _ = Describe("Test ResourceBinding Watcher - create, delete events", Serial, func() {
+	var rb *fleetv1beta1.ResourceBinding
+	It("When creating, deleting resourceBinding", func() {
+		fakePlacementController.ResetQueue()
+		By("Creating a new resourceBinding")
+		// Create namespace for the resource binding
+		ns := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: testNamespace,
+			},
+		}
+		Expect(k8sClient.Create(ctx, ns)).Should(Succeed(), "failed to create namespace")
+		rb = resourceBindingForTest()
+		Expect(k8sClient.Create(ctx, rb)).Should(Succeed(), "failed to create resource binding")
+
+		By("Checking placement controller queue")
+		consistentlyCheckPlacementControllerQueueIsEmpty()
+
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testRBName, Namespace: testNamespace}, rb)).Should(Succeed(), "failed to get resource binding")
+
+		By("Deleting resourceBinding")
+		Expect(k8sClient.Delete(ctx, rb)).Should(Succeed(), "failed to delete resource binding")
 
 		By("Checking placement controller queue")
 		consistentlyCheckPlacementControllerQueueIsEmpty()
@@ -622,11 +654,27 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 	})
 })
 
+func resourceBindingForTest() *fleetv1beta1.ResourceBinding {
+	return &fleetv1beta1.ResourceBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      testRBName,
+			Namespace: testNamespace,
+			Labels:    map[string]string{fleetv1beta1.PlacementTrackingLabel: testPlacementName},
+		},
+		Spec: fleetv1beta1.ResourceBindingSpec{
+			State:                        fleetv1beta1.BindingStateScheduled,
+			ResourceSnapshotName:         testResourceSnapshotName,
+			SchedulingPolicySnapshotName: testSchedulingPolicySnapshotName,
+			TargetCluster:                testTargetCluster,
+		},
+	}
+}
+
 func clusterResourceBindingForTest() *fleetv1beta1.ClusterResourceBinding {
 	return &fleetv1beta1.ClusterResourceBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   testCRBName,
-			Labels: map[string]string{fleetv1beta1.PlacementTrackingLabel: testCRPName},
+			Labels: map[string]string{fleetv1beta1.PlacementTrackingLabel: testPlacementName},
 		},
 		Spec: fleetv1beta1.ResourceBindingSpec{
 			State:                        fleetv1beta1.BindingStateScheduled,

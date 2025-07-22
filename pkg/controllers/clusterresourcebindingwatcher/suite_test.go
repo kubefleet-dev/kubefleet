@@ -98,7 +98,13 @@ var _ = BeforeSuite(func() {
 	err = (&Reconciler{
 		Client:              mgr.GetClient(),
 		PlacementController: fakePlacementController,
-	}).SetupWithManager(mgr)
+	}).SetupWithManagerForClusterResourceBinding(mgr)
+	Expect(err).Should(Succeed())
+
+	err = (&Reconciler{
+		Client:              mgr.GetClient(),
+		PlacementController: fakePlacementController,
+	}).SetupWithManagerForResourceBinding(mgr)
 	Expect(err).Should(Succeed())
 
 	go func() {
