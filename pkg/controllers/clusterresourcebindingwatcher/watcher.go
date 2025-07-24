@@ -94,7 +94,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	// Enqueue the placement name for reconciling.
-	r.PlacementController.Enqueue(placementName)
+	r.PlacementController.Enqueue(controller.GetObjectKeyFromNamespaceName(req.Namespace, placementName))
 	return ctrl.Result{}, nil
 }
 

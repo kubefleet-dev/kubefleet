@@ -21,12 +21,12 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 )
 
 const (
@@ -68,18 +68,15 @@ var _ = Describe("Test ClusterResourceBinding Watcher - create, delete events", 
 })
 
 // This container cannot be run in parallel with other ITs because it uses a shared fakePlacementController.
-var _ = Describe("Test ResourceBinding Watcher - create, delete events", Serial, func() {
+var _ = Describe("Test ResourceBinding Watcher - create, delete events", Serial, Ordered, func() {
 	var rb *fleetv1beta1.ResourceBinding
-	It("When creating, deleting resourceBinding", func() {
+
+	BeforeEach(func() {
 		fakePlacementController.ResetQueue()
+	})
+
+	It("When creating, deleting resourceBinding", func() {
 		By("Creating a new resourceBinding")
-		// Create namespace for the resource binding
-		ns := &corev1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: testNamespace,
-			},
-		}
-		Expect(k8sClient.Create(ctx, ns)).Should(Succeed(), "failed to create namespace")
 		rb = resourceBindingForTest()
 		Expect(k8sClient.Create(ctx, rb)).Should(Succeed(), "failed to create resource binding")
 
@@ -93,6 +90,31 @@ var _ = Describe("Test ResourceBinding Watcher - create, delete events", Serial,
 
 		By("Checking placement controller queue")
 		consistentlyCheckPlacementControllerQueueIsEmpty()
+	})
+})
+
+// This container cannot be run in parallel with other ITs because it uses a shared fakePlacementController. These tests are also ordered.
+var _ = Describe("Test ResourceBinding Watcher - update status", Serial, Ordered, func() {
+	var rb *fleetv1beta1.ResourceBinding
+
+	BeforeEach(func() {
+		fakePlacementController.ResetQueue()
+		By("Creating a new resourceBinding")
+		rb = resourceBindingForTest()
+		Expect(k8sClient.Create(ctx, rb)).Should(Succeed(), "failed to create resource binding")
+		fakePlacementController.ResetQueue()
+	})
+
+	AfterEach(func() {
+		rb.Name = testRBName
+		rb.Namespace = testNamespace
+		By("Deleting the resourceBinding")
+		Expect(k8sClient.Delete(ctx, rb)).Should(Succeed(), "failed to delete resource binding")
+	})
+
+	It("Should enqueue the resourcePlacement name for reconciling, when resourceBinding status changes - RolloutStarted", func() {
+		validateWhenUpdateResourceBindingStatusWithCondition(fleetv1beta1.ResourceBindingRolloutStarted, rb.Generation, metav1.ConditionTrue, testReason1)
+		validateWhenUpdateResourceBindingStatusWithCondition(fleetv1beta1.ResourceBindingRolloutStarted, rb.Generation, metav1.ConditionFalse, testReason1)
 	})
 })
 
@@ -701,6 +723,25 @@ func validateWhenUpdateClusterResourceBindingStatusWithCondition(conditionType f
 
 	By("Checking placement controller queue")
 	eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.PlacementTrackingLabel])
+	fakePlacementController.ResetQueue()
+}
+
+func validateWhenUpdateResourceBindingStatusWithCondition(conditionType fleetv1beta1.ResourceBindingConditionType, observedGeneration int64, status metav1.ConditionStatus, reason string) {
+	rb := &fleetv1beta1.ResourceBinding{}
+	By(fmt.Sprintf("Updating the resourceBinding status - %s, %d, %s, %s", conditionType, observedGeneration, status, reason))
+	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testRBName, Namespace: testNamespace}, rb)).Should(Succeed(), "failed to get resource binding")
+	condition := metav1.Condition{
+		Type:               string(conditionType),
+		ObservedGeneration: observedGeneration,
+		Status:             status,
+		Reason:             reason,
+		LastTransitionTime: metav1.Now(),
+	}
+	rb.SetConditions(condition)
+	Expect(k8sClient.Status().Update(ctx, rb)).Should(Succeed(), "failed to update resource binding status")
+
+	By("Checking placement controller queue")
+	eventuallyCheckPlacementControllerQueue(controller.GetObjectKeyFromNamespaceName(testNamespace, rb.GetLabels()[fleetv1beta1.PlacementTrackingLabel]))
 	fakePlacementController.ResetQueue()
 }
 
