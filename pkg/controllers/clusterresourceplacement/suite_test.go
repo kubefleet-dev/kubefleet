@@ -141,13 +141,13 @@ var _ = BeforeSuite(func() {
 
 	err = (&clusterresourceplacementwatcher.Reconciler{
 		PlacementController: crpController,
-	}).SetupWithManager(mgr)
+	}).SetupWithManagerForClusterResourcePlacement(mgr)
 	Expect(err).Should(Succeed(), "failed to create clusterResourcePlacement watcher")
 
 	err = (&clusterresourcebindingwatcher.Reconciler{
 		Client:              mgr.GetClient(),
 		PlacementController: crpController,
-	}).SetupWithManager(mgr)
+	}).SetupWithManagerForClusterResourceBinding(mgr)
 	Expect(err).Should(Succeed(), "failed to create clusterResourceBinding watcher")
 
 	ctx, cancel = context.WithCancel(context.TODO())
