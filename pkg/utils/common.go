@@ -109,6 +109,9 @@ const (
 
 	// FleetAnnotationPrefix is the prefix used to annotate fleet member cluster resources.
 	FleetAnnotationPrefix = "fleet.azure.com"
+
+	// SourcePlacementAnnotation is the annotation key used to track the source placement of applied resources.
+	SourcePlacementAnnotation = FleetAnnotationPrefix + "/source-placement"
 )
 
 var (

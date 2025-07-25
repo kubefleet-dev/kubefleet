@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 )
 
 // Note (chenyu1): The fake client Fleet uses for unit tests has trouble processing certain requests
@@ -546,6 +547,129 @@ func TestShouldUseForcedServerSideApply(t *testing.T) {
 			got := shouldUseForcedServerSideApply(toUnstructured(t, tc.inMemberClusterObj))
 			if got != tc.wantShouldUseForcedServerSideApply {
 				t.Errorf("shouldUseForcedServerSideApply() = %t, want %t", got, tc.wantShouldUseForcedServerSideApply)
+			}
+		})
+	}
+}
+
+// TestSetSourcePlacementAnnotation tests the setSourcePlacementAnnotation function.
+func TestSetSourcePlacementAnnotation(t *testing.T) {
+	// Base namespace object to use for testing
+	nsName := "ns-1"
+	ns := &corev1.Namespace{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Namespace",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: nsName,
+		},
+	}
+
+	// Test case 1: Work with placement tracking label
+	workWithPlacement := &fleetv1beta1.Work{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-work",
+			Namespace: "test-namespace",
+			Labels: map[string]string{
+				fleetv1beta1.PlacementTrackingLabel: "test-placement",
+			},
+		},
+	}
+	manifestObj1 := toUnstructured(t, ns.DeepCopy())
+	wantManifestObj1 := toUnstructured(t, ns.DeepCopy())
+	wantManifestObj1.SetAnnotations(map[string]string{
+		utils.SourcePlacementAnnotation: "test-placement",
+	})
+
+	// Test case 2: Work without placement tracking label (no labels at all)
+	workWithoutLabels := &fleetv1beta1.Work{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-work-no-labels",
+			Namespace: "test-namespace",
+		},
+	}
+	manifestObj2 := toUnstructured(t, ns.DeepCopy())
+	wantManifestObj2 := toUnstructured(t, ns.DeepCopy())
+	// No annotations should be added
+
+	// Test case 3: Work with empty placement tracking label
+	workWithEmptyPlacement := &fleetv1beta1.Work{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-work-empty-placement",
+			Namespace: "test-namespace",
+			Labels: map[string]string{
+				fleetv1beta1.PlacementTrackingLabel: "",
+			},
+		},
+	}
+	manifestObj3 := toUnstructured(t, ns.DeepCopy())
+	wantManifestObj3 := toUnstructured(t, ns.DeepCopy())
+	// No annotations should be added
+
+	// Test case 4: Manifest with existing annotations
+	workWithPlacement2 := &fleetv1beta1.Work{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-work-2",
+			Namespace: "test-namespace",
+			Labels: map[string]string{
+				fleetv1beta1.PlacementTrackingLabel: "another-placement",
+			},
+		},
+	}
+	manifestObj4 := toUnstructured(t, ns.DeepCopy())
+	manifestObj4.SetAnnotations(map[string]string{
+		"existing.annotation": "existing-value",
+		"another.annotation":  "another-value",
+	})
+	wantManifestObj4 := toUnstructured(t, ns.DeepCopy())
+	wantManifestObj4.SetAnnotations(map[string]string{
+		"existing.annotation":           "existing-value",
+		"another.annotation":            "another-value",
+		utils.SourcePlacementAnnotation: "another-placement",
+	})
+
+	testCases := []struct {
+		name            string
+		work            *fleetv1beta1.Work
+		manifestObj     *unstructured.Unstructured
+		wantManifestObj *unstructured.Unstructured
+	}{
+		{
+			name:            "work with placement tracking label",
+			work:            workWithPlacement,
+			manifestObj:     manifestObj1,
+			wantManifestObj: wantManifestObj1,
+		},
+		{
+			name:            "work without labels",
+			work:            workWithoutLabels,
+			manifestObj:     manifestObj2,
+			wantManifestObj: wantManifestObj2,
+		},
+		{
+			name:            "work with empty placement tracking label",
+			work:            workWithEmptyPlacement,
+			manifestObj:     manifestObj3,
+			wantManifestObj: wantManifestObj3,
+		},
+		{
+			name:            "manifest with existing annotations",
+			work:            workWithPlacement2,
+			manifestObj:     manifestObj4,
+			wantManifestObj: wantManifestObj4,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := setSourcePlacementAnnotation(tc.manifestObj, tc.work)
+			if err != nil {
+				t.Fatalf("setSourcePlacementAnnotation() = %v, want no error", err)
+			}
+
+			if diff := cmp.Diff(tc.manifestObj, tc.wantManifestObj); diff != "" {
+				t.Errorf("manifest obj mismatches (-got +want):\n%s", diff)
 			}
 		})
 	}
