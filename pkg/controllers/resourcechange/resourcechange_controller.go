@@ -59,6 +59,9 @@ type Reconciler struct {
 	// PlacementControllerV1Beta1 exposes the placement queue for the v1beta1 reconciler to push to.
 	PlacementControllerV1Beta1 controller.Controller
 
+	// ResourcePlacementController exposes the ResourcePlacement queue for the reconciler to push to.
+	ResourcePlacementController controller.Controller
+
 	// Event recorder to indicate the which placement picks up this object
 	Recorder record.EventRecorder
 }
@@ -100,9 +103,10 @@ func (r *Reconciler) Reconcile(_ context.Context, key controller.QueueKey) (ctrl
 			return ctrl.Result{}, client.IgnoreNotFound(err)
 		}
 		klog.V(2).InfoS("Find placement that select the namespace that contains a namespace scoped object", "obj", clusterWideKey)
+		isClusterScoped = true // we treat the namespace as a cluster scoped resource for placement purposes
 	}
 
-	return r.triggerAffectedPlacementsForUpdatedClusterRes(clusterWideKey, clusterObj.(*unstructured.Unstructured))
+	return r.triggerAffectedPlacementsForUpdatedClusterRes(clusterWideKey, clusterObj.(*unstructured.Unstructured), isClusterScoped)
 }
 
 // triggerAffectedPlacementsForDeletedClusterRes find the affected placements for a given deleted cluster scoped resources
@@ -215,47 +219,74 @@ func (r *Reconciler) getUnstructuredObject(objectKey keys.ClusterWideKey) (runti
 	return obj, isClusterScoped, nil
 }
 
-// triggerAffectedPlacementsForUpdatedClusterRes find the affected placements for a given updated cluster scoped resources.
-func (r *Reconciler) triggerAffectedPlacementsForUpdatedClusterRes(key keys.ClusterWideKey, res *unstructured.Unstructured) (ctrl.Result, error) {
-	if r.PlacementControllerV1Alpha1 != nil {
-		// List all the CRPs.
-		crpList, err := r.InformerManager.Lister(utils.ClusterResourcePlacementV1Alpha1GVR).List(labels.Everything())
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to list all the v1alpha1 cluster placements: %w", err)
+// triggerAffectedPlacementsForUpdatedClusterRes find the affected placements for a given updated cluster scoped or namespace scoped resources.
+// If triggerCRP is true, it will trigger the cluster resource placement controller, otherwise it will trigger the resource placement controller.
+func (r *Reconciler) triggerAffectedPlacementsForUpdatedClusterRes(key keys.ClusterWideKey, res *unstructured.Unstructured, triggerCRP bool) (ctrl.Result, error) {
+	if triggerCRP {
+		if r.PlacementControllerV1Alpha1 != nil {
+			// List all the CRPs.
+			crpList, err := r.InformerManager.Lister(utils.ClusterResourcePlacementV1Alpha1GVR).List(labels.Everything())
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to list all the v1alpha1 cluster placements: %w", err)
+			}
+
+			// Find all matching CRPs.
+			matchedCRPs := collectAllAffectedPlacementsV1Alpha1(res, crpList)
+			if len(matchedCRPs) == 0 {
+				klog.V(2).InfoS("change in object does not affect any v1alpha1 placement", "obj", key)
+				return ctrl.Result{}, nil
+			}
+
+			// Enqueue the CRPs for reconciliation.
+			for crp := range matchedCRPs {
+				klog.V(2).InfoS("Change in object triggered v1alpha1 placement reconcile", "obj", key, "crp", crp)
+				r.PlacementControllerV1Alpha1.Enqueue(crp)
+			}
 		}
 
-		// Find all matching CRPs.
-		matchedCRPs := collectAllAffectedPlacementsV1Alpha1(res, crpList)
-		if len(matchedCRPs) == 0 {
-			klog.V(2).InfoS("change in object does not affect any v1alpha1 placement", "obj", key)
-			return ctrl.Result{}, nil
-		}
+		if r.PlacementControllerV1Beta1 != nil {
+			// List all the CRPs.
+			crpList, err := r.InformerManager.Lister(utils.ClusterResourcePlacementGVR).List(labels.Everything())
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to list all the v1beta1 cluster placements: %w", err)
+			}
 
-		// Enqueue the CRPs for reconciliation.
-		for crp := range matchedCRPs {
-			klog.V(2).InfoS("Change in object triggered v1alpha1 placement reconcile", "obj", key, "crp", crp)
-			r.PlacementControllerV1Alpha1.Enqueue(crp)
+			// Find all matching CRPs.
+			clusterPlacements := convertToClusterResourcePlacements(crpList)
+			matchedCRPs := collectAllAffectedPlacementsV1Beta1(res, clusterPlacements)
+			if len(matchedCRPs) == 0 {
+				klog.V(2).InfoS("change in object does not affect any v1beta1 placement", "obj", key)
+				return ctrl.Result{}, nil
+			}
+
+			// Enqueue the CRPs for reconciliation.
+			for crp := range matchedCRPs {
+				klog.V(2).InfoS("Change in object triggered v1beta1 placement reconcile", "obj", key, "crp", crp)
+				r.PlacementControllerV1Beta1.Enqueue(crp)
+			}
 		}
+		return ctrl.Result{}, nil
 	}
 
-	if r.PlacementControllerV1Beta1 != nil {
-		// List all the CRPs.
-		crpList, err := r.InformerManager.Lister(utils.ClusterResourcePlacementGVR).List(labels.Everything())
+	if r.ResourcePlacementController != nil {
+		// List all the ResourcePlacements.
+		rpList, err := r.InformerManager.Lister(utils.ResourcePlacementGVR).ByNamespace(key.Namespace).List(labels.Everything())
 		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to list all the v1beta1 cluster placements: %w", err)
+			return ctrl.Result{}, fmt.Errorf("failed to list all the resource placements in namespace %s: %w", key.Namespace, err)
 		}
 
-		// Find all matching CRPs.
-		matchedCRPs := collectAllAffectedPlacementsV1Beta1(res, crpList)
-		if len(matchedCRPs) == 0 {
-			klog.V(2).InfoS("change in object does not affect any v1beta1 placement", "obj", key)
+		// Find all matching ResourcePlacements.
+		resourcePlacements := convertToResourcePlacements(rpList)
+		matchedRPs := collectAllAffectedPlacementsV1Beta1(res, resourcePlacements)
+		if len(matchedRPs) == 0 {
+			klog.V(2).InfoS("change in object does not affect any resource placement", "obj", key)
 			return ctrl.Result{}, nil
 		}
 
-		// Enqueue the CRPs for reconciliation.
-		for crp := range matchedCRPs {
-			klog.V(2).InfoS("Change in object triggered v1beta1 placement reconcile", "obj", key, "crp", crp)
-			r.PlacementControllerV1Beta1.Enqueue(crp)
+		// Enqueue the ResourcePlacements for reconciliation.
+		for rp := range matchedRPs {
+			klog.V(2).InfoS("Change in object triggered resource placement reconcile", "obj", key, "rp", rp)
+			r.ResourcePlacementController.Enqueue(rp)
 		}
 	}
 
@@ -302,17 +333,17 @@ func collectAllAffectedPlacementsV1Alpha1(res *unstructured.Unstructured, crpLis
 }
 
 // collectAllAffectedPlacementsV1Beta1 goes through all v1beta1 placements and collect the ones whose resource selector matches the object given its gvk
-func collectAllAffectedPlacementsV1Beta1(res *unstructured.Unstructured, crpList []runtime.Object) map[string]bool {
+func collectAllAffectedPlacementsV1Beta1(res *unstructured.Unstructured, placementList []placementv1beta1.PlacementObj) map[string]bool {
 	placements := make(map[string]bool)
-	for _, crp := range crpList {
+	for _, placement := range placementList {
 		match := false
-		var placement placementv1beta1.ClusterResourcePlacement
-		_ = runtime.DefaultUnstructuredConverter.FromUnstructured(crp.DeepCopyObject().(*unstructured.Unstructured).Object, &placement)
 		// find the placements selected this resource (before this change)
-		for _, selectedRes := range placement.Status.SelectedResources {
+		// For the resource placement, we do not compare the namespace in the selectedResources status.
+		// We assume the namespace is the same as the resource placement's namespace.
+		for _, selectedRes := range placement.GetPlacementStatus().SelectedResources {
 			if selectedRes.Group == res.GroupVersionKind().Group && selectedRes.Version == res.GroupVersionKind().Version &&
 				selectedRes.Kind == res.GroupVersionKind().Kind && selectedRes.Name == res.GetName() {
-				placements[placement.Name] = true
+				placements[placement.GetName()] = true
 				match = true
 				break
 			}
@@ -321,19 +352,50 @@ func collectAllAffectedPlacementsV1Beta1(res *unstructured.Unstructured, crpList
 			continue
 		}
 		// check if object match any placement's resource selectors
-		for _, selector := range placement.Spec.ResourceSelectors {
+		// For the resource placement, we do not compare the namespace in the selector.
+		// We assume the namespace is the same as the resource placement's namespace and webhook/CEL
+		// will validate the resource placement's namespace matches the resource's namespace.
+		for _, selector := range placement.GetPlacementSpec().ResourceSelectors {
 			if !matchSelectorGVKV1Beta1(res.GetObjectKind().GroupVersionKind(), selector) {
 				continue
 			}
 			// if there is 1 selector match, it is a placement match, add only once
 			if selector.Name != "" {
 				if selector.Name == res.GetName() {
-					placements[placement.Name] = true
+					placements[placement.GetName()] = true
 					break
 				}
 			} else if matchSelectorLabelSelectorV1Beta1(res.GetLabels(), selector) {
-				placements[placement.Name] = true
+				placements[placement.GetName()] = true
 				break
+			}
+		}
+	}
+	return placements
+}
+
+// convertToClusterResourcePlacements converts a list of runtime.Object to ClusterResourcePlacement objects
+func convertToClusterResourcePlacements(objects []runtime.Object) []placementv1beta1.PlacementObj {
+	placements := make([]placementv1beta1.PlacementObj, 0, len(objects))
+	for _, obj := range objects {
+		if unstructuredObj, ok := obj.(*unstructured.Unstructured); ok {
+			var placement placementv1beta1.ClusterResourcePlacement
+			if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.Object, &placement); err == nil {
+				placements = append(placements, &placement)
+			}
+		}
+	}
+	return placements
+}
+
+// convertToResourcePlacements converts a list of runtime.Object to ResourcePlacement objects
+func convertToResourcePlacements(objects []runtime.Object) []placementv1beta1.PlacementObj {
+	placements := make([]placementv1beta1.PlacementObj, 0, len(objects))
+	for _, obj := range objects {
+		if unstructuredObj, ok := obj.(*unstructured.Unstructured); ok {
+			var placement placementv1beta1.ResourcePlacement
+			if err := runtime.DefaultUnstructuredConverter.FromUnstructured(unstructuredObj.Object, &placement); err == nil {
+				placements = append(placements, &placement)
 			}
 		}
 	}
