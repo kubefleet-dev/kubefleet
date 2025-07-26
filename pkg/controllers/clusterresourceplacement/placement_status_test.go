@@ -5996,7 +5996,7 @@ func TestBuildClusterResourceBindings(t *testing.T) {
 	tests := []struct {
 		name     string
 		bindings []fleetv1beta1.ClusterResourceBinding
-		want     map[string]*fleetv1beta1.ClusterResourceBinding
+		want     map[string]fleetv1beta1.BindingObj
 	}{
 		{
 			name: "no associated bindings",
@@ -6010,7 +6010,7 @@ func TestBuildClusterResourceBindings(t *testing.T) {
 					},
 				},
 			},
-			want: map[string]*fleetv1beta1.ClusterResourceBinding{},
+			want: map[string]fleetv1beta1.BindingObj{},
 		},
 		{
 			name: "deleting binding",
@@ -6026,7 +6026,7 @@ func TestBuildClusterResourceBindings(t *testing.T) {
 					},
 				},
 			},
-			want: map[string]*fleetv1beta1.ClusterResourceBinding{},
+			want: map[string]fleetv1beta1.BindingObj{},
 		},
 		{
 			name: "binding having stale policy snapshot",
@@ -6044,7 +6044,7 @@ func TestBuildClusterResourceBindings(t *testing.T) {
 					},
 				},
 			},
-			want: map[string]*fleetv1beta1.ClusterResourceBinding{},
+			want: map[string]fleetv1beta1.BindingObj{},
 		},
 		{
 			name: "matched bindings",
@@ -6074,8 +6074,8 @@ func TestBuildClusterResourceBindings(t *testing.T) {
 					},
 				},
 			},
-			want: map[string]*fleetv1beta1.ClusterResourceBinding{
-				"member-1": {
+			want: map[string]fleetv1beta1.BindingObj{
+				"member-1": &fleetv1beta1.ClusterResourceBinding{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "binding-1",
 						Labels: map[string]string{
@@ -6087,7 +6087,7 @@ func TestBuildClusterResourceBindings(t *testing.T) {
 						TargetCluster:                "member-1",
 					},
 				},
-				"member-2": {
+				"member-2": &fleetv1beta1.ClusterResourceBinding{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "binding-2",
 						Labels: map[string]string{
@@ -6113,7 +6113,7 @@ func TestBuildClusterResourceBindings(t *testing.T) {
 					},
 				},
 			},
-			want: map[string]*fleetv1beta1.ClusterResourceBinding{},
+			want: map[string]fleetv1beta1.BindingObj{},
 		},
 	}
 	for _, tc := range tests {
@@ -6171,8 +6171,8 @@ func TestSetResourcePlacementStatusPerCluster(t *testing.T) {
 
 	tests := []struct {
 		name                        string
-		crp                         *fleetv1beta1.ClusterResourcePlacement
-		binding                     *fleetv1beta1.ClusterResourceBinding
+		crp                         fleetv1beta1.PlacementObj
+		binding                     fleetv1beta1.BindingObj
 		wantConditionStatusMap      map[condition.ResourceCondition]metav1.ConditionStatus
 		wantResourcePlacementStatus fleetv1beta1.ResourcePlacementStatus
 		expectedCondTypes           []condition.ResourceCondition
@@ -7798,20 +7798,20 @@ func TestFindClusterResourceSnapshotIndexForBindings(t *testing.T) {
 	}
 	tests := []struct {
 		name                         string
-		bindingMap                   map[string]*fleetv1beta1.ClusterResourceBinding
+		bindingMap                   map[string]fleetv1beta1.BindingObj
 		resourceSnapshots            []*fleetv1beta1.ClusterResourceSnapshot
 		wantResourceSnapshotIndexMap map[string]string
 	}{
 		{
 			name:                         "empty binding map",
-			bindingMap:                   map[string]*fleetv1beta1.ClusterResourceBinding{},
+			bindingMap:                   map[string]fleetv1beta1.BindingObj{},
 			resourceSnapshots:            []*fleetv1beta1.ClusterResourceSnapshot{},
 			wantResourceSnapshotIndexMap: map[string]string{},
 		},
 		{
 			name: "binding with empty resource snapshot name",
-			bindingMap: map[string]*fleetv1beta1.ClusterResourceBinding{
-				"member-1": {
+			bindingMap: map[string]fleetv1beta1.BindingObj{
+				"member-1": &fleetv1beta1.ClusterResourceBinding{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "binding-1",
 						Labels: map[string]string{
@@ -7828,8 +7828,8 @@ func TestFindClusterResourceSnapshotIndexForBindings(t *testing.T) {
 		},
 		{
 			name: "binding with not found resource snapshot",
-			bindingMap: map[string]*fleetv1beta1.ClusterResourceBinding{
-				"member-1": {
+			bindingMap: map[string]fleetv1beta1.BindingObj{
+				"member-1": &fleetv1beta1.ClusterResourceBinding{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "binding-1",
 						Labels: map[string]string{
@@ -7846,8 +7846,8 @@ func TestFindClusterResourceSnapshotIndexForBindings(t *testing.T) {
 		},
 		{
 			name: "single binding with found resource snapshot",
-			bindingMap: map[string]*fleetv1beta1.ClusterResourceBinding{
-				"member-1": {
+			bindingMap: map[string]fleetv1beta1.BindingObj{
+				"member-1": &fleetv1beta1.ClusterResourceBinding{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "binding-1",
 						Labels: map[string]string{
@@ -7874,8 +7874,8 @@ func TestFindClusterResourceSnapshotIndexForBindings(t *testing.T) {
 		},
 		{
 			name: "multiple bindings with both found and not found resource snapshots",
-			bindingMap: map[string]*fleetv1beta1.ClusterResourceBinding{
-				"member-1": {
+			bindingMap: map[string]fleetv1beta1.BindingObj{
+				"member-1": &fleetv1beta1.ClusterResourceBinding{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "binding-1",
 						Labels: map[string]string{
@@ -7886,7 +7886,7 @@ func TestFindClusterResourceSnapshotIndexForBindings(t *testing.T) {
 						ResourceSnapshotName: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, testCRPName, 0),
 					},
 				},
-				"member-2": {
+				"member-2": &fleetv1beta1.ClusterResourceBinding{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "binding-2",
 						Labels: map[string]string{
@@ -7897,7 +7897,7 @@ func TestFindClusterResourceSnapshotIndexForBindings(t *testing.T) {
 						ResourceSnapshotName: "not-found",
 					},
 				},
-				"member-3": {
+				"member-3": &fleetv1beta1.ClusterResourceBinding{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "binding-3",
 						Labels: map[string]string{

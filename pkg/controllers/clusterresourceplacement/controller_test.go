@@ -121,8 +121,9 @@ func clusterResourcePlacementForTest() *fleetv1beta1.ClusterResourcePlacement {
 
 func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 	testPolicy := placementPolicyForTest()
-	testPolicy.NumberOfClusters = nil
-	jsonBytes, err := json.Marshal(testPolicy)
+	testPolicyHash := testPolicy.DeepCopy()
+	testPolicyHash.NumberOfClusters = nil
+	jsonBytes, err := json.Marshal(testPolicyHash)
 	if err != nil {
 		t.Fatalf("failed to create the policy hash: %v", err)
 	}
@@ -745,14 +746,21 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 			if tc.revisionHistoryLimit != nil {
 				limit = *tc.revisionHistoryLimit
 			}
-			got, err := r.getOrCreateClusterSchedulingPolicySnapshot(ctx, crp, int(limit))
+			got, err := r.getOrCreateSchedulingPolicySnapshot(ctx, crp, int(limit))
 			if err != nil {
 				t.Fatalf("failed to getOrCreateClusterSchedulingPolicySnapshot: %v", err)
 			}
+
+			// Convert interface to concrete type for comparison
+			gotSnapshot, ok := got.(*fleetv1beta1.ClusterSchedulingPolicySnapshot)
+			if !ok {
+				t.Fatalf("expected *ClusterSchedulingPolicySnapshot, got %T", got)
+			}
+
 			options := []cmp.Option{
 				cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion"),
 			}
-			if diff := cmp.Diff(tc.wantPolicySnapshots[tc.wantLatestSnapshotIndex], *got, options...); diff != "" {
+			if diff := cmp.Diff(tc.wantPolicySnapshots[tc.wantLatestSnapshotIndex], *gotSnapshot, options...); diff != "" {
 				t.Errorf("getOrCreateClusterSchedulingPolicySnapshot() mismatch (-want, +got):\n%s", diff)
 			}
 			clusterPolicySnapshotList := &fleetv1beta1.ClusterSchedulingPolicySnapshotList{}
@@ -1037,7 +1045,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 				Scheme:   scheme,
 				Recorder: record.NewFakeRecorder(10),
 			}
-			_, err := r.getOrCreateClusterSchedulingPolicySnapshot(ctx, crp, 1)
+			_, err := r.getOrCreateSchedulingPolicySnapshot(ctx, crp, 1)
 			if err == nil { // if error is nil
 				t.Fatal("getOrCreateClusterResourceSnapshot() = nil, want err")
 			}
@@ -2701,7 +2709,7 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 				limit = *tc.revisionHistoryLimit
 			}
 			resourceSnapshotResourceSizeLimit = tc.selectedResourcesSizeLimit
-			res, got, err := r.getOrCreateClusterResourceSnapshot(ctx, crp, tc.envelopeObjCount, tc.resourceSnapshotSpec, int(limit))
+			res, got, err := r.getOrCreateResourceSnapshot(ctx, crp, tc.envelopeObjCount, tc.resourceSnapshotSpec, int(limit))
 			if err != nil {
 				t.Fatalf("failed to handle getOrCreateClusterResourceSnapshot: %v", err)
 			}
@@ -2736,8 +2744,12 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 				return normalized
 			})
 			options = append(options, sortClusterResourceSnapshotOption, annotationOption)
-			if diff := cmp.Diff(tc.wantResourceSnapshots[tc.wantLatestSnapshotIndex], *got, options...); diff != "" {
-				t.Errorf("getOrCreateClusterResourceSnapshot() mismatch (-want, +got):\n%s", diff)
+			gotSnapshot, ok := got.(*fleetv1beta1.ClusterResourceSnapshot)
+			if !ok {
+				t.Fatalf("expected *fleetv1beta1.ClusterResourceSnapshot, got %T", got)
+			}
+			if diff := cmp.Diff(tc.wantResourceSnapshots[tc.wantLatestSnapshotIndex], *gotSnapshot, options...); diff != "" {
+				t.Errorf("getOrCreateResourceSnapshot() mismatch (-want, +got):\n%s", diff)
 			}
 			clusterResourceSnapshotList := &fleetv1beta1.ClusterResourceSnapshotList{}
 			if err := fakeClient.List(ctx, clusterResourceSnapshotList); err != nil {
@@ -2781,7 +2793,7 @@ func TestGetOrCreateClusterResourceSnapshot_failure(t *testing.T) {
 		},
 		{
 			// Should never hit this case unless there is a bug in the controller or customers manually modify the clusterResourceSnapshot.
-			name: "existing active policy snapshot does not have hash annotation",
+			name: "existing active resource snapshot does not have hash annotation",
 			resourceSnapshots: []fleetv1beta1.ClusterResourceSnapshot{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -3089,7 +3101,7 @@ func TestGetOrCreateClusterResourceSnapshot_failure(t *testing.T) {
 				Client: fakeClient,
 				Scheme: scheme,
 			}
-			res, _, err := r.getOrCreateClusterResourceSnapshot(ctx, crp, 0, resourceSnapshotSpecA, 1)
+			res, _, err := r.getOrCreateResourceSnapshot(ctx, crp, 0, resourceSnapshotSpecA, 1)
 			if err == nil { // if error is nil
 				t.Fatal("getOrCreateClusterResourceSnapshot() = nil, want err")
 			}
@@ -3098,70 +3110,6 @@ func TestGetOrCreateClusterResourceSnapshot_failure(t *testing.T) {
 			}
 			if !errors.Is(err, controller.ErrUnexpectedBehavior) {
 				t.Errorf("getOrCreateClusterResourceSnapshot() got %v, want %v type", err, controller.ErrUnexpectedBehavior)
-			}
-		})
-	}
-}
-
-func TestSplitSelectedResources(t *testing.T) {
-	// test service is 383 bytes in size.
-	serviceResourceContent := *resource.ServiceResourceContentForTest(t)
-	// test deployment 390 bytes in size.
-	deploymentResourceContent := *resource.DeploymentResourceContentForTest(t)
-	// test secret is 152 bytes in size.
-	secretResourceContent := *resource.SecretResourceContentForTest(t)
-	tests := []struct {
-		name                       string
-		selectedResourcesSizeLimit int
-		selectedResources          []fleetv1beta1.ResourceContent
-		wantSplitSelectedResources [][]fleetv1beta1.ResourceContent
-	}{
-		{
-			name:                       "empty split selected resources - empty list of selectedResources",
-			selectedResources:          []fleetv1beta1.ResourceContent{},
-			wantSplitSelectedResources: nil,
-		},
-		{
-			name:                       "selected resources don't cross individual clusterResourceSnapshot size limit",
-			selectedResourcesSizeLimit: 1000,
-			selectedResources:          []fleetv1beta1.ResourceContent{secretResourceContent, serviceResourceContent, deploymentResourceContent},
-			wantSplitSelectedResources: [][]fleetv1beta1.ResourceContent{{secretResourceContent, serviceResourceContent, deploymentResourceContent}},
-		},
-		{
-			name:                       "selected resource cross clusterResourceSnapshot size limit - each resource in separate list, each resource is larger than the size limit",
-			selectedResourcesSizeLimit: 100,
-			selectedResources:          []fleetv1beta1.ResourceContent{secretResourceContent, serviceResourceContent, deploymentResourceContent},
-			wantSplitSelectedResources: [][]fleetv1beta1.ResourceContent{{secretResourceContent}, {serviceResourceContent}, {deploymentResourceContent}},
-		},
-		{
-			name:                       "selected resources cross individual clusterResourceSnapshot size limit - each resource in separate list, any grouping of resources is larger than the size limit",
-			selectedResourcesSizeLimit: 500,
-			selectedResources:          []fleetv1beta1.ResourceContent{secretResourceContent, serviceResourceContent, deploymentResourceContent},
-			wantSplitSelectedResources: [][]fleetv1beta1.ResourceContent{{secretResourceContent}, {serviceResourceContent}, {deploymentResourceContent}},
-		},
-		{
-			name:                       "selected resources cross individual clusterResourceSnapshot size limit - two resources in first list, one resource in second list",
-			selectedResourcesSizeLimit: 600,
-			selectedResources:          []fleetv1beta1.ResourceContent{secretResourceContent, serviceResourceContent, deploymentResourceContent},
-			wantSplitSelectedResources: [][]fleetv1beta1.ResourceContent{{secretResourceContent, serviceResourceContent}, {deploymentResourceContent}},
-		},
-		{
-			name:                       "selected resources cross individual clusterResourceSnapshot size limit - one resource in first list, two resources in second list",
-			selectedResourcesSizeLimit: 600,
-			selectedResources:          []fleetv1beta1.ResourceContent{serviceResourceContent, deploymentResourceContent, secretResourceContent},
-			wantSplitSelectedResources: [][]fleetv1beta1.ResourceContent{{serviceResourceContent}, {deploymentResourceContent, secretResourceContent}},
-		},
-	}
-	originalResourceSnapshotResourceSizeLimit := resourceSnapshotResourceSizeLimit
-	defer func() {
-		resourceSnapshotResourceSizeLimit = originalResourceSnapshotResourceSizeLimit
-	}()
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			resourceSnapshotResourceSizeLimit = tc.selectedResourcesSizeLimit
-			gotSplitSelectedResources := splitSelectedResources(tc.selectedResources)
-			if diff := cmp.Diff(tc.wantSplitSelectedResources, gotSplitSelectedResources); diff != "" {
-				t.Errorf("splitSelectedResources List() mismatch (-want, +got):\n%s", diff)
 			}
 		})
 	}
@@ -3383,7 +3331,7 @@ func TestHandleDelete(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 			crp := clusterResourcePlacementForTest()
-			crp.Finalizers = []string{fleetv1beta1.ClusterResourcePlacementCleanupFinalizer}
+			crp.Finalizers = []string{fleetv1beta1.PlacementCleanupFinalizer}
 			now := metav1.Now()
 			crp.DeletionTimestamp = &now
 			objects := []client.Object{crp}

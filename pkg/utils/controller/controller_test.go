@@ -283,7 +283,7 @@ func serviceScheme(t *testing.T) *runtime.Scheme {
 	return scheme
 }
 
-func TestFetchAllClusterResourceSnapshots(t *testing.T) {
+func TestFetchAllResourceSnapshots(t *testing.T) {
 	tests := []struct {
 		name      string
 		master    *fleetv1beta1.ClusterResourceSnapshot
@@ -481,7 +481,7 @@ func TestFetchAllClusterResourceSnapshots(t *testing.T) {
 				WithScheme(scheme).
 				WithObjects(objects...).
 				Build()
-			got, err := FetchAllResourceSnapshots(context.Background(), fakeClient, crpName, tc.master)
+			got, err := FetchAllResourceSnapshotsAlongWithMaster(context.Background(), fakeClient, crpName, tc.master)
 			if gotErr, wantErr := err != nil, tc.wantErr != nil; gotErr != wantErr || !errors.Is(err, tc.wantErr) {
 				t.Fatalf("FetchAllClusterResourceSnapshots() got error %v, want error %v", err, tc.wantErr)
 			}
@@ -503,7 +503,7 @@ func TestFetchAllClusterResourceSnapshots(t *testing.T) {
 	}
 }
 
-func TestCollectResourceIdentifiersFromClusterResourceSnapshot(t *testing.T) {
+func TestCollectResourceIdentifiersFromResourceSnapshot(t *testing.T) {
 	namespaceResourceContent := *resource.NamespaceResourceContentForTest(t)
 	deploymentResourceContent := *resource.DeploymentResourceContentForTest(t)
 	clusterResourceEnvelopeContent := *resource.ClusterResourceEnvelopeResourceContentForTest(t)
@@ -792,7 +792,7 @@ func TestCollectResourceIdentifiersFromClusterResourceSnapshot(t *testing.T) {
 	}
 }
 
-func TestCollectResourceIdentifiersUsingMasterClusterResourceSnapshot(t *testing.T) {
+func TestCollectResourceIdentifiersUsingMasterResourceSnapshot(t *testing.T) {
 	namespaceResourceContent := *resource.NamespaceResourceContentForTest(t)
 	deploymentResourceContent := *resource.DeploymentResourceContentForTest(t)
 	clusterResourceEnvelopeContent := *resource.ClusterResourceEnvelopeResourceContentForTest(t)
