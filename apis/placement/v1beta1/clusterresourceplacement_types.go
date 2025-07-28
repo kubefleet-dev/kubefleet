@@ -113,7 +113,7 @@ type ClusterResourcePlacement struct {
 
 	// The desired state of ClusterResourcePlacement.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.policy) && !has(self.policy)) || (has(self.policy) && has(oldSelf.policy) && self.policy.placementType != oldSelf.policy.placementType)",message="placement type is immutable"
+	// +kubebuilder:validation:XValidation:rule="!((has(oldSelf.policy) && !has(self.policy)) || (has(oldSelf.policy) && has(self.policy) && has(self.policy.placementType) && has(oldSelf.policy.placementType) && self.policy.placementType != oldSelf.policy.placementType))",message="placement type is immutable"
 	Spec PlacementSpec `json:"spec"`
 
 	// The observed status of ClusterResourcePlacement.

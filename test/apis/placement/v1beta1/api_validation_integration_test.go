@@ -83,6 +83,15 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("placement type is immutable"))
 		})
+
+		It("should deny update of ClusterResourcePlacement with different placement type", func() {
+			Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed(), "Get CRP call failed")
+			crp.Spec.Policy.PlacementType = placementv1beta1.PickAllPlacementType
+			err := hubClient.Update(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("placement type is immutable"))
+		})
 	})
 
 	Context("Test ClusterPlacementDisruptionBudget API validation - valid cases", func() {

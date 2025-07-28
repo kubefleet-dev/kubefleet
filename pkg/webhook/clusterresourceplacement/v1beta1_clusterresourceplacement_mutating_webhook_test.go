@@ -19,12 +19,12 @@ package clusterresourceplacement
 import (
 	"context"
 	"encoding/json"
-	"sort"
 	"testing"
 
 	"gomodules.xyz/jsonpatch/v2"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/assert"
 	admissionv1 "k8s.io/api/admission/v1"
 	authenticationv1 "k8s.io/api/authentication/v1"
@@ -300,7 +300,8 @@ func TestMutatingHandle(t *testing.T) {
 		Spec: placementv1beta1.PlacementSpec{
 			ResourceSelectors: []placementv1beta1.ClusterResourceSelector{resourceSelector},
 			Policy: &placementv1beta1.PlacementPolicy{
-				PlacementType: placementv1beta1.PickNPlacementType, // Policy change is immutable
+				PlacementType:    placementv1beta1.PickNPlacementType, // Policy change is immutable
+				NumberOfClusters: ptr.To(int32(3)),
 			},
 		},
 	}
@@ -778,20 +779,17 @@ func TestMutatingHandle(t *testing.T) {
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 			resp := mutator.Handle(context.Background(), tc.req)
-			sortPatches(resp.Patches)
-			sortPatches(tc.wantResponse.Patches)
-			if diff := cmp.Diff(tc.wantResponse, resp); diff != "" {
+			cmpOptions := []cmp.Option{
+				cmpopts.SortSlices(func(a, b jsonpatch.JsonPatchOperation) bool {
+					if a.Path == b.Path {
+						return a.Operation < b.Operation
+					}
+					return a.Path < b.Path
+				}),
+			}
+			if diff := cmp.Diff(tc.wantResponse, resp, cmpOptions...); diff != "" {
 				t.Errorf("Handle() mismatch (-want, got):\n%s", diff)
 			}
 		})
 	}
-}
-
-func sortPatches(patches []jsonpatch.JsonPatchOperation) {
-	sort.Slice(patches, func(i, j int) bool {
-		if patches[i].Path == patches[j].Path {
-			return patches[i].Operation < patches[j].Operation
-		}
-		return patches[i].Path < patches[j].Path
-	})
 }
