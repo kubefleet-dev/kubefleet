@@ -87,11 +87,14 @@ func (r *Reconciler) Reconcile(_ context.Context, key controller.QueueKey) (ctrl
 	switch {
 	case apierrors.IsNotFound(err):
 		if isClusterScoped {
-			// We only care about cluster scoped resources here, and we need to find out which placements have selected this resource.
-			// For namespaces resources, we just need to find its parent namespace just like a normal resource.
+			// We need to find out which placements have selected this resource.
 			return r.triggerAffectedPlacementsForDeletedClusterRes(clusterWideKey)
+		} else {
+			// TODO: handle the case where a namespace scoped resource is deleted for resource placement.
+			// For the deleting namespace scoped resource, we find the namespace and treated it as an updated
+			// resource inside the namespace.
+			return r.handleUpdatedResourceForPlacement(clusterWideKey, clusterObj, isClusterScoped)
 		}
-		// TODO: handle the case where a namespace scoped resource is deleted.
 	case err != nil:
 		klog.ErrorS(err, "Failed to get unstructured object", "obj", clusterWideKey)
 		return ctrl.Result{}, err
@@ -99,16 +102,10 @@ func (r *Reconciler) Reconcile(_ context.Context, key controller.QueueKey) (ctrl
 	return r.handleUpdatedResource(clusterWideKey, clusterObj, isClusterScoped)
 }
 
-func (r *Reconciler) handleUpdatedResource(key keys.ClusterWideKey, clusterObj runtime.Object, isClusterScoped bool) (ctrl.Result, error) {
+func (r *Reconciler) handleUpdatedResourceForPlacement(key keys.ClusterWideKey, clusterObj runtime.Object, isClusterScoped bool) (ctrl.Result, error) {
 	if isClusterScoped {
 		klog.V(2).InfoS("Find clusterResourcePlacement that select the cluster scoped object", "obj", key)
 		return r.triggerAffectedPlacementsForUpdatedClusterRes(key, clusterObj.(*unstructured.Unstructured), true)
-	}
-
-	klog.V(2).InfoS("Find resourcePlacement that select the namespace scoped object", "obj", key)
-	if _, err := r.triggerAffectedPlacementsForUpdatedClusterRes(key, clusterObj.(*unstructured.Unstructured), false); err != nil {
-		klog.ErrorS(err, "Failed to find resourcePlacements for the updated resource", "obj", key)
-		return ctrl.Result{}, err
 	}
 
 	klog.V(2).InfoS("Find namespace that contains a namespace scoped object", "obj", key)
@@ -120,7 +117,39 @@ func (r *Reconciler) handleUpdatedResource(key keys.ClusterWideKey, clusterObj r
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	klog.V(2).InfoS("Find placement that select the namespace that contains a namespace scoped object", "obj", key)
-	return r.triggerAffectedPlacementsForUpdatedClusterRes(key, clusterObj.(*unstructured.Unstructured), true)
+	res, err := r.triggerAffectedPlacementsForUpdatedClusterRes(key, clusterObj.(*unstructured.Unstructured), true)
+	if err != nil {
+		klog.ErrorS(err, "Failed to trigger affected placements for updated cluster resource", "obj", key)
+		return ctrl.Result{}, err
+	}
+	return res, nil
+}
+
+func (r *Reconciler) handleUpdatedResourceForResourcePlacement(key keys.ClusterWideKey, clusterObj runtime.Object, isClusterScoped bool) (ctrl.Result, error) {
+	if isClusterScoped {
+		return ctrl.Result{}, nil
+	}
+
+	klog.V(2).InfoS("Find resourcePlacement that select the namespace scoped object", "obj", key)
+	res, err := r.triggerAffectedPlacementsForUpdatedClusterRes(key, clusterObj.(*unstructured.Unstructured), false)
+	if err != nil {
+		klog.ErrorS(err, "Failed to trigger affected placements for updated resource placement", "obj", key)
+		return ctrl.Result{}, err
+	}
+	return res, nil
+}
+
+func (r *Reconciler) handleUpdatedResource(key keys.ClusterWideKey, clusterObj runtime.Object, isClusterScoped bool) (ctrl.Result, error) {
+	if _, err := r.handleUpdatedResourceForPlacement(key, clusterObj, isClusterScoped); err != nil {
+		klog.ErrorS(err, "Failed to handle updated resource for placement", "obj", key)
+		return ctrl.Result{}, err
+	}
+	if _, err := r.handleUpdatedResourceForResourcePlacement(key, clusterObj, isClusterScoped); err != nil {
+		klog.ErrorS(err, "Failed to handle updated resource for resource placement", "obj", key)
+		return ctrl.Result{}, err
+	}
+	klog.V(2).InfoS("Successfully handled updated resource", "obj", key)
+	return ctrl.Result{}, nil
 }
 
 // triggerAffectedPlacementsForDeletedClusterRes find the affected placements for a given deleted cluster scoped resources
