@@ -23,7 +23,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	appv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
@@ -32,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/cache"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	fleetv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/v1alpha1"
@@ -41,6 +44,12 @@ import (
 )
 
 var _ controller.Controller = &fakeController{}
+
+var (
+	sortSlicesOption = cmpopts.SortSlices(func(a, b string) bool {
+		return a < b
+	})
+)
 
 // fakeController implements Controller interface
 type fakeController struct {
@@ -69,11 +78,13 @@ func (f *fakeLister) List(_ labels.Selector) ([]runtime.Object, error) {
 	return f.objects, nil
 }
 
-func (f *fakeLister) Get(_ string) (runtime.Object, error) {
-	if len(f.objects) > 0 {
-		return f.objects[0], nil
+func (f *fakeLister) Get(name string) (runtime.Object, error) {
+	for _, obj := range f.objects {
+		if obj.(*unstructured.Unstructured).GetName() == name {
+			return obj, nil
+		}
 	}
-	return nil, nil
+	return nil, apierrors.NewNotFound(schema.GroupResource{Resource: "test"}, name)
 }
 
 func (f *fakeLister) ByNamespace(namespace string) cache.GenericNamespaceLister {
@@ -90,11 +101,13 @@ func (f *fakeNamespaceLister) List(_ labels.Selector) ([]runtime.Object, error) 
 	return f.objects, nil
 }
 
-func (f *fakeNamespaceLister) Get(_ string) (runtime.Object, error) {
-	if len(f.objects) > 0 {
-		return f.objects[0], nil
+func (f *fakeNamespaceLister) Get(name string) (runtime.Object, error) {
+	for _, obj := range f.objects {
+		if obj.(*unstructured.Unstructured).GetName() == name {
+			return obj, nil
+		}
 	}
-	return nil, nil
+	return nil, apierrors.NewNotFound(schema.GroupResource{Resource: "test"}, name)
 }
 
 // fakeInformerManager is a test-specific informer manager
@@ -1348,9 +1361,8 @@ func TestCollectAllAffectedPlacementsV1Beta1_ResourcePlacement(t *testing.T) {
 	}
 }
 
-func TestTriggerAffectedPlacementsForUpdatedClusterRes(t *testing.T) {
-	// Test resource - a namespace
-	testResource := &corev1.Namespace{
+func createTestNamespace() *corev1.Namespace {
+	return &corev1.Namespace{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Namespace",
 			APIVersion: "v1",
@@ -1362,6 +1374,294 @@ func TestTriggerAffectedPlacementsForUpdatedClusterRes(t *testing.T) {
 			},
 		},
 	}
+}
+
+func createNamespaceUnstructured(namespace *corev1.Namespace) *unstructured.Unstructured {
+	uObj, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(namespace)
+	result := &unstructured.Unstructured{Object: uObj}
+	result.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "",
+		Version: "v1",
+		Kind:    "Namespace",
+	})
+	return result
+}
+
+func createTestDeployment() *appv1.Deployment {
+	return &appv1.Deployment{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Deployment",
+			APIVersion: "apps/v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-deployment",
+			Namespace: "test-namespace",
+			Labels: map[string]string{
+				"app": "test",
+			},
+		},
+	}
+}
+
+func createDeploymentUnstructured(deployment *appv1.Deployment) *unstructured.Unstructured {
+	uObj, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(deployment)
+	result := &unstructured.Unstructured{Object: uObj}
+	result.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "apps",
+		Version: "v1",
+		Kind:    "Deployment",
+	})
+	return result
+}
+
+func TestHandleUpdatedResource(t *testing.T) {
+	// Test resources
+	testNamespace := createNamespaceUnstructured(createTestNamespace())
+	testDeployment := createDeploymentUnstructured(createTestDeployment())
+
+	// Test CRP and RP
+	testCRP := &placementv1beta1.ClusterResourcePlacement{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-crp",
+		},
+		Spec: placementv1beta1.PlacementSpec{
+			ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+				{
+					Group:   "",
+					Version: "v1",
+					Kind:    "Namespace",
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	testRP := &placementv1beta1.ResourcePlacement{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-rp",
+			Namespace: "test-namespace",
+		},
+		Spec: placementv1beta1.PlacementSpec{
+			ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+				{
+					Group:   "apps",
+					Version: "v1",
+					Kind:    "Deployment",
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app": "test",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	defaultFakeInformerManager := &fakeInformerManager{
+		listers: map[schema.GroupVersionResource]*fakeLister{
+			{Group: "placement.kubernetes-fleet.io", Version: "v1beta1", Resource: "clusterresourceplacements"}: {
+				objects: func() []runtime.Object {
+					uMap, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(testCRP)
+					return []runtime.Object{&unstructured.Unstructured{Object: uMap}}
+				}(),
+			},
+			{Group: "placement.kubernetes-fleet.io", Version: "v1beta1", Resource: "resourceplacements"}: {
+				objects: func() []runtime.Object {
+					uMap, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(testRP)
+					return []runtime.Object{&unstructured.Unstructured{Object: uMap}}
+				}(),
+			},
+			{Group: "", Version: "v1", Resource: "namespaces"}: {
+				objects: func() []runtime.Object {
+					uObj, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(testNamespace)
+					return []runtime.Object{&unstructured.Unstructured{Object: uObj}}
+				}(),
+			},
+		},
+	}
+
+	tests := map[string]struct {
+		key                                     keys.ClusterWideKey
+		clusterObj                              runtime.Object
+		isClusterScoped                         bool
+		informerManager                         informer.Manager
+		wantPlacementControllerEnqueued         []string
+		wantResourcePlacementControllerEnqueued []string
+		wantResult                              ctrl.Result
+		wantError                               bool
+	}{
+		"cluster-scoped resource triggers only ClusterResourcePlacement": {
+			key: keys.ClusterWideKey{
+				ResourceIdentifier: fleetv1alpha1.ResourceIdentifier{
+					Group:   "",
+					Version: "v1",
+					Kind:    "Namespace",
+					Name:    "test-namespace",
+				},
+			},
+			clusterObj:                              testNamespace,
+			isClusterScoped:                         true,
+			informerManager:                         defaultFakeInformerManager,
+			wantPlacementControllerEnqueued:         []string{"test-crp"},
+			wantResourcePlacementControllerEnqueued: []string{},
+			wantResult:                              ctrl.Result{},
+			wantError:                               false,
+		},
+		"cluster-scoped resource with no matching CRP": {
+			key: keys.ClusterWideKey{
+				ResourceIdentifier: fleetv1alpha1.ResourceIdentifier{
+					Group:   "",
+					Version: "v1",
+					Kind:    "Namespace",
+					Name:    "test-namespace",
+				},
+			},
+			clusterObj: func() *unstructured.Unstructured {
+				namespace := &corev1.Namespace{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "Namespace",
+						APIVersion: "v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-namespace",
+					},
+				}
+				return createNamespaceUnstructured(namespace)
+			}(),
+			isClusterScoped:                         true,
+			informerManager:                         defaultFakeInformerManager,
+			wantPlacementControllerEnqueued:         []string{},
+			wantResourcePlacementControllerEnqueued: []string{},
+			wantResult:                              ctrl.Result{},
+			wantError:                               false,
+		},
+		"namespace-scoped resource triggers ResourcePlacement and parent namespace CRP": {
+			key: keys.ClusterWideKey{
+				ResourceIdentifier: fleetv1alpha1.ResourceIdentifier{
+					Group:     "apps",
+					Version:   "v1",
+					Kind:      "Deployment",
+					Name:      "test-deployment",
+					Namespace: "test-namespace",
+				},
+			},
+			clusterObj:                              testDeployment,
+			isClusterScoped:                         false,
+			informerManager:                         defaultFakeInformerManager,
+			wantPlacementControllerEnqueued:         []string{"test-crp"},
+			wantResourcePlacementControllerEnqueued: []string{"test-rp"},
+			wantResult:                              ctrl.Result{},
+			wantError:                               false,
+		},
+		"namespace-scoped resource with missing parent namespace": {
+			key: keys.ClusterWideKey{
+				ResourceIdentifier: fleetv1alpha1.ResourceIdentifier{
+					Group:     "apps",
+					Version:   "v1",
+					Kind:      "Deployment",
+					Name:      "test-deployment",
+					Namespace: "missing-namespace",
+				},
+			},
+			clusterObj:      testDeployment,
+			isClusterScoped: false,
+			informerManager: &fakeInformerManager{
+				listers: map[schema.GroupVersionResource]*fakeLister{
+					{Group: "placement.kubernetes-fleet.io", Version: "v1beta1", Resource: "clusterresourceplacements"}: {
+						objects: []runtime.Object{},
+					},
+					{Group: "placement.kubernetes-fleet.io", Version: "v1beta1", Resource: "resourceplacements"}: {
+						objects: []runtime.Object{},
+					},
+					{Group: "", Version: "v1", Resource: "namespaces"}: {
+						objects: []runtime.Object{},
+					},
+				},
+			},
+			wantPlacementControllerEnqueued:         []string{},
+			wantResourcePlacementControllerEnqueued: []string{},
+			wantResult:                              ctrl.Result{},
+			wantError:                               false,
+		},
+		"namespace-scoped resource with no matching ResourcePlacements but matching namespace CRP": {
+			key: keys.ClusterWideKey{
+				ResourceIdentifier: fleetv1alpha1.ResourceIdentifier{
+					Group:     "apps",
+					Version:   "v1",
+					Kind:      "Deployment",
+					Name:      "test-deployment",
+					Namespace: "test-namespace",
+				},
+			},
+			clusterObj:      testDeployment,
+			isClusterScoped: false,
+			informerManager: &fakeInformerManager{
+				listers: map[schema.GroupVersionResource]*fakeLister{
+					{Group: "placement.kubernetes-fleet.io", Version: "v1beta1", Resource: "clusterresourceplacements"}: {
+						objects: func() []runtime.Object {
+							uMap, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(testCRP)
+							return []runtime.Object{&unstructured.Unstructured{Object: uMap}}
+						}(),
+					},
+					{Group: "placement.kubernetes-fleet.io", Version: "v1beta1", Resource: "resourceplacements"}: {
+						objects: []runtime.Object{},
+					},
+					{Group: "", Version: "v1", Resource: "namespaces"}: {
+						objects: func() []runtime.Object {
+							uObj, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(testNamespace)
+							return []runtime.Object{&unstructured.Unstructured{Object: uObj}}
+						}(),
+					},
+				},
+			},
+			wantPlacementControllerEnqueued:         []string{"test-crp"},
+			wantResourcePlacementControllerEnqueued: []string{},
+			wantResult:                              ctrl.Result{},
+			wantError:                               false,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			reconciler := &Reconciler{
+				InformerManager:             tt.informerManager,
+				PlacementControllerV1Beta1:  &fakeController{QueueObj: []string{}},
+				ResourcePlacementController: &fakeController{QueueObj: []string{}},
+			}
+
+			result, err := reconciler.handleUpdatedResource(tt.key, tt.clusterObj, tt.isClusterScoped)
+			if gotErr := err != nil; gotErr != tt.wantError {
+				t.Errorf("handleUpdatedResource() error = %v, wantError = %v", err, tt.wantError)
+				return
+			}
+
+			if !cmp.Equal(result, tt.wantResult) {
+				t.Errorf("handleUpdatedResource() = %v, want %v", result, tt.wantResult)
+			}
+
+			// Sort both slices before comparison to handle non-deterministic map iteration order
+			gotPlacement := reconciler.PlacementControllerV1Beta1.(*fakeController).QueueObj
+			if !cmp.Equal(gotPlacement, tt.wantPlacementControllerEnqueued, sortSlicesOption) {
+				t.Errorf("handleUpdatedResource enqueues keys to PlacementControllerV1Beta1, got %v, want %v",
+					gotPlacement, tt.wantPlacementControllerEnqueued)
+			}
+
+			gotResourcePlacement := reconciler.ResourcePlacementController.(*fakeController).QueueObj
+			if !cmp.Equal(gotResourcePlacement, tt.wantResourcePlacementControllerEnqueued, sortSlicesOption) {
+				t.Errorf("handleUpdatedResource enqueues keys to ResourcePlacementController, got %v, want %v",
+					gotResourcePlacement, tt.wantResourcePlacementControllerEnqueued)
+			}
+		})
+	}
+}
+
+func TestTriggerAffectedPlacementsForUpdatedClusterRes(t *testing.T) {
+	// Test resource - a namespace
+	testNamespace := createNamespaceUnstructured(createTestNamespace())
 
 	// Test ResourcePlacement
 	testResourcePlacement := &placementv1beta1.ResourcePlacement{
@@ -1433,16 +1733,7 @@ func TestTriggerAffectedPlacementsForUpdatedClusterRes(t *testing.T) {
 					Name:    "test-namespace",
 				},
 			},
-			resource: func() *unstructured.Unstructured {
-				uObj, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(testResource)
-				result := &unstructured.Unstructured{Object: uObj}
-				result.SetGroupVersionKind(schema.GroupVersionKind{
-					Group:   "",
-					Version: "v1",
-					Kind:    "Namespace",
-				})
-				return result
-			}(),
+			resource: testNamespace,
 			informerManager: &fakeInformerManager{
 				listers: map[schema.GroupVersionResource]*fakeLister{
 					{Group: "placement.kubernetes-fleet.io", Version: "v1beta1", Resource: "clusterresourceplacements"}: {
@@ -1466,27 +1757,7 @@ func TestTriggerAffectedPlacementsForUpdatedClusterRes(t *testing.T) {
 					Namespace: "test-namespace",
 				},
 			},
-			resource: func() *unstructured.Unstructured {
-				testDeployment := &unstructured.Unstructured{
-					Object: map[string]interface{}{
-						"apiVersion": "apps/v1",
-						"kind":       "Deployment",
-						"metadata": map[string]interface{}{
-							"name":      "test-deployment",
-							"namespace": "test-namespace",
-							"labels": map[string]interface{}{
-								"app": "test",
-							},
-						},
-					},
-				}
-				testDeployment.SetGroupVersionKind(schema.GroupVersionKind{
-					Group:   "apps",
-					Version: "v1",
-					Kind:    "Deployment",
-				})
-				return testDeployment
-			}(),
+			resource: createDeploymentUnstructured(createTestDeployment()),
 			informerManager: &fakeInformerManager{
 				listers: map[schema.GroupVersionResource]*fakeLister{
 					{Group: "placement.kubernetes-fleet.io", Version: "v1beta1", Resource: "clusterresourceplacements"}: {
@@ -1511,25 +1782,20 @@ func TestTriggerAffectedPlacementsForUpdatedClusterRes(t *testing.T) {
 				},
 			},
 			resource: func() *unstructured.Unstructured {
-				testDeployment := &unstructured.Unstructured{
-					Object: map[string]interface{}{
-						"apiVersion": "apps/v1",
-						"kind":       "Deployment",
-						"metadata": map[string]interface{}{
-							"name":      "test-deployment-no-match",
-							"namespace": "test-namespace",
-							"labels": map[string]interface{}{
-								"app": "no-match",
-							},
+				testDeployment := &appv1.Deployment{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "Deployment",
+						APIVersion: "apps/v1",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-deployment-no-match",
+						Namespace: "test-namespace",
+						Labels: map[string]string{
+							"app": "no-match",
 						},
 					},
 				}
-				testDeployment.SetGroupVersionKind(schema.GroupVersionKind{
-					Group:   "apps",
-					Version: "v1",
-					Kind:    "Deployment",
-				})
-				return testDeployment
+				return createDeploymentUnstructured(testDeployment)
 			}(),
 			informerManager: func() informer.Manager {
 				// Create a ResourcePlacement that won't match (different labels)
@@ -1592,8 +1858,7 @@ func TestTriggerAffectedPlacementsForUpdatedClusterRes(t *testing.T) {
 						},
 					},
 				}
-				uObj, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(otherResource)
-				return &unstructured.Unstructured{Object: uObj}
+				return createNamespaceUnstructured(otherResource)
 			}(),
 			informerManager: &fakeInformerManager{
 				listers: map[schema.GroupVersionResource]*fakeLister{
@@ -1617,16 +1882,7 @@ func TestTriggerAffectedPlacementsForUpdatedClusterRes(t *testing.T) {
 					Name:    "test-namespace",
 				},
 			},
-			resource: func() *unstructured.Unstructured {
-				uObj, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(testResource)
-				result := &unstructured.Unstructured{Object: uObj}
-				result.SetGroupVersionKind(schema.GroupVersionKind{
-					Group:   "",
-					Version: "v1",
-					Kind:    "Namespace",
-				})
-				return result
-			}(),
+			resource: testNamespace,
 			informerManager: func() informer.Manager {
 				// Create another CRP with same matching labels
 				testCRP2 := &placementv1beta1.ClusterResourcePlacement{
@@ -1681,20 +1937,15 @@ func TestTriggerAffectedPlacementsForUpdatedClusterRes(t *testing.T) {
 
 			// Sort both slices before comparison to handle non-deterministic map iteration order
 			gotPlacement := reconciler.PlacementControllerV1Beta1.(*fakeController).QueueObj
-			wantPlacement := tt.wantPlacementControllerEnqueued
-			sortSlicesOption := cmpopts.SortSlices(func(a, b string) bool {
-				return a < b
-			})
-			if !cmp.Equal(gotPlacement, wantPlacement, sortSlicesOption) {
+			if !cmp.Equal(gotPlacement, tt.wantPlacementControllerEnqueued, sortSlicesOption) {
 				t.Errorf("triggerAffectedPlacementsForUpdatedClusterRes enqueues keys to PlacementControllerV1Beta1, got %v, want %v",
-					gotPlacement, wantPlacement)
+					gotPlacement, tt.wantPlacementControllerEnqueued)
 			}
 
 			gotResourcePlacement := reconciler.ResourcePlacementController.(*fakeController).QueueObj
-			wantResourcePlacement := tt.wantResourcePlacementControllerEnqueued
-			if !cmp.Equal(gotResourcePlacement, wantResourcePlacement, sortSlicesOption) {
+			if !cmp.Equal(gotResourcePlacement, tt.wantResourcePlacementControllerEnqueued, sortSlicesOption) {
 				t.Errorf("triggerAffectedPlacementsForUpdatedClusterRes enqueues keys to ResourcePlacementController, got %v, want %v",
-					gotResourcePlacement, wantResourcePlacement)
+					gotResourcePlacement, tt.wantResourcePlacementControllerEnqueued)
 			}
 		})
 	}

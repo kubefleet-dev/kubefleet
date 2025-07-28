@@ -91,22 +91,36 @@ func (r *Reconciler) Reconcile(_ context.Context, key controller.QueueKey) (ctrl
 			// For namespaces resources, we just need to find its parent namespace just like a normal resource.
 			return r.triggerAffectedPlacementsForDeletedClusterRes(clusterWideKey)
 		}
+		// TODO: handle the case where a namespace scoped resource is deleted.
 	case err != nil:
 		klog.ErrorS(err, "Failed to get unstructured object", "obj", clusterWideKey)
 		return ctrl.Result{}, err
 	}
-	// we will use the parent namespace object to search for the affected placements
-	if !isClusterScoped {
-		clusterObj, err = r.InformerManager.Lister(utils.NamespaceGVR).Get(clusterWideKey.Namespace)
-		if err != nil {
-			klog.ErrorS(err, "Failed to find the namespace the resource belongs to", "obj", clusterWideKey)
-			return ctrl.Result{}, client.IgnoreNotFound(err)
-		}
-		klog.V(2).InfoS("Find placement that select the namespace that contains a namespace scoped object", "obj", clusterWideKey)
-		isClusterScoped = true // we treat the namespace as a cluster scoped resource for placement purposes
+	return r.handleUpdatedResource(clusterWideKey, clusterObj, isClusterScoped)
+}
+
+func (r *Reconciler) handleUpdatedResource(key keys.ClusterWideKey, clusterObj runtime.Object, isClusterScoped bool) (ctrl.Result, error) {
+	if isClusterScoped {
+		klog.V(2).InfoS("Find clusterResourcePlacement that select the cluster scoped object", "obj", key)
+		return r.triggerAffectedPlacementsForUpdatedClusterRes(key, clusterObj.(*unstructured.Unstructured), true)
 	}
 
-	return r.triggerAffectedPlacementsForUpdatedClusterRes(clusterWideKey, clusterObj.(*unstructured.Unstructured), isClusterScoped)
+	klog.V(2).InfoS("Find resourcePlacement that select the namespace scoped object", "obj", key)
+	if _, err := r.triggerAffectedPlacementsForUpdatedClusterRes(key, clusterObj.(*unstructured.Unstructured), false); err != nil {
+		klog.ErrorS(err, "Failed to find resourcePlacements for the updated resource", "obj", key)
+		return ctrl.Result{}, err
+	}
+
+	klog.V(2).InfoS("Find namespace that contains a namespace scoped object", "obj", key)
+	// we will use the parent namespace object to search for the affected placements
+	var err error
+	clusterObj, err = r.InformerManager.Lister(utils.NamespaceGVR).Get(key.Namespace)
+	if err != nil {
+		klog.ErrorS(err, "Failed to find the namespace the resource belongs to", "obj", key)
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	klog.V(2).InfoS("Find placement that select the namespace that contains a namespace scoped object", "obj", key)
+	return r.triggerAffectedPlacementsForUpdatedClusterRes(key, clusterObj.(*unstructured.Unstructured), true)
 }
 
 // triggerAffectedPlacementsForDeletedClusterRes find the affected placements for a given deleted cluster scoped resources
