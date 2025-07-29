@@ -77,8 +77,8 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				err := hubClient.Create(ctx, &crp)
 				var statusErr *k8sErrors.StatusError
 				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("cluster names cannot be empty for policy type"))
-				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("number of clusters must be nil for policy type PickFixed"))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("cluster names cannot be empty for policy type"))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("number of clusters must be nil for policy type PickFixed"))
 				return nil
 			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 		})
@@ -123,9 +123,9 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				err := hubClient.Create(ctx, &crp)
 				var statusErr *k8sErrors.StatusError
 				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta(fmt.Sprintf("the labelSelector in preferred cluster selector %+v is invalid:", crp.Spec.Policy.Affinity.ClusterAffinity.PreferredDuringSchedulingIgnoredDuringExecution[0].Preference.LabelSelector))))
-				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("unknown unsatisfiable type random-type"))
-				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("number of cluster cannot be nil for policy type PickN"))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta(fmt.Sprintf("the labelSelector in preferred cluster selector %+v is invalid:", crp.Spec.Policy.Affinity.ClusterAffinity.PreferredDuringSchedulingIgnoredDuringExecution[0].Preference.LabelSelector))))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("unknown unsatisfiable type random-type"))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("number of cluster cannot be nil for policy type PickN"))
 				return nil
 			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 		})
@@ -155,7 +155,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				err := hubClient.Create(ctx, &crp)
 				var statusErr *k8sErrors.StatusError
 				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta("failed to get GVR of the selector")))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta("failed to get GVR of the selector")))
 				return nil
 			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 		})
@@ -185,7 +185,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				err := hubClient.Create(ctx, &crp)
 				var statusErr *k8sErrors.StatusError
 				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta("the resource is not found in schema (please retry) or it is not a cluster scoped resource")))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta("the resource is not found in schema (please retry) or it is not a cluster scoped resource")))
 				return nil
 			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 		})
@@ -222,11 +222,11 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						RevisionHistoryLimit: ptr.To(int32(15)),
 					},
 				}
-				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
+				g.Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
 				// Verify that the CRP is created with default values.
 				var createdCRP placementv1beta1.ClusterResourcePlacement
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
-				Expect(createdCRP.Spec.Policy).To(Equal(&placementv1beta1.PlacementPolicy{PlacementType: placementv1beta1.PickAllPlacementType}), "CRP should have default policy type PickAll")
+				g.Expect(createdCRP.Spec.Policy).To(Equal(&placementv1beta1.PlacementPolicy{PlacementType: placementv1beta1.PickAllPlacementType}), "CRP should have default policy type PickAll")
 				return nil
 			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 		})
@@ -270,18 +270,18 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						},
 					},
 				}
-				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
+				g.Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
 				// Verify that the CRP is created with default values.
 				var createdCRP placementv1beta1.ClusterResourcePlacement
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
-				Expect(createdCRP.Spec.Policy.TopologySpreadConstraints).To(Equal([]placementv1beta1.TopologySpreadConstraint{
+				g.Expect(createdCRP.Spec.Policy.TopologySpreadConstraints).To(Equal([]placementv1beta1.TopologySpreadConstraint{
 					{
 						TopologyKey:       "kubernetes.io/hostname",
 						MaxSkew:           ptr.To(int32(defaulter.DefaultMaxSkewValue)),
 						WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
 					},
 				}), "CRP should have default topology spread constraint fields")
-				Expect(createdCRP.Spec.Policy.Tolerations).To(Equal([]placementv1beta1.Toleration{
+				g.Expect(createdCRP.Spec.Policy.Tolerations).To(Equal([]placementv1beta1.Toleration{
 					{
 						Key:      "key",
 						Value:    "value",
@@ -306,11 +306,11 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						RevisionHistoryLimit: ptr.To(int32(15)),
 					},
 				}
-				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
+				g.Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
 				// Verify that the CRP is created with default values.
 				var createdCRP placementv1beta1.ClusterResourcePlacement
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
-				Expect(createdCRP.Spec.Strategy).To(Equal(placementv1beta1.RolloutStrategy{
+				g.Expect(createdCRP.Spec.Strategy).To(Equal(placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
 						MaxUnavailable:           ptr.To(intstr.FromString(defaulter.DefaultMaxUnavailableValue)),
@@ -352,11 +352,11 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						},
 					},
 				}
-				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
+				g.Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
 				// Verify that the CRP is created with default values.
 				var createdCRP placementv1beta1.ClusterResourcePlacement
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
-				Expect(*createdCRP.Spec.RevisionHistoryLimit).To(Equal(int32(defaulter.DefaultRevisionHistoryLimitValue)), "CRP should have default revision history limit value")
+				g.Expect(*createdCRP.Spec.RevisionHistoryLimit).To(Equal(int32(defaulter.DefaultRevisionHistoryLimitValue)), "CRP should have default revision history limit value")
 				return nil
 			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 		})
@@ -386,13 +386,13 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						RevisionHistoryLimit: ptr.To(int32(15)),
 					},
 				}
-				Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
+				g.Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
 				// Verify that the CRP is created with default values.
 				var createdCRP placementv1beta1.ClusterResourcePlacement
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
-				Expect(createdCRP.Spec.Strategy.ApplyStrategy.Type).To(Equal(placementv1beta1.ApplyStrategyTypeServerSideApply), "CRP should have serverside apply strategy type")
-				Expect(createdCRP.Spec.Strategy.ApplyStrategy.ServerSideApplyConfig).ToNot(BeNil(), "CRP should have serverside apply config")
-				Expect(createdCRP.Spec.Strategy.ApplyStrategy.ServerSideApplyConfig).To(Equal(&placementv1beta1.ServerSideApplyConfig{
+				g.Expect(createdCRP.Spec.Strategy.ApplyStrategy.Type).To(Equal(placementv1beta1.ApplyStrategyTypeServerSideApply), "CRP should have serverside apply strategy type")
+				g.Expect(createdCRP.Spec.Strategy.ApplyStrategy.ServerSideApplyConfig).ToNot(BeNil(), "CRP should have serverside apply config")
+				g.Expect(createdCRP.Spec.Strategy.ApplyStrategy.ServerSideApplyConfig).To(Equal(&placementv1beta1.ServerSideApplyConfig{
 					ForceConflicts: false,
 				}), "CRP should have default serverside apply config")
 				return nil
@@ -439,7 +439,7 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 				}
 				var statusErr *k8sErrors.StatusError
 				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("the labelSelector and name fields are mutually exclusive"))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("the labelSelector and name fields are mutually exclusive"))
 				return nil
 			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 		})
@@ -480,8 +480,8 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 				}
 				var statusErr *k8sErrors.StatusError
 				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta(fmt.Sprintf("the labelSelector in cluster selector %+v is invalid:", crp.Spec.Policy.Affinity.ClusterAffinity.RequiredDuringSchedulingIgnoredDuringExecution.ClusterSelectorTerms[0].LabelSelector))))
-				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("topology spread constraints needs to be empty for policy type PickAll"))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta(fmt.Sprintf("the labelSelector in cluster selector %+v is invalid:", crp.Spec.Policy.Affinity.ClusterAffinity.RequiredDuringSchedulingIgnoredDuringExecution.ClusterSelectorTerms[0].LabelSelector))))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("topology spread constraints needs to be empty for policy type PickAll"))
 				return nil
 			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 		})
@@ -501,7 +501,7 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 				}
 				var statusErr *k8sErrors.StatusError
 				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("placement type is immutable"))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("placement type is immutable"))
 				return nil
 			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 		})
@@ -539,7 +539,7 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 				createdCRP.Spec.Policy = nil
 				var updatedCRP placementv1beta1.ClusterResourcePlacement
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &updatedCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
-				Expect(updatedCRP.Spec.Policy).To(Equal(&placementv1beta1.PlacementPolicy{PlacementType: placementv1beta1.PickAllPlacementType}), "CRP should have default policy type PickAll")
+				g.Expect(updatedCRP.Spec.Policy).To(Equal(&placementv1beta1.PlacementPolicy{PlacementType: placementv1beta1.PickAllPlacementType}), "CRP should have default policy type PickAll")
 				return nil
 			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 		})
@@ -553,7 +553,7 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 				// Verify that the CRP is updated with default values.
 				var updatedCRP placementv1beta1.ClusterResourcePlacement
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &updatedCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
-				Expect(updatedCRP.Spec.Strategy).To(Equal(placementv1beta1.RolloutStrategy{
+				g.Expect(updatedCRP.Spec.Strategy).To(Equal(placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
 						MaxUnavailable:           ptr.To(intstr.FromString(defaulter.DefaultMaxUnavailableValue)),
@@ -580,7 +580,7 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 				// Verify that the CRP is updated with default values.
 				var updatedCRP placementv1beta1.ClusterResourcePlacement
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &updatedCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
-				Expect(*createdCRP.Spec.RevisionHistoryLimit).To(Equal(int32(defaulter.DefaultRevisionHistoryLimitValue)), "CRP should have default revision history limit value")
+				g.Expect(*createdCRP.Spec.RevisionHistoryLimit).To(Equal(int32(defaulter.DefaultRevisionHistoryLimitValue)), "CRP should have default revision history limit value")
 				return nil
 			}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 		})
@@ -596,9 +596,9 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 				// Verify that the CRP is updated with default values.
 				var updatedCRP placementv1beta1.ClusterResourcePlacement
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &updatedCRP)).Should(Succeed())
-				Expect(updatedCRP.Spec.Strategy.ApplyStrategy.Type).To(Equal(placementv1beta1.ApplyStrategyTypeServerSideApply), "CRP should have serverside apply strategy type")
-				Expect(updatedCRP.Spec.Strategy.ApplyStrategy.ServerSideApplyConfig).ToNot(BeNil(), "CRP should have serverside apply config")
-				Expect(updatedCRP.Spec.Strategy.ApplyStrategy.ServerSideApplyConfig).To(Equal(&placementv1beta1.ServerSideApplyConfig{
+				g.Expect(updatedCRP.Spec.Strategy.ApplyStrategy.Type).To(Equal(placementv1beta1.ApplyStrategyTypeServerSideApply), "CRP should have serverside apply strategy type")
+				g.Expect(updatedCRP.Spec.Strategy.ApplyStrategy.ServerSideApplyConfig).ToNot(BeNil(), "CRP should have serverside apply config")
+				g.Expect(updatedCRP.Spec.Strategy.ApplyStrategy.ServerSideApplyConfig).To(Equal(&placementv1beta1.ServerSideApplyConfig{
 					ForceConflicts: false,
 				}), "CRP should have default serverside apply config")
 				return nil
@@ -653,14 +653,14 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 				// Verify that the CRP is updated with default values.
 				var updatedCRP placementv1beta1.ClusterResourcePlacement
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &updatedCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
-				Expect(updatedCRP.Spec.Policy.TopologySpreadConstraints).To(Equal([]placementv1beta1.TopologySpreadConstraint{
+				g.Expect(updatedCRP.Spec.Policy.TopologySpreadConstraints).To(Equal([]placementv1beta1.TopologySpreadConstraint{
 					{
 						TopologyKey:       "kubernetes.io/hostname",
 						MaxSkew:           ptr.To(int32(defaulter.DefaultMaxSkewValue)),
 						WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
 					},
 				}), "CRP should have default topology spread constraint fields")
-				Expect(updatedCRP.Spec.Policy.Tolerations).To(Equal([]placementv1beta1.Toleration{
+				g.Expect(updatedCRP.Spec.Policy.Tolerations).To(Equal([]placementv1beta1.Toleration{
 					{
 						Key:      "key",
 						Value:    "value",
@@ -729,7 +729,7 @@ var _ = Describe("webhook tests for CRP tolerations", Ordered, func() {
 			}
 			var statusErr *k8sErrors.StatusError
 			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(fmt.Sprintf("invalid toleration %+v: %s", invalidToleration, "toleration key cannot be empty, when operator is Equal")))
+			g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(fmt.Sprintf("invalid toleration %+v: %s", invalidToleration, "toleration key cannot be empty, when operator is Equal")))
 			return nil
 		}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 	})
@@ -758,7 +758,7 @@ var _ = Describe("webhook tests for CRP tolerations", Ordered, func() {
 			}
 			var statusErr *k8sErrors.StatusError
 			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("tolerations have been updated/deleted, only additions to tolerations are allowed"))
+			g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("tolerations have been updated/deleted, only additions to tolerations are allowed"))
 			return nil
 		}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 	})
@@ -806,7 +806,7 @@ var _ = Describe("webhook tests for MC taints", Ordered, func() {
 			}
 			var statusErr *k8sErrors.StatusError
 			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update MC call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("name part must consist of alphanumeric characters, '-', '_' or '.', and must start and end with an alphanumeric character"))
+			g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("name part must consist of alphanumeric characters, '-', '_' or '.', and must start and end with an alphanumeric character"))
 			return nil
 		}, testutils.PollTimeout, testutils.PollInterval).Should(Succeed())
 	})
