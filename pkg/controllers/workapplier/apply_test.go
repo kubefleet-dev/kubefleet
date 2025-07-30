@@ -31,7 +31,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 )
 
 // Note (chenyu1): The fake client Fleet uses for unit tests has trouble processing certain requests
@@ -579,7 +578,7 @@ func TestSetSourcePlacementAnnotation(t *testing.T) {
 	manifestObj1 := toUnstructured(t, ns.DeepCopy())
 	wantManifestObj1 := toUnstructured(t, ns.DeepCopy())
 	wantManifestObj1.SetAnnotations(map[string]string{
-		utils.SourcePlacementAnnotation: "test-placement",
+		fleetv1beta1.SourcePlacementAnnotation: "test-placement",
 	})
 
 	// Test case 2: Work without placement tracking label (no labels at all)
@@ -624,9 +623,9 @@ func TestSetSourcePlacementAnnotation(t *testing.T) {
 	})
 	wantManifestObj4 := toUnstructured(t, ns.DeepCopy())
 	wantManifestObj4.SetAnnotations(map[string]string{
-		"existing.annotation":           "existing-value",
-		"another.annotation":            "another-value",
-		utils.SourcePlacementAnnotation: "another-placement",
+		"existing.annotation":                  "existing-value",
+		"another.annotation":                   "another-value",
+		fleetv1beta1.SourcePlacementAnnotation: "another-placement",
 	})
 
 	testCases := []struct {

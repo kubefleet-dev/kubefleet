@@ -45,6 +45,9 @@ const (
 	// LastAppliedConfigAnnotation is to record the last applied configuration on the object.
 	LastAppliedConfigAnnotation = fleetPrefix + "last-applied-configuration"
 
+	// SourcePlacementAnnotation is the annotation key used to track the source placement of applied resources.
+	SourcePlacementAnnotation = fleetPrefix + "source-placement"
+
 	// WorkConditionTypeApplied represents workload in Work is applied successfully on the spoke cluster.
 	WorkConditionTypeApplied = "Applied"
 

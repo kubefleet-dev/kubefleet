@@ -35,7 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/resource"
 )
@@ -490,7 +489,7 @@ func setSourcePlacementAnnotation(manifestObj *unstructured.Unstructured, work *
 	if annotations == nil {
 		annotations = map[string]string{}
 	}
-	annotations[utils.SourcePlacementAnnotation] = placementName
+	annotations[fleetv1beta1.SourcePlacementAnnotation] = placementName
 	manifestObj.SetAnnotations(annotations)
 
 	klog.V(2).InfoS("Set source placement annotation on manifest",
