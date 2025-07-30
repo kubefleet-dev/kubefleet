@@ -102,21 +102,21 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 func (r *Reconciler) SetupWithManagerForClusterResourceBinding(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).Named("cluster-resource-binding-watcher").
 		For(&fleetv1beta1.ClusterResourceBinding{}).
-		WithEventFilter(buildCustomPredicate()).
+		WithEventFilter(buildCustomPredicate(true)).
 		Complete(r)
 }
 
 func (r *Reconciler) SetupWithManagerForResourceBinding(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).Named("resource-binding-watcher").
 		For(&fleetv1beta1.ResourceBinding{}).
-		WithEventFilter(buildCustomPredicate()).
+		WithEventFilter(buildCustomPredicate(false)).
 		Complete(r)
 }
 
-func buildCustomPredicate() predicate.Predicate {
+func buildCustomPredicate(isClusterScoped bool) predicate.Predicate {
 	return predicate.Funcs{
-		// Ignoring creation and deletion events because the clusterSchedulingPolicySnapshot status is updated when bindings are create/deleted clusterSchedulingPolicySnapshot
-		// controller enqueues the CRP name for reconciling whenever clusterSchedulingPolicySnapshot is updated.
+		// Ignoring creation and deletion events because the policySnapshot status is updated when bindings are created/deleted
+		// controller enqueues the placement name for reconciling whenever policySnapshot is updated.
 		CreateFunc: func(e event.CreateEvent) bool {
 			// Ignore creation events.
 			return false
@@ -133,21 +133,22 @@ func buildCustomPredicate() predicate.Predicate {
 				return false
 			}
 
-			// Handle both ClusterResourceBinding and ResourceBinding
-			if oldCRB, oldOk := e.ObjectOld.(*fleetv1beta1.ClusterResourceBinding); oldOk {
-				if newCRB, newOk := e.ObjectNew.(*fleetv1beta1.ClusterResourceBinding); newOk {
-					return isBindingStatusUpdated(oldCRB, newCRB)
-				}
-			}
-			if oldRB, oldOk := e.ObjectOld.(*fleetv1beta1.ResourceBinding); oldOk {
-				if newRB, newOk := e.ObjectNew.(*fleetv1beta1.ResourceBinding); newOk {
-					return isBindingStatusUpdated(oldRB, newRB)
-				}
+			var oldBinding, newBinding fleetv1beta1.BindingObj
+			var oldOK, newOK bool
+			if isClusterScoped {
+				oldBinding, oldOK = e.ObjectOld.(*fleetv1beta1.ClusterResourceBinding)
+				newBinding, newOK = e.ObjectNew.(*fleetv1beta1.ClusterResourceBinding)
+			} else {
+				oldBinding, oldOK = e.ObjectOld.(*fleetv1beta1.ResourceBinding)
+				newBinding, newOK = e.ObjectNew.(*fleetv1beta1.ResourceBinding)
 			}
 
-			err := controller.NewUnexpectedBehaviorError(fmt.Errorf("failed to cast runtime objects in update event to binding objects"))
-			klog.ErrorS(err, "Failed to process update event")
-			return false
+			if !oldOK || !newOK {
+				err := controller.NewUnexpectedBehaviorError(fmt.Errorf("failed to cast runtime objects in update event to binding objects"))
+				klog.ErrorS(err, "Failed to process update event", "isClusterScoped", isClusterScoped)
+				return false
+			}
+			return isBindingStatusUpdated(oldBinding, newBinding)
 		},
 	}
 }
