@@ -33,7 +33,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 )
 
-// Reconciler reconciles the deletion of a ClusterResourceBinding.
+// Reconciler reconciles the deletion of a binding.
 type Reconciler struct {
 	// Client is the client the controller uses to access the hub cluster.
 	client.Client
@@ -41,7 +41,7 @@ type Reconciler struct {
 	SchedulerWorkQueue queue.PlacementSchedulingQueueWriter
 }
 
-// Reconcile reconciles the resource binding.
+// Reconcile reconciles the binding.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	bindingRef := klog.KRef(req.Namespace, req.Name)
 	startTime := time.Now()
