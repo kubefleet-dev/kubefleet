@@ -93,7 +93,7 @@ func (r *Reconciler) Reconcile(_ context.Context, key controller.QueueKey) (ctrl
 			// TODO: handle the case where a namespace scoped resource is deleted for resource placement.
 			// For the deleting namespace scoped resource, we find the namespace and treated it as an updated
 			// resource inside the namespace.
-			return r.handleUpdatedResourceForPlacement(clusterWideKey, clusterObj, isClusterScoped)
+			return r.handleUpdatedResourceForClusterResourcePlacement(clusterWideKey, clusterObj, isClusterScoped)
 		}
 	case err != nil:
 		klog.ErrorS(err, "Failed to get unstructured object", "obj", clusterWideKey)
@@ -102,7 +102,8 @@ func (r *Reconciler) Reconcile(_ context.Context, key controller.QueueKey) (ctrl
 	return r.handleUpdatedResource(clusterWideKey, clusterObj, isClusterScoped)
 }
 
-func (r *Reconciler) handleUpdatedResourceForPlacement(key keys.ClusterWideKey, clusterObj runtime.Object, isClusterScoped bool) (ctrl.Result, error) {
+// handleUpdatedResourceForClusterResourcePlacement handles the updated resource for cluster resource placement.
+func (r *Reconciler) handleUpdatedResourceForClusterResourcePlacement(key keys.ClusterWideKey, clusterObj runtime.Object, isClusterScoped bool) (ctrl.Result, error) {
 	if isClusterScoped {
 		klog.V(2).InfoS("Find clusterResourcePlacement that select the cluster scoped object", "obj", key)
 		return r.triggerAffectedPlacementsForUpdatedClusterRes(key, clusterObj.(*unstructured.Unstructured), true)
@@ -125,6 +126,7 @@ func (r *Reconciler) handleUpdatedResourceForPlacement(key keys.ClusterWideKey, 
 	return res, nil
 }
 
+// handleUpdatedResourceForResourcePlacement handles the updated resource for resource placement.
 func (r *Reconciler) handleUpdatedResourceForResourcePlacement(key keys.ClusterWideKey, clusterObj runtime.Object, isClusterScoped bool) (ctrl.Result, error) {
 	if isClusterScoped {
 		return ctrl.Result{}, nil
@@ -139,8 +141,9 @@ func (r *Reconciler) handleUpdatedResourceForResourcePlacement(key keys.ClusterW
 	return res, nil
 }
 
+// handleUpdatedResource handles the updated resource and triggers the affected placements.
 func (r *Reconciler) handleUpdatedResource(key keys.ClusterWideKey, clusterObj runtime.Object, isClusterScoped bool) (ctrl.Result, error) {
-	if _, err := r.handleUpdatedResourceForPlacement(key, clusterObj, isClusterScoped); err != nil {
+	if _, err := r.handleUpdatedResourceForClusterResourcePlacement(key, clusterObj, isClusterScoped); err != nil {
 		klog.ErrorS(err, "Failed to handle updated resource for placement", "obj", key)
 		return ctrl.Result{}, err
 	}
