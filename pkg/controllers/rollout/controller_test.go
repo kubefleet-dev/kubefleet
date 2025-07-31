@@ -27,6 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
@@ -162,12 +163,7 @@ func TestReconcilerHandleResourceSnapshot(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			queue := &controllertest.Queue{TypedInterface: workqueue.NewTypedRateLimitingQueue[reconcile.Request](workqueue.DefaultTypedItemBasedRateLimiter[reconcile.Request]())}
 			handleResourceSnapshot(tt.snapshot, queue)
-			if tt.shouldEnqueue && queue.Len() == 0 {
-				t.Errorf("handleResourceSnapshot test `%s` didn't queue the object when it should enqueue", name)
-			}
-			if !tt.shouldEnqueue && queue.Len() != 0 {
-				t.Errorf("handleResourceSnapshot test `%s` queue the object when it should not enqueue", name)
-			}
+			validateEnqueueBehavior(t, name, queue, tt.shouldEnqueue, nil)
 		})
 	}
 }
@@ -198,13 +194,281 @@ func TestReconcilerHandleResourceBinding(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			queue := &controllertest.Queue{TypedInterface: workqueue.NewTypedRateLimitingQueue[reconcile.Request](workqueue.DefaultTypedItemBasedRateLimiter[reconcile.Request]())}
 			enqueueResourceBinding(tt.resourceBinding, queue)
-			if tt.shouldEnqueue && queue.Len() == 0 {
-				t.Errorf("enqueueResourceBinding test `%s` didn't queue the object when it should enqueue", name)
-			}
-			if !tt.shouldEnqueue && queue.Len() != 0 {
-				t.Errorf("handleResourceSnapshot test `%s` queue the object when it should not enqueue", name)
-			}
+			validateEnqueueBehavior(t, name, queue, tt.shouldEnqueue, nil)
 		})
+	}
+}
+
+func TestReconcilerHandleResourceOverrideSnapshot(t *testing.T) {
+	tests := map[string]struct {
+		snapshot           client.Object
+		shouldEnqueue      bool
+		expectedEnqueueKey *reconcile.Request
+	}{
+		"test enqueue a new latest ResourceOverrideSnapshot with cluster scoped placement": {
+			snapshot: &placementv1beta1.ResourceOverrideSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "override-snapshot-1",
+					Namespace: "test-namespace",
+					Labels: map[string]string{
+						placementv1beta1.IsLatestSnapshotLabel: "true",
+					},
+				},
+				Spec: placementv1beta1.ResourceOverrideSnapshotSpec{
+					OverrideSpec: placementv1beta1.ResourceOverrideSpec{
+						Placement: &placementv1beta1.PlacementRef{
+							Name:  "test-placement",
+							Scope: placementv1beta1.ClusterScoped,
+						},
+					},
+				},
+			},
+			shouldEnqueue: true,
+			expectedEnqueueKey: &reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: "test-placement"},
+			},
+		},
+		"test enqueue a new latest ResourceOverrideSnapshot with namespace scoped placement": {
+			snapshot: &placementv1beta1.ResourceOverrideSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "override-snapshot-2",
+					Namespace: "test-namespace",
+					Labels: map[string]string{
+						placementv1beta1.IsLatestSnapshotLabel: "true",
+					},
+				},
+				Spec: placementv1beta1.ResourceOverrideSnapshotSpec{
+					OverrideSpec: placementv1beta1.ResourceOverrideSpec{
+						Placement: &placementv1beta1.PlacementRef{
+							Name:  "test-placement",
+							Scope: placementv1beta1.NamespaceScoped,
+						},
+					},
+				},
+			},
+			shouldEnqueue: true,
+			expectedEnqueueKey: &reconcile.Request{
+				NamespacedName: types.NamespacedName{Namespace: "test-namespace", Name: "test-placement"},
+			},
+		},
+		"test skip a non-latest ResourceOverrideSnapshot": {
+			snapshot: &placementv1beta1.ResourceOverrideSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "override-snapshot-3",
+					Namespace: "test-namespace",
+					Labels: map[string]string{
+						placementv1beta1.IsLatestSnapshotLabel: "false",
+					},
+				},
+				Spec: placementv1beta1.ResourceOverrideSnapshotSpec{
+					OverrideSpec: placementv1beta1.ResourceOverrideSpec{
+						Placement: &placementv1beta1.PlacementRef{
+							Name:  "test-placement",
+							Scope: placementv1beta1.ClusterScoped,
+						},
+					},
+				},
+			},
+			shouldEnqueue: false,
+		},
+		"test skip ResourceOverrideSnapshot without latest label": {
+			snapshot: &placementv1beta1.ResourceOverrideSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "override-snapshot-4",
+					Namespace: "test-namespace",
+				},
+				Spec: placementv1beta1.ResourceOverrideSnapshotSpec{
+					OverrideSpec: placementv1beta1.ResourceOverrideSpec{
+						Placement: &placementv1beta1.PlacementRef{
+							Name:  "test-placement",
+							Scope: placementv1beta1.ClusterScoped,
+						},
+					},
+				},
+			},
+			shouldEnqueue: false,
+		},
+		"test skip ResourceOverrideSnapshot with invalid latest label": {
+			snapshot: &placementv1beta1.ResourceOverrideSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "override-snapshot-5",
+					Namespace: "test-namespace",
+					Labels: map[string]string{
+						placementv1beta1.IsLatestSnapshotLabel: "invalid",
+					},
+				},
+				Spec: placementv1beta1.ResourceOverrideSnapshotSpec{
+					OverrideSpec: placementv1beta1.ResourceOverrideSpec{
+						Placement: &placementv1beta1.PlacementRef{
+							Name:  "test-placement",
+							Scope: placementv1beta1.ClusterScoped,
+						},
+					},
+				},
+			},
+			shouldEnqueue: false,
+		},
+		"test skip ResourceOverrideSnapshot without placement": {
+			snapshot: &placementv1beta1.ResourceOverrideSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "override-snapshot-6",
+					Namespace: "test-namespace",
+					Labels: map[string]string{
+						placementv1beta1.IsLatestSnapshotLabel: "true",
+					},
+				},
+				Spec: placementv1beta1.ResourceOverrideSnapshotSpec{
+					OverrideSpec: placementv1beta1.ResourceOverrideSpec{
+						Placement: nil,
+					},
+				},
+			},
+			shouldEnqueue: false,
+		},
+		"test skip a malformatted object (not ResourceOverrideSnapshot)": {
+			snapshot: &placementv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "not-resource-override-snapshot",
+				},
+			},
+			shouldEnqueue: false,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			queue := &controllertest.Queue{TypedInterface: workqueue.NewTypedRateLimitingQueue[reconcile.Request](workqueue.DefaultTypedItemBasedRateLimiter[reconcile.Request]())}
+			handleResourceOverrideSnapshot(tt.snapshot, queue)
+			validateEnqueueBehavior(t, name, queue, tt.shouldEnqueue, tt.expectedEnqueueKey)
+		})
+	}
+}
+
+func TestReconcilerHandleResourceOverride(t *testing.T) {
+	tests := map[string]struct {
+		resourceOverride   client.Object
+		enqueueCRP         bool
+		shouldEnqueue      bool
+		expectedEnqueueKey *reconcile.Request
+	}{
+		"test enqueue ResourceOverride with cluster scoped placement when enqueueCRP=true": {
+			resourceOverride: &placementv1beta1.ResourceOverride{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "resource-override-1",
+					Namespace: "test-namespace",
+				},
+				Spec: placementv1beta1.ResourceOverrideSpec{
+					Placement: &placementv1beta1.PlacementRef{
+						Name:  "test-placement",
+						Scope: placementv1beta1.ClusterScoped,
+					},
+				},
+			},
+			enqueueCRP:    true,
+			shouldEnqueue: true,
+			expectedEnqueueKey: &reconcile.Request{
+				NamespacedName: types.NamespacedName{Name: "test-placement"},
+			},
+		},
+		"test skip ResourceOverride with namespace scoped placement when enqueueCRP=true": {
+			resourceOverride: &placementv1beta1.ResourceOverride{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "resource-override-2",
+					Namespace: "test-namespace",
+				},
+				Spec: placementv1beta1.ResourceOverrideSpec{
+					Placement: &placementv1beta1.PlacementRef{
+						Name:  "test-placement",
+						Scope: placementv1beta1.NamespaceScoped,
+					},
+				},
+			},
+			enqueueCRP:    true,
+			shouldEnqueue: false,
+		},
+		"test enqueue ResourceOverride with namespace scoped placement when enqueueCRP=false": {
+			resourceOverride: &placementv1beta1.ResourceOverride{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "resource-override-3",
+					Namespace: "test-namespace",
+				},
+				Spec: placementv1beta1.ResourceOverrideSpec{
+					Placement: &placementv1beta1.PlacementRef{
+						Name:  "test-placement",
+						Scope: placementv1beta1.NamespaceScoped,
+					},
+				},
+			},
+			enqueueCRP:    false,
+			shouldEnqueue: true,
+			expectedEnqueueKey: &reconcile.Request{
+				NamespacedName: types.NamespacedName{Namespace: "test-namespace", Name: "test-placement"},
+			},
+		},
+		"test skip ResourceOverride with cluster scoped placement when enqueueCRP=false": {
+			resourceOverride: &placementv1beta1.ResourceOverride{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "resource-override-4",
+					Namespace: "test-namespace",
+				},
+				Spec: placementv1beta1.ResourceOverrideSpec{
+					Placement: &placementv1beta1.PlacementRef{
+						Name:  "test-placement",
+						Scope: placementv1beta1.ClusterScoped,
+					},
+				},
+			},
+			enqueueCRP:    false,
+			shouldEnqueue: false,
+		},
+		"test skip ResourceOverride without placement": {
+			resourceOverride: &placementv1beta1.ResourceOverride{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "resource-override-5",
+					Namespace: "test-namespace",
+				},
+				Spec: placementv1beta1.ResourceOverrideSpec{
+					Placement: nil,
+				},
+			},
+			enqueueCRP:    true,
+			shouldEnqueue: false,
+		},
+		"test skip a malformatted object (not ResourceOverride)": {
+			resourceOverride: &placementv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "not-resource-override",
+				},
+			},
+			enqueueCRP:    true,
+			shouldEnqueue: false,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			queue := &controllertest.Queue{TypedInterface: workqueue.NewTypedRateLimitingQueue[reconcile.Request](workqueue.DefaultTypedItemBasedRateLimiter[reconcile.Request]())}
+			handleResourceOverride(tt.resourceOverride, queue, tt.enqueueCRP)
+			validateEnqueueBehavior(t, name, queue, tt.shouldEnqueue, tt.expectedEnqueueKey)
+		})
+	}
+}
+
+// validateEnqueueBehavior is a helper function to validate queue enqueue behavior in tests
+func validateEnqueueBehavior(t *testing.T, testName string, queue *controllertest.Queue, shouldEnqueue bool, expectedEnqueueKey *reconcile.Request) {
+	if shouldEnqueue && queue.Len() == 0 {
+		t.Errorf("test `%s` didn't queue the object when it should enqueue", testName)
+	}
+	if !shouldEnqueue && queue.Len() != 0 {
+		t.Errorf("test `%s` queue the object when it should not enqueue", testName)
+	}
+	if shouldEnqueue && expectedEnqueueKey != nil {
+		if queue.Len() != 1 {
+			t.Errorf("test `%s` want exactly 1 item in queue, got %d", testName, queue.Len())
+		} else {
+			item, _ := queue.Get()
+			if item != *expectedEnqueueKey {
+				t.Errorf("test `%s` want enqueue key %v, got %v", testName, *expectedEnqueueKey, item)
+			}
+		}
 	}
 }
 
