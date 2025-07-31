@@ -136,6 +136,7 @@ func FetchAllMatchingOverridesForResourceSnapshot(
 	}
 	for i := range roList.Items {
 		placementInOverride := roList.Items[i].Spec.OverrideSpec.Placement
+		// TODO (wantjian): fix this
 		if placementInOverride != nil && placementInOverride.Name != placementKey {
 			klog.V(2).InfoS("Skipping this override which was created for another placement", "resourceOverride", klog.KObj(&roList.Items[i]), "placementInOverride", placementInOverride.Name, "clusterResourcePlacement", placementKey)
 			continue
