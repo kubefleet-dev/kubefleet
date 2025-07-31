@@ -73,7 +73,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	// Check if the binding has been deleted and has the scheduler binding cleanup finalizer.
 	if binding.GetDeletionTimestamp() != nil && controllerutil.ContainsFinalizer(binding, fleetv1beta1.SchedulerBindingCleanupFinalizer) {
-		// The binding has been deleted and still has the scheduler binding cleanup finalizer; enqueue it's corresponding CRP
+		// The binding has been deleted and still has the scheduler binding cleanup finalizer; enqueue it's corresponding placement
 		// for the scheduler to process.
 		placementName, exist := binding.GetLabels()[fleetv1beta1.PlacementTrackingLabel]
 		if !exist {
