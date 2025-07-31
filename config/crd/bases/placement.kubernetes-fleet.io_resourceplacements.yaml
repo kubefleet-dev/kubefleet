@@ -79,6 +79,14 @@ spec:
           spec:
             description: The desired state of ResourcePlacement.
             properties:
+              enableStatusProxy:
+                default: false
+                description: |-
+                  EnableStatusProxy indicates whether a PlacementStatusProxy object should be created to mirror the placement status.
+                  When enabled, PlacementStatusProxy objects will be created in the same namespaces selected by the ResourceSelectors.
+                  This allows namespace-scoped access to the cluster-scoped ClusterResourcePlacement status.
+                  Defaults to false.
+                type: boolean
               policy:
                 description: |-
                   Policy defines how to select member clusters to place the selected resources.
