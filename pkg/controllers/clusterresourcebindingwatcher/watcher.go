@@ -93,12 +93,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, nil
 	}
 
-	// Enqueue the placement name for reconciling.
+	// Enqueue the placement key for reconciling.
 	r.PlacementController.Enqueue(controller.GetObjectKeyFromNamespaceName(req.Namespace, placementName))
 	return ctrl.Result{}, nil
 }
 
-// SetupWithManagerForClusterResourceBinding sets up the controller with the manager.
+// SetupWithManagerForClusterResourceBinding sets up the controller with the manager for ClusterResourceBinding.
 func (r *Reconciler) SetupWithManagerForClusterResourceBinding(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).Named("cluster-resource-binding-watcher").
 		For(&fleetv1beta1.ClusterResourceBinding{}).
@@ -106,6 +106,7 @@ func (r *Reconciler) SetupWithManagerForClusterResourceBinding(mgr ctrl.Manager)
 		Complete(r)
 }
 
+// SetupWithManagerForResourceBinding sets up the controller with the manager for ResourceBinding.
 func (r *Reconciler) SetupWithManagerForResourceBinding(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).Named("resource-binding-watcher").
 		For(&fleetv1beta1.ResourceBinding{}).
@@ -116,7 +117,7 @@ func (r *Reconciler) SetupWithManagerForResourceBinding(mgr ctrl.Manager) error 
 func buildCustomPredicate(isClusterScoped bool) predicate.Predicate {
 	return predicate.Funcs{
 		// Ignoring creation and deletion events because the policySnapshot status is updated when bindings are created/deleted
-		// controller enqueues the placement name for reconciling whenever policySnapshot is updated.
+		// controller enqueues the placement key for reconciling whenever policySnapshot is updated.
 		CreateFunc: func(e event.CreateEvent) bool {
 			// Ignore creation events.
 			return false
