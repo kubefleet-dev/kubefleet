@@ -740,7 +740,7 @@ func (r *Reconciler) SetupWithManagerForClusterResourceBinding(mgr runtime.Manag
 						"Rollout controller received invalid ResourceOverride event", "object", klog.KObj(e.Object))
 					return
 				}
-				if ro.Spec.Placement == nil {
+				if ro.Spec.Placement == nil || ro.Spec.Placement.Scope == placementv1beta1.NamespaceScoped {
 					return
 				}
 				klog.V(2).InfoS("Handling a resourceOverride delete event", "resourceOverride", klog.KObj(ro))
@@ -811,13 +811,12 @@ func (r *Reconciler) SetupWithManagerForResourceBinding(mgr runtime.Manager) err
 						"Rollout controller received invalid ResourceOverride event", "object", klog.KObj(e.Object))
 					return
 				}
-				if ro.Spec.Placement == nil {
+				if ro.Spec.Placement == nil || ro.Spec.Placement.Scope != placementv1beta1.NamespaceScoped {
 					return
 				}
 				klog.V(2).InfoS("Handling a resourceOverride delete event", "resourceOverride", klog.KObj(ro))
-				// TODO (wantjian): how to distinguish between RP and CRP?
 				q.Add(reconcile.Request{
-					NamespacedName: types.NamespacedName{Name: ro.Spec.Placement.Name},
+					NamespacedName: types.NamespacedName{Name: ro.Spec.Placement.Name, Namespace: ro.Namespace},
 				})
 			},
 		}).
@@ -907,14 +906,19 @@ func handleResourceOverrideSnapshot(o client.Object, q workqueue.TypedRateLimiti
 	if snapshot.Spec.OverrideSpec.Placement == nil {
 		return
 	}
-	// enqueue the placement to the rollout controller queue
-	// TODO (wantjian): how do we handle both RP and CRP case?
-	q.Add(reconcile.Request{
-		NamespacedName: types.NamespacedName{Name: snapshot.Spec.OverrideSpec.Placement.Name},
-	})
-	q.Add(reconcile.Request{
-		NamespacedName: types.NamespacedName{Namespace: snapshot.GetNamespace(), Name: snapshot.Spec.OverrideSpec.Placement.Name},
-	})
+	// Enqueue the placement to the rollout controller queue.
+	placementInOverride := snapshot.Spec.OverrideSpec.Placement
+	if placementInOverride.Scope == placementv1beta1.NamespaceScoped {
+		// Enqueue the resource placement.
+		q.Add(reconcile.Request{
+			NamespacedName: types.NamespacedName{Namespace: snapshot.GetNamespace(), Name: placementInOverride.Name},
+		})
+	} else {
+		// Enqueue the cluster resource placement.
+		q.Add(reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: placementInOverride.Name},
+		})
+	}
 }
 
 // handleResourceSnapshot parse the resource binding label and annotation and enqueue the placement associated with the resource binding
