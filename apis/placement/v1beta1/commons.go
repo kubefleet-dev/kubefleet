@@ -61,6 +61,10 @@ const (
 	// cluster.
 	WorkFinalizer = fleetPrefix + "work-cleanup"
 
+	// PlacementStatusProxyCleanupFinalizer is a finalizer added by the controller to all PlacementStatusProxy objects, to make sure
+	// that the controller can react to PlacementStatusProxy deletions if necessary.
+	PlacementStatusProxyCleanupFinalizer = fleetPrefix + "placement-status-proxy-cleanup"
+
 	// PlacementTrackingLabel points to the placement that creates this resource binding.
 	// TODO: migrate the label content to "parent-placement" to work with both the PR and CRP
 	PlacementTrackingLabel = fleetPrefix + "parent-CRP"

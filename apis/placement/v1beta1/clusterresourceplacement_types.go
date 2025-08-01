@@ -150,7 +150,7 @@ type PlacementSpec struct {
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
 
 	// EnableStatusProxy indicates whether a PlacementStatusProxy object should be created to mirror the placement status.
-	// When enabled, PlacementStatusProxy objects will be created in the same namespaces selected by the ResourceSelectors.
+	// When enabled, PlacementStatusProxy objects will be created in the same namespace selected by the ResourceSelectors.
 	// This allows namespace-scoped access to the cluster-scoped ClusterResourcePlacement status.
 	// Defaults to false.
 	// +kubebuilder:default=false
