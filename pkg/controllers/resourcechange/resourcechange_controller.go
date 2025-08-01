@@ -105,11 +105,11 @@ func (r *Reconciler) Reconcile(_ context.Context, key controller.QueueKey) (ctrl
 // handleUpdatedResourceForClusterResourcePlacement handles the updated resource for cluster resource placement.
 func (r *Reconciler) handleUpdatedResourceForClusterResourcePlacement(key keys.ClusterWideKey, clusterObj runtime.Object, isClusterScoped bool) (ctrl.Result, error) {
 	if isClusterScoped {
-		klog.V(2).InfoS("Find clusterResourcePlacement that select the cluster scoped object", "obj", key)
+		klog.V(2).InfoS("Find clusterResourcePlacement that selects the cluster scoped object", "obj", key)
 		return r.triggerAffectedPlacementsForUpdatedClusterRes(key, clusterObj.(*unstructured.Unstructured), true)
 	}
 
-	klog.V(2).InfoS("Find namespace that contains a namespace scoped object", "obj", key)
+	klog.V(2).InfoS("Find namespace that contains the namespace scoped object", "obj", key)
 	// we will use the parent namespace object to search for the affected placements
 	var err error
 	clusterObj, err = r.InformerManager.Lister(utils.NamespaceGVR).Get(key.Namespace)
@@ -117,7 +117,7 @@ func (r *Reconciler) handleUpdatedResourceForClusterResourcePlacement(key keys.C
 		klog.ErrorS(err, "Failed to find the namespace the resource belongs to", "obj", key)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	klog.V(2).InfoS("Find placement that select the namespace that contains a namespace scoped object", "obj", key)
+	klog.V(2).InfoS("Find clusterResourcePlacement that selects the namespace", "obj", key)
 	res, err := r.triggerAffectedPlacementsForUpdatedClusterRes(key, clusterObj.(*unstructured.Unstructured), true)
 	if err != nil {
 		klog.ErrorS(err, "Failed to trigger affected placements for updated cluster resource", "obj", key)
@@ -132,10 +132,10 @@ func (r *Reconciler) handleUpdatedResourceForResourcePlacement(key keys.ClusterW
 		return ctrl.Result{}, nil
 	}
 
-	klog.V(2).InfoS("Find resourcePlacement that select the namespace scoped object", "obj", key)
+	klog.V(2).InfoS("Find resourcePlacement that selects the namespace scoped object", "obj", key)
 	res, err := r.triggerAffectedPlacementsForUpdatedClusterRes(key, clusterObj.(*unstructured.Unstructured), false)
 	if err != nil {
-		klog.ErrorS(err, "Failed to trigger affected placements for updated resource placement", "obj", key)
+		klog.ErrorS(err, "Failed to trigger affected placements for updated resource", "obj", key)
 		return ctrl.Result{}, err
 	}
 	return res, nil
