@@ -103,7 +103,7 @@ func buildCustomPredicate() predicate.Predicate {
 	}
 }
 
-// SetupWithManagerForClusterResourcePlacement sets up the controller with the manager.
+// SetupWithManagerForClusterResourcePlacement sets up the controller with the manager for ClusterResourcePlacement.
 func (r *Reconciler) SetupWithManagerForClusterResourcePlacement(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).Named("clusterresourceplacement-scheduler-watcher").
 		For(&fleetv1beta1.ClusterResourcePlacement{}).
@@ -111,6 +111,7 @@ func (r *Reconciler) SetupWithManagerForClusterResourcePlacement(mgr ctrl.Manage
 		Complete(r)
 }
 
+// SetupWithManagerForResourcePlacement sets up the controller with the manager for ResourcePlacement.
 func (r *Reconciler) SetupWithManagerForResourcePlacement(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).Named("resourceplacement-scheduler-watcher").
 		For(&fleetv1beta1.ResourcePlacement{}).
