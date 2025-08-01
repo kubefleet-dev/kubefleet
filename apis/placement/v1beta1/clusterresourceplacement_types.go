@@ -149,13 +149,13 @@ type PlacementSpec struct {
 	// +kubebuilder:validation:Optional
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
 
-	// EnableStatusProxy indicates whether a PlacementStatusProxy object should be created to mirror the placement status.
-	// When enabled, PlacementStatusProxy objects will be created in the same namespace selected by the ResourceSelectors.
+	// CopyStatusToNamespace indicates whether a ClusterResourcePlacementStatus object should be created to mirror the placement status.
+	// When enabled, a ClusterResourcePlacementStatus object will be created in the same namespace selected by the ResourceSelectors.
 	// This allows namespace-scoped access to the cluster-scoped ClusterResourcePlacement status.
 	// Defaults to false.
 	// +kubebuilder:default=false
 	// +kubebuilder:validation:Optional
-	EnableStatusProxy bool `json:"enableStatusProxy,omitempty"`
+	CopyStatusToNamespace bool `json:"copyStatusToNamespace,omitempty"`
 }
 
 // Tolerations returns tolerations for PlacementSpec to handle nil policy case.
@@ -1513,51 +1513,47 @@ func (rpl *ResourcePlacementList) GetPlacementObjs() []PlacementObj {
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// PlacementStatusProxy is a namespaced resource that mirrors the PlacementStatus of a corresponding
+// ClusterResourcePlacementStatus is a namespaced resource that mirrors the PlacementStatus of a corresponding
 // ClusterResourcePlacement object. This allows namespace-scoped access to cluster-scoped placement status.
 //
 // This object will be created within the target namespace that contains resources being managed by the CRP.
-// When multiple ClusterResourcePlacements target the same namespace, each PlacementStatusProxy within that
+// When multiple ClusterResourcePlacements target the same namespace, each ClusterResourcePlacementStatus within that
 // namespace is uniquely identified by its object name, which corresponds to the specific ClusterResourcePlacement
 // that created it.
 //
-// The name of this object should follow the template: <clusterResourcePlacementName>-status
-// where <clusterResourcePlacementName> is the name of the corresponding ClusterResourcePlacement.
-//
-// For example, if you have a ClusterResourcePlacement named "my-app-crp", the corresponding
-// PlacementStatusProxy should be named "my-app-crp-status".
-type PlacementStatusProxy struct {
+// The name of this object should be the same as the name of the corresponding ClusterResourcePlacement.
+type ClusterResourcePlacementStatus struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// The observed status of PlacementStatusProxy which mirrors the PlacementStatus of the corresponding ClusterResourcePlacement.
+	// The observed status of ClusterResourcePlacementStatus which mirrors the PlacementStatus of the corresponding ClusterResourcePlacement.
 	// This includes information about the namespace and resources within that namespace that are being managed by the placement.
 	// The status will show placement details for resources selected by the ClusterResourcePlacement's ResourceSelectors.
 	// +kubebuilder:validation:Optional
 	Status PlacementStatus `json:"status,omitempty"`
 }
 
-// PlacementStatusProxyList contains a list of PlacementStatusProxy.
+// ClusterResourcePlacementStatusList contains a list of ClusterResourcePlacementStatus.
 // +kubebuilder:resource:scope="Namespaced"
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type PlacementStatusProxyList struct {
+type ClusterResourcePlacementStatusList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []PlacementStatusProxy `json:"items"`
+	Items           []ClusterResourcePlacementStatus `json:"items"`
 }
 
-// SetConditions sets the conditions of the PlacementStatusProxy.
-func (m *PlacementStatusProxy) SetConditions(conditions ...metav1.Condition) {
+// SetConditions sets the conditions of the ClusterResourcePlacementStatus.
+func (m *ClusterResourcePlacementStatus) SetConditions(conditions ...metav1.Condition) {
 	for _, c := range conditions {
 		meta.SetStatusCondition(&m.Status.Conditions, c)
 	}
 }
 
-// GetCondition returns the condition of the PlacementStatusProxy objects.
-func (m *PlacementStatusProxy) GetCondition(conditionType string) *metav1.Condition {
+// GetCondition returns the condition of the ClusterResourcePlacementStatus objects.
+func (m *ClusterResourcePlacementStatus) GetCondition(conditionType string) *metav1.Condition {
 	return meta.FindStatusCondition(m.Status.Conditions, conditionType)
 }
 
 func init() {
-	SchemeBuilder.Register(&ClusterResourcePlacement{}, &ClusterResourcePlacementList{}, &ResourcePlacement{}, &ResourcePlacementList{}, &PlacementStatusProxy{}, &PlacementStatusProxyList{})
+	SchemeBuilder.Register(&ClusterResourcePlacement{}, &ClusterResourcePlacementList{}, &ResourcePlacement{}, &ResourcePlacementList{}, &ClusterResourcePlacementStatus{}, &ClusterResourcePlacementStatusList{})
 }
