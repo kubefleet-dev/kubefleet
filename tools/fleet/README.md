@@ -1,11 +1,7 @@
 # kubectl-fleet
 
-A unified kubectl plugin for KubeFleet cluster management operations, providing draincluster, and uncordoncluster functionality for member clusters in a fleet,
-as well as staged update approval capability.
-
-## Description
-
-`kubectl-fleet` allows you to manage member clusters in a KubeFleet deployment by approving staged updates, draining workloads from clusters for maintenance, and uncordoning them when ready to accept workloads again.
+A kubectl plugin for KubeFleet cluster management operations, providing functionalities include draining workloads from member clusters for maintenance,
+uncordoning them when ready to accept workloads again, as well as approving staged update run stage execution.
 
 ## Installation
 
@@ -120,8 +116,7 @@ The approve command currently supports the following resource kinds:
 Drains a member cluster by performing the following actions:
 
 1. **Cordoning**: Adds a `Taint` to the `MemberCluster` resource to prevent any new resources from being propagated to the member cluster
-2. **Eviction**: Creates `Eviction` objects for all the `Placement` objects that have propagated resources to the member cluster
-3. **Resource Removal**: Waits for all evictions to complete and resources to be removed from the member cluster
+2. **Eviction**: Creates `Eviction` objects for all the `Placement` objects that have propagated resources to the member cluster and waits all evictions to complete
 
 **Note**: The `draincluster` command is a best-effort mechanism. Once the command runs successfully, you must verify that all resources propagated by `Placement` resources are removed from the member cluster. Re-running the command is safe and recommended if you notice any resources still present on the member cluster.
 

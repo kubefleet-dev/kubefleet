@@ -29,7 +29,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
@@ -211,9 +210,6 @@ func TestRun(t *testing.T) {
 // setupScheme creates a scheme with the necessary APIs for testing.
 func setupScheme(t *testing.T) *runtime.Scheme {
 	scheme := runtime.NewScheme()
-	if err := clusterv1beta1.AddToScheme(scheme); err != nil {
-		t.Fatalf("failed to add cluster v1beta1 scheme: %v", err)
-	}
 	if err := placementv1beta1.AddToScheme(scheme); err != nil {
 		t.Fatalf("failed to add placement v1beta1 scheme: %v", err)
 	}

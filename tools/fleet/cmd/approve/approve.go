@@ -48,9 +48,9 @@ func NewCmdApprove() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "approve <kind>",
 		Short: "Approve a resource",
-		Long: `Approve a resource by patching an "Approved" condition to its status.
+		Long: `Approve a resource by updating its status with an "Approved" condition.
 
-This command patches the resource with an "Approved" condition,
+This command updates the clusterApprovalRequest status with an "Approved" condition,
 allowing staged update runs to proceed to the next stage.
 
 Currently supported kinds:
