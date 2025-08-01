@@ -29,7 +29,6 @@ import (
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	toolsutils "github.com/kubefleet-dev/kubefleet/tools/utils"
 )
@@ -122,9 +121,6 @@ func (o *approveOptions) run(ctx context.Context) error {
 func (o *approveOptions) setupClient() error {
 	scheme := runtime.NewScheme()
 
-	if err := clusterv1beta1.AddToScheme(scheme); err != nil {
-		return fmt.Errorf("failed to add custom APIs (cluster) to the runtime scheme: %w", err)
-	}
 	if err := placementv1beta1.AddToScheme(scheme); err != nil {
 		return fmt.Errorf("failed to add custom APIs (placement) to the runtime scheme: %w", err)
 	}
