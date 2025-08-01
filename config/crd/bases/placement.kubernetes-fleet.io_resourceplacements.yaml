@@ -588,6 +588,12 @@ spec:
                     name:
                       description: Name of the cluster-scoped resource.
                       type: string
+                    namespaceOnly:
+                      default: false
+                      description: |-
+                        Whether to select namespace only when`Kind` is `namespace`.
+                        If false, the selector will select all the resources under the namespace.
+                      type: boolean
                     version:
                       description: Version of the cluster-scoped resource.
                       type: string
