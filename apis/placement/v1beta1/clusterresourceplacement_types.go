@@ -188,6 +188,11 @@ type ClusterResourceSelector struct {
 	// Note that namespace-scoped resources can't be selected even if they match the query.
 	// +kubebuilder:validation:Optional
 	LabelSelector *metav1.LabelSelector `json:"labelSelector,omitempty"`
+
+	// Whether to select namespace only when`Kind` is `namespace`.
+	// If false, the selector will select all the resources under the namespace.
+	// +kubebuilder:default=false
+	NamespaceOnly bool `json:"namespaceOnly,omitempty"`
 }
 
 // PlacementPolicy contains the rules to select target member clusters to place the selected resources.
