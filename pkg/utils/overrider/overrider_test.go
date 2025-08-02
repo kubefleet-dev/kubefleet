@@ -1160,6 +1160,162 @@ func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
 			wantCRO: []*placementv1beta1.ClusterResourceOverrideSnapshot{},
 			wantRO:  []*placementv1beta1.ResourceOverrideSnapshot{},
 		},
+		{
+			name: "ro match should take placement scope into account",
+			master: &placementv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(placementv1beta1.ResourceSnapshotNameFmt, crpName, 0),
+					Labels: map[string]string{
+						placementv1beta1.ResourceIndexLabel:     "0",
+						placementv1beta1.PlacementTrackingLabel: crpName,
+					},
+					Annotations: map[string]string{
+						placementv1beta1.ResourceGroupHashAnnotation:         "abc",
+						placementv1beta1.NumberOfResourceSnapshotsAnnotation: "1",
+					},
+				},
+				Spec: placementv1beta1.ResourceSnapshotSpec{
+					SelectedResources: []placementv1beta1.ResourceContent{
+						*resource.NamespaceResourceContentForTest(t),
+						*resource.ServiceResourceContentForTest(t),
+						*resource.DeploymentResourceContentForTest(t),
+					},
+				},
+			},
+			roList: []placementv1beta1.ResourceOverrideSnapshot{
+				{
+					// No OverrideSpec.Placement.Scope specified, should match.
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "ro-1",
+						Namespace: "svc-namespace",
+						Labels: map[string]string{
+							placementv1beta1.IsLatestSnapshotLabel: "true",
+						},
+					},
+					Spec: placementv1beta1.ResourceOverrideSnapshotSpec{
+						OverrideSpec: placementv1beta1.ResourceOverrideSpec{
+							Placement: &placementv1beta1.PlacementRef{
+								Name: crpName,
+							},
+							ResourceSelectors: []placementv1beta1.ResourceSelector{
+								{
+									Group:   "",
+									Version: "v1",
+									Kind:    "Service",
+									Name:    "svc-name",
+								},
+							},
+						},
+					},
+				},
+				{
+					// OverrideSpec.Placement.Scope specified as Cluster, should match.
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "ro-2",
+						Namespace: "deployment-namespace",
+						Labels: map[string]string{
+							placementv1beta1.IsLatestSnapshotLabel: "true",
+						},
+					},
+					Spec: placementv1beta1.ResourceOverrideSnapshotSpec{
+						OverrideSpec: placementv1beta1.ResourceOverrideSpec{
+							Placement: &placementv1beta1.PlacementRef{
+								Name:  crpName,
+								Scope: placementv1beta1.ClusterScoped,
+							},
+							ResourceSelectors: []placementv1beta1.ResourceSelector{
+								{
+									Group:   "apps",
+									Version: "v1",
+									Kind:    "Deployment",
+									Name:    "deployment-name",
+								},
+							},
+						},
+					},
+				},
+				{
+					// OverrideSpec.Placement.Scope specified as Namespaced, should NOT match.
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "ro-3",
+						Namespace: "deployment-namespace",
+						Labels: map[string]string{
+							placementv1beta1.IsLatestSnapshotLabel: "true",
+						},
+					},
+					Spec: placementv1beta1.ResourceOverrideSnapshotSpec{
+						OverrideSpec: placementv1beta1.ResourceOverrideSpec{
+							Placement: &placementv1beta1.PlacementRef{
+								Name:  crpName,
+								Scope: placementv1beta1.NamespaceScoped,
+							},
+							ResourceSelectors: []placementv1beta1.ResourceSelector{
+								{
+									Group:   "apps",
+									Version: "v1",
+									Kind:    "Deployment",
+									Name:    "deployment-name",
+								},
+							},
+						},
+					},
+				},
+			},
+			wantCRO: []*placementv1beta1.ClusterResourceOverrideSnapshot{},
+			wantRO: []*placementv1beta1.ResourceOverrideSnapshot{
+				{
+					// No OverrideSpec.Placement.Scope specified, should match.
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "ro-1",
+						Namespace: "svc-namespace",
+						Labels: map[string]string{
+							placementv1beta1.IsLatestSnapshotLabel: "true",
+						},
+					},
+					Spec: placementv1beta1.ResourceOverrideSnapshotSpec{
+						OverrideSpec: placementv1beta1.ResourceOverrideSpec{
+							Placement: &placementv1beta1.PlacementRef{
+								Name: crpName,
+							},
+							ResourceSelectors: []placementv1beta1.ResourceSelector{
+								{
+									Group:   "",
+									Version: "v1",
+									Kind:    "Service",
+									Name:    "svc-name",
+								},
+							},
+						},
+					},
+				},
+				{
+					// OverrideSpec.Placement.Scope specified as Cluster, should match.
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "ro-2",
+						Namespace: "deployment-namespace",
+						Labels: map[string]string{
+							placementv1beta1.IsLatestSnapshotLabel: "true",
+						},
+					},
+					Spec: placementv1beta1.ResourceOverrideSnapshotSpec{
+						OverrideSpec: placementv1beta1.ResourceOverrideSpec{
+							Placement: &placementv1beta1.PlacementRef{
+								Name:  crpName,
+								Scope: placementv1beta1.ClusterScoped,
+							},
+							ResourceSelectors: []placementv1beta1.ResourceSelector{
+								{
+									Group:   "apps",
+									Version: "v1",
+									Kind:    "Deployment",
+									Name:    "deployment-name",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range tests {
@@ -1185,10 +1341,10 @@ func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
 			}
 			options := []cmp.Option{
 				cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion"),
-				cmpopts.SortSlices(func(o1, o2 placementv1beta1.ClusterResourceOverride) bool {
+				cmpopts.SortSlices(func(o1, o2 *placementv1beta1.ClusterResourceOverrideSnapshot) bool {
 					return o1.Name < o2.Name
 				}),
-				cmpopts.SortSlices(func(o1, o2 placementv1beta1.ResourceOverride) bool {
+				cmpopts.SortSlices(func(o1, o2 *placementv1beta1.ResourceOverrideSnapshot) bool {
 					if o1.Namespace == o2.Namespace {
 						return o1.Name < o2.Name
 					}

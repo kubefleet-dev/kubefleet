@@ -136,7 +136,7 @@ func FetchAllMatchingOverridesForResourceSnapshot(
 	}
 	for i := range roList.Items {
 		placementInOverride := roList.Items[i].Spec.OverrideSpec.Placement
-		if placementInOverride == nil {
+		if placementInOverride != nil {
 			placementKeyInOverride := placementInOverride.Name
 			if placementInOverride.Scope == placementv1beta1.NamespaceScoped {
 				placementKeyInOverride = controller.GetObjectKeyFromNamespaceName(roList.Items[i].Namespace, placementInOverride.Name)
