@@ -7,6 +7,10 @@ assignees: ''
 
 ---
 
+<!--
+Please open bugs in https://github.com/Azure/fleet if the request is specifically related to Azure Kubernetes Fleet Manager 
+-->
+
 ### **Describe the bug**
 A clear and concise description of what the bug is.
 
