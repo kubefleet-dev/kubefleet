@@ -254,28 +254,30 @@ func waitForResourcesToCleanUp(allBindings []placementv1beta1.BindingObj, placem
 	// separate deleting bindings from the rest of the bindings
 	for _, binding := range allBindings {
 		bindingSpec := binding.GetBindingSpec()
+		bindingKRef := klog.KObj(binding)
 		if !binding.GetDeletionTimestamp().IsZero() {
 			deletingBinding[bindingSpec.TargetCluster] = true
-			klog.V(2).InfoS("Found a binding that is being deleted", "placement", placementObjRef, "binding", klog.KObj(binding))
+			klog.V(2).InfoS("Found a binding that is being deleted", "placement", placementObjRef, "binding", bindingKRef)
 		} else {
 			if _, exist := bindingMap[bindingSpec.TargetCluster]; !exist {
 				bindingMap[bindingSpec.TargetCluster] = binding
 			} else {
 				return false, controller.NewUnexpectedBehaviorError(fmt.Errorf("the same cluster `%s` has bindings `%s` and `%s` pointing to it",
-					bindingSpec.TargetCluster, klog.KObj(bindingMap[bindingSpec.TargetCluster]), klog.KObj(binding)))
+					bindingSpec.TargetCluster, klog.KObj(bindingMap[bindingSpec.TargetCluster]), bindingKRef))
 			}
 		}
 	}
 	// check if there are any cluster that has a binding that is both being deleted and scheduled
 	for cluster, binding := range bindingMap {
 		// check if there is a deleting binding on the same cluster
+		bindingKRef := klog.KObj(binding)
 		if deletingBinding[cluster] {
-			klog.V(2).InfoS("Find a binding assigned to a cluster with another deleting binding", "placement", placementObjRef, "binding", klog.KObj(binding))
+			klog.V(2).InfoS("Find a binding assigned to a cluster with another deleting binding", "placement", placementObjRef, "binding", bindingKRef)
 			bindingSpec := binding.GetBindingSpec()
 			if bindingSpec.State == placementv1beta1.BindingStateBound {
 				// the rollout controller won't move a binding from scheduled state to bound if there is a deleting binding on the same cluster.
 				return false, controller.NewUnexpectedBehaviorError(fmt.Errorf(
-					"find a cluster `%s` that has a bound binding `%s` and a deleting binding point to it", bindingSpec.TargetCluster, klog.KObj(binding)))
+					"find a cluster `%s` that has a bound binding `%s` and a deleting binding point to it", bindingSpec.TargetCluster, bindingKRef))
 			}
 			if bindingSpec.State == placementv1beta1.BindingStateUnscheduled {
 				// this is a very rare case that the resource was in the middle of being removed from a member cluster after it is unselected.
@@ -283,7 +285,7 @@ func waitForResourcesToCleanUp(allBindings []placementv1beta1.BindingObj, placem
 				if binding.GetAnnotations()[placementv1beta1.PreviousBindingStateAnnotation] == string(placementv1beta1.BindingStateBound) {
 					// its previous state can not be bound as rollout won't roll a binding with a deleting binding pointing to the same cluster.
 					return false, controller.NewUnexpectedBehaviorError(fmt.Errorf(
-						"find a cluster `%s` that has a unscheduled binding `%s` with previous state is `bound` and a deleting binding point to it", bindingSpec.TargetCluster, klog.KObj(binding)))
+						"find a cluster `%s` that has a unscheduled binding `%s` with previous state is `bound` and a deleting binding point to it", bindingSpec.TargetCluster, bindingKRef))
 				}
 				return true, nil
 			}
@@ -678,23 +680,14 @@ func (r *Reconciler) updateBindings(ctx context.Context, bindings []toBeUpdatedB
 	return errs.Wait()
 }
 
-// SetupWithManagerForClusterResourceBinding sets up the rollout controller with the Manager for cluster scoped resources.
+// SetupWithManagerForClusterResourcePlacement sets up the rollout controller with the Manager for cluster scoped resources.
 // The rollout controller watches resource snapshots and resource bindings.
 // It reconciles on the CRP when a new cluster resource binding is created or an existing cluster resource binding is created/updated.
-func (r *Reconciler) SetupWithManagerForClusterResourceBinding(mgr runtime.Manager) error {
-	r.recorder = mgr.GetEventRecorderFor("cluster-scoped-rollout-controller")
-	return runtime.NewControllerManagedBy(mgr).Named("cluster-scoped-rollout-controller").
+func (r *Reconciler) SetupWithManagerForClusterResourcePlacement(mgr runtime.Manager) error {
+	r.recorder = mgr.GetEventRecorderFor("cluster-resource-placement-rollout-controller")
+	return runtime.NewControllerManagedBy(mgr).Named("cluster-resource-placement-rollout-controller").
 		WithOptions(ctrl.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}). // set the max number of concurrent reconciles
-		Watches(&placementv1beta1.ClusterResourceSnapshot{}, handler.Funcs{
-			CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a cluster resource snapshot create event", "resourceSnapshot", klog.KObj(e.Object))
-				handleResourceSnapshot(e.Object, q)
-			},
-			GenericFunc: func(ctx context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a cluster resource snapshot generic event", "resourceSnapshot", klog.KObj(e.Object))
-				handleResourceSnapshot(e.Object, q)
-			},
-		}).
+		Watches(&placementv1beta1.ClusterResourceSnapshot{}, resourceSnapshotObjHandlerFuncs()).
 		Watches(&placementv1beta1.ClusterResourceOverrideSnapshot{}, handler.Funcs{
 			CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				klog.V(2).InfoS("Handling a clusterResourceOverrideSnapshot create event", "clusterResourceOverrideSnapshot", klog.KObj(e.Object))
@@ -705,16 +698,7 @@ func (r *Reconciler) SetupWithManagerForClusterResourceBinding(mgr runtime.Manag
 				handleClusterResourceOverrideSnapshot(e.Object, q)
 			},
 		}).
-		Watches(&placementv1beta1.ResourceOverrideSnapshot{}, handler.Funcs{
-			CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a resourceOverrideSnapshot create event", "resourceOverrideSnapshot", klog.KObj(e.Object))
-				handleResourceOverrideSnapshot(e.Object, q)
-			},
-			GenericFunc: func(ctx context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a resourceOverrideSnapshot generic event", "resourceOverrideSnapshot", klog.KObj(e.Object))
-				handleResourceOverrideSnapshot(e.Object, q)
-			},
-		}).
+		Watches(&placementv1beta1.ResourceOverrideSnapshot{}, resourceOverrideSnapshotHandlerFuncs(true)).
 		Watches(&placementv1beta1.ClusterResourceOverride{}, handler.Funcs{
 			DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				cro, ok := e.Object.(*placementv1beta1.ClusterResourceOverride)
@@ -732,94 +716,103 @@ func (r *Reconciler) SetupWithManagerForClusterResourceBinding(mgr runtime.Manag
 				})
 			},
 		}).
-		Watches(&placementv1beta1.ResourceOverride{}, handler.Funcs{
-			DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				handleResourceOverride(e.Object, q, true)
-			},
-		}).
-		Watches(&placementv1beta1.ClusterResourceBinding{}, handler.Funcs{
-			CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a cluster resourceBinding create event", "resourceBinding", klog.KObj(e.Object))
-				enqueueResourceBinding(e.Object, q)
-			},
-			UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				handleResourceBindingUpdated(e.ObjectNew, e.ObjectOld, q)
-			},
-			GenericFunc: func(ctx context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a cluster resourceBinding generic event", "resourceBinding", klog.KObj(e.Object))
-				enqueueResourceBinding(e.Object, q)
-			},
-		}).
+		Watches(&placementv1beta1.ResourceOverride{}, resourceOverrideHandlerFuncs(true)).
+		Watches(&placementv1beta1.ClusterResourceBinding{}, bindingHandlerFuncs()).
 		// Aside from resource snapshot and binding objects, the rollout
 		// controller also watches ClusterResourcePlacement objects,
 		// so that it can push apply strategy updates to all bindings right away.
-		Watches(&placementv1beta1.ClusterResourcePlacement{}, handler.Funcs{
-			// Ignore all Create, Delete, and Generic events; these do not concern the rollout controller.
-			UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				handlePlacement(e.ObjectNew, e.ObjectOld, q)
-			},
-		}).
+		Watches(&placementv1beta1.ClusterResourcePlacement{}, placementHandlerFuncs()).
 		Complete(r)
 }
 
-// SetupWithManagerForResourceBinding sets up the rollout controller with the Manager for namespace scoped resources.
+// SetupWithManagerForResourcePlacement sets up the rollout controller with the Manager for namespace scoped resources.
 // The rollout controller watches resource snapshots and resource bindings.
 // It reconciles on the RP when a new resource binding is created or an existing resource binding is created/updated.
-func (r *Reconciler) SetupWithManagerForResourceBinding(mgr runtime.Manager) error {
-	r.recorder = mgr.GetEventRecorderFor("namespace-scoped-rollout-controller")
-	return runtime.NewControllerManagedBy(mgr).Named("namespace-scoped-rollout-controller").
+func (r *Reconciler) SetupWithManagerForResourcePlacement(mgr runtime.Manager) error {
+	r.recorder = mgr.GetEventRecorderFor("resource-placement-rollout-controller")
+	return runtime.NewControllerManagedBy(mgr).Named("resource-placement-rollout-controller").
 		WithOptions(ctrl.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}). // set the max number of concurrent reconciles
-		Watches(&placementv1beta1.ResourceSnapshot{}, handler.Funcs{
-			CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a resource snapshot create event", "resourceSnapshot", klog.KObj(e.Object))
-				handleResourceSnapshot(e.Object, q)
-			},
-			GenericFunc: func(ctx context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a resource snapshot generic event", "resourceSnapshot", klog.KObj(e.Object))
-				handleResourceSnapshot(e.Object, q)
-			},
-		}).
+		Watches(&placementv1beta1.ResourceSnapshot{}, resourceSnapshotObjHandlerFuncs()).
 		// Namespace scoped rollout controller does not need to watch clusterResourceOverrideSnapshot, only resourceOverrideSnapshot.
-		Watches(&placementv1beta1.ResourceOverrideSnapshot{}, handler.Funcs{
-			CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a resourceOverrideSnapshot create event", "resourceOverrideSnapshot", klog.KObj(e.Object))
-				handleResourceOverrideSnapshot(e.Object, q)
-			},
-			GenericFunc: func(ctx context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a resourceOverrideSnapshot generic event", "resourceOverrideSnapshot", klog.KObj(e.Object))
-				handleResourceOverrideSnapshot(e.Object, q)
-			},
-		}).
+		Watches(&placementv1beta1.ResourceOverrideSnapshot{}, resourceOverrideSnapshotHandlerFuncs(false)).
 		// Namespace scoped rollout controller does not need to watch clusterResourceOverride, only resourceOverride.
-		Watches(&placementv1beta1.ResourceOverride{}, handler.Funcs{
-			DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				handleResourceOverride(e.Object, q, false)
-			},
-		}).
-		Watches(&placementv1beta1.ResourceBinding{}, handler.Funcs{
-			CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a resourceBinding create event", "resourceBinding", klog.KObj(e.Object))
-				enqueueResourceBinding(e.Object, q)
-			},
-			UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a resourceBinding update event", "resourceBinding", klog.KObj(e.ObjectNew))
-				handleResourceBindingUpdated(e.ObjectNew, e.ObjectOld, q)
-			},
-			GenericFunc: func(ctx context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				klog.V(2).InfoS("Handling a resourceBinding generic event", "resourceBinding", klog.KObj(e.Object))
-				enqueueResourceBinding(e.Object, q)
-			},
-		}).
+		Watches(&placementv1beta1.ResourceOverride{}, resourceOverrideHandlerFuncs(false)).
+		Watches(&placementv1beta1.ResourceBinding{}, bindingHandlerFuncs()).
 		// Aside from resource snapshot and binding objects, the rollout
 		// controller also watches ResourcePlacement objects,
 		// so that it can push apply strategy updates to all bindings right away.
-		Watches(&placementv1beta1.ResourcePlacement{}, handler.Funcs{
-			// Ignore all Create, Delete, and Generic events; these do not concern the rollout controller.
-			UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				handlePlacement(e.ObjectNew, e.ObjectOld, q)
-			},
-		}).
+		Watches(&placementv1beta1.ResourcePlacement{}, placementHandlerFuncs()).
 		Complete(r)
+}
+
+// resourceSnapshotObjHandlerFuncs returns the handler functions for resource snapshot obj events
+// (including cluster resource snapshots and resource snapshots).
+func resourceSnapshotObjHandlerFuncs() handler.Funcs {
+	return handler.Funcs{
+		CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			klog.V(2).InfoS("Handling a cluster resource snapshot create event", "resourceSnapshot", klog.KObj(e.Object))
+			handleResourceSnapshot(e.Object, q)
+		},
+		GenericFunc: func(ctx context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			klog.V(2).InfoS("Handling a cluster resource snapshot generic event", "resourceSnapshot", klog.KObj(e.Object))
+			handleResourceSnapshot(e.Object, q)
+		},
+	}
+}
+
+// resourceOverrideSnapshotHandlerFuncs returns the handler functions for resource override snapshot events.
+func resourceOverrideSnapshotHandlerFuncs(enqueueCRP bool) handler.Funcs {
+	return handler.Funcs{
+		CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			klog.V(2).InfoS("Handling a resourceOverrideSnapshot create event", "resourceOverrideSnapshot", klog.KObj(e.Object))
+			handleResourceOverrideSnapshot(e.Object, q, enqueueCRP)
+		},
+		GenericFunc: func(ctx context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			klog.V(2).InfoS("Handling a resourceOverrideSnapshot generic event", "resourceOverrideSnapshot", klog.KObj(e.Object))
+			handleResourceOverrideSnapshot(e.Object, q, enqueueCRP)
+		},
+	}
+}
+
+// resourceOverrideHandlerFuncs returns the handler functions for resource override events.
+func resourceOverrideHandlerFuncs(enqueueCRP bool) handler.Funcs {
+	return handler.Funcs{
+		DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			klog.V(2).InfoS("Handling a resourceOverride delete event", "resourceOverride", klog.KObj(e.Object))
+			handleResourceOverride(e.Object, q, enqueueCRP)
+		},
+	}
+}
+
+// bindingHandlerFuncs returns the handler functions for binding events
+// (including cluster resource bindings and resource bindings).
+func bindingHandlerFuncs() handler.Funcs {
+	return handler.Funcs{
+		CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			klog.V(2).InfoS("Handling a binding create event", "binding", klog.KObj(e.Object))
+			enqueueBinding(e.Object, q)
+		},
+		UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			klog.V(2).InfoS("Handling a binding update event", "binding", klog.KObj(e.ObjectNew))
+			handleBindingUpdated(e.ObjectNew, e.ObjectOld, q)
+		},
+		GenericFunc: func(ctx context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			klog.V(2).InfoS("Handling a binding generic event", "binding", klog.KObj(e.Object))
+			enqueueBinding(e.Object, q)
+		},
+	}
+}
+
+// placementHandlerFuncs returns the handler functions for placement events
+// (including cluster resource placements and resource placements).
+func placementHandlerFuncs() handler.Funcs {
+	return handler.Funcs{
+		// Ignore all Create, Delete, and Generic events; these do not concern the rollout controller.
+		UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			klog.V(2).InfoS("Handling a placement update event", "placement", klog.KObj(e.ObjectNew))
+			handlePlacement(e.ObjectNew, e.ObjectOld, q)
+		},
+	}
 }
 
 // handleClusterResourceOverrideSnapshot parse the clusterResourceOverrideSnapshot label and enqueue the CRP name associated
@@ -857,7 +850,7 @@ func handleClusterResourceOverrideSnapshot(o client.Object, q workqueue.TypedRat
 
 // handleResourceOverrideSnapshot parse the resourceOverrideSnapshot label and enqueue the placement associated with the
 // resourceOverrideSnapshot if set.
-func handleResourceOverrideSnapshot(o client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+func handleResourceOverrideSnapshot(o client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request], enqueueCRP bool) {
 	snapshot, ok := o.(*placementv1beta1.ResourceOverrideSnapshot)
 	if !ok {
 		klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("non ResourceOverrideSnapshot type resource: %+v", o)),
@@ -884,17 +877,24 @@ func handleResourceOverrideSnapshot(o client.Object, q workqueue.TypedRateLimiti
 	}
 	// Enqueue the placement to the rollout controller queue.
 	placementInOverride := snapshot.Spec.OverrideSpec.Placement
-	if placementInOverride.Scope == placementv1beta1.NamespaceScoped {
-		// Enqueue the resource placement.
-		q.Add(reconcile.Request{
-			NamespacedName: types.NamespacedName{Namespace: snapshot.GetNamespace(), Name: placementInOverride.Name},
-		})
+	namespace := ""
+	if enqueueCRP {
+		if placementInOverride.Scope == placementv1beta1.NamespaceScoped {
+			klog.V(2).InfoS("Skipping a resourceOverrideSnapshot event with resource placement", "resourceOverrideSnapshot", snapshotKRef)
+			return
+		}
 	} else {
-		// Enqueue the cluster resource placement.
-		q.Add(reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: placementInOverride.Name},
-		})
+		if placementInOverride.Scope != placementv1beta1.NamespaceScoped {
+			klog.V(2).InfoS("Skipping a resourceOverrideSnapshot event with cluster resource placement", "resourceOverrideSnapshot", snapshotKRef)
+			return
+		}
+		namespace = snapshot.GetNamespace()
 	}
+
+	klog.V(2).InfoS("Handling a resourceOverrideSnapshot event", "resourceOverrideSnapshot", snapshotKRef)
+	q.Add(reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: placementInOverride.Name, Namespace: namespace},
+	})
 }
 
 // handleResourceSnapshot parse the resource binding label and annotation and enqueue the placement associated with the resource binding
@@ -951,25 +951,25 @@ func handleResourceOverride(o client.Object, q workqueue.TypedRateLimitingInterf
 	namespace := ""
 	if enqueueCRP {
 		if ro.Spec.Placement.Scope == placementv1beta1.NamespaceScoped {
-			klog.V(2).InfoS("Skipping a resourceOverride delete event with resource placement", "resourceOverride", klog.KObj(ro))
+			klog.V(2).InfoS("Skipping a resourceOverride event with resource placement", "resourceOverride", klog.KObj(ro))
 			return
 		}
 	} else {
 		if ro.Spec.Placement.Scope != placementv1beta1.NamespaceScoped {
-			klog.V(2).InfoS("Skipping a resourceOverride delete event with cluster resource placement", "resourceOverride", klog.KObj(ro))
+			klog.V(2).InfoS("Skipping a resourceOverride event with cluster resource placement", "resourceOverride", klog.KObj(ro))
 			return
 		}
 		namespace = ro.Namespace
 	}
 
-	klog.V(2).InfoS("Handling a resourceOverride delete event", "resourceOverride", klog.KObj(ro))
+	klog.V(2).InfoS("Handling a resourceOverride event", "resourceOverride", klog.KObj(ro))
 	q.Add(reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: ro.Spec.Placement.Name, Namespace: namespace},
 	})
 }
 
-// enqueueResourceBinding parse the binding label and enqueue the placement associated with the resource binding
-func enqueueResourceBinding(binding client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+// enqueueBinding parse the binding label and enqueue the placement associated with the binding
+func enqueueBinding(binding client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	bindingRef := klog.KObj(binding)
 	// get the placement name from the label
 	placementName := binding.GetLabels()[placementv1beta1.PlacementTrackingLabel]
@@ -985,9 +985,9 @@ func enqueueResourceBinding(binding client.Object, q workqueue.TypedRateLimiting
 	})
 }
 
-// handleResourceBindingUpdated determines the action to take when a resource binding is updated.
+// handleBindingUpdated determines the action to take when a binding is updated.
 // we only care about the Available and DiffReported condition change.
-func handleResourceBindingUpdated(objectOld, objectNew client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+func handleBindingUpdated(objectOld, objectNew client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	// Check if the update event is valid.
 	if objectOld == nil || objectNew == nil {
 		klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("either oldBinding or newBinding is nil")), "Failed to process update event")
@@ -1004,7 +1004,7 @@ func handleResourceBindingUpdated(objectOld, objectNew client.Object, q workqueu
 
 	if oldBinding.GetGeneration() != newBinding.GetGeneration() {
 		klog.V(2).InfoS("The binding spec have changed, need to notify rollout controller", "binding", klog.KObj(newBinding))
-		enqueueResourceBinding(newBinding, q)
+		enqueueBinding(newBinding, q)
 		return
 	}
 
@@ -1015,7 +1015,7 @@ func handleResourceBindingUpdated(objectOld, objectNew client.Object, q workqueu
 		newCond := newBinding.GetCondition(conditionType)
 		if !condition.EqualCondition(oldCond, newCond) {
 			klog.V(2).InfoS("The binding status has changed, need to notify rollout controller", "binding", klog.KObj(newBinding), "conditionType", conditionType)
-			enqueueResourceBinding(newBinding, q)
+			enqueueBinding(newBinding, q)
 			return
 		}
 	}

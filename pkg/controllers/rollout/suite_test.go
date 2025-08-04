@@ -108,14 +108,14 @@ var _ = BeforeSuite(func() {
 	err = (&Reconciler{
 		Client:         k8sClient,
 		UncachedReader: mgr.GetAPIReader(),
-	}).SetupWithManagerForClusterResourceBinding(mgr)
+	}).SetupWithManagerForClusterResourcePlacement(mgr)
 	Expect(err).Should(Succeed())
 
 	// setup our namespace scoped reconciler
 	err = (&Reconciler{
 		Client:         k8sClient,
 		UncachedReader: mgr.GetAPIReader(),
-	}).SetupWithManagerForResourceBinding(mgr)
+	}).SetupWithManagerForResourcePlacement(mgr)
 	Expect(err).Should(Succeed())
 
 	go func() {
