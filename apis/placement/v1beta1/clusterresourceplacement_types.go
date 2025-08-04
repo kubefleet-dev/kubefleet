@@ -149,14 +149,15 @@ type PlacementSpec struct {
 	// +kubebuilder:validation:Optional
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
 
-	// CopyToNamespace indicates whether a ClusterResourcePlacementStatus object should be created to mirror the placement status.
-	// When set to "Enabled", a ClusterResourcePlacementStatus object will be created in the same namespace selected by the ClusterResourceSelectors.
-	// This allows namespace-scoped access to the cluster-scoped ClusterResourcePlacement status.
-	// Defaults to "Disabled".
-	// +kubebuilder:default=Disabled
-	// +kubebuilder:validation:Enum=Disabled;Enabled
+	// StatusReportingScope controls where ClusterResourcePlacement status information is made available.
+	// When set to "ClusterScope", status is accessible only through the cluster-scoped ClusterResourcePlacement object.
+	// When set to "NamespaceScope", a ClusterResourcePlacementStatus object is created in the target namespace,
+	// providing namespace-scoped access to the placement status alongside the cluster-scoped status.
+	// Defaults to "ClusterScope".
+	// +kubebuilder:default=ClusterScope
+	// +kubebuilder:validation:Enum=ClusterScope;NamespaceScope
 	// +kubebuilder:validation:Optional
-	CopyToNamespace CopyToNamespaceMode `json:"copyToNamespace,omitempty"`
+	StatusReportingScope StatusReportingScope `json:"statusReportingScope,omitempty"`
 }
 
 // Tolerations returns tolerations for PlacementSpec to handle nil policy case.
@@ -481,17 +482,21 @@ const (
 	ScheduleAnyway UnsatisfiableConstraintAction = "ScheduleAnyway"
 )
 
-// CopyToNamespaceMode describes whether the ClusterResourcePlacement status should be copied to the namespace-scoped resource ClusterResourcePlacementStatus.
-// This enables namespace-scoped access to cluster-scoped placement status information.
+// StatusReportingScope defines where ClusterResourcePlacement status information is made available.
+// This enables different levels of access to placement status across cluster and namespace scopes.
 // +enum
-type CopyToNamespaceMode string
+type StatusReportingScope string
 
 const (
-	// CopyToNamespaceModeDisabled indicates that no status copying should occur.
-	CopyToNamespaceModeDisabled CopyToNamespaceMode = "Disabled"
 
-	// CopyToNamespaceModeEnabled indicates that ClusterResourcePlacement status should be copied to the corresponding namespace-scoped resource ClusterResourcePlacementStatus.
-	CopyToNamespaceModeEnabled CopyToNamespaceMode = "Enabled"
+	// ClusterScope makes status available only through the cluster-scoped ClusterResourcePlacement object.
+	// This is the default behavior where status information is accessible only to users with cluster-level permissions.
+	ClusterScope StatusReportingScope = "ClusterScope"
+
+	// NamespaceScope makes status available in both cluster and namespace scopes.
+	// In addition to the default cluster-scoped status, a ClusterResourcePlacementStatus object is created
+	// in the target namespace, enabling namespace-scoped users to access placement status information.
+	NamespaceScope StatusReportingScope = "NamespaceScope"
 )
 
 // RolloutStrategy describes how to roll out a new change in selected resources to target clusters.

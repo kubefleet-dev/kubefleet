@@ -1144,17 +1144,6 @@ spec:
           spec:
             description: The desired state of ClusterResourcePlacement.
             properties:
-              copyToNamespace:
-                default: Disabled
-                description: |-
-                  CopyToNamespace indicates whether a ClusterResourcePlacementStatus object should be created to mirror the placement status.
-                  When set to "Enabled", a ClusterResourcePlacementStatus object will be created in the same namespace selected by the ClusterResourceSelectors.
-                  This allows namespace-scoped access to the cluster-scoped ClusterResourcePlacement status.
-                  Defaults to "Disabled".
-                enum:
-                - Disabled
-                - Enabled
-                type: string
               policy:
                 description: |-
                   Policy defines how to select member clusters to place the selected resources.
@@ -1685,6 +1674,18 @@ spec:
                 maximum: 1000
                 minimum: 1
                 type: integer
+              statusReportingScope:
+                default: ClusterScope
+                description: |-
+                  StatusReportingScope controls where ClusterResourcePlacement status information is made available.
+                  When set to "ClusterScope", status is accessible only through the cluster-scoped ClusterResourcePlacement object.
+                  When set to "NamespaceScope", a ClusterResourcePlacementStatus object is created in the target namespace,
+                  providing namespace-scoped access to the placement status alongside the cluster-scoped status.
+                  Defaults to "ClusterScope".
+                enum:
+                - ClusterScope
+                - NamespaceScope
+                type: string
               strategy:
                 description: The rollout strategy to use to replace existing placement
                   with new ones.
