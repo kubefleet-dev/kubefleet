@@ -173,7 +173,7 @@ type ClusterResourceSelector struct {
 	Version string `json:"version"`
 
 	// Kind of the cluster-scoped resource.
-	// Note: When `Kind` is `namespace`, ALL the resources under the selected namespaces are selected.
+	// Note: When `Kind` is `namespace`, by default ALL the resources under the selected namespaces are selected.
 	// +kubebuilder:validation:Required
 	Kind string `json:"kind"`
 
@@ -189,11 +189,23 @@ type ClusterResourceSelector struct {
 	// +kubebuilder:validation:Optional
 	LabelSelector *metav1.LabelSelector `json:"labelSelector,omitempty"`
 
-	// Whether to select namespace only when`Kind` is `namespace`.
-	// If false, the selector will select all the resources under the namespace.
-	// +kubebuilder:default=false
-	NamespaceOnly bool `json:"namespaceOnly,omitempty"`
+	// SelectionScope defines the scope of resource selections when the Kind is `namespace`.
+	// +kubebuilder:validation:Enum=NamespaceOnly;NamespaceWithResources
+	// +kubebuilder:default=NamespaceWithResources
+	// +kubebuilder:validation:Optional
+	SelectionScope SelectionScope `json:"selectionScope,omitempty"`
 }
+
+// SelectionScope defines the scope of resource selections.
+type SelectionScope string
+
+const (
+	// NamespaceOnly means only the namespace itself is selected.
+	NamespaceOnly SelectionScope = "NamespaceOnly"
+
+	// NamespaceWithResources means all the resources under the namespace including namespace itself are selected.
+	NamespaceWithResources SelectionScope = "NamespaceWithResources"
+)
 
 // PlacementPolicy contains the rules to select target member clusters to place the selected resources.
 // Note that only clusters that are both joined and satisfying the rules will be selected.
