@@ -1675,16 +1675,16 @@ spec:
                 minimum: 1
                 type: integer
               statusReportingScope:
-                default: ClusterScope
+                default: ClusterScopeOnly
                 description: |-
                   StatusReportingScope controls where ClusterResourcePlacement status information is made available.
-                  When set to "ClusterScope", status is accessible only through the cluster-scoped ClusterResourcePlacement object.
-                  When set to "NamespaceScope", a ClusterResourcePlacementStatus object is created in the target namespace,
+                  When set to "ClusterScopeOnly", status is accessible only through the cluster-scoped ClusterResourcePlacement object.
+                  When set to "ClusterAndNamespaceScope", a ClusterResourcePlacementStatus object is created in the target namespace,
                   providing namespace-scoped access to the placement status alongside the cluster-scoped status.
-                  Defaults to "ClusterScope".
+                  Defaults to "ClusterScopeOnly".
                 enum:
-                - ClusterScope
-                - NamespaceScope
+                - ClusterScopeOnly
+                - ClusterAndNamespaceScope
                 type: string
               strategy:
                 description: The rollout strategy to use to replace existing placement

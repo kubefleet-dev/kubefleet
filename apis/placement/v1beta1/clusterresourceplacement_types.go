@@ -150,12 +150,12 @@ type PlacementSpec struct {
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
 
 	// StatusReportingScope controls where ClusterResourcePlacement status information is made available.
-	// When set to "ClusterScope", status is accessible only through the cluster-scoped ClusterResourcePlacement object.
-	// When set to "NamespaceScope", a ClusterResourcePlacementStatus object is created in the target namespace,
+	// When set to "ClusterScopeOnly", status is accessible only through the cluster-scoped ClusterResourcePlacement object.
+	// When set to "ClusterAndNamespaceScope", a ClusterResourcePlacementStatus object is created in the target namespace,
 	// providing namespace-scoped access to the placement status alongside the cluster-scoped status.
-	// Defaults to "ClusterScope".
-	// +kubebuilder:default=ClusterScope
-	// +kubebuilder:validation:Enum=ClusterScope;NamespaceScope
+	// Defaults to "ClusterScopeOnly".
+	// +kubebuilder:default=ClusterScopeOnly
+	// +kubebuilder:validation:Enum=ClusterScopeOnly;ClusterAndNamespaceScope
 	// +kubebuilder:validation:Optional
 	StatusReportingScope StatusReportingScope `json:"statusReportingScope,omitempty"`
 }
@@ -489,14 +489,14 @@ type StatusReportingScope string
 
 const (
 
-	// ClusterScope makes status available only through the cluster-scoped ClusterResourcePlacement object.
+	// ClusterScopeOnly makes status available only through the cluster-scoped ClusterResourcePlacement object.
 	// This is the default behavior where status information is accessible only to users with cluster-level permissions.
-	ClusterScope StatusReportingScope = "ClusterScope"
+	ClusterScopeOnly StatusReportingScope = "ClusterScopeOnly"
 
-	// NamespaceScope makes status available in both cluster and namespace scopes.
-	// In addition to the default cluster-scoped status, a ClusterResourcePlacementStatus object is created
+	// ClusterAndNamespaceScope makes status available in both cluster and namespace scopes.
+	// In addition to the cluster-scoped status, a ClusterResourcePlacementStatus object is created
 	// in the target namespace, enabling namespace-scoped users to access placement status information.
-	NamespaceScope StatusReportingScope = "NamespaceScope"
+	ClusterAndNamespaceScope StatusReportingScope = "ClusterAndNamespaceScope"
 )
 
 // RolloutStrategy describes how to roll out a new change in selected resources to target clusters.
