@@ -149,13 +149,14 @@ type PlacementSpec struct {
 	// +kubebuilder:validation:Optional
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
 
-	// CopyStatusToNamespace indicates whether a ClusterResourcePlacementStatus object should be created to mirror the placement status.
-	// When enabled, a ClusterResourcePlacementStatus object will be created in the same namespace selected by the ResourceSelectors.
+	// CopyToNamespace indicates whether a ClusterResourcePlacementStatus object should be created to mirror the placement status.
+	// When set to "Enabled", a ClusterResourcePlacementStatus object will be created in the same namespace selected by the ClusterResourceSelectors.
 	// This allows namespace-scoped access to the cluster-scoped ClusterResourcePlacement status.
-	// Defaults to false.
-	// +kubebuilder:default=false
+	// Defaults to "Disabled".
+	// +kubebuilder:default=Disabled
+	// +kubebuilder:validation:Enum=Disabled;Enabled
 	// +kubebuilder:validation:Optional
-	CopyStatusToNamespace bool `json:"copyStatusToNamespace,omitempty"`
+	CopyToNamespace CopyToNamespaceMode `json:"copyToNamespace,omitempty"`
 }
 
 // Tolerations returns tolerations for PlacementSpec to handle nil policy case.
@@ -478,6 +479,19 @@ const (
 	// ScheduleAnyway instructs the scheduler to schedule the resource
 	// even if constraints are not satisfied.
 	ScheduleAnyway UnsatisfiableConstraintAction = "ScheduleAnyway"
+)
+
+// CopyToNamespaceMode describes whether the ClusterResourcePlacement status should be copied to the namespace-scoped resource ClusterResourcePlacementStatus.
+// This enables namespace-scoped access to cluster-scoped placement status information.
+// +enum
+type CopyToNamespaceMode string
+
+const (
+	// CopyToNamespaceModeDisabled indicates that no status copying should occur.
+	CopyToNamespaceModeDisabled CopyToNamespaceMode = "Disabled"
+
+	// CopyToNamespaceModeEnabled indicates that ClusterResourcePlacement status should be copied to the corresponding namespace-scoped resource ClusterResourcePlacementStatus.
+	CopyToNamespaceModeEnabled CopyToNamespaceMode = "Enabled"
 )
 
 // RolloutStrategy describes how to roll out a new change in selected resources to target clusters.
