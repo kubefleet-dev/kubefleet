@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta1
+package v1alpha1
 
 import (
 	"context"
@@ -34,7 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 )
 
 var (
@@ -47,7 +47,7 @@ var (
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecs(t, "ClusterResourcePlacement Controller Suite")
+	RunSpecs(t, "Placement v1alpha1 API Validation Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -70,7 +70,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(hubCfg).NotTo(BeNil())
 
-	Expect(placementv1beta1.AddToScheme(scheme.Scheme)).Should(Succeed())
+	Expect(placementv1alpha1.AddToScheme(scheme.Scheme)).Should(Succeed())
 
 	klog.InitFlags(flag.CommandLine)
 	flag.Parse()
