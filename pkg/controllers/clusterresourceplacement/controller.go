@@ -135,7 +135,7 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 
 	if placementSpec.RevisionHistoryLimit != nil {
 		if revisionLimit <= 0 {
-			err := fmt.Errorf("invalid placement %s: invalid revisionHistoryLimit %d", placementKObj, revisionLimit)
+			err := fmt.Errorf("invalid placement %s/%s: invalid revisionHistoryLimit %d", placementObj.GetNamespace(), placementObj.GetName(), revisionLimit)
 			klog.ErrorS(controller.NewUnexpectedBehaviorError(err), "Invalid revisionHistoryLimit value and using default value instead", "placement", placementKObj)
 		} else {
 			revisionLimit = *placementSpec.RevisionHistoryLimit
@@ -1053,10 +1053,9 @@ func (r *Reconciler) determineRolloutStateForPlacementWithExternalRolloutStrateg
 	allRPS []fleetv1beta1.PerClusterPlacementStatus,
 	selectedResourceIDs []fleetv1beta1.ResourceIdentifier,
 ) (bool, error) {
-	placementKObj := klog.KObj(placementObj)
 	if len(selected) == 0 {
 		// This should not happen as we already checked in setPlacementStatus.
-		err := controller.NewUnexpectedBehaviorError(fmt.Errorf("selected cluster list is empty for placement %s when checking per-cluster rollout state", placementKObj))
+		err := controller.NewUnexpectedBehaviorError(fmt.Errorf("selected cluster list is empty for placement %s/%s when checking per-cluster rollout state", placementObj.GetNamespace(), placementObj.GetName()))
 		klog.ErrorS(err, "Should not happen: selected cluster list is empty in determineRolloutStateForPlacementWithExternalRolloutStrategy()")
 		return false, err
 	}

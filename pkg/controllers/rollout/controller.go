@@ -262,22 +262,22 @@ func waitForResourcesToCleanUp(allBindings []placementv1beta1.BindingObj, placem
 			if _, exist := bindingMap[bindingSpec.TargetCluster]; !exist {
 				bindingMap[bindingSpec.TargetCluster] = binding
 			} else {
-				return false, controller.NewUnexpectedBehaviorError(fmt.Errorf("the same cluster `%s` has bindings `%s` and `%s` pointing to it",
-					bindingSpec.TargetCluster, klog.KObj(bindingMap[bindingSpec.TargetCluster]), bindingKRef))
+				return false, controller.NewUnexpectedBehaviorError(fmt.Errorf("the same cluster `%s` has bindings `%s/%s` and `%s/%s` pointing to it",
+					bindingSpec.TargetCluster, bindingMap[bindingSpec.TargetCluster].GetNamespace(), bindingMap[bindingSpec.TargetCluster].GetName(),
+					binding.GetNamespace(), binding.GetName()))
 			}
 		}
 	}
 	// check if there are any cluster that has a binding that is both being deleted and scheduled
 	for cluster, binding := range bindingMap {
 		// check if there is a deleting binding on the same cluster
-		bindingKRef := klog.KObj(binding)
 		if deletingBinding[cluster] {
-			klog.V(2).InfoS("Find a binding assigned to a cluster with another deleting binding", "placement", placementObjRef, "binding", bindingKRef)
+			klog.V(2).InfoS("Find a binding assigned to a cluster with another deleting binding", "placement", placementObjRef, "binding", klog.KObj(binding))
 			bindingSpec := binding.GetBindingSpec()
 			if bindingSpec.State == placementv1beta1.BindingStateBound {
 				// the rollout controller won't move a binding from scheduled state to bound if there is a deleting binding on the same cluster.
 				return false, controller.NewUnexpectedBehaviorError(fmt.Errorf(
-					"find a cluster `%s` that has a bound binding `%s` and a deleting binding point to it", bindingSpec.TargetCluster, bindingKRef))
+					"find a cluster `%s` that has a bound binding `%s/%s` and a deleting binding point to it", bindingSpec.TargetCluster, binding.GetNamespace(), binding.GetName()))
 			}
 			if bindingSpec.State == placementv1beta1.BindingStateUnscheduled {
 				// this is a very rare case that the resource was in the middle of being removed from a member cluster after it is unselected.
@@ -285,7 +285,7 @@ func waitForResourcesToCleanUp(allBindings []placementv1beta1.BindingObj, placem
 				if binding.GetAnnotations()[placementv1beta1.PreviousBindingStateAnnotation] == string(placementv1beta1.BindingStateBound) {
 					// its previous state can not be bound as rollout won't roll a binding with a deleting binding pointing to the same cluster.
 					return false, controller.NewUnexpectedBehaviorError(fmt.Errorf(
-						"find a cluster `%s` that has a unscheduled binding `%s` with previous state is `bound` and a deleting binding point to it", bindingSpec.TargetCluster, bindingKRef))
+						"find a cluster `%s` that has a unscheduled binding `%s/%s` with previous state is `bound` and a deleting binding point to it", bindingSpec.TargetCluster, binding.GetNamespace(), binding.GetName()))
 				}
 				return true, nil
 			}
@@ -764,11 +764,11 @@ func resourceSnapshotObjHandlerFuncs() handler.Funcs {
 func resourceOverrideSnapshotHandlerFuncs(enqueueCRP bool) handler.Funcs {
 	return handler.Funcs{
 		CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-			klog.V(2).InfoS("Handling a resourceOverrideSnapshot create event", "resourceOverrideSnapshot", klog.KObj(e.Object))
+			klog.V(2).InfoS("Handling a resourceOverrideSnapshot create event", "resourceOverrideSnapshot", klog.KObj(e.Object), "enqueueCRP", enqueueCRP)
 			handleResourceOverrideSnapshot(e.Object, q, enqueueCRP)
 		},
 		GenericFunc: func(ctx context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-			klog.V(2).InfoS("Handling a resourceOverrideSnapshot generic event", "resourceOverrideSnapshot", klog.KObj(e.Object))
+			klog.V(2).InfoS("Handling a resourceOverrideSnapshot generic event", "resourceOverrideSnapshot", klog.KObj(e.Object), "enqueueCRP", enqueueCRP)
 			handleResourceOverrideSnapshot(e.Object, q, enqueueCRP)
 		},
 	}
@@ -778,7 +778,7 @@ func resourceOverrideSnapshotHandlerFuncs(enqueueCRP bool) handler.Funcs {
 func resourceOverrideHandlerFuncs(enqueueCRP bool) handler.Funcs {
 	return handler.Funcs{
 		DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-			klog.V(2).InfoS("Handling a resourceOverride delete event", "resourceOverride", klog.KObj(e.Object))
+			klog.V(2).InfoS("Handling a resourceOverride delete event", "resourceOverride", klog.KObj(e.Object), "enqueueCRP", enqueueCRP)
 			handleResourceOverride(e.Object, q, enqueueCRP)
 		},
 	}
@@ -880,18 +880,18 @@ func handleResourceOverrideSnapshot(o client.Object, q workqueue.TypedRateLimiti
 	namespace := ""
 	if enqueueCRP {
 		if placementInOverride.Scope == placementv1beta1.NamespaceScoped {
-			klog.V(2).InfoS("Skipping a resourceOverrideSnapshot event with resource placement", "resourceOverrideSnapshot", snapshotKRef)
+			klog.V(2).InfoS("Skipping a resourceOverrideSnapshot event with resource placement", "resourceOverrideSnapshot", snapshotKRef, "enqueueCRP", enqueueCRP)
 			return
 		}
 	} else {
 		if placementInOverride.Scope != placementv1beta1.NamespaceScoped {
-			klog.V(2).InfoS("Skipping a resourceOverrideSnapshot event with cluster resource placement", "resourceOverrideSnapshot", snapshotKRef)
+			klog.V(2).InfoS("Skipping a resourceOverrideSnapshot event with cluster resource placement", "resourceOverrideSnapshot", snapshotKRef, "enqueueCRP", enqueueCRP)
 			return
 		}
 		namespace = snapshot.GetNamespace()
 	}
 
-	klog.V(2).InfoS("Handling a resourceOverrideSnapshot event", "resourceOverrideSnapshot", snapshotKRef)
+	klog.V(2).InfoS("Handling a resourceOverrideSnapshot event", "resourceOverrideSnapshot", snapshotKRef, "enqueueCRP", enqueueCRP)
 	q.Add(reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: placementInOverride.Name, Namespace: namespace},
 	})
@@ -951,18 +951,18 @@ func handleResourceOverride(o client.Object, q workqueue.TypedRateLimitingInterf
 	namespace := ""
 	if enqueueCRP {
 		if ro.Spec.Placement.Scope == placementv1beta1.NamespaceScoped {
-			klog.V(2).InfoS("Skipping a resourceOverride event with resource placement", "resourceOverride", klog.KObj(ro))
+			klog.V(2).InfoS("Skipping a resourceOverride event with resource placement", "resourceOverride", klog.KObj(ro), "enqueueCRP", enqueueCRP)
 			return
 		}
 	} else {
 		if ro.Spec.Placement.Scope != placementv1beta1.NamespaceScoped {
-			klog.V(2).InfoS("Skipping a resourceOverride event with cluster resource placement", "resourceOverride", klog.KObj(ro))
+			klog.V(2).InfoS("Skipping a resourceOverride event with cluster resource placement", "resourceOverride", klog.KObj(ro), "enqueueCRP", enqueueCRP)
 			return
 		}
 		namespace = ro.Namespace
 	}
 
-	klog.V(2).InfoS("Handling a resourceOverride event", "resourceOverride", klog.KObj(ro))
+	klog.V(2).InfoS("Handling a resourceOverride event", "resourceOverride", klog.KObj(ro), "enqueueCRP", enqueueCRP)
 	q.Add(reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: ro.Spec.Placement.Name, Namespace: namespace},
 	})
