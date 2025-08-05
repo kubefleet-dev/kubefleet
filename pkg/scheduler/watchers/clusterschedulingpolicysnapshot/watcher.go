@@ -77,6 +77,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	// Verify if the policy snapshot is currently active.
+	// TODO: create a lib to check if the policy snapshot is latest.
 	isLatestVal, ok := policySnapshot.GetLabels()[fleetv1beta1.IsLatestSnapshotLabel]
 	if !ok {
 		// The IsLatestSnapshot label is not present; normally this should never occur.
