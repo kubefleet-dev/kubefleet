@@ -150,6 +150,7 @@ type PlacementSpec struct {
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
 
 	// StatusReportingScope controls where ClusterResourcePlacement status information is made available.
+	// This field only applies to ClusterResourcePlacements that select a single namespace.
 	// When set to "ClusterScopeOnly", status is accessible only through the cluster-scoped ClusterResourcePlacement object.
 	// When set to "ClusterAndNamespaceScope", a ClusterResourcePlacementStatus object is created in the target namespace,
 	// providing namespace-scoped access to the placement status alongside the cluster-scoped status.
@@ -483,7 +484,8 @@ const (
 )
 
 // StatusReportingScope defines where ClusterResourcePlacement status information is made available.
-// This enables different levels of access to placement status across cluster and namespace scopes.
+// This setting only applies to ClusterResourcePlacements that select resources from a single namespace.
+// It enables different levels of access to placement status across cluster and namespace scopes.
 // +enum
 type StatusReportingScope string
 
