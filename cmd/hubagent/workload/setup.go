@@ -32,7 +32,6 @@ import (
 	workv1alpha1 "sigs.k8s.io/work-api/pkg/apis/v1alpha1"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
-	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	fleetv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
@@ -91,10 +90,10 @@ var (
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ClusterResourceSnapshotKind),
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ClusterSchedulingPolicySnapshotKind),
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.WorkKind),
-		placementv1alpha1.GroupVersion.WithKind(placementv1alpha1.ClusterResourceOverrideKind),
-		placementv1alpha1.GroupVersion.WithKind(placementv1alpha1.ClusterResourceOverrideSnapshotKind),
-		placementv1alpha1.GroupVersion.WithKind(placementv1alpha1.ResourceOverrideKind),
-		placementv1alpha1.GroupVersion.WithKind(placementv1alpha1.ResourceOverrideSnapshotKind),
+		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ClusterResourceOverrideKind),
+		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ClusterResourceOverrideSnapshotKind),
+		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ResourceOverrideKind),
+		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ResourceOverrideSnapshotKind),
 	}
 
 	clusterStagedUpdateRunGVKs = []schema.GroupVersionKind{
@@ -153,14 +152,16 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 
 	// Set up  a custom controller to reconcile cluster resource placement
 	crpc := &clusterresourceplacement.Reconciler{
-		Client:            mgr.GetClient(),
-		Recorder:          mgr.GetEventRecorderFor(crpControllerName),
-		RestMapper:        mgr.GetRESTMapper(),
-		InformerManager:   dynamicInformerManager,
-		ResourceConfig:    resourceConfig,
-		SkippedNamespaces: skippedNamespaces,
-		Scheme:            mgr.GetScheme(),
-		UncachedReader:    mgr.GetAPIReader(),
+		Client:                                  mgr.GetClient(),
+		Recorder:                                mgr.GetEventRecorderFor(crpControllerName),
+		RestMapper:                              mgr.GetRESTMapper(),
+		InformerManager:                         dynamicInformerManager,
+		ResourceConfig:                          resourceConfig,
+		SkippedNamespaces:                       skippedNamespaces,
+		Scheme:                                  mgr.GetScheme(),
+		UncachedReader:                          mgr.GetAPIReader(),
+		ResourceSnapshotCreationMinimumInterval: opts.ResourceSnapshotCreationMinimumInterval,
+		ResourceChangesCollectionDuration:       opts.ResourceChangesCollectionDuration,
 	}
 
 	rateLimiter := options.DefaultControllerRateLimiter(opts.RateLimiterOpts)
@@ -196,7 +197,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		klog.Info("Setting up clusterResourcePlacement watcher")
 		if err := (&clusterresourceplacementwatcher.Reconciler{
 			PlacementController: clusterResourcePlacementControllerV1Beta1,
-		}).SetupWithManager(mgr); err != nil {
+		}).SetupWithManagerForClusterResourcePlacement(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up the clusterResourcePlacement watcher")
 			return err
 		}
@@ -205,7 +206,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		if err := (&clusterresourcebindingwatcher.Reconciler{
 			PlacementController: clusterResourcePlacementControllerV1Beta1,
 			Client:              mgr.GetClient(),
-		}).SetupWithManager(mgr); err != nil {
+		}).SetupWithManagerForClusterResourceBinding(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up the clusterResourceBinding watcher")
 			return err
 		}
@@ -214,7 +215,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		if err := (&clusterschedulingpolicysnapshot.Reconciler{
 			Client:              mgr.GetClient(),
 			PlacementController: clusterResourcePlacementControllerV1Beta1,
-		}).SetupWithManager(mgr); err != nil {
+		}).SetupWithManagerForClusterSchedulingPolicySnapshot(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up the clusterSchedulingPolicySnapshot watcher")
 			return err
 		}
@@ -281,7 +282,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		klog.Info("Setting up scheduler")
 		defaultProfile := profile.NewDefaultProfile()
 		defaultFramework := framework.NewFramework(defaultProfile, mgr)
-		defaultSchedulingQueue := queue.NewSimpleClusterResourcePlacementSchedulingQueue(
+		defaultSchedulingQueue := queue.NewSimplePlacementSchedulingQueue(
 			queue.WithName(schedulerQueueName),
 		)
 		// we use one scheduler for every 10 concurrent placement
@@ -304,7 +305,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		if err := (&schedulercrpwatcher.Reconciler{
 			Client:             mgr.GetClient(),
 			SchedulerWorkQueue: defaultSchedulingQueue,
-		}).SetupWithManager(mgr); err != nil {
+		}).SetupWithManagerForClusterResourcePlacement(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up clusterResourcePlacement watcher for scheduler")
 			return err
 		}
@@ -322,7 +323,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		if err := (&schedulercrbwatcher.Reconciler{
 			Client:             mgr.GetClient(),
 			SchedulerWorkQueue: defaultSchedulingQueue,
-		}).SetupWithManager(mgr); err != nil {
+		}).SetupWithManagerForClusterResourceBinding(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up clusterResourceBinding watcher for scheduler")
 			return err
 		}

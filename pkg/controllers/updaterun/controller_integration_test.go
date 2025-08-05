@@ -18,6 +18,7 @@ package updaterun
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -25,9 +26,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/prometheus/client_golang/prometheus"
 	prometheusclientmodel "github.com/prometheus/client_model/go"
 
+	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -38,9 +39,9 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
-	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
@@ -53,13 +54,6 @@ const (
 	interval = time.Millisecond * 250
 	// duration is the time to duration to check for Consistently
 	duration = time.Second * 20
-
-	// numTargetClusters is the number of scheduled clusters
-	numTargetClusters = 10
-	// numUnscheduledClusters is the number of unscheduled clusters
-	numUnscheduledClusters = 3
-	// numberOfClustersAnnotation is the number of clusters in the test latest policy snapshot
-	numberOfClustersAnnotation = numTargetClusters
 
 	// testResourceSnapshotIndex is the index of the test resource snapshot
 	testResourceSnapshotIndex = "0"
@@ -77,8 +71,6 @@ var (
 	testUpdateStrategyName   string
 	testCROName              string
 	updateRunNamespacedName  types.NamespacedName
-	testNamespace            []byte
-	customRegistry           *prometheus.Registry
 )
 
 var _ = Describe("Test the clusterStagedUpdateRun controller", func() {
@@ -90,15 +82,13 @@ var _ = Describe("Test the clusterStagedUpdateRun controller", func() {
 		testUpdateStrategyName = "updatestrategy-" + utils.RandStr()
 		testCROName = "cro-" + utils.RandStr()
 		updateRunNamespacedName = types.NamespacedName{Name: testUpdateRunName}
-
-		customRegistry = initializeUpdateRunMetricsRegistry()
 	})
 
 	AfterEach(func() {
 		By("Checking the update run status metrics are removed")
 		// No metrics are emitted as all are removed after updateRun is deleted.
-		validateUpdateRunMetricsEmitted(customRegistry)
-		unregisterUpdateRunMetrics(customRegistry)
+		validateUpdateRunMetricsEmitted()
+		resetUpdateRunMetrics()
 	})
 
 	Context("Test reconciling a clusterStagedUpdateRun", func() {
@@ -242,23 +232,14 @@ var _ = Describe("Test the clusterStagedUpdateRun controller", func() {
 	})
 })
 
-func initializeUpdateRunMetricsRegistry() *prometheus.Registry {
-	// Create a test registry
-	customRegistry := prometheus.NewRegistry()
-	Expect(customRegistry.Register(metrics.FleetUpdateRunStatusLastTimestampSeconds)).Should(Succeed())
-	// Reset metrics before each test
+func resetUpdateRunMetrics() {
 	metrics.FleetUpdateRunStatusLastTimestampSeconds.Reset()
-	return customRegistry
-}
-
-func unregisterUpdateRunMetrics(registry *prometheus.Registry) {
-	Expect(registry.Unregister(metrics.FleetUpdateRunStatusLastTimestampSeconds)).Should(BeTrue())
 }
 
 // validateUpdateRunMetricsEmitted validates the update run status metrics are emitted and are emitted in the correct order.
-func validateUpdateRunMetricsEmitted(registry *prometheus.Registry, wantMetrics ...*prometheusclientmodel.Metric) {
+func validateUpdateRunMetricsEmitted(wantMetrics ...*prometheusclientmodel.Metric) {
 	Eventually(func() error {
-		metricFamilies, err := registry.Gather()
+		metricFamilies, err := ctrlmetrics.Registry.Gather()
 		if err != nil {
 			return fmt.Errorf("failed to gather metrics: %w", err)
 		}
@@ -368,7 +349,7 @@ func generateTestClusterResourcePlacement() *placementv1beta1.ClusterResourcePla
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testCRPName,
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
 				{
 					Group:   "",
@@ -376,6 +357,10 @@ func generateTestClusterResourcePlacement() *placementv1beta1.ClusterResourcePla
 					Kind:    "Namespace",
 					Name:    "test-namespace",
 				},
+			},
+			Policy: &placementv1beta1.PlacementPolicy{
+				PlacementType:    placementv1beta1.PickNPlacementType,
+				NumberOfClusters: ptr.To(int32(2)),
 			},
 			Strategy: placementv1beta1.RolloutStrategy{
 				Type: placementv1beta1.ExternalRolloutStrategyType,
@@ -388,7 +373,7 @@ func generateTestClusterResourcePlacement() *placementv1beta1.ClusterResourcePla
 	}
 }
 
-func generateTestClusterSchedulingPolicySnapshot(idx int) *placementv1beta1.ClusterSchedulingPolicySnapshot {
+func generateTestClusterSchedulingPolicySnapshot(idx, numberOfClusters int) *placementv1beta1.ClusterSchedulingPolicySnapshot {
 	return &placementv1beta1.ClusterSchedulingPolicySnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: fmt.Sprintf(placementv1beta1.PolicySnapshotNameFmt, testCRPName, idx),
@@ -398,16 +383,69 @@ func generateTestClusterSchedulingPolicySnapshot(idx int) *placementv1beta1.Clus
 				"kubernetes-fleet.io/policy-index":       strconv.Itoa(idx),
 			},
 			Annotations: map[string]string{
-				"kubernetes-fleet.io/number-of-clusters": strconv.Itoa(numberOfClustersAnnotation),
+				"kubernetes-fleet.io/number-of-clusters": strconv.Itoa(numberOfClusters),
 			},
 		},
 		Spec: placementv1beta1.SchedulingPolicySnapshotSpec{
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickNPlacementType,
+				//nolint:gosec // safe: numberOfClusters is small in test context
+				NumberOfClusters: ptr.To(int32(numberOfClusters)),
 			},
 			PolicyHash: []byte("hash"),
 		},
 	}
+}
+
+func generateTestClusterResourceBindingsAndClusters(policySnapshotIndex int) ([]*placementv1beta1.ClusterResourceBinding, []*clusterv1beta1.MemberCluster, []*clusterv1beta1.MemberCluster) {
+	numTargetClusters := 10
+	numUnscheduledClusters := 3
+	policySnapshotName := fmt.Sprintf(placementv1beta1.PolicySnapshotNameFmt, testCRPName, policySnapshotIndex)
+	resourceBindings := make([]*placementv1beta1.ClusterResourceBinding, numTargetClusters+numUnscheduledClusters)
+	targetClusters := make([]*clusterv1beta1.MemberCluster, numTargetClusters)
+	for i := range targetClusters {
+		// split the clusters into 2 regions
+		region := regionEastus
+		if i%2 == 0 {
+			region = regionWestus
+		}
+		// reserse the order of the clusters by index
+		targetClusters[i] = generateTestMemberCluster(numTargetClusters-1-i, "cluster-"+strconv.Itoa(i), map[string]string{"group": "prod", "region": region})
+		resourceBindings[i] = generateTestClusterResourceBinding(policySnapshotName, targetClusters[i].Name, placementv1beta1.BindingStateScheduled)
+	}
+
+	unscheduledClusters := make([]*clusterv1beta1.MemberCluster, numUnscheduledClusters)
+	// Half of the unscheduled clusters have old policy snapshot.
+	for i := range numUnscheduledClusters / 2 {
+		unscheduledClusters[i] = generateTestMemberCluster(i, "unscheduled-cluster-"+strconv.Itoa(i), map[string]string{"group": "staging"})
+		// Update the policySnapshot name so that these clusters are considered to-be-deleted.
+		resourceBindings[numTargetClusters+i] = generateTestClusterResourceBinding(policySnapshotName+"a", unscheduledClusters[i].Name, placementv1beta1.BindingStateUnscheduled)
+	}
+	// The other half of the unscheduled clusters have latest policy snapshot but still unscheduled.
+	for i := numUnscheduledClusters / 2; i < numUnscheduledClusters; i++ {
+		unscheduledClusters[i] = generateTestMemberCluster(i, "unscheduled-cluster-"+strconv.Itoa(i), map[string]string{"group": "staging"})
+		resourceBindings[numTargetClusters+i] = generateTestClusterResourceBinding(policySnapshotName, unscheduledClusters[i].Name, placementv1beta1.BindingStateUnscheduled)
+	}
+	return resourceBindings, targetClusters, unscheduledClusters
+}
+
+func generateSmallTestClusterResourceBindingsAndClusters(policySnapshotIndex int) ([]*placementv1beta1.ClusterResourceBinding, []*clusterv1beta1.MemberCluster, []*clusterv1beta1.MemberCluster) {
+	numTargetClusters := 3
+	policySnapshotName := fmt.Sprintf(placementv1beta1.PolicySnapshotNameFmt, testCRPName, policySnapshotIndex)
+	resourceBindings := make([]*placementv1beta1.ClusterResourceBinding, numTargetClusters)
+	targetClusters := make([]*clusterv1beta1.MemberCluster, numTargetClusters)
+	for i := range targetClusters {
+		// split the clusters into 2 regions
+		region := regionEastus
+		if i%2 == 0 {
+			region = regionWestus
+		}
+		// reserse the order of the clusters by index
+		targetClusters[i] = generateTestMemberCluster(numTargetClusters-1-i, "cluster-"+strconv.Itoa(i), map[string]string{"group": "prod", "region": region})
+		resourceBindings[i] = generateTestClusterResourceBinding(policySnapshotName, targetClusters[i].Name, placementv1beta1.BindingStateScheduled)
+	}
+	unscheduledClusters := make([]*clusterv1beta1.MemberCluster, 0)
+	return resourceBindings, targetClusters, unscheduledClusters
 }
 
 func generateTestClusterResourceBinding(policySnapshotName, targetCluster string, state placementv1beta1.BindingState) *placementv1beta1.ClusterResourceBinding {
@@ -415,7 +453,7 @@ func generateTestClusterResourceBinding(policySnapshotName, targetCluster string
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "binding-" + testResourceSnapshotName + "-" + targetCluster,
 			Labels: map[string]string{
-				placementv1beta1.CRPTrackingLabel: testCRPName,
+				placementv1beta1.PlacementTrackingLabel: testCRPName,
 			},
 		},
 		Spec: placementv1beta1.ResourceBindingSpec{
@@ -469,7 +507,7 @@ func generateTestClusterStagedUpdateStrategy() *placementv1beta1.ClusterStagedUp
 					AfterStageTasks: []placementv1beta1.AfterStageTask{
 						{
 							Type: placementv1beta1.AfterStageTaskTypeTimedWait,
-							WaitTime: metav1.Duration{
+							WaitTime: &metav1.Duration{
 								Duration: time.Second * 4,
 							},
 						},
@@ -493,7 +531,7 @@ func generateTestClusterStagedUpdateStrategy() *placementv1beta1.ClusterStagedUp
 						},
 						{
 							Type: placementv1beta1.AfterStageTaskTypeTimedWait,
-							WaitTime: metav1.Duration{
+							WaitTime: &metav1.Duration{
 								Duration: time.Second * 4,
 							},
 						},
@@ -504,14 +542,43 @@ func generateTestClusterStagedUpdateStrategy() *placementv1beta1.ClusterStagedUp
 	}
 }
 
+func generateTestClusterStagedUpdateStrategyWithSingleStage(afterStageTasks []placementv1beta1.AfterStageTask) *placementv1beta1.ClusterStagedUpdateStrategy {
+	return &placementv1beta1.ClusterStagedUpdateStrategy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testUpdateStrategyName,
+		},
+		Spec: placementv1beta1.StagedUpdateStrategySpec{
+			Stages: []placementv1beta1.StageConfig{
+				{
+					Name:            "stage1",
+					LabelSelector:   &metav1.LabelSelector{}, // Select all clusters.
+					AfterStageTasks: afterStageTasks,
+				},
+			},
+		},
+	}
+}
+
 func generateTestClusterResourceSnapshot() *placementv1beta1.ClusterResourceSnapshot {
+	testNamespace, _ := json.Marshal(corev1.Namespace{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Namespace",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-namespace",
+			Labels: map[string]string{
+				"fleet.azure.com/name": "test-namespace",
+			},
+		},
+	})
 	clusterResourceSnapshot := &placementv1beta1.ClusterResourceSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testResourceSnapshotName,
 			Labels: map[string]string{
-				placementv1beta1.CRPTrackingLabel:      testCRPName,
-				placementv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
-				placementv1beta1.ResourceIndexLabel:    testResourceSnapshotIndex,
+				placementv1beta1.PlacementTrackingLabel: testCRPName,
+				placementv1beta1.IsLatestSnapshotLabel:  strconv.FormatBool(true),
+				placementv1beta1.ResourceIndexLabel:     testResourceSnapshotIndex,
 			},
 			Annotations: map[string]string{
 				placementv1beta1.ResourceGroupHashAnnotation:         "hash",
@@ -530,16 +597,16 @@ func generateTestClusterResourceSnapshot() *placementv1beta1.ClusterResourceSnap
 	return clusterResourceSnapshot
 }
 
-func generateTestClusterResourceOverride() *placementv1alpha1.ClusterResourceOverrideSnapshot {
-	return &placementv1alpha1.ClusterResourceOverrideSnapshot{
+func generateTestClusterResourceOverride() *placementv1beta1.ClusterResourceOverrideSnapshot {
+	return &placementv1beta1.ClusterResourceOverrideSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testCROName,
 			Labels: map[string]string{
 				placementv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
 			},
 		},
-		Spec: placementv1alpha1.ClusterResourceOverrideSnapshotSpec{
-			OverrideSpec: placementv1alpha1.ClusterResourceOverrideSpec{
+		Spec: placementv1beta1.ClusterResourceOverrideSnapshotSpec{
+			OverrideSpec: placementv1beta1.ClusterResourceOverrideSpec{
 				ClusterResourceSelectors: []placementv1beta1.ClusterResourceSelector{
 					{
 						Group:   "",
@@ -548,8 +615,8 @@ func generateTestClusterResourceOverride() *placementv1alpha1.ClusterResourceOve
 						Name:    "test-namespace",
 					},
 				},
-				Policy: &placementv1alpha1.OverridePolicy{
-					OverrideRules: []placementv1alpha1.OverrideRule{
+				Policy: &placementv1beta1.OverridePolicy{
+					OverrideRules: []placementv1beta1.OverrideRule{
 						{
 							ClusterSelector: &placementv1beta1.ClusterSelector{
 								ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
@@ -562,9 +629,9 @@ func generateTestClusterResourceOverride() *placementv1alpha1.ClusterResourceOve
 									},
 								},
 							},
-							JSONPatchOverrides: []placementv1alpha1.JSONPatchOverride{
+							JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
 								{
-									Operator: placementv1alpha1.JSONPatchOverrideOpAdd,
+									Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 									Path:     "/metadata/labels/test",
 									Value:    apiextensionsv1.JSON{Raw: []byte(`"test"`)},
 								},
@@ -671,6 +738,8 @@ func generateTrueCondition(obj client.Object, condType any) metav1.Condition {
 		switch cond {
 		case placementv1beta1.ResourceBindingAvailable:
 			reason = condition.AvailableReason
+		case placementv1beta1.ResourceBindingDiffReported:
+			reason = condition.DiffReportedStatusTrueReason
 		}
 		typeStr = string(cond)
 	}
@@ -713,6 +782,8 @@ func generateFalseCondition(obj client.Object, condType any) metav1.Condition {
 		switch cond {
 		case placementv1beta1.ResourceBindingApplied:
 			reason = condition.ApplyFailedReason
+		case placementv1beta1.ResourceBindingDiffReported:
+			reason = condition.DiffReportedStatusFalseReason
 		}
 		typeStr = string(cond)
 	}

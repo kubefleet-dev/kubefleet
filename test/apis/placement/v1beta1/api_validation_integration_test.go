@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/gomega"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -39,9 +40,60 @@ const (
 	updateRunStageNameTemplate        = "stage%d%d"
 	invalidupdateRunStageNameTemplate = "stage012345678901234567890123456789012345678901234567890123456789%d%d"
 	approveRequestNameTemplate        = "test-approve-request-%d"
+	crpNameTemplate                   = "test-crp-%d"
 )
 
 var _ = Describe("Test placement v1beta1 API validation", func() {
+	Context("Test ClusterResourcePlacement API validation - invalid cases", func() {
+		var crp placementv1beta1.ClusterResourcePlacement
+		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+
+		BeforeEach(func() {
+			crp = placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+						{
+							Group:   "",
+							Version: "v1",
+							Kind:    "Namespace",
+							Name:    "test-ns",
+						},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickFixedPlacementType,
+						ClusterNames:  []string{"cluster1", "cluster2"},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, &crp)).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			Expect(hubClient.Delete(ctx, &crp)).Should(Succeed())
+		})
+
+		It("should deny update of ClusterResourcePlacement with nil policy", func() {
+			Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed(), "Get CRP call failed")
+			crp.Spec.Policy = nil
+			err := hubClient.Update(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("placement type is immutable"))
+		})
+
+		It("should deny update of ClusterResourcePlacement with different placement type", func() {
+			Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed(), "Get CRP call failed")
+			crp.Spec.Policy.PlacementType = placementv1beta1.PickAllPlacementType
+			err := hubClient.Update(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("placement type is immutable"))
+		})
+	})
+
 	Context("Test ClusterPlacementDisruptionBudget API validation - valid cases", func() {
 		It("should allow creation of ClusterPlacementDisruptionBudget with valid maxUnavailable - int", func() {
 			crpdb := placementv1beta1.ClusterResourcePlacementDisruptionBudget{
@@ -372,7 +424,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 								},
 								{
 									Type:     placementv1beta1.AfterStageTaskTypeTimedWait,
-									WaitTime: metav1.Duration{Duration: time.Second * 10},
+									WaitTime: &metav1.Duration{Duration: time.Second * 10},
 								},
 							},
 						},
@@ -380,8 +432,8 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				},
 			}
 			Expect(hubClient.Create(ctx, &strategy)).Should(Succeed())
-			Expect(strategy.Spec.Stages[0].AfterStageTasks[0].WaitTime).Should(Equal(metav1.Duration{Duration: 0}))
-			Expect(strategy.Spec.Stages[0].AfterStageTasks[1].WaitTime).Should(Equal(metav1.Duration{Duration: time.Second * 10}))
+			Expect(strategy.Spec.Stages[0].AfterStageTasks[0].WaitTime).Should(BeNil())
+			Expect(strategy.Spec.Stages[0].AfterStageTasks[1].WaitTime).Should(Equal(&metav1.Duration{Duration: time.Second * 10}))
 			Expect(hubClient.Delete(ctx, &strategy)).Should(Succeed())
 		})
 	})
@@ -460,7 +512,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 								},
 								{
 									Type:     placementv1beta1.AfterStageTaskTypeTimedWait,
-									WaitTime: metav1.Duration{Duration: time.Second * 10},
+									WaitTime: &metav1.Duration{Duration: time.Second * 10},
 								},
 							},
 						},
@@ -471,6 +523,121 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			var statusErr *k8sErrors.StatusError
 			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("Too many: 3: must have at most 2 items"))
+		})
+
+		It("Should deny creation of ClusterStagedUpdateStrategy with AfterStageTask of type Approval with waitTime specified", func() {
+			strategy := placementv1beta1.ClusterStagedUpdateStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.StagedUpdateStrategySpec{
+					Stages: []placementv1beta1.StageConfig{
+						{
+							Name: fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
+							AfterStageTasks: []placementv1beta1.AfterStageTask{
+								{
+									Type:     placementv1beta1.AfterStageTaskTypeTimedWait,
+									WaitTime: &metav1.Duration{Duration: time.Minute * 30},
+								},
+								{
+									Type:     placementv1beta1.AfterStageTaskTypeApproval,
+									WaitTime: &metav1.Duration{Duration: time.Minute * 10},
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &strategy)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("AfterStageTaskType is Approval, waitTime is not allowed"))
+		})
+
+		It("Should deny update of ClusterStagedUpdateStrategy when adding waitTime to AfterStageTask of type Approval", func() {
+			strategy := placementv1beta1.ClusterStagedUpdateStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.StagedUpdateStrategySpec{
+					Stages: []placementv1beta1.StageConfig{
+						{
+							Name: fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
+							AfterStageTasks: []placementv1beta1.AfterStageTask{
+								{
+									Type: placementv1beta1.AfterStageTaskTypeApproval,
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, &strategy)).Should(Succeed())
+
+			strategy.Spec.Stages[0].AfterStageTasks[0].WaitTime = &metav1.Duration{Duration: time.Minute * 10}
+			err := hubClient.Update(ctx, &strategy)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterStagedUpdateStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("AfterStageTaskType is Approval, waitTime is not allowed"))
+
+			Expect(hubClient.Delete(ctx, &strategy)).Should(Succeed())
+		})
+
+		It("Should deny creation of ClusterStagedUpdateStrategy with AfterStageTask of type TimedWait with waitTime not specified", func() {
+			strategy := placementv1beta1.ClusterStagedUpdateStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.StagedUpdateStrategySpec{
+					Stages: []placementv1beta1.StageConfig{
+						{
+							Name: fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
+							AfterStageTasks: []placementv1beta1.AfterStageTask{
+								{
+									Type: placementv1beta1.AfterStageTaskTypeTimedWait,
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &strategy)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("AfterStageTaskType is TimedWait, waitTime is required"))
+		})
+
+		It("Should deny update of ClusterStagedUpdateStrategy when removing waitTime from AfterStageTask of type TimedWait", func() {
+			strategy := placementv1beta1.ClusterStagedUpdateStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.StagedUpdateStrategySpec{
+					Stages: []placementv1beta1.StageConfig{
+						{
+							Name: fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
+							AfterStageTasks: []placementv1beta1.AfterStageTask{
+								{
+									Type:     placementv1beta1.AfterStageTaskTypeTimedWait,
+									WaitTime: &metav1.Duration{Duration: time.Minute * 10},
+								},
+								{
+									Type: placementv1beta1.AfterStageTaskTypeApproval,
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, &strategy)).Should(Succeed())
+
+			strategy.Spec.Stages[0].AfterStageTasks[0].WaitTime = nil
+			err := hubClient.Update(ctx, &strategy)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterStagedUpdateStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("AfterStageTaskType is TimedWait, waitTime is required"))
+
+			Expect(hubClient.Delete(ctx, &strategy)).Should(Succeed())
 		})
 	})
 

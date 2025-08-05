@@ -17,6 +17,8 @@ limitations under the License.
 package e2e
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 
 	"github.com/google/go-cmp/cmp"
@@ -43,27 +45,29 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 	annotationValue := "annotation-value"
 	annotationUpdatedValue := "annotation-updated-value"
 	workNamespaceName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
+	anotherOwnerReference := metav1.OwnerReference{}
 
 	BeforeAll(func() {
 		By("creating work resources on hub cluster")
 		createWorkResources()
+
+		By("creating owner reference for the namespace")
+		anotherOwnerReference = createAnotherValidOwnerReference(fmt.Sprintf("owner-namespace-%d", GinkgoParallelProcess()))
 	})
 
 	AfterAll(func() {
 		By("deleting created work resources on hub cluster")
 		cleanupWorkResources()
+
+		By("deleting owner reference namespace")
+		cleanupAnotherValidOwnerReference(anotherOwnerReference.Name)
 	})
 
 	Context("Test a CRP place objects successfully (client-side-apply and allow co-own)", Ordered, func() {
 		BeforeAll(func() {
 			ns := appNamespace()
 			ns.SetOwnerReferences([]metav1.OwnerReference{
-				{
-					APIVersion: "another-api-version",
-					Kind:       "another-kind",
-					Name:       "another-owner",
-					UID:        "another-uid",
-				},
+				anotherOwnerReference,
 			})
 			ns.Annotations = map[string]string{
 				annotationKey: annotationValue,
@@ -117,10 +121,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		It("namespace should be kept on member cluster", func() {
-			Consistently(func() error {
-				ns := &corev1.Namespace{}
-				return allMemberClusters[0].KubeClient.Get(ctx, types.NamespacedName{Name: workNamespaceName}, ns)
-			}, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Namespace which is not owned by the CRP should not be deleted")
+			checkNamespaceExistsWithOwnerRefOnMemberCluster(workNamespaceName, crpName)
 		})
 	})
 
@@ -231,12 +232,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		BeforeAll(func() {
 			ns := appNamespace()
 			ns.SetOwnerReferences([]metav1.OwnerReference{
-				{
-					APIVersion: "another-api-version",
-					Kind:       "another-kind",
-					Name:       "another-owner",
-					UID:        "another-uid",
-				},
+				anotherOwnerReference,
 			})
 			By(fmt.Sprintf("creating namespace %s on member cluster", ns.Name))
 			Expect(allMemberClusters[0].KubeClient.Create(ctx, &ns)).Should(Succeed(), "Failed to create namespace %s", ns.Name)
@@ -266,11 +262,12 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 
 				workNamespaceName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 				appConfigMapName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
-				wantStatus := placementv1beta1.ClusterResourcePlacementStatus{
+				wantStatus := placementv1beta1.PlacementStatus{
 					Conditions: crpAppliedFailedConditions(crp.Generation),
-					PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+					PlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
-							ClusterName: memberCluster1EastProdName,
+							ClusterName:           memberCluster1EastProdName,
+							ObservedResourceIndex: "0",
 							FailedPlacements: []placementv1beta1.FailedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -289,12 +286,14 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 							Conditions: resourcePlacementApplyFailedConditions(crp.Generation),
 						},
 						{
-							ClusterName: memberCluster2EastCanaryName,
-							Conditions:  resourcePlacementRolloutCompletedConditions(crp.Generation, true, false),
+							ClusterName:           memberCluster2EastCanaryName,
+							ObservedResourceIndex: "0",
+							Conditions:            resourcePlacementRolloutCompletedConditions(crp.Generation, true, false),
 						},
 						{
-							ClusterName: memberCluster3WestProdName,
-							Conditions:  resourcePlacementRolloutCompletedConditions(crp.Generation, true, false),
+							ClusterName:           memberCluster3WestProdName,
+							ObservedResourceIndex: "0",
+							Conditions:            resourcePlacementRolloutCompletedConditions(crp.Generation, true, false),
 						},
 					},
 					SelectedResources: []placementv1beta1.ResourceIdentifier{
@@ -342,11 +341,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		It("namespace should be kept on member cluster", func() {
-			Consistently(func() error {
-				workNamespaceName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
-				ns := &corev1.Namespace{}
-				return allMemberClusters[0].KubeClient.Get(ctx, types.NamespacedName{Name: workNamespaceName}, ns)
-			}, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Namespace which is not owned by the CRP should not be deleted")
+			checkNamespaceExistsWithOwnerRefOnMemberCluster(workNamespaceName, crpName)
 		})
 	})
 
@@ -354,12 +349,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		BeforeAll(func() {
 			ns := appNamespace()
 			ns.SetOwnerReferences([]metav1.OwnerReference{
-				{
-					APIVersion: "another-api-version",
-					Kind:       "another-kind",
-					Name:       "another-owner",
-					UID:        "another-uid",
-				},
+				anotherOwnerReference,
 			})
 			ns.Annotations = map[string]string{
 				annotationKey: annotationValue,
@@ -427,10 +417,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		It("namespace should be kept on member cluster", func() {
-			Consistently(func() error {
-				ns := &corev1.Namespace{}
-				return allMemberClusters[0].KubeClient.Get(ctx, types.NamespacedName{Name: workNamespaceName}, ns)
-			}, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Namespace which is not owned by the CRP should not be deleted")
+			checkNamespaceExistsWithOwnerRefOnMemberCluster(workNamespaceName, crpName)
 		})
 	})
 
@@ -448,7 +435,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickFixedPlacementType,
@@ -487,7 +474,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 					Name: conflictedCRPName,
 					// No need for the custom deletion blocker finalizer.
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickFixedPlacementType,
@@ -510,14 +497,15 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		It("should update conflicted CRP status as expected", func() {
-			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.ClusterResourcePlacementStatus {
-				return &placementv1beta1.ClusterResourcePlacementStatus{
+			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.PlacementStatus {
+				return &placementv1beta1.PlacementStatus{
 					Conditions:        crpAppliedFailedConditions(crpGeneration),
 					SelectedResources: workResourceIdentifiers(),
-					PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+					PlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
-							ClusterName: memberCluster1EastProdName,
-							Conditions:  resourcePlacementApplyFailedConditions(crpGeneration),
+							ClusterName:           memberCluster1EastProdName,
+							ObservedResourceIndex: "0",
+							Conditions:            resourcePlacementApplyFailedConditions(crpGeneration),
 							FailedPlacements: []placementv1beta1.FailedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -526,7 +514,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 										Name:    nsName,
 									},
 									Condition: metav1.Condition{
-										Type:   string(placementv1beta1.ResourcesAppliedConditionType),
+										Type:   string(placementv1beta1.PerClusterAppliedConditionType),
 										Status: metav1.ConditionFalse,
 										Reason: string(workapplier.ManifestProcessingApplyResultTypeFailedToTakeOver),
 									},
@@ -539,7 +527,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 										Namespace: nsName,
 									},
 									Condition: metav1.Condition{
-										Type:   string(placementv1beta1.ResourcesAppliedConditionType),
+										Type:   string(placementv1beta1.PerClusterAppliedConditionType),
 										Status: metav1.ConditionFalse,
 										Reason: string(workapplier.ManifestProcessingApplyResultTypeFailedToTakeOver),
 									},
@@ -642,7 +630,7 @@ var _ = Describe("SSA", Ordered, func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
@@ -735,6 +723,195 @@ var _ = Describe("SSA", Ordered, func() {
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 	})
+
+	Context("fall back to server-side apply when client-side apply cannot be used", func() {
+		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
+		cmName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
+
+		cmDataKey := "randomBase64Str"
+
+		BeforeAll(func() {
+			// Create the resources on the hub cluster.
+			ns := appNamespace()
+			Expect(hubClient.Create(ctx, &ns)).To(Succeed(), "Failed to create namespace %s", ns.Name)
+
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      cmName,
+					Namespace: nsName,
+				},
+				Data: map[string]string{
+					cmDataKey: "",
+				},
+			}
+			Expect(hubClient.Create(ctx, cm)).To(Succeed(), "Failed to create configMap %s in namespace %s", cmName, nsName)
+
+			// Create the CRP.
+			crp := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+					// Add a custom finalizer; this would allow us to better observe
+					// the behavior of the controllers.
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: workResourceSelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickFixedPlacementType,
+						ClusterNames: []string{
+							memberCluster1EastProdName,
+						},
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							MaxUnavailable:           ptr.To(intstr.FromInt(1)),
+							MaxSurge:                 ptr.To(intstr.FromInt(1)),
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, crp)).To(Succeed())
+		})
+
+		It("should update CRP status as expected", func() {
+			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), []string{memberCluster1EastProdName}, nil, "0")
+			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("should place the resources on the selected member cluster", func() {
+			workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(memberCluster1EastProd)
+			Eventually(workResourcesPlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster1EastProdName)
+		})
+
+		It("can update the manifests", func() {
+			// Update the configMap to add a large enough data piece so that
+			// client-side apply is no longer possible.
+			Eventually(func() error {
+				cm := &corev1.ConfigMap{}
+				if err := hubClient.Get(ctx, client.ObjectKey{Name: cmName, Namespace: nsName}, cm); err != nil {
+					return fmt.Errorf("failed to get configMap: %w", err)
+				}
+
+				if cm.Data == nil {
+					cm.Data = make(map[string]string)
+				}
+				// Generate a large bytes array.
+				//
+				// Kubernetes will reject configMaps larger than 1048576 bytes (~1 MB);
+				// and when an object's spec size exceeds 262144 bytes, KubeFleet will not
+				// be able to use client-side apply with the object as it cannot set
+				// an last applied configuration annotation of that size. Consequently,
+				// for this test case, it prepares a configMap object of 600000 bytes so
+				// that Kubernetes will accept it but CSA cannot use it, forcing the
+				// work applier to fall back to server-side apply.
+				randomBytes := make([]byte, 600000)
+				// Note that this method never returns an error and will always fill the given
+				// slice completely.
+				_, _ = rand.Read(randomBytes)
+				// Encode the random bytes to a base64 string.
+				randomBase64Str := base64.StdEncoding.EncodeToString(randomBytes)
+				cm.Data[cmDataKey] = randomBase64Str
+
+				if err := hubClient.Update(ctx, cm); err != nil {
+					return fmt.Errorf("failed to update configMap: %w", err)
+				}
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update the manifests")
+		})
+
+		It("should update CRP status as expected", func() {
+			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), []string{memberCluster1EastProdName}, nil, "1")
+			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("should place the resources on the selected member cluster", func() {
+			workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(memberCluster1EastProd)
+			Eventually(workResourcesPlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster1EastProdName)
+		})
+
+		It("should fall back to server-side apply", func() {
+			Eventually(func() error {
+				cm := &corev1.ConfigMap{}
+				if err := memberCluster1EastProdClient.Get(ctx, client.ObjectKey{Name: cmName, Namespace: nsName}, cm); err != nil {
+					return fmt.Errorf("failed to get configMap: %w", err)
+				}
+
+				lastAppliedConf, foundAnnotation := cm.Annotations[placementv1beta1.LastAppliedConfigAnnotation]
+				if foundAnnotation && len(lastAppliedConf) > 0 {
+					return fmt.Errorf("the configMap object has annotation %s (value: %s) in presence when SSA should be used", placementv1beta1.LastAppliedConfigAnnotation, lastAppliedConf)
+				}
+
+				foundFieldMgr := false
+				fieldMgrs := cm.GetManagedFields()
+				for _, fieldMgr := range fieldMgrs {
+					// For simplicity reasons, here the test case verifies only against the field
+					// manager name.
+					if fieldMgr.Manager == "work-api-agent" {
+						foundFieldMgr = true
+					}
+				}
+				if !foundFieldMgr {
+					return fmt.Errorf("the configMap object does not list the KubeFleet member agent as a field manager when SSA should be used")
+				}
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to fall back to server-side apply")
+		})
+
+		It("can update the manifests", func() {
+			// Update the configMap to remove the large data piece so that
+			// client-side apply can be used again.
+			Eventually(func() error {
+				cm := &corev1.ConfigMap{}
+				if err := hubClient.Get(ctx, client.ObjectKey{Name: cmName, Namespace: nsName}, cm); err != nil {
+					return fmt.Errorf("failed to get configMap: %w", err)
+				}
+
+				if cm.Data == nil {
+					cm.Data = make(map[string]string)
+				}
+				cm.Data[cmDataKey] = ""
+
+				if err := hubClient.Update(ctx, cm); err != nil {
+					return fmt.Errorf("failed to update configMap: %w", err)
+				}
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update the manifests")
+		})
+
+		It("should update CRP status as expected", func() {
+			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), []string{memberCluster1EastProdName}, nil, "2")
+			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("should place the resources on the selected member cluster", func() {
+			workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(memberCluster1EastProd)
+			Eventually(workResourcesPlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster1EastProdName)
+		})
+
+		It("should use client-side apply", func() {
+			Eventually(func() error {
+				cm := &corev1.ConfigMap{}
+				if err := memberCluster1EastProdClient.Get(ctx, client.ObjectKey{Name: cmName, Namespace: nsName}, cm); err != nil {
+					return fmt.Errorf("failed to get configMap: %w", err)
+				}
+
+				lastAppliedConf, foundAnnotation := cm.Annotations[placementv1beta1.LastAppliedConfigAnnotation]
+				if !foundAnnotation || len(lastAppliedConf) == 0 {
+					return fmt.Errorf("the configMap object does not have annotation %s in presence or its value is empty", placementv1beta1.LastAppliedConfigAnnotation)
+				}
+
+				// Field manager might still be set; this is an expected behavior.
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to fall back to server-side apply")
+		})
+
+		AfterAll(func() {
+			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+		})
+	})
 })
 
 var _ = Describe("switching apply strategies", func() {
@@ -758,7 +935,7 @@ var _ = Describe("switching apply strategies", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickFixedPlacementType,
@@ -787,14 +964,15 @@ var _ = Describe("switching apply strategies", func() {
 		})
 
 		It("should update CRP status as expected", func() {
-			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.ClusterResourcePlacementStatus {
-				return &placementv1beta1.ClusterResourcePlacementStatus{
+			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.PlacementStatus {
+				return &placementv1beta1.PlacementStatus{
 					Conditions:        crpAppliedFailedConditions(crpGeneration),
 					SelectedResources: workResourceIdentifiers(),
-					PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+					PlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
-							ClusterName: memberCluster1EastProdName,
-							Conditions:  resourcePlacementApplyFailedConditions(crpGeneration),
+							ClusterName:           memberCluster1EastProdName,
+							ObservedResourceIndex: "0",
+							Conditions:            resourcePlacementApplyFailedConditions(crpGeneration),
 							FailedPlacements: []placementv1beta1.FailedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -803,7 +981,7 @@ var _ = Describe("switching apply strategies", func() {
 										Name:    nsName,
 									},
 									Condition: metav1.Condition{
-										Type:   string(placementv1beta1.ResourcesAppliedConditionType),
+										Type:   string(placementv1beta1.PerClusterAppliedConditionType),
 										Status: metav1.ConditionFalse,
 										Reason: string(workapplier.ManifestProcessingApplyResultTypeNotTakenOver),
 									},
@@ -811,8 +989,9 @@ var _ = Describe("switching apply strategies", func() {
 							},
 						},
 						{
-							ClusterName: memberCluster2EastCanaryName,
-							Conditions:  resourcePlacementRolloutCompletedConditions(crpGeneration, true, false),
+							ClusterName:           memberCluster2EastCanaryName,
+							ObservedResourceIndex: "0",
+							Conditions:            resourcePlacementRolloutCompletedConditions(crpGeneration, true, false),
 						},
 					},
 					ObservedResourceIndex: "0",
@@ -852,14 +1031,15 @@ var _ = Describe("switching apply strategies", func() {
 			// The rollout of the previous change will be blocked due to the rollout
 			// strategy configuration (1 member cluster has failed; 0 clusters are
 			// allowed to become unavailable).
-			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.ClusterResourcePlacementStatus {
-				return &placementv1beta1.ClusterResourcePlacementStatus{
+			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.PlacementStatus {
+				return &placementv1beta1.PlacementStatus{
 					Conditions:        crpRolloutStuckConditions(crpGeneration),
 					SelectedResources: workResourceIdentifiers(),
-					PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+					PlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
-							ClusterName: memberCluster1EastProdName,
-							Conditions:  resourcePlacementApplyFailedConditions(crpGeneration),
+							ClusterName:           memberCluster1EastProdName,
+							ObservedResourceIndex: "1",
+							Conditions:            resourcePlacementApplyFailedConditions(crpGeneration),
 							FailedPlacements: []placementv1beta1.FailedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -868,7 +1048,7 @@ var _ = Describe("switching apply strategies", func() {
 										Name:    nsName,
 									},
 									Condition: metav1.Condition{
-										Type:   string(placementv1beta1.ResourcesAppliedConditionType),
+										Type:   string(placementv1beta1.PerClusterAppliedConditionType),
 										Status: metav1.ConditionFalse,
 										Reason: string(workapplier.ManifestProcessingApplyResultTypeNotTakenOver),
 									},
@@ -876,8 +1056,9 @@ var _ = Describe("switching apply strategies", func() {
 							},
 						},
 						{
-							ClusterName: memberCluster2EastCanaryName,
-							Conditions:  resourcePlacementSyncPendingConditions(crpGeneration),
+							ClusterName:           memberCluster2EastCanaryName,
+							ObservedResourceIndex: "1",
+							Conditions:            resourcePlacementSyncPendingConditions(crpGeneration),
 						},
 					},
 					ObservedResourceIndex: "1",
@@ -921,18 +1102,20 @@ var _ = Describe("switching apply strategies", func() {
 			// The rollout of the previous change will be blocked due to the rollout
 			// strategy configuration (1 member cluster has failed; 0 clusters are
 			// allowed to become unavailable).
-			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.ClusterResourcePlacementStatus {
-				return &placementv1beta1.ClusterResourcePlacementStatus{
+			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.PlacementStatus {
+				return &placementv1beta1.PlacementStatus{
 					Conditions:        crpDiffReportedConditions(crpGeneration, false),
 					SelectedResources: workResourceIdentifiers(),
-					PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+					PlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
-							ClusterName: memberCluster1EastProdName,
-							Conditions:  resourcePlacementDiffReportedConditions(crpGeneration),
+							ClusterName:           memberCluster1EastProdName,
+							ObservedResourceIndex: "1",
+							Conditions:            resourcePlacementDiffReportedConditions(crpGeneration),
 						},
 						{
-							ClusterName: memberCluster2EastCanaryName,
-							Conditions:  resourcePlacementDiffReportedConditions(crpGeneration),
+							ClusterName:           memberCluster2EastCanaryName,
+							ObservedResourceIndex: "1",
+							Conditions:            resourcePlacementDiffReportedConditions(crpGeneration),
 							DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1003,7 +1186,7 @@ var _ = Describe("switching apply strategies", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickFixedPlacementType,
@@ -1030,14 +1213,15 @@ var _ = Describe("switching apply strategies", func() {
 		})
 
 		It("should update CRP status as expected", func() {
-			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.ClusterResourcePlacementStatus {
-				return &placementv1beta1.ClusterResourcePlacementStatus{
+			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.PlacementStatus {
+				return &placementv1beta1.PlacementStatus{
 					Conditions:        crpDiffReportedConditions(crpGeneration, false),
 					SelectedResources: workResourceIdentifiers(),
-					PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+					PlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
-							ClusterName: memberCluster1EastProdName,
-							Conditions:  resourcePlacementDiffReportedConditions(crpGeneration),
+							ClusterName:           memberCluster1EastProdName,
+							ObservedResourceIndex: "0",
+							Conditions:            resourcePlacementDiffReportedConditions(crpGeneration),
 							DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1070,8 +1254,9 @@ var _ = Describe("switching apply strategies", func() {
 							},
 						},
 						{
-							ClusterName: memberCluster2EastCanaryName,
-							Conditions:  resourcePlacementDiffReportedConditions(crpGeneration),
+							ClusterName:           memberCluster2EastCanaryName,
+							ObservedResourceIndex: "0",
+							Conditions:            resourcePlacementDiffReportedConditions(crpGeneration),
 							DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1140,14 +1325,15 @@ var _ = Describe("switching apply strategies", func() {
 		})
 
 		It("should update CRP status as expected", func() {
-			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.ClusterResourcePlacementStatus {
-				return &placementv1beta1.ClusterResourcePlacementStatus{
+			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.PlacementStatus {
+				return &placementv1beta1.PlacementStatus{
 					Conditions:        crpDiffReportedConditions(crpGeneration, false),
 					SelectedResources: workResourceIdentifiers(),
-					PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+					PlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
-							ClusterName: memberCluster1EastProdName,
-							Conditions:  resourcePlacementDiffReportedConditions(crpGeneration),
+							ClusterName:           memberCluster1EastProdName,
+							ObservedResourceIndex: "1",
+							Conditions:            resourcePlacementDiffReportedConditions(crpGeneration),
 							DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1166,8 +1352,9 @@ var _ = Describe("switching apply strategies", func() {
 							},
 						},
 						{
-							ClusterName: memberCluster2EastCanaryName,
-							Conditions:  resourcePlacementDiffReportedConditions(crpGeneration),
+							ClusterName:           memberCluster2EastCanaryName,
+							ObservedResourceIndex: "1",
+							Conditions:            resourcePlacementDiffReportedConditions(crpGeneration),
 							DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1240,18 +1427,20 @@ var _ = Describe("switching apply strategies", func() {
 		})
 
 		It("should update CRP status as expected", func() {
-			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.ClusterResourcePlacementStatus {
-				return &placementv1beta1.ClusterResourcePlacementStatus{
+			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.PlacementStatus {
+				return &placementv1beta1.PlacementStatus{
 					Conditions:        crpRolloutCompletedConditions(crpGeneration, false),
 					SelectedResources: workResourceIdentifiers(),
-					PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+					PlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
-							ClusterName: memberCluster1EastProdName,
-							Conditions:  resourcePlacementRolloutCompletedConditions(crpGeneration, true, false),
+							ClusterName:           memberCluster1EastProdName,
+							ObservedResourceIndex: "1",
+							Conditions:            resourcePlacementRolloutCompletedConditions(crpGeneration, true, false),
 						},
 						{
-							ClusterName: memberCluster2EastCanaryName,
-							Conditions:  resourcePlacementRolloutCompletedConditions(crpGeneration, true, false),
+							ClusterName:           memberCluster2EastCanaryName,
+							ObservedResourceIndex: "1",
+							Conditions:            resourcePlacementRolloutCompletedConditions(crpGeneration, true, false),
 						},
 					},
 					ObservedResourceIndex: "1",

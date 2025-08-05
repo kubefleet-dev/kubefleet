@@ -43,7 +43,7 @@ const (
 )
 
 // Note that this container cannot run in parallel with other containers.
-var _ = Describe("Test member cluster join and leave flow", Ordered, Serial, func() {
+var _ = Describe("Test member cluster join and leave flow", Label("joinleave"), Ordered, Serial, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	workNamespaceName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 	internalServiceExportName := fmt.Sprintf("internal-service-export-%d", GinkgoParallelProcess())
@@ -72,14 +72,14 @@ var _ = Describe("Test member cluster join and leave flow", Ordered, Serial, fun
 			},
 			{
 				Group:   placementv1beta1.GroupVersion.Group,
-				Kind:    "ClusterResourceEnvelope",
+				Kind:    placementv1beta1.ClusterResourceEnvelopeKind,
 				Version: placementv1beta1.GroupVersion.Version,
 				Name:    testClusterResourceEnvelope.Name,
 			},
 		}
 	})
 
-	Context("Test cluster join and leave flow with CRP not deleted", Ordered, Serial, func() {
+	Context("Test cluster join and leave flow with CRP not deleted", Label("joinleave"), Ordered, Serial, func() {
 		It("Create the test resources in the namespace", createWrappedResourcesForEnvelopTest)
 
 		It("Create the CRP that select the name space and place it to all clusters", func() {
@@ -90,7 +90,7 @@ var _ = Describe("Test member cluster join and leave flow", Ordered, Serial, fun
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
 						{
 							Group:   "",
@@ -212,10 +212,18 @@ var _ = Describe("Test member cluster join and leave flow", Ordered, Serial, fun
 			checkIfAllMemberClustersHaveLeft()
 		})
 
-		It("should update CRP status to not placing any resources since all clusters are left", func() {
+		It("Should update CRP status to not placing any resources since all clusters are left", func() {
 			// resourceQuota is enveloped so it's not trackable yet
 			crpStatusUpdatedActual := customizedCRPStatusUpdatedActual(crpName, wantSelectedResources, nil, nil, "0", false)
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("Validating if the resources are still on all member clusters", func() {
+			for idx := range allMemberClusters {
+				memberCluster := allMemberClusters[idx]
+				workResourcesPlacedActual := checkAllResourcesPlacement(memberCluster)
+				Consistently(workResourcesPlacedActual, 3*consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster.ClusterName)
+			}
 		})
 
 		It("Should be able to rejoin the cluster", func() {
@@ -227,7 +235,7 @@ var _ = Describe("Test member cluster join and leave flow", Ordered, Serial, fun
 
 		It("should update CRP status to applied to all clusters again automatically after rejoining", func() {
 			crpStatusUpdatedActual := customizedCRPStatusUpdatedActual(crpName, wantSelectedResources, allMemberClusterNames, nil, "0", true)
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+			Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 	})
 
@@ -237,8 +245,8 @@ var _ = Describe("Test member cluster join and leave flow", Ordered, Serial, fun
 	})
 })
 
-var _ = Describe("Test member cluster force delete flow", Ordered, Serial, func() {
-	Context("Test cluster join and leave flow with member agent down and force delete member cluster", Ordered, Serial, func() {
+var _ = Describe("Test member cluster force delete flow", Label("joinleave"), Ordered, Serial, func() {
+	Context("Test cluster join and leave flow with member agent down and force delete member cluster", Label("joinleave"), Ordered, Serial, func() {
 		It("Simulate the member agent going down in member cluster", func() {
 			updateMemberAgentDeploymentReplicas(memberCluster3WestProdClient, 0)
 		})

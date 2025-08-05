@@ -44,7 +44,6 @@ import (
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	"github.com/kubefleet-dev/kubefleet/pkg/controllers/work"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
@@ -106,10 +105,10 @@ var (
 	lessFuncConditionByType = func(a, b metav1.Condition) bool {
 		return a.Type < b.Type
 	}
-	lessFuncPlacementStatusByClusterName = func(a, b placementv1beta1.ResourcePlacementStatus) bool {
+	lessFuncPlacementStatusByClusterName = func(a, b placementv1beta1.PerClusterPlacementStatus) bool {
 		return a.ClusterName < b.ClusterName
 	}
-	lessFuncPlacementStatusByConditions = func(a, b placementv1beta1.ResourcePlacementStatus) bool {
+	lessFuncPlacementStatusByConditions = func(a, b placementv1beta1.PerClusterPlacementStatus) bool {
 		return len(a.Conditions) < len(b.Conditions)
 	}
 
@@ -124,7 +123,9 @@ var (
 	ignoreServiceStatusField               = cmpopts.IgnoreFields(corev1.Service{}, "Status")
 	ignoreServiceSpecIPAndPolicyFields     = cmpopts.IgnoreFields(corev1.ServiceSpec{}, "ClusterIP", "ClusterIPs", "ExternalIPs", "SessionAffinity", "IPFamilies", "IPFamilyPolicy", "InternalTrafficPolicy")
 	ignoreServicePortNodePortProtocolField = cmpopts.IgnoreFields(corev1.ServicePort{}, "NodePort", "Protocol")
-	ignoreRPSClusterNameField              = cmpopts.IgnoreFields(placementv1beta1.ResourcePlacementStatus{}, "ClusterName")
+	ignoreRPSClusterNameField              = cmpopts.IgnoreFields(placementv1beta1.PerClusterPlacementStatus{}, "ClusterName")
+	// TODO (wantjian): Remove this ignore option with next release.
+	ignoreRPSObservedResourceIndexField = cmpopts.IgnoreFields(placementv1beta1.PerClusterPlacementStatus{}, "ObservedResourceIndex")
 
 	// Since Fleet agents v0.14.0 a minor reason string change was applied on the hub side that
 	// affects CRP availability status reportings in the resource placement section when untrackable
@@ -134,7 +135,7 @@ var (
 	// Note that the aforementioned change is hub side exclusive and is for informational purposes only.
 	availableDueToUntrackableResCondAcyclicTransformer = cmpopts.AcyclicTransformer("AvailableDueToUntrackableResCond", func(cond metav1.Condition) metav1.Condition {
 		transformedCond := cond.DeepCopy()
-		if cond.Type == string(placementv1beta1.ResourcesAvailableConditionType) && cond.Reason == work.WorkNotTrackableReason {
+		if cond.Type == string(placementv1beta1.PerClusterAvailableConditionType) && cond.Reason == condition.WorkNotTrackableReason {
 			transformedCond.Reason = condition.WorkNotAvailabilityTrackableReason
 		}
 		return *transformedCond
@@ -148,6 +149,7 @@ var (
 		utils.IgnoreConditionLTTAndMessageFields,
 		availableDueToUntrackableResCondAcyclicTransformer,
 		cmpopts.EquateEmpty(),
+		ignoreRPSObservedResourceIndexField,
 	}
 	crpWithStuckRolloutStatusCmpOptions = cmp.Options{
 		cmpopts.SortSlices(lessFuncConditionByType),
@@ -158,6 +160,7 @@ var (
 		ignoreRPSClusterNameField,
 		availableDueToUntrackableResCondAcyclicTransformer,
 		cmpopts.EquateEmpty(),
+		ignoreRPSObservedResourceIndexField,
 	}
 )
 

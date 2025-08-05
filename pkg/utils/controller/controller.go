@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -26,6 +26,7 @@ import (
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
@@ -33,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/queue"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller/metrics"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/keys"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/labels"
@@ -86,6 +88,8 @@ func NewExpectedBehaviorError(err error) error {
 // NewAPIServerError returns error types when accessing data from cache or API server.
 func NewAPIServerError(fromCache bool, err error) error {
 	if err != nil {
+		// The func may return other unexpected runtime errors other than API server errors.
+		// https://github.com/kubernetes-sigs/controller-runtime/blob/main/pkg/client/client.go#L334-L339
 		if fromCache && isUnexpectedCacheError(err) {
 			return NewUnexpectedBehaviorError(err)
 		}
@@ -97,8 +101,9 @@ func NewAPIServerError(fromCache bool, err error) error {
 
 func isUnexpectedCacheError(err error) bool {
 	// may need to add more error code based on the production
-	// Cache will return notFound for GET.
-	return !apierrors.IsNotFound(err)
+	// When the cache is missed, it will query API server and return API server errors.
+	var statusErr *apierrors.StatusError
+	return !errors.Is(err, context.Canceled) && !errors.As(err, &statusErr) && !errors.Is(err, context.DeadlineExceeded)
 }
 
 // NewUserError returns ErrUserError type error when err is not nil.
@@ -317,49 +322,141 @@ var (
 	errResourceNotFullyCreated = errors.New("not all resource snapshot in the same index group are created")
 )
 
-// FetchAllClusterResourceSnapshots fetches the group of clusterResourceSnapshots using master clusterResourceSnapshot.
-func FetchAllClusterResourceSnapshots(ctx context.Context, k8Client client.Client, crp string, masterResourceSnapshot *fleetv1beta1.ClusterResourceSnapshot) (map[string]*fleetv1beta1.ClusterResourceSnapshot, error) {
-	resourceSnapshots := make(map[string]*fleetv1beta1.ClusterResourceSnapshot)
-	resourceSnapshots[masterResourceSnapshot.Name] = masterResourceSnapshot
+// FetchAllResourceSnapshotsAlongWithMaster fetches the group of resourceSnapshot or resourceSnapshots using the latest master resourceSnapshot.
+// TODO: move it to resourceSnapshot lib
+func FetchAllResourceSnapshotsAlongWithMaster(ctx context.Context, k8Client client.Reader, placementKey string, masterResourceSnapshot fleetv1beta1.ResourceSnapshotObj) (map[string]fleetv1beta1.ResourceSnapshotObj, error) {
+	resourceSnapshots := make(map[string]fleetv1beta1.ResourceSnapshotObj)
+	resourceSnapshots[masterResourceSnapshot.GetName()] = masterResourceSnapshot
 
 	// check if there are more snapshot in the same index group
-	countAnnotation := masterResourceSnapshot.Annotations[fleetv1beta1.NumberOfResourceSnapshotsAnnotation]
+	countAnnotation := masterResourceSnapshot.GetAnnotations()[fleetv1beta1.NumberOfResourceSnapshotsAnnotation]
 	snapshotCount, err := strconv.Atoi(countAnnotation)
 	if err != nil || snapshotCount < 1 {
 		return nil, NewUnexpectedBehaviorError(fmt.Errorf(
-			"master resource snapshot %s has an invalid snapshot count %d or err %w", masterResourceSnapshot.Name, snapshotCount, err))
+			"master resource snapshot %s has an invalid snapshot count %d or err %w", masterResourceSnapshot.GetName(), snapshotCount, err))
 	}
 
 	if snapshotCount > 1 {
 		// fetch all the resource snapshot in the same index group
-		index, err := labels.ExtractResourceIndexFromClusterResourceSnapshot(masterResourceSnapshot)
+		index, err := labels.ExtractResourceIndexFromResourceSnapshot(masterResourceSnapshot)
 		if err != nil {
-			klog.ErrorS(err, "Master resource snapshot has invalid resource index", "clusterResourceSnapshot", klog.KObj(masterResourceSnapshot))
+			klog.ErrorS(err, "Master resource snapshot has invalid resource index", "resourceSnapshot", klog.KObj(masterResourceSnapshot))
 			return nil, NewUnexpectedBehaviorError(err)
 		}
-		resourceIndexLabelMatcher := client.MatchingLabels{
-			fleetv1beta1.ResourceIndexLabel: strconv.Itoa(index),
-			fleetv1beta1.CRPTrackingLabel:   crp,
+
+		// Extract namespace and name from the placement key
+		namespace, name, err := ExtractNamespaceNameFromKey(queue.PlacementKey(placementKey))
+		if err != nil {
+			return nil, err
 		}
-		resourceSnapshotList := &fleetv1beta1.ClusterResourceSnapshotList{}
-		if err := k8Client.List(ctx, resourceSnapshotList, resourceIndexLabelMatcher); err != nil {
-			klog.ErrorS(err, "Failed to list all the resource snapshot", "clusterResourcePlacement", crp)
+		var resourceSnapshotList fleetv1beta1.ResourceSnapshotObjList
+		if resourceSnapshotList, err = ListAllResourceSnapshotWithAnIndex(ctx, k8Client, strconv.Itoa(index), name, namespace); err != nil {
+			klog.ErrorS(err, "Failed to list all the resource snapshot", "placement", placementKey, "resourceSnapshotIndex", index)
 			return nil, NewAPIServerError(true, err)
 		}
 		//insert all the resource snapshot into the map
-		for i := 0; i < len(resourceSnapshotList.Items); i++ {
-			resourceSnapshots[resourceSnapshotList.Items[i].Name] = &resourceSnapshotList.Items[i]
+		items := resourceSnapshotList.GetResourceSnapshotObjs()
+
+		for i := 0; i < len(items); i++ {
+			resourceSnapshots[items[i].GetName()] = items[i]
 		}
 	}
 
 	// check if all the resource snapshots are created since that may take a while but the rollout controller may update the resource binding on master snapshot creation
 	if len(resourceSnapshots) != snapshotCount {
 		misMatchErr := fmt.Errorf("%w: resource snapshots are still being created for the masterResourceSnapshot %s, total snapshot in the index group = %d, num Of existing snapshot in the group= %d",
-			errResourceNotFullyCreated, masterResourceSnapshot.Name, snapshotCount, len(resourceSnapshots))
-		klog.ErrorS(misMatchErr, "Resource snapshot are not ready", "clusterResourcePlacement", crp)
+			errResourceNotFullyCreated, masterResourceSnapshot.GetName(), snapshotCount, len(resourceSnapshots))
+		klog.ErrorS(misMatchErr, "Resource snapshot are not ready", "placement", placementKey)
 		return nil, NewExpectedBehaviorError(misMatchErr)
 	}
 	return resourceSnapshots, nil
+}
+
+// CollectResourceIdentifiersFromResourceSnapshot collects the resource identifiers selected by a series of resourceSnapshots.
+// Given the index of the resourceSnapshot, it collects resources from all of the master snapshots as well as the resourceSnapshots in the same index group.
+// It uses the master resourceSnapshot to collect the resource identifiers from all the resourceSnapshots in the same index group.
+func CollectResourceIdentifiersFromResourceSnapshot(
+	ctx context.Context,
+	k8Client client.Reader,
+	placementKey string,
+	resourceSnapshotIndex string,
+) ([]fleetv1beta1.ResourceIdentifier, error) {
+	// Extract namespace and name from the placement key
+	namespace, name, err := ExtractNamespaceNameFromKey(queue.PlacementKey(placementKey))
+	if err != nil {
+		return nil, err
+	}
+	resourceSnapshotList, err := ListAllResourceSnapshotWithAnIndex(ctx, k8Client, resourceSnapshotIndex, name, namespace)
+	if err != nil {
+		return nil, err
+	}
+	items := resourceSnapshotList.GetResourceSnapshotObjs()
+	if len(items) == 0 {
+		klog.V(2).InfoS("No resourceSnapshots found for the placement when collecting resource identifiers",
+			"resourceSnapshotIndex", resourceSnapshotIndex, "placement", placementKey)
+		return nil, nil
+	}
+	allResourceSnapshots := make(map[string]fleetv1beta1.ResourceSnapshotObj)
+	// Look for the master resourceSnapshot.
+	var masterResourceSnapshot fleetv1beta1.ResourceSnapshotObj
+	for i, resourceSnapshot := range items {
+		allResourceSnapshots[resourceSnapshot.GetName()] = resourceSnapshot
+		// only master has this annotation
+		if len(resourceSnapshot.GetAnnotations()[fleetv1beta1.ResourceGroupHashAnnotation]) != 0 {
+			masterResourceSnapshot = items[i]
+		}
+	}
+	if masterResourceSnapshot == nil {
+		err := NewUnexpectedBehaviorError(fmt.Errorf("no master resourceSnapshot found for placement `%s`", placementKey))
+		klog.ErrorS(err, "Found resourceSnapshots without master resource Snapshot", "placement", placementKey, "resourceSnapshotIndex", resourceSnapshotIndex, "resourceSnapshotCount", len(items))
+		return nil, err
+	}
+
+	// generates the resource identifiers from the master resourceSnapshot and all the resourceSnapshots in the same index group.
+	return generateResourceIdentifierFromSnapshots(allResourceSnapshots)
+}
+
+// CollectResourceIdentifiersUsingMasterResourceSnapshot collects the resource identifiers selected by a series of resourceSnapshot.
+// It uses the master resourceSnapshot to collect the resource identifiers from all the resourceSnapshots in the same index group.
+// The order of the resource identifiers is preserved by the order of the resourceSnapshots.
+func CollectResourceIdentifiersUsingMasterResourceSnapshot(
+	ctx context.Context,
+	k8Client client.Reader,
+	placementKey string,
+	masterResourceSnapshot fleetv1beta1.ResourceSnapshotObj,
+	resourceSnapshotIndex string,
+) ([]fleetv1beta1.ResourceIdentifier, error) {
+	allResourceSnapshots, err := FetchAllResourceSnapshotsAlongWithMaster(ctx, k8Client, placementKey, masterResourceSnapshot)
+	if err != nil {
+		klog.ErrorS(err, "Failed to fetch all the resourceSnapshots", "resourceSnapshotIndex", resourceSnapshotIndex, "placement", placementKey)
+		return nil, err
+	}
+
+	return generateResourceIdentifierFromSnapshots(allResourceSnapshots)
+}
+
+// generateResourceIdentifierFromSnapshots generates the resource identifiers from the master resourceSnapshot and all the resourceSnapshots in the same index group.
+// It retrieves the resource identifiers from the master resourceSnapshot and all the resourceSnapshots in the same index group.
+func generateResourceIdentifierFromSnapshots(allResourceSnapshots map[string]fleetv1beta1.ResourceSnapshotObj) ([]fleetv1beta1.ResourceIdentifier, error) {
+	selectedResources := make([]fleetv1beta1.ResourceIdentifier, 0)
+	for _, resourceSnapshot := range allResourceSnapshots {
+		for _, res := range resourceSnapshot.GetResourceSnapshotSpec().SelectedResources {
+			var uResource unstructured.Unstructured
+			if err := uResource.UnmarshalJSON(res.Raw); err != nil {
+				klog.ErrorS(err, "Resource has invalid content", "snapshot", klog.KObj(resourceSnapshot), "selectedResource", res.Raw)
+				return nil, NewUnexpectedBehaviorError(err)
+			}
+			identifier := fleetv1beta1.ResourceIdentifier{
+				Group:     uResource.GetObjectKind().GroupVersionKind().Group,
+				Version:   uResource.GetObjectKind().GroupVersionKind().Version,
+				Kind:      uResource.GetObjectKind().GroupVersionKind().Kind,
+				Name:      uResource.GetName(),
+				Namespace: uResource.GetNamespace(),
+			}
+			selectedResources = append(selectedResources, identifier)
+		}
+	}
+	return selectedResources, nil
 }
 
 // MemberController configures how to join or leave the fleet as a member.

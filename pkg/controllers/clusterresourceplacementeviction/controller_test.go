@@ -26,7 +26,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/prometheus/client_golang/prometheus"
 	prometheusclientmodel "github.com/prometheus/client_model/go"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -36,6 +35,7 @@ import (
 	controllerruntime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
@@ -63,7 +63,7 @@ func TestValidateEviction(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testCRPName,
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickAllPlacementType,
 			},
@@ -84,7 +84,7 @@ func TestValidateEviction(t *testing.T) {
 	testBinding1 := placementv1beta1.ClusterResourceBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "test-binding-1",
-			Labels: map[string]string{placementv1beta1.CRPTrackingLabel: testCRPName},
+			Labels: map[string]string{placementv1beta1.PlacementTrackingLabel: testCRPName},
 		},
 		Spec: placementv1beta1.ResourceBindingSpec{
 			State:         placementv1beta1.BindingStateUnscheduled,
@@ -94,7 +94,7 @@ func TestValidateEviction(t *testing.T) {
 	testBinding2 := placementv1beta1.ClusterResourceBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "test-binding-2",
-			Labels: map[string]string{placementv1beta1.CRPTrackingLabel: testCRPName},
+			Labels: map[string]string{placementv1beta1.PlacementTrackingLabel: testCRPName},
 		},
 		Spec: placementv1beta1.ResourceBindingSpec{
 			State:         placementv1beta1.BindingStateScheduled,
@@ -134,7 +134,7 @@ func TestValidateEviction(t *testing.T) {
 					DeletionTimestamp: &metav1.Time{Time: time.Now()},
 					Finalizers:        []string{"test-finalizer"},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
 					},
@@ -159,7 +159,7 @@ func TestValidateEviction(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: testCRPName,
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickFixedPlacementType,
 					},
@@ -223,7 +223,7 @@ func TestValidateEviction(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-crp",
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{},
+				Spec: placementv1beta1.PlacementSpec{},
 			},
 			bindings: []placementv1beta1.ClusterResourceBinding{testBinding2},
 			wantValidationResult: &evictionValidationResult{
@@ -258,7 +258,7 @@ func TestValidateEviction(t *testing.T) {
 			// Since default values are applied to the affected CRP in the eviction controller; the
 			// the same must be done on the expected result as well.
 			if tc.wantValidationResult.crp != nil {
-				defaulter.SetDefaultsClusterResourcePlacement(tc.wantValidationResult.crp)
+				defaulter.SetPlacementDefaults(tc.wantValidationResult.crp)
 			}
 
 			if diff := cmp.Diff(tc.wantValidationResult, gotValidationResult, validationResultCmpOptions...); diff != "" {
@@ -671,7 +671,7 @@ func TestIsEvictionAllowed(t *testing.T) {
 	scheduledUnavailableBinding := placementv1beta1.ClusterResourceBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "scheduled-binding",
-			Labels: map[string]string{placementv1beta1.CRPTrackingLabel: testCRPName},
+			Labels: map[string]string{placementv1beta1.PlacementTrackingLabel: testCRPName},
 		},
 		Spec: placementv1beta1.ResourceBindingSpec{
 			State:         placementv1beta1.BindingStateScheduled,
@@ -681,7 +681,7 @@ func TestIsEvictionAllowed(t *testing.T) {
 	boundAvailableBinding := placementv1beta1.ClusterResourceBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "bound-available-binding",
-			Labels: map[string]string{placementv1beta1.CRPTrackingLabel: testCRPName},
+			Labels: map[string]string{placementv1beta1.PlacementTrackingLabel: testCRPName},
 		},
 		Spec: placementv1beta1.ResourceBindingSpec{
 			State:         placementv1beta1.BindingStateBound,
@@ -694,7 +694,7 @@ func TestIsEvictionAllowed(t *testing.T) {
 	anotherBoundAvailableBinding := placementv1beta1.ClusterResourceBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "another-bound-available-binding",
-			Labels: map[string]string{placementv1beta1.CRPTrackingLabel: testCRPName},
+			Labels: map[string]string{placementv1beta1.PlacementTrackingLabel: testCRPName},
 		},
 		Spec: placementv1beta1.ResourceBindingSpec{
 			State:         placementv1beta1.BindingStateBound,
@@ -707,7 +707,7 @@ func TestIsEvictionAllowed(t *testing.T) {
 	boundUnavailableBinding := placementv1beta1.ClusterResourceBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "bound-unavailable-binding",
-			Labels: map[string]string{placementv1beta1.CRPTrackingLabel: testCRPName},
+			Labels: map[string]string{placementv1beta1.PlacementTrackingLabel: testCRPName},
 		},
 		Spec: placementv1beta1.ResourceBindingSpec{
 			State:         placementv1beta1.BindingStateBound,
@@ -717,7 +717,7 @@ func TestIsEvictionAllowed(t *testing.T) {
 	unScheduledAvailableBinding := placementv1beta1.ClusterResourceBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   "unscheduled-available-binding",
-			Labels: map[string]string{placementv1beta1.CRPTrackingLabel: testCRPName},
+			Labels: map[string]string{placementv1beta1.PlacementTrackingLabel: testCRPName},
 		},
 		Spec: placementv1beta1.ResourceBindingSpec{
 			State:         placementv1beta1.BindingStateUnscheduled,
@@ -1492,12 +1492,6 @@ func TestReconcileForIncompleteEvictionMetric(t *testing.T) {
 	isValid := "unknown"
 	isComplete := "false"
 
-	// Create a test registry
-	customRegistry := prometheus.NewRegistry()
-	if err := customRegistry.Register(metrics.FleetEvictionStatus); err != nil {
-		t.Errorf("Failed to register metric: %v", err)
-	}
-
 	// Reset metrics before each test
 	metrics.FleetEvictionStatus.Reset()
 
@@ -1513,7 +1507,7 @@ func TestReconcileForIncompleteEvictionMetric(t *testing.T) {
 		t.Errorf("reconcile should have failed")
 	}
 
-	metricFamilies, err := customRegistry.Gather()
+	metricFamilies, err := ctrlmetrics.Registry.Gather()
 	if err != nil {
 		t.Errorf("error gathering metrics: %v", err)
 	}
@@ -1555,7 +1549,7 @@ func buildTestPickAllCRP(crpName string) placementv1beta1.ClusterResourcePlaceme
 		ObjectMeta: metav1.ObjectMeta{
 			Name: crpName,
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickAllPlacementType,
 			},

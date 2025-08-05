@@ -18,6 +18,9 @@ enableGuardRail: true
 webhookClientConnectionType: service
 forceDeleteWaitTime: 15m0s
 clusterUnhealthyThreshold: 3m0s
+resourceSnapshotCreationMinimumInterval: 30s
+resourceChangesCollectionDuration: 15s
+
 namespace:
   fleet-system
 
@@ -38,6 +41,9 @@ enableV1Beta1APIs: true
 enableClusterInventoryAPI: true
 enableStagedUpdateRunAPIs: true
 enableEvictionAPIs: true
+
+enablePprof: true
+pprofPort: 6065
 
 hubAPIQPS: 250
 hubAPIBurst: 1000

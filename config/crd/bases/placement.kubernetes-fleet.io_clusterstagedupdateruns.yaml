@@ -235,8 +235,8 @@ spec:
                         managed by Fleet (i.e., specified in the hub cluster manifest). This is the default
                         option.
 
-                        Note that this option would revert any ad-hoc changes made on the member cluster side in
-                        the managed fields; if you would like to make temporary edits on the member cluster side
+                        Note that this option would revert any ad-hoc changes made on the member cluster side in the
+                        managed fields; if you would like to make temporary edits on the member cluster side
                         in the managed fields, switch to IfNotDrifted option. Note that changes in unmanaged
                         fields will be left alone; if you use the FullDiff compare option, such changes will
                         be reported as drifts.
@@ -1315,8 +1315,8 @@ spec:
                         managed by Fleet (i.e., specified in the hub cluster manifest). This is the default
                         option.
 
-                        Note that this option would revert any ad-hoc changes made on the member cluster side in
-                        the managed fields; if you would like to make temporary edits on the member cluster side
+                        Note that this option would revert any ad-hoc changes made on the member cluster side in the
+                        managed fields; if you would like to make temporary edits on the member cluster side
                         in the managed fields, switch to IfNotDrifted option. Note that changes in unmanaged
                         fields will be left alone; if you use the FullDiff compare option, such changes will
                         be reported as drifts.
@@ -1814,6 +1814,13 @@ spec:
                             type: object
                           maxItems: 2
                           type: array
+                          x-kubernetes-validations:
+                          - message: AfterStageTaskType is Approval, waitTime is not
+                              allowed
+                            rule: '!self.exists(e, e.type == ''Approval'' && has(e.waitTime))'
+                          - message: AfterStageTaskType is TimedWait, waitTime is
+                              required
+                            rule: '!self.exists(e, e.type == ''TimedWait'' && !has(e.waitTime))'
                         labelSelector:
                           description: |-
                             LabelSelector is a label query over all the joined member clusters. Clusters matching the query are selected

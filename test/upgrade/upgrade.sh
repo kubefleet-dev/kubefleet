@@ -19,7 +19,6 @@ export OUTPUT_TYPE="${OUTPUT_TYPE:-type=docker}"
 export HUB_AGENT_IMAGE="${HUB_AGENT_IMAGE:-hub-agent}"
 export MEMBER_AGENT_IMAGE="${MEMBER_AGENT_IMAGE:-member-agent}"
 export REFRESH_TOKEN_IMAGE="${REFRESH_TOKEN_IMAGE:-refresh-token}"
-export GIT_TAG="${GIT_TAG:-}"
 export UPGRADE_HUB_SIDE="${UPGRADE_HUB_SIDE:-}"
 export UPGRADE_MEMBER_SIDE="${UPGRADE_MEMBER_SIDE:-}"
 
@@ -28,24 +27,12 @@ if [ -z "$UPGRADE_HUB_SIDE" ] && [ -z "$UPGRADE_MEMBER_SIDE" ]; then
     exit 1
 fi
 
-PREVIOUS_BRANCH=""
-if [ -n "${GIT_TAG}" ]; then
-    echo "A tag ($GIT_TAG) has been specified; re-build image using the given tag."
-
-    PREVIOUS_BRANCH=$(git branch --show-current)
-
-    echo "Fetch all tags..."
-    git fetch --all
-    git checkout $GIT_TAG
-    echo "Checked out source code at $GIT_TAG."
-fi
-
 # Build the Fleet agent images.
 echo "Building and the Fleet agent images..."
 
-TAG=$IMAGE_TAG make -C "../.." docker-build-hub-agent
-TAG=$IMAGE_TAG make -C "../.." docker-build-member-agent
-TAG=$IMAGE_TAG make -C "../.." docker-build-refresh-token
+TAG=$IMAGE_TAG make docker-build-hub-agent
+TAG=$IMAGE_TAG make docker-build-member-agent
+TAG=$IMAGE_TAG make docker-build-refresh-token
 
 # Load the Fleet agent images (for upgrading) into the kind clusters.
 
@@ -65,7 +52,7 @@ done
 if [ -n "$UPGRADE_HUB_SIDE" ]; then
     echo "Upgrading the hub agent in the hub cluster..."
     kind export kubeconfig --name $HUB_CLUSTER
-    helm upgrade hub-agent ../../charts/hub-agent/ \
+    helm upgrade hub-agent charts/hub-agent/ \
         --set image.pullPolicy=Never \
         --set image.repository=$REGISTRY/$HUB_AGENT_IMAGE \
         --set image.tag=$IMAGE_TAG \
@@ -88,7 +75,7 @@ if [ -n "$UPGRADE_MEMBER_SIDE" ]; then
     for (( i=0; i<${MEMBER_CLUSTER_COUNT}; i++ ));
     do
         kind export kubeconfig --name "${MEMBER_CLUSTERS[$i]}"
-        helm upgrade member-agent ../../charts/member-agent/ \
+        helm upgrade member-agent charts/member-agent/ \
             --set config.hubURL=$HUB_SERVER_URL \
             --set image.repository=$REGISTRY/$MEMBER_AGENT_IMAGE \
             --set image.tag=$IMAGE_TAG \
@@ -102,10 +89,4 @@ if [ -n "$UPGRADE_MEMBER_SIDE" ]; then
             --set enableV1Alpha1APIs=false \
             --set enableV1Beta1APIs=true
     done
-fi
-
-# Restore to the previous branch.
-if [ -n "$PREVIOUS_BRANCH" ]; then
-    git checkout $PREVIOUS_BRANCH
-    echo "Checked out source code at $PREVIOUS_BRANCH."
 fi

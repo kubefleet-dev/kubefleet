@@ -38,9 +38,9 @@ func TestHandle(t *testing.T) {
 	invalidCRPObject := &placementv1beta1.ClusterResourcePlacement{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       "test-crp",
-			Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+			Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickAllPlacementType,
 			},
@@ -57,10 +57,10 @@ func TestHandle(t *testing.T) {
 	invalidCRPObjectDeleting := &placementv1beta1.ClusterResourcePlacement{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              "test-crp",
-			Finalizers:        []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+			Finalizers:        []string{placementv1beta1.PlacementCleanupFinalizer},
 			DeletionTimestamp: ptr.To(metav1.NewTime(time.Now())),
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickAllPlacementType,
 			},
@@ -81,7 +81,7 @@ func TestHandle(t *testing.T) {
 			Finalizers:        []string{},
 			DeletionTimestamp: ptr.To(metav1.NewTime(time.Now())),
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickAllPlacementType,
 			},
@@ -100,7 +100,7 @@ func TestHandle(t *testing.T) {
 			Name:       "test-crp",
 			Finalizers: []string{},
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickAllPlacementType,
 			},
@@ -117,9 +117,9 @@ func TestHandle(t *testing.T) {
 	validCRPObject := &placementv1beta1.ClusterResourcePlacement{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       "test-crp",
-			Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+			Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickAllPlacementType,
 			},
@@ -134,7 +134,7 @@ func TestHandle(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test-crp",
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			ResourceSelectors: []placementv1beta1.ClusterResourceSelector{resourceSelector},
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickAllPlacementType,
@@ -154,9 +154,9 @@ func TestHandle(t *testing.T) {
 	updatedValidSpecCRPObject := &placementv1beta1.ClusterResourcePlacement{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       "test-crp",
-			Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+			Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickAllPlacementType,
 			},
@@ -176,7 +176,7 @@ func TestHandle(t *testing.T) {
 			Finalizers:        []string{},
 			DeletionTimestamp: ptr.To(metav1.NewTime(time.Now())),
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickAllPlacementType,
 			},
@@ -194,9 +194,9 @@ func TestHandle(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       "test-crp",
 			Labels:     map[string]string{"key1": "value1"},
-			Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+			Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			ResourceSelectors: []placementv1beta1.ClusterResourceSelector{resourceSelector},
 			Strategy: placementv1beta1.RolloutStrategy{
 				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
@@ -211,7 +211,7 @@ func TestHandle(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test-crp",
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
 				NumberOfClusters: ptr.To(int32(2)),

@@ -118,7 +118,7 @@ func (r *Reconciler) validateEviction(ctx context.Context, eviction *placementv1
 	}
 
 	// set default values for CRP.
-	defaulter.SetDefaultsClusterResourcePlacement(&crp)
+	defaulter.SetPlacementDefaults(&crp)
 
 	if crp.DeletionTimestamp != nil {
 		klog.V(2).InfoS(condition.EvictionInvalidDeletingCRPMessage, "clusterResourcePlacementEviction", eviction.Name, "clusterResourcePlacement", eviction.Spec.PlacementName)
@@ -133,7 +133,7 @@ func (r *Reconciler) validateEviction(ctx context.Context, eviction *placementv1
 	validationResult.crp = &crp
 
 	var crbList placementv1beta1.ClusterResourceBindingList
-	if err := r.Client.List(ctx, &crbList, client.MatchingLabels{placementv1beta1.CRPTrackingLabel: crp.Name}); err != nil {
+	if err := r.Client.List(ctx, &crbList, client.MatchingLabels{placementv1beta1.PlacementTrackingLabel: crp.Name}); err != nil {
 		return nil, controller.NewAPIServerError(true, err)
 	}
 	validationResult.bindings = crbList.Items

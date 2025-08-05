@@ -20,6 +20,7 @@ package e2e
 
 import (
 	"fmt"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -60,7 +61,7 @@ const (
 // Note that most of the cases below are Serial ones, as they manipulate the list of member
 // clusters in the test environment directly, which may incur side effects when running in
 // parallel with other test cases.
-var _ = Describe("responding to specific member cluster changes", func() {
+var _ = Describe("responding to specific member cluster changes", Label("joinleave"), func() {
 	Context("cluster becomes eligible for PickAll CRPs, just joined", Serial, Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 
@@ -76,7 +77,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
@@ -145,7 +146,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
@@ -228,7 +229,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
@@ -338,7 +339,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
@@ -407,7 +408,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
@@ -496,7 +497,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
@@ -561,7 +562,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
@@ -586,6 +587,17 @@ var _ = Describe("responding to specific member cluster changes", func() {
 			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
 			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), targetClusterNames, nil, "0")
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("can mark the cluster as leaving", func() {
+			markMemberClusterAsLeaving(fakeClusterName1ForWatcherTests)
+		})
+
+		It("should not remove the leaving cluster from the scheduling decision", func() {
+			targetClusterNames := allMemberClusterNames
+			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
+			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), targetClusterNames, nil, "0")
 			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
@@ -620,7 +632,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
@@ -725,7 +737,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickFixedPlacementType,
@@ -792,7 +804,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickFixedPlacementType,
@@ -856,7 +868,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickFixedPlacementType,
@@ -921,7 +933,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickFixedPlacementType,
@@ -980,7 +992,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
@@ -1051,7 +1063,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
@@ -1140,7 +1152,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
@@ -1214,7 +1226,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
@@ -1298,7 +1310,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
@@ -1370,7 +1382,9 @@ var _ = Describe("responding to specific member cluster changes", func() {
 		It("should pick the new cluster", func() {
 			targetClusterNames := []string{memberCluster3WestProdName}
 			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+			// CRP should be scheduled only after member-agent reports the newly added capacity.
+			// Set the timeout to be a bit longer than the member cluster heartbeat period.
+			Eventually(crpStatusUpdatedActual, eventuallyDuration+time.Second*memberClusterHeartbeatPeriodSeconds, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
@@ -1417,7 +1431,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
@@ -1486,7 +1500,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
@@ -1512,6 +1526,17 @@ var _ = Describe("responding to specific member cluster changes", func() {
 			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
 			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), targetClusterNames, nil, "0")
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("can mark the cluster as leaving", func() {
+			markMemberClusterAsLeaving(fakeClusterName1ForWatcherTests)
+		})
+
+		It("should not remove the leaving cluster from the scheduling decision", func() {
+			targetClusterNames := allMemberClusterNames
+			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
+			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), targetClusterNames, nil, "0")
 			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
@@ -1551,7 +1576,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
@@ -1638,7 +1663,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
@@ -1719,7 +1744,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
@@ -1801,7 +1826,7 @@ var _ = Describe("responding to specific member cluster changes", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,

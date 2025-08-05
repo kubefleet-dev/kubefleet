@@ -53,12 +53,12 @@ import (
 	workv1alpha1 "sigs.k8s.io/work-api/pkg/apis/v1alpha1"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
-	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	fleetv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceoverride"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceplacement"
+	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceplacementdisruptionbudget"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceplacementeviction"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/fleetresourcehandler"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/membercluster"
@@ -74,6 +74,7 @@ const (
 	fleetWebhookKeyFileName       = "tls.key"
 	fleetValidatingWebhookCfgName = "fleet-validating-webhook-configuration"
 	fleetGuardRailWebhookCfgName  = "fleet-guard-rail-webhook-configuration"
+	fleetMutatingWebhookCfgName   = "fleet-mutating-webhook-configuration"
 
 	crdResourceName                      = "customresourcedefinitions"
 	bindingResourceName                  = "bindings"
@@ -115,6 +116,7 @@ const (
 	clusterResourceOverrideName          = "clusterresourceoverrides"
 	resourceOverrideName                 = "resourceoverrides"
 	evictionName                         = "clusterresourceplacementevictions"
+	disruptionBudgetName                 = "clusterresourceplacementdisruptionbudgets"
 )
 
 var (
@@ -196,6 +198,9 @@ func (w *Config) Start(ctx context.Context) error {
 
 // createFleetWebhookConfiguration creates the ValidatingWebhookConfiguration object for the webhook.
 func (w *Config) createFleetWebhookConfiguration(ctx context.Context) error {
+	if err := w.createMutatingWebhookConfiguration(ctx, w.buildFleetMutatingWebhooks(), fleetMutatingWebhookCfgName); err != nil {
+		return err
+	}
 	if err := w.createValidatingWebhookConfiguration(ctx, w.buildFleetValidatingWebhooks(), fleetValidatingWebhookCfgName); err != nil {
 		return err
 	}
@@ -205,6 +210,60 @@ func (w *Config) createFleetWebhookConfiguration(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// createMutatingWebhookConfiguration creates the MutatingWebhookConfiguration object for the webhook.
+func (w *Config) createMutatingWebhookConfiguration(ctx context.Context, webhooks []admv1.MutatingWebhook, configName string) error {
+	mutatingWebhookConfig := admv1.MutatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: configName,
+			Labels: map[string]string{
+				"admissions.enforcer/disabled": "true",
+			},
+		},
+		Webhooks: webhooks,
+	}
+
+	if err := w.mgr.GetClient().Create(ctx, &mutatingWebhookConfig); err != nil {
+		if !apierrors.IsAlreadyExists(err) {
+			return err
+		}
+		klog.V(2).InfoS("mutating webhook configuration exists, need to overwrite", "name", configName)
+		if err := w.mgr.GetClient().Delete(ctx, &mutatingWebhookConfig); err != nil {
+			return err
+		}
+		if err = w.mgr.GetClient().Create(ctx, &mutatingWebhookConfig); err != nil {
+			return err
+		}
+		klog.V(2).InfoS("successfully overwritten mutating webhook configuration", "name", configName)
+		return nil
+	}
+	klog.V(2).InfoS("successfully created mutating webhook configuration", "name", configName)
+	return nil
+}
+
+// buildFleetMutatingWebhooks returns a slice of fleet mutating webhook objects.
+func (w *Config) buildFleetMutatingWebhooks() []admv1.MutatingWebhook {
+	webHooks := []admv1.MutatingWebhook{
+		{
+			Name:                    "fleet.clusterresourceplacementv1beta1.mutating",
+			ClientConfig:            w.createClientConfig(clusterresourceplacement.MutatingPath),
+			FailurePolicy:           &ignoreFailurePolicy,
+			SideEffects:             &sideEffortsNone,
+			AdmissionReviewVersions: admissionReviewVersions,
+			Rules: []admv1.RuleWithOperations{
+				{
+					Operations: []admv1.OperationType{
+						admv1.Create,
+						admv1.Update,
+					},
+					Rule: createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{placementv1beta1.ClusterResourcePlacementResource}, &clusterScope),
+				},
+			},
+			TimeoutSeconds: longWebhookTimeout,
+		},
+	}
+	return webHooks
 }
 
 func (w *Config) createValidatingWebhookConfiguration(ctx context.Context, webhooks []admv1.ValidatingWebhook, configName string) error {
@@ -342,7 +401,7 @@ func (w *Config) buildFleetValidatingWebhooks() []admv1.ValidatingWebhook {
 						admv1.Create,
 						admv1.Update,
 					},
-					Rule: createRule([]string{placementv1alpha1.GroupVersion.Group}, []string{placementv1alpha1.GroupVersion.Version}, []string{clusterResourceOverrideName}, &clusterScope),
+					Rule: createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{clusterResourceOverrideName}, &clusterScope),
 				},
 			},
 			TimeoutSeconds: longWebhookTimeout,
@@ -359,7 +418,7 @@ func (w *Config) buildFleetValidatingWebhooks() []admv1.ValidatingWebhook {
 						admv1.Create,
 						admv1.Update,
 					},
-					Rule: createRule([]string{placementv1alpha1.GroupVersion.Group}, []string{placementv1alpha1.GroupVersion.Version}, []string{resourceOverrideName}, &namespacedScope),
+					Rule: createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{resourceOverrideName}, &namespacedScope),
 				},
 			},
 			TimeoutSeconds: longWebhookTimeout,
@@ -376,6 +435,22 @@ func (w *Config) buildFleetValidatingWebhooks() []admv1.ValidatingWebhook {
 						admv1.Create,
 					},
 					Rule: createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{evictionName}, &clusterScope),
+				},
+			},
+			TimeoutSeconds: longWebhookTimeout,
+		},
+		{
+			Name:                    "fleet.clusterresourceplacementdisruptionbudget.validating",
+			ClientConfig:            w.createClientConfig(clusterresourceplacementdisruptionbudget.ValidationPath),
+			FailurePolicy:           &failFailurePolicy,
+			SideEffects:             &sideEffortsNone,
+			AdmissionReviewVersions: admissionReviewVersions,
+			Rules: []admv1.RuleWithOperations{
+				{
+					Operations: []admv1.OperationType{
+						admv1.Create, admv1.Update,
+					},
+					Rule: createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{disruptionBudgetName}, &clusterScope),
 				},
 			},
 			TimeoutSeconds: longWebhookTimeout,

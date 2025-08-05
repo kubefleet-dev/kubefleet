@@ -78,7 +78,7 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
 						{
 							Group:   "",
@@ -207,6 +207,7 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 		AfterAll(func() {
 			By(fmt.Sprintf("deleting envelope %s", testResourceEnvelope.Name))
 			Expect(hubClient.Delete(ctx, &testResourceEnvelope)).To(Succeed(), "Failed to delete ResourceEnvelope")
+			By(fmt.Sprintf("deleting envelope %s", testClusterResourceEnvelope.Name))
 			Expect(hubClient.Delete(ctx, &testClusterResourceEnvelope)).To(Succeed(), "Failed to delete testClusterResourceEnvelope")
 			By(fmt.Sprintf("deleting placement %s and related resources", crpName))
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
@@ -247,7 +248,7 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 					// Add a custom finalizer; this would allow us to better observe the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
@@ -275,43 +276,44 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 				},
 			}
 			// We only expect the statefulset to not be available all the clusters
-			PlacementStatuses := make([]placementv1beta1.ResourcePlacementStatus, 0)
+			PlacementStatuses := make([]placementv1beta1.PerClusterPlacementStatus, 0)
 			for _, memberClusterName := range allMemberClusterNames {
-				unavailableResourcePlacementStatus := placementv1beta1.ResourcePlacementStatus{
-					ClusterName: memberClusterName,
+				unavailableResourcePlacementStatus := placementv1beta1.PerClusterPlacementStatus{
+					ClusterName:           memberClusterName,
+					ObservedResourceIndex: "0",
 					Conditions: []metav1.Condition{
 						{
-							Type:               string(placementv1beta1.ResourceScheduledConditionType),
+							Type:               string(placementv1beta1.PerClusterScheduledConditionType),
 							Status:             metav1.ConditionTrue,
 							Reason:             condition.ScheduleSucceededReason,
 							ObservedGeneration: 1,
 						},
 						{
-							Type:               string(placementv1beta1.ResourceRolloutStartedConditionType),
+							Type:               string(placementv1beta1.PerClusterRolloutStartedConditionType),
 							Status:             metav1.ConditionTrue,
 							Reason:             condition.RolloutStartedReason,
 							ObservedGeneration: 1,
 						},
 						{
-							Type:               string(placementv1beta1.ResourceOverriddenConditionType),
+							Type:               string(placementv1beta1.PerClusterOverriddenConditionType),
 							Status:             metav1.ConditionTrue,
 							Reason:             condition.OverrideNotSpecifiedReason,
 							ObservedGeneration: 1,
 						},
 						{
-							Type:               string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+							Type:               string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 							Status:             metav1.ConditionTrue,
 							Reason:             condition.AllWorkSyncedReason,
 							ObservedGeneration: 1,
 						},
 						{
-							Type:               string(placementv1beta1.ResourcesAppliedConditionType),
+							Type:               string(placementv1beta1.PerClusterAppliedConditionType),
 							Status:             metav1.ConditionTrue,
 							Reason:             condition.AllWorkAppliedReason,
 							ObservedGeneration: 1,
 						},
 						{
-							Type:               string(placementv1beta1.ResourcesAvailableConditionType),
+							Type:               string(placementv1beta1.PerClusterAvailableConditionType),
 							Status:             metav1.ConditionFalse,
 							Reason:             condition.WorkNotAvailableReason,
 							ObservedGeneration: 1,
@@ -321,7 +323,7 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 						{
 							ResourceIdentifier: failedStatefulSetResourceIdentifier,
 							Condition: metav1.Condition{
-								Type:               string(placementv1beta1.ResourcesAvailableConditionType),
+								Type:               string(placementv1beta1.PerClusterAvailableConditionType),
 								Status:             metav1.ConditionFalse,
 								Reason:             string(workapplier.ManifestProcessingAvailabilityResultTypeNotYetAvailable),
 								ObservedGeneration: 1,
@@ -345,7 +347,7 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 					Namespace: workNamespace.Name,
 				},
 			}
-			wantStatus := placementv1beta1.ClusterResourcePlacementStatus{
+			wantStatus := placementv1beta1.PlacementStatus{
 				Conditions:            crpNotAvailableConditions(1, false),
 				PlacementStatuses:     PlacementStatuses,
 				SelectedResources:     wantSelectedResources,
@@ -440,7 +442,7 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 					// the behavior of the controllers.
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
-				Spec: placementv1beta1.ClusterResourcePlacementSpec{
+				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickFixedPlacementType,
@@ -466,12 +468,13 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 					return err
 				}
 
-				wantStatus := placementv1beta1.ClusterResourcePlacementStatus{
+				wantStatus := placementv1beta1.PlacementStatus{
 					Conditions: crpWorkSynchronizedFailedConditions(crp.Generation, false),
-					PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+					PlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
-							ClusterName: memberCluster1EastProdName,
-							Conditions:  resourcePlacementWorkSynchronizedFailedConditions(crp.Generation, false),
+							ClusterName:           memberCluster1EastProdName,
+							ObservedResourceIndex: "0",
+							Conditions:            resourcePlacementWorkSynchronizedFailedConditions(crp.Generation, false),
 						},
 					},
 					SelectedResources: []placementv1beta1.ResourceIdentifier{
@@ -559,7 +562,7 @@ var _ = Describe("Process objects with generate name", Ordered, func() {
 				// the behavior of the controllers.
 				Finalizers: []string{customDeletionBlockerFinalizer},
 			},
-			Spec: placementv1beta1.ClusterResourcePlacementSpec{
+			Spec: placementv1beta1.PlacementSpec{
 				ResourceSelectors: workResourceSelector(),
 				Policy: &placementv1beta1.PlacementPolicy{
 					PlacementType: placementv1beta1.PickFixedPlacementType,
@@ -585,11 +588,12 @@ var _ = Describe("Process objects with generate name", Ordered, func() {
 				return err
 			}
 
-			wantStatus := placementv1beta1.ClusterResourcePlacementStatus{
+			wantStatus := placementv1beta1.PlacementStatus{
 				Conditions: crpAppliedFailedConditions(crp.Generation),
-				PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+				PlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 					{
-						ClusterName: memberCluster1EastProdName,
+						ClusterName:           memberCluster1EastProdName,
+						ObservedResourceIndex: "0",
 						FailedPlacements: []placementv1beta1.FailedResourcePlacement{
 							{
 								ResourceIdentifier: placementv1beta1.ResourceIdentifier{

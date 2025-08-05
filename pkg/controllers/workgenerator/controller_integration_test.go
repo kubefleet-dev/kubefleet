@@ -38,7 +38,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
-	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workapplier"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
@@ -57,9 +56,9 @@ var (
 	validResourceOverrideSnapshotName          = "ro-1"
 	invalidClusterResourceOverrideSnapshotName = "cro-2" // the overridden manifest is invalid
 
-	validClusterResourceOverrideSnapshot   placementv1alpha1.ClusterResourceOverrideSnapshot
-	validResourceOverrideSnapshot          placementv1alpha1.ResourceOverrideSnapshot
-	invalidClusterResourceOverrideSnapshot placementv1alpha1.ClusterResourceOverrideSnapshot
+	validClusterResourceOverrideSnapshot   placementv1beta1.ClusterResourceOverrideSnapshot
+	validResourceOverrideSnapshot          placementv1beta1.ResourceOverrideSnapshot
+	invalidClusterResourceOverrideSnapshot placementv1beta1.ClusterResourceOverrideSnapshot
 
 	bindingStatusCmpOpts = cmp.Options{
 		cmpopts.SortSlices(utils.LessFuncConditionByType),
@@ -345,7 +344,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 							},
 						},
 						Labels: map[string]string{
-							placementv1beta1.CRPTrackingLabel:                 testCRPName,
+							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
 							placementv1beta1.ParentResourceSnapshotIndexLabel: "1",
 						},
@@ -439,7 +438,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 								},
 							},
 							Labels: map[string]string{
-								placementv1beta1.CRPTrackingLabel:                 testCRPName,
+								placementv1beta1.PlacementTrackingLabel:           testCRPName,
 								placementv1beta1.ParentBindingLabel:               binding.Name,
 								placementv1beta1.ParentResourceSnapshotIndexLabel: "1",
 							},
@@ -641,7 +640,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 							},
 						},
 						Labels: map[string]string{
-							placementv1beta1.CRPTrackingLabel:                 testCRPName,
+							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
 							placementv1beta1.ParentResourceSnapshotIndexLabel: "1",
 						},
@@ -682,7 +681,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 							},
 						},
 						Labels: map[string]string{
-							placementv1beta1.CRPTrackingLabel:                 testCRPName,
+							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
 							placementv1beta1.ParentResourceSnapshotIndexLabel: "1",
 							placementv1beta1.EnvelopeTypeLabel:                string(placementv1beta1.ResourceEnvelopeType),
@@ -767,7 +766,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 							},
 						},
 						Labels: map[string]string{
-							placementv1beta1.CRPTrackingLabel:                 testCRPName,
+							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
 							placementv1beta1.ParentResourceSnapshotIndexLabel: "2",
 						},
@@ -807,7 +806,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 							},
 						},
 						Labels: map[string]string{
-							placementv1beta1.CRPTrackingLabel:                 testCRPName,
+							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
 							placementv1beta1.ParentResourceSnapshotIndexLabel: "2",
 							placementv1beta1.EnvelopeTypeLabel:                string(placementv1beta1.ResourceEnvelopeType),
@@ -866,7 +865,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 				Eventually(func() error {
 					envelopWorkLabelMatcher := client.MatchingLabels{
 						placementv1beta1.ParentBindingLabel:     binding.Name,
-						placementv1beta1.CRPTrackingLabel:       testCRPName,
+						placementv1beta1.PlacementTrackingLabel: testCRPName,
 						placementv1beta1.EnvelopeTypeLabel:      string(placementv1beta1.ResourceEnvelopeType),
 						placementv1beta1.EnvelopeNameLabel:      envelopedResourceName,
 						placementv1beta1.EnvelopeNamespaceLabel: envelopedResourceNameSpace,
@@ -927,7 +926,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 							},
 						},
 						Labels: map[string]string{
-							placementv1beta1.CRPTrackingLabel:                 testCRPName,
+							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
 							placementv1beta1.ParentResourceSnapshotIndexLabel: "1",
 						},
@@ -967,7 +966,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 							},
 						},
 						Labels: map[string]string{
-							placementv1beta1.CRPTrackingLabel:                 testCRPName,
+							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
 							placementv1beta1.ParentResourceSnapshotIndexLabel: "1",
 							placementv1beta1.EnvelopeTypeLabel:                string(placementv1beta1.ClusterResourceEnvelopeType),
@@ -1037,7 +1036,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 				Eventually(func() error {
 					envelopWorkLabelMatcher := client.MatchingLabels{
 						placementv1beta1.ParentBindingLabel:     binding.Name,
-						placementv1beta1.CRPTrackingLabel:       testCRPName,
+						placementv1beta1.PlacementTrackingLabel: testCRPName,
 						placementv1beta1.EnvelopeTypeLabel:      string(placementv1beta1.ClusterResourceEnvelopeType),
 						placementv1beta1.EnvelopeNameLabel:      envelopedResourceName,
 						placementv1beta1.EnvelopeNamespaceLabel: envelopedResourceNameSpace,
@@ -1126,7 +1125,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 							},
 						},
 						Labels: map[string]string{
-							placementv1beta1.CRPTrackingLabel:                 testCRPName,
+							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentResourceSnapshotIndexLabel: "2",
 							placementv1beta1.ParentBindingLabel:               binding.Name,
 						},
@@ -1201,7 +1200,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 							},
 						},
 						Labels: map[string]string{
-							placementv1beta1.CRPTrackingLabel:                 testCRPName,
+							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentResourceSnapshotIndexLabel: "2",
 							placementv1beta1.ParentBindingLabel:               binding.Name,
 						},
@@ -1500,7 +1499,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 							},
 						},
 						Labels: map[string]string{
-							placementv1beta1.CRPTrackingLabel:                 testCRPName,
+							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
 							placementv1beta1.ParentResourceSnapshotIndexLabel: "1",
 						},
@@ -1732,7 +1731,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 							},
 						},
 						Labels: map[string]string{
-							placementv1beta1.CRPTrackingLabel:                 testCRPName,
+							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
 							placementv1beta1.ParentResourceSnapshotIndexLabel: "1",
 						},
@@ -3020,7 +3019,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 				// actually handles resources; ConfigMap objects are considered to be
 				// trackable (available immediately after placement). Here it is set
 				// to NotTrackable for testing purposes.
-				Reason:             workapplier.WorkNotAllManifestsTrackableReason,
+				Reason:             condition.WorkNotAllManifestsTrackableReason,
 				ObservedGeneration: work.GetGeneration(),
 			}
 
@@ -4267,7 +4266,7 @@ func fetchEnvelopedWork(workList *placementv1beta1.WorkList, binding *placementv
 	Eventually(func() error {
 		envelopWorkLabelMatcher := client.MatchingLabels{
 			placementv1beta1.ParentBindingLabel:     binding.Name,
-			placementv1beta1.CRPTrackingLabel:       testCRPName,
+			placementv1beta1.PlacementTrackingLabel: testCRPName,
 			placementv1beta1.EnvelopeTypeLabel:      envelopeType,
 			placementv1beta1.EnvelopeNameLabel:      envelopeName,
 			placementv1beta1.EnvelopeNamespaceLabel: envelopeNamespace,
@@ -4287,7 +4286,7 @@ func generateClusterResourceBinding(spec placementv1beta1.ResourceBindingSpec) *
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "binding-" + spec.ResourceSnapshotName,
 			Labels: map[string]string{
-				placementv1beta1.CRPTrackingLabel: testCRPName,
+				placementv1beta1.PlacementTrackingLabel: testCRPName,
 			},
 		},
 		Spec: spec,
@@ -4299,8 +4298,8 @@ func generateResourceSnapshot(resourceIndex, numberResource, subIndex int, rawCo
 	clusterResourceSnapshot := &placementv1beta1.ClusterResourceSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{
-				placementv1beta1.ResourceIndexLabel: strconv.Itoa(resourceIndex),
-				placementv1beta1.CRPTrackingLabel:   testCRPName,
+				placementv1beta1.ResourceIndexLabel:     strconv.Itoa(resourceIndex),
+				placementv1beta1.PlacementTrackingLabel: testCRPName,
 			},
 			Annotations: map[string]string{
 				placementv1beta1.NumberOfResourceSnapshotsAnnotation: strconv.Itoa(numberResource),

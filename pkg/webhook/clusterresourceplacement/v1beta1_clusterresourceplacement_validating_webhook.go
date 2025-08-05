@@ -1,3 +1,20 @@
+/*
+Copyright 2025 The KubeFleet Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+// Package clusterresourceplacement implements the webhook for v1beta1 ClusterResourcePlacement.
 package clusterresourceplacement
 
 import (
@@ -66,7 +83,7 @@ func (v *clusterResourcePlacementValidator) Handle(_ context.Context, req admiss
 				return admission.Denied("placement type is immutable")
 			}
 			// handle update case where existing tolerations were updated/deleted
-			if validator.IsTolerationsUpdatedOrDeleted(oldCRP.Tolerations(), crp.Tolerations()) {
+			if validator.IsTolerationsUpdatedOrDeleted(oldCRP.Spec.Tolerations(), crp.Spec.Tolerations()) {
 				return admission.Denied("tolerations have been updated/deleted, only additions to tolerations are allowed")
 			}
 		}

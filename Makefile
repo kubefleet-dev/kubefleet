@@ -141,7 +141,7 @@ local-unit-test: $(ENVTEST) ## Run tests.
 	export CGO_ENABLED=1 && \
 	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" && \
 	go test ./pkg/controllers/workv1alpha1 -race -coverprofile=ut-coverage.xml -covermode=atomic -v && \
-	go test `go list ./pkg/... ./cmd/... | grep -v pkg/controllers/workv1alpha1` -race -coverprofile=ut-coverage.xml -covermode=atomic -v
+	go test `go list ./pkg/... ./cmd/... | grep -v pkg/controllers/workv1alpha1` -race -coverpkg=./...  -coverprofile=ut-coverage.xml -covermode=atomic -v
 
 .PHONY: integration-test
 integration-test: $(ENVTEST) ## Run tests.
@@ -211,13 +211,23 @@ install-helm:  load-hub-docker-image load-member-docker-image install-member-age
 .PHONY: e2e-tests-v1alpha1
 e2e-tests-v1alpha1: create-kind-cluster run-e2e-v1alpha1
 
+# E2E test label filter (can be overridden)
+LABEL_FILTER ?= !custom
+
 .PHONY: e2e-tests
 e2e-tests: setup-clusters
-	cd ./test/e2e && ginkgo -v -p .
+	cd ./test/e2e && ginkgo --timeout=70m --label-filter="$(LABEL_FILTER)" -v -p .
+
+e2e-tests-custom: setup-clusters
+	cd ./test/e2e && ginkgo --label-filter="custom" -v -p . 
 
 .PHONY: setup-clusters
 setup-clusters:
 	cd ./test/e2e && chmod +x ./setup.sh && ./setup.sh $(MEMBER_CLUSTER_COUNT)
+
+.PHONY: collect-e2e-logs
+collect-e2e-logs: ## Collect logs from hub and member agent pods after e2e tests
+	cd ./test/e2e && chmod +x ./collect-logs.sh && ./collect-logs.sh $(MEMBER_CLUSTER_COUNT)
 
 ## reviewable
 .PHONY: reviewable

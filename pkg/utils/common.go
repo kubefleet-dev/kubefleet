@@ -48,7 +48,6 @@ import (
 	fleetnetworkingv1alpha1 "go.goms.io/fleet-networking/api/v1alpha1"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
-	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	fleetv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
@@ -65,6 +64,7 @@ const (
 	RoleNameFormat             = fleetPrefix + "role-%s"
 	RoleBindingNameFormat      = fleetPrefix + "rolebinding-%s"
 	ValidationPathFmt          = "/validate-%s-%s-%s"
+	MutatingPathFmt            = "/mutate-%s-%s-%s"
 	lessGroupsStringFormat     = "groups: %v"
 	moreGroupsStringFormat     = "groups: [%s, %s, %s,......]"
 )
@@ -165,10 +165,22 @@ var (
 		Resource: placementv1beta1.ClusterResourcePlacementResource,
 	}
 
+	ResourcePlacementGVR = schema.GroupVersionResource{
+		Group:    placementv1beta1.GroupVersion.Group,
+		Version:  placementv1beta1.GroupVersion.Version,
+		Resource: placementv1beta1.ResourcePlacementResource,
+	}
+
 	ClusterResourcePlacementMetaGVK = metav1.GroupVersionKind{
 		Group:   placementv1beta1.GroupVersion.Group,
 		Version: placementv1beta1.GroupVersion.Version,
 		Kind:    placementv1beta1.ClusterResourcePlacementKind,
+	}
+
+	ClusterResourcePlacementDisruptionBudgetMetaGVK = metav1.GroupVersionKind{
+		Group:   placementv1beta1.GroupVersion.Group,
+		Version: placementv1beta1.GroupVersion.Version,
+		Kind:    placementv1beta1.ClusterResourcePlacementDisruptionBudgetKind,
 	}
 
 	ClusterResourcePlacementEvictionMetaGVK = metav1.GroupVersionKind{
@@ -400,15 +412,15 @@ var (
 	}
 
 	ClusterResourceOverrideSnapshotKind = schema.GroupVersionKind{
-		Group:   placementv1alpha1.GroupVersion.Group,
-		Version: placementv1alpha1.GroupVersion.Version,
-		Kind:    placementv1alpha1.ClusterResourceOverrideSnapshotKind,
+		Group:   placementv1beta1.GroupVersion.Group,
+		Version: placementv1beta1.GroupVersion.Version,
+		Kind:    placementv1beta1.ClusterResourceOverrideSnapshotKind,
 	}
 
 	ResourceOverrideSnapshotKind = schema.GroupVersionKind{
-		Group:   placementv1alpha1.GroupVersion.Group,
-		Version: placementv1alpha1.GroupVersion.Version,
-		Kind:    placementv1alpha1.ResourceOverrideSnapshotKind,
+		Group:   placementv1beta1.GroupVersion.Group,
+		Version: placementv1beta1.GroupVersion.Version,
+		Kind:    placementv1beta1.ResourceOverrideSnapshotKind,
 	}
 
 	DeploymentGVR = schema.GroupVersionResource{

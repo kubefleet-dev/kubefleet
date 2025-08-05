@@ -18,6 +18,7 @@ package annotations
 
 import (
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -101,80 +102,6 @@ func TestExtractNumOfClustersFromPolicySnapshot(t *testing.T) {
 	}
 }
 
-func TestExtractSubindexFromClusterResourceSnapshot(t *testing.T) {
-	testCases := []struct {
-		name         string
-		snapshot     *fleetv1beta1.ClusterResourceSnapshot
-		wantExist    bool
-		wantSubindex int
-		wantError    bool
-	}{
-		{
-			name: "valid annotation",
-			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: snapshotName,
-					Annotations: map[string]string{
-						fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "1",
-					},
-				},
-			},
-			wantExist:    true,
-			wantSubindex: 1,
-		},
-		{
-			name: "no annotation",
-			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: snapshotName,
-				},
-			},
-			wantExist:    false,
-			wantSubindex: -1,
-		},
-		{
-			name: "invalid annotation: not an integer",
-			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: snapshotName,
-					Annotations: map[string]string{
-						fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "abc",
-					},
-				},
-			},
-			wantError: true,
-		},
-		{
-			name: "invalid annotation: negative integer",
-			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: snapshotName,
-					Annotations: map[string]string{
-						fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "-1",
-					},
-				},
-			},
-			wantError: true,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			gotExist, gotSubindex, err := ExtractSubindexFromClusterResourceSnapshot(tc.snapshot)
-			if tc.wantError {
-				if err == nil {
-					t.Fatalf("ExtractSubindexFromClusterResourceSnapshot() = %v, %v, want error", gotExist, gotSubindex)
-				}
-				return
-			}
-
-			if gotExist != tc.wantExist || gotSubindex != tc.wantSubindex {
-				t.Fatalf("ExtractSubindexFromClusterResourceSnapshot() = %v, %v, want %v, %v", gotExist, gotSubindex, tc.wantExist, tc.wantSubindex)
-			}
-		})
-	}
-}
-
 // TestExtractObservedCRPGenerationFromPolicySnapshot tests the ExtractObservedCRPGenerationFromPolicySnapshot function.
 func TestExtractObservedCRPGenerationFromPolicySnapshot(t *testing.T) {
 	testCases := []struct {
@@ -232,7 +159,7 @@ func TestExtractObservedCRPGenerationFromPolicySnapshot(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			observedCRPGeneration, err := ExtractObservedCRPGenerationFromPolicySnapshot(tc.policy)
+			observedCRPGeneration, err := ExtractObservedPlacementGenerationFromPolicySnapshot(tc.policy)
 			if tc.expectedToFail {
 				if err == nil {
 					t.Fatalf("ExtractObservedCRPGenerationFromPolicySnapshot() = %v, %v, want error", observedCRPGeneration, err)
@@ -390,6 +317,239 @@ func TestExtractNumberOfEnvelopeObjFromResourceSnapshot(t *testing.T) {
 			}
 			if !tc.wantError && got != tc.want {
 				t.Fatalf("ExtractNumberOfEnvelopeObjFromResourceSnapshot() got %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestExtractNextResourceSnapshotCandidateDetectionTimeFromResourceSnapshot(t *testing.T) {
+	validTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	testCases := []struct {
+		name      string
+		snapshot  *fleetv1beta1.ClusterResourceSnapshot
+		want      time.Time
+		wantError bool
+	}{
+		{
+			name: "valid annotation",
+			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: snapshotName,
+					Annotations: map[string]string{
+						fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation: validTime.Format(time.RFC3339),
+					},
+				},
+			},
+			want: validTime,
+		},
+		{
+			name: "no annotation means no next detection time",
+			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: snapshotName,
+				},
+			},
+			want: time.Time{},
+		},
+		{
+			name: "invalid annotation format",
+			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: snapshotName,
+					Annotations: map[string]string{
+						fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation: "invalid-time",
+					},
+				},
+			},
+			wantError: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ExtractNextResourceSnapshotCandidateDetectionTimeFromResourceSnapshot(tc.snapshot)
+			if gotErr := err != nil; gotErr != tc.wantError {
+				t.Fatalf("ExtractNextResourceSnapshotCandidateDetectionTimeFromResourceSnapshot() got err %v, want err %v", err, tc.wantError)
+			}
+			if !tc.wantError && got != tc.want {
+				t.Errorf("ExtractNextResourceSnapshotCandidateDetectionTimeFromResourceSnapshot() got %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+func TestParseResourceGroupHashFromAnnotation(t *testing.T) {
+	testCases := []struct {
+		name      string
+		snapshot  *fleetv1beta1.ClusterResourceSnapshot
+		want      string
+		wantError bool
+	}{
+		{
+			name: "valid annotation",
+			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: snapshotName,
+					Annotations: map[string]string{
+						fleetv1beta1.ResourceGroupHashAnnotation: "abc123",
+					},
+				},
+			},
+			want: "abc123",
+		},
+		{
+			name: "no annotations",
+			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: snapshotName,
+				},
+			},
+			wantError: true,
+		},
+		{
+			name: "annotation not set",
+			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: snapshotName,
+					Annotations: map[string]string{
+						"other-annotation": "value",
+					},
+				},
+			},
+			wantError: true,
+		},
+		{
+			name: "empty annotation value",
+			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: snapshotName,
+					Annotations: map[string]string{
+						fleetv1beta1.ResourceGroupHashAnnotation: "",
+					},
+				},
+			},
+			want: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ParseResourceGroupHashFromAnnotation(tc.snapshot)
+			if gotErr := err != nil; gotErr != tc.wantError {
+				t.Fatalf("ParseResourceGroupHashFromAnnotation() got err %v, want err %v", err, tc.wantError)
+			}
+			if !tc.wantError && got != tc.want {
+				t.Fatalf("ParseResourceGroupHashFromAnnotation() got %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestExtractSubindexFromResourceSnapshot(t *testing.T) {
+	testCases := []struct {
+		name         string
+		snapshot     *fleetv1beta1.ClusterResourceSnapshot
+		wantExist    bool
+		wantSubindex int
+		wantError    bool
+	}{
+		{
+			name: "valid annotation",
+			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: snapshotName,
+					Annotations: map[string]string{
+						fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "1",
+					},
+				},
+			},
+			wantExist:    true,
+			wantSubindex: 1,
+		},
+		{
+			name: "no annotations",
+			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: snapshotName,
+				},
+			},
+			wantExist:    false,
+			wantSubindex: 0,
+		},
+		{
+			name: "annotation not set",
+			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: snapshotName,
+					Annotations: map[string]string{
+						"other-annotation": "value",
+					},
+				},
+			},
+			wantExist:    false,
+			wantSubindex: 0,
+		},
+		{
+			name: "empty annotation value",
+			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: snapshotName,
+					Annotations: map[string]string{
+						fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "",
+					},
+				},
+			},
+			wantExist:    false,
+			wantSubindex: 0,
+		},
+		{
+			name: "invalid annotation: not an integer",
+			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: snapshotName,
+					Annotations: map[string]string{
+						fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "abc",
+					},
+				},
+			},
+			wantError: true,
+		},
+		{
+			name: "invalid annotation: negative integer",
+			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: snapshotName,
+					Annotations: map[string]string{
+						fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "-1",
+					},
+				},
+			},
+			wantError: true,
+		},
+		{
+			name: "valid annotation with zero value",
+			snapshot: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: snapshotName,
+					Annotations: map[string]string{
+						fleetv1beta1.SubindexOfResourceSnapshotAnnotation: "0",
+					},
+				},
+			},
+			wantExist:    true,
+			wantSubindex: 0,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotExist, gotSubindex, err := ExtractSubindexFromResourceSnapshot(tc.snapshot)
+			if gotErr := err != nil; gotErr != tc.wantError {
+				t.Fatalf("ExtractSubindexFromResourceSnapshot() got err %v, want err %v", err, tc.wantError)
+			}
+			if !tc.wantError {
+				if gotExist != tc.wantExist || gotSubindex != tc.wantSubindex {
+					t.Fatalf("ExtractSubindexFromResourceSnapshot() = %v, %v, want %v, %v", gotExist, gotSubindex, tc.wantExist, tc.wantSubindex)
+				}
 			}
 		})
 	}

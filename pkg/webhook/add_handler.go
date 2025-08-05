@@ -3,6 +3,7 @@ package webhook
 import (
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceoverride"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceplacement"
+	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceplacementdisruptionbudget"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceplacementeviction"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/fleetresourcehandler"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/membercluster"
@@ -14,7 +15,8 @@ import (
 func init() {
 	// AddToManagerFleetResourceValidator is a function to register fleet guard rail resource validator to the webhook server
 	AddToManagerFleetResourceValidator = fleetresourcehandler.Add
-	// AddToManagerFuncs is a list of functions to register webhook validators to the webhook server
+	// AddToManagerFuncs is a list of functions to register webhook validators and mutators to the webhook server
+	AddToManagerFuncs = append(AddToManagerFuncs, clusterresourceplacement.AddMutating)
 	AddToManagerFuncs = append(AddToManagerFuncs, clusterresourceplacement.AddV1Alpha1)
 	AddToManagerFuncs = append(AddToManagerFuncs, clusterresourceplacement.Add)
 	AddToManagerFuncs = append(AddToManagerFuncs, pod.Add)
@@ -23,4 +25,5 @@ func init() {
 	AddToManagerFuncs = append(AddToManagerFuncs, clusterresourceoverride.Add)
 	AddToManagerFuncs = append(AddToManagerFuncs, resourceoverride.Add)
 	AddToManagerFuncs = append(AddToManagerFuncs, clusterresourceplacementeviction.Add)
+	AddToManagerFuncs = append(AddToManagerFuncs, clusterresourceplacementdisruptionbudget.Add)
 }

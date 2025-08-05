@@ -284,7 +284,7 @@ func createPickFixedCRPWithPolicySnapshot(crpName string, targetClusters []strin
 			Name:       crpName,
 			Finalizers: []string{customDeletionBlockerFinalizer},
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			ResourceSelectors: defaultResourceSelectors,
 			Policy:            policy,
 		},
@@ -298,8 +298,8 @@ func createPickFixedCRPWithPolicySnapshot(crpName string, targetClusters []strin
 		ObjectMeta: metav1.ObjectMeta{
 			Name: policySnapshotName,
 			Labels: map[string]string{
-				placementv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
-				placementv1beta1.CRPTrackingLabel:      crpName,
+				placementv1beta1.IsLatestSnapshotLabel:  strconv.FormatBool(true),
+				placementv1beta1.PlacementTrackingLabel: crpName,
 			},
 			Annotations: map[string]string{
 				placementv1beta1.CRPGenerationAnnotation: strconv.FormatInt(crpGeneration, 10),
@@ -320,7 +320,7 @@ func createNilSchedulingPolicyCRPWithPolicySnapshot(crpName string, policySnapsh
 			Name:       crpName,
 			Finalizers: []string{customDeletionBlockerFinalizer},
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			ResourceSelectors: defaultResourceSelectors,
 			Policy:            policy,
 		},
@@ -334,8 +334,8 @@ func createNilSchedulingPolicyCRPWithPolicySnapshot(crpName string, policySnapsh
 		ObjectMeta: metav1.ObjectMeta{
 			Name: policySnapshotName,
 			Labels: map[string]string{
-				placementv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
-				placementv1beta1.CRPTrackingLabel:      crpName,
+				placementv1beta1.IsLatestSnapshotLabel:  strconv.FormatBool(true),
+				placementv1beta1.PlacementTrackingLabel: crpName,
 			},
 			Annotations: map[string]string{
 				placementv1beta1.CRPGenerationAnnotation: strconv.FormatInt(crpGeneration, 10),
@@ -372,8 +372,8 @@ func updatePickFixedCRPWithNewTargetClustersAndRefreshSnapshots(crpName string, 
 		ObjectMeta: metav1.ObjectMeta{
 			Name: newPolicySnapshotName,
 			Labels: map[string]string{
-				placementv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
-				placementv1beta1.CRPTrackingLabel:      crpName,
+				placementv1beta1.IsLatestSnapshotLabel:  strconv.FormatBool(true),
+				placementv1beta1.PlacementTrackingLabel: crpName,
 			},
 			Annotations: map[string]string{
 				placementv1beta1.CRPGenerationAnnotation: strconv.FormatInt(crpGeneration, 10),
@@ -389,7 +389,7 @@ func updatePickFixedCRPWithNewTargetClustersAndRefreshSnapshots(crpName string, 
 
 func markBindingsAsBoundForClusters(crpName string, boundClusters []string) {
 	bindingList := &placementv1beta1.ClusterResourceBindingList{}
-	labelSelector := labels.SelectorFromSet(labels.Set{placementv1beta1.CRPTrackingLabel: crpName})
+	labelSelector := labels.SelectorFromSet(labels.Set{placementv1beta1.PlacementTrackingLabel: crpName})
 	listOptions := &client.ListOptions{LabelSelector: labelSelector}
 	Expect(hubClient.List(ctx, bindingList, listOptions)).To(Succeed(), "Failed to list bindings")
 	boundClusterMap := make(map[string]bool)
@@ -446,7 +446,7 @@ func ensureCRPAndAllRelatedResourcesDeletion(crpName string) {
 
 	// List all policy snapshots.
 	policySnapshotList := &placementv1beta1.ClusterSchedulingPolicySnapshotList{}
-	labelSelector := labels.SelectorFromSet(labels.Set{placementv1beta1.CRPTrackingLabel: crpName})
+	labelSelector := labels.SelectorFromSet(labels.Set{placementv1beta1.PlacementTrackingLabel: crpName})
 	listOptions := &client.ListOptions{LabelSelector: labelSelector}
 	Expect(hubClient.List(ctx, policySnapshotList, listOptions)).To(Succeed(), "Failed to list policy snapshots")
 
@@ -493,7 +493,7 @@ func createPickAllCRPWithPolicySnapshot(crpName string, policySnapshotName strin
 			Name:       crpName,
 			Finalizers: []string{customDeletionBlockerFinalizer},
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			ResourceSelectors: defaultResourceSelectors,
 			Policy:            policy,
 		},
@@ -507,8 +507,8 @@ func createPickAllCRPWithPolicySnapshot(crpName string, policySnapshotName strin
 		ObjectMeta: metav1.ObjectMeta{
 			Name: policySnapshotName,
 			Labels: map[string]string{
-				placementv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
-				placementv1beta1.CRPTrackingLabel:      crpName,
+				placementv1beta1.IsLatestSnapshotLabel:  strconv.FormatBool(true),
+				placementv1beta1.PlacementTrackingLabel: crpName,
 			},
 			Annotations: map[string]string{
 				placementv1beta1.CRPGenerationAnnotation: strconv.FormatInt(crpGeneration, 10),
@@ -545,8 +545,8 @@ func updatePickAllCRPWithNewAffinity(crpName string, affinity *placementv1beta1.
 		ObjectMeta: metav1.ObjectMeta{
 			Name: newPolicySnapshotName,
 			Labels: map[string]string{
-				placementv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
-				placementv1beta1.CRPTrackingLabel:      crpName,
+				placementv1beta1.IsLatestSnapshotLabel:  strconv.FormatBool(true),
+				placementv1beta1.PlacementTrackingLabel: crpName,
 			},
 			Annotations: map[string]string{
 				placementv1beta1.CRPGenerationAnnotation: strconv.FormatInt(crpGeneration, 10),
@@ -567,7 +567,7 @@ func createPickNCRPWithPolicySnapshot(crpName string, policySnapshotName string,
 			Name:       crpName,
 			Finalizers: []string{customDeletionBlockerFinalizer},
 		},
-		Spec: placementv1beta1.ClusterResourcePlacementSpec{
+		Spec: placementv1beta1.PlacementSpec{
 			ResourceSelectors: defaultResourceSelectors,
 			Policy:            policy,
 		},
@@ -581,8 +581,8 @@ func createPickNCRPWithPolicySnapshot(crpName string, policySnapshotName string,
 		ObjectMeta: metav1.ObjectMeta{
 			Name: policySnapshotName,
 			Labels: map[string]string{
-				placementv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
-				placementv1beta1.CRPTrackingLabel:      crpName,
+				placementv1beta1.IsLatestSnapshotLabel:  strconv.FormatBool(true),
+				placementv1beta1.PlacementTrackingLabel: crpName,
 			},
 			Annotations: map[string]string{
 				placementv1beta1.CRPGenerationAnnotation:    strconv.FormatInt(crpGeneration, 10),
@@ -627,8 +627,8 @@ func updatePickNCRPWithNewAffinityAndTopologySpreadConstraints(
 		ObjectMeta: metav1.ObjectMeta{
 			Name: newPolicySnapshotName,
 			Labels: map[string]string{
-				placementv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
-				placementv1beta1.CRPTrackingLabel:      crpName,
+				placementv1beta1.IsLatestSnapshotLabel:  strconv.FormatBool(true),
+				placementv1beta1.PlacementTrackingLabel: crpName,
 			},
 			Annotations: map[string]string{
 				placementv1beta1.CRPGenerationAnnotation:    strconv.FormatInt(crpGeneration, 10),
@@ -665,8 +665,8 @@ func updatePickNCRPWithTolerations(crpName string, tolerations []placementv1beta
 		ObjectMeta: metav1.ObjectMeta{
 			Name: newPolicySnapshotName,
 			Labels: map[string]string{
-				placementv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
-				placementv1beta1.CRPTrackingLabel:      crpName,
+				placementv1beta1.IsLatestSnapshotLabel:  strconv.FormatBool(true),
+				placementv1beta1.PlacementTrackingLabel: crpName,
 			},
 			Annotations: map[string]string{
 				placementv1beta1.CRPGenerationAnnotation:    strconv.FormatInt(crpGeneration, 10),

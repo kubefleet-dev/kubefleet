@@ -33,6 +33,8 @@ spec:
             - --enable-cluster-inventory-apis={{ .Values.enableClusterInventoryAPI }}
             - --enable-staged-update-run-apis={{ .Values.enableStagedUpdateRunAPIs }}
             - --enable-eviction-apis={{ .Values.enableEvictionAPIs}}
+            - --enable-pprof={{ .Values.enablePprof }}
+            - --pprof-port={{ .Values.pprofPort }}
             - --max-concurrent-cluster-placement={{ .Values.MaxConcurrentClusterPlacement }}
             - --concurrent-resource-change-syncs={{ .Values.ConcurrentResourceChangeSyncs }}
             - --log_file_max_size={{ .Values.logFileMaxSize }}
@@ -41,6 +43,8 @@ spec:
             - --hub-api-burst={{ .Values.hubAPIBurst }}
             - --force-delete-wait-time={{ .Values.forceDeleteWaitTime }}
             - --cluster-unhealthy-threshold={{ .Values.clusterUnhealthyThreshold }}
+            - --resource-snapshot-creation-minimum-interval={{ .Values.resourceSnapshotCreationMinimumInterval }}
+            - --resource-changes-collection-duration={{ .Values.resourceChangesCollectionDuration }}
           ports:
             - name: metrics
               containerPort: 8080
@@ -48,6 +52,11 @@ spec:
             - name: healthz
               containerPort: 8081
               protocol: TCP
+            {{- if .Values.enablePprof }}
+            - containerPort: {{ .Values.pprofPort }}
+              name: pprof
+              protocol: TCP
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

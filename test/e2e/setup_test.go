@@ -80,6 +80,8 @@ const (
 	azurePropertyProviderEnvVarValue    = "azure"
 	fleetClusterResourceIDAnnotationKey = "fleet.azure.com/cluster-resource-id"
 	fleetLocationAnnotationKey          = "fleet.azure.com/location"
+
+	memberClusterHeartbeatPeriodSeconds = 15
 )
 
 const (
@@ -112,6 +114,11 @@ var (
 
 	allMemberClusters     []*framework.Cluster
 	allMemberClusterNames = []string{}
+
+	resourceSnapshotCreationMinimumInterval time.Duration
+	resourceChangesCollectionDuration       time.Duration
+
+	resourceSnapshotDelayDuration time.Duration
 )
 
 var (
@@ -166,8 +173,7 @@ var (
 )
 
 var (
-	drainBinaryPath    = filepath.Join("../../", "hack", "tools", "bin", "kubectl-draincluster")
-	uncordonBinaryPath = filepath.Join("../../", "hack", "tools", "bin", "kubectl-uncordoncluster")
+	fleetBinaryPath = filepath.Join("../../", "hack", "tools", "bin", "kubectl-fleet")
 )
 
 var (
@@ -186,10 +192,10 @@ var (
 	lessFuncCondition = func(a, b metav1.Condition) bool {
 		return a.Type < b.Type
 	}
-	lessFuncPlacementStatus = func(a, b placementv1beta1.ResourcePlacementStatus) bool {
+	lessFuncPlacementStatus = func(a, b placementv1beta1.PerClusterPlacementStatus) bool {
 		return a.ClusterName < b.ClusterName
 	}
-	lessFuncPlacementStatusByConditions = func(a, b placementv1beta1.ResourcePlacementStatus) bool {
+	lessFuncPlacementStatusByConditions = func(a, b placementv1beta1.PerClusterPlacementStatus) bool {
 		return len(a.Conditions) < len(b.Conditions)
 	}
 
@@ -202,7 +208,7 @@ var (
 	ignoreAgentStatusHeartbeatField                             = cmpopts.IgnoreFields(clusterv1beta1.AgentStatus{}, "LastReceivedHeartbeat")
 	ignoreNamespaceStatusField                                  = cmpopts.IgnoreFields(corev1.Namespace{}, "Status")
 	ignoreNamespaceSpecField                                    = cmpopts.IgnoreFields(corev1.Namespace{}, "Spec")
-	ignoreClusterNameField                                      = cmpopts.IgnoreFields(placementv1beta1.ResourcePlacementStatus{}, "ClusterName")
+	ignoreClusterNameField                                      = cmpopts.IgnoreFields(placementv1beta1.PerClusterPlacementStatus{}, "ClusterName")
 	ignoreMemberClusterJoinAndPropertyProviderStartedConditions = cmpopts.IgnoreSliceElements(func(c metav1.Condition) bool {
 		return c.Type == string(clusterv1beta1.ConditionTypeMemberClusterReadyToJoin) ||
 			c.Type == string(clusterv1beta1.ConditionTypeMemberClusterJoined) ||
@@ -243,6 +249,7 @@ var (
 	}
 
 	updateRunStatusCmpOption = cmp.Options{
+		cmpopts.SortSlices(lessFuncCondition),
 		utils.IgnoreConditionLTTAndMessageFields,
 		cmpopts.IgnoreFields(placementv1beta1.StageUpdatingStatus{}, "StartTime", "EndTime"),
 		cmpopts.EquateEmpty(),
@@ -301,6 +308,26 @@ func beforeSuiteForAllProcesses() {
 	// Check if the required environment variable, which specifies the path to kubeconfig file, has been set.
 	Expect(os.Getenv(kubeConfigPathEnvVarName)).NotTo(BeEmpty(), "Required environment variable KUBECONFIG is not set")
 
+	resourceSnapshotCreationMinimumIntervalEnv := os.Getenv("RESOURCE_SNAPSHOT_CREATION_MINIMUM_INTERVAL")
+	if resourceSnapshotCreationMinimumIntervalEnv == "" {
+		// If the environment variable is not set, use a default value.
+		resourceSnapshotCreationMinimumInterval = 0
+	} else {
+		var err error
+		resourceSnapshotCreationMinimumInterval, err = time.ParseDuration(resourceSnapshotCreationMinimumIntervalEnv)
+		Expect(err).Should(Succeed(), "failed to parse RESOURCE_SNAPSHOT_CREATION_INTERVAL")
+	}
+	resourceChangesCollectionDurationEnv := os.Getenv("RESOURCE_CHANGES_COLLECTION_DURATION")
+	if resourceChangesCollectionDurationEnv == "" {
+		// If the environment variable is not set, use a default value.
+		resourceChangesCollectionDuration = 0
+	} else {
+		var err error
+		resourceChangesCollectionDuration, err = time.ParseDuration(resourceChangesCollectionDurationEnv)
+		Expect(err).Should(Succeed(), "failed to parse RESOURCE_CHANGES_COLLECTION_DURATION")
+	}
+	resourceSnapshotDelayDuration = maxDuration(resourceSnapshotCreationMinimumInterval, resourceChangesCollectionDuration)
+
 	// Initialize the cluster objects and their clients.
 	hubCluster = framework.NewCluster(hubClusterName, "", scheme, nil)
 	Expect(hubCluster).NotTo(BeNil(), "Failed to initialize cluster object")
@@ -348,12 +375,17 @@ func beforeSuiteForAllProcesses() {
 			allMemberClusterNames = append(allMemberClusterNames, allMemberClusters[i].ClusterName)
 		}
 
-		// Check if drain cluster and uncordon cluster binaries exist.
-		_, err := os.Stat(drainBinaryPath)
-		Expect(os.IsNotExist(err)).To(BeFalse(), fmt.Sprintf("drain binary not found at %s", drainBinaryPath))
-		_, err = os.Stat(uncordonBinaryPath)
-		Expect(os.IsNotExist(err)).To(BeFalse(), fmt.Sprintf("uncordon binary not found at %s", uncordonBinaryPath))
+		// Check if kubectl-fleet binary exists.
+		_, err := os.Stat(fleetBinaryPath)
+		Expect(os.IsNotExist(err)).To(BeFalse(), fmt.Sprintf("kubectl-fleet binary not found at %s", fleetBinaryPath))
 	})
+}
+
+func maxDuration(a, b time.Duration) time.Duration {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func beforeSuiteForProcess1() {

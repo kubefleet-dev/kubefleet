@@ -21,6 +21,10 @@ const (
 	ClusterResourcePlacementKind = "ClusterResourcePlacement"
 	// ClusterResourcePlacementResource represents the resource name for ClusterResourcePlacement.
 	ClusterResourcePlacementResource = "clusterresourceplacements"
+	// ResourcePlacementKind represents the kind of ResourcePlacement.
+	ResourcePlacementKind = "ResourcePlacement"
+	// ResourcePlacementResource represents the resource name for ResourcePlacement.
+	ResourcePlacementResource = "resourceplacements"
 	// ClusterResourceBindingKind represents the kind of ClusterResourceBinding.
 	ClusterResourceBindingKind = "ClusterResourceBinding"
 	// ClusterResourceSnapshotKind represents the kind of ClusterResourceSnapshot.
@@ -61,8 +65,9 @@ const (
 	// cluster.
 	WorkFinalizer = fleetPrefix + "work-cleanup"
 
-	// CRPTrackingLabel points to the cluster resource placement that creates this resource binding.
-	CRPTrackingLabel = fleetPrefix + "parent-CRP"
+	// PlacementTrackingLabel points to the placement that creates this resource binding.
+	// TODO: migrate the label content to "parent-placement" to work with both the PR and CRP
+	PlacementTrackingLabel = fleetPrefix + "parent-CRP"
 
 	// IsLatestSnapshotLabel indicates if the snapshot is the latest one.
 	IsLatestSnapshotLabel = fleetPrefix + "is-latest-snapshot"
@@ -77,6 +82,9 @@ const (
 	// WorkNameWithSubindexFmt is the format of the name of a work generated with a resource snapshot with a subindex.
 	// The name of the first work is {crpName}-{subindex}.
 	WorkNameWithSubindexFmt = "%s-%d"
+
+	// WorkNameBaseFmt is the format of the base name of the work. It's formatted as {namespace}.{placementName}.
+	WorkNameBaseFmt = "%s.%s"
 
 	// WorkNameWithConfigEnvelopeFmt is the format of the name of a work generated with a config envelope.
 	// The format is {workPrefix}-configMap-uuid.
@@ -101,7 +109,11 @@ const (
 	// ParentBindingLabel is the label applied to work that contains the name of the binding that generates the work.
 	ParentBindingLabel = fleetPrefix + "parent-resource-binding"
 
+	// ParentNamespaceLabel is the label applied to work that contains the namespace of the binding that generates the work.
+	ParentNamespaceLabel = fleetPrefix + "parent-placement-namespace"
+
 	// CRPGenerationAnnotation indicates the generation of the CRP from which an object is derived or last updated.
+	// TODO: rename this variable
 	CRPGenerationAnnotation = fleetPrefix + "CRP-generation"
 
 	// EnvelopeConfigMapAnnotation indicates the configmap is an envelope configmap containing resources we need to apply to the member cluster instead of the configMap itself.
@@ -139,6 +151,32 @@ const (
 
 	// ApprovalTaskNameFmt is the format of the approval task name.
 	ApprovalTaskNameFmt = "%s-%s"
+)
+
+var (
+	// ClusterResourceOverrideKind is the kind of the ClusterResourceOverride.
+	ClusterResourceOverrideKind = "ClusterResourceOverride"
+
+	// ClusterResourceOverrideSnapshotKind is the kind of the ClusterResourceOverrideSnapshot.
+	ClusterResourceOverrideSnapshotKind = "ClusterResourceOverrideSnapshot"
+
+	// ResourceOverrideKind is the kind of the ResourceOverride.
+	ResourceOverrideKind = "ResourceOverride"
+
+	// ResourceOverrideSnapshotKind is the kind of the ResourceOverrideSnapshot.
+	ResourceOverrideSnapshotKind = "ResourceOverrideSnapshot"
+
+	// OverrideClusterNameVariable is the reserved variable in the override value that will be replaced by the actual cluster name.
+	OverrideClusterNameVariable = "${MEMBER-CLUSTER-NAME}"
+
+	// OverrideClusterLabelKeyVariablePrefix is a reserved variable in the override expression.
+	// We use this variable to find the associated the key following the prefix.
+	// The key name ends with a "}" character (but not include it).
+	// The key name must be a valid Kubernetes label name and case-sensitive.
+	// The content of the string containing this variable will be replaced by the actual label value on the member cluster.
+	// For example, if the string is "${MEMBER-CLUSTER-LABEL-KEY-kube-fleet.io/region}" then the key name is "kube-fleet.io/region".
+	// If there is a label "kube-fleet.io/region": "us-west-1" on the member cluster, this string will be replaced by "us-west-1".
+	OverrideClusterLabelKeyVariablePrefix = "${MEMBER-CLUSTER-LABEL-KEY-"
 )
 
 // NamespacedName comprises a resource name, with a mandatory namespace.

@@ -26,11 +26,14 @@ import (
 	"k8s.io/utils/ptr"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 )
 
 const (
-	testCRPName                      = "test-crp"
+	testPlacementName                = "test-placement"
 	testCRBName                      = "test-crb"
+	testRBName                       = "test-rb"
+	testNamespace                    = "test-ns"
 	testResourceSnapshotName         = "test-rs"
 	testSchedulingPolicySnapshotName = "test-sps"
 	testTargetCluster                = "test-cluster"
@@ -61,6 +64,57 @@ var _ = Describe("Test ClusterResourceBinding Watcher - create, delete events", 
 
 		By("Checking placement controller queue")
 		consistentlyCheckPlacementControllerQueueIsEmpty()
+	})
+})
+
+// This container cannot be run in parallel with other ITs because it uses a shared fakePlacementController.
+var _ = Describe("Test ResourceBinding Watcher - create, delete events", Serial, Ordered, func() {
+	var rb *fleetv1beta1.ResourceBinding
+
+	BeforeEach(func() {
+		fakePlacementController.ResetQueue()
+	})
+
+	It("When creating, deleting resourceBinding", func() {
+		By("Creating a new resourceBinding")
+		rb = resourceBindingForTest()
+		Expect(k8sClient.Create(ctx, rb)).Should(Succeed(), "failed to create resource binding")
+
+		By("Checking placement controller queue")
+		consistentlyCheckPlacementControllerQueueIsEmpty()
+
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testRBName, Namespace: testNamespace}, rb)).Should(Succeed(), "failed to get resource binding")
+
+		By("Deleting resourceBinding")
+		Expect(k8sClient.Delete(ctx, rb)).Should(Succeed(), "failed to delete resource binding")
+
+		By("Checking placement controller queue")
+		consistentlyCheckPlacementControllerQueueIsEmpty()
+	})
+})
+
+// This container cannot be run in parallel with other ITs because it uses a shared fakePlacementController. These tests are also ordered.
+var _ = Describe("Test ResourceBinding Watcher - update status", Serial, Ordered, func() {
+	var rb *fleetv1beta1.ResourceBinding
+
+	BeforeEach(func() {
+		fakePlacementController.ResetQueue()
+		By("Creating a new resourceBinding")
+		rb = resourceBindingForTest()
+		Expect(k8sClient.Create(ctx, rb)).Should(Succeed(), "failed to create resource binding")
+		fakePlacementController.ResetQueue()
+	})
+
+	AfterEach(func() {
+		rb.Name = testRBName
+		rb.Namespace = testNamespace
+		By("Deleting the resourceBinding")
+		Expect(k8sClient.Delete(ctx, rb)).Should(Succeed(), "failed to delete resource binding")
+	})
+
+	It("Should enqueue the resourcePlacement name for reconciling, when resourceBinding status changes - RolloutStarted", func() {
+		validateWhenUpdateResourceBindingStatusWithCondition(fleetv1beta1.ResourceBindingRolloutStarted, rb.Generation, metav1.ConditionTrue, testReason1)
+		validateWhenUpdateResourceBindingStatusWithCondition(fleetv1beta1.ResourceBindingRolloutStarted, rb.Generation, metav1.ConditionFalse, testReason1)
 	})
 })
 
@@ -164,7 +218,7 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 		Expect(k8sClient.Status().Update(ctx, crb)).Should(Succeed(), "failed to update cluster resource binding status")
 
 		By("Checking placement controller queue")
-		eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.CRPTrackingLabel])
+		eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.PlacementTrackingLabel])
 		fakePlacementController.ResetQueue()
 	})
 
@@ -227,7 +281,7 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 			Expect(k8sClient.Status().Update(ctx, crb)).Should(Succeed(), "failed to update cluster resource binding status")
 
 			By("Checking placement controller queue")
-			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.CRPTrackingLabel])
+			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.PlacementTrackingLabel])
 			fakePlacementController.ResetQueue()
 		})
 
@@ -255,7 +309,7 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 			Expect(k8sClient.Status().Update(ctx, crb)).Should(Succeed(), "failed to update cluster resource binding status")
 
 			By("Checking placement controller queue")
-			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.CRPTrackingLabel])
+			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.PlacementTrackingLabel])
 			fakePlacementController.ResetQueue()
 		})
 
@@ -266,7 +320,7 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 			Expect(k8sClient.Status().Update(ctx, crb)).Should(Succeed(), "failed to update cluster resource binding status")
 
 			By("Checking placement controller queue")
-			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.CRPTrackingLabel])
+			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.PlacementTrackingLabel])
 			fakePlacementController.ResetQueue()
 		})
 	})
@@ -320,7 +374,7 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 			Expect(k8sClient.Status().Update(ctx, crb)).Should(Succeed(), "failed to update cluster resource binding status")
 
 			By("Checking placement controller queue")
-			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.CRPTrackingLabel])
+			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.PlacementTrackingLabel])
 			fakePlacementController.ResetQueue()
 		})
 
@@ -400,7 +454,7 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 			Expect(k8sClient.Status().Update(ctx, crb)).Should(Succeed(), "failed to update cluster resource binding status")
 
 			By("Checking placement controller queue")
-			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.CRPTrackingLabel])
+			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.PlacementTrackingLabel])
 			fakePlacementController.ResetQueue()
 		})
 
@@ -431,7 +485,7 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 			Expect(k8sClient.Status().Update(ctx, crb)).Should(Succeed(), "failed to update cluster resource binding status")
 
 			By("Checking placement controller queue")
-			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.CRPTrackingLabel])
+			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.PlacementTrackingLabel])
 			fakePlacementController.ResetQueue()
 		})
 
@@ -442,7 +496,7 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 			Expect(k8sClient.Status().Update(ctx, crb)).Should(Succeed(), "failed to update cluster resource binding status")
 
 			By("Checking placement controller queue")
-			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.CRPTrackingLabel])
+			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.PlacementTrackingLabel])
 			fakePlacementController.ResetQueue()
 		})
 	})
@@ -496,7 +550,7 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 			Expect(k8sClient.Status().Update(ctx, crb)).Should(Succeed(), "failed to update cluster resource binding status")
 
 			By("Checking placement controller queue")
-			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.CRPTrackingLabel])
+			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.PlacementTrackingLabel])
 			fakePlacementController.ResetQueue()
 		})
 
@@ -576,7 +630,7 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 			Expect(k8sClient.Status().Update(ctx, crb)).Should(Succeed(), "failed to update cluster resource binding status")
 
 			By("Checking placement controller queue")
-			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.CRPTrackingLabel])
+			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.PlacementTrackingLabel])
 			fakePlacementController.ResetQueue()
 		})
 
@@ -605,7 +659,7 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 			Expect(k8sClient.Status().Update(ctx, crb)).Should(Succeed(), "failed to update cluster resource binding status")
 
 			By("Checking placement controller queue")
-			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.CRPTrackingLabel])
+			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.PlacementTrackingLabel])
 			fakePlacementController.ResetQueue()
 		})
 
@@ -616,17 +670,33 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 			Expect(k8sClient.Status().Update(ctx, crb)).Should(Succeed(), "failed to update cluster resource binding status")
 
 			By("Checking placement controller queue")
-			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.CRPTrackingLabel])
+			eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.PlacementTrackingLabel])
 			fakePlacementController.ResetQueue()
 		})
 	})
 })
 
+func resourceBindingForTest() *fleetv1beta1.ResourceBinding {
+	return &fleetv1beta1.ResourceBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      testRBName,
+			Namespace: testNamespace,
+			Labels:    map[string]string{fleetv1beta1.PlacementTrackingLabel: testPlacementName},
+		},
+		Spec: fleetv1beta1.ResourceBindingSpec{
+			State:                        fleetv1beta1.BindingStateScheduled,
+			ResourceSnapshotName:         testResourceSnapshotName,
+			SchedulingPolicySnapshotName: testSchedulingPolicySnapshotName,
+			TargetCluster:                testTargetCluster,
+		},
+	}
+}
+
 func clusterResourceBindingForTest() *fleetv1beta1.ClusterResourceBinding {
 	return &fleetv1beta1.ClusterResourceBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   testCRBName,
-			Labels: map[string]string{fleetv1beta1.CRPTrackingLabel: testCRPName},
+			Labels: map[string]string{fleetv1beta1.PlacementTrackingLabel: testPlacementName},
 		},
 		Spec: fleetv1beta1.ResourceBindingSpec{
 			State:                        fleetv1beta1.BindingStateScheduled,
@@ -652,7 +722,26 @@ func validateWhenUpdateClusterResourceBindingStatusWithCondition(conditionType f
 	Expect(k8sClient.Status().Update(ctx, crb)).Should(Succeed(), "failed to update cluster resource binding status")
 
 	By("Checking placement controller queue")
-	eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.CRPTrackingLabel])
+	eventuallyCheckPlacementControllerQueue(crb.GetLabels()[fleetv1beta1.PlacementTrackingLabel])
+	fakePlacementController.ResetQueue()
+}
+
+func validateWhenUpdateResourceBindingStatusWithCondition(conditionType fleetv1beta1.ResourceBindingConditionType, observedGeneration int64, status metav1.ConditionStatus, reason string) {
+	rb := &fleetv1beta1.ResourceBinding{}
+	By(fmt.Sprintf("Updating the resourceBinding status - %s, %d, %s, %s", conditionType, observedGeneration, status, reason))
+	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testRBName, Namespace: testNamespace}, rb)).Should(Succeed(), "failed to get resource binding")
+	condition := metav1.Condition{
+		Type:               string(conditionType),
+		ObservedGeneration: observedGeneration,
+		Status:             status,
+		Reason:             reason,
+		LastTransitionTime: metav1.Now(),
+	}
+	rb.SetConditions(condition)
+	Expect(k8sClient.Status().Update(ctx, rb)).Should(Succeed(), "failed to update resource binding status")
+
+	By("Checking placement controller queue")
+	eventuallyCheckPlacementControllerQueue(controller.GetObjectKeyFromNamespaceName(testNamespace, rb.GetLabels()[fleetv1beta1.PlacementTrackingLabel]))
 	fakePlacementController.ResetQueue()
 }
 

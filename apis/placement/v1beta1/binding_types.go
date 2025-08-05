@@ -19,13 +19,60 @@ package v1beta1
 import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/kubefleet-dev/kubefleet/apis"
 )
 
 const (
-	// SchedulerCRBCleanupFinalizer is a finalizer added to ClusterResourceBindings to ensure we can look up the
-	// corresponding CRP name for deleting ClusterResourceBindings to trigger a new scheduling cycle.
-	SchedulerCRBCleanupFinalizer = fleetPrefix + "scheduler-crb-cleanup"
+	// SchedulerBindingCleanupFinalizer is a finalizer added to bindings to ensure we can look up the
+	// corresponding CRP name for deleting bindings to trigger a new scheduling cycle.
+	// TODO: migrate the finalizer to the new name "scheduler-binding-cleanup" in the future.
+	SchedulerBindingCleanupFinalizer = fleetPrefix + "scheduler-crb-cleanup"
 )
+
+// make sure the BindingObj and BindingObjList interfaces are implemented by the
+// ClusterResourceBinding and ResourceBinding types.
+var _ BindingObj = &ClusterResourceBinding{}
+var _ BindingObj = &ResourceBinding{}
+var _ BindingObjList = &ClusterResourceBindingList{}
+var _ BindingObjList = &ResourceBindingList{}
+
+// A BindingSpecGetterSetter offers binding spec getter and setter methods.
+// +kubebuilder:object:generate=false
+type BindingSpecGetterSetter interface {
+	GetBindingSpec() *ResourceBindingSpec
+	SetBindingSpec(ResourceBindingSpec)
+}
+
+// A BindingStatusGetterSetter offers binding status getter and setter methods.
+// +kubebuilder:object:generate=false
+type BindingStatusGetterSetter interface {
+	GetBindingStatus() *ResourceBindingStatus
+	SetBindingStatus(ResourceBindingStatus)
+}
+
+// A BindingObj offers an abstract way to work with fleet binding objects.
+// +kubebuilder:object:generate=false
+type BindingObj interface {
+	apis.ConditionedObj
+	BindingSpecGetterSetter
+	BindingStatusGetterSetter
+	RemoveCondition(string)
+}
+
+// A BindingListItemGetter offers a method to get binding objects from a list.
+// +kubebuilder:object:generate=false
+type BindingListItemGetter interface {
+	GetBindingObjs() []BindingObj
+}
+
+// A BindingObjList offers an abstract way to work with list binding objects.
+// +kubebuilder:object:generate=false
+type BindingObjList interface {
+	client.ObjectList
+	BindingListItemGetter
+}
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster,categories={fleet,fleet-placement},shortName=crb
@@ -211,6 +258,59 @@ type ClusterResourceBindingList struct {
 	Items []ClusterResourceBinding `json:"items"`
 }
 
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Namespaced,categories={fleet,fleet-placement},shortName=rb
+// +kubebuilder:subresource:status
+// +kubebuilder:storageversion
+// +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="WorkSynchronized")].status`,name="WorkSynchronized",type=string
+// +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Applied")].status`,name="ResourcesApplied",type=string
+// +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Available")].status`,name="ResourceAvailable",priority=1,type=string
+// +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
+
+// ResourceBinding represents a scheduling decision that binds a group of resources to a cluster.
+// It MUST have a label named `CRPTrackingLabel` that points to the resource placement that creates it.
+type ResourceBinding struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	// The desired state of ResourceBinding.
+	// +required
+	Spec ResourceBindingSpec `json:"spec"`
+
+	// The observed status of ResourceBinding.
+	// +optional
+	Status ResourceBindingStatus `json:"status,omitempty"`
+}
+
+// ResourceBindingList is a collection of ResourceBinding.
+// +kubebuilder:resource:scope="Namespaced"
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type ResourceBindingList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+
+	// items is the list of ResourceBindings.
+	Items []ResourceBinding `json:"items"`
+}
+
+// GetBindingObjs returns the binding objects in the list.
+func (c *ClusterResourceBindingList) GetBindingObjs() []BindingObj {
+	objs := make([]BindingObj, 0, len(c.Items))
+	for i := range c.Items {
+		objs = append(objs, &c.Items[i])
+	}
+	return objs
+}
+
+// GetBindingObjs returns the binding objects in the list.
+func (r *ResourceBindingList) GetBindingObjs() []BindingObj {
+	objs := make([]BindingObj, 0, len(r.Items))
+	for i := range r.Items {
+		objs = append(objs, &r.Items[i])
+	}
+	return objs
+}
+
 // SetConditions set the given conditions on the ClusterResourceBinding.
 func (b *ClusterResourceBinding) SetConditions(conditions ...metav1.Condition) {
 	for _, c := range conditions {
@@ -228,6 +328,63 @@ func (b *ClusterResourceBinding) GetCondition(conditionType string) *metav1.Cond
 	return meta.FindStatusCondition(b.Status.Conditions, conditionType)
 }
 
+// GetBindingSpec returns the binding spec.
+func (b *ClusterResourceBinding) GetBindingSpec() *ResourceBindingSpec {
+	return &b.Spec
+}
+
+// SetBindingSpec sets the binding spec.
+func (b *ClusterResourceBinding) SetBindingSpec(spec ResourceBindingSpec) {
+	spec.DeepCopyInto(&b.Spec)
+}
+
+// GetBindingStatus returns the binding status.
+func (b *ClusterResourceBinding) GetBindingStatus() *ResourceBindingStatus {
+	return &b.Status
+}
+
+// SetBindingStatus sets the binding status.
+func (b *ClusterResourceBinding) SetBindingStatus(status ResourceBindingStatus) {
+	status.DeepCopyInto(&b.Status)
+}
+
+// SetConditions set the given conditions on the ResourceBinding.
+func (b *ResourceBinding) SetConditions(conditions ...metav1.Condition) {
+	for _, c := range conditions {
+		meta.SetStatusCondition(&b.Status.Conditions, c)
+	}
+}
+
+// RemoveCondition removes the condition of the given ResourceBinding.
+func (b *ResourceBinding) RemoveCondition(conditionType string) {
+	meta.RemoveStatusCondition(&b.Status.Conditions, conditionType)
+}
+
+// GetCondition returns the condition of the given ResourceBinding.
+func (b *ResourceBinding) GetCondition(conditionType string) *metav1.Condition {
+	return meta.FindStatusCondition(b.Status.Conditions, conditionType)
+}
+
+// GetBindingSpec returns the binding spec.
+func (b *ResourceBinding) GetBindingSpec() *ResourceBindingSpec {
+	return &b.Spec
+}
+
+// SetBindingSpec sets the binding spec.
+func (b *ResourceBinding) SetBindingSpec(spec ResourceBindingSpec) {
+	spec.DeepCopyInto(&b.Spec)
+}
+
+// GetBindingStatus returns the binding status.
+func (b *ResourceBinding) GetBindingStatus() *ResourceBindingStatus {
+	return &b.Status
+}
+
+// SetBindingStatus sets the binding status.
+func (b *ResourceBinding) SetBindingStatus(status ResourceBindingStatus) {
+	status.DeepCopyInto(&b.Status)
+}
+
 func init() {
-	SchemeBuilder.Register(&ClusterResourceBinding{}, &ClusterResourceBindingList{})
+	SchemeBuilder.Register(&ClusterResourceBinding{}, &ClusterResourceBindingList{}, &ResourceBinding{}, &ResourceBindingList{})
 }
