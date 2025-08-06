@@ -219,7 +219,7 @@ var _ = Describe("cluster scheduling policy snapshot scheduler source controller
 		})
 	})
 
-	Context("policy snapshot becomes inactive", func() {
+	Context("policy snapshot becomes not latest", func() {
 		BeforeAll(func() {
 			Consistently(noKeyEnqueuedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Workqueue is not empty")
 
@@ -230,7 +230,7 @@ var _ = Describe("cluster scheduling policy snapshot scheduler source controller
 			Expect(hubClient.Update(ctx, &policySnapshot)).Should(Succeed(), "Failed to update cluster scheduling policy snapshot")
 		})
 
-		It("should not enqueue the CRP when poliy snapshot becomes inactive", func() {
+		It("should not enqueue the CRP when policy snapshot not latest", func() {
 			Consistently(noKeyEnqueuedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Workqueue is not empty")
 		})
 
@@ -261,6 +261,8 @@ var _ = Describe("cluster scheduling policy snapshot scheduler source controller
 	})
 })
 
+// Copied the same set of tests for RP since the original tests are run serially
+// and to reduce the maintenance burden, we copy the full tests.
 var _ = Describe("scheduling policy snapshot scheduler source controller for ResourcePlacement", Serial, Ordered, func() {
 	BeforeAll(func() {
 		policySnapshot := fleetv1beta1.SchedulingPolicySnapshot{
@@ -383,7 +385,7 @@ var _ = Describe("scheduling policy snapshot scheduler source controller for Res
 		})
 	})
 
-	Context("RP policy snapshot becomes inactive", func() {
+	Context("RP policy snapshot becomes not latest", func() {
 		BeforeAll(func() {
 			Consistently(noKeyEnqueuedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Workqueue is not empty")
 
@@ -394,7 +396,7 @@ var _ = Describe("scheduling policy snapshot scheduler source controller for Res
 			Expect(hubClient.Update(ctx, &policySnapshot)).Should(Succeed(), "Failed to update scheduling policy snapshot")
 		})
 
-		It("should not enqueue the RP when policy snapshot becomes inactive", func() {
+		It("should not enqueue the RP when policy snapshot becomes not latest", func() {
 			Consistently(noKeyEnqueuedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Workqueue is not empty")
 		})
 

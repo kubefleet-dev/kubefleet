@@ -53,13 +53,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		klog.V(2).InfoS("Scheduler source reconciliation ends", "policySnapshot", policySnapshotRef, "latency", latency)
 	}()
 
-	// Determine the appropriate policy snapshot type based on namespace
+	// Determine the appropriate policy snapshot type based on namespace.
 	var policySnapshot fleetv1beta1.PolicySnapshotObj
 	if req.Namespace != "" {
-		// This is a namespaced SchedulingPolicySnapshot (for RP)
 		policySnapshot = &fleetv1beta1.SchedulingPolicySnapshot{}
 	} else {
-		// This is a cluster-scoped ClusterSchedulingPolicySnapshot (for CRP)
 		policySnapshot = &fleetv1beta1.ClusterSchedulingPolicySnapshot{}
 	}
 
