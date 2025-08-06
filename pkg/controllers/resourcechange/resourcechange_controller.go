@@ -97,8 +97,8 @@ func (r *Reconciler) Reconcile(_ context.Context, key controller.QueueKey) (ctrl
 // If the resource is namespace scoped, it will check if CRP selects the namespace and
 // RP selects the resource.
 func (r *Reconciler) handleDeletedResource(key keys.ClusterWideKey, isClusterScoped bool) (ctrl.Result, error) {
-	klog.V(2).InfoS("Find clusterResourcePlacement that selects the cluster scoped object", "obj", key)
 	if isClusterScoped {
+		klog.V(2).InfoS("Find clusterResourcePlacement that selects the cluster scoped object", "obj", key)
 		// We need to find out which placements have selected this resource.
 		return r.triggerAffectedPlacementsForDeletedRes(key, true)
 	}
@@ -187,11 +187,11 @@ func (r *Reconciler) triggerAffectedPlacementsForDeletedRes(key keys.ClusterWide
 
 			matchedCRPs := findPlacementsSelectedDeletedResV1Beta1(key, convertToClusterResourcePlacements(crpList))
 			if len(matchedCRPs) == 0 {
-				klog.V(2).InfoS("Change in deleted object does not affect any v1beta1 cluster resource placement", "obj", key)
+				klog.V(2).InfoS("Deleted object does not affect any v1beta1 cluster resource placement", "obj", key)
 				return ctrl.Result{}, nil
 			}
 			for _, crp := range matchedCRPs {
-				klog.V(2).InfoS("Change in deleted object triggered v1beta1 cluster resource placement reconcile", "obj", key, "crp", crp)
+				klog.V(2).InfoS("Deleted object triggered v1beta1 cluster resource placement reconcile", "obj", key, "crp", crp)
 				r.PlacementControllerV1Beta1.Enqueue(crp)
 			}
 		}
@@ -206,12 +206,12 @@ func (r *Reconciler) triggerAffectedPlacementsForDeletedRes(key keys.ClusterWide
 
 		matchedRPs := findPlacementsSelectedDeletedResV1Beta1(key, convertToResourcePlacements(rpList))
 		if len(matchedRPs) == 0 {
-			klog.V(2).InfoS("Change in object does not affect any resource placement", "obj", key)
+			klog.V(2).InfoS("Deleted object does not affect any resource placement", "obj", key)
 			return ctrl.Result{}, nil
 		}
 
 		for _, rp := range matchedRPs {
-			klog.V(2).InfoS("Change in object triggered resource placement reconcile", "obj", key, "rp", rp)
+			klog.V(2).InfoS("Deleted object triggered resource placement reconcile", "obj", key, "rp", rp)
 			r.ResourcePlacementController.Enqueue(controller.GetObjectKeyFromNamespaceName(key.Namespace, rp))
 		}
 	}
