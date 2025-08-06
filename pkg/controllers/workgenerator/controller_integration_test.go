@@ -3611,9 +3611,9 @@ var _ = Describe("Test Work Generator Controller for clusterResourcePlacement", 
 	})
 })
 
-func verifyBindingStatusSyncedNotApplied(binding *placementv1beta1.ClusterResourceBinding, hasOverride, workSync bool) {
+func verifyBindingStatusSyncedNotApplied(binding placementv1beta1.BindingObj, hasOverride, workSync bool) {
 	Eventually(func() string {
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding)).Should(Succeed())
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.GetName(), Namespace: binding.GetNamespace()}, binding)).Should(Succeed())
 		appliedReason := condition.WorkNotAppliedReason
 		if workSync {
 			appliedReason = condition.WorkApplyInProcess
@@ -3623,7 +3623,7 @@ func verifyBindingStatusSyncedNotApplied(binding *placementv1beta1.ClusterResour
 			overrideReason = condition.OverriddenSucceededReason
 		}
 
-		wantStatus := placementv1beta1.ResourceBindingStatus{
+		wantStatus := &placementv1beta1.ResourceBindingStatus{
 			Conditions: []metav1.Condition{
 				{
 					Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
@@ -3647,23 +3647,23 @@ func verifyBindingStatusSyncedNotApplied(binding *placementv1beta1.ClusterResour
 					Status:             metav1.ConditionFalse,
 					Type:               string(placementv1beta1.ResourceBindingApplied),
 					Reason:             appliedReason,
-					ObservedGeneration: binding.Generation,
+					ObservedGeneration: binding.GetGeneration(),
 				},
 			},
 			FailedPlacements: nil,
 		}
-		return cmp.Diff(wantStatus, binding.Status, cmpConditionOption)
-	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got)", binding.Name))
+		return cmp.Diff(wantStatus, binding.GetBindingStatus(), cmpConditionOption)
+	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got)", binding.GetName()))
 }
 
-func verifyBindStatusAppliedNotAvailable(binding *placementv1beta1.ClusterResourceBinding, hasOverride bool) {
+func verifyBindStatusAppliedNotAvailable(binding placementv1beta1.BindingObj, hasOverride bool) {
 	Eventually(func() string {
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding)).Should(Succeed())
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.GetName(), Namespace: binding.GetNamespace()}, binding)).Should(Succeed())
 		overrideReason := condition.OverrideNotSpecifiedReason
 		if hasOverride {
 			overrideReason = condition.OverriddenSucceededReason
 		}
-		wantStatus := placementv1beta1.ResourceBindingStatus{
+		wantStatus := &placementv1beta1.ResourceBindingStatus{
 			Conditions: []metav1.Condition{
 				{
 					Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
@@ -3698,18 +3698,19 @@ func verifyBindStatusAppliedNotAvailable(binding *placementv1beta1.ClusterResour
 			},
 			FailedPlacements: nil,
 		}
-		return cmp.Diff(wantStatus, binding.Status, cmpConditionOption)
-	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got)", binding.Name))
+		return cmp.Diff(wantStatus, binding.GetBindingStatus(), cmpConditionOption)
+	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got)", binding.GetName()))
 }
 
-func verifyBindStatusAvail(binding *placementv1beta1.ClusterResourceBinding, hasOverride, hasDriftPlacements bool) {
+// verifyBindStatusAvail verifies binding status is available (all conditions true)
+func verifyBindStatusAvail(binding placementv1beta1.BindingObj, hasOverride, hasDriftPlacements bool) {
 	Eventually(func() string {
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding)).Should(Succeed())
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.GetName(), Namespace: binding.GetNamespace()}, binding)).Should(Succeed())
 		overrideReason := condition.OverrideNotSpecifiedReason
 		if hasOverride {
 			overrideReason = condition.OverriddenSucceededReason
 		}
-		wantStatus := placementv1beta1.ResourceBindingStatus{
+		wantStatus := &placementv1beta1.ResourceBindingStatus{
 			Conditions: []metav1.Condition{
 				{
 					Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
@@ -3779,8 +3780,8 @@ func verifyBindStatusAvail(binding *placementv1beta1.ClusterResourceBinding, has
 				},
 			}
 		}
-		return cmp.Diff(wantStatus, binding.Status, cmpConditionOption)
-	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got):\n", binding.Name))
+		return cmp.Diff(wantStatus, binding.GetBindingStatus(), cmpConditionOption)
+	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got):\n", binding.GetName()))
 }
 
 func verifyBindStatusNotAppliedWithTwoPlacements(binding *placementv1beta1.ClusterResourceBinding, hasOverride, hasFailedPlacements, hasDiffedPlacements, hasDriftedPlacements bool) {
@@ -4295,27 +4296,38 @@ func generateClusterResourceBinding(spec placementv1beta1.ResourceBindingSpec) *
 	}
 }
 
-func generateClusterResourceSnapshot(resourceIndex, numberResource, subIndex int, rawContents [][]byte) *placementv1beta1.ClusterResourceSnapshot {
+func generateSnapshotMetadata(placementName string, resourceIndex, numberResource, subIndex int, namespace string) metav1.ObjectMeta {
 	var snapshotName string
-	clusterResourceSnapshot := &placementv1beta1.ClusterResourceSnapshot{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels: map[string]string{
-				placementv1beta1.ResourceIndexLabel:     strconv.Itoa(resourceIndex),
-				placementv1beta1.PlacementTrackingLabel: testCRPName,
-			},
-			Annotations: map[string]string{
-				placementv1beta1.NumberOfResourceSnapshotsAnnotation: strconv.Itoa(numberResource),
-			},
+	meta := metav1.ObjectMeta{
+		Labels: map[string]string{
+			placementv1beta1.ResourceIndexLabel:     strconv.Itoa(resourceIndex),
+			placementv1beta1.PlacementTrackingLabel: placementName,
+		},
+		Annotations: map[string]string{
+			placementv1beta1.NumberOfResourceSnapshotsAnnotation: strconv.Itoa(numberResource),
 		},
 	}
+
+	if namespace != "" {
+		meta.Namespace = namespace
+	}
+
 	if subIndex == 0 {
 		// master resource snapshot
-		snapshotName = fmt.Sprintf(placementv1beta1.ResourceSnapshotNameFmt, testCRPName, resourceIndex)
+		snapshotName = fmt.Sprintf(placementv1beta1.ResourceSnapshotNameFmt, placementName, resourceIndex)
 	} else {
-		snapshotName = fmt.Sprintf(placementv1beta1.ResourceSnapshotNameWithSubindexFmt, testCRPName, resourceIndex, subIndex)
-		clusterResourceSnapshot.Annotations[placementv1beta1.SubindexOfResourceSnapshotAnnotation] = strconv.Itoa(subIndex)
+		snapshotName = fmt.Sprintf(placementv1beta1.ResourceSnapshotNameWithSubindexFmt, placementName, resourceIndex, subIndex)
+		meta.Annotations[placementv1beta1.SubindexOfResourceSnapshotAnnotation] = strconv.Itoa(subIndex)
 	}
-	clusterResourceSnapshot.Name = snapshotName
+	meta.Name = snapshotName
+	return meta
+}
+
+func generateClusterResourceSnapshot(resourceIndex, numberResource, subIndex int, rawContents [][]byte) *placementv1beta1.ClusterResourceSnapshot {
+	meta := generateSnapshotMetadata(testCRPName, resourceIndex, numberResource, subIndex, "")
+	clusterResourceSnapshot := &placementv1beta1.ClusterResourceSnapshot{
+		ObjectMeta: meta,
+	}
 	for _, rawContent := range rawContents {
 		clusterResourceSnapshot.Spec.SelectedResources = append(clusterResourceSnapshot.Spec.SelectedResources, placementv1beta1.ResourceContent{
 			RawExtension: runtime.RawExtension{Raw: rawContent},
@@ -4772,25 +4784,32 @@ func checkRolloutStartedNotUpdated(rolloutCond *metav1.Condition, binding *place
 	Expect(diff).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got)", binding.Name), diff)
 }
 
-func createClusterResourceBinding(binding **placementv1beta1.ClusterResourceBinding, spec placementv1beta1.ResourceBindingSpec) {
-	*binding = generateClusterResourceBinding(spec)
-	Expect(k8sClient.Create(ctx, *binding)).Should(Succeed())
+func createAndUpdateBindingWithRolloutStarted(binding placementv1beta1.BindingObj) {
+	Expect(k8sClient.Create(ctx, binding)).Should(Succeed())
 	Eventually(func() error {
-		if err := k8sClient.Get(ctx, types.NamespacedName{Name: (*binding).Name}, *binding); err != nil {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: binding.GetName(), Namespace: binding.GetNamespace()}, binding); err != nil {
 			return err
 		}
-		(*binding).Status.Conditions = []metav1.Condition{
-			{
-				Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
-				Status:             metav1.ConditionTrue,
-				Reason:             condition.RolloutStartedReason,
-				ObservedGeneration: (*binding).GetGeneration(),
-				LastTransitionTime: metav1.Now(),
-			},
+
+		// Create the RolloutStarted condition
+		rolloutCondition := metav1.Condition{
+			Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
+			Status:             metav1.ConditionTrue,
+			Reason:             condition.RolloutStartedReason,
+			ObservedGeneration: binding.GetGeneration(),
+			LastTransitionTime: metav1.Now(),
 		}
-		return k8sClient.Status().Update(ctx, *binding)
+
+		// Set the condition using the interface method
+		binding.SetConditions(rolloutCondition)
+		return k8sClient.Status().Update(ctx, binding)
 	}, timeout, interval).Should(Succeed(), "Failed to update the binding with RolloutStarted condition")
-	By(fmt.Sprintf("resource binding  %s created", (*binding).Name))
+	By(fmt.Sprintf("resource binding %s created in namespace %s", binding.GetName(), binding.GetNamespace()))
+}
+
+func createClusterResourceBinding(binding **placementv1beta1.ClusterResourceBinding, spec placementv1beta1.ResourceBindingSpec) {
+	*binding = generateClusterResourceBinding(spec)
+	createAndUpdateBindingWithRolloutStarted(*binding)
 }
 
 func updateRolloutStartedGeneration(binding **placementv1beta1.ClusterResourceBinding) {
@@ -4885,7 +4904,7 @@ var _ = Describe("Test Work Generator Controller for ResourcePlacement", func() 
 
 			BeforeEach(func() {
 				masterSnapshot = generateResourceSnapshot(1, 1, 0, [][]byte{
-					testResourceCRD, testNameSpace, testResource,
+					testConfigMap, testPdb,
 				})
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
 				By(fmt.Sprintf("master resource snapshot %s created", masterSnapshot.Name))
@@ -4895,7 +4914,7 @@ var _ = Describe("Test Work Generator Controller for ResourcePlacement", func() 
 					ResourceSnapshotName: masterSnapshot.Name,
 					TargetCluster:        memberClusterName,
 				}
-				createResourceBindingWithPlacement(&binding, testRPNamespace, testRPName, spec)
+				createResourceBinding(&binding, spec)
 			})
 
 			AfterEach(func() {
@@ -4903,7 +4922,7 @@ var _ = Describe("Test Work Generator Controller for ResourcePlacement", func() 
 				Expect(k8sClient.Delete(ctx, masterSnapshot)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}))
 			})
 
-			It("Should create work and handle status lifecycle", func() {
+			It("Should create the work in the target namespace with master resource snapshot only", func() {
 				// check the binding status till the bound condition is true
 				Eventually(func() bool {
 					if err := k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name, Namespace: binding.Namespace}, binding); err != nil {
@@ -4951,9 +4970,8 @@ var _ = Describe("Test Work Generator Controller for ResourcePlacement", func() 
 					Spec: placementv1beta1.WorkSpec{
 						Workload: placementv1beta1.WorkloadTemplate{
 							Manifests: []placementv1beta1.Manifest{
-								{RawExtension: runtime.RawExtension{Raw: testResourceCRD}},
-								{RawExtension: runtime.RawExtension{Raw: testNameSpace}},
-								{RawExtension: runtime.RawExtension{Raw: testResource}},
+								{RawExtension: runtime.RawExtension{Raw: testConfigMap}},
+								{RawExtension: runtime.RawExtension{Raw: testPdb}},
 							},
 						},
 					},
@@ -4962,42 +4980,38 @@ var _ = Describe("Test Work Generator Controller for ResourcePlacement", func() 
 				Expect(diff).Should(BeEmpty(), fmt.Sprintf("work(%s) mismatch (-want +got):\n%s", work.Name, diff))
 
 				// check the binding status that it should be marked as work not applied eventually
-				verifyResourceBindingStatusSyncedNotApplied(binding, false, true)
+				verifyBindingStatusSyncedNotApplied(binding, false, true)
 
 				// mark the work applied
 				markWorkApplied(&work)
-				verifyResourceBindStatusAppliedNotAvailable(binding, false)
+				verifyBindStatusAppliedNotAvailable(binding, false)
 
 				// mark the work available
 				markWorkAvailable(&work)
-				verifyResourceBindStatusAvail(binding, false, false)
+				verifyBindStatusAvail(binding, false, false)
 			})
 		})
 	})
 })
 
-func generateResourceSnapshot(resourceIndex, numberResource, subIndex int, rawContents [][]byte) *placementv1beta1.ResourceSnapshot {
-	var snapshotName string
-	resourceSnapshot := &placementv1beta1.ResourceSnapshot{
+func generateResourceBinding(spec placementv1beta1.ResourceBindingSpec) *placementv1beta1.ResourceBinding {
+	return &placementv1beta1.ResourceBinding{
 		ObjectMeta: metav1.ObjectMeta{
+			Name:      "binding-" + spec.ResourceSnapshotName,
 			Namespace: testRPNamespace,
 			Labels: map[string]string{
-				placementv1beta1.ResourceIndexLabel:     strconv.Itoa(resourceIndex),
 				placementv1beta1.PlacementTrackingLabel: testRPName,
 			},
-			Annotations: map[string]string{
-				placementv1beta1.NumberOfResourceSnapshotsAnnotation: strconv.Itoa(numberResource),
-			},
 		},
+		Spec: spec,
 	}
-	if subIndex == 0 {
-		// master resource snapshot
-		snapshotName = fmt.Sprintf(placementv1beta1.ResourceSnapshotNameFmt, testRPName, resourceIndex)
-	} else {
-		snapshotName = fmt.Sprintf(placementv1beta1.ResourceSnapshotNameWithSubindexFmt, testRPName, resourceIndex, subIndex)
-		resourceSnapshot.Annotations[placementv1beta1.SubindexOfResourceSnapshotAnnotation] = strconv.Itoa(subIndex)
+}
+
+func generateResourceSnapshot(resourceIndex, numberResource, subIndex int, rawContents [][]byte) *placementv1beta1.ResourceSnapshot {
+	meta := generateSnapshotMetadata(testRPName, resourceIndex, numberResource, subIndex, testRPNamespace)
+	resourceSnapshot := &placementv1beta1.ResourceSnapshot{
+		ObjectMeta: meta,
 	}
-	resourceSnapshot.Name = snapshotName
 	for _, rawContent := range rawContents {
 		resourceSnapshot.Spec.SelectedResources = append(resourceSnapshot.Spec.SelectedResources, placementv1beta1.ResourceContent{
 			RawExtension: runtime.RawExtension{Raw: rawContent},
@@ -5006,192 +5020,7 @@ func generateResourceSnapshot(resourceIndex, numberResource, subIndex int, rawCo
 	return resourceSnapshot
 }
 
-func createResourceBinding(binding **placementv1beta1.ResourceBinding, namespace string, spec placementv1beta1.ResourceBindingSpec) {
-	// Extract placement name from the resource snapshot name or generate one
-	placementName := "rp" + utils.RandStr()[0:8]
-	createResourceBindingWithPlacement(binding, namespace, placementName, spec)
-}
-
-func createResourceBindingWithPlacement(binding **placementv1beta1.ResourceBinding, namespace, placementName string, spec placementv1beta1.ResourceBindingSpec) {
-	*binding = &placementv1beta1.ResourceBinding{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "binding-" + spec.ResourceSnapshotName,
-			Namespace: namespace,
-			Labels: map[string]string{
-				placementv1beta1.PlacementTrackingLabel: placementName,
-			},
-		},
-		Spec: spec,
-	}
-	Expect(k8sClient.Create(ctx, *binding)).Should(Succeed())
-	Eventually(func() error {
-		if err := k8sClient.Get(ctx, types.NamespacedName{Name: (*binding).Name, Namespace: (*binding).Namespace}, *binding); err != nil {
-			return err
-		}
-		(*binding).Status.Conditions = []metav1.Condition{
-			{
-				Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
-				Status:             metav1.ConditionTrue,
-				Reason:             condition.RolloutStartedReason,
-				ObservedGeneration: (*binding).GetGeneration(),
-				LastTransitionTime: metav1.Now(),
-			},
-		}
-		return k8sClient.Status().Update(ctx, *binding)
-	}, timeout, interval).Should(Succeed(), "Failed to update the binding with RolloutStarted condition")
-	By(fmt.Sprintf("resource binding %s created in namespace %s", (*binding).Name, (*binding).Namespace))
-}
-
-func verifyResourceBindingStatusSyncedNotApplied(binding *placementv1beta1.ResourceBinding, hasOverride, workSync bool) {
-	Eventually(func() string {
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name, Namespace: binding.Namespace}, binding)).Should(Succeed())
-		appliedReason := condition.WorkNotAppliedReason
-		if workSync {
-			appliedReason = condition.WorkApplyInProcess
-		}
-		overrideReason := condition.OverrideNotSpecifiedReason
-		if hasOverride {
-			overrideReason = condition.OverriddenSucceededReason
-		}
-
-		wantStatus := placementv1beta1.ResourceBindingStatus{
-			Conditions: []metav1.Condition{
-				{
-					Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
-					Status:             metav1.ConditionTrue,
-					Reason:             condition.RolloutStartedReason,
-					ObservedGeneration: binding.GetGeneration(),
-				},
-				{
-					Type:               string(placementv1beta1.ResourceBindingOverridden),
-					Status:             metav1.ConditionTrue,
-					Reason:             overrideReason,
-					ObservedGeneration: binding.GetGeneration(),
-				},
-				{
-					Type:               string(placementv1beta1.ResourceBindingWorkSynchronized),
-					Status:             metav1.ConditionTrue,
-					Reason:             condition.AllWorkSyncedReason,
-					ObservedGeneration: binding.GetGeneration(),
-				},
-				{
-					Status:             metav1.ConditionFalse,
-					Type:               string(placementv1beta1.ResourceBindingApplied),
-					Reason:             appliedReason,
-					ObservedGeneration: binding.Generation,
-				},
-			},
-			FailedPlacements: nil,
-		}
-		return cmp.Diff(wantStatus, binding.Status, cmpConditionOption)
-	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got)", binding.Name))
-}
-
-func verifyResourceBindStatusAppliedNotAvailable(binding *placementv1beta1.ResourceBinding, hasOverride bool) {
-	Eventually(func() string {
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name, Namespace: binding.Namespace}, binding)).Should(Succeed())
-		overrideReason := condition.OverrideNotSpecifiedReason
-		if hasOverride {
-			overrideReason = condition.OverriddenSucceededReason
-		}
-		wantStatus := placementv1beta1.ResourceBindingStatus{
-			Conditions: []metav1.Condition{
-				{
-					Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
-					Status:             metav1.ConditionTrue,
-					Reason:             condition.RolloutStartedReason,
-					ObservedGeneration: binding.GetGeneration(),
-				},
-				{
-					Type:               string(placementv1beta1.ResourceBindingOverridden),
-					Status:             metav1.ConditionTrue,
-					Reason:             overrideReason,
-					ObservedGeneration: binding.GetGeneration(),
-				},
-				{
-					Type:               string(placementv1beta1.ResourceBindingWorkSynchronized),
-					Status:             metav1.ConditionTrue,
-					Reason:             condition.AllWorkSyncedReason,
-					ObservedGeneration: binding.GetGeneration(),
-				},
-				{
-					Type:               string(placementv1beta1.ResourceBindingApplied),
-					Status:             metav1.ConditionTrue,
-					Reason:             condition.AllWorkAppliedReason,
-					ObservedGeneration: binding.GetGeneration(),
-				},
-				{
-					Type:               string(placementv1beta1.ResourceBindingAvailable),
-					Status:             metav1.ConditionFalse,
-					Reason:             condition.WorkNotAvailableReason,
-					ObservedGeneration: binding.GetGeneration(),
-				},
-			},
-			FailedPlacements: nil,
-		}
-		return cmp.Diff(wantStatus, binding.Status, cmpConditionOption)
-	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got)", binding.Name))
-}
-
-func verifyResourceBindStatusAvail(binding *placementv1beta1.ResourceBinding, hasOverride, hasDriftPlacements bool) {
-	Eventually(func() string {
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name, Namespace: binding.Namespace}, binding)).Should(Succeed())
-		overrideReason := condition.OverrideNotSpecifiedReason
-		if hasOverride {
-			overrideReason = condition.OverriddenSucceededReason
-		}
-		wantStatus := placementv1beta1.ResourceBindingStatus{
-			Conditions: []metav1.Condition{
-				{
-					Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
-					Status:             metav1.ConditionTrue,
-					Reason:             condition.RolloutStartedReason,
-					ObservedGeneration: binding.GetGeneration(),
-				},
-				{
-					Type:               string(placementv1beta1.ResourceBindingOverridden),
-					Status:             metav1.ConditionTrue,
-					Reason:             overrideReason,
-					ObservedGeneration: binding.GetGeneration(),
-				},
-				{
-					Type:               string(placementv1beta1.ResourceBindingWorkSynchronized),
-					Status:             metav1.ConditionTrue,
-					Reason:             condition.AllWorkSyncedReason,
-					ObservedGeneration: binding.GetGeneration(),
-				},
-				{
-					Type:               string(placementv1beta1.ResourceBindingApplied),
-					Status:             metav1.ConditionTrue,
-					Reason:             condition.AllWorkAppliedReason,
-					ObservedGeneration: binding.GetGeneration(),
-				},
-				{
-					Type:               string(placementv1beta1.ResourceBindingAvailable),
-					Status:             metav1.ConditionTrue,
-					Reason:             condition.AllWorkAvailableReason,
-					ObservedGeneration: binding.GetGeneration(),
-				},
-			},
-			FailedPlacements: nil,
-			DiffedPlacements: nil,
-		}
-		return cmp.Diff(wantStatus, binding.Status, cmpConditionOption)
-	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got):\n", binding.Name))
-}
-
-func updateResourceBindingRolloutStartedGeneration(binding **placementv1beta1.ResourceBinding) {
-	Eventually(func() error {
-		// Eventually update the binding with the new generation for RolloutStarted condition in case it runs into a conflict error
-		if err := k8sClient.Get(ctx, types.NamespacedName{Name: (*binding).Name, Namespace: (*binding).Namespace}, *binding); err != nil {
-			return err
-		}
-		// RolloutStarted condition has to be updated to reflect the new generation
-		for i := range (*binding).Status.Conditions {
-			if (*binding).Status.Conditions[i].Type == string(placementv1beta1.ResourceBindingRolloutStarted) {
-				(*binding).Status.Conditions[i].ObservedGeneration = (*binding).GetGeneration()
-			}
-		}
-		return k8sClient.Status().Update(ctx, *binding)
-	}, timeout, interval).Should(Succeed(), "Failed to update the binding with new generation for RolloutStarted condition")
+func createResourceBinding(binding **placementv1beta1.ResourceBinding, spec placementv1beta1.ResourceBindingSpec) {
+	*binding = generateResourceBinding(spec)
+	createAndUpdateBindingWithRolloutStarted(*binding)
 }

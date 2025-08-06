@@ -3753,9 +3753,9 @@ func TestSyncApplyStrategy(t *testing.T) {
 
 func TestShouldIgnoreWork(t *testing.T) {
 	tests := map[string]struct {
-		enqueueCRP           bool
-		parentNamespaceName  string
-		want                 bool
+		enqueueCRP          bool
+		parentNamespaceName string
+		want                bool
 	}{
 		"should ignore CRP work when it has parent namespace": {
 			enqueueCRP:          true,

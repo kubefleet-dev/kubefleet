@@ -1596,7 +1596,6 @@ func workHandlerFuncs(enqueueCRP bool) handler.Funcs {
 			}
 
 			// We need to update the binding status in this case
-
 			klog.V(2).InfoS("Received a work update event that we need to handle", "work", klog.KObj(newWork), "parentNamespaceName", parentNamespaceName, "parentBindingName", parentBindingName)
 			queue.Add(reconcile.Request{NamespacedName: types.NamespacedName{
 				Name:      parentBindingName,
