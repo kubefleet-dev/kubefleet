@@ -151,12 +151,12 @@ type PlacementSpec struct {
 
 	// StatusReportingScope controls where ClusterResourcePlacement status information is made available.
 	// When set to "ClusterScopeOnly", status is accessible only through the cluster-scoped ClusterResourcePlacement object.
-	// When set to "ClusterAndNamespaceScope", a ClusterResourcePlacementStatus object is created in the target namespace,
+	// When set to "NamespaceAccessible", a ClusterResourcePlacementStatus object is created in the target namespace,
 	// providing namespace-scoped access to the placement status alongside the cluster-scoped status. This option is only
 	// supported when the ClusterResourcePlacement targets exactly one namespace.
 	// Defaults to "ClusterScopeOnly".
 	// +kubebuilder:default=ClusterScopeOnly
-	// +kubebuilder:validation:Enum=ClusterScopeOnly;ClusterAndNamespaceScope
+	// +kubebuilder:validation:Enum=ClusterScopeOnly;NamespaceAccessible
 	// +kubebuilder:validation:Optional
 	StatusReportingScope StatusReportingScope `json:"statusReportingScope,omitempty"`
 }
@@ -495,10 +495,10 @@ const (
 	// This is the default behavior where status information is accessible only to users with cluster-level permissions.
 	ClusterScopeOnly StatusReportingScope = "ClusterScopeOnly"
 
-	// ClusterAndNamespaceScope makes status available in both cluster and namespace scopes.
+	// NamespaceAccessible makes status available in both cluster and namespace scopes.
 	// In addition to the cluster-scoped status, a ClusterResourcePlacementStatus object is created
 	// in the target namespace, enabling namespace-scoped users to access placement status information.
-	ClusterAndNamespaceScope StatusReportingScope = "ClusterAndNamespaceScope"
+	NamespaceAccessible StatusReportingScope = "NamespaceAccessible"
 )
 
 // RolloutStrategy describes how to roll out a new change in selected resources to target clusters.
