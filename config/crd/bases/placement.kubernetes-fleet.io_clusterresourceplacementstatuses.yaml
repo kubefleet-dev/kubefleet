@@ -15,7 +15,7 @@ spec:
     listKind: ClusterResourcePlacementStatusList
     plural: clusterresourceplacementstatuses
     shortNames:
-    - psp
+    - crps
     singular: clusterresourceplacementstatus
   scope: Namespaced
   versions:

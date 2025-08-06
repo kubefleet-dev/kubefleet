@@ -1527,7 +1527,7 @@ func (rpl *ResourcePlacementList) GetPlacementObjs() []PlacementObj {
 // +genclient
 // +genclient:Namespaced
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:scope="Namespaced",shortName=psp,categories={fleet,fleet-placement}
+// +kubebuilder:resource:scope="Namespaced",shortName=crps,categories={fleet,fleet-placement}
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
 // +kubebuilder:printcolumn:JSONPath=`.status.observedResourceIndex`,name="Resource-Index",type=string
