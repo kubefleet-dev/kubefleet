@@ -1471,34 +1471,36 @@ func extractDiffedResourcePlacementsFromWork(work *fleetv1beta1.Work) []fleetv1b
 	return res
 }
 
-// SetupWithManagerForClusterResourcePlacement sets up the controller with the Manager.
+// SetupWithManagerForClusterResourceBinding sets up the controller with the Manager.
 // It watches clusterResourceBinding events and also update/delete events for work.
-func (r *Reconciler) SetupWithManagerForClusterResourcePlacement(mgr controllerruntime.Manager) error {
-	r.recorder = mgr.GetEventRecorderFor("cluster resource placement work generator")
-	return controllerruntime.NewControllerManagedBy(mgr).Named("cluster-resource-placement-work-generator").
+func (r *Reconciler) SetupWithManagerForClusterResourceBinding(mgr controllerruntime.Manager) error {
+	r.recorder = mgr.GetEventRecorderFor("cluster resource binding work generator")
+	return controllerruntime.NewControllerManagedBy(mgr).Named("cluster-resource-binding-work-generator").
 		WithOptions(ctrl.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}). // set the max number of concurrent reconciles
 		For(&fleetv1beta1.ClusterResourceBinding{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&fleetv1beta1.Work{}, workHandlerFuncs(true)).
 		Complete(r)
 }
 
-func (r *Reconciler) SetupWithManagerForResourcePlacement(mgr controllerruntime.Manager) error {
-	r.recorder = mgr.GetEventRecorderFor("resource placement work generator")
-	return controllerruntime.NewControllerManagedBy(mgr).Named("resource-placement-work-generator").
+// SetupWithManagerForResourceBinding sets up the controller with the Manager.
+// It watches resourceBinding events and also update/delete events for work.
+func (r *Reconciler) SetupWithManagerForResourceBinding(mgr controllerruntime.Manager) error {
+	r.recorder = mgr.GetEventRecorderFor("resource binding work generator")
+	return controllerruntime.NewControllerManagedBy(mgr).Named("resource-binding-work-generator").
 		WithOptions(ctrl.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}). // set the max number of concurrent reconciles
 		For(&fleetv1beta1.ResourceBinding{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&fleetv1beta1.Work{}, workHandlerFuncs(false)).
 		Complete(r)
 }
 
-func shouldIgnoreWork(enqueueCRP bool, parentNamespaceName string) bool {
-	if (enqueueCRP && parentNamespaceName != "") || (!enqueueCRP && parentNamespaceName == "") {
+func shouldIgnoreWork(enqueueCRB bool, parentNamespaceName string) bool {
+	if (enqueueCRB && parentNamespaceName != "") || (!enqueueCRB && parentNamespaceName == "") {
 		return true
 	}
 	return false
 }
 
-func workHandlerFuncs(enqueueCRP bool) handler.Funcs {
+func workHandlerFuncs(enqueueCRB bool) handler.Funcs {
 	return handler.Funcs{
 		// we care about work delete event as we want to know when a work is deleted so that we can
 		// delete the corresponding resource binding fast.
@@ -1509,8 +1511,8 @@ func workHandlerFuncs(enqueueCRP bool) handler.Funcs {
 				return
 			}
 			parentNamespaceName := evt.Object.GetLabels()[fleetv1beta1.ParentNamespaceLabel]
-			if shouldIgnoreWork(enqueueCRP, parentNamespaceName) {
-				klog.V(2).InfoS("Ignoring the work owned by different placement scope", "work", klog.KObj(evt.Object), "parentNamespaceName", parentNamespaceName, "enqueueCRP", enqueueCRP)
+			if shouldIgnoreWork(enqueueCRB, parentNamespaceName) {
+				klog.V(2).InfoS("Ignoring the work owned by different placement scope", "work", klog.KObj(evt.Object), "parentNamespaceName", parentNamespaceName, "enqueueCRP", enqueueCRB)
 				return
 			}
 			parentBindingName, exist := evt.Object.GetLabels()[fleetv1beta1.ParentBindingLabel]
@@ -1535,8 +1537,8 @@ func workHandlerFuncs(enqueueCRP bool) handler.Funcs {
 				return
 			}
 			parentNamespaceName := evt.ObjectNew.GetLabels()[fleetv1beta1.ParentNamespaceLabel]
-			if shouldIgnoreWork(enqueueCRP, parentNamespaceName) {
-				klog.V(2).InfoS("Ignoring the work owned by different placement scope", "work", klog.KObj(evt.ObjectNew), "parentNamespaceName", parentNamespaceName, "enqueueCRP", enqueueCRP)
+			if shouldIgnoreWork(enqueueCRB, parentNamespaceName) {
+				klog.V(2).InfoS("Ignoring the work owned by different placement scope", "work", klog.KObj(evt.ObjectNew), "parentNamespaceName", parentNamespaceName, "enqueueCRP", enqueueCRB)
 				return
 			}
 			parentBindingName, exist := evt.ObjectNew.GetLabels()[fleetv1beta1.ParentBindingLabel]
@@ -1590,7 +1592,7 @@ func workHandlerFuncs(enqueueCRP bool) handler.Funcs {
 				if oldResourceSnapshot == newResourceSnapshot &&
 					oldClusterResourceOverrideSnapshotHash == newClusterResourceOverrideSnapshotHash &&
 					oldResourceOverrideSnapshotHash == newResourceOverrideSnapshotHash {
-					klog.V(2).InfoS("The work applied or available condition stayed as true, no need to reconcile", "oldWork", klog.KObj(oldWork), "newWork", klog.KObj(newWork))
+					klog.V(2).InfoS("The work resource snapshot and override snapshot stayed the same, no need to reconcile", "oldWork", klog.KObj(oldWork), "newWork", klog.KObj(newWork))
 					return
 				}
 			}

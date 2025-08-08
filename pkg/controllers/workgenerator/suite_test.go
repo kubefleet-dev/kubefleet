@@ -140,13 +140,13 @@ var _ = BeforeSuite(func() {
 	err = (&Reconciler{
 		Client:          mgr.GetClient(),
 		InformerManager: &fakeInformer,
-	}).SetupWithManagerForClusterResourcePlacement(mgr)
+	}).SetupWithManagerForClusterResourceBinding(mgr)
 	Expect(err).Should(Succeed())
 
 	err = (&Reconciler{
 		Client:          mgr.GetClient(),
 		InformerManager: &fakeInformer,
-	}).SetupWithManagerForResourcePlacement(mgr)
+	}).SetupWithManagerForResourceBinding(mgr)
 	Expect(err).Should(Succeed())
 
 	createOverrides()
