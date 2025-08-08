@@ -2261,7 +2261,6 @@ func TestTriggerAffectedPlacementsForUpdatedRes(t *testing.T) {
 		key             keys.ClusterWideKey
 		resource        *unstructured.Unstructured
 		informerManager informer.Manager
-		isClusterScope  bool
 		triggerCRP      bool
 		wantCRPEnqueued []string
 		wantRPEnqueued  []string
@@ -2286,7 +2285,6 @@ func TestTriggerAffectedPlacementsForUpdatedRes(t *testing.T) {
 					},
 				},
 			},
-			isClusterScope:  true,
 			triggerCRP:      true,
 			wantCRPEnqueued: []string{"test-crp"},
 			wantRPEnqueued:  []string{},
@@ -2312,7 +2310,6 @@ func TestTriggerAffectedPlacementsForUpdatedRes(t *testing.T) {
 					},
 				},
 			},
-			isClusterScope:  false,
 			triggerCRP:      false,
 			wantCRPEnqueued: []string{},
 			wantRPEnqueued:  []string{"test-namespace/test-rp"},
@@ -2379,7 +2376,6 @@ func TestTriggerAffectedPlacementsForUpdatedRes(t *testing.T) {
 					},
 				}
 			}(),
-			isClusterScope:  false,
 			triggerCRP:      false,
 			wantCRPEnqueued: []string{},
 			wantRPEnqueued:  []string{},
@@ -2418,7 +2414,6 @@ func TestTriggerAffectedPlacementsForUpdatedRes(t *testing.T) {
 					},
 				},
 			},
-			isClusterScope:  true,
 			triggerCRP:      true,
 			wantCRPEnqueued: []string{},
 			wantRPEnqueued:  []string{},
@@ -2467,7 +2462,6 @@ func TestTriggerAffectedPlacementsForUpdatedRes(t *testing.T) {
 					},
 				}
 			}(),
-			isClusterScope:  true,
 			triggerCRP:      true,
 			wantCRPEnqueued: []string{"test-crp", "test-crp-2"},
 			wantRPEnqueued:  []string{},
@@ -2494,7 +2488,6 @@ func TestTriggerAffectedPlacementsForUpdatedRes(t *testing.T) {
 					},
 				},
 			},
-			isClusterScope:  false,
 			triggerCRP:      true,
 			wantCRPEnqueued: []string{"test-crp"},
 			wantRPEnqueued:  []string{},
@@ -2546,7 +2539,6 @@ func TestTriggerAffectedPlacementsForUpdatedRes(t *testing.T) {
 					},
 				}
 			}(),
-			isClusterScope:  false,
 			triggerCRP:      true,
 			wantCRPEnqueued: []string{}, // Should be empty because namespace-only selector is skipped for namespace-scoped resources
 			wantRPEnqueued:  []string{},
@@ -2561,7 +2553,7 @@ func TestTriggerAffectedPlacementsForUpdatedRes(t *testing.T) {
 				ResourcePlacementController: &fakeController{QueueObj: []string{}},
 			}
 
-			if err := reconciler.triggerAffectedPlacementsForUpdatedRes(tt.key, tt.resource, tt.isClusterScope, tt.triggerCRP); err != nil {
+			if err := reconciler.triggerAffectedPlacementsForUpdatedRes(tt.key, tt.resource, tt.triggerCRP); err != nil {
 				t.Fatalf("triggerAffectedPlacementsForUpdatedClusterRes() = %v, want nil", err)
 			}
 

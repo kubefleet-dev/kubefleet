@@ -118,7 +118,7 @@ func (r *Reconciler) handleDeletedResource(key keys.ClusterWideKey, isClusterSco
 func (r *Reconciler) handleUpdatedResourceForClusterResourcePlacement(key keys.ClusterWideKey, clusterObj runtime.Object, isClusterScoped bool) error {
 	if isClusterScoped {
 		klog.V(2).InfoS("Find clusterResourcePlacement that selects the cluster scoped object", "obj", key)
-		return r.triggerAffectedPlacementsForUpdatedRes(key, clusterObj.(*unstructured.Unstructured), true, true)
+		return r.triggerAffectedPlacementsForUpdatedRes(key, clusterObj.(*unstructured.Unstructured), true)
 	}
 
 	klog.V(2).InfoS("Find namespace that contains the namespace scoped object", "obj", key)
@@ -130,7 +130,7 @@ func (r *Reconciler) handleUpdatedResourceForClusterResourcePlacement(key keys.C
 		return client.IgnoreNotFound(err)
 	}
 	klog.V(2).InfoS("Find clusterResourcePlacement that selects the namespace", "obj", key)
-	if err := r.triggerAffectedPlacementsForUpdatedRes(key, clusterObj.(*unstructured.Unstructured), false, true); err != nil {
+	if err := r.triggerAffectedPlacementsForUpdatedRes(key, clusterObj.(*unstructured.Unstructured), true); err != nil {
 		klog.ErrorS(err, "Failed to trigger affected placements for updated cluster resource", "obj", key)
 		return err
 	}
@@ -144,7 +144,7 @@ func (r *Reconciler) handleUpdatedResourceForResourcePlacement(key keys.ClusterW
 	}
 
 	klog.V(2).InfoS("Find resourcePlacement that selects the namespace scoped object", "obj", key)
-	if err := r.triggerAffectedPlacementsForUpdatedRes(key, clusterObj.(*unstructured.Unstructured), false, false); err != nil {
+	if err := r.triggerAffectedPlacementsForUpdatedRes(key, clusterObj.(*unstructured.Unstructured), false); err != nil {
 		klog.ErrorS(err, "Failed to trigger affected placements for updated resource", "obj", key)
 		return err
 	}
@@ -293,10 +293,9 @@ func (r *Reconciler) getUnstructuredObject(objectKey keys.ClusterWideKey) (runti
 }
 
 // triggerAffectedPlacementsForUpdatedRes find the affected placements for a given updated cluster scoped or namespace scoped resources.
-// isClusterScoped indicates whether the key itself is cluster scoped or namespace scoped.
 // If the key is namespace scoped, res will be the namespace object.
 // If triggerCRP is true, it will trigger the cluster resource placement controller, otherwise it will trigger the resource placement controller.
-func (r *Reconciler) triggerAffectedPlacementsForUpdatedRes(key keys.ClusterWideKey, res *unstructured.Unstructured, isClusterScoped bool, triggerCRP bool) error {
+func (r *Reconciler) triggerAffectedPlacementsForUpdatedRes(key keys.ClusterWideKey, res *unstructured.Unstructured, triggerCRP bool) error {
 	if triggerCRP {
 		if r.PlacementControllerV1Alpha1 != nil {
 			// List all the CRPs.
@@ -328,7 +327,7 @@ func (r *Reconciler) triggerAffectedPlacementsForUpdatedRes(key keys.ClusterWide
 			}
 
 			// Find all matching CRPs.
-			matchedCRPs := collectAllAffectedPlacementsV1Beta1(isClusterScoped, res, convertToClusterResourcePlacements(crpList))
+			matchedCRPs := collectAllAffectedPlacementsV1Beta1(key.Namespace == "", res, convertToClusterResourcePlacements(crpList))
 			if len(matchedCRPs) == 0 {
 				klog.V(2).InfoS("Change in object does not affect any v1beta1 cluster resource placement", "obj", key)
 				return nil
@@ -352,7 +351,7 @@ func (r *Reconciler) triggerAffectedPlacementsForUpdatedRes(key keys.ClusterWide
 		}
 
 		// Find all matching ResourcePlacements.
-		matchedRPs := collectAllAffectedPlacementsV1Beta1(isClusterScoped, res, convertToResourcePlacements(rpList))
+		matchedRPs := collectAllAffectedPlacementsV1Beta1(key.Namespace == "", res, convertToResourcePlacements(rpList))
 		if len(matchedRPs) == 0 {
 			klog.V(2).InfoS("Change in object does not affect any resource placement", "obj", key)
 			return nil
@@ -436,8 +435,8 @@ func collectAllAffectedPlacementsV1Beta1(isClusterScoped bool, res *unstructured
 		for _, selector := range placement.GetPlacementSpec().ResourceSelectors {
 			// For the clusterResourcePlacement, we skip the namespace scoped resources if the placement is cluster scoped.
 			if !isClusterScoped && isSelectNamespaceOnly(selector) && placement.GetNamespace() == "" {
-				// If the selector is namespace only, we skip the cluster scoped resources.
-				klog.V(2).InfoS("Skipping cluster scoped resource for namespace only selector", "obj", res.GetName(), "selector", selector, "placement", klog.KObj(placement))
+				// If the selector is namespace only, we skip the namespace scoped resources.
+				klog.V(2).InfoS("Skipping namespace scoped resource for namespace only selector", "obj", klog.KRef(res.GetNamespace(), res.GetName()), "selector", selector, "placement", klog.KObj(placement))
 				continue
 			}
 
