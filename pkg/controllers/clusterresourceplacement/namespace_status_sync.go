@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -80,12 +81,18 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 				Status: *crp.Status.DeepCopy(),
 			}
 
+			// Set CRP as owner - this ensures automatic cleanup when CRP is deleted
+			if err := controllerutil.SetControllerReference(crp, crpStatus, r.Scheme); err != nil {
+				klog.ErrorS(err, "Failed to set controller reference", "crp", klog.KObj(crp), "namespace", targetNamespace)
+				return fmt.Errorf("failed to set controller reference: %w", err)
+			}
+
 			if err := r.Client.Create(ctx, crpStatus); err != nil {
 				klog.ErrorS(err, "Failed to create ClusterResourcePlacementStatus", "crp", klog.KObj(crp), "namespace", targetNamespace)
 				return fmt.Errorf("failed to create ClusterResourcePlacementStatus: %w", err)
 			}
 
-			klog.V(2).InfoS("Created ClusterResourcePlacementStatus", "crp", klog.KObj(crp), "namespace", targetNamespace)
+			klog.V(2).InfoS("Created ClusterResourcePlacementStatus with owner reference", "crp", klog.KObj(crp), "namespace", targetNamespace)
 			return nil
 		}
 		klog.ErrorS(err, "Failed to get ClusterResourcePlacementStatus", "crp", klog.KObj(crp), "namespace", targetNamespace)

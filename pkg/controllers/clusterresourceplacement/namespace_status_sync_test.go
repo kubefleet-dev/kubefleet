@@ -259,6 +259,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 
 			reconciler := &Reconciler{
 				Client: fakeClient,
+				Scheme: scheme,
 			}
 
 			err := reconciler.syncClusterResourcePlacementStatus(context.Background(), tc.placementObj)
@@ -303,8 +304,26 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				}
 
 				// Ignore metadata fields that Kubernetes sets automatically
-				if diff := cmp.Diff(wantStatus, *crpStatus, cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion", "UID", "CreationTimestamp", "Generation", "ManagedFields")); diff != "" {
+				if diff := cmp.Diff(wantStatus, *crpStatus, cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion", "UID", "CreationTimestamp", "Generation", "ManagedFields", "OwnerReferences")); diff != "" {
 					t.Errorf("ClusterResourcePlacementStatus mismatch (-want +got):\n%s", diff)
+				}
+				
+				// Verify owner reference is set correctly for creation case
+				if tc.want == expectCreation {
+					if len(crpStatus.OwnerReferences) == 0 {
+						t.Error("Expected owner reference to be set, but none found")
+					} else {
+						ownerRef := crpStatus.OwnerReferences[0]
+						if ownerRef.Name != crp.Name {
+							t.Errorf("Expected owner reference name %s, got %s", crp.Name, ownerRef.Name)
+						}
+						if ownerRef.Kind != "ClusterResourcePlacement" {
+							t.Errorf("Expected owner reference kind ClusterResourcePlacement, got %s", ownerRef.Kind)
+						}
+						if ownerRef.Controller == nil || !*ownerRef.Controller {
+							t.Error("Expected owner reference to be marked as controller")
+						}
+					}
 				}
 			}
 		})
