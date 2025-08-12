@@ -30,21 +30,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
 func TestExtractNamespaceFromResourceSelectors(t *testing.T) {
 	testCases := []struct {
 		name      string
-		placement fleetv1beta1.ClusterResourcePlacement
+		placement placementv1beta1.ClusterResourcePlacement
 		want      string
 	}{
 		{
 			name: "NamespaceAccessible with namespace selector",
-			placement: fleetv1beta1.ClusterResourcePlacement{
-				Spec: fleetv1beta1.PlacementSpec{
-					StatusReportingScope: fleetv1beta1.NamespaceAccessible,
-					ResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+			placement: placementv1beta1.ClusterResourcePlacement{
+				Spec: placementv1beta1.PlacementSpec{
+					StatusReportingScope: placementv1beta1.NamespaceAccessible,
+					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
 						{
 							Group:   "",
 							Version: "v1",
@@ -58,10 +58,10 @@ func TestExtractNamespaceFromResourceSelectors(t *testing.T) {
 		},
 		{
 			name: "ClusterScopeOnly should return empty",
-			placement: fleetv1beta1.ClusterResourcePlacement{
-				Spec: fleetv1beta1.PlacementSpec{
-					StatusReportingScope: fleetv1beta1.ClusterScopeOnly,
-					ResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+			placement: placementv1beta1.ClusterResourcePlacement{
+				Spec: placementv1beta1.PlacementSpec{
+					StatusReportingScope: placementv1beta1.ClusterScopeOnly,
+					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
 						{
 							Group:   "",
 							Version: "v1",
@@ -75,10 +75,10 @@ func TestExtractNamespaceFromResourceSelectors(t *testing.T) {
 		},
 		{
 			name: "NamespaceAccessible without namespace selector",
-			placement: fleetv1beta1.ClusterResourcePlacement{
-				Spec: fleetv1beta1.PlacementSpec{
-					StatusReportingScope: fleetv1beta1.NamespaceAccessible,
-					ResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+			placement: placementv1beta1.ClusterResourcePlacement{
+				Spec: placementv1beta1.PlacementSpec{
+					StatusReportingScope: placementv1beta1.NamespaceAccessible,
+					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
 						{
 							Group:   "apps",
 							Version: "v1",
@@ -107,7 +107,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
 		t.Fatalf("failed to add client go scheme: %v", err)
 	}
-	if err := fleetv1beta1.AddToScheme(scheme); err != nil {
+	if err := placementv1beta1.AddToScheme(scheme); err != nil {
 		t.Fatalf("failed to add fleet scheme: %v", err)
 	}
 
@@ -120,19 +120,19 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 
 	testCases := []struct {
 		name            string
-		placementObj    fleetv1beta1.PlacementObj
+		placementObj    placementv1beta1.PlacementObj
 		existingObjects []client.Object
 		want            expectation
 	}{
 		{
 			name: "Create new ClusterResourcePlacementStatus",
-			placementObj: &fleetv1beta1.ClusterResourcePlacement{
+			placementObj: &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-crp",
 				},
-				Spec: fleetv1beta1.PlacementSpec{
-					StatusReportingScope: fleetv1beta1.NamespaceAccessible,
-					ResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+				Spec: placementv1beta1.PlacementSpec{
+					StatusReportingScope: placementv1beta1.NamespaceAccessible,
+					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
 						{
 							Group:   "",
 							Version: "v1",
@@ -141,7 +141,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 						},
 					},
 				},
-				Status: fleetv1beta1.PlacementStatus{
+				Status: placementv1beta1.PlacementStatus{
 					ObservedResourceIndex: "test-index",
 					Conditions: []metav1.Condition{
 						{
@@ -163,13 +163,13 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 		},
 		{
 			name: "Update existing ClusterResourcePlacementStatus",
-			placementObj: &fleetv1beta1.ClusterResourcePlacement{
+			placementObj: &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-crp",
 				},
-				Spec: fleetv1beta1.PlacementSpec{
-					StatusReportingScope: fleetv1beta1.NamespaceAccessible,
-					ResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+				Spec: placementv1beta1.PlacementSpec{
+					StatusReportingScope: placementv1beta1.NamespaceAccessible,
+					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
 						{
 							Group:   "",
 							Version: "v1",
@@ -178,7 +178,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 						},
 					},
 				},
-				Status: fleetv1beta1.PlacementStatus{
+				Status: placementv1beta1.PlacementStatus{
 					ObservedResourceIndex: "updated-index",
 					Conditions: []metav1.Condition{
 						{
@@ -195,12 +195,12 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 						Name: "test-namespace",
 					},
 				},
-				&fleetv1beta1.ClusterResourcePlacementStatus{
+				&placementv1beta1.ClusterResourcePlacementStatus{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "test-crp",
 						Namespace: "test-namespace",
 					},
-					Status: fleetv1beta1.PlacementStatus{
+					Status: placementv1beta1.PlacementStatus{
 						ObservedResourceIndex: "old-index",
 					},
 				},
@@ -209,13 +209,13 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 		},
 		{
 			name: "ClusterScopeOnly should not sync",
-			placementObj: &fleetv1beta1.ClusterResourcePlacement{
+			placementObj: &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-crp",
 				},
-				Spec: fleetv1beta1.PlacementSpec{
-					StatusReportingScope: fleetv1beta1.ClusterScopeOnly,
-					ResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+				Spec: placementv1beta1.PlacementSpec{
+					StatusReportingScope: placementv1beta1.ClusterScopeOnly,
+					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
 						{
 							Group:   "",
 							Version: "v1",
@@ -229,14 +229,14 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 		},
 		{
 			name: "ResourcePlacement should not sync",
-			placementObj: &fleetv1beta1.ResourcePlacement{
+			placementObj: &placementv1beta1.ResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-rp",
 					Namespace: "test-namespace",
 				},
-				Spec: fleetv1beta1.PlacementSpec{
-					StatusReportingScope: fleetv1beta1.NamespaceAccessible,
-					ResourceSelectors: []fleetv1beta1.ClusterResourceSelector{
+				Spec: placementv1beta1.PlacementSpec{
+					StatusReportingScope: placementv1beta1.NamespaceAccessible,
+					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
 						{
 							Group:   "",
 							Version: "v1",
@@ -273,7 +273,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 			}
 
 			// Verify the ClusterResourcePlacementStatus exists
-			crp, ok := tc.placementObj.(*fleetv1beta1.ClusterResourcePlacement)
+			crp, ok := tc.placementObj.(*placementv1beta1.ClusterResourcePlacement)
 			if !ok {
 				return // ResourcePlacement case
 			}
@@ -283,7 +283,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				return // No sync expected
 			}
 
-			crpStatus := &fleetv1beta1.ClusterResourcePlacementStatus{}
+			crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
 			err = fakeClient.Get(context.Background(), types.NamespacedName{
 				Name:      crp.Name,
 				Namespace: targetNamespace,
@@ -295,7 +295,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				}
 
 				// Use cmp.Diff to compare the key fields
-				wantStatus := fleetv1beta1.ClusterResourcePlacementStatus{
+				wantStatus := placementv1beta1.ClusterResourcePlacementStatus{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      crp.Name,
 						Namespace: targetNamespace,

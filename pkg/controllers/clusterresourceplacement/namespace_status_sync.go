@@ -26,16 +26,16 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
 // extractNamespaceFromResourceSelectors extracts the namespace name from ResourceSelectors
 // when StatusReportingScope is NamespaceAccessible. Returns empty string if not applicable.
-func extractNamespaceFromResourceSelectors(placementObj fleetv1beta1.PlacementObj) string {
+func extractNamespaceFromResourceSelectors(placementObj placementv1beta1.PlacementObj) string {
 	spec := placementObj.GetPlacementSpec()
 
 	// Only process if StatusReportingScope is NamespaceAccessible
-	if spec.StatusReportingScope != fleetv1beta1.NamespaceAccessible {
+	if spec.StatusReportingScope != placementv1beta1.NamespaceAccessible {
 		return ""
 	}
 
@@ -53,9 +53,9 @@ func extractNamespaceFromResourceSelectors(placementObj fleetv1beta1.PlacementOb
 
 // syncClusterResourcePlacementStatus creates or updates ClusterResourcePlacementStatus
 // object in the target namespace when StatusReportingScope is NamespaceAccessible
-func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, placementObj fleetv1beta1.PlacementObj) error {
+func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, placementObj placementv1beta1.PlacementObj) error {
 	// Only sync for ClusterResourcePlacement objects (not ResourcePlacement)
-	crp, ok := placementObj.(*fleetv1beta1.ClusterResourcePlacement)
+	crp, ok := placementObj.(*placementv1beta1.ClusterResourcePlacement)
 	if !ok {
 		// This is a ResourcePlacement, not a ClusterResourcePlacement - skip sync
 		return nil
@@ -69,11 +69,11 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 	}
 
 	// Try to get the existing ClusterResourcePlacementStatus
-	crpStatus := &fleetv1beta1.ClusterResourcePlacementStatus{}
+	crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
 	if err := r.Client.Get(ctx, types.NamespacedName{Name: crp.Name, Namespace: targetNamespace}, crpStatus); err != nil {
 		if apierrors.IsNotFound(err) {
 			// Object doesn't exist, create it.
-			crpStatus = &fleetv1beta1.ClusterResourcePlacementStatus{
+			crpStatus = &placementv1beta1.ClusterResourcePlacementStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      crp.Name, // Same name as CRP
 					Namespace: targetNamespace,
