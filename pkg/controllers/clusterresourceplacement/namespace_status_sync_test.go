@@ -307,7 +307,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				if diff := cmp.Diff(wantStatus, *crpStatus, cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion", "UID", "CreationTimestamp", "Generation", "ManagedFields", "OwnerReferences")); diff != "" {
 					t.Errorf("ClusterResourcePlacementStatus mismatch (-want +got):\n%s", diff)
 				}
-				
+
 				// Verify owner reference is set correctly for creation case
 				if tc.want == expectCreation {
 					if len(crpStatus.OwnerReferences) == 0 {
