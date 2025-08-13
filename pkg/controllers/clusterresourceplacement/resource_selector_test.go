@@ -815,11 +815,6 @@ func createResourceContentForTest(t *testing.T, obj interface{}) *fleetv1beta1.R
 }
 
 func TestGatherSelectedResource(t *testing.T) {
-	// Common GroupVersionResource definitions used across multiple test cases.
-	deploymentGVR := schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}
-	configMapGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "configmaps"}
-	namespaceGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}
-	clusterRoleGVR := schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterroles"}
 
 	// Common test deployment object used across multiple test cases.
 	testDeployment := &unstructured.Unstructured{
@@ -832,7 +827,7 @@ func TestGatherSelectedResource(t *testing.T) {
 			},
 		},
 	}
-	testDeployment.SetGroupVersionKind(schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"})
+	testDeployment.SetGroupVersionKind(utils.DeploymentGVK)
 
 	// Common test configmap object used across multiple test cases.
 	testConfigMap := &unstructured.Unstructured{
@@ -845,7 +840,7 @@ func TestGatherSelectedResource(t *testing.T) {
 			},
 		},
 	}
-	testConfigMap.SetGroupVersionKind(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ConfigMap"})
+	testConfigMap.SetGroupVersionKind(utils.ConfigMapGVK)
 
 	kubeRootCAConfigMap := &unstructured.Unstructured{ // reserved configmap object
 		Object: map[string]interface{}{
@@ -857,7 +852,7 @@ func TestGatherSelectedResource(t *testing.T) {
 			},
 		},
 	}
-	kubeRootCAConfigMap.SetGroupVersionKind(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "ConfigMap"})
+	kubeRootCAConfigMap.SetGroupVersionKind(utils.ConfigMapGVK)
 
 	// Common test deployment object in deleting state.
 	testDeletingDeployment := &unstructured.Unstructured{
@@ -874,7 +869,7 @@ func TestGatherSelectedResource(t *testing.T) {
 			},
 		},
 	}
-	testDeletingDeployment.SetGroupVersionKind(schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"})
+	testDeletingDeployment.SetGroupVersionKind(utils.DeploymentGVK)
 
 	// Common test deployment with app=frontend label.
 	testFrontendDeployment := &unstructured.Unstructured{
@@ -891,7 +886,7 @@ func TestGatherSelectedResource(t *testing.T) {
 			},
 		},
 	}
-	testFrontendDeployment.SetGroupVersionKind(schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"})
+	testFrontendDeployment.SetGroupVersionKind(utils.DeploymentGVK)
 
 	// Common test deployment with app=backend label.
 	testBackendDeployment := &unstructured.Unstructured{
@@ -908,7 +903,7 @@ func TestGatherSelectedResource(t *testing.T) {
 			},
 		},
 	}
-	testBackendDeployment.SetGroupVersionKind(schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"})
+	testBackendDeployment.SetGroupVersionKind(utils.DeploymentGVK)
 
 	// Common test namespace object (cluster-scoped).
 	testNamespace := &unstructured.Unstructured{
@@ -923,7 +918,7 @@ func TestGatherSelectedResource(t *testing.T) {
 			},
 		},
 	}
-	testNamespace.SetGroupVersionKind(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Namespace"})
+	testNamespace.SetGroupVersionKind(utils.NamespaceGVK)
 
 	testDeletingNamespace := &unstructured.Unstructured{
 		Object: map[string]interface{}{
@@ -938,7 +933,7 @@ func TestGatherSelectedResource(t *testing.T) {
 			},
 		},
 	}
-	testDeletingNamespace.SetGroupVersionKind(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Namespace"})
+	testDeletingNamespace.SetGroupVersionKind(utils.NamespaceGVK)
 
 	prodNamespace := &unstructured.Unstructured{
 		Object: map[string]interface{}{
@@ -952,7 +947,7 @@ func TestGatherSelectedResource(t *testing.T) {
 			},
 		},
 	}
-	prodNamespace.SetGroupVersionKind(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Namespace"})
+	prodNamespace.SetGroupVersionKind(utils.NamespaceGVK)
 
 	// Common test cluster role object (cluster-scoped).
 	testClusterRole := &unstructured.Unstructured{
@@ -964,7 +959,7 @@ func TestGatherSelectedResource(t *testing.T) {
 			},
 		},
 	}
-	testClusterRole.SetGroupVersionKind(schema.GroupVersionKind{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole"})
+	testClusterRole.SetGroupVersionKind(utils.ClusterRoleGVK)
 
 	// Common test cluster role object #2 (cluster-scoped).
 	testClusterRole2 := &unstructured.Unstructured{
@@ -976,7 +971,7 @@ func TestGatherSelectedResource(t *testing.T) {
 			},
 		},
 	}
-	testClusterRole2.SetGroupVersionKind(schema.GroupVersionKind{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole"})
+	testClusterRole2.SetGroupVersionKind(utils.ClusterRoleGVK)
 
 	kubeSystemNamespace := &unstructured.Unstructured{ // reserved namespace object
 		Object: map[string]interface{}{
@@ -990,7 +985,7 @@ func TestGatherSelectedResource(t *testing.T) {
 			},
 		},
 	}
-	kubeSystemNamespace.SetGroupVersionKind(schema.GroupVersionKind{Group: "", Version: "v1", Kind: "Namespace"})
+	kubeSystemNamespace.SetGroupVersionKind(utils.NamespaceGVK)
 
 	tests := []struct {
 		name            string
@@ -1053,11 +1048,10 @@ func TestGatherSelectedResource(t *testing.T) {
 			},
 			resourceConfig: utils.NewResourceConfig(false), // allow all resources
 			informerManager: func() *testinformer.FakeManager {
-				gvr := deploymentGVR
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: true,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						gvr: {Objects: []runtime.Object{testDeployment}},
+						utils.DeploymentGVR: {Objects: []runtime.Object{testDeployment}},
 					},
 				}
 			}(),
@@ -1080,7 +1074,7 @@ func TestGatherSelectedResource(t *testing.T) {
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: true,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						deploymentGVR: {
+						utils.DeploymentGVR: {
 							Objects: []runtime.Object{},
 							Err:     apierrors.NewNotFound(schema.GroupResource{Group: "apps", Resource: "deployments"}, "test-deployment"),
 						},
@@ -1105,7 +1099,7 @@ func TestGatherSelectedResource(t *testing.T) {
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: true,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						deploymentGVR: {
+						utils.DeploymentGVR: {
 							Objects: []runtime.Object{},
 							Err:     errors.New("connection timeout"),
 						},
@@ -1129,7 +1123,7 @@ func TestGatherSelectedResource(t *testing.T) {
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: true,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						deploymentGVR: {
+						utils.DeploymentGVR: {
 							Objects: []runtime.Object{},
 							Err:     apierrors.NewNotFound(schema.GroupResource{Group: "apps", Resource: "deployments"}, "test-deployment"),
 						},
@@ -1160,7 +1154,7 @@ func TestGatherSelectedResource(t *testing.T) {
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: true,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						deploymentGVR: {Objects: []runtime.Object{testDeployment, testDeletingDeployment}},
+						utils.DeploymentGVR: {Objects: []runtime.Object{testDeployment, testDeletingDeployment}},
 					},
 				}
 			}(),
@@ -1184,11 +1178,10 @@ func TestGatherSelectedResource(t *testing.T) {
 			},
 			resourceConfig: utils.NewResourceConfig(false), // allow all resources
 			informerManager: func() *testinformer.FakeManager {
-				gvr := deploymentGVR
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: true,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						gvr: {Objects: []runtime.Object{testFrontendDeployment, testBackendDeployment, testDeployment}},
+						utils.DeploymentGVR: {Objects: []runtime.Object{testFrontendDeployment, testBackendDeployment, testDeployment}},
 					},
 				}
 			}(),
@@ -1216,11 +1209,10 @@ func TestGatherSelectedResource(t *testing.T) {
 			},
 			resourceConfig: utils.NewResourceConfig(false), // allow all resources
 			informerManager: func() *testinformer.FakeManager {
-				gvr := deploymentGVR
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: true,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						gvr: {Objects: []runtime.Object{testFrontendDeployment, testBackendDeployment, testDeployment, testDeletingDeployment}},
+						utils.DeploymentGVR: {Objects: []runtime.Object{testFrontendDeployment, testBackendDeployment, testDeployment, testDeletingDeployment}},
 					},
 				}
 			}(),
@@ -1249,7 +1241,7 @@ func TestGatherSelectedResource(t *testing.T) {
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: true,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						deploymentGVR: {Objects: []runtime.Object{testDeployment}},
+						utils.DeploymentGVR: {Objects: []runtime.Object{testDeployment}},
 					},
 				}
 			}(),
@@ -1277,8 +1269,8 @@ func TestGatherSelectedResource(t *testing.T) {
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: true,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						deploymentGVR: {Objects: []runtime.Object{testDeployment}},
-						configMapGVR:  {Objects: []runtime.Object{testConfigMap}},
+						utils.DeploymentGVR: {Objects: []runtime.Object{testDeployment}},
+						utils.ConfigMapGVR:  {Objects: []runtime.Object{testConfigMap}},
 					},
 				}
 			}(),
@@ -1327,8 +1319,8 @@ func TestGatherSelectedResource(t *testing.T) {
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: false,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						clusterRoleGVR: {Objects: []runtime.Object{testClusterRole, testClusterRole2}},
-						namespaceGVR:   {Objects: []runtime.Object{testNamespace}},
+						utils.ClusterRoleGVR: {Objects: []runtime.Object{testClusterRole, testClusterRole2}},
+						utils.NamespaceGVR:   {Objects: []runtime.Object{testNamespace}},
 					},
 				}
 			}(),
@@ -1358,8 +1350,8 @@ func TestGatherSelectedResource(t *testing.T) {
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: false,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						clusterRoleGVR: {Objects: []runtime.Object{testClusterRole, testClusterRole2}},
-						namespaceGVR:   {Objects: []runtime.Object{testNamespace}},
+						utils.ClusterRoleGVR: {Objects: []runtime.Object{testClusterRole, testClusterRole2}},
+						utils.NamespaceGVR:   {Objects: []runtime.Object{testNamespace}},
 					},
 				}
 			}(),
@@ -1387,11 +1379,11 @@ func TestGatherSelectedResource(t *testing.T) {
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: false,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						namespaceGVR:  {Objects: []runtime.Object{testNamespace, prodNamespace, testDeletingNamespace}},
-						deploymentGVR: {Objects: []runtime.Object{testDeployment, testDeletingDeployment}},
-						configMapGVR:  {Objects: []runtime.Object{testConfigMap, kubeRootCAConfigMap}},
+						utils.NamespaceGVR:  {Objects: []runtime.Object{testNamespace, prodNamespace, testDeletingNamespace}},
+						utils.DeploymentGVR: {Objects: []runtime.Object{testDeployment, testDeletingDeployment}},
+						utils.ConfigMapGVR:  {Objects: []runtime.Object{testConfigMap, kubeRootCAConfigMap}},
 					},
-					NamespaceScopedResources: []schema.GroupVersionResource{deploymentGVR, configMapGVR},
+					NamespaceScopedResources: []schema.GroupVersionResource{utils.DeploymentGVR, utils.ConfigMapGVR},
 				}
 			}(),
 			// Should select only non-reserved namespaces with matching labels and their children resources
@@ -1422,11 +1414,11 @@ func TestGatherSelectedResource(t *testing.T) {
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: false,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						namespaceGVR:  {Objects: []runtime.Object{testNamespace, prodNamespace, testDeletingNamespace}},
-						deploymentGVR: {Objects: []runtime.Object{testDeployment, testDeletingDeployment}},
-						configMapGVR:  {Objects: []runtime.Object{testConfigMap, kubeRootCAConfigMap}},
+						utils.NamespaceGVR:  {Objects: []runtime.Object{testNamespace, prodNamespace, testDeletingNamespace}},
+						utils.DeploymentGVR: {Objects: []runtime.Object{testDeployment, testDeletingDeployment}},
+						utils.ConfigMapGVR:  {Objects: []runtime.Object{testConfigMap, kubeRootCAConfigMap}},
 					},
-					NamespaceScopedResources: []schema.GroupVersionResource{deploymentGVR, configMapGVR},
+					NamespaceScopedResources: []schema.GroupVersionResource{utils.DeploymentGVR, utils.ConfigMapGVR},
 				}
 			}(),
 			// should skip the deployment resource since it is not allowed by resource config
@@ -1448,11 +1440,11 @@ func TestGatherSelectedResource(t *testing.T) {
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: false,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						namespaceGVR:  {Objects: []runtime.Object{testNamespace, prodNamespace, testDeletingNamespace}},
-						deploymentGVR: {Objects: []runtime.Object{testDeployment, testDeletingDeployment}},
-						configMapGVR:  {Objects: []runtime.Object{testConfigMap, kubeRootCAConfigMap}},
+						utils.NamespaceGVR:  {Objects: []runtime.Object{testNamespace, prodNamespace, testDeletingNamespace}},
+						utils.DeploymentGVR: {Objects: []runtime.Object{testDeployment, testDeletingDeployment}},
+						utils.ConfigMapGVR:  {Objects: []runtime.Object{testConfigMap, kubeRootCAConfigMap}},
 					},
-					NamespaceScopedResources: []schema.GroupVersionResource{deploymentGVR, configMapGVR},
+					NamespaceScopedResources: []schema.GroupVersionResource{utils.DeploymentGVR, utils.ConfigMapGVR},
 				}
 			}(),
 			// Should select only non-reserved namespaces with matching labels and their children resources
@@ -1479,11 +1471,11 @@ func TestGatherSelectedResource(t *testing.T) {
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: false,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						namespaceGVR:  {Objects: []runtime.Object{testNamespace, prodNamespace, testDeletingNamespace, kubeSystemNamespace}},
-						deploymentGVR: {Objects: []runtime.Object{testDeployment, testDeletingDeployment}},
-						configMapGVR:  {Objects: []runtime.Object{testConfigMap}},
+						utils.NamespaceGVR:  {Objects: []runtime.Object{testNamespace, prodNamespace, testDeletingNamespace, kubeSystemNamespace}},
+						utils.DeploymentGVR: {Objects: []runtime.Object{testDeployment, testDeletingDeployment}},
+						utils.ConfigMapGVR:  {Objects: []runtime.Object{testConfigMap}},
 					},
-					NamespaceScopedResources: []schema.GroupVersionResource{deploymentGVR, configMapGVR},
+					NamespaceScopedResources: []schema.GroupVersionResource{utils.DeploymentGVR, utils.ConfigMapGVR},
 				}
 			}(),
 			wantError: controller.ErrUserError,
@@ -1505,7 +1497,7 @@ func TestGatherSelectedResource(t *testing.T) {
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: true,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						namespaceGVR: {
+						utils.NamespaceGVR: {
 							Objects: []runtime.Object{},
 							Err:     apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "namespaces"}, "test-ns"),
 						},
@@ -1531,7 +1523,7 @@ func TestGatherSelectedResource(t *testing.T) {
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: true,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						namespaceGVR: {
+						utils.NamespaceGVR: {
 							Objects: []runtime.Object{},
 							Err:     errors.New("connection timeout"),
 						},
@@ -1556,7 +1548,7 @@ func TestGatherSelectedResource(t *testing.T) {
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: true,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						namespaceGVR: {
+						utils.NamespaceGVR: {
 							Objects: []runtime.Object{},
 							Err:     apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "namespaces"}, "test-ns"),
 						},
@@ -1582,13 +1574,13 @@ func TestGatherSelectedResource(t *testing.T) {
 				return &testinformer.FakeManager{
 					IsClusterScopedResource: true,
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-						namespaceGVR: {Objects: []runtime.Object{testNamespace, prodNamespace, testDeletingNamespace, kubeSystemNamespace}},
-						deploymentGVR: {
+						utils.NamespaceGVR: {Objects: []runtime.Object{testNamespace, prodNamespace, testDeletingNamespace, kubeSystemNamespace}},
+						utils.DeploymentGVR: {
 							Objects: []runtime.Object{},
 							Err:     errors.New("connection timeout"),
 						},
 					},
-					NamespaceScopedResources: []schema.GroupVersionResource{deploymentGVR},
+					NamespaceScopedResources: []schema.GroupVersionResource{utils.DeploymentGVR},
 				}
 			}(),
 			wantError: controller.ErrUnexpectedBehavior,
