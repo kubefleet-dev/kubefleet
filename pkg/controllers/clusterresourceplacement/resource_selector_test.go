@@ -815,7 +815,6 @@ func createResourceContentForTest(t *testing.T, obj interface{}) *fleetv1beta1.R
 }
 
 func TestGatherSelectedResource(t *testing.T) {
-
 	// Common test deployment object used across multiple test cases.
 	testDeployment := &unstructured.Unstructured{
 		Object: map[string]interface{}{
