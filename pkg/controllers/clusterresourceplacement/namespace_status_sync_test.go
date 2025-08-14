@@ -255,6 +255,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 			fakeClient := fake.NewClientBuilder().
 				WithScheme(scheme).
 				WithObjects(tc.existingObjects...).
+				WithStatusSubresource(&placementv1beta1.ClusterResourcePlacementStatus{}).
 				Build()
 
 			reconciler := &Reconciler{

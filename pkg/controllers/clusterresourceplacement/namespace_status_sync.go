@@ -96,6 +96,12 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 
 			klog.V(2).InfoS("Created ClusterResourcePlacementStatus with owner reference", "crp", klog.KObj(crp), "namespace", targetNamespace)
 
+			// Fetch the created object fresh to get the correct metadata for status update
+			if err := r.Client.Get(ctx, types.NamespacedName{Name: crp.Name, Namespace: targetNamespace}, crpStatus); err != nil {
+				klog.ErrorS(err, "Failed to get ClusterResourcePlacementStatus after creation", "crp", klog.KObj(crp), "namespace", targetNamespace)
+				return fmt.Errorf("failed to get ClusterResourcePlacementStatus after creation: %w", err)
+			}
+
 			// Now update the status separately
 			crpStatus.Status = *crp.Status.DeepCopy()
 			if err := r.Client.Status().Update(ctx, crpStatus); err != nil {
