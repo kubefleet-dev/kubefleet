@@ -47,7 +47,7 @@ const (
 	consistentTimeout      = time.Second * 60
 	consistentInterval     = time.Second * 5
 	customBindingFinalizer = "custom-binding-finalizer"
-	testNamespace          = "app"
+	testNamespace          = "app" // to align with the test resources in rollout/manifests
 )
 
 var (
@@ -374,7 +374,7 @@ var _ = Describe("Test the rollout Controller", func() {
 		Expect(k8sClient.Create(ctx, clusterResourceOverrideSnapshot)).Should(Succeed(), "Failed to create cluster resource override snapshot")
 
 		// Verify bindings are updated, note that both clusterResourceOverrideSnapshot and resourceOverrideSnapshot are set in the bindings.
-		verifyBindingsUpdatedWithOverrides(controller.ConvertCRBArrayToBindingObjs(bindings), []string{clusterResourceOverrideSnapshot.Name},
+		waitUntilRolloutCompleted(controller.ConvertCRBArrayToBindingObjs(bindings), []string{clusterResourceOverrideSnapshot.Name},
 			[]placementv1beta1.NamespacedName{{Name: resourceOverrideSnapshot1.Name, Namespace: resourceOverrideSnapshot1.Namespace}})
 
 		// Create another resourceOverrideSnapshot referencing the same CRP and verify bindings are updated again.
@@ -384,7 +384,7 @@ var _ = Describe("Test the rollout Controller", func() {
 		Expect(k8sClient.Create(ctx, resourceOverrideSnapshot2)).Should(Succeed(), "Failed to create resource override snapshot")
 
 		// Verify bindings are updated, note that both clusterResourceOverrideSnapshot and resourceOverrideSnapshot are set in the bindings.
-		verifyBindingsUpdatedWithOverrides(controller.ConvertCRBArrayToBindingObjs(bindings), []string{clusterResourceOverrideSnapshot.Name},
+		waitUntilRolloutCompleted(controller.ConvertCRBArrayToBindingObjs(bindings), []string{clusterResourceOverrideSnapshot.Name},
 			[]placementv1beta1.NamespacedName{
 				{Name: resourceOverrideSnapshot1.Name, Namespace: resourceOverrideSnapshot1.Namespace},
 				{Name: resourceOverrideSnapshot2.Name, Namespace: resourceOverrideSnapshot2.Namespace},
@@ -1684,7 +1684,7 @@ var _ = Describe("Test the rollout Controller for ResourcePlacement", func() {
 		By(fmt.Sprintf("Creating resource override snapshot %s", resourceOverrideSnapshot2.Name))
 		Expect(k8sClient.Create(ctx, resourceOverrideSnapshot2)).Should(Succeed(), "Failed to create resource override snapshot")
 
-		verifyBindingsUpdatedWithOverrides(controller.ConvertRBArrayToBindingObjs(bindings), nil, []placementv1beta1.NamespacedName{
+		waitUntilRolloutCompleted(controller.ConvertRBArrayToBindingObjs(bindings), nil, []placementv1beta1.NamespacedName{
 			{Name: resourceOverrideSnapshot2.Name, Namespace: resourceOverrideSnapshot2.Namespace},
 		})
 
@@ -1781,42 +1781,16 @@ func verifyBindingsNotUpdatedWithOverridesConsistently(
 ) {
 	Consistently(func() error {
 		for _, binding := range bindings {
-			var gotBinding placementv1beta1.BindingObj
-			if binding.GetNamespace() == "" {
-				gotBinding = &placementv1beta1.ClusterResourceBinding{}
-			} else {
-				gotBinding = &placementv1beta1.ResourceBinding{}
-			}
-			if err := k8sClient.Get(ctx, types.NamespacedName{Name: binding.GetName(), Namespace: binding.GetNamespace()}, gotBinding); err != nil {
-				return fmt.Errorf("failed to get binding %s/%s: %w", binding.GetNamespace(), binding.GetName(), err)
-			}
-			// Check that RolloutStarted condition is True.
-			if !condition.IsConditionStatusTrue(gotBinding.GetCondition(string(placementv1beta1.ResourceBindingRolloutStarted)), gotBinding.GetGeneration()) {
-				return fmt.Errorf("binding %s/%s RolloutStarted condition is not True", binding.GetNamespace(), binding.GetName())
-			}
-			// Check that override snapshots in spec are not updated.
-			cmpOptions := []cmp.Option{
-				cmpopts.EquateEmpty(),
-				cmpopts.SortSlices(func(a, b string) bool { return a < b }),
-				cmpopts.SortSlices(func(a, b placementv1beta1.NamespacedName) bool {
-					if a.Namespace == b.Namespace {
-						return a.Name < b.Name
-					}
-					return a.Namespace < b.Namespace
-				}),
-			}
-			if !cmp.Equal(gotBinding.GetBindingSpec().ClusterResourceOverrideSnapshots, wantClusterResourceOverrideSnapshots, cmpOptions...) ||
-				!cmp.Equal(gotBinding.GetBindingSpec().ResourceOverrideSnapshots, wantResourceOverrideSnapshots, cmpOptions...) {
-				return fmt.Errorf("binding %s/%s override snapshots mismatch: want %v and %v, got %v and %v", binding.GetNamespace(), binding.GetName(),
-					wantClusterResourceOverrideSnapshots, wantResourceOverrideSnapshots,
-					gotBinding.GetBindingSpec().ClusterResourceOverrideSnapshots, gotBinding.GetBindingSpec().ResourceOverrideSnapshots)
+			bindingKey := types.NamespacedName{Name: binding.GetName(), Namespace: binding.GetNamespace()}
+			if _, err := checkIfBindingUpdatedWithOverrides(bindingKey, wantClusterResourceOverrideSnapshots, wantResourceOverrideSnapshots); err != nil {
+				return fmt.Errorf("binding %s should not be updated with overrides: %w", bindingKey, err)
 			}
 		}
 		return nil
 	}, consistentTimeout, interval).Should(Succeed(), "Bindings should not be updated with new overrides consistently")
 }
 
-func verifyBindingsUpdatedWithOverrides(
+func waitUntilRolloutCompleted(
 	bindings []placementv1beta1.BindingObj,
 	wantClusterResourceOverrideSnapshots []string,
 	wantResourceOverrideSnapshots []placementv1beta1.NamespacedName,
@@ -1825,6 +1799,48 @@ func verifyBindingsUpdatedWithOverrides(
 	for _, binding := range bindings {
 		notUpdatedBindings[types.NamespacedName{Name: binding.GetName(), Namespace: binding.GetNamespace()}] = true
 	}
+
+	for len(notUpdatedBindings) > 0 {
+		// In each round, try to find a binding that has been updated and update it to available so rollout can proceed.
+		var gotBinding placementv1beta1.BindingObj
+		var err error
+		Eventually(func() error {
+			for bindingKey := range notUpdatedBindings {
+				gotBinding, err = checkIfBindingUpdatedWithOverrides(bindingKey, wantClusterResourceOverrideSnapshots, wantResourceOverrideSnapshots)
+				if err != nil {
+					continue // current binding not updated yet, continue to check the next one.
+				}
+				delete(notUpdatedBindings, bindingKey)
+				return nil // found an updated binding, can exit this round.
+			}
+			return fmt.Errorf("failed to find a binding with updated overrides")
+		}, timeout, interval).Should(Succeed(), "One of the bindings should be updated with overrides")
+		// Mark the binding as available so rollout can proceed.
+		markBindingAvailable(gotBinding, true)
+	}
+}
+
+func checkIfBindingUpdatedWithOverrides(
+	bindingKey types.NamespacedName,
+	wantClusterResourceOverrideSnapshots []string,
+	wantResourceOverrideSnapshots []placementv1beta1.NamespacedName,
+) (placementv1beta1.BindingObj, error) {
+	var gotBinding placementv1beta1.BindingObj
+	if bindingKey.Namespace == "" {
+		gotBinding = &placementv1beta1.ClusterResourceBinding{}
+	} else {
+		gotBinding = &placementv1beta1.ResourceBinding{}
+	}
+	if err := k8sClient.Get(ctx, bindingKey, gotBinding); err != nil {
+		return gotBinding, fmt.Errorf("failed to get binding %s: %w", bindingKey, err)
+	}
+
+	// Check that RolloutStarted condition is True.
+	if !condition.IsConditionStatusTrue(gotBinding.GetCondition(string(placementv1beta1.ResourceBindingRolloutStarted)), gotBinding.GetGeneration()) {
+		return gotBinding, fmt.Errorf("binding %s RolloutStarted condition is not True", bindingKey)
+	}
+
+	// Check that override snapshots in spec are the want ones.
 	cmpOptions := []cmp.Option{
 		cmpopts.EquateEmpty(),
 		cmpopts.SortSlices(func(a, b string) bool { return a < b }),
@@ -1835,32 +1851,13 @@ func verifyBindingsUpdatedWithOverrides(
 			return a.Namespace < b.Namespace
 		}),
 	}
-	for len(notUpdatedBindings) > 0 {
-		var gotBinding placementv1beta1.BindingObj
-		Eventually(func() error {
-			for bindingKey := range notUpdatedBindings {
-				if bindingKey.Namespace == "" {
-					gotBinding = &placementv1beta1.ClusterResourceBinding{}
-				} else {
-					gotBinding = &placementv1beta1.ResourceBinding{}
-				}
-				if err := k8sClient.Get(ctx, bindingKey, gotBinding); err != nil {
-					return fmt.Errorf("failed to get binding %s: %w", bindingKey, err)
-				}
-				// Check if this binding has been rolled out.
-				if cmp.Equal(gotBinding.GetBindingSpec().ClusterResourceOverrideSnapshots, wantClusterResourceOverrideSnapshots, cmpOptions...) &&
-					cmp.Equal(gotBinding.GetBindingSpec().ResourceOverrideSnapshots, wantResourceOverrideSnapshots, cmpOptions...) &&
-					condition.IsConditionStatusTrue(gotBinding.GetCondition(string(placementv1beta1.ResourceBindingRolloutStarted)), gotBinding.GetGeneration()) {
-					// This binding has been updated, remove it from the map.
-					delete(notUpdatedBindings, bindingKey)
-					return nil
-				}
-			}
-			return fmt.Errorf("failed to find a binding with updated overrides")
-		}, timeout, interval).Should(Succeed(), "One of the bindings should be updated with overrides")
-		// Mark the binding as available so rollout can proceed.
-		markBindingAvailable(gotBinding, true)
+	if !cmp.Equal(gotBinding.GetBindingSpec().ClusterResourceOverrideSnapshots, wantClusterResourceOverrideSnapshots, cmpOptions...) ||
+		!cmp.Equal(gotBinding.GetBindingSpec().ResourceOverrideSnapshots, wantResourceOverrideSnapshots, cmpOptions...) {
+		return gotBinding, fmt.Errorf("binding %s override snapshots mismatch: want %v and %v, got %v and %v", bindingKey,
+			wantClusterResourceOverrideSnapshots, wantResourceOverrideSnapshots,
+			gotBinding.GetBindingSpec().ClusterResourceOverrideSnapshots, gotBinding.GetBindingSpec().ResourceOverrideSnapshots)
 	}
+	return gotBinding, nil
 }
 
 func markBindingAvailable(binding placementv1beta1.BindingObj, trackable bool) {
