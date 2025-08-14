@@ -58,6 +58,7 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 	crp, ok := placementObj.(*placementv1beta1.ClusterResourcePlacement)
 	if !ok {
 		// This is a ResourcePlacement, not a ClusterResourcePlacement - skip sync
+		klog.V(2).InfoS("Skipped processing RP to create/update ClusterResourcePlacementStatus")
 		return nil
 	}
 
@@ -65,6 +66,7 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 	targetNamespace := extractNamespaceFromResourceSelectors(placementObj)
 	if targetNamespace == "" {
 		// Not NamespaceAccessible or no namespace found - skip sync
+		klog.V(2).InfoS("Skipped processing CRP to create/update ClusterResourcePlacementStatus", "crp", klog.KObj(crp))
 		return nil
 	}
 
@@ -78,7 +80,7 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 					Name:      crp.Name, // Same name as CRP
 					Namespace: targetNamespace,
 				},
-				Status: *crp.Status.DeepCopy(),
+				// Don't set Status here - it will be updated separately after creation
 			}
 
 			// Set CRP as owner - this ensures automatic cleanup when CRP is deleted
@@ -93,6 +95,15 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 			}
 
 			klog.V(2).InfoS("Created ClusterResourcePlacementStatus with owner reference", "crp", klog.KObj(crp), "namespace", targetNamespace)
+
+			// Now update the status separately
+			crpStatus.Status = *crp.Status.DeepCopy()
+			if err := r.Client.Status().Update(ctx, crpStatus); err != nil {
+				klog.ErrorS(err, "Failed to update ClusterResourcePlacementStatus status after creation", "crp", klog.KObj(crp), "namespace", targetNamespace)
+				return fmt.Errorf("failed to update ClusterResourcePlacementStatus status: %w", err)
+			}
+
+			klog.V(2).InfoS("Updated ClusterResourcePlacementStatus status after creation", "crp", klog.KObj(crp), "namespace", targetNamespace)
 			return nil
 		}
 		klog.ErrorS(err, "Failed to get ClusterResourcePlacementStatus", "crp", klog.KObj(crp), "namespace", targetNamespace)
@@ -101,7 +112,7 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 
 	// Object exists, update it.
 	crpStatus.Status = *crp.Status.DeepCopy()
-	if err := r.Client.Update(ctx, crpStatus); err != nil {
+	if err := r.Client.Status().Update(ctx, crpStatus); err != nil {
 		klog.ErrorS(err, "Failed to update ClusterResourcePlacementStatus", "crp", klog.KObj(crp), "namespace", targetNamespace)
 		return fmt.Errorf("failed to update ClusterResourcePlacementStatus: %w", err)
 	}
