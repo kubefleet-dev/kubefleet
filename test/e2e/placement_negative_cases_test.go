@@ -24,6 +24,14 @@ import (
 )
 
 var _ = Describe("handling errors and failures gracefully", func() {
+	envelopeName := "wrapper"
+	wrappedCMName1 := "app-1"
+	wrappedCMName2 := "app-2"
+
+	cmDataKey := "foo"
+	cmDataVal1 := "bar"
+	cmDataVal2 := "baz"
+
 	// This test spec uses envelopes for placement as it is a bit tricky to simulate
 	// decoding errors with resources created directly in the hub cluster.
 	//
@@ -32,14 +40,6 @@ var _ = Describe("handling errors and failures gracefully", func() {
 	Context("pre-processing failure in apply ops (decoding errors)", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		workNamespaceName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
-
-		envelopeName := "wrapper"
-		wrappedCMName1 := "app-1"
-		wrappedCMName2 := "app-2"
-
-		cmDataKey := "foo"
-		cmDataVal1 := "bar"
-		cmDataVal2 := "baz"
 
 		BeforeAll(func() {
 			// Use an envelope to create duplicate resource entries.
@@ -223,12 +223,6 @@ var _ = Describe("handling errors and failures gracefully", func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		workNamespaceName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 
-		envelopeName := "wrapper"
-		wrappedCMName1 := "app-1"
-
-		cmDataKey := "foo"
-		cmDataVal := "bar"
-
 		BeforeAll(func() {
 			// Use an envelope to create duplicate resource entries.
 			ns := appNamespace()
@@ -254,7 +248,7 @@ var _ = Describe("handling errors and failures gracefully", func() {
 					Name:      wrappedCMName1,
 				},
 				Data: map[string]string{
-					cmDataKey: cmDataVal,
+					cmDataKey: cmDataVal1,
 				},
 			}
 			badCMBytes, err := json.Marshal(badConfigMap)
