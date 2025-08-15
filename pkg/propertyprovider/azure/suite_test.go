@@ -111,7 +111,7 @@ var _ = BeforeSuite(func() {
 
 	// Start the Azure property provider.
 	pp = trackers.NewAKSKarpenterPricingClient(ctx, region)
-	p = NewWithPricingProvider(pp)
+	p = NewWithPricingProvider(pp, true, true)
 	Expect(p.Start(ctx, memberCfg)).To(Succeed())
 })
 

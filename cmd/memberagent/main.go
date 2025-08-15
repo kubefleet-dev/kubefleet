@@ -61,6 +61,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider/azure"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/featuregates"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/httpclient"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/parallelizer"
 	//+kubebuilder:scaffold:imports
@@ -102,6 +103,7 @@ var (
 	workApplierRequeueRateLimiterExponentialBaseForFastBackoff                       = flag.Float64("work-applier-requeue-rate-limiter-exponential-base-for-fast-backoff", 1.5, "If set, the work applier will start to back off fast at this factor after it completes the slow backoff stage, until it reaches the fast backoff delay cap. Its value should be larger than the base value for the slow backoff stage.")
 	workApplierRequeueRateLimiterMaxFastBackoffDelaySeconds                          = flag.Float64("work-applier-requeue-rate-limiter-max-fast-backoff-delay-seconds", 900, "If set, the work applier will not back off longer than this value in seconds when it is in the fast backoff stage.")
 	workApplierRequeueRateLimiterSkipToFastBackoffForAvailableOrDiffReportedWorkObjs = flag.Bool("work-applier-requeue-rate-limiter-skip-to-fast-backoff-for-available-or-diff-reported-work-objs", true, "If set, the rate limiter will skip the slow backoff stage and start fast backoff immediately for work objects that are available or have diff reported.")
+	featureGates                                                                     = featuregates.MemberAgentFeatureGate
 )
 
 func init() {
@@ -123,6 +125,15 @@ func init() {
 }
 
 func main() {
+	// Register the feature gate CLI arguments.
+	//
+	// Note (chenyu1): flag.CommandLine is the top-level flag in use; all other KubeFleet
+	// CLI arguments are registered under this flag set.
+	//
+	// Note (chenyu1): repeated arguments (e.g., "--feature-gates=foo=true --feature-gates=bar=false") are
+	// also supported.
+	featureGates.RegisterAsCLIArgument(flag.CommandLine, "features-gates", "A comma-separated list of features to enable/disable; the format is <feature-name>=<true|false> (e.g., 'foo=true,bar=false').")
+
 	flag.Parse()
 	utilrand.Seed(time.Now().UnixNano())
 	defer klog.Flush()
@@ -461,7 +472,17 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 			// the specific instance wins the leader election.
 			klog.V(1).InfoS("Property Provider is azure, loading cloud config", "cloudConfigFile", *cloudConfigFile)
 			// TODO (britaniar): load cloud config for Azure property provider.
-			pp = azure.New(region)
+			isCostCollectionEnabled, err := featureGates.IsEnabled(azure.CollectCostsInAzurePropertyProvider)
+			if err != nil {
+				klog.ErrorS(err, "Failed to check if the Azure property provider cost collection feature is enabled")
+				return fmt.Errorf("failed to check if the Azure property provider cost collection feature is enabled: %w", err)
+			}
+			isAvailableResourcesCollectionEnabled, err := featureGates.IsEnabled(azure.CollectAvailableResourcesInAzurePropertyProvider)
+			if err != nil {
+				klog.ErrorS(err, "Failed to check if the Azure property provider available resources collection feature is enabled")
+				return fmt.Errorf("failed to check if the Azure property provider available resources collection feature is enabled: %w", err)
+			}
+			pp = azure.New(region, isCostCollectionEnabled, isAvailableResourcesCollectionEnabled)
 		default:
 			// Fall back to not using any property provider if the provided type is none or
 			// not recognizable.
