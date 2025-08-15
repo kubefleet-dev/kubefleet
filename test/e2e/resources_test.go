@@ -54,6 +54,18 @@ const (
 	workNamespaceLabelName         = "process"
 )
 
+func namespaceOnlySelector() []placementv1beta1.ResourceSelectorTerm {
+	return []placementv1beta1.ResourceSelectorTerm{
+		{
+			Group:          "",
+			Kind:           "Namespace",
+			Version:        "v1",
+			Name:           fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess()),
+			SelectionScope: placementv1beta1.NamespaceOnly,
+		},
+	}
+}
+
 func workResourceSelector() []placementv1beta1.ResourceSelectorTerm {
 	return []placementv1beta1.ResourceSelectorTerm{
 		{
@@ -65,7 +77,18 @@ func workResourceSelector() []placementv1beta1.ResourceSelectorTerm {
 	}
 }
 
-func configMapSelector() []placementv1beta1.ResourceSelector {
+func configMapSelector() []placementv1beta1.ResourceSelectorTerm {
+	return []placementv1beta1.ResourceSelectorTerm{
+		{
+			Group:   "",
+			Kind:    "ConfigMap",
+			Version: "v1",
+			Name:    fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess()),
+		},
+	}
+}
+
+func configMapOverrideSelector() []placementv1beta1.ResourceSelector {
 	return []placementv1beta1.ResourceSelector{
 		{
 			Group:   "",
