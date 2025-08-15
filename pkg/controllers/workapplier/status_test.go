@@ -18,6 +18,7 @@ package workapplier
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -93,10 +94,9 @@ func TestRefreshWorkStatus(t *testing.T) {
 						Namespace: nsName,
 						Resource:  "deployments",
 					},
-					inMemberClusterObj: toUnstructured(t, deploy1.DeepCopy()),
-					applyResTyp:        ManifestProcessingApplyResultTypeApplied,
-					availabilityResTyp: ManifestProcessingAvailabilityResultTypeAvailable,
-					reportDiffResTyp:   ManifestProcessingReportDiffResultTypeNotEnabled,
+					inMemberClusterObj:      toUnstructured(t, deploy1.DeepCopy()),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeAvailable,
 				},
 			},
 			wantWorkStatus: &fleetv1beta1.WorkStatus{
@@ -129,7 +129,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 							{
 								Type:               fleetv1beta1.WorkConditionTypeApplied,
 								Status:             metav1.ConditionTrue,
-								Reason:             string(ManifestProcessingApplyResultTypeApplied),
+								Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeApplied),
 								ObservedGeneration: 2,
 							},
 							{
@@ -163,10 +163,9 @@ func TestRefreshWorkStatus(t *testing.T) {
 						Namespace: nsName,
 						Resource:  "deployments",
 					},
-					inMemberClusterObj: toUnstructured(t, deploy2.DeepCopy()),
-					applyResTyp:        ManifestProcessingApplyResultTypeAppliedWithFailedDriftDetection,
-					availabilityResTyp: ManifestProcessingAvailabilityResultTypeSkipped,
-					reportDiffResTyp:   ManifestProcessingReportDiffResultTypeNotEnabled,
+					inMemberClusterObj:      toUnstructured(t, deploy2.DeepCopy()),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeAppliedWithFailedDriftDetection,
+					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeSkipped,
 				},
 				{
 					id: &fleetv1beta1.WorkResourceIdentifier{
@@ -178,10 +177,9 @@ func TestRefreshWorkStatus(t *testing.T) {
 						Namespace: nsName,
 						Resource:  "deployments",
 					},
-					inMemberClusterObj: toUnstructured(t, deploy3.DeepCopy()),
-					applyResTyp:        ManifestProcessingApplyResultTypeFailedToTakeOver,
-					availabilityResTyp: ManifestProcessingAvailabilityResultTypeSkipped,
-					reportDiffResTyp:   ManifestProcessingReportDiffResultTypeNotEnabled,
+					inMemberClusterObj:      toUnstructured(t, deploy3.DeepCopy()),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFailedToTakeOver,
+					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeSkipped,
 				},
 			},
 			wantWorkStatus: &fleetv1beta1.WorkStatus{
@@ -208,7 +206,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 							{
 								Type:   fleetv1beta1.WorkConditionTypeApplied,
 								Status: metav1.ConditionTrue,
-								Reason: string(ManifestProcessingApplyResultTypeAppliedWithFailedDriftDetection),
+								Reason: string(ManifestProcessingApplyOrReportDiffResultTypeAppliedWithFailedDriftDetection),
 							},
 						},
 					},
@@ -226,7 +224,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 							{
 								Type:   fleetv1beta1.WorkConditionTypeApplied,
 								Status: metav1.ConditionFalse,
-								Reason: string(ManifestProcessingApplyResultTypeFailedToTakeOver),
+								Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFailedToTakeOver),
 							},
 						},
 					},
@@ -252,10 +250,9 @@ func TestRefreshWorkStatus(t *testing.T) {
 						Namespace: nsName,
 						Resource:  "deployments",
 					},
-					inMemberClusterObj: toUnstructured(t, deploy.DeepCopy()),
-					applyResTyp:        ManifestProcessingApplyResultTypeApplied,
-					availabilityResTyp: ManifestProcessingAvailabilityResultTypeFailed,
-					reportDiffResTyp:   ManifestProcessingReportDiffResultTypeNotEnabled,
+					inMemberClusterObj:      toUnstructured(t, deploy.DeepCopy()),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeFailed,
 				},
 				{
 					id: &fleetv1beta1.WorkResourceIdentifier{
@@ -267,10 +264,9 @@ func TestRefreshWorkStatus(t *testing.T) {
 						Namespace: nsName,
 						Resource:  "deployments",
 					},
-					inMemberClusterObj: toUnstructured(t, deploy.DeepCopy()),
-					applyResTyp:        ManifestProcessingApplyResultTypeApplied,
-					availabilityResTyp: ManifestProcessingAvailabilityResultTypeNotYetAvailable,
-					reportDiffResTyp:   ManifestProcessingReportDiffResultTypeNotEnabled,
+					inMemberClusterObj:      toUnstructured(t, deploy.DeepCopy()),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeNotYetAvailable,
 				},
 				{
 					id: &fleetv1beta1.WorkResourceIdentifier{
@@ -282,10 +278,9 @@ func TestRefreshWorkStatus(t *testing.T) {
 						Namespace: nsName,
 						Resource:  "jobs",
 					},
-					inMemberClusterObj: toUnstructured(t, deploy.DeepCopy()),
-					applyResTyp:        ManifestProcessingApplyResultTypeApplied,
-					availabilityResTyp: ManifestProcessingAvailabilityResultTypeNotTrackable,
-					reportDiffResTyp:   ManifestProcessingReportDiffResultTypeNotEnabled,
+					inMemberClusterObj:      toUnstructured(t, deploy.DeepCopy()),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeNotTrackable,
 				},
 			},
 			wantWorkStatus: &fleetv1beta1.WorkStatus{
@@ -316,7 +311,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 							{
 								Type:   fleetv1beta1.WorkConditionTypeApplied,
 								Status: metav1.ConditionTrue,
-								Reason: string(ManifestProcessingApplyResultTypeApplied),
+								Reason: string(ManifestProcessingApplyOrReportDiffResultTypeApplied),
 							},
 							{
 								Type:   fleetv1beta1.WorkConditionTypeAvailable,
@@ -339,7 +334,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 							{
 								Type:   fleetv1beta1.WorkConditionTypeApplied,
 								Status: metav1.ConditionTrue,
-								Reason: string(ManifestProcessingApplyResultTypeApplied),
+								Reason: string(ManifestProcessingApplyOrReportDiffResultTypeApplied),
 							},
 							{
 								Type:   fleetv1beta1.WorkConditionTypeAvailable,
@@ -362,7 +357,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 							{
 								Type:   fleetv1beta1.WorkConditionTypeApplied,
 								Status: metav1.ConditionTrue,
-								Reason: string(ManifestProcessingApplyResultTypeApplied),
+								Reason: string(ManifestProcessingApplyOrReportDiffResultTypeApplied),
 							},
 							{
 								Type:   fleetv1beta1.WorkConditionTypeAvailable,
@@ -406,7 +401,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 								{
 									Type:   fleetv1beta1.WorkConditionTypeApplied,
 									Status: metav1.ConditionFalse,
-									Reason: string(ManifestProcessingApplyResultTypeFoundDrifts),
+									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFoundDrifts),
 								},
 							},
 							DriftDetails: &fleetv1beta1.DriftDetails{
@@ -427,7 +422,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 								{
 									Type:   fleetv1beta1.WorkConditionTypeApplied,
 									Status: metav1.ConditionFalse,
-									Reason: string(ManifestProcessingApplyResultTypeFailedToTakeOver),
+									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFailedToTakeOver),
 								},
 							},
 							DiffDetails: &fleetv1beta1.DiffDetails{
@@ -449,10 +444,9 @@ func TestRefreshWorkStatus(t *testing.T) {
 						Namespace: nsName,
 						Resource:  "deployments",
 					},
-					inMemberClusterObj: toUnstructured(t, deploy.DeepCopy()),
-					applyResTyp:        ManifestProcessingApplyResultTypeFoundDrifts,
-					availabilityResTyp: ManifestProcessingAvailabilityResultTypeSkipped,
-					reportDiffResTyp:   ManifestProcessingReportDiffResultTypeNotEnabled,
+					inMemberClusterObj:      toUnstructured(t, deploy.DeepCopy()),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFoundDrifts,
+					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeSkipped,
 					drifts: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/spec/replicas",
@@ -470,10 +464,9 @@ func TestRefreshWorkStatus(t *testing.T) {
 						Namespace: nsName,
 						Resource:  "deployments",
 					},
-					inMemberClusterObj: toUnstructured(t, deploy2.DeepCopy()),
-					applyResTyp:        ManifestProcessingApplyResultTypeFailedToTakeOver,
-					availabilityResTyp: ManifestProcessingAvailabilityResultTypeSkipped,
-					reportDiffResTyp:   ManifestProcessingReportDiffResultTypeNotEnabled,
+					inMemberClusterObj:      toUnstructured(t, deploy2.DeepCopy()),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFailedToTakeOver,
+					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeSkipped,
 					diffs: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/spec/replicas",
@@ -507,7 +500,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 							{
 								Type:   fleetv1beta1.WorkConditionTypeApplied,
 								Status: metav1.ConditionFalse,
-								Reason: string(ManifestProcessingApplyResultTypeFoundDrifts),
+								Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFoundDrifts),
 							},
 						},
 						DriftDetails: &fleetv1beta1.DriftDetails{
@@ -534,7 +527,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 							{
 								Type:   fleetv1beta1.WorkConditionTypeApplied,
 								Status: metav1.ConditionFalse,
-								Reason: string(ManifestProcessingApplyResultTypeFailedToTakeOver),
+								Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFailedToTakeOver),
 							},
 						},
 						DiffDetails: &fleetv1beta1.DiffDetails{
@@ -589,7 +582,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 								{
 									Type:   fleetv1beta1.WorkConditionTypeApplied,
 									Status: metav1.ConditionFalse,
-									Reason: string(ManifestProcessingApplyResultTypeFoundDrifts),
+									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFoundDrifts),
 								},
 							},
 							DriftDetails: &fleetv1beta1.DriftDetails{
@@ -610,10 +603,9 @@ func TestRefreshWorkStatus(t *testing.T) {
 						Namespace: nsName,
 						Resource:  "deployments",
 					},
-					inMemberClusterObj: toUnstructured(t, deploy.DeepCopy()),
-					applyResTyp:        ManifestProcessingApplyResultTypeNoApplyPerformed,
-					availabilityResTyp: ManifestProcessingAvailabilityResultTypeSkipped,
-					reportDiffResTyp:   ManifestProcessingReportDiffResultTypeFoundDiff,
+					inMemberClusterObj:      toUnstructured(t, deploy.DeepCopy()),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFoundDiff,
+					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeSkipped,
 					diffs: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/x",
@@ -646,7 +638,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 							{
 								Type:   fleetv1beta1.WorkConditionTypeDiffReported,
 								Status: metav1.ConditionTrue,
-								Reason: string(ManifestProcessingReportDiffResultTypeFoundDiff),
+								Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFoundDiff),
 							},
 						},
 						DiffDetails: &fleetv1beta1.DiffDetails{
@@ -700,7 +692,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 								{
 									Type:   fleetv1beta1.WorkConditionTypeApplied,
 									Status: metav1.ConditionTrue,
-									Reason: string(ManifestProcessingApplyResultTypeApplied),
+									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeApplied),
 								},
 								{
 									Type:   fleetv1beta1.WorkConditionTypeAvailable,
@@ -723,11 +715,10 @@ func TestRefreshWorkStatus(t *testing.T) {
 						Namespace: nsName,
 						Resource:  "deployments",
 					},
-					inMemberClusterObj: toUnstructured(t, deploy.DeepCopy()),
-					applyResTyp:        ManifestProcessingApplyResultTypeNoApplyPerformed,
-					availabilityResTyp: ManifestProcessingAvailabilityResultTypeSkipped,
-					reportDiffResTyp:   ManifestProcessingReportDiffResultTypeNoDiffFound,
-					diffs:              []fleetv1beta1.PatchDetail{},
+					inMemberClusterObj:      toUnstructured(t, deploy.DeepCopy()),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound,
+					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeSkipped,
+					diffs:                   []fleetv1beta1.PatchDetail{},
 				},
 			},
 			wantWorkStatus: &fleetv1beta1.WorkStatus{
@@ -754,7 +745,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 							{
 								Type:   fleetv1beta1.WorkConditionTypeDiffReported,
 								Status: metav1.ConditionTrue,
-								Reason: string(ManifestProcessingReportDiffResultTypeNoDiffFound),
+								Reason: string(ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound),
 							},
 						},
 					},
@@ -799,7 +790,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 								{
 									Type:   fleetv1beta1.WorkConditionTypeApplied,
 									Status: metav1.ConditionFalse,
-									Reason: string(ManifestProcessingApplyResultTypeFoundDrifts),
+									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFoundDrifts),
 								},
 							},
 							DriftDetails: &fleetv1beta1.DriftDetails{
@@ -819,7 +810,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 								{
 									Type:   fleetv1beta1.WorkConditionTypeApplied,
 									Status: metav1.ConditionTrue,
-									Reason: string(ManifestProcessingApplyResultTypeApplied),
+									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeApplied),
 								},
 								{
 									Type:   fleetv1beta1.WorkConditionTypeAvailable,
@@ -842,10 +833,10 @@ func TestRefreshWorkStatus(t *testing.T) {
 						Namespace: nsName,
 						Resource:  "deployments",
 					},
-					inMemberClusterObj: toUnstructured(t, deploy.DeepCopy()),
-					applyResTyp:        ManifestProcessingApplyResultTypeNoApplyPerformed,
-					availabilityResTyp: ManifestProcessingAvailabilityResultTypeSkipped,
-					reportDiffResTyp:   ManifestProcessingReportDiffResultTypeFoundDiff,
+					inMemberClusterObj:      toUnstructured(t, deploy.DeepCopy()),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFoundDiff,
+					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeSkipped,
+
 					diffs: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/x",
@@ -862,10 +853,9 @@ func TestRefreshWorkStatus(t *testing.T) {
 						Name:     nsName,
 						Resource: "namespaces",
 					},
-					inMemberClusterObj: toUnstructured(t, ns.DeepCopy()),
-					applyResTyp:        ManifestProcessingApplyResultTypeNoApplyPerformed,
-					availabilityResTyp: ManifestProcessingAvailabilityResultTypeSkipped,
-					reportDiffResTyp:   ManifestProcessingReportDiffResultTypeNoDiffFound,
+					inMemberClusterObj:      toUnstructured(t, ns.DeepCopy()),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound,
+					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeSkipped,
 				},
 			},
 			wantWorkStatus: &fleetv1beta1.WorkStatus{
@@ -892,7 +882,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 							{
 								Type:   fleetv1beta1.WorkConditionTypeDiffReported,
 								Status: metav1.ConditionTrue,
-								Reason: string(ManifestProcessingReportDiffResultTypeFoundDiff),
+								Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFoundDiff),
 							},
 						},
 						DiffDetails: &fleetv1beta1.DiffDetails{
@@ -918,7 +908,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 							{
 								Type:   fleetv1beta1.WorkConditionTypeDiffReported,
 								Status: metav1.ConditionTrue,
-								Reason: string(ManifestProcessingReportDiffResultTypeNoDiffFound),
+								Reason: string(ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound),
 							},
 						},
 					},
@@ -963,7 +953,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 								{
 									Type:   fleetv1beta1.WorkConditionTypeApplied,
 									Status: metav1.ConditionFalse,
-									Reason: string(ManifestProcessingApplyResultTypeFoundDrifts),
+									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFoundDrifts),
 								},
 							},
 							DriftDetails: &fleetv1beta1.DriftDetails{
@@ -983,7 +973,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 								{
 									Type:   fleetv1beta1.WorkConditionTypeApplied,
 									Status: metav1.ConditionTrue,
-									Reason: string(ManifestProcessingApplyResultTypeApplied),
+									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeApplied),
 								},
 								{
 									Type:   fleetv1beta1.WorkConditionTypeAvailable,
@@ -1006,10 +996,9 @@ func TestRefreshWorkStatus(t *testing.T) {
 						Namespace: nsName,
 						Resource:  "deployments",
 					},
-					inMemberClusterObj: toUnstructured(t, deploy.DeepCopy()),
-					applyResTyp:        ManifestProcessingApplyResultTypeNoApplyPerformed,
-					availabilityResTyp: ManifestProcessingAvailabilityResultTypeSkipped,
-					reportDiffResTyp:   ManifestProcessingReportDiffResultTypeFailed,
+					inMemberClusterObj:      toUnstructured(t, deploy.DeepCopy()),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFailedToReportDiff,
+					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeSkipped,
 				},
 				{
 					id: &fleetv1beta1.WorkResourceIdentifier{
@@ -1020,10 +1009,9 @@ func TestRefreshWorkStatus(t *testing.T) {
 						Name:     nsName,
 						Resource: "namespaces",
 					},
-					inMemberClusterObj: toUnstructured(t, ns.DeepCopy()),
-					applyResTyp:        ManifestProcessingApplyResultTypeNoApplyPerformed,
-					availabilityResTyp: ManifestProcessingAvailabilityResultTypeSkipped,
-					reportDiffResTyp:   ManifestProcessingReportDiffResultTypeNoDiffFound,
+					inMemberClusterObj:      toUnstructured(t, ns.DeepCopy()),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound,
+					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeSkipped,
 				},
 			},
 			wantWorkStatus: &fleetv1beta1.WorkStatus{
@@ -1050,7 +1038,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 							{
 								Type:   fleetv1beta1.WorkConditionTypeDiffReported,
 								Status: metav1.ConditionFalse,
-								Reason: string(ManifestProcessingReportDiffResultTypeFailed),
+								Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFailedToReportDiff),
 							},
 						},
 					},
@@ -1067,7 +1055,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 							{
 								Type:   fleetv1beta1.WorkConditionTypeDiffReported,
 								Status: metav1.ConditionTrue,
-								Reason: string(ManifestProcessingReportDiffResultTypeNoDiffFound),
+								Reason: string(ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound),
 							},
 						},
 					},
@@ -1166,8 +1154,8 @@ func TestRefreshAppliedWorkStatus(t *testing.T) {
 						Namespace: nsName,
 						Resource:  "deployments",
 					},
-					inMemberClusterObj: toUnstructured(t, deploy1),
-					applyResTyp:        ManifestProcessingApplyResultTypeApplied,
+					inMemberClusterObj:      toUnstructured(t, deploy1),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
 				},
 				{
 					id: &fleetv1beta1.WorkResourceIdentifier{
@@ -1178,8 +1166,8 @@ func TestRefreshAppliedWorkStatus(t *testing.T) {
 						Name:     nsName,
 						Resource: "namespaces",
 					},
-					inMemberClusterObj: toUnstructured(t, ns1),
-					applyResTyp:        ManifestProcessingApplyResultTypeAppliedWithFailedDriftDetection,
+					inMemberClusterObj:      toUnstructured(t, ns1),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeAppliedWithFailedDriftDetection,
 				},
 				{
 					id: &fleetv1beta1.WorkResourceIdentifier{
@@ -1191,8 +1179,8 @@ func TestRefreshAppliedWorkStatus(t *testing.T) {
 						Namespace: nsName,
 						Resource:  "deployments",
 					},
-					inMemberClusterObj: toUnstructured(t, deploy2),
-					applyResTyp:        ManifestProcessingApplyResultTypeFailedToFindObjInMemberCluster,
+					inMemberClusterObj:      toUnstructured(t, deploy2),
+					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFailedToFindObjInMemberCluster,
 				},
 			},
 			wantAppliedWorkStatus: &fleetv1beta1.AppliedWorkStatus{
@@ -1258,22 +1246,23 @@ func TestSetManifestAppliedCondition(t *testing.T) {
 	testCases := []struct {
 		name                              string
 		manifestCond                      *fleetv1beta1.ManifestCondition
-		applyResTyp                       manifestProcessingAppliedResultType
-		applyErr                          error
+		isReportDiffModeOn                bool
+		applyOrReportDiffResTyp           ManifestProcessingApplyOrReportDiffResultType
+		applyOrReportDiffErr              error
 		observedInMemberClusterGeneration int64
 		wantManifestCond                  *fleetv1beta1.ManifestCondition
 	}{
 		{
 			name:                              "applied",
 			manifestCond:                      &fleetv1beta1.ManifestCondition{},
-			applyResTyp:                       ManifestProcessingApplyResultTypeApplied,
+			applyOrReportDiffResTyp:           ManifestProcessingApplyOrReportDiffResultTypeApplied,
 			observedInMemberClusterGeneration: 1,
 			wantManifestCond: &fleetv1beta1.ManifestCondition{
 				Conditions: []metav1.Condition{
 					{
 						Type:               fleetv1beta1.WorkConditionTypeApplied,
 						Status:             metav1.ConditionTrue,
-						Reason:             string(ManifestProcessingApplyResultTypeApplied),
+						Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeApplied),
 						ObservedGeneration: 1,
 					},
 				},
@@ -1286,19 +1275,19 @@ func TestSetManifestAppliedCondition(t *testing.T) {
 					{
 						Type:               fleetv1beta1.WorkConditionTypeApplied,
 						Status:             metav1.ConditionTrue,
-						Reason:             string(ManifestProcessingApplyResultTypeApplied),
+						Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeApplied),
 						ObservedGeneration: 1,
 					},
 				},
 			},
-			applyResTyp:                       ManifestProcessingApplyResultTypeAppliedWithFailedDriftDetection,
+			applyOrReportDiffResTyp:           ManifestProcessingApplyOrReportDiffResultTypeAppliedWithFailedDriftDetection,
 			observedInMemberClusterGeneration: 1,
 			wantManifestCond: &fleetv1beta1.ManifestCondition{
 				Conditions: []metav1.Condition{
 					{
 						Type:               fleetv1beta1.WorkConditionTypeApplied,
 						Status:             metav1.ConditionTrue,
-						Reason:             string(ManifestProcessingApplyResultTypeAppliedWithFailedDriftDetection),
+						Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeAppliedWithFailedDriftDetection),
 						ObservedGeneration: 1,
 					},
 				},
@@ -1311,19 +1300,19 @@ func TestSetManifestAppliedCondition(t *testing.T) {
 					{
 						Type:               fleetv1beta1.WorkConditionTypeApplied,
 						Status:             metav1.ConditionTrue,
-						Reason:             string(ManifestProcessingApplyResultTypeApplied),
+						Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeApplied),
 						ObservedGeneration: 1,
 					},
 				},
 			},
-			applyResTyp:                       ManifestProcessingApplyResultTypeFailedToApply,
+			applyOrReportDiffResTyp:           ManifestProcessingApplyOrReportDiffResultTypeFailedToApply,
 			observedInMemberClusterGeneration: 2,
 			wantManifestCond: &fleetv1beta1.ManifestCondition{
 				Conditions: []metav1.Condition{
 					{
 						Type:               fleetv1beta1.WorkConditionTypeApplied,
 						Status:             metav1.ConditionFalse,
-						Reason:             string(ManifestProcessingApplyResultTypeFailedToApply),
+						Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeFailedToApply),
 						ObservedGeneration: 2,
 					},
 				},
@@ -1336,22 +1325,51 @@ func TestSetManifestAppliedCondition(t *testing.T) {
 					{
 						Type:               fleetv1beta1.WorkConditionTypeApplied,
 						Status:             metav1.ConditionTrue,
-						Reason:             string(ManifestProcessingApplyResultTypeApplied),
+						Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeApplied),
 						ObservedGeneration: 1,
 					},
 				},
 			},
-			applyResTyp:                       ManifestProcessingApplyResultTypeNoApplyPerformed,
+			isReportDiffModeOn:                true,
+			applyOrReportDiffResTyp:           ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound,
 			observedInMemberClusterGeneration: 1,
 			wantManifestCond: &fleetv1beta1.ManifestCondition{
 				Conditions: []metav1.Condition{},
+			},
+		},
+		{
+			// Normally this should never occur.
+			name: "encountered an unexpected result type",
+			manifestCond: &fleetv1beta1.ManifestCondition{
+				Conditions: []metav1.Condition{
+					{
+						Type:               fleetv1beta1.WorkConditionTypeApplied,
+						Status:             metav1.ConditionTrue,
+						Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeApplied),
+						ObservedGeneration: 1,
+					},
+				},
+			},
+			isReportDiffModeOn:                false,
+			applyOrReportDiffResTyp:           ManifestProcessingApplyOrReportDiffResultTypeFoundDiff,
+			applyOrReportDiffErr:              nil,
+			observedInMemberClusterGeneration: 1,
+			wantManifestCond: &fleetv1beta1.ManifestCondition{
+				Conditions: []metav1.Condition{
+					{
+						Type:               fleetv1beta1.WorkConditionTypeApplied,
+						Status:             metav1.ConditionFalse,
+						Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeFailedToApply),
+						ObservedGeneration: 1,
+					},
+				},
 			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			setManifestAppliedCondition(tc.manifestCond, tc.applyResTyp, tc.applyErr, tc.observedInMemberClusterGeneration)
+			setManifestAppliedCondition(tc.manifestCond, tc.isReportDiffModeOn, tc.applyOrReportDiffResTyp, tc.applyOrReportDiffErr, tc.observedInMemberClusterGeneration)
 			if diff := cmp.Diff(tc.manifestCond, tc.wantManifestCond, ignoreFieldConditionLTTMsg); diff != "" {
 				t.Errorf("set manifest cond mismatches (-got, +want):\n%s", diff)
 			}
@@ -1486,22 +1504,24 @@ func TestSetManifestDiffReportedCondition(t *testing.T) {
 	testCases := []struct {
 		name                         string
 		manifestCond                 *fleetv1beta1.ManifestCondition
-		reportDiffResTyp             ManifestProcessingReportDiffResultType
-		reportDiffError              error
+		isReportDiffModeOn           bool
+		applyOrReportDiffResTyp      ManifestProcessingApplyOrReportDiffResultType
+		applyOrReportDiffErr         error
 		inMemberClusterObjGeneration int64
 		wantManifestCond             *fleetv1beta1.ManifestCondition
 	}{
 		{
 			name:                         "failed",
 			manifestCond:                 &fleetv1beta1.ManifestCondition{},
-			reportDiffResTyp:             ManifestProcessingReportDiffResultTypeFailed,
+			isReportDiffModeOn:           true,
+			applyOrReportDiffResTyp:      ManifestProcessingApplyOrReportDiffResultTypeFailedToReportDiff,
 			inMemberClusterObjGeneration: 1,
 			wantManifestCond: &fleetv1beta1.ManifestCondition{
 				Conditions: []metav1.Condition{
 					{
 						Type:               fleetv1beta1.WorkConditionTypeDiffReported,
 						Status:             metav1.ConditionFalse,
-						Reason:             string(ManifestProcessingReportDiffResultTypeFailed),
+						Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeFailedToReportDiff),
 						ObservedGeneration: 1,
 					},
 				},
@@ -1514,19 +1534,20 @@ func TestSetManifestDiffReportedCondition(t *testing.T) {
 					{
 						Type:               fleetv1beta1.WorkConditionTypeDiffReported,
 						Status:             metav1.ConditionTrue,
-						Reason:             string(ManifestProcessingReportDiffResultTypeNoDiffFound),
+						Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound),
 						ObservedGeneration: 1,
 					},
 				},
 			},
-			reportDiffResTyp:             ManifestProcessingReportDiffResultTypeFoundDiff,
+			isReportDiffModeOn:           true,
+			applyOrReportDiffResTyp:      ManifestProcessingApplyOrReportDiffResultTypeFoundDiff,
 			inMemberClusterObjGeneration: 2,
 			wantManifestCond: &fleetv1beta1.ManifestCondition{
 				Conditions: []metav1.Condition{
 					{
 						Type:               fleetv1beta1.WorkConditionTypeDiffReported,
 						Status:             metav1.ConditionTrue,
-						Reason:             string(ManifestProcessingReportDiffResultTypeFoundDiff),
+						Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeFoundDiff),
 						ObservedGeneration: 2,
 					},
 				},
@@ -1539,19 +1560,20 @@ func TestSetManifestDiffReportedCondition(t *testing.T) {
 					{
 						Type:               fleetv1beta1.WorkConditionTypeDiffReported,
 						Status:             metav1.ConditionTrue,
-						Reason:             string(ManifestProcessingReportDiffResultTypeFoundDiff),
+						Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeFoundDiff),
 						ObservedGeneration: 1,
 					},
 				},
 			},
-			reportDiffResTyp:             ManifestProcessingReportDiffResultTypeNoDiffFound,
+			isReportDiffModeOn:           true,
+			applyOrReportDiffResTyp:      ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound,
 			inMemberClusterObjGeneration: 2,
 			wantManifestCond: &fleetv1beta1.ManifestCondition{
 				Conditions: []metav1.Condition{
 					{
 						Type:               fleetv1beta1.WorkConditionTypeDiffReported,
 						Status:             metav1.ConditionTrue,
-						Reason:             string(ManifestProcessingReportDiffResultTypeNoDiffFound),
+						Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound),
 						ObservedGeneration: 2,
 					},
 				},
@@ -1564,22 +1586,50 @@ func TestSetManifestDiffReportedCondition(t *testing.T) {
 					{
 						Type:               fleetv1beta1.WorkConditionTypeDiffReported,
 						Status:             metav1.ConditionTrue,
-						Reason:             string(ManifestProcessingReportDiffResultTypeFoundDiff),
+						Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeFoundDiff),
 						ObservedGeneration: 1,
 					},
 				},
 			},
-			reportDiffResTyp:             ManifestProcessingReportDiffResultTypeNotEnabled,
+			isReportDiffModeOn:           false,
+			applyOrReportDiffResTyp:      ManifestProcessingApplyOrReportDiffResultTypeApplied,
 			inMemberClusterObjGeneration: 1,
 			wantManifestCond: &fleetv1beta1.ManifestCondition{
 				Conditions: []metav1.Condition{},
+			},
+		},
+		{
+			name: "decoding error",
+			manifestCond: &fleetv1beta1.ManifestCondition{
+				Conditions: []metav1.Condition{
+					{
+						Type:               fleetv1beta1.WorkConditionTypeDiffReported,
+						Status:             metav1.ConditionTrue,
+						Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound),
+						ObservedGeneration: 1,
+					},
+				},
+			},
+			isReportDiffModeOn:           true,
+			applyOrReportDiffResTyp:      ManifestProcessingApplyOrReportDiffResultTypeDecodingErred,
+			applyOrReportDiffErr:         fmt.Errorf("decoding error"),
+			inMemberClusterObjGeneration: 1,
+			wantManifestCond: &fleetv1beta1.ManifestCondition{
+				Conditions: []metav1.Condition{
+					{
+						Type:               fleetv1beta1.WorkConditionTypeDiffReported,
+						Status:             metav1.ConditionFalse,
+						Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeFailedToReportDiff),
+						ObservedGeneration: 1,
+					},
+				},
 			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			setManifestDiffReportedCondition(tc.manifestCond, tc.reportDiffResTyp, tc.reportDiffError, tc.inMemberClusterObjGeneration)
+			setManifestDiffReportedCondition(tc.manifestCond, tc.isReportDiffModeOn, tc.applyOrReportDiffResTyp, tc.applyOrReportDiffErr, tc.inMemberClusterObjGeneration)
 			if diff := cmp.Diff(tc.manifestCond, tc.wantManifestCond, ignoreFieldConditionLTTMsg); diff != "" {
 				t.Errorf("set manifest cond mismatches (-got, +want):\n%s", diff)
 			}
