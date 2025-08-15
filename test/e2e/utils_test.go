@@ -1427,3 +1427,77 @@ func ensureUpdateRunStrategyDeletion(strategyName string) {
 	removedActual := updateRunStrategyRemovedActual(strategyName)
 	Eventually(removedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "ClusterStagedUpdateStrategy still exists")
 }
+
+func ensureRPAndRelatedResourcesDeleted(rpName, rpNamespace string, memberClusters []*framework.Cluster) {
+	// Delete the ResourcePlacement.
+	rp := &placementv1beta1.ResourcePlacement{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      rpName,
+			Namespace: rpNamespace,
+		},
+	}
+	Expect(hubClient.Delete(ctx, rp)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}), "Failed to delete ResourcePlacement")
+
+	// Verify that all resources placed have been removed from specified member clusters.
+	for idx := range memberClusters {
+		memberCluster := memberClusters[idx]
+
+		workResourcesRemovedActual := workNamespaceRemovedFromClusterActual(memberCluster)
+		Eventually(workResourcesRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove work resources from member cluster %s", memberCluster.ClusterName)
+	}
+
+	// Verify that related finalizers have been removed from the ResourcePlacement.
+	finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromRPActual(rpName, rpNamespace)
+	Eventually(finalizerRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove controller finalizers from ResourcePlacement")
+
+	// Remove the custom deletion blocker finalizer from the ResourcePlacement.
+	cleanupRP(rpName, rpNamespace)
+}
+
+func allFinalizersExceptForCustomDeletionBlockerRemovedFromRPActual(rpName, rpNamespace string) func() error {
+	return func() error {
+		rp := &placementv1beta1.ResourcePlacement{}
+		if err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: rpNamespace}, rp); err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+
+		wantFinalizers := []string{customDeletionBlockerFinalizer}
+		if diff := cmp.Diff(rp.Finalizers, wantFinalizers); diff != "" {
+			return fmt.Errorf("ResourcePlacement finalizers diff (-got, +want): %s", diff)
+		}
+		return nil
+	}
+}
+
+func cleanupRP(rpName, rpNamespace string) {
+	Eventually(func() error {
+		rp := &placementv1beta1.ResourcePlacement{}
+		err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: rpNamespace}, rp)
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		rp.Finalizers = []string{}
+		return hubClient.Update(ctx, rp)
+	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to delete ResourcePlacement %s", rpName)
+
+	// Wait until the ResourcePlacement is removed.
+	removedActual := rpRemovedActual(rpName, rpNamespace)
+	Eventually(removedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove ResourcePlacement %s", rpName)
+}
+
+func rpRemovedActual(rpName, rpNamespace string) func() error {
+	return func() error {
+		rp := &placementv1beta1.ResourcePlacement{}
+		if err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: rpNamespace}, rp); !k8serrors.IsNotFound(err) {
+			return fmt.Errorf("ResourcePlacement still exists or an unexpected error occurred: %w", err)
+		}
+		return nil
+	}
+}

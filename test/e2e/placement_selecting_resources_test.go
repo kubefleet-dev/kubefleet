@@ -661,7 +661,7 @@ var _ = Describe("validating CRP when selecting a reserved resource", Ordered, f
 					},
 				},
 			}
-			if diff := cmp.Diff(crp.Status, wantStatus, crpStatusCmpOptions...); diff != "" {
+			if diff := cmp.Diff(crp.Status, wantStatus, placementStatusCmpOptions...); diff != "" {
 				return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 			}
 			return nil
@@ -743,7 +743,7 @@ var _ = Describe("When creating a pickN ClusterResourcePlacement with duplicated
 					},
 				},
 			}
-			if diff := cmp.Diff(gotCRP.Status, wantStatus, crpStatusCmpOptions...); diff != "" {
+			if diff := cmp.Diff(gotCRP.Status, wantStatus, placementStatusCmpOptions...); diff != "" {
 				return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 			}
 			return nil
@@ -851,12 +851,12 @@ var _ = Describe("validating CRP when failed to apply resources", Ordered, func(
 					{
 						ClusterName:           memberCluster2EastCanaryName,
 						ObservedResourceIndex: "0",
-						Conditions:            resourcePlacementRolloutCompletedConditions(crp.Generation, true, false),
+						Conditions:            perClusterResourcePlacementRolloutCompletedConditions(crp.Generation, true, false),
 					},
 					{
 						ClusterName:           memberCluster3WestProdName,
 						ObservedResourceIndex: "0",
-						Conditions:            resourcePlacementRolloutCompletedConditions(crp.Generation, true, false),
+						Conditions:            perClusterResourcePlacementRolloutCompletedConditions(crp.Generation, true, false),
 					},
 				},
 				SelectedResources: []placementv1beta1.ResourceIdentifier{
@@ -874,7 +874,7 @@ var _ = Describe("validating CRP when failed to apply resources", Ordered, func(
 				},
 				ObservedResourceIndex: "0",
 			}
-			if diff := cmp.Diff(crp.Status, wantStatus, crpStatusCmpOptions...); diff != "" {
+			if diff := cmp.Diff(crp.Status, wantStatus, placementStatusCmpOptions...); diff != "" {
 				return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 			}
 			return nil

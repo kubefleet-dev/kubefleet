@@ -288,12 +288,12 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 						{
 							ClusterName:           memberCluster2EastCanaryName,
 							ObservedResourceIndex: "0",
-							Conditions:            resourcePlacementRolloutCompletedConditions(crp.Generation, true, false),
+							Conditions:            perClusterResourcePlacementRolloutCompletedConditions(crp.Generation, true, false),
 						},
 						{
 							ClusterName:           memberCluster3WestProdName,
 							ObservedResourceIndex: "0",
-							Conditions:            resourcePlacementRolloutCompletedConditions(crp.Generation, true, false),
+							Conditions:            perClusterResourcePlacementRolloutCompletedConditions(crp.Generation, true, false),
 						},
 					},
 					SelectedResources: []placementv1beta1.ResourceIdentifier{
@@ -311,7 +311,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 					},
 					ObservedResourceIndex: "0",
 				}
-				if diff := cmp.Diff(crp.Status, wantStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(crp.Status, wantStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
@@ -546,7 +546,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 				}
 				wantCRPStatus := buildWantCRPStatus(conflictedCRP.Generation)
 
-				if diff := cmp.Diff(conflictedCRP.Status, *wantCRPStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(conflictedCRP.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
@@ -991,7 +991,7 @@ var _ = Describe("switching apply strategies", func() {
 						{
 							ClusterName:           memberCluster2EastCanaryName,
 							ObservedResourceIndex: "0",
-							Conditions:            resourcePlacementRolloutCompletedConditions(crpGeneration, true, false),
+							Conditions:            perClusterResourcePlacementRolloutCompletedConditions(crpGeneration, true, false),
 						},
 					},
 					ObservedResourceIndex: "0",
@@ -1005,7 +1005,7 @@ var _ = Describe("switching apply strategies", func() {
 				}
 				wantCRPStatus := buildWantCRPStatus(crp.Generation)
 
-				if diff := cmp.Diff(crp.Status, *wantCRPStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
@@ -1072,7 +1072,7 @@ var _ = Describe("switching apply strategies", func() {
 				}
 				wantCRPStatus := buildWantCRPStatus(crp.Generation)
 
-				if diff := cmp.Diff(crp.Status, *wantCRPStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
@@ -1147,7 +1147,7 @@ var _ = Describe("switching apply strategies", func() {
 				}
 				wantCRPStatus := buildWantCRPStatus(crp.Generation)
 
-				if diff := cmp.Diff(crp.Status, *wantCRPStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
@@ -1299,7 +1299,7 @@ var _ = Describe("switching apply strategies", func() {
 				}
 				wantCRPStatus := buildWantCRPStatus(crp.Generation)
 
-				if diff := cmp.Diff(crp.Status, *wantCRPStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
@@ -1397,7 +1397,7 @@ var _ = Describe("switching apply strategies", func() {
 				}
 				wantCRPStatus := buildWantCRPStatus(crp.Generation)
 
-				if diff := cmp.Diff(crp.Status, *wantCRPStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
@@ -1435,12 +1435,12 @@ var _ = Describe("switching apply strategies", func() {
 						{
 							ClusterName:           memberCluster1EastProdName,
 							ObservedResourceIndex: "1",
-							Conditions:            resourcePlacementRolloutCompletedConditions(crpGeneration, true, false),
+							Conditions:            perClusterResourcePlacementRolloutCompletedConditions(crpGeneration, true, false),
 						},
 						{
 							ClusterName:           memberCluster2EastCanaryName,
 							ObservedResourceIndex: "1",
-							Conditions:            resourcePlacementRolloutCompletedConditions(crpGeneration, true, false),
+							Conditions:            perClusterResourcePlacementRolloutCompletedConditions(crpGeneration, true, false),
 						},
 					},
 					ObservedResourceIndex: "1",
@@ -1454,7 +1454,7 @@ var _ = Describe("switching apply strategies", func() {
 				}
 				wantCRPStatus := buildWantCRPStatus(crp.Generation)
 
-				if diff := cmp.Diff(crp.Status, *wantCRPStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
