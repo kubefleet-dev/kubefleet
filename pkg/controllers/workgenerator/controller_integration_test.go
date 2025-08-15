@@ -4838,15 +4838,6 @@ var _ = Describe("Test Work Generator Controller for ResourcePlacement", func() 
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      workName,
 						Namespace: memberClusterNamespaceName,
-						OwnerReferences: []metav1.OwnerReference{
-							{
-								APIVersion:         placementv1beta1.GroupVersion.String(),
-								Kind:               "ResourceBinding",
-								Name:               binding.Name,
-								UID:                binding.UID,
-								BlockOwnerDeletion: ptr.To(true),
-							},
-						},
 						Labels: map[string]string{
 							placementv1beta1.PlacementTrackingLabel:           testRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
