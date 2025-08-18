@@ -1049,7 +1049,7 @@ func TestTrackInMemberClusterObjAvailability(t *testing.T) {
 					},
 					gvr:                     &utils.DeploymentGVR,
 					inMemberClusterObj:      toUnstructured(t, availableDeploy),
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 				},
 				// A failed to get applied service.
 				{
@@ -1058,7 +1058,7 @@ func TestTrackInMemberClusterObjAvailability(t *testing.T) {
 					},
 					gvr:                     &utils.ServiceGVR,
 					inMemberClusterObj:      nil,
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFailedToApply,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeFailedToApply,
 				},
 				// An unavailable daemon set.
 				{
@@ -1067,7 +1067,7 @@ func TestTrackInMemberClusterObjAvailability(t *testing.T) {
 					},
 					gvr:                     &utils.DaemonSetGVR,
 					inMemberClusterObj:      toUnstructured(t, unavailableDaemonSet),
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 				},
 				// An untrackable job.
 				{
@@ -1076,7 +1076,7 @@ func TestTrackInMemberClusterObjAvailability(t *testing.T) {
 					},
 					gvr:                     &utils.JobGVR,
 					inMemberClusterObj:      toUnstructured(t, untrackableJob),
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 				},
 			},
 			wantBundles: []*manifestProcessingBundle{
@@ -1086,7 +1086,7 @@ func TestTrackInMemberClusterObjAvailability(t *testing.T) {
 					},
 					gvr:                     &utils.DeploymentGVR,
 					inMemberClusterObj:      toUnstructured(t, availableDeploy),
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeAvailable,
 				},
 				{
@@ -1095,7 +1095,7 @@ func TestTrackInMemberClusterObjAvailability(t *testing.T) {
 					},
 					gvr:                     &utils.ServiceGVR,
 					inMemberClusterObj:      nil,
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFailedToApply,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeFailedToApply,
 					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeSkipped,
 				},
 				{
@@ -1104,7 +1104,7 @@ func TestTrackInMemberClusterObjAvailability(t *testing.T) {
 					},
 					gvr:                     &utils.DaemonSetGVR,
 					inMemberClusterObj:      toUnstructured(t, unavailableDaemonSet),
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeNotYetAvailable,
 				},
 				{
@@ -1113,7 +1113,7 @@ func TestTrackInMemberClusterObjAvailability(t *testing.T) {
 					},
 					gvr:                     &utils.JobGVR,
 					inMemberClusterObj:      toUnstructured(t, untrackableJob),
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeNotTrackable,
 				},
 			},

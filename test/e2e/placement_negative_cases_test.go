@@ -146,7 +146,7 @@ var _ = Describe("handling errors and failures gracefully", func() {
 									Condition: metav1.Condition{
 										Type:               placementv1beta1.WorkConditionTypeApplied,
 										Status:             metav1.ConditionFalse,
-										Reason:             string(workapplier.ManifestProcessingApplyOrReportDiffResultTypeDecodingErred),
+										Reason:             string(workapplier.ApplyOrReportDiffResTypeDecodingErred),
 										ObservedGeneration: 0,
 									},
 								},

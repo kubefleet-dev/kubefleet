@@ -846,7 +846,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 				},
 			},
 			wantRequeueDelaySeconds: 5, // Use fixed delay for the third time, since the processing result has changed.
@@ -862,7 +862,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 				},
 			},
 			wantRequeueDelaySeconds: 10, // Start to slow back off for the third time.
@@ -878,7 +878,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 				},
 			},
 			wantRequeueDelaySeconds: 20, // The slow back off continues.
@@ -894,7 +894,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 				},
 			},
 			wantRequeueDelaySeconds: 100, // Start to fast back off again.
@@ -910,7 +910,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 				},
 			},
 			wantRequeueDelaySeconds: 200, // Reached the max. cap.
@@ -926,7 +926,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFailedToApply,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeFailedToApply,
 				},
 			},
 			wantRequeueDelaySeconds: 5, // Use fixed delay for the fourth time, since both generation and processing result have changed.
@@ -976,7 +976,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeNotYetAvailable,
 				},
 			},
@@ -1000,7 +1000,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeAvailable,
 				},
 			},
@@ -1024,7 +1024,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeAvailable,
 				},
 			},
@@ -1048,7 +1048,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeAvailable,
 				},
 			},
@@ -1072,7 +1072,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeAvailable,
 				},
 			},
@@ -1098,7 +1098,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeNoDiffFound,
 				},
 			},
 			wantRequeueDelaySeconds: 5, // Use fixed delay, since the processing result has changed.
@@ -1123,7 +1123,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeNoDiffFound,
 				},
 			},
 			wantRequeueDelaySeconds: 10, // Start the slow backoff.
@@ -1148,7 +1148,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeNoDiffFound,
 				},
 			},
 			wantRequeueDelaySeconds: 50, // Skip to fast back off.
@@ -1173,7 +1173,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeNoDiffFound,
 				},
 			},
 			wantRequeueDelaySeconds: 200, // Reached the max. cap.
@@ -1198,7 +1198,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFoundDiff,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeFoundDiff,
 				},
 			},
 			wantRequeueDelaySeconds: 5, // Use fixed delay, since the processing result has changed.
@@ -1223,7 +1223,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFoundDiff,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeFoundDiff,
 				},
 			},
 			wantRequeueDelaySeconds: 10, // Start the slow backoff.
@@ -1248,7 +1248,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			},
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFoundDiff,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeFoundDiff,
 				},
 			},
 			wantRequeueDelaySeconds: 50, // Skip to fast back off.
@@ -1480,7 +1480,7 @@ func TestComputeProcessingResultHash(t *testing.T) {
 			name: "single manifest, apply op failure (pre-processing)",
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeDecodingErred,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeDecodingErred,
 				},
 			},
 			wantHash: "86ab4bd237c2fa247e493a58e91895fe11e7bd2fcfb422890b8c296eaf6cc4ce",
@@ -1489,7 +1489,7 @@ func TestComputeProcessingResultHash(t *testing.T) {
 			name: "single manifest, apply op failure (processing, no error message)",
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFailedToApply,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeFailedToApply,
 				},
 			},
 			wantHash: "0ecc47caf32d81607057dcfb22f60416fe1f1f7930761edb92d4cb7fee4a075f",
@@ -1498,7 +1498,7 @@ func TestComputeProcessingResultHash(t *testing.T) {
 			name: "single manifest, apply op failure (processing, with error message)",
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFailedToApply,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeFailedToApply,
 					applyOrReportDiffErr:    fmt.Errorf("failed to apply manifest"),
 				},
 			},
@@ -1509,7 +1509,7 @@ func TestComputeProcessingResultHash(t *testing.T) {
 			name: "single manifest, availability check failure",
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeNotYetAvailable,
 				},
 			},
@@ -1519,7 +1519,7 @@ func TestComputeProcessingResultHash(t *testing.T) {
 			name: "single manifest, apply op + availability check success",
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeAvailable,
 				},
 			},
@@ -1529,7 +1529,7 @@ func TestComputeProcessingResultHash(t *testing.T) {
 			name: "single manifest, diff reporting failure",
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFailedToReportDiff,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeFailedToReportDiff,
 				},
 			},
 			wantHash: "c5ffc29f5050ad825711a77012d6be36550035d848deb990082fff196f886906",
@@ -1538,7 +1538,7 @@ func TestComputeProcessingResultHash(t *testing.T) {
 			name: "single manifest, diff reporting success",
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeNoDiffFound,
 				},
 			},
 			wantHash: "4bc69d33a287d57e25a5406e47722b1cfa3965472cf9324d3ace2302dd0e9f02",
@@ -1547,15 +1547,15 @@ func TestComputeProcessingResultHash(t *testing.T) {
 			name: "multiple manifests (assorted)",
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFailedToApply,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeFailedToApply,
 					applyOrReportDiffErr:    fmt.Errorf("failed to apply manifest"),
 				},
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeAvailable,
 				},
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeNotTrackable,
 				},
 			},
@@ -1565,15 +1565,15 @@ func TestComputeProcessingResultHash(t *testing.T) {
 			name: "multiple manifests (assorted, different order)",
 			bundles: []*manifestProcessingBundle{
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeAvailable,
 				},
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeFailedToApply,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeFailedToApply,
 					applyOrReportDiffErr:    fmt.Errorf("failed to apply manifest"),
 				},
 				{
-					applyOrReportDiffResTyp: ManifestProcessingApplyOrReportDiffResultTypeApplied,
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeNotTrackable,
 				},
 			},

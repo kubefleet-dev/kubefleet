@@ -62,7 +62,7 @@ func (r *Reconciler) preProcessManifests(
 		if err != nil {
 			klog.ErrorS(err, "Failed to decode the manifest", "ordinal", pieces, "work", klog.KObj(work))
 			bundle.applyOrReportDiffErr = fmt.Errorf("failed to decode manifest: %w", err)
-			bundle.applyOrReportDiffResTyp = ManifestProcessingApplyOrReportDiffResultTypeDecodingErred
+			bundle.applyOrReportDiffResTyp = ApplyOrReportDiffResTypeDecodingErred
 			return
 		}
 
@@ -71,7 +71,7 @@ func (r *Reconciler) preProcessManifests(
 			// The manifest object has a generate name but no name.
 			klog.V(2).InfoS("Rejected an object with only generate name", "manifestObj", klog.KObj(manifestObj), "work", klog.KObj(work))
 			bundle.applyOrReportDiffErr = fmt.Errorf("objects with only generate name are not supported")
-			bundle.applyOrReportDiffResTyp = ManifestProcessingApplyOrReportDiffResultTypeFoundGenerateName
+			bundle.applyOrReportDiffResTyp = ApplyOrReportDiffResTypeFoundGenerateName
 			return
 		}
 
@@ -181,7 +181,7 @@ func (r *Reconciler) writeAheadManifestProcessingAttempts(
 			klog.V(2).InfoS("A duplicate manifest has been found",
 				"ordinal", idx, "work", workRef, "workResourceID", wriStr)
 			bundle.applyOrReportDiffErr = fmt.Errorf("a duplicate manifest has been found")
-			bundle.applyOrReportDiffResTyp = ManifestProcessingApplyOrReportDiffResultTypeDuplicated
+			bundle.applyOrReportDiffResTyp = ApplyOrReportDiffResTypeDuplicated
 			continue
 		}
 		checked[wriStr] = true

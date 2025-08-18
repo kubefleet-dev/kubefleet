@@ -239,7 +239,7 @@ func isAppliedObjectAvailable(availabilityResTyp ManifestProcessingAvailabilityR
 // isManifestObjectDiffReported returns if a diff report result type indicates that a manifest
 // object has been checked for configuration differences.
 func isManifestObjectDiffReported(reportDiffResTyp ManifestProcessingApplyOrReportDiffResultType) bool {
-	return reportDiffResTyp == ManifestProcessingApplyOrReportDiffResultTypeFoundDiff || reportDiffResTyp == ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound
+	return reportDiffResTyp == ApplyOrReportDiffResTypeFoundDiff || reportDiffResTyp == ApplyOrReportDiffResTypeNoDiffFound
 }
 
 // setManifestAppliedCondition sets the Applied condition on an applied manifest.
@@ -255,16 +255,16 @@ func setManifestAppliedCondition(
 	case isReportDiffModeOn:
 		// ReportDiff mode is on and no apply op has been performed. In this case, Fleet
 		// will reset the Applied condition.
-	case applyOrReportDiffResTyp == ManifestProcessingApplyOrReportDiffResultTypeApplied:
+	case applyOrReportDiffResTyp == ApplyOrReportDiffResTypeApplied:
 		// The manifest has been successfully applied.
 		appliedCond = &metav1.Condition{
 			Type:               fleetv1beta1.WorkConditionTypeApplied,
 			Status:             metav1.ConditionTrue,
-			Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeApplied),
-			Message:            ManifestProcessingApplyOrReportDiffResultTypeAppliedDescription,
+			Reason:             string(ApplyOrReportDiffResTypeApplied),
+			Message:            ApplyOrReportDiffResTypeAppliedDescription,
 			ObservedGeneration: inMemberClusterObjGeneration,
 		}
-	case applyOrReportDiffResTyp == ManifestProcessingApplyOrReportDiffResultTypeAppliedWithFailedDriftDetection:
+	case applyOrReportDiffResTyp == ApplyOrReportDiffResTypeAppliedWithFailedDriftDetection:
 		// The manifest has been successfully applied, but drift detection has failed.
 		//
 		// At this moment Fleet does not prepare a dedicated condition for drift detection
@@ -272,8 +272,8 @@ func setManifestAppliedCondition(
 		appliedCond = &metav1.Condition{
 			Type:               fleetv1beta1.WorkConditionTypeApplied,
 			Status:             metav1.ConditionTrue,
-			Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeAppliedWithFailedDriftDetection),
-			Message:            ManifestProcessingApplyOrReportDiffResultTypeAppliedWithFailedDriftDetectionDescription,
+			Reason:             string(ApplyOrReportDiffResTypeAppliedWithFailedDriftDetection),
+			Message:            string(ApplyOrReportDiffResTypeAppliedWithFailedDriftDetection),
 			ObservedGeneration: inMemberClusterObjGeneration,
 		}
 	case !manifestProcessingApplyResTypSet.Has(applyOrReportDiffResTyp):
@@ -289,7 +289,7 @@ func setManifestAppliedCondition(
 		appliedCond = &metav1.Condition{
 			Type:   fleetv1beta1.WorkConditionTypeApplied,
 			Status: metav1.ConditionFalse,
-			Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFailedToApply),
+			Reason: string(ApplyOrReportDiffResTypeFailedToApply),
 			Message: fmt.Sprintf("An unexpected apply result is yielded (%s, error: %s)",
 				applyOrReportDiffResTyp, applyOrReportDiffError),
 			ObservedGeneration: inMemberClusterObjGeneration,
@@ -402,31 +402,31 @@ func setManifestDiffReportedCondition(
 	switch {
 	case !isReportDiffModeOn:
 		// ReportDiff mode is not on; Fleet will remove DiffReported condition.
-	case applyOrReportDiffResTyp == ManifestProcessingApplyOrReportDiffResultTypeFailedToReportDiff:
+	case applyOrReportDiffResTyp == ApplyOrReportDiffResTypeFailedToReportDiff:
 		// Diff reporting has failed.
 		diffReportedCond = &metav1.Condition{
 			Type:               fleetv1beta1.WorkConditionTypeDiffReported,
 			Status:             metav1.ConditionFalse,
-			Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeFailedToReportDiff),
-			Message:            fmt.Sprintf(ManifestProcessingApplyOrReportDiffResultTypeFailedToReportDiffDescription, applyOrReportDiffErr),
+			Reason:             string(ApplyOrReportDiffResTypeFailedToReportDiff),
+			Message:            fmt.Sprintf(ApplyOrReportDiffResTypeFailedToReportDiffDescription, applyOrReportDiffErr),
 			ObservedGeneration: inMemberClusterObjGeneration,
 		}
-	case applyOrReportDiffResTyp == ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound:
+	case applyOrReportDiffResTyp == ApplyOrReportDiffResTypeNoDiffFound:
 		// No diff has been found.
 		diffReportedCond = &metav1.Condition{
 			Type:               fleetv1beta1.WorkConditionTypeDiffReported,
 			Status:             metav1.ConditionTrue,
-			Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound),
-			Message:            ManifestProcessingApplyOrReportDiffResultTypeNoDiffFoundDescription,
+			Reason:             string(ApplyOrReportDiffResTypeNoDiffFound),
+			Message:            ApplyOrReportDiffResTypeNoDiffFoundDescription,
 			ObservedGeneration: inMemberClusterObjGeneration,
 		}
-	case applyOrReportDiffResTyp == ManifestProcessingApplyOrReportDiffResultTypeFoundDiff:
+	case applyOrReportDiffResTyp == ApplyOrReportDiffResTypeFoundDiff:
 		// Found diffs.
 		diffReportedCond = &metav1.Condition{
 			Type:               fleetv1beta1.WorkConditionTypeDiffReported,
 			Status:             metav1.ConditionTrue,
-			Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeFoundDiff),
-			Message:            ManifestProcessingApplyOrReportDiffResultTypeFoundDiffDescription,
+			Reason:             string(ApplyOrReportDiffResTypeFoundDiff),
+			Message:            ApplyOrReportDiffResTypeFoundDiffDescription,
 			ObservedGeneration: inMemberClusterObjGeneration,
 		}
 	default:
@@ -437,7 +437,7 @@ func setManifestDiffReportedCondition(
 		diffReportedCond = &metav1.Condition{
 			Type:               fleetv1beta1.WorkConditionTypeDiffReported,
 			Status:             metav1.ConditionFalse,
-			Reason:             string(ManifestProcessingApplyOrReportDiffResultTypeFailedToReportDiff),
+			Reason:             string(ApplyOrReportDiffResTypeFailedToReportDiff),
 			Message:            fmt.Sprintf("An error blocks the diff reporting process (%s, error: %s)", applyOrReportDiffResTyp, applyOrReportDiffErr),
 			ObservedGeneration: inMemberClusterObjGeneration,
 		}

@@ -267,57 +267,61 @@ func NewReconciler(
 type ManifestProcessingApplyOrReportDiffResultType string
 
 const (
-	// The result types and descriptions for processing failures.
-	ManifestProcessingApplyOrReportDiffResultTypeDecodingErred                  ManifestProcessingApplyOrReportDiffResultType = "DecodingErred"
-	ManifestProcessingApplyOrReportDiffResultTypeFoundGenerateName              ManifestProcessingApplyOrReportDiffResultType = "FoundGenerateName"
-	ManifestProcessingApplyOrReportDiffResultTypeDuplicated                     ManifestProcessingApplyOrReportDiffResultType = "Duplicated"
-	ManifestProcessingApplyOrReportDiffResultTypeFailedToFindObjInMemberCluster ManifestProcessingApplyOrReportDiffResultType = "FailedToFindObjInMemberCluster"
-	ManifestProcessingApplyOrReportDiffResultTypeFailedToTakeOver               ManifestProcessingApplyOrReportDiffResultType = "FailedToTakeOver"
-	ManifestProcessingApplyOrReportDiffResultTypeNotTakenOver                   ManifestProcessingApplyOrReportDiffResultType = "NotTakenOver"
-	ManifestProcessingApplyOrReportDiffResultTypeFailedToRunDriftDetection      ManifestProcessingApplyOrReportDiffResultType = "FailedToRunDriftDetection"
-	ManifestProcessingApplyOrReportDiffResultTypeFoundDrifts                    ManifestProcessingApplyOrReportDiffResultType = "FoundDrifts"
+	// The result types for apply op failures.
+	ApplyOrReportDiffResTypeDecodingErred                  ManifestProcessingApplyOrReportDiffResultType = "DecodingErred"
+	ApplyOrReportDiffResTypeFoundGenerateName              ManifestProcessingApplyOrReportDiffResultType = "FoundGenerateName"
+	ApplyOrReportDiffResTypeDuplicated                     ManifestProcessingApplyOrReportDiffResultType = "Duplicated"
+	ApplyOrReportDiffResTypeFailedToFindObjInMemberCluster ManifestProcessingApplyOrReportDiffResultType = "FailedToFindObjInMemberCluster"
+	ApplyOrReportDiffResTypeFailedToTakeOver               ManifestProcessingApplyOrReportDiffResultType = "FailedToTakeOver"
+	ApplyOrReportDiffResTypeNotTakenOver                   ManifestProcessingApplyOrReportDiffResultType = "NotTakenOver"
+	ApplyOrReportDiffResTypeFailedToRunDriftDetection      ManifestProcessingApplyOrReportDiffResultType = "FailedToRunDriftDetection"
+	ApplyOrReportDiffResTypeFoundDrifts                    ManifestProcessingApplyOrReportDiffResultType = "FoundDrifts"
 	// Note that the reason string below uses the same value as kept in the old work applier.
-	ManifestProcessingApplyOrReportDiffResultTypeFailedToApply ManifestProcessingApplyOrReportDiffResultType = "ManifestApplyFailed"
+	ApplyOrReportDiffResTypeFailedToApply ManifestProcessingApplyOrReportDiffResultType = "ManifestApplyFailed"
 
-	// The result type and description for partially successfully processing attempts.
-	ManifestProcessingApplyOrReportDiffResultTypeAppliedWithFailedDriftDetection ManifestProcessingApplyOrReportDiffResultType = "AppliedWithFailedDriftDetection"
+	// The result type and description for successful apply ops.
+	ApplyOrReportDiffResTypeApplied ManifestProcessingApplyOrReportDiffResultType = "Applied"
+)
 
-	ManifestProcessingApplyOrReportDiffResultTypeAppliedWithFailedDriftDetectionDescription = "Manifest has been applied successfully, but drift detection has failed"
+const (
+	// The descriptions for different apply op result types.
 
-	// The result type and description for successful processing attempts.
-	ManifestProcessingApplyOrReportDiffResultTypeApplied ManifestProcessingApplyOrReportDiffResultType = "Applied"
-
-	ManifestProcessingApplyOrReportDiffResultTypeAppliedDescription = "Manifest has been applied successfully"
+	// The description for partially successful apply ops.
+	ApplyOrReportDiffResTypeAppliedWithFailedDriftDetection ManifestProcessingApplyOrReportDiffResultType = "AppliedWithFailedDriftDetection"
+	// The description for successful apply ops.
+	ApplyOrReportDiffResTypeAppliedDescription = "Manifest has been applied successfully"
 )
 
 const (
 	// The result type for diff reporting failures.
-	ManifestProcessingApplyOrReportDiffResultTypeFailedToReportDiff ManifestProcessingApplyOrReportDiffResultType = "FailedToReportDiff"
+	ApplyOrReportDiffResTypeFailedToReportDiff ManifestProcessingApplyOrReportDiffResultType = "FailedToReportDiff"
 
-	ManifestProcessingApplyOrReportDiffResultTypeFailedToReportDiffDescription = "Failed to report the diff between the hub cluster and the member cluster (error = %s)"
+	// The result type for successful diff reportings.
+	ApplyOrReportDiffResTypeFoundDiff   ManifestProcessingApplyOrReportDiffResultType = "FoundDiff"
+	ApplyOrReportDiffResTypeNoDiffFound ManifestProcessingApplyOrReportDiffResultType = "NoDiffFound"
+)
 
-	// The result type for completed diff reportings.
-	ManifestProcessingApplyOrReportDiffResultTypeFoundDiff   ManifestProcessingApplyOrReportDiffResultType = "FoundDiff"
-	ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound ManifestProcessingApplyOrReportDiffResultType = "NoDiffFound"
-
-	ManifestProcessingApplyOrReportDiffResultTypeNoDiffFoundDescription = "No diff has been found between the hub cluster and the member cluster"
-	ManifestProcessingApplyOrReportDiffResultTypeFoundDiffDescription   = "Diff has been found between the hub cluster and the member cluster"
+const (
+	// The descriptions for different diff reporting result types.
+	ApplyOrReportDiffResTypeFailedToReportDiffDescription = "Failed to report the diff between the hub cluster and the member cluster (error = %s)"
+	ApplyOrReportDiffResTypeNoDiffFoundDescription        = "No diff has been found between the hub cluster and the member cluster"
+	ApplyOrReportDiffResTypeFoundDiffDescription          = "Diff has been found between the hub cluster and the member cluster"
 )
 
 var (
 	// A set for all apply related result types.
-	manifestProcessingApplyResTypSet = set.New[ManifestProcessingApplyOrReportDiffResultType](
-		ManifestProcessingApplyOrReportDiffResultTypeDecodingErred,
-		ManifestProcessingApplyOrReportDiffResultTypeFoundGenerateName,
-		ManifestProcessingApplyOrReportDiffResultTypeDuplicated,
-		ManifestProcessingApplyOrReportDiffResultTypeFailedToFindObjInMemberCluster,
-		ManifestProcessingApplyOrReportDiffResultTypeFailedToTakeOver,
-		ManifestProcessingApplyOrReportDiffResultTypeNotTakenOver,
-		ManifestProcessingApplyOrReportDiffResultTypeFailedToRunDriftDetection,
-		ManifestProcessingApplyOrReportDiffResultTypeFoundDrifts,
-		ManifestProcessingApplyOrReportDiffResultTypeFailedToApply,
-		ManifestProcessingApplyOrReportDiffResultTypeAppliedWithFailedDriftDetection,
-		ManifestProcessingApplyOrReportDiffResultTypeApplied,
+	manifestProcessingApplyResTypSet = set.New(
+		ApplyOrReportDiffResTypeDecodingErred,
+		ApplyOrReportDiffResTypeFoundGenerateName,
+		ApplyOrReportDiffResTypeDuplicated,
+		ApplyOrReportDiffResTypeFailedToFindObjInMemberCluster,
+		ApplyOrReportDiffResTypeFailedToTakeOver,
+		ApplyOrReportDiffResTypeNotTakenOver,
+		ApplyOrReportDiffResTypeFailedToRunDriftDetection,
+		ApplyOrReportDiffResTypeFoundDrifts,
+		ApplyOrReportDiffResTypeFailedToApply,
+		ApplyOrReportDiffResTypeAppliedWithFailedDriftDetection,
+		ApplyOrReportDiffResTypeApplied,
 	)
 )
 

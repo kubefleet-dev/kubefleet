@@ -71,7 +71,7 @@ func TestTrackWorkAndManifestProcessingRequestMetrics(t *testing.T) {
 							Conditions: []metav1.Condition{
 								{
 									Type:   placementv1beta1.WorkConditionTypeApplied,
-									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeApplied),
+									Reason: string(ApplyOrReportDiffResTypeApplied),
 									Status: metav1.ConditionTrue,
 								},
 								{
@@ -113,7 +113,7 @@ func TestTrackWorkAndManifestProcessingRequestMetrics(t *testing.T) {
 								{
 									Type:   placementv1beta1.WorkConditionTypeApplied,
 									Status: metav1.ConditionFalse,
-									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFailedToApply),
+									Reason: string(ApplyOrReportDiffResTypeFailedToApply),
 								},
 							},
 						},
@@ -155,7 +155,7 @@ func TestTrackWorkAndManifestProcessingRequestMetrics(t *testing.T) {
 							Conditions: []metav1.Condition{
 								{
 									Type:   placementv1beta1.WorkConditionTypeApplied,
-									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeApplied),
+									Reason: string(ApplyOrReportDiffResTypeApplied),
 									Status: metav1.ConditionTrue,
 								},
 								{
@@ -201,7 +201,7 @@ func TestTrackWorkAndManifestProcessingRequestMetrics(t *testing.T) {
 								{
 									Type:   placementv1beta1.WorkConditionTypeDiffReported,
 									Status: metav1.ConditionTrue,
-									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound),
+									Reason: string(ApplyOrReportDiffResTypeNoDiffFound),
 								},
 							},
 						},
@@ -243,7 +243,7 @@ func TestTrackWorkAndManifestProcessingRequestMetrics(t *testing.T) {
 								{
 									Type:   placementv1beta1.WorkConditionTypeDiffReported,
 									Status: metav1.ConditionFalse,
-									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFailedToReportDiff),
+									Reason: string(ApplyOrReportDiffResTypeFailedToReportDiff),
 								},
 							},
 						},
@@ -287,7 +287,7 @@ func TestTrackWorkAndManifestProcessingRequestMetrics(t *testing.T) {
 								{
 									Type:   placementv1beta1.WorkConditionTypeApplied,
 									Status: metav1.ConditionFalse,
-									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFoundDrifts),
+									Reason: string(ApplyOrReportDiffResTypeFoundDrifts),
 								},
 							},
 							DriftDetails: &placementv1beta1.DriftDetails{},
@@ -297,7 +297,7 @@ func TestTrackWorkAndManifestProcessingRequestMetrics(t *testing.T) {
 								{
 									Type:   placementv1beta1.WorkConditionTypeApplied,
 									Status: metav1.ConditionTrue,
-									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeApplied),
+									Reason: string(ApplyOrReportDiffResTypeApplied),
 								},
 								{
 									Type:   placementv1beta1.WorkConditionTypeAvailable,
@@ -347,7 +347,7 @@ func TestTrackWorkAndManifestProcessingRequestMetrics(t *testing.T) {
 								{
 									Type:   placementv1beta1.WorkConditionTypeDiffReported,
 									Status: metav1.ConditionTrue,
-									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFoundDiff),
+									Reason: string(ApplyOrReportDiffResTypeFoundDiff),
 								},
 							},
 							DiffDetails: &placementv1beta1.DiffDetails{},
@@ -357,7 +357,7 @@ func TestTrackWorkAndManifestProcessingRequestMetrics(t *testing.T) {
 								{
 									Type:   placementv1beta1.WorkConditionTypeDiffReported,
 									Status: metav1.ConditionTrue,
-									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeNoDiffFound),
+									Reason: string(ApplyOrReportDiffResTypeNoDiffFound),
 								},
 							},
 						},
@@ -477,7 +477,7 @@ func TestTrackWorkAndManifestProcessingRequestMetrics(t *testing.T) {
 								{
 									Type:   placementv1beta1.WorkConditionTypeApplied,
 									Status: metav1.ConditionTrue,
-									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeAppliedWithFailedDriftDetection),
+									Reason: string(ApplyOrReportDiffResTypeAppliedWithFailedDriftDetection),
 								},
 								{
 									Type:   placementv1beta1.WorkConditionTypeAvailable,
@@ -487,7 +487,7 @@ func TestTrackWorkAndManifestProcessingRequestMetrics(t *testing.T) {
 								{
 									Type:   placementv1beta1.WorkConditionTypeDiffReported,
 									Status: metav1.ConditionTrue,
-									Reason: string(ManifestProcessingApplyOrReportDiffResultTypeFoundDiff),
+									Reason: string(ApplyOrReportDiffResTypeFoundDiff),
 								},
 							},
 						},

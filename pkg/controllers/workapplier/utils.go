@@ -45,8 +45,8 @@ func formatWRIString(wri *fleetv1beta1.WorkResourceIdentifier) (string, error) {
 // isManifestObjectApplied returns if an applied result type indicates that a manifest
 // object in a bundle has been successfully applied.
 func isManifestObjectApplied(appliedResTyp ManifestProcessingApplyOrReportDiffResultType) bool {
-	return appliedResTyp == ManifestProcessingApplyOrReportDiffResultTypeApplied ||
-		appliedResTyp == ManifestProcessingApplyOrReportDiffResultTypeAppliedWithFailedDriftDetection
+	return appliedResTyp == ApplyOrReportDiffResTypeApplied ||
+		appliedResTyp == ApplyOrReportDiffResTypeAppliedWithFailedDriftDetection
 }
 
 // isPlacedByFleetInDuplicate checks if the object has already been placed by Fleet via another
