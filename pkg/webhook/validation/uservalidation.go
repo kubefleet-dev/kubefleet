@@ -44,7 +44,8 @@ const (
 )
 
 var (
-	fleetCRDGroups = []string{"networking.fleet.azure.com", "fleet.azure.com", "multicluster.x-k8s.io", "cluster.kubernetes-fleet.io", "placement.kubernetes-fleet.io"}
+	fleetDataplaneLabelPrefix = "cluster.kubernetes-fleet.io/"
+	fleetCRDGroups            = []string{"networking.fleet.azure.com", "fleet.azure.com", "multicluster.x-k8s.io", "cluster.kubernetes-fleet.io", "placement.kubernetes-fleet.io"}
 )
 
 // ValidateUserForFleetCRD checks to see if user is not allowed to modify fleet CRDs.
@@ -109,11 +110,10 @@ func ValidateFleetMemberClusterUpdate(currentMC, oldMC clusterv1beta1.MemberClus
 		return admission.Denied(err.Error())
 	}
 
-	// Users are no longer allowed to modify labels of fleet member cluster through webhook.
-	// This will be disabled until member labels are accessible through CLI
-	if denyModifyMemberClusterLabels {
-		isLabelUpdated := isMapFieldUpdated(currentMC.GetLabels(), oldMC.GetLabels())
-		if isLabelUpdated && !isUserInGroup(userInfo, mastersGroup) {
+	isLabelUpdated := isMapFieldUpdated(currentMC.GetLabels(), oldMC.GetLabels())
+	if isLabelUpdated && !isUserInGroup(userInfo, mastersGroup) {
+		// allow any user to modify cluster.kubernetes-fleet.io/* labels, but restricts other label modifications given denyModifyMemberClusterLabels is true.
+		if shouldDenyLabelModification(currentMC.GetLabels(), oldMC.GetLabels(), denyModifyMemberClusterLabels) {
 			klog.V(2).InfoS(DeniedModifyMemberClusterLabels, "user", userInfo.Username, "groups", userInfo.Groups, "operation", req.Operation, "GVK", req.RequestKind, "subResource", req.SubResource, "namespacedName", namespacedName)
 			return admission.Denied(DeniedModifyMemberClusterLabels)
 		}
@@ -177,6 +177,29 @@ func isAKSSupportUser(userInfo authenticationv1.UserInfo) bool {
 // isUserInGroup returns true if user belongs to the specified groupName.
 func isUserInGroup(userInfo authenticationv1.UserInfo, groupName string) bool {
 	return slices.Contains(userInfo.Groups, groupName)
+}
+
+// shouldDenyLabelModification returns true if any labels (besides cluster.kubernetes-fleet.io/* labels) are being modified and denyModifyMemberClusterLabels is true.
+func shouldDenyLabelModification(currentLabels, oldLabels map[string]string, denyModifyMemberClusterLabels bool) bool {
+	if !denyModifyMemberClusterLabels {
+		return false
+	}
+	for k, v := range currentLabels {
+		oldV, exists := oldLabels[k]
+		if !exists || oldV != v {
+			if !strings.HasPrefix(k, fleetDataplaneLabelPrefix) {
+				return true
+			}
+		}
+	}
+	for k := range oldLabels {
+		if _, exists := currentLabels[k]; !exists {
+			if !strings.HasPrefix(k, fleetDataplaneLabelPrefix) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // isMemberClusterMapFieldUpdated return true if member cluster label is updated.
