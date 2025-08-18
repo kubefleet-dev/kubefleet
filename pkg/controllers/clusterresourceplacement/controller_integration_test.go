@@ -35,7 +35,7 @@ import (
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	fleetmetrics "github.com/kubefleet-dev/kubefleet/pkg/metrics"
+	"github.com/kubefleet-dev/kubefleet/pkg/metrics"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/resource"
@@ -380,7 +380,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 	Context("When creating new pickAll ClusterResourcePlacement", func() {
 		BeforeEach(func() {
 			// Reset metric before each test
-			fleetmetrics.FleetPlacementStatusLastTimeStampSeconds.Reset()
+			metrics.FleetPlacementStatusLastTimeStampSeconds.Reset()
 
 			By("Create a new crp")
 			crp = &placementv1beta1.ClusterResourcePlacement{
@@ -1409,7 +1409,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 	Context("When creating a ReportDiff ClusterResourcePlacement", func() {
 		BeforeEach(func() {
 			// Reset metric before each test
-			fleetmetrics.FleetPlacementStatusLastTimeStampSeconds.Reset()
+			metrics.FleetPlacementStatusLastTimeStampSeconds.Reset()
 
 			By("Create a new crp")
 			crp = &placementv1beta1.ClusterResourcePlacement{
@@ -1927,7 +1927,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 	Context("When creating an ClusterResourcePlacement with user error", func() {
 		BeforeEach(func() {
 			// Reset metric before each test
-			fleetmetrics.FleetPlacementStatusLastTimeStampSeconds.Reset()
+			metrics.FleetPlacementStatusLastTimeStampSeconds.Reset()
 		})
 
 		AfterEach(func() {
@@ -1998,7 +1998,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 	Context("When creating an ClusterResourcePlacement with External RolloutStrategy", func() {
 		BeforeEach(func() {
 			// Reset metric before each test
-			fleetmetrics.FleetPlacementStatusLastTimeStampSeconds.Reset()
+			metrics.FleetPlacementStatusLastTimeStampSeconds.Reset()
 
 			By("Create a new crp with external rollout strategy")
 			crp = &placementv1beta1.ClusterResourcePlacement{

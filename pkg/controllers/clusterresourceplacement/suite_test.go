@@ -43,7 +43,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourcebindingwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacementwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterschedulingpolicysnapshot"
-	fleetmetrics "github.com/kubefleet-dev/kubefleet/pkg/metrics"
+	"github.com/kubefleet-dev/kubefleet/pkg/metrics"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
@@ -153,7 +153,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).Should(Succeed(), "failed to create clusterResourceBinding watcher")
 
 	// Register metrics.
-	ctrlmetrics.Registry.MustRegister(fleetmetrics.FleetPlacementStatusLastTimeStampSeconds)
+	ctrlmetrics.Registry.MustRegister(metrics.FleetPlacementStatusLastTimeStampSeconds)
 
 	ctx, cancel = context.WithCancel(context.TODO())
 	// Run the controller manager

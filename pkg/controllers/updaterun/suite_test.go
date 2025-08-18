@@ -41,7 +41,7 @@ import (
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	fleetmetrics "github.com/kubefleet-dev/kubefleet/pkg/metrics"
+	"github.com/kubefleet-dev/kubefleet/pkg/metrics"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
 )
@@ -120,7 +120,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).Should(Succeed())
 
 	// Register metrics.
-	ctrlmetrics.Registry.MustRegister(fleetmetrics.FleetUpdateRunStatusLastTimestampSeconds)
+	ctrlmetrics.Registry.MustRegister(metrics.FleetUpdateRunStatusLastTimestampSeconds)
 
 	go func() {
 		defer GinkgoRecover()
