@@ -10,7 +10,7 @@ spec:
       kind: Namespace
       name: test-ns
       version: v1
-      selectionScope: NamespaceOnly
+      selectionScope: NamespaceOnly # only namespace itself is placed, no resources within the namespace
   policy:
     placementType: PickAll
   strategy:
