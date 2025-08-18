@@ -524,6 +524,14 @@ func setupResources() {
 	for clusterName := range propertiesByCluster {
 		resetClusterPropertiesFor(clusterName)
 	}
+
+	// Create test namespace
+	namespace := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testNamespace,
+		},
+	}
+	Expect(hubClient.Create(ctx, namespace)).Should(Succeed())
 }
 
 func beforeSuiteForProcess1() []byte {
@@ -579,20 +587,35 @@ func beforeSuiteForProcess1() []byte {
 		Client:             hubClient,
 		SchedulerWorkQueue: schedulerWorkQueue,
 	}
-	err = crpReconciler.SetupWithManager(ctrlMgr)
+	err = crpReconciler.SetupWithManagerForClusterResourcePlacement(ctrlMgr)
 	Expect(err).NotTo(HaveOccurred(), "Failed to set up CRP watcher with controller manager")
+
+	rpReconciler := clusterresourceplacement.Reconciler{
+		Client:             hubClient,
+		SchedulerWorkQueue: schedulerWorkQueue,
+	}
+	err = rpReconciler.SetupWithManagerForResourcePlacement(ctrlMgr)
+	Expect(err).NotTo(HaveOccurred(), "Failed to set up RP watcher with controller manager")
+
+	clusterPolicySnapshotWatcher := clusterschedulingpolicysnapshot.Reconciler{
+		Client:             hubClient,
+		SchedulerWorkQueue: schedulerWorkQueue,
+	}
+	err = clusterPolicySnapshotWatcher.SetupWithManagerForClusterSchedulingPolicySnapshot(ctrlMgr)
+	Expect(err).NotTo(HaveOccurred(), "Failed to set up cluster policy snapshot watcher with controller manager")
 
 	policySnapshotWatcher := clusterschedulingpolicysnapshot.Reconciler{
 		Client:             hubClient,
 		SchedulerWorkQueue: schedulerWorkQueue,
 	}
-	err = policySnapshotWatcher.SetupWithManager(ctrlMgr)
+	err = policySnapshotWatcher.SetupWithManagerForSchedulingPolicySnapshot(ctrlMgr)
 	Expect(err).NotTo(HaveOccurred(), "Failed to set up policy snapshot watcher with controller manager")
 
 	memberClusterWatcher := membercluster.Reconciler{
 		Client:                    hubClient,
 		SchedulerWorkQueue:        schedulerWorkQueue,
 		ClusterEligibilityChecker: clusterEligibilityChecker,
+		EnableResourcePlacement:   true,
 	}
 	err = memberClusterWatcher.SetupWithManager(ctrlMgr)
 	Expect(err).NotTo(HaveOccurred(), "Failed to set up member cluster watcher with controller manager")
@@ -601,8 +624,15 @@ func beforeSuiteForProcess1() []byte {
 		Client:             hubClient,
 		SchedulerWorkQueue: schedulerWorkQueue,
 	}
-	err = clusterResourceBindingWatcher.SetupWithManager(ctrlMgr)
+	err = clusterResourceBindingWatcher.SetupWithManagerForClusterResourceBinding(ctrlMgr)
 	Expect(err).NotTo(HaveOccurred(), "Failed to set up cluster resource binding watcher with controller manager")
+
+	resourceBindingWatcher := clusterresourcebinding.Reconciler{
+		Client:             hubClient,
+		SchedulerWorkQueue: schedulerWorkQueue,
+	}
+	err = resourceBindingWatcher.SetupWithManagerForResourceBinding(ctrlMgr)
+	Expect(err).NotTo(HaveOccurred(), "Failed to set up resource binding watcher with controller manager")
 
 	// Set up the scheduler.
 	fw := buildSchedulerFramework(ctrlMgr, clusterEligibilityChecker)

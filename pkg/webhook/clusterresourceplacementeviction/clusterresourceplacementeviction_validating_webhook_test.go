@@ -84,7 +84,7 @@ func TestHandle(t *testing.T) {
 			Name: "test-crp",
 		},
 		Spec: placementv1beta1.PlacementSpec{
-			ResourceSelectors: []placementv1beta1.ClusterResourceSelector{},
+			ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{},
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickAllPlacementType,
 			},
@@ -96,10 +96,10 @@ func TestHandle(t *testing.T) {
 			DeletionTimestamp: &metav1.Time{
 				Time: time.Now().Add(10 * time.Minute),
 			},
-			Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+			Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 		},
 		Spec: placementv1beta1.PlacementSpec{
-			ResourceSelectors: []placementv1beta1.ClusterResourceSelector{},
+			ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{},
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickAllPlacementType,
 			},
@@ -110,7 +110,7 @@ func TestHandle(t *testing.T) {
 			Name: "crp-pickfixed",
 		},
 		Spec: placementv1beta1.PlacementSpec{
-			ResourceSelectors: []placementv1beta1.ClusterResourceSelector{},
+			ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{},
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickFixedPlacementType,
 				ClusterNames:  []string{"cluster1", "cluster2"},

@@ -35,9 +35,9 @@ import (
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/metrics"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller/metrics"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/resource"
 	metricsUtils "github.com/kubefleet-dev/kubefleet/test/utils/metrics"
 )
@@ -73,7 +73,7 @@ var (
 		cmpopts.SortSlices(func(c1, c2 metav1.Condition) bool {
 			return c1.Type < c2.Type
 		}),
-		cmpopts.SortSlices(func(c1, c2 placementv1beta1.ResourcePlacementStatus) bool {
+		cmpopts.SortSlices(func(c1, c2 placementv1beta1.PerClusterPlacementStatus) bool {
 			return c1.ClusterName < c2.ClusterName
 		}),
 	}
@@ -266,7 +266,7 @@ func updateClusterResourceBindingWithReportDiff(binding *placementv1beta1.Cluste
 	meta.SetStatusCondition(&binding.Status.Conditions, cond)
 	cond = metav1.Condition{
 		Status:             metav1.ConditionTrue,
-		Type:               string(placementv1beta1.ResourcesDiffReportedConditionType),
+		Type:               string(placementv1beta1.PerClusterDiffReportedConditionType),
 		Reason:             condition.DiffReportedStatusTrueReason,
 		ObservedGeneration: binding.Generation,
 	}
@@ -388,7 +388,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					Name: testCRPName,
 				},
 				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 						{
 							Group:   corev1.GroupName,
 							Version: "v1",
@@ -413,7 +413,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantCRP := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       testCRPName,
-					Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+					Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 				},
 				Spec: crp.Spec,
 				Status: placementv1beta1.PlacementStatus{
@@ -452,7 +452,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantCRP := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       testCRPName,
-					Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+					Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 				},
 				Spec: crp.Spec,
 				Status: placementv1beta1.PlacementStatus{
@@ -475,6 +475,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
@@ -487,6 +488,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
@@ -509,7 +511,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantCRP := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       testCRPName,
-					Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+					Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 				},
 				Spec: crp.Spec,
 				Status: placementv1beta1.PlacementStatus{
@@ -531,6 +533,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
@@ -543,6 +546,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
@@ -568,7 +572,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantCRP := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       testCRPName,
-					Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+					Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 				},
 				Spec: crp.Spec,
 				Status: placementv1beta1.PlacementStatus{
@@ -585,29 +589,29 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							Reason: condition.RolloutStartedUnknownReason,
 						},
 					},
-					PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           member1Name,
 							ObservedResourceIndex: "0",
 							Conditions: []metav1.Condition{
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceScheduledConditionType),
+									Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 									Reason: condition.ScheduleSucceededReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+									Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 									Reason: condition.RolloutStartedReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceOverriddenConditionType),
+									Type:   string(placementv1beta1.PerClusterOverriddenConditionType),
 									Reason: condition.OverriddenSucceededReason,
 								},
 								{
 									Status: metav1.ConditionUnknown,
-									Type:   string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+									Type:   string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 									Reason: condition.WorkSynchronizedUnknownReason,
 								},
 							},
@@ -618,12 +622,12 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							Conditions: []metav1.Condition{
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceScheduledConditionType),
+									Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 									Reason: condition.ScheduleSucceededReason,
 								},
 								{
 									Status: metav1.ConditionUnknown,
-									Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+									Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 									Reason: condition.RolloutStartedUnknownReason,
 								},
 							},
@@ -639,6 +643,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
@@ -651,6 +656,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
@@ -690,29 +696,29 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					Reason: condition.WorkSynchronizedUnknownReason,
 				},
 			}
-			wantCRP.Status.PlacementStatuses = []placementv1beta1.ResourcePlacementStatus{
+			wantCRP.Status.PerClusterPlacementStatuses = []placementv1beta1.PerClusterPlacementStatus{
 				{
 					ClusterName:           member1Name,
 					ObservedResourceIndex: "0",
 					Conditions: []metav1.Condition{
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceScheduledConditionType),
+							Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 							Reason: condition.ScheduleSucceededReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+							Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 							Reason: condition.RolloutStartedReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceOverriddenConditionType),
+							Type:   string(placementv1beta1.PerClusterOverriddenConditionType),
 							Reason: condition.OverriddenSucceededReason,
 						},
 						{
 							Status: metav1.ConditionUnknown,
-							Type:   string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+							Type:   string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 							Reason: condition.WorkSynchronizedUnknownReason,
 						},
 					},
@@ -723,27 +729,27 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					Conditions: []metav1.Condition{
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceScheduledConditionType),
+							Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 							Reason: condition.ScheduleSucceededReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+							Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 							Reason: condition.RolloutStartedReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceOverriddenConditionType),
+							Type:   string(placementv1beta1.PerClusterOverriddenConditionType),
 							Reason: condition.OverriddenSucceededReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+							Type:   string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 							Reason: condition.WorkSynchronizedReason,
 						},
 						{
 							Status: metav1.ConditionUnknown,
-							Type:   string(placementv1beta1.ResourcesAppliedConditionType),
+							Type:   string(placementv1beta1.PerClusterAppliedConditionType),
 							Reason: condition.ApplyPendingReason,
 						},
 					},
@@ -754,6 +760,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			By("Ensure placement status metric was emitted")
 			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
 				Label: []*prometheusclientmodel.LabelPair{
+					{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 					{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
@@ -778,7 +785,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantCRP := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       testCRPName,
-					Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+					Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 				},
 				Spec: crp.Spec,
 				Status: placementv1beta1.PlacementStatus{
@@ -795,29 +802,29 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							Reason: condition.RolloutStartedUnknownReason,
 						},
 					},
-					PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           member1Name,
 							ObservedResourceIndex: "0",
 							Conditions: []metav1.Condition{
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceScheduledConditionType),
+									Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 									Reason: condition.ScheduleSucceededReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+									Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 									Reason: condition.RolloutStartedReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceOverriddenConditionType),
+									Type:   string(placementv1beta1.PerClusterOverriddenConditionType),
 									Reason: condition.OverriddenSucceededReason,
 								},
 								{
 									Status: metav1.ConditionUnknown,
-									Type:   string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+									Type:   string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 									Reason: condition.WorkSynchronizedUnknownReason,
 								},
 							},
@@ -828,12 +835,12 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							Conditions: []metav1.Condition{
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceScheduledConditionType),
+									Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 									Reason: condition.ScheduleSucceededReason,
 								},
 								{
 									Status: metav1.ConditionUnknown,
-									Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+									Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 									Reason: condition.RolloutStartedUnknownReason,
 								},
 							},
@@ -847,6 +854,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
@@ -859,6 +867,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
@@ -898,29 +907,29 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					Reason: condition.WorkSynchronizedUnknownReason,
 				},
 			}
-			wantCRP.Status.PlacementStatuses = []placementv1beta1.ResourcePlacementStatus{
+			wantCRP.Status.PerClusterPlacementStatuses = []placementv1beta1.PerClusterPlacementStatus{
 				{
 					ClusterName:           member1Name,
 					ObservedResourceIndex: "0",
 					Conditions: []metav1.Condition{
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceScheduledConditionType),
+							Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 							Reason: condition.ScheduleSucceededReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+							Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 							Reason: condition.RolloutStartedReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceOverriddenConditionType),
+							Type:   string(placementv1beta1.PerClusterOverriddenConditionType),
 							Reason: condition.OverriddenSucceededReason,
 						},
 						{
 							Status: metav1.ConditionUnknown,
-							Type:   string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+							Type:   string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 							Reason: condition.WorkSynchronizedUnknownReason,
 						},
 					},
@@ -931,27 +940,27 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					Conditions: []metav1.Condition{
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceScheduledConditionType),
+							Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 							Reason: condition.ScheduleSucceededReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+							Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 							Reason: condition.RolloutStartedReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceOverriddenConditionType),
+							Type:   string(placementv1beta1.PerClusterOverriddenConditionType),
 							Reason: condition.OverriddenSucceededReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+							Type:   string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 							Reason: condition.WorkSynchronizedReason,
 						},
 						{
 							Status: metav1.ConditionUnknown,
-							Type:   string(placementv1beta1.ResourcesAppliedConditionType),
+							Type:   string(placementv1beta1.PerClusterAppliedConditionType),
 							Reason: condition.ApplyPendingReason,
 						},
 					},
@@ -962,6 +971,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			By("Ensure placement status metric was emitted for 1st generation")
 			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
 				Label: []*prometheusclientmodel.LabelPair{
+					{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 					{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
@@ -976,7 +986,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 
 			By("Update CRP spec to add another resource selector")
 			gotCRP.Spec.ResourceSelectors = append(crp.Spec.ResourceSelectors,
-				placementv1beta1.ClusterResourceSelector{
+				placementv1beta1.ResourceSelectorTerm{
 					Group:   corev1.GroupName,
 					Version: "v1",
 					Kind:    "Namespace",
@@ -1015,7 +1025,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					ObservedGeneration: 1,
 				},
 			}
-			wantCRP.Status.PlacementStatuses = nil
+			wantCRP.Status.PerClusterPlacementStatuses = nil
 			gotCRP = retrieveAndValidateClusterResourcePlacement(testCRPName, wantCRP)
 
 			By("Ensure placement status metric was emitted with different generations")
@@ -1024,6 +1034,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			// In this case we have 2 metrics for Scheduled condition type as crp generation goes from 1 to 2.
 			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
 				Label: []*prometheusclientmodel.LabelPair{
+					{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 					{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
@@ -1069,32 +1080,32 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					ObservedGeneration: 2,
 				},
 			}
-			wantCRP.Status.PlacementStatuses = []placementv1beta1.ResourcePlacementStatus{
+			wantCRP.Status.PerClusterPlacementStatuses = []placementv1beta1.PerClusterPlacementStatus{
 				{
 					ClusterName:           member1Name,
 					ObservedResourceIndex: "0",
 					Conditions: []metav1.Condition{
 						{
 							Status:             metav1.ConditionTrue,
-							Type:               string(placementv1beta1.ResourceScheduledConditionType),
+							Type:               string(placementv1beta1.PerClusterScheduledConditionType),
 							Reason:             condition.ScheduleSucceededReason,
 							ObservedGeneration: 2,
 						},
 						{
 							Status:             metav1.ConditionTrue,
-							Type:               string(placementv1beta1.ResourceRolloutStartedConditionType),
+							Type:               string(placementv1beta1.PerClusterRolloutStartedConditionType),
 							Reason:             condition.RolloutStartedReason,
 							ObservedGeneration: 2,
 						},
 						{
 							Status:             metav1.ConditionTrue,
-							Type:               string(placementv1beta1.ResourceOverriddenConditionType),
+							Type:               string(placementv1beta1.PerClusterOverriddenConditionType),
 							Reason:             condition.OverriddenSucceededReason,
 							ObservedGeneration: 2,
 						},
 						{
 							Status:             metav1.ConditionUnknown,
-							Type:               string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+							Type:               string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 							Reason:             condition.WorkSynchronizedUnknownReason,
 							ObservedGeneration: 2,
 						},
@@ -1106,31 +1117,31 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					Conditions: []metav1.Condition{
 						{
 							Status:             metav1.ConditionTrue,
-							Type:               string(placementv1beta1.ResourceScheduledConditionType),
+							Type:               string(placementv1beta1.PerClusterScheduledConditionType),
 							Reason:             condition.ScheduleSucceededReason,
 							ObservedGeneration: 2,
 						},
 						{
 							Status:             metav1.ConditionTrue,
-							Type:               string(placementv1beta1.ResourceRolloutStartedConditionType),
+							Type:               string(placementv1beta1.PerClusterRolloutStartedConditionType),
 							Reason:             condition.RolloutStartedReason,
 							ObservedGeneration: 2,
 						},
 						{
 							Status:             metav1.ConditionTrue,
-							Type:               string(placementv1beta1.ResourceOverriddenConditionType),
+							Type:               string(placementv1beta1.PerClusterOverriddenConditionType),
 							Reason:             condition.OverriddenSucceededReason,
 							ObservedGeneration: 2,
 						},
 						{
 							Status:             metav1.ConditionTrue,
-							Type:               string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+							Type:               string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 							Reason:             condition.WorkSynchronizedReason,
 							ObservedGeneration: 2,
 						},
 						{
 							Status:             metav1.ConditionUnknown,
-							Type:               string(placementv1beta1.ResourcesAppliedConditionType),
+							Type:               string(placementv1beta1.PerClusterAppliedConditionType),
 							Reason:             condition.ApplyPendingReason,
 							ObservedGeneration: 2,
 						},
@@ -1145,6 +1156,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			// In this case we have 2 metrics for different condition types as crp updates and its generation goes from 1 to 2.
 			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
 				Label: []*prometheusclientmodel.LabelPair{
+					{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 					{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
@@ -1172,7 +1184,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantCRP := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       testCRPName,
-					Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+					Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 				},
 				Spec: crp.Spec,
 				Status: placementv1beta1.PlacementStatus{
@@ -1199,29 +1211,29 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							Reason: condition.WorkSynchronizedUnknownReason,
 						},
 					},
-					PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           member1Name,
 							ObservedResourceIndex: "0",
 							Conditions: []metav1.Condition{
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceScheduledConditionType),
+									Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 									Reason: condition.ScheduleSucceededReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+									Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 									Reason: condition.RolloutStartedReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceOverriddenConditionType),
+									Type:   string(placementv1beta1.PerClusterOverriddenConditionType),
 									Reason: condition.OverriddenSucceededReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+									Type:   string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 									Reason: condition.WorkSynchronizedReason,
 								},
 								{
@@ -1237,22 +1249,22 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							Conditions: []metav1.Condition{
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceScheduledConditionType),
+									Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 									Reason: condition.ScheduleSucceededReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+									Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 									Reason: condition.RolloutStartedReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceOverriddenConditionType),
+									Type:   string(placementv1beta1.PerClusterOverriddenConditionType),
 									Reason: condition.OverriddenSucceededReason,
 								},
 								{
 									Status: metav1.ConditionUnknown,
-									Type:   string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+									Type:   string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 									Reason: condition.WorkSynchronizedUnknownReason,
 								},
 							},
@@ -1266,6 +1278,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
@@ -1278,6 +1291,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
@@ -1290,6 +1304,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
@@ -1317,8 +1332,8 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			}
 			meta.SetStatusCondition(&wantCRP.Status.Conditions, wantCondition)
 			wantCondition.Type = string(placementv1beta1.ResourceBindingWorkSynchronized)
-			meta.SetStatusCondition(&wantCRP.Status.PlacementStatuses[0].Conditions, wantCondition)
-			meta.SetStatusCondition(&wantCRP.Status.PlacementStatuses[1].Conditions, wantCondition)
+			meta.SetStatusCondition(&wantCRP.Status.PerClusterPlacementStatuses[0].Conditions, wantCondition)
+			meta.SetStatusCondition(&wantCRP.Status.PerClusterPlacementStatuses[1].Conditions, wantCondition)
 
 			wantCondition = metav1.Condition{
 				Status: metav1.ConditionUnknown,
@@ -1327,12 +1342,13 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			}
 			meta.SetStatusCondition(&wantCRP.Status.Conditions, wantCondition)
 			wantCondition.Type = string(placementv1beta1.ResourceBindingApplied)
-			meta.SetStatusCondition(&wantCRP.Status.PlacementStatuses[0].Conditions, wantCondition)
-			meta.SetStatusCondition(&wantCRP.Status.PlacementStatuses[1].Conditions, wantCondition)
+			meta.SetStatusCondition(&wantCRP.Status.PerClusterPlacementStatuses[0].Conditions, wantCondition)
+			meta.SetStatusCondition(&wantCRP.Status.PerClusterPlacementStatuses[1].Conditions, wantCondition)
 
 			By("Ensure placement status applied metric was emitted")
 			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
 				Label: []*prometheusclientmodel.LabelPair{
+					{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 					{Name: ptr.To("name"), Value: ptr.To(crp.Name)},
 					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementAppliedConditionType))},
@@ -1358,8 +1374,8 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			}
 			meta.SetStatusCondition(&wantCRP.Status.Conditions, wantCondition)
 			wantCondition.Type = string(placementv1beta1.ResourceBindingApplied)
-			meta.SetStatusCondition(&wantCRP.Status.PlacementStatuses[0].Conditions, wantCondition)
-			meta.SetStatusCondition(&wantCRP.Status.PlacementStatuses[1].Conditions, wantCondition)
+			meta.SetStatusCondition(&wantCRP.Status.PerClusterPlacementStatuses[0].Conditions, wantCondition)
+			meta.SetStatusCondition(&wantCRP.Status.PerClusterPlacementStatuses[1].Conditions, wantCondition)
 
 			wantCondition = metav1.Condition{
 				Status: metav1.ConditionTrue,
@@ -1368,13 +1384,14 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			}
 			meta.SetStatusCondition(&wantCRP.Status.Conditions, wantCondition)
 			wantCondition.Type = string(placementv1beta1.ResourceBindingAvailable)
-			meta.SetStatusCondition(&wantCRP.Status.PlacementStatuses[0].Conditions, wantCondition)
-			meta.SetStatusCondition(&wantCRP.Status.PlacementStatuses[1].Conditions, wantCondition)
+			meta.SetStatusCondition(&wantCRP.Status.PerClusterPlacementStatuses[0].Conditions, wantCondition)
+			meta.SetStatusCondition(&wantCRP.Status.PerClusterPlacementStatuses[1].Conditions, wantCondition)
 			gotCRP = retrieveAndValidateClusterResourcePlacement(testCRPName, wantCRP)
 
 			By("Ensure placement status completed metric was emitted")
 			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
 				Label: []*prometheusclientmodel.LabelPair{
+					{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 					{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 					{Name: ptr.To("conditionType"), Value: ptr.To("Completed")},
@@ -1400,7 +1417,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					Name: testCRPName,
 				},
 				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 						{
 							Group:   corev1.GroupName,
 							Version: "v1",
@@ -1430,7 +1447,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantCRP := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       testCRPName,
-					Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+					Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 				},
 				Spec: crp.Spec,
 				Status: placementv1beta1.PlacementStatus{
@@ -1471,7 +1488,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantCRP := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       testCRPName,
-					Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+					Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 				},
 				Spec: crp.Spec,
 				Status: placementv1beta1.PlacementStatus{
@@ -1498,29 +1515,29 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							Reason: condition.WorkSynchronizedUnknownReason,
 						},
 					},
-					PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           member1Name,
 							ObservedResourceIndex: "0",
 							Conditions: []metav1.Condition{
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceScheduledConditionType),
+									Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 									Reason: condition.ScheduleSucceededReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+									Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 									Reason: condition.RolloutStartedReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceOverriddenConditionType),
+									Type:   string(placementv1beta1.PerClusterOverriddenConditionType),
 									Reason: condition.OverriddenSucceededReason,
 								},
 								{
 									Status: metav1.ConditionUnknown,
-									Type:   string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+									Type:   string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 									Reason: condition.WorkSynchronizedUnknownReason,
 								},
 							},
@@ -1531,22 +1548,22 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							Conditions: []metav1.Condition{
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceScheduledConditionType),
+									Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 									Reason: condition.ScheduleSucceededReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+									Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 									Reason: condition.RolloutStartedReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceOverriddenConditionType),
+									Type:   string(placementv1beta1.PerClusterOverriddenConditionType),
 									Reason: condition.OverriddenSucceededReason,
 								},
 								{
 									Status: metav1.ConditionUnknown,
-									Type:   string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+									Type:   string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 									Reason: condition.WorkSynchronizedUnknownReason,
 								},
 							},
@@ -1560,6 +1577,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
@@ -1572,6 +1590,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
@@ -1584,6 +1603,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
@@ -1610,23 +1630,24 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 				Reason: condition.WorkSynchronizedReason,
 			}
 			meta.SetStatusCondition(&wantCRP.Status.Conditions, wantCondition)
-			wantCondition.Type = string(placementv1beta1.ResourceWorkSynchronizedConditionType)
-			meta.SetStatusCondition(&wantCRP.Status.PlacementStatuses[0].Conditions, wantCondition)
-			meta.SetStatusCondition(&wantCRP.Status.PlacementStatuses[1].Conditions, wantCondition)
+			wantCondition.Type = string(placementv1beta1.PerClusterWorkSynchronizedConditionType)
+			meta.SetStatusCondition(&wantCRP.Status.PerClusterPlacementStatuses[0].Conditions, wantCondition)
+			meta.SetStatusCondition(&wantCRP.Status.PerClusterPlacementStatuses[1].Conditions, wantCondition)
 			wantCondition = metav1.Condition{
 				Status: metav1.ConditionUnknown,
 				Type:   string(placementv1beta1.ClusterResourcePlacementDiffReportedConditionType),
 				Reason: condition.DiffReportedStatusUnknownReason,
 			}
 			meta.SetStatusCondition(&wantCRP.Status.Conditions, wantCondition)
-			wantCondition.Type = string(placementv1beta1.ResourcesDiffReportedConditionType)
-			meta.SetStatusCondition(&wantCRP.Status.PlacementStatuses[0].Conditions, wantCondition)
-			meta.SetStatusCondition(&wantCRP.Status.PlacementStatuses[1].Conditions, wantCondition)
+			wantCondition.Type = string(placementv1beta1.PerClusterDiffReportedConditionType)
+			meta.SetStatusCondition(&wantCRP.Status.PerClusterPlacementStatuses[0].Conditions, wantCondition)
+			meta.SetStatusCondition(&wantCRP.Status.PerClusterPlacementStatuses[1].Conditions, wantCondition)
 			gotCRP = retrieveAndValidateClusterResourcePlacement(testCRPName, wantCRP)
 
 			By("Ensure placement status metric for reportDiff was emitted")
 			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
 				Label: []*prometheusclientmodel.LabelPair{
+					{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 					{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementDiffReportedConditionType))},
@@ -1654,7 +1675,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantCRP := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       testCRPName,
-					Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+					Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 				},
 				Spec: crp.Spec,
 				Status: placementv1beta1.PlacementStatus{
@@ -1681,29 +1702,29 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							Reason: condition.WorkSynchronizedUnknownReason,
 						},
 					},
-					PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           member1Name,
 							ObservedResourceIndex: "0",
 							Conditions: []metav1.Condition{
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceScheduledConditionType),
+									Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 									Reason: condition.ScheduleSucceededReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+									Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 									Reason: condition.RolloutStartedReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceOverriddenConditionType),
+									Type:   string(placementv1beta1.PerClusterOverriddenConditionType),
 									Reason: condition.OverriddenSucceededReason,
 								},
 								{
 									Status: metav1.ConditionUnknown,
-									Type:   string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+									Type:   string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 									Reason: condition.WorkSynchronizedUnknownReason,
 								},
 							},
@@ -1714,22 +1735,22 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							Conditions: []metav1.Condition{
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceScheduledConditionType),
+									Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 									Reason: condition.ScheduleSucceededReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+									Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 									Reason: condition.RolloutStartedReason,
 								},
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceOverriddenConditionType),
+									Type:   string(placementv1beta1.PerClusterOverriddenConditionType),
 									Reason: condition.OverriddenSucceededReason,
 								},
 								{
 									Status: metav1.ConditionUnknown,
-									Type:   string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+									Type:   string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 									Reason: condition.WorkSynchronizedUnknownReason,
 								},
 							},
@@ -1743,6 +1764,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
@@ -1755,6 +1777,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
@@ -1767,6 +1790,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
@@ -1814,34 +1838,34 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					Reason: condition.DiffReportedStatusTrueReason,
 				},
 			}
-			wantCRP.Status.PlacementStatuses = []placementv1beta1.ResourcePlacementStatus{
+			wantCRP.Status.PerClusterPlacementStatuses = []placementv1beta1.PerClusterPlacementStatus{
 				{
 					ClusterName:           member1Name,
 					ObservedResourceIndex: "0",
 					Conditions: []metav1.Condition{
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceScheduledConditionType),
+							Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 							Reason: condition.ScheduleSucceededReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+							Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 							Reason: condition.RolloutStartedReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceOverriddenConditionType),
+							Type:   string(placementv1beta1.PerClusterOverriddenConditionType),
 							Reason: condition.OverriddenSucceededReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+							Type:   string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 							Reason: condition.WorkSynchronizedReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourcesDiffReportedConditionType),
+							Type:   string(placementv1beta1.PerClusterDiffReportedConditionType),
 							Reason: condition.DiffReportedStatusTrueReason,
 						},
 					},
@@ -1852,27 +1876,27 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					Conditions: []metav1.Condition{
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceScheduledConditionType),
+							Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 							Reason: condition.ScheduleSucceededReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+							Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 							Reason: condition.RolloutStartedReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceOverriddenConditionType),
+							Type:   string(placementv1beta1.PerClusterOverriddenConditionType),
 							Reason: condition.OverriddenSucceededReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourceWorkSynchronizedConditionType),
+							Type:   string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
 							Reason: condition.WorkSynchronizedReason,
 						},
 						{
 							Status: metav1.ConditionTrue,
-							Type:   string(placementv1beta1.ResourcesDiffReportedConditionType),
+							Type:   string(placementv1beta1.PerClusterDiffReportedConditionType),
 							Reason: condition.DiffReportedStatusTrueReason,
 						},
 					},
@@ -1884,6 +1908,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics = append(wantMetrics,
 				&prometheusclientmodel.Metric{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To("Completed")},
@@ -1918,7 +1943,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					Name: testCRPName,
 				},
 				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 						{
 							Group:   corev1.GroupName,
 							Version: "v1",
@@ -1935,7 +1960,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantCRP := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       testCRPName,
-					Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+					Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 				},
 				Spec: crp.Spec,
 				Status: placementv1beta1.PlacementStatus{
@@ -1954,6 +1979,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
@@ -1980,7 +2006,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					Name: testCRPName,
 				},
 				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 						{
 							Group:   corev1.GroupName,
 							Version: "v1",
@@ -2008,7 +2034,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantCRP := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       testCRPName,
-					Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+					Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 				},
 				Spec: crp.Spec,
 				Status: placementv1beta1.PlacementStatus{
@@ -2036,6 +2062,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
+						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
@@ -2056,7 +2083,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantCRP := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       testCRPName,
-					Finalizers: []string{placementv1beta1.ClusterResourcePlacementCleanupFinalizer},
+					Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 				},
 				Spec: crp.Spec,
 				Status: placementv1beta1.PlacementStatus{
@@ -2072,18 +2099,18 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							Reason: condition.RolloutControlledByExternalControllerReason,
 						},
 					},
-					PlacementStatuses: []placementv1beta1.ResourcePlacementStatus{
+					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName: member1Name,
 							Conditions: []metav1.Condition{
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceScheduledConditionType),
+									Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 									Reason: condition.ScheduleSucceededReason,
 								},
 								{
 									Status: metav1.ConditionUnknown,
-									Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+									Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 									Reason: condition.RolloutStartedUnknownReason,
 								},
 							},
@@ -2093,12 +2120,12 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							Conditions: []metav1.Condition{
 								{
 									Status: metav1.ConditionTrue,
-									Type:   string(placementv1beta1.ResourceScheduledConditionType),
+									Type:   string(placementv1beta1.PerClusterScheduledConditionType),
 									Reason: condition.ScheduleSucceededReason,
 								},
 								{
 									Status: metav1.ConditionUnknown,
-									Type:   string(placementv1beta1.ResourceRolloutStartedConditionType),
+									Type:   string(placementv1beta1.PerClusterRolloutStartedConditionType),
 									Reason: condition.RolloutStartedUnknownReason,
 								},
 							},
@@ -2111,6 +2138,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			By("Ensure placement status metric for rollout external was emitted")
 			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
 				Label: []*prometheusclientmodel.LabelPair{
+					{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
 					{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
 					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
 					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},

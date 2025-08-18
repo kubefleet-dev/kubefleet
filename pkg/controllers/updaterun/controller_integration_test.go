@@ -43,9 +43,9 @@ import (
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/metrics"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller/metrics"
 	metricsutils "github.com/kubefleet-dev/kubefleet/test/utils/metrics"
 )
 
@@ -350,13 +350,17 @@ func generateTestClusterResourcePlacement() *placementv1beta1.ClusterResourcePla
 			Name: testCRPName,
 		},
 		Spec: placementv1beta1.PlacementSpec{
-			ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+			ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 				{
 					Group:   "",
 					Version: "v1",
 					Kind:    "Namespace",
 					Name:    "test-namespace",
 				},
+			},
+			Policy: &placementv1beta1.PlacementPolicy{
+				PlacementType:    placementv1beta1.PickNPlacementType,
+				NumberOfClusters: ptr.To(int32(2)),
 			},
 			Strategy: placementv1beta1.RolloutStrategy{
 				Type: placementv1beta1.ExternalRolloutStrategyType,
@@ -369,7 +373,7 @@ func generateTestClusterResourcePlacement() *placementv1beta1.ClusterResourcePla
 	}
 }
 
-func generateTestClusterSchedulingPolicySnapshot(idx, numberOfClustersAnnotation int) *placementv1beta1.ClusterSchedulingPolicySnapshot {
+func generateTestClusterSchedulingPolicySnapshot(idx, numberOfClusters int) *placementv1beta1.ClusterSchedulingPolicySnapshot {
 	return &placementv1beta1.ClusterSchedulingPolicySnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: fmt.Sprintf(placementv1beta1.PolicySnapshotNameFmt, testCRPName, idx),
@@ -379,12 +383,14 @@ func generateTestClusterSchedulingPolicySnapshot(idx, numberOfClustersAnnotation
 				"kubernetes-fleet.io/policy-index":       strconv.Itoa(idx),
 			},
 			Annotations: map[string]string{
-				"kubernetes-fleet.io/number-of-clusters": strconv.Itoa(numberOfClustersAnnotation),
+				"kubernetes-fleet.io/number-of-clusters": strconv.Itoa(numberOfClusters),
 			},
 		},
 		Spec: placementv1beta1.SchedulingPolicySnapshotSpec{
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickNPlacementType,
+				//nolint:gosec // safe: numberOfClusters is small in test context
+				NumberOfClusters: ptr.To(int32(numberOfClusters)),
 			},
 			PolicyHash: []byte("hash"),
 		},
@@ -601,7 +607,7 @@ func generateTestClusterResourceOverride() *placementv1beta1.ClusterResourceOver
 		},
 		Spec: placementv1beta1.ClusterResourceOverrideSnapshotSpec{
 			OverrideSpec: placementv1beta1.ClusterResourceOverrideSpec{
-				ClusterResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+				ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 					{
 						Group:   "",
 						Version: "v1",

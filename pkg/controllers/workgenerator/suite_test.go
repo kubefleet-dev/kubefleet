@@ -140,7 +140,13 @@ var _ = BeforeSuite(func() {
 	err = (&Reconciler{
 		Client:          mgr.GetClient(),
 		InformerManager: &fakeInformer,
-	}).SetupWithManager(mgr)
+	}).SetupWithManagerForClusterResourceBinding(mgr)
+	Expect(err).Should(Succeed())
+
+	err = (&Reconciler{
+		Client:          mgr.GetClient(),
+		InformerManager: &fakeInformer,
+	}).SetupWithManagerForResourceBinding(mgr)
 	Expect(err).Should(Succeed())
 
 	createOverrides()
@@ -170,7 +176,7 @@ func createOverrides() {
 		},
 		Spec: placementv1beta1.ClusterResourceOverrideSnapshotSpec{
 			OverrideSpec: placementv1beta1.ClusterResourceOverrideSpec{
-				ClusterResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+				ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 					{
 						Group:   utils.NamespaceGVK.Group,
 						Version: utils.NamespaceGVK.Version,
@@ -259,7 +265,7 @@ func createOverrides() {
 		},
 		Spec: placementv1beta1.ClusterResourceOverrideSnapshotSpec{
 			OverrideSpec: placementv1beta1.ClusterResourceOverrideSpec{
-				ClusterResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+				ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 					{
 						Group:   utils.NamespaceGVK.Group,
 						Version: utils.NamespaceGVK.Version,

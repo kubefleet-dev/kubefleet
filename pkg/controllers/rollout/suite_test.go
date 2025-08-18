@@ -26,7 +26,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -40,6 +43,8 @@ import (
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
 )
 
 var (
@@ -57,7 +62,7 @@ var (
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecs(t, "Work generator Controller Suite")
+	RunSpecs(t, "Placement Rollout Controller Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -104,11 +109,38 @@ var _ = BeforeSuite(func() {
 	By("set k8s client same as the controller manager")
 	k8sClient = mgr.GetClient()
 
-	// setup our main reconciler
+	// Create test namespace
+	namespace := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: testNamespace,
+		},
+	}
+	Expect(k8sClient.Create(ctx, namespace)).Should(Succeed())
+
+	// setup informer manager for the reconciler
+	dynamicClient, err := dynamic.NewForConfig(cfg)
+	Expect(err).Should(Succeed())
+	dynamicInformerManager := informer.NewInformerManager(dynamicClient, 0, ctx.Done())
+	dynamicInformerManager.AddStaticResource(informer.APIResourceMeta{
+		GroupVersionKind:     utils.NamespaceGVK,
+		GroupVersionResource: utils.NamespaceGVR,
+		IsClusterScoped:      true,
+	}, nil)
+
+	// setup our cluster scoped reconciler
 	err = (&Reconciler{
-		Client:         k8sClient,
-		UncachedReader: mgr.GetAPIReader(),
-	}).SetupWithManager(mgr)
+		Client:          k8sClient,
+		UncachedReader:  mgr.GetAPIReader(),
+		InformerManager: dynamicInformerManager,
+	}).SetupWithManagerForClusterResourcePlacement(mgr)
+	Expect(err).Should(Succeed())
+
+	// setup our namespace scoped reconciler
+	err = (&Reconciler{
+		Client:          k8sClient,
+		UncachedReader:  mgr.GetAPIReader(),
+		InformerManager: dynamicInformerManager,
+	}).SetupWithManagerForResourcePlacement(mgr)
 	Expect(err).Should(Succeed())
 
 	go func() {

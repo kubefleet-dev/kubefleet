@@ -67,6 +67,7 @@ const (
 	crpControllerName         = "cluster-resource-placement-controller"
 	crpControllerV1Alpha1Name = crpControllerName + "-v1alpha1"
 	crpControllerV1Beta1Name  = crpControllerName + "-v1beta1"
+	rpControllerName          = "resource-placement-controller"
 
 	resourceChangeControllerName = "resource-change-controller"
 	mcPlacementControllerName    = "memberCluster-placement-controller"
@@ -94,6 +95,14 @@ var (
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ClusterResourceOverrideSnapshotKind),
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ResourceOverrideKind),
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ResourceOverrideSnapshotKind),
+	}
+
+	// There's a prerequisite that v1Beta1RequiredGVKs must be installed too.
+	rpRequiredGVKs = []schema.GroupVersionKind{
+		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ResourcePlacementKind),
+		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ResourceBindingKind),
+		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ResourceSnapshotKind),
+		placementv1beta1.GroupVersion.WithKind(placementv1beta1.SchedulingPolicySnapshotKind),
 	}
 
 	clusterStagedUpdateRunGVKs = []schema.GroupVersionKind{
@@ -167,6 +176,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	rateLimiter := options.DefaultControllerRateLimiter(opts.RateLimiterOpts)
 	var clusterResourcePlacementControllerV1Alpha1 controller.Controller
 	var clusterResourcePlacementControllerV1Beta1 controller.Controller
+	var resourcePlacementController controller.Controller
 	var memberClusterPlacementController controller.Controller
 	if opts.EnableV1Alpha1APIs {
 		for _, gvk := range v1Alpha1RequiredGVKs {
@@ -197,7 +207,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		klog.Info("Setting up clusterResourcePlacement watcher")
 		if err := (&clusterresourceplacementwatcher.Reconciler{
 			PlacementController: clusterResourcePlacementControllerV1Beta1,
-		}).SetupWithManager(mgr); err != nil {
+		}).SetupWithManagerForClusterResourcePlacement(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up the clusterResourcePlacement watcher")
 			return err
 		}
@@ -206,7 +216,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		if err := (&clusterresourcebindingwatcher.Reconciler{
 			PlacementController: clusterResourcePlacementControllerV1Beta1,
 			Client:              mgr.GetClient(),
-		}).SetupWithManager(mgr); err != nil {
+		}).SetupWithManagerForClusterResourceBinding(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up the clusterResourceBinding watcher")
 			return err
 		}
@@ -215,21 +225,69 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		if err := (&clusterschedulingpolicysnapshot.Reconciler{
 			Client:              mgr.GetClient(),
 			PlacementController: clusterResourcePlacementControllerV1Beta1,
-		}).SetupWithManager(mgr); err != nil {
+		}).SetupWithManagerForClusterSchedulingPolicySnapshot(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up the clusterSchedulingPolicySnapshot watcher")
 			return err
 		}
 
-		// Set up a new controller to do rollout resources according to CRP rollout strategy
+		if opts.EnableResourcePlacement {
+			for _, gvk := range rpRequiredGVKs {
+				if err = utils.CheckCRDInstalled(discoverClient, gvk); err != nil {
+					klog.ErrorS(err, "unable to find the required CRD", "GVK", gvk)
+					return err
+				}
+			}
+			klog.Info("Setting up resourcePlacement controller")
+			resourcePlacementController = controller.NewController(rpControllerName, controller.NamespaceKeyFunc, crpc.Reconcile, rateLimiter)
+			klog.Info("Setting up resourcePlacement watcher")
+			if err := (&clusterresourceplacementwatcher.Reconciler{
+				PlacementController: resourcePlacementController,
+			}).SetupWithManagerForResourcePlacement(mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up the resourcePlacement watcher")
+				return err
+			}
+
+			klog.Info("Setting up resourceBinding watcher")
+			if err := (&clusterresourcebindingwatcher.Reconciler{
+				PlacementController: resourcePlacementController,
+				Client:              mgr.GetClient(),
+			}).SetupWithManagerForResourceBinding(mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up the resourceBinding watcher")
+				return err
+			}
+
+			klog.Info("Setting up schedulingPolicySnapshot watcher")
+			if err := (&clusterschedulingpolicysnapshot.Reconciler{
+				Client:              mgr.GetClient(),
+				PlacementController: resourcePlacementController,
+			}).SetupWithManagerForSchedulingPolicySnapshot(mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up the schedulingPolicySnapshot watcher")
+				return err
+			}
+		}
+
+		// Set up a new controller to do rollout resources according to CRP/RP rollout strategy
 		klog.Info("Setting up rollout controller")
 		if err := (&rollout.Reconciler{
 			Client:                  mgr.GetClient(),
 			UncachedReader:          mgr.GetAPIReader(),
 			MaxConcurrentReconciles: int(math.Ceil(float64(opts.MaxFleetSizeSupported)/30) * math.Ceil(float64(opts.MaxConcurrentClusterPlacement)/10)),
 			InformerManager:         dynamicInformerManager,
-		}).SetupWithManager(mgr); err != nil {
-			klog.ErrorS(err, "Unable to set up rollout controller")
+		}).SetupWithManagerForClusterResourcePlacement(mgr); err != nil {
+			klog.ErrorS(err, "Unable to set up rollout controller for clusterResourcePlacement")
 			return err
+		}
+
+		if opts.EnableResourcePlacement {
+			if err := (&rollout.Reconciler{
+				Client:                  mgr.GetClient(),
+				UncachedReader:          mgr.GetAPIReader(),
+				MaxConcurrentReconciles: int(math.Ceil(float64(opts.MaxFleetSizeSupported)/30) * math.Ceil(float64(opts.MaxConcurrentClusterPlacement)/10)),
+				InformerManager:         dynamicInformerManager,
+			}).SetupWithManagerForResourcePlacement(mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up rollout controller for resourcePlacement")
+				return err
+			}
 		}
 
 		if opts.EnableEvictionAPIs {
@@ -273,9 +331,20 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			Client:                  mgr.GetClient(),
 			MaxConcurrentReconciles: int(math.Ceil(float64(opts.MaxFleetSizeSupported)/10) * math.Ceil(float64(opts.MaxConcurrentClusterPlacement)/10)),
 			InformerManager:         dynamicInformerManager,
-		}).SetupWithManager(mgr); err != nil {
-			klog.ErrorS(err, "Unable to set up work generator")
+		}).SetupWithManagerForClusterResourceBinding(mgr); err != nil {
+			klog.ErrorS(err, "Unable to set up work generator for clusterResourceBinding")
 			return err
+		}
+
+		if opts.EnableResourcePlacement {
+			if err := (&workgenerator.Reconciler{
+				Client:                  mgr.GetClient(),
+				MaxConcurrentReconciles: int(math.Ceil(float64(opts.MaxFleetSizeSupported)/10) * math.Ceil(float64(opts.MaxConcurrentClusterPlacement)/10)),
+				InformerManager:         dynamicInformerManager,
+			}).SetupWithManagerForResourceBinding(mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up work generator for resourceBinding")
+				return err
+			}
 		}
 
 		// Set up the scheduler
@@ -305,7 +374,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		if err := (&schedulercrpwatcher.Reconciler{
 			Client:             mgr.GetClient(),
 			SchedulerWorkQueue: defaultSchedulingQueue,
-		}).SetupWithManager(mgr); err != nil {
+		}).SetupWithManagerForClusterResourcePlacement(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up clusterResourcePlacement watcher for scheduler")
 			return err
 		}
@@ -314,7 +383,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		if err := (&schedulercspswatcher.Reconciler{
 			Client:             mgr.GetClient(),
 			SchedulerWorkQueue: defaultSchedulingQueue,
-		}).SetupWithManager(mgr); err != nil {
+		}).SetupWithManagerForClusterSchedulingPolicySnapshot(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up clusterSchedulingPolicySnapshot watcher for scheduler")
 			return err
 		}
@@ -323,9 +392,38 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		if err := (&schedulercrbwatcher.Reconciler{
 			Client:             mgr.GetClient(),
 			SchedulerWorkQueue: defaultSchedulingQueue,
-		}).SetupWithManager(mgr); err != nil {
+		}).SetupWithManagerForClusterResourceBinding(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up clusterResourceBinding watcher for scheduler")
 			return err
+		}
+
+		if opts.EnableResourcePlacement {
+			klog.Info("Setting up the resourcePlacement watcher for scheduler")
+			if err := (&schedulercrpwatcher.Reconciler{
+				Client:             mgr.GetClient(),
+				SchedulerWorkQueue: defaultSchedulingQueue,
+			}).SetupWithManagerForResourcePlacement(mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up resourcePlacement watcher for scheduler")
+				return err
+			}
+
+			klog.Info("Setting up the schedulingPolicySnapshot watcher for scheduler")
+			if err := (&schedulercspswatcher.Reconciler{
+				Client:             mgr.GetClient(),
+				SchedulerWorkQueue: defaultSchedulingQueue,
+			}).SetupWithManagerForSchedulingPolicySnapshot(mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up schedulingPolicySnapshot watcher for scheduler")
+				return err
+			}
+
+			klog.Info("Setting up the resourceBinding watcher for scheduler")
+			if err := (&schedulercrbwatcher.Reconciler{
+				Client:             mgr.GetClient(),
+				SchedulerWorkQueue: defaultSchedulingQueue,
+			}).SetupWithManagerForResourceBinding(mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up resourceBinding watcher for scheduler")
+				return err
+			}
 		}
 
 		klog.Info("Setting up the memberCluster watcher for scheduler")
@@ -333,6 +431,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			Client:                    mgr.GetClient(),
 			SchedulerWorkQueue:        defaultSchedulingQueue,
 			ClusterEligibilityChecker: clustereligibilitychecker.New(),
+			EnableResourcePlacement:   opts.EnableResourcePlacement,
 		}).SetupWithManager(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up memberCluster watcher for scheduler")
 			return err
@@ -388,6 +487,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		InformerManager:             dynamicInformerManager,
 		PlacementControllerV1Alpha1: clusterResourcePlacementControllerV1Alpha1,
 		PlacementControllerV1Beta1:  clusterResourcePlacementControllerV1Beta1,
+		ResourcePlacementController: resourcePlacementController,
 	}
 	resourceChangeController := controller.NewController(resourceChangeControllerName, controller.ClusterWideKeyFunc, rcr.Reconcile, rateLimiter)
 
@@ -397,12 +497,13 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		RESTMapper:      mgr.GetRESTMapper(),
 		ClusterResourcePlacementControllerV1Alpha1: clusterResourcePlacementControllerV1Alpha1,
 		ClusterResourcePlacementControllerV1Beta1:  clusterResourcePlacementControllerV1Beta1,
+		ResourcePlacementController:                resourcePlacementController,
 		ResourceChangeController:                   resourceChangeController,
 		MemberClusterPlacementController:           memberClusterPlacementController,
 		InformerManager:                            dynamicInformerManager,
 		ResourceConfig:                             resourceConfig,
 		SkippedNamespaces:                          skippedNamespaces,
-		ConcurrentClusterPlacementWorker:           int(math.Ceil(float64(opts.MaxConcurrentClusterPlacement) / 10)),
+		ConcurrentPlacementWorker:                  int(math.Ceil(float64(opts.MaxConcurrentClusterPlacement) / 10)),
 		ConcurrentResourceChangeWorker:             opts.ConcurrentResourceChangeSyncs,
 	}
 

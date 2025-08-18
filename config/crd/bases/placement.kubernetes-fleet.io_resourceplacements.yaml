@@ -524,22 +524,22 @@ spec:
                   You can have 1-100 selectors.
                 items:
                   description: |-
-                    ClusterResourceSelector is used to select cluster scoped resources as the target resources to be placed.
+                    ResourceSelectorTerm is used to select resources as the target resources to be placed.
                     All the fields are `ANDed`. In other words, a resource must match all the fields to be selected.
                   properties:
                     group:
                       description: |-
-                        Group name of the cluster-scoped resource.
+                        Group name of the be selected resource.
                         Use an empty string to select resources under the core API group (e.g., namespaces).
                       type: string
                     kind:
                       description: |-
-                        Kind of the cluster-scoped resource.
-                        Note: When `Kind` is `namespace`, ALL the resources under the selected namespaces are selected.
+                        Kind of the to be selected resource.
+                        Note: When `Kind` is `namespace`, by default ALL the resources under the selected namespaces are selected.
                       type: string
                     labelSelector:
                       description: |-
-                        A label query over all the cluster-scoped resources. Resources matching the query are selected.
+                        A label query over all the be selected  resources. Resources matching the query are selected.
                         Note that namespace-scoped resources can't be selected even if they match the query.
                       properties:
                         matchExpressions:
@@ -586,10 +586,18 @@ spec:
                       type: object
                       x-kubernetes-map-type: atomic
                     name:
-                      description: Name of the cluster-scoped resource.
+                      description: Name of the be selected  resource.
+                      type: string
+                    selectionScope:
+                      default: NamespaceWithResources
+                      description: SelectionScope defines the scope of resource selections
+                        when the Kind is `namespace`.
+                      enum:
+                      - NamespaceOnly
+                      - NamespaceWithResources
                       type: string
                     version:
-                      description: Version of the cluster-scoped resource.
+                      description: Version of the to be selected resource.
                       type: string
                   required:
                   - group
@@ -602,13 +610,26 @@ spec:
               revisionHistoryLimit:
                 default: 10
                 description: |-
-                  The number of old ClusterSchedulingPolicySnapshot or ClusterResourceSnapshot resources to retain to allow rollback.
+                  The number of old SchedulingPolicySnapshot or ResourceSnapshot resources to retain to allow rollback.
                   This is a pointer to distinguish between explicit zero and not specified.
                   Defaults to 10.
                 format: int32
                 maximum: 1000
                 minimum: 1
                 type: integer
+              statusReportingScope:
+                default: ClusterScopeOnly
+                description: |-
+                  StatusReportingScope controls where ClusterResourcePlacement status information is made available.
+                  When set to "ClusterScopeOnly", status is accessible only through the cluster-scoped ClusterResourcePlacement object.
+                  When set to "NamespaceAccessible", a ClusterResourcePlacementStatus object is created in the target namespace,
+                  providing namespace-scoped access to the placement status alongside the cluster-scoped status. This option is only
+                  supported when the ClusterResourcePlacement targets exactly one namespace.
+                  Defaults to "ClusterScopeOnly".
+                enum:
+                - ClusterScopeOnly
+                - NamespaceAccessible
+                type: string
               strategy:
                 description: The rollout strategy to use to replace existing placement
                   with new ones.
@@ -927,6 +948,11 @@ spec:
             required:
             - resourceSelectors
             type: object
+            x-kubernetes-validations:
+            - message: when statusReportingScope is NamespaceAccessible, exactly one
+                resourceSelector with kind 'Namespace' is required
+              rule: '!(self.statusReportingScope == ''NamespaceAccessible'' && size(self.resourceSelectors.filter(x,
+                x.kind == ''Namespace'')) != 1)'
           status:
             description: The observed status of ResourcePlacement.
             properties:
@@ -1010,14 +1036,14 @@ spec:
                 type: string
               placementStatuses:
                 description: |-
-                  PlacementStatuses contains a list of placement status on the clusters that are selected by PlacementPolicy.
+                  PerClusterPlacementStatuses contains a list of placement status on the clusters that are selected by PlacementPolicy.
                   Each selected cluster according to the observed resource placement is guaranteed to have a corresponding placementStatuses.
                   In the pickN case, there are N placement statuses where N = NumberOfClusters; Or in the pickFixed case, there are
                   N placement statuses where N = ClusterNames.
                   In these cases, some of them may not have assigned clusters when we cannot fill the required number of clusters.
                 items:
-                  description: ResourcePlacementStatus represents the placement status
-                    of selected resources for one target cluster.
+                  description: PerClusterPlacementStatus represents the placement
+                    status of selected resources for one target cluster.
                   properties:
                     applicableClusterResourceOverrides:
                       description: |-

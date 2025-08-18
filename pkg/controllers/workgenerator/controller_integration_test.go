@@ -48,6 +48,8 @@ var (
 	memberClusterName          string
 	memberClusterNamespaceName string
 	testCRPName                string
+	testRPName                 string
+	testRPNamespace            string
 
 	appNamespaceName = "app"
 	appNamespace     corev1.Namespace
@@ -109,7 +111,7 @@ const (
 	interval = time.Millisecond * 250
 )
 
-var _ = Describe("Test Work Generator Controller", func() {
+var _ = Describe("Test Work Generator Controller for clusterResourcePlacement", func() {
 	Context("Test Bound ClusterResourceBinding", func() {
 		var binding *placementv1beta1.ClusterResourceBinding
 
@@ -163,7 +165,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 
 		It("Should not create work for the binding with state scheduled", func() {
 			// create master resource snapshot with 2 number of resources
-			masterSnapshot := generateResourceSnapshot(1, 1, 0, [][]byte{
+			masterSnapshot := generateClusterResourceSnapshot(1, 1, 0, [][]byte{
 				testResourceCRD, testNameSpace, testResource,
 			})
 			Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
@@ -198,7 +200,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 
 		It("Should only create work after all the resource snapshots are created", func() {
 			// create master resource snapshot with 1 number of resources
-			masterSnapshot := generateResourceSnapshot(1, 2, 0, [][]byte{
+			masterSnapshot := generateClusterResourceSnapshot(1, 2, 0, [][]byte{
 				testResourceCRD, testNameSpace, testResource,
 			})
 			Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
@@ -238,7 +240,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 			Expect(diff).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got):\n%s", binding.Name, diff))
 			Expect(binding.GetCondition(string(placementv1beta1.ResourceBindingOverridden)).Message).Should(ContainSubstring("resource snapshots are still being created for the masterResourceSnapshot"))
 			// create the second resource snapshot
-			secondSnapshot := generateResourceSnapshot(1, 2, 1, [][]byte{
+			secondSnapshot := generateClusterResourceSnapshot(1, 2, 1, [][]byte{
 				testResourceCRD, testNameSpace, testResource,
 			})
 			Expect(k8sClient.Create(ctx, secondSnapshot)).Should(Succeed())
@@ -255,7 +257,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 
 		It("Should handle the case that the binding is deleted", func() {
 			// generate master resource snapshot
-			masterSnapshot := generateResourceSnapshot(1, 1, 0, [][]byte{
+			masterSnapshot := generateClusterResourceSnapshot(1, 1, 0, [][]byte{
 				testResourceCRD, testNameSpace, testResource,
 			})
 			Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
@@ -295,7 +297,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 			var masterSnapshot *placementv1beta1.ClusterResourceSnapshot
 
 			BeforeEach(func() {
-				masterSnapshot = generateResourceSnapshot(1, 1, 0, [][]byte{
+				masterSnapshot = generateClusterResourceSnapshot(1, 1, 0, [][]byte{
 					testResourceCRD, testNameSpace, testResource,
 				})
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
@@ -334,15 +336,6 @@ var _ = Describe("Test Work Generator Controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName),
 						Namespace: memberClusterNamespaceName,
-						OwnerReferences: []metav1.OwnerReference{
-							{
-								APIVersion:         placementv1beta1.GroupVersion.String(),
-								Kind:               "ClusterResourceBinding",
-								Name:               binding.Name,
-								UID:                binding.UID,
-								BlockOwnerDeletion: ptr.To(true),
-							},
-						},
 						Labels: map[string]string{
 							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
@@ -428,15 +421,6 @@ var _ = Describe("Test Work Generator Controller", func() {
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName),
 							Namespace: memberClusterNamespaceName,
-							OwnerReferences: []metav1.OwnerReference{
-								{
-									APIVersion:         placementv1beta1.GroupVersion.String(),
-									Kind:               "ClusterResourceBinding",
-									Name:               binding.Name,
-									UID:                binding.UID,
-									BlockOwnerDeletion: ptr.To(true),
-								},
-							},
 							Labels: map[string]string{
 								placementv1beta1.PlacementTrackingLabel:           testCRPName,
 								placementv1beta1.ParentBindingLabel:               binding.Name,
@@ -600,7 +584,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 			envelopedResourceName := "namespaced-resource-envelope"
 			envelopedResourceNameSpace := "app"
 			BeforeEach(func() {
-				masterSnapshot = generateResourceSnapshot(1, 1, 0, [][]byte{
+				masterSnapshot = generateClusterResourceSnapshot(1, 1, 0, [][]byte{
 					testConfigMap, testResourceEnvelope, testResourceCRD, testNameSpace,
 				})
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
@@ -630,15 +614,6 @@ var _ = Describe("Test Work Generator Controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName),
 						Namespace: memberClusterNamespaceName,
-						OwnerReferences: []metav1.OwnerReference{
-							{
-								APIVersion:         placementv1beta1.GroupVersion.String(),
-								Kind:               "ClusterResourceBinding",
-								Name:               binding.Name,
-								UID:                binding.UID,
-								BlockOwnerDeletion: ptr.To(true),
-							},
-						},
 						Labels: map[string]string{
 							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
@@ -671,15 +646,6 @@ var _ = Describe("Test Work Generator Controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      envWork.Name,
 						Namespace: memberClusterNamespaceName,
-						OwnerReferences: []metav1.OwnerReference{
-							{
-								APIVersion:         placementv1beta1.GroupVersion.String(),
-								Kind:               "ClusterResourceBinding",
-								Name:               binding.Name,
-								UID:                binding.UID,
-								BlockOwnerDeletion: ptr.To(true),
-							},
-						},
 						Labels: map[string]string{
 							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
@@ -721,7 +687,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 				var workList placementv1beta1.WorkList
 				fetchEnvelopedWork(&workList, binding, string(placementv1beta1.ResourceEnvelopeType), envelopedResourceName, envelopedResourceNameSpace)
 				// create a second snapshot with a modified enveloped object
-				masterSnapshot = generateResourceSnapshot(2, 1, 0, [][]byte{
+				masterSnapshot = generateClusterResourceSnapshot(2, 1, 0, [][]byte{
 					testResourceEnvelope2, testResourceCRD, testNameSpace,
 				})
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
@@ -756,15 +722,6 @@ var _ = Describe("Test Work Generator Controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName),
 						Namespace: memberClusterNamespaceName,
-						OwnerReferences: []metav1.OwnerReference{
-							{
-								APIVersion:         placementv1beta1.GroupVersion.String(),
-								Kind:               "ClusterResourceBinding",
-								Name:               binding.Name,
-								UID:                binding.UID,
-								BlockOwnerDeletion: ptr.To(true),
-							},
-						},
 						Labels: map[string]string{
 							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
@@ -796,15 +753,6 @@ var _ = Describe("Test Work Generator Controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      work.Name,
 						Namespace: memberClusterNamespaceName,
-						OwnerReferences: []metav1.OwnerReference{
-							{
-								APIVersion:         placementv1beta1.GroupVersion.String(),
-								Kind:               "ClusterResourceBinding",
-								Name:               binding.Name,
-								UID:                binding.UID,
-								BlockOwnerDeletion: ptr.To(true),
-							},
-						},
 						Labels: map[string]string{
 							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
@@ -837,7 +785,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 				fetchEnvelopedWork(&workList, binding, string(placementv1beta1.ResourceEnvelopeType), envelopedResourceName, envelopedResourceNameSpace)
 				By("create a second snapshot without an enveloped object")
 				// create a second snapshot without an enveloped object
-				masterSnapshot = generateResourceSnapshot(2, 1, 0, [][]byte{
+				masterSnapshot = generateClusterResourceSnapshot(2, 1, 0, [][]byte{
 					testResourceCRD, testNameSpace,
 				})
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
@@ -886,7 +834,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 			envelopedResourceName := "clusterscoped-resource-envelope"
 			envelopedResourceNameSpace := ""
 			BeforeEach(func() {
-				masterSnapshot = generateResourceSnapshot(1, 1, 0, [][]byte{
+				masterSnapshot = generateClusterResourceSnapshot(1, 1, 0, [][]byte{
 					testClusterScopedEnvelope, testResourceCRD, testNameSpace,
 				})
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
@@ -916,15 +864,6 @@ var _ = Describe("Test Work Generator Controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName),
 						Namespace: memberClusterNamespaceName,
-						OwnerReferences: []metav1.OwnerReference{
-							{
-								APIVersion:         placementv1beta1.GroupVersion.String(),
-								Kind:               "ClusterResourceBinding",
-								Name:               binding.Name,
-								UID:                binding.UID,
-								BlockOwnerDeletion: ptr.To(true),
-							},
-						},
 						Labels: map[string]string{
 							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
@@ -956,15 +895,6 @@ var _ = Describe("Test Work Generator Controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      envWork.Name,
 						Namespace: memberClusterNamespaceName,
-						OwnerReferences: []metav1.OwnerReference{
-							{
-								APIVersion:         placementv1beta1.GroupVersion.String(),
-								Kind:               "ClusterResourceBinding",
-								Name:               binding.Name,
-								UID:                binding.UID,
-								BlockOwnerDeletion: ptr.To(true),
-							},
-						},
 						Labels: map[string]string{
 							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
@@ -1008,7 +938,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 				fetchEnvelopedWork(&workList, binding, string(placementv1beta1.ClusterResourceEnvelopeType), envelopedResourceName, envelopedResourceNameSpace)
 				By("create a second snapshot without an enveloped object")
 				// create a second snapshot without an enveloped object
-				masterSnapshot = generateResourceSnapshot(2, 1, 0, [][]byte{
+				masterSnapshot = generateClusterResourceSnapshot(2, 1, 0, [][]byte{
 					testResourceCRD, testNameSpace,
 				})
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
@@ -1057,7 +987,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 			var binding *placementv1beta1.ClusterResourceBinding
 
 			BeforeEach(func() {
-				masterSnapshot = generateResourceSnapshot(2, 2, 0, [][]byte{
+				masterSnapshot = generateClusterResourceSnapshot(2, 2, 0, [][]byte{
 					testResourceCRD, testNameSpace, testResource,
 				})
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
@@ -1070,7 +1000,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 				}
 				createClusterResourceBinding(&binding, spec)
 				// Now create the second resource snapshot
-				secondSnapshot = generateResourceSnapshot(2, 2, 1, [][]byte{
+				secondSnapshot = generateClusterResourceSnapshot(2, 2, 1, [][]byte{
 					testConfigMap, testPdb,
 				})
 				Expect(k8sClient.Create(ctx, secondSnapshot)).Should(Succeed())
@@ -1115,15 +1045,6 @@ var _ = Describe("Test Work Generator Controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf(placementv1beta1.WorkNameWithSubindexFmt, testCRPName, 1),
 						Namespace: memberClusterNamespaceName,
-						OwnerReferences: []metav1.OwnerReference{
-							{
-								APIVersion:         placementv1beta1.GroupVersion.String(),
-								Kind:               "ClusterResourceBinding",
-								Name:               binding.Name,
-								UID:                binding.UID,
-								BlockOwnerDeletion: ptr.To(true),
-							},
-						},
 						Labels: map[string]string{
 							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentResourceSnapshotIndexLabel: "2",
@@ -1190,15 +1111,6 @@ var _ = Describe("Test Work Generator Controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf(placementv1beta1.WorkNameWithSubindexFmt, testCRPName, 1),
 						Namespace: memberClusterNamespaceName,
-						OwnerReferences: []metav1.OwnerReference{
-							{
-								APIVersion:         placementv1beta1.GroupVersion.String(),
-								Kind:               "ClusterResourceBinding",
-								Name:               binding.Name,
-								UID:                binding.UID,
-								BlockOwnerDeletion: ptr.To(true),
-							},
-						},
 						Labels: map[string]string{
 							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentResourceSnapshotIndexLabel: "2",
@@ -1250,7 +1162,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 				}, timeout, interval).Should(Succeed(), "Failed to get the expected work in hub cluster")
 				By(fmt.Sprintf("second work %s is created in %s", work.Name, work.Namespace))
 				// update the master resource snapshot with 3 resources in it
-				masterSnapshot = generateResourceSnapshot(3, 3, 0, [][]byte{
+				masterSnapshot = generateClusterResourceSnapshot(3, 3, 0, [][]byte{
 					testResourceCRD, testNameSpace,
 				})
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
@@ -1262,13 +1174,13 @@ var _ = Describe("Test Work Generator Controller", func() {
 				updateRolloutStartedGeneration(&binding)
 				By(fmt.Sprintf("resource binding  %s updated", binding.Name))
 				// Now create the second resource snapshot
-				secondSnapshot = generateResourceSnapshot(3, 3, 1, [][]byte{
+				secondSnapshot = generateClusterResourceSnapshot(3, 3, 1, [][]byte{
 					testResource, testConfigMap,
 				})
 				Expect(k8sClient.Create(ctx, secondSnapshot)).Should(Succeed())
 				By(fmt.Sprintf("new secondary resource snapshot  %s created", secondSnapshot.Name))
 				// Now create the third resource snapshot
-				thirdSnapshot := generateResourceSnapshot(3, 3, 2, [][]byte{
+				thirdSnapshot := generateClusterResourceSnapshot(3, 3, 2, [][]byte{
 					testPdb,
 				})
 				Expect(k8sClient.Create(ctx, thirdSnapshot)).Should(Succeed())
@@ -1342,7 +1254,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 				}, timeout, interval).Should(Succeed(), "Failed to get the expected work in hub cluster")
 				By(fmt.Sprintf("second work %s is created in %s", work.Name, work.Namespace))
 				// update the master resource snapshot with only 1 resource snapshot that contains everything in it
-				masterSnapshot = generateResourceSnapshot(3, 1, 0, [][]byte{
+				masterSnapshot = generateClusterResourceSnapshot(3, 1, 0, [][]byte{
 					testResourceCRD, testNameSpace, testResource, testConfigMap, testPdb,
 				})
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
@@ -1437,7 +1349,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 			var roHash, croHash string
 
 			BeforeEach(func() {
-				masterSnapshot = generateResourceSnapshot(1, 1, 0, [][]byte{
+				masterSnapshot = generateClusterResourceSnapshot(1, 1, 0, [][]byte{
 					testResourceCRD, testNameSpace, testResource,
 				})
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
@@ -1489,15 +1401,6 @@ var _ = Describe("Test Work Generator Controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName),
 						Namespace: memberClusterNamespaceName,
-						OwnerReferences: []metav1.OwnerReference{
-							{
-								APIVersion:         placementv1beta1.GroupVersion.String(),
-								Kind:               "ClusterResourceBinding",
-								Name:               binding.Name,
-								UID:                binding.UID,
-								BlockOwnerDeletion: ptr.To(true),
-							},
-						},
 						Labels: map[string]string{
 							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
@@ -1566,7 +1469,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 			var masterSnapshot *placementv1beta1.ClusterResourceSnapshot
 
 			BeforeEach(func() {
-				masterSnapshot = generateResourceSnapshot(1, 1, 0, [][]byte{
+				masterSnapshot = generateClusterResourceSnapshot(1, 1, 0, [][]byte{
 					testResourceCRD, testNameSpace, testResource,
 				})
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
@@ -1625,7 +1528,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 			var masterSnapshot *placementv1beta1.ClusterResourceSnapshot
 
 			BeforeEach(func() {
-				masterSnapshot = generateResourceSnapshot(1, 1, 0, [][]byte{
+				masterSnapshot = generateClusterResourceSnapshot(1, 1, 0, [][]byte{
 					testResourceCRD, testNameSpace, testResource,
 				})
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
@@ -1682,7 +1585,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 			var masterSnapshot *placementv1beta1.ClusterResourceSnapshot
 
 			BeforeEach(func() {
-				masterSnapshot = generateResourceSnapshot(1, 1, 0, [][]byte{
+				masterSnapshot = generateClusterResourceSnapshot(1, 1, 0, [][]byte{
 					testResourceCRD, testNameSpace, testResource,
 				})
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
@@ -1721,15 +1624,6 @@ var _ = Describe("Test Work Generator Controller", func() {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, testCRPName),
 						Namespace: memberClusterNamespaceName,
-						OwnerReferences: []metav1.OwnerReference{
-							{
-								APIVersion:         placementv1beta1.GroupVersion.String(),
-								Kind:               "ClusterResourceBinding",
-								Name:               binding.Name,
-								UID:                binding.UID,
-								BlockOwnerDeletion: ptr.To(true),
-							},
-						},
 						Labels: map[string]string{
 							placementv1beta1.PlacementTrackingLabel:           testCRPName,
 							placementv1beta1.ParentBindingLabel:               binding.Name,
@@ -1857,7 +1751,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 
 		It("can create master resource snapshot and resource binding", func() {
 			// Create the master resource snapshot.
-			masterResourceSnapshot = generateResourceSnapshot(
+			masterResourceSnapshot = generateClusterResourceSnapshot(
 				1, 1, 0,
 				[][]byte{
 					testResourceCRD, testNameSpace, testResource,
@@ -1979,7 +1873,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 
 		It("can create master resource snapshot and resource binding", func() {
 			// Create the master resource snapshot.
-			masterResourceSnapshot = generateResourceSnapshot(
+			masterResourceSnapshot = generateClusterResourceSnapshot(
 				1, 1, 0,
 				[][]byte{
 					testResourceCRD, testNameSpace, testResource,
@@ -2105,7 +1999,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 
 		It("can create master resource snapshot and resource binding", func() {
 			// Create the master resource snapshot.
-			masterResourceSnapshot = generateResourceSnapshot(
+			masterResourceSnapshot = generateClusterResourceSnapshot(
 				1, 1, 0,
 				[][]byte{
 					testResourceCRD, testNameSpace, testResource,
@@ -2233,7 +2127,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 
 		It("can create master resource snapshot and resource binding", func() {
 			// Create the master resource snapshot.
-			masterResourceSnapshot = generateResourceSnapshot(
+			masterResourceSnapshot = generateClusterResourceSnapshot(
 				1, 1, 0,
 				[][]byte{
 					testResourceCRD, testNameSpace, testResource,
@@ -2364,7 +2258,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 
 		It("can create multiple resource snapshots and resource binding", func() {
 			// Create the master resource snapshot.
-			masterResourceSnapshot = generateResourceSnapshot(
+			masterResourceSnapshot = generateClusterResourceSnapshot(
 				1, 2, 0,
 				[][]byte{
 					testResourceCRD, testNameSpace,
@@ -2372,7 +2266,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 			)
 			Expect(k8sClient.Create(ctx, masterResourceSnapshot)).Should(Succeed(), "Failed to create master resource snapshot")
 
-			secondaryResourceSnapshot = generateResourceSnapshot(
+			secondaryResourceSnapshot = generateClusterResourceSnapshot(
 				1, 2, 1,
 				[][]byte{
 					testResource,
@@ -2415,7 +2309,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 						{
 							Type:               placementv1beta1.WorkConditionTypeDiffReported,
 							Status:             metav1.ConditionTrue,
-							Reason:             string(workapplier.ManifestProcessingReportDiffResultTypeNoDiffFound),
+							Reason:             string(workapplier.ApplyOrReportDiffResTypeNoDiffFound),
 							ObservedGeneration: 1,
 							Message:            "",
 							LastTransitionTime: now,
@@ -2436,7 +2330,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 						{
 							Type:               placementv1beta1.WorkConditionTypeDiffReported,
 							Status:             metav1.ConditionTrue,
-							Reason:             string(workapplier.ManifestProcessingReportDiffResultTypeFoundDiff),
+							Reason:             string(workapplier.ApplyOrReportDiffResTypeFoundDiff),
 							ObservedGeneration: 1,
 							Message:            "",
 							LastTransitionTime: now,
@@ -2501,7 +2395,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 						{
 							Type:               placementv1beta1.WorkConditionTypeDiffReported,
 							Status:             metav1.ConditionFalse,
-							Reason:             string(workapplier.ManifestProcessingReportDiffResultTypeFailed),
+							Reason:             string(workapplier.ApplyOrReportDiffResTypeFailedToReportDiff),
 							ObservedGeneration: 1,
 							Message:            "",
 							LastTransitionTime: now,
@@ -2554,7 +2448,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 						{
 							Type:               placementv1beta1.WorkConditionTypeDiffReported,
 							Status:             metav1.ConditionTrue,
-							Reason:             string(workapplier.ManifestProcessingReportDiffResultTypeNoDiffFound),
+							Reason:             string(workapplier.ApplyOrReportDiffResTypeNoDiffFound),
 							ObservedGeneration: 1,
 							Message:            "",
 							LastTransitionTime: now,
@@ -2738,7 +2632,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 
 		It("can create multiple resource snapshots and resource binding", func() {
 			// Create the master resource snapshot.
-			masterResourceSnapshot = generateResourceSnapshot(
+			masterResourceSnapshot = generateClusterResourceSnapshot(
 				1, 2, 0,
 				[][]byte{
 					testResourceCRD, testNameSpace,
@@ -2746,7 +2640,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 			)
 			Expect(k8sClient.Create(ctx, masterResourceSnapshot)).Should(Succeed(), "Failed to create master resource snapshot")
 
-			secondaryResourceSnapshot = generateResourceSnapshot(
+			secondaryResourceSnapshot = generateClusterResourceSnapshot(
 				1, 2, 1,
 				[][]byte{
 					testResource,
@@ -2792,7 +2686,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 						{
 							Type:               placementv1beta1.WorkConditionTypeApplied,
 							Status:             metav1.ConditionFalse,
-							Reason:             string(workapplier.ManifestProcessingApplyResultTypeFailedToTakeOver),
+							Reason:             string(workapplier.ApplyOrReportDiffResTypeFailedToTakeOver),
 							ObservedGeneration: 1,
 							Message:            "",
 							LastTransitionTime: now,
@@ -2824,7 +2718,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 						{
 							Type:               placementv1beta1.WorkConditionTypeApplied,
 							Status:             metav1.ConditionTrue,
-							Reason:             string(workapplier.ManifestProcessingApplyResultTypeAppliedWithFailedDriftDetection),
+							Reason:             string(workapplier.ApplyOrReportDiffResTypeAppliedWithFailedDriftDetection),
 							ObservedGeneration: 1,
 							Message:            "",
 							LastTransitionTime: now,
@@ -2898,7 +2792,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 						{
 							Type:               placementv1beta1.WorkConditionTypeApplied,
 							Status:             metav1.ConditionFalse,
-							Reason:             string(workapplier.ManifestProcessingApplyResultTypeFailedToApply),
+							Reason:             string(workapplier.ApplyOrReportDiffResTypeFailedToApply),
 							ObservedGeneration: 1,
 							Message:            "",
 							LastTransitionTime: now,
@@ -2928,7 +2822,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 					Condition: metav1.Condition{
 						Type:               string(placementv1beta1.WorkConditionTypeApplied),
 						Status:             metav1.ConditionFalse,
-						Reason:             string(workapplier.ManifestProcessingApplyResultTypeFailedToTakeOver),
+						Reason:             string(workapplier.ApplyOrReportDiffResTypeFailedToTakeOver),
 						ObservedGeneration: 1,
 						Message:            "",
 						LastTransitionTime: now,
@@ -2945,7 +2839,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 					Condition: metav1.Condition{
 						Type:               string(placementv1beta1.WorkConditionTypeApplied),
 						Status:             metav1.ConditionFalse,
-						Reason:             string(workapplier.ManifestProcessingApplyResultTypeFailedToApply),
+						Reason:             string(workapplier.ApplyOrReportDiffResTypeFailedToApply),
 						ObservedGeneration: 1,
 						Message:            "",
 						LastTransitionTime: now,
@@ -3038,7 +2932,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 						{
 							Type:               placementv1beta1.WorkConditionTypeApplied,
 							Status:             metav1.ConditionTrue,
-							Reason:             string(workapplier.ManifestProcessingApplyResultTypeApplied),
+							Reason:             string(workapplier.ApplyOrReportDiffResTypeApplied),
 							ObservedGeneration: 1,
 							Message:            "",
 							LastTransitionTime: now,
@@ -3078,7 +2972,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 					Condition: metav1.Condition{
 						Type:               string(placementv1beta1.WorkConditionTypeApplied),
 						Status:             metav1.ConditionFalse,
-						Reason:             string(workapplier.ManifestProcessingApplyResultTypeFailedToTakeOver),
+						Reason:             string(workapplier.ApplyOrReportDiffResTypeFailedToTakeOver),
 						ObservedGeneration: 1,
 						Message:            "",
 						LastTransitionTime: now,
@@ -3166,7 +3060,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 						{
 							Type:               placementv1beta1.WorkConditionTypeApplied,
 							Status:             metav1.ConditionTrue,
-							Reason:             string(workapplier.ManifestProcessingApplyResultTypeApplied),
+							Reason:             string(workapplier.ApplyOrReportDiffResTypeApplied),
 							ObservedGeneration: 1,
 							Message:            "",
 							LastTransitionTime: now,
@@ -3195,7 +3089,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 						{
 							Type:               placementv1beta1.WorkConditionTypeApplied,
 							Status:             metav1.ConditionTrue,
-							Reason:             string(workapplier.ManifestProcessingApplyResultTypeAppliedWithFailedDriftDetection),
+							Reason:             string(workapplier.ApplyOrReportDiffResTypeAppliedWithFailedDriftDetection),
 							ObservedGeneration: 1,
 							Message:            "",
 							LastTransitionTime: now,
@@ -3319,7 +3213,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 						{
 							Type:               placementv1beta1.WorkConditionTypeApplied,
 							Status:             metav1.ConditionTrue,
-							Reason:             string(workapplier.ManifestProcessingApplyResultTypeApplied),
+							Reason:             string(workapplier.ApplyOrReportDiffResTypeApplied),
 							ObservedGeneration: 1,
 							Message:            "",
 							LastTransitionTime: now,
@@ -3348,7 +3242,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 						{
 							Type:               placementv1beta1.WorkConditionTypeApplied,
 							Status:             metav1.ConditionTrue,
-							Reason:             string(workapplier.ManifestProcessingApplyResultTypeAppliedWithFailedDriftDetection),
+							Reason:             string(workapplier.ApplyOrReportDiffResTypeAppliedWithFailedDriftDetection),
 							ObservedGeneration: 1,
 							Message:            "",
 							LastTransitionTime: now,
@@ -3455,7 +3349,7 @@ var _ = Describe("Test Work Generator Controller", func() {
 						{
 							Type:               placementv1beta1.WorkConditionTypeApplied,
 							Status:             metav1.ConditionTrue,
-							Reason:             string(workapplier.ManifestProcessingApplyResultTypeApplied),
+							Reason:             string(workapplier.ApplyOrReportDiffResTypeApplied),
 							ObservedGeneration: 1,
 							Message:            "",
 							LastTransitionTime: now,
@@ -3609,9 +3503,9 @@ var _ = Describe("Test Work Generator Controller", func() {
 	})
 })
 
-func verifyBindingStatusSyncedNotApplied(binding *placementv1beta1.ClusterResourceBinding, hasOverride, workSync bool) {
+func verifyBindingStatusSyncedNotApplied(binding placementv1beta1.BindingObj, hasOverride, workSync bool) {
 	Eventually(func() string {
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding)).Should(Succeed())
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.GetName(), Namespace: binding.GetNamespace()}, binding)).Should(Succeed())
 		appliedReason := condition.WorkNotAppliedReason
 		if workSync {
 			appliedReason = condition.WorkApplyInProcess
@@ -3621,7 +3515,7 @@ func verifyBindingStatusSyncedNotApplied(binding *placementv1beta1.ClusterResour
 			overrideReason = condition.OverriddenSucceededReason
 		}
 
-		wantStatus := placementv1beta1.ResourceBindingStatus{
+		wantStatus := &placementv1beta1.ResourceBindingStatus{
 			Conditions: []metav1.Condition{
 				{
 					Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
@@ -3645,23 +3539,23 @@ func verifyBindingStatusSyncedNotApplied(binding *placementv1beta1.ClusterResour
 					Status:             metav1.ConditionFalse,
 					Type:               string(placementv1beta1.ResourceBindingApplied),
 					Reason:             appliedReason,
-					ObservedGeneration: binding.Generation,
+					ObservedGeneration: binding.GetGeneration(),
 				},
 			},
 			FailedPlacements: nil,
 		}
-		return cmp.Diff(wantStatus, binding.Status, cmpConditionOption)
-	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got)", binding.Name))
+		return cmp.Diff(wantStatus, binding.GetBindingStatus(), cmpConditionOption)
+	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got)", binding.GetName()))
 }
 
-func verifyBindStatusAppliedNotAvailable(binding *placementv1beta1.ClusterResourceBinding, hasOverride bool) {
+func verifyBindStatusAppliedNotAvailable(binding placementv1beta1.BindingObj, hasOverride bool) {
 	Eventually(func() string {
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding)).Should(Succeed())
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.GetName(), Namespace: binding.GetNamespace()}, binding)).Should(Succeed())
 		overrideReason := condition.OverrideNotSpecifiedReason
 		if hasOverride {
 			overrideReason = condition.OverriddenSucceededReason
 		}
-		wantStatus := placementv1beta1.ResourceBindingStatus{
+		wantStatus := &placementv1beta1.ResourceBindingStatus{
 			Conditions: []metav1.Condition{
 				{
 					Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
@@ -3696,18 +3590,19 @@ func verifyBindStatusAppliedNotAvailable(binding *placementv1beta1.ClusterResour
 			},
 			FailedPlacements: nil,
 		}
-		return cmp.Diff(wantStatus, binding.Status, cmpConditionOption)
-	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got)", binding.Name))
+		return cmp.Diff(wantStatus, binding.GetBindingStatus(), cmpConditionOption)
+	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got)", binding.GetName()))
 }
 
-func verifyBindStatusAvail(binding *placementv1beta1.ClusterResourceBinding, hasOverride, hasDriftPlacements bool) {
+// verifyBindStatusAvail verifies binding status is available (all conditions true)
+func verifyBindStatusAvail(binding placementv1beta1.BindingObj, hasOverride, hasDriftPlacements bool) {
 	Eventually(func() string {
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding)).Should(Succeed())
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.GetName(), Namespace: binding.GetNamespace()}, binding)).Should(Succeed())
 		overrideReason := condition.OverrideNotSpecifiedReason
 		if hasOverride {
 			overrideReason = condition.OverriddenSucceededReason
 		}
-		wantStatus := placementv1beta1.ResourceBindingStatus{
+		wantStatus := &placementv1beta1.ResourceBindingStatus{
 			Conditions: []metav1.Condition{
 				{
 					Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
@@ -3777,8 +3672,8 @@ func verifyBindStatusAvail(binding *placementv1beta1.ClusterResourceBinding, has
 				},
 			}
 		}
-		return cmp.Diff(wantStatus, binding.Status, cmpConditionOption)
-	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got):\n", binding.Name))
+		return cmp.Diff(wantStatus, binding.GetBindingStatus(), cmpConditionOption)
+	}, timeout, interval).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got):\n", binding.GetName()))
 }
 
 func verifyBindStatusNotAppliedWithTwoPlacements(binding *placementv1beta1.ClusterResourceBinding, hasOverride, hasFailedPlacements, hasDiffedPlacements, hasDriftedPlacements bool) {
@@ -4293,27 +4188,38 @@ func generateClusterResourceBinding(spec placementv1beta1.ResourceBindingSpec) *
 	}
 }
 
-func generateResourceSnapshot(resourceIndex, numberResource, subIndex int, rawContents [][]byte) *placementv1beta1.ClusterResourceSnapshot {
+func generateSnapshotMetadata(placementName string, resourceIndex, numberResource, subIndex int, namespace string) metav1.ObjectMeta {
 	var snapshotName string
-	clusterResourceSnapshot := &placementv1beta1.ClusterResourceSnapshot{
-		ObjectMeta: metav1.ObjectMeta{
-			Labels: map[string]string{
-				placementv1beta1.ResourceIndexLabel:     strconv.Itoa(resourceIndex),
-				placementv1beta1.PlacementTrackingLabel: testCRPName,
-			},
-			Annotations: map[string]string{
-				placementv1beta1.NumberOfResourceSnapshotsAnnotation: strconv.Itoa(numberResource),
-			},
+	meta := metav1.ObjectMeta{
+		Labels: map[string]string{
+			placementv1beta1.ResourceIndexLabel:     strconv.Itoa(resourceIndex),
+			placementv1beta1.PlacementTrackingLabel: placementName,
+		},
+		Annotations: map[string]string{
+			placementv1beta1.NumberOfResourceSnapshotsAnnotation: strconv.Itoa(numberResource),
 		},
 	}
+
+	if namespace != "" {
+		meta.Namespace = namespace
+	}
+
 	if subIndex == 0 {
 		// master resource snapshot
-		snapshotName = fmt.Sprintf(placementv1beta1.ResourceSnapshotNameFmt, testCRPName, resourceIndex)
+		snapshotName = fmt.Sprintf(placementv1beta1.ResourceSnapshotNameFmt, placementName, resourceIndex)
 	} else {
-		snapshotName = fmt.Sprintf(placementv1beta1.ResourceSnapshotNameWithSubindexFmt, testCRPName, resourceIndex, subIndex)
-		clusterResourceSnapshot.Annotations[placementv1beta1.SubindexOfResourceSnapshotAnnotation] = strconv.Itoa(subIndex)
+		snapshotName = fmt.Sprintf(placementv1beta1.ResourceSnapshotNameWithSubindexFmt, placementName, resourceIndex, subIndex)
+		meta.Annotations[placementv1beta1.SubindexOfResourceSnapshotAnnotation] = strconv.Itoa(subIndex)
 	}
-	clusterResourceSnapshot.Name = snapshotName
+	meta.Name = snapshotName
+	return meta
+}
+
+func generateClusterResourceSnapshot(resourceIndex, numberResource, subIndex int, rawContents [][]byte) *placementv1beta1.ClusterResourceSnapshot {
+	meta := generateSnapshotMetadata(testCRPName, resourceIndex, numberResource, subIndex, "")
+	clusterResourceSnapshot := &placementv1beta1.ClusterResourceSnapshot{
+		ObjectMeta: meta,
+	}
 	for _, rawContent := range rawContents {
 		clusterResourceSnapshot.Spec.SelectedResources = append(clusterResourceSnapshot.Spec.SelectedResources, placementv1beta1.ResourceContent{
 			RawExtension: runtime.RawExtension{Raw: rawContent},
@@ -4770,25 +4676,32 @@ func checkRolloutStartedNotUpdated(rolloutCond *metav1.Condition, binding *place
 	Expect(diff).Should(BeEmpty(), fmt.Sprintf("binding(%s) mismatch (-want +got)", binding.Name), diff)
 }
 
-func createClusterResourceBinding(binding **placementv1beta1.ClusterResourceBinding, spec placementv1beta1.ResourceBindingSpec) {
-	*binding = generateClusterResourceBinding(spec)
-	Expect(k8sClient.Create(ctx, *binding)).Should(Succeed())
+func createAndUpdateBindingWithRolloutStarted(binding placementv1beta1.BindingObj) {
+	Expect(k8sClient.Create(ctx, binding)).Should(Succeed())
 	Eventually(func() error {
-		if err := k8sClient.Get(ctx, types.NamespacedName{Name: (*binding).Name}, *binding); err != nil {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: binding.GetName(), Namespace: binding.GetNamespace()}, binding); err != nil {
 			return err
 		}
-		(*binding).Status.Conditions = []metav1.Condition{
-			{
-				Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
-				Status:             metav1.ConditionTrue,
-				Reason:             condition.RolloutStartedReason,
-				ObservedGeneration: (*binding).GetGeneration(),
-				LastTransitionTime: metav1.Now(),
-			},
+
+		// Create the RolloutStarted condition
+		rolloutCondition := metav1.Condition{
+			Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
+			Status:             metav1.ConditionTrue,
+			Reason:             condition.RolloutStartedReason,
+			ObservedGeneration: binding.GetGeneration(),
+			LastTransitionTime: metav1.Now(),
 		}
-		return k8sClient.Status().Update(ctx, *binding)
+
+		// Set the condition using the interface method
+		binding.SetConditions(rolloutCondition)
+		return k8sClient.Status().Update(ctx, binding)
 	}, timeout, interval).Should(Succeed(), "Failed to update the binding with RolloutStarted condition")
-	By(fmt.Sprintf("resource binding  %s created", (*binding).Name))
+	By(fmt.Sprintf("resource binding %s created in namespace %s", binding.GetName(), binding.GetNamespace()))
+}
+
+func createClusterResourceBinding(binding **placementv1beta1.ClusterResourceBinding, spec placementv1beta1.ResourceBindingSpec) {
+	*binding = generateClusterResourceBinding(spec)
+	createAndUpdateBindingWithRolloutStarted(*binding)
 }
 
 func updateRolloutStartedGeneration(binding **placementv1beta1.ClusterResourceBinding) {
@@ -4805,4 +4718,192 @@ func updateRolloutStartedGeneration(binding **placementv1beta1.ClusterResourceBi
 		}
 		return k8sClient.Status().Update(ctx, *binding)
 	}, timeout, interval).Should(Succeed(), "Failed to update the binding with new generation for RolloutStarted condition")
+}
+
+var _ = Describe("Test Work Generator Controller for ResourcePlacement", func() {
+	Context("Test Bound ResourceBinding", func() {
+		var binding *placementv1beta1.ResourceBinding
+
+		BeforeEach(func() {
+			memberClusterName = "cluster-" + utils.RandStr()
+			testRPName = "rp" + utils.RandStr()
+			testRPNamespace = "test-ns-" + utils.RandStr()
+			memberClusterNamespaceName = fmt.Sprintf(utils.NamespaceNameFormat, memberClusterName)
+
+			// Create test namespace for ResourcePlacement
+			Expect(k8sClient.Create(ctx, &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testRPNamespace,
+				},
+			})).Should(Succeed())
+			By(fmt.Sprintf("Test namespace %s created", testRPNamespace))
+
+			// Create cluster namespace
+			Expect(k8sClient.Create(ctx, &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: memberClusterNamespaceName,
+				},
+			})).Should(Succeed())
+			By(fmt.Sprintf("Cluster namespace %s created", memberClusterNamespaceName))
+
+			cluster := clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: memberClusterName,
+					Labels: map[string]string{
+						"override": "true",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &cluster)).Should(Succeed(), "Failed to create member cluster")
+			By(fmt.Sprintf("Member cluster %s created", memberClusterName))
+		})
+
+		AfterEach(func() {
+			By("Deleting test namespace")
+			Expect(k8sClient.Delete(ctx, &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testRPNamespace,
+				},
+			})).Should(Succeed())
+
+			By("Deleting cluster namespace")
+			Expect(k8sClient.Delete(ctx, &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: memberClusterNamespaceName,
+				},
+			})).Should(Succeed())
+
+			By("Deleting ResourceBinding")
+			if binding != nil {
+				Expect(k8sClient.Delete(ctx, binding)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}))
+			}
+
+			By("Deleting the member cluster")
+			Expect(k8sClient.Delete(ctx, &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: memberClusterName,
+				},
+			})).Should(Succeed(), "Failed to delete the member cluster")
+
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: memberClusterName}, &clusterv1beta1.MemberCluster{})
+				return errors.IsNotFound(err)
+			}, timeout, interval).Should(BeTrue(), "Get() member cluster, want not found")
+		})
+
+		Context("Test ResourceBinding with single resource snapshot lifecycle", func() {
+			var masterSnapshot *placementv1beta1.ResourceSnapshot
+
+			BeforeEach(func() {
+				masterSnapshot = generateResourceSnapshot(1, 1, 0, [][]byte{
+					testConfigMap, testPdb,
+				})
+				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
+				By(fmt.Sprintf("master resource snapshot %s created", masterSnapshot.Name))
+
+				spec := placementv1beta1.ResourceBindingSpec{
+					State:                placementv1beta1.BindingStateBound,
+					ResourceSnapshotName: masterSnapshot.Name,
+					TargetCluster:        memberClusterName,
+				}
+				createResourceBinding(&binding, spec)
+			})
+
+			AfterEach(func() {
+				By("Deleting master ResourceSnapshot")
+				Expect(k8sClient.Delete(ctx, masterSnapshot)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}))
+			})
+
+			It("Should create the work in the target namespace with master resource snapshot only", func() {
+				// check the binding status till the bound condition is true
+				Eventually(func() bool {
+					if err := k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name, Namespace: binding.Namespace}, binding); err != nil {
+						return false
+					}
+					// only check the work created status as the applied status reason changes depends on where the reconcile logic is
+					return condition.IsConditionStatusTrue(
+						meta.FindStatusCondition(binding.Status.Conditions, string(placementv1beta1.ResourceBindingWorkSynchronized)), binding.GetGeneration())
+				}, timeout, interval).Should(BeTrue(), fmt.Sprintf("binding(%s) condition should be true", binding.Name))
+
+				// check the work is created
+				workName := fmt.Sprintf(placementv1beta1.FirstWorkNameFmt, fmt.Sprintf(placementv1beta1.WorkNameBaseFmt, testRPNamespace, testRPName))
+				work := placementv1beta1.Work{}
+				Eventually(func() error {
+					return k8sClient.Get(ctx, types.NamespacedName{Name: workName, Namespace: memberClusterNamespaceName}, &work)
+				}, timeout, interval).Should(Succeed(), "Failed to get the expected work")
+				By(fmt.Sprintf("work %s is created in %s", work.Name, work.Namespace))
+
+				//inspect the work
+				wantWork := placementv1beta1.Work{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      workName,
+						Namespace: memberClusterNamespaceName,
+						Labels: map[string]string{
+							placementv1beta1.PlacementTrackingLabel:           testRPName,
+							placementv1beta1.ParentBindingLabel:               binding.Name,
+							placementv1beta1.ParentNamespaceLabel:             testRPNamespace,
+							placementv1beta1.ParentResourceSnapshotIndexLabel: "1",
+						},
+						Annotations: map[string]string{
+							placementv1beta1.ParentResourceSnapshotNameAnnotation:                binding.Spec.ResourceSnapshotName,
+							placementv1beta1.ParentClusterResourceOverrideSnapshotHashAnnotation: emptyHash,
+							placementv1beta1.ParentResourceOverrideSnapshotHashAnnotation:        emptyHash,
+						},
+					},
+					Spec: placementv1beta1.WorkSpec{
+						Workload: placementv1beta1.WorkloadTemplate{
+							Manifests: []placementv1beta1.Manifest{
+								{RawExtension: runtime.RawExtension{Raw: testConfigMap}},
+								{RawExtension: runtime.RawExtension{Raw: testPdb}},
+							},
+						},
+					},
+				}
+				diff := cmp.Diff(wantWork, work, ignoreWorkOption, ignoreTypeMeta)
+				Expect(diff).Should(BeEmpty(), fmt.Sprintf("work(%s) mismatch (-want +got):\n%s", work.Name, diff))
+
+				// check the binding status that it should be marked as work not applied eventually
+				verifyBindingStatusSyncedNotApplied(binding, false, true)
+
+				// mark the work applied
+				markWorkApplied(&work)
+				verifyBindStatusAppliedNotAvailable(binding, false)
+
+				// mark the work available
+				markWorkAvailable(&work)
+				verifyBindStatusAvail(binding, false, false)
+			})
+		})
+	})
+})
+
+func generateResourceBinding(spec placementv1beta1.ResourceBindingSpec) *placementv1beta1.ResourceBinding {
+	return &placementv1beta1.ResourceBinding{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "binding-" + spec.ResourceSnapshotName,
+			Namespace: testRPNamespace,
+			Labels: map[string]string{
+				placementv1beta1.PlacementTrackingLabel: testRPName,
+			},
+		},
+		Spec: spec,
+	}
+}
+
+func generateResourceSnapshot(resourceIndex, numberResource, subIndex int, rawContents [][]byte) *placementv1beta1.ResourceSnapshot {
+	meta := generateSnapshotMetadata(testRPName, resourceIndex, numberResource, subIndex, testRPNamespace)
+	resourceSnapshot := &placementv1beta1.ResourceSnapshot{
+		ObjectMeta: meta,
+	}
+	for _, rawContent := range rawContents {
+		resourceSnapshot.Spec.SelectedResources = append(resourceSnapshot.Spec.SelectedResources, placementv1beta1.ResourceContent{
+			RawExtension: runtime.RawExtension{Raw: rawContent},
+		})
+	}
+	return resourceSnapshot
+}
+
+func createResourceBinding(binding **placementv1beta1.ResourceBinding, spec placementv1beta1.ResourceBindingSpec) {
+	*binding = generateResourceBinding(spec)
+	createAndUpdateBindingWithRolloutStarted(*binding)
 }
