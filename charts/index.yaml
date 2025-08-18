@@ -3,9 +3,9 @@ entries:
   hub-agent:
   - apiVersion: v2
     appVersion: 0.1.0
-    created: "2025-08-11T00:17:57.027610334Z"
+    created: "2025-08-18T01:02:10.118969028Z"
     description: A Helm chart for hub agent
-    digest: 295f42eaad5967a05dee8d915d385c71a2fad45bf8d2da31ada9c613aec5745b
+    digest: 81cf970191f4615f4c67add6c949c11bcc73b2b46fd74d1a1ea607e67e8e5cfe
     name: hub-agent
     type: application
     urls:
@@ -14,12 +14,12 @@ entries:
   member-agent:
   - apiVersion: v2
     appVersion: v0.1.0
-    created: "2025-08-11T00:17:57.028467049Z"
+    created: "2025-08-18T01:02:10.119440213Z"
     description: Helm chart for member agent.
-    digest: 7d5948a85276c9c70c61e49afa6c0afbd58d27c2daf60c02deb1ffb72ba8a52f
+    digest: 03990838aa1be161af9570035e114f6a674b875ed63880541b94393c6e84df6b
     name: member-agent
     type: application
     urls:
     - https://kubefleet-dev.github.io/kubefleet/charts/member-agent-0.1.0.tgz
     version: 0.1.0
-generated: "2025-08-11T00:17:57.022391219Z"
+generated: "2025-08-18T01:02:10.114457831Z"
