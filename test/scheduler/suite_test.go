@@ -51,8 +51,8 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/queue"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/clusterresourcebinding"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/clusterresourceplacement"
-	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/clusterschedulingpolicysnapshot"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/membercluster"
+	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/schedulingpolicysnapshot"
 )
 
 const (
@@ -597,14 +597,14 @@ func beforeSuiteForProcess1() []byte {
 	err = rpReconciler.SetupWithManagerForResourcePlacement(ctrlMgr)
 	Expect(err).NotTo(HaveOccurred(), "Failed to set up RP watcher with controller manager")
 
-	clusterPolicySnapshotWatcher := clusterschedulingpolicysnapshot.Reconciler{
+	clusterPolicySnapshotWatcher := schedulingpolicysnapshot.Reconciler{
 		Client:             hubClient,
 		SchedulerWorkQueue: schedulerWorkQueue,
 	}
 	err = clusterPolicySnapshotWatcher.SetupWithManagerForClusterSchedulingPolicySnapshot(ctrlMgr)
 	Expect(err).NotTo(HaveOccurred(), "Failed to set up cluster policy snapshot watcher with controller manager")
 
-	policySnapshotWatcher := clusterschedulingpolicysnapshot.Reconciler{
+	policySnapshotWatcher := schedulingpolicysnapshot.Reconciler{
 		Client:             hubClient,
 		SchedulerWorkQueue: schedulerWorkQueue,
 	}

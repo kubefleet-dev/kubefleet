@@ -55,8 +55,8 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/queue"
 	schedulercrbwatcher "github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/clusterresourcebinding"
 	schedulercrpwatcher "github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/clusterresourceplacement"
-	schedulercspswatcher "github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/clusterschedulingpolicysnapshot"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/membercluster"
+	schedulerspswatcher "github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/schedulingpolicysnapshot"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
@@ -380,7 +380,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		}
 
 		klog.Info("Setting up the clusterSchedulingPolicySnapshot watcher for scheduler")
-		if err := (&schedulercspswatcher.Reconciler{
+		if err := (&schedulerspswatcher.Reconciler{
 			Client:             mgr.GetClient(),
 			SchedulerWorkQueue: defaultSchedulingQueue,
 		}).SetupWithManagerForClusterSchedulingPolicySnapshot(mgr); err != nil {
@@ -408,7 +408,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			}
 
 			klog.Info("Setting up the schedulingPolicySnapshot watcher for scheduler")
-			if err := (&schedulercspswatcher.Reconciler{
+			if err := (&schedulerspswatcher.Reconciler{
 				Client:             mgr.GetClient(),
 				SchedulerWorkQueue: defaultSchedulingQueue,
 			}).SetupWithManagerForSchedulingPolicySnapshot(mgr); err != nil {
