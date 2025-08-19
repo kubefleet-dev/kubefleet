@@ -112,7 +112,7 @@ func ValidateFleetMemberClusterUpdate(currentMC, oldMC clusterv1beta1.MemberClus
 
 	isLabelUpdated := isMapFieldUpdated(currentMC.GetLabels(), oldMC.GetLabels())
 	if isLabelUpdated && !isUserInGroup(userInfo, mastersGroup) && shouldDenyLabelModification(currentMC.GetLabels(), oldMC.GetLabels(), denyModifyMemberClusterLabels) {
-		// allow any user to modify cluster.kubernetes-fleet.io/* labels, but restricts other label modifications given denyModifyMemberClusterLabels is true.
+		// allow any user to modify kubernetes-fleet.io/* labels, but restricts other label modifications given denyModifyMemberClusterLabels is true.
 		klog.V(2).InfoS(DeniedModifyMemberClusterLabels, "user", userInfo.Username, "groups", userInfo.Groups, "operation", req.Operation, "GVK", req.RequestKind, "subResource", req.SubResource, "namespacedName", namespacedName)
 		return admission.Denied(DeniedModifyMemberClusterLabels)
 	}
