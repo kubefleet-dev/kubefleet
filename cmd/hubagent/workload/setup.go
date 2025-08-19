@@ -53,8 +53,8 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/framework"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/profile"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/queue"
-	schedulercrbwatcher "github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/clusterresourcebinding"
 	schedulercrpwatcher "github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/clusterresourceplacement"
+	schedulerbindingwatcher "github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/binding"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/membercluster"
 	schedulerspswatcher "github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/schedulingpolicysnapshot"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
@@ -389,7 +389,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		}
 
 		klog.Info("Setting up the clusterResourceBinding watcher for scheduler")
-		if err := (&schedulercrbwatcher.Reconciler{
+		if err := (&schedulerbindingwatcher.Reconciler{
 			Client:             mgr.GetClient(),
 			SchedulerWorkQueue: defaultSchedulingQueue,
 		}).SetupWithManagerForClusterResourceBinding(mgr); err != nil {
@@ -417,7 +417,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			}
 
 			klog.Info("Setting up the resourceBinding watcher for scheduler")
-			if err := (&schedulercrbwatcher.Reconciler{
+			if err := (&schedulerbindingwatcher.Reconciler{
 				Client:             mgr.GetClient(),
 				SchedulerWorkQueue: defaultSchedulingQueue,
 			}).SetupWithManagerForResourceBinding(mgr); err != nil {

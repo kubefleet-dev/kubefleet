@@ -49,7 +49,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/clustereligibilitychecker"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/queue"
-	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/clusterresourcebinding"
+	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/binding"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/clusterresourceplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/membercluster"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/schedulingpolicysnapshot"
@@ -620,14 +620,14 @@ func beforeSuiteForProcess1() []byte {
 	err = memberClusterWatcher.SetupWithManager(ctrlMgr)
 	Expect(err).NotTo(HaveOccurred(), "Failed to set up member cluster watcher with controller manager")
 
-	clusterResourceBindingWatcher := clusterresourcebinding.Reconciler{
+	clusterResourceBindingWatcher := binding.Reconciler{
 		Client:             hubClient,
 		SchedulerWorkQueue: schedulerWorkQueue,
 	}
 	err = clusterResourceBindingWatcher.SetupWithManagerForClusterResourceBinding(ctrlMgr)
 	Expect(err).NotTo(HaveOccurred(), "Failed to set up cluster resource binding watcher with controller manager")
 
-	resourceBindingWatcher := clusterresourcebinding.Reconciler{
+	resourceBindingWatcher := binding.Reconciler{
 		Client:             hubClient,
 		SchedulerWorkQueue: schedulerWorkQueue,
 	}
