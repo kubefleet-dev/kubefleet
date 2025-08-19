@@ -50,8 +50,8 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/clustereligibilitychecker"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/queue"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/binding"
-	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/clusterresourceplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/membercluster"
+	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/placement"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/schedulingpolicysnapshot"
 )
 
@@ -583,14 +583,14 @@ func beforeSuiteForProcess1() []byte {
 	)
 
 	// Register the watchers.
-	crpReconciler := clusterresourceplacement.Reconciler{
+	crpReconciler := placement.Reconciler{
 		Client:             hubClient,
 		SchedulerWorkQueue: schedulerWorkQueue,
 	}
 	err = crpReconciler.SetupWithManagerForClusterResourcePlacement(ctrlMgr)
 	Expect(err).NotTo(HaveOccurred(), "Failed to set up CRP watcher with controller manager")
 
-	rpReconciler := clusterresourceplacement.Reconciler{
+	rpReconciler := placement.Reconciler{
 		Client:             hubClient,
 		SchedulerWorkQueue: schedulerWorkQueue,
 	}

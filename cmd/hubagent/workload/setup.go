@@ -53,9 +53,9 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/framework"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/profile"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/queue"
-	schedulercrpwatcher "github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/clusterresourceplacement"
 	schedulerbindingwatcher "github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/binding"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/membercluster"
+	schedulerplacementwatcher "github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/placement"
 	schedulerspswatcher "github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/schedulingpolicysnapshot"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
@@ -371,7 +371,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 
 		// Set up the watchers for the controller
 		klog.Info("Setting up the clusterResourcePlacement watcher for scheduler")
-		if err := (&schedulercrpwatcher.Reconciler{
+		if err := (&schedulerplacementwatcher.Reconciler{
 			Client:             mgr.GetClient(),
 			SchedulerWorkQueue: defaultSchedulingQueue,
 		}).SetupWithManagerForClusterResourcePlacement(mgr); err != nil {
@@ -399,7 +399,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 
 		if opts.EnableResourcePlacement {
 			klog.Info("Setting up the resourcePlacement watcher for scheduler")
-			if err := (&schedulercrpwatcher.Reconciler{
+			if err := (&schedulerplacementwatcher.Reconciler{
 				Client:             mgr.GetClient(),
 				SchedulerWorkQueue: defaultSchedulingQueue,
 			}).SetupWithManagerForResourcePlacement(mgr); err != nil {
