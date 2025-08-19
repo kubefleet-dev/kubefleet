@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	fleetv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 )
@@ -44,8 +45,7 @@ const (
 )
 
 var (
-	fleetDataplaneLabelPrefix = "kubernetes-fleet.io/"
-	fleetCRDGroups            = []string{"networking.fleet.azure.com", "fleet.azure.com", "multicluster.x-k8s.io", "cluster.kubernetes-fleet.io", "placement.kubernetes-fleet.io"}
+	fleetCRDGroups = []string{"networking.fleet.azure.com", "fleet.azure.com", "multicluster.x-k8s.io", "cluster.kubernetes-fleet.io", "placement.kubernetes-fleet.io"}
 )
 
 // ValidateUserForFleetCRD checks to see if user is not allowed to modify fleet CRDs.
@@ -185,14 +185,14 @@ func shouldDenyLabelModification(currentLabels, oldLabels map[string]string, den
 	for k, v := range currentLabels {
 		oldV, exists := oldLabels[k]
 		if !exists || oldV != v {
-			if !strings.HasPrefix(k, fleetDataplaneLabelPrefix) {
+			if !strings.HasPrefix(k, placementv1beta1.FleetPrefix) {
 				return true
 			}
 		}
 	}
 	for k := range oldLabels {
 		if _, exists := currentLabels[k]; !exists {
-			if !strings.HasPrefix(k, fleetDataplaneLabelPrefix) {
+			if !strings.HasPrefix(k, placementv1beta1.FleetPrefix) {
 				return true
 			}
 		}
