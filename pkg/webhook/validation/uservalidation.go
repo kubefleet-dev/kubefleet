@@ -177,7 +177,7 @@ func isUserInGroup(userInfo authenticationv1.UserInfo, groupName string) bool {
 	return slices.Contains(userInfo.Groups, groupName)
 }
 
-// shouldDenyLabelModification returns true if any labels (besides cluster.kubernetes-fleet.io/* labels) are being modified and denyModifyMemberClusterLabels is true.
+// shouldDenyLabelModification returns true if any labels (besides kubernetes-fleet.io/* labels) are being modified and denyModifyMemberClusterLabels is true.
 func shouldDenyLabelModification(currentLabels, oldLabels map[string]string, denyModifyMemberClusterLabels bool) bool {
 	if !denyModifyMemberClusterLabels {
 		return false
