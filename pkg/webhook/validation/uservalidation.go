@@ -44,7 +44,7 @@ const (
 )
 
 var (
-	fleetDataplaneLabelPrefix = "cluster.kubernetes-fleet.io/"
+	fleetDataplaneLabelPrefix = "kubernetes-fleet.io/"
 	fleetCRDGroups            = []string{"networking.fleet.azure.com", "fleet.azure.com", "multicluster.x-k8s.io", "cluster.kubernetes-fleet.io", "placement.kubernetes-fleet.io"}
 )
 

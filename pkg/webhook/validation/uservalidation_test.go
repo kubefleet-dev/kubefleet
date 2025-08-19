@@ -328,12 +328,12 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 			},
 			wantResponse: admission.Allowed(fmt.Sprintf(ResourceAllowedFormat, "nonSystemMastersUser", utils.GenerateGroupString([]string{"system:authenticated"}), admissionv1.Update, &utils.MCMetaGVK, "", types.NamespacedName{Name: "test-mc"})),
 		},
-		"allow label modification by any user for cluster.kubernetes-fleet.io/* labels": {
+		"allow label modification by any user for kubernetes-fleet.io/* labels": {
 			denyModifyMemberClusterLabels: true,
 			oldMC: &clusterv1beta1.MemberCluster{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   "test-mc",
-					Labels: map[string]string{"cluster.kubernetes-fleet.io/some-label": "old-value"},
+					Labels: map[string]string{"kubernetes-fleet.io/some-label": "old-value"},
 					Annotations: map[string]string{
 						"fleet.azure.com/cluster-resource-id": "test-cluster-resource-id",
 					},
@@ -342,7 +342,7 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 			newMC: &clusterv1beta1.MemberCluster{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   "test-mc",
-					Labels: map[string]string{"cluster.kubernetes-fleet.io/some-label": "new-value"},
+					Labels: map[string]string{"kubernetes-fleet.io/some-label": "new-value"},
 					Annotations: map[string]string{
 						"fleet.azure.com/cluster-resource-id": "test-cluster-resource-id",
 					},
