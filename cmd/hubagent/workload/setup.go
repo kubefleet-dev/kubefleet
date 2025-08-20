@@ -35,8 +35,8 @@ import (
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	fleetv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
+	"github.com/kubefleet-dev/kubefleet/pkg/controllers/bindingwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterinventory/clusterprofile"
-	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourcebindingwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacementeviction"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacementwatcher"
@@ -213,7 +213,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		}
 
 		klog.Info("Setting up clusterResourceBinding watcher")
-		if err := (&clusterresourcebindingwatcher.Reconciler{
+		if err := (&bindingwatcher.Reconciler{
 			PlacementController: clusterResourcePlacementControllerV1Beta1,
 			Client:              mgr.GetClient(),
 		}).SetupWithManagerForClusterResourceBinding(mgr); err != nil {
@@ -248,7 +248,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			}
 
 			klog.Info("Setting up resourceBinding watcher")
-			if err := (&clusterresourcebindingwatcher.Reconciler{
+			if err := (&bindingwatcher.Reconciler{
 				PlacementController: resourcePlacementController,
 				Client:              mgr.GetClient(),
 			}).SetupWithManagerForResourceBinding(mgr); err != nil {
