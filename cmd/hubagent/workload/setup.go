@@ -37,10 +37,10 @@ import (
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/bindingwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterinventory/clusterprofile"
+	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacementeviction"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/memberclusterplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/overrider"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placement"
-	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placementeviction"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placementwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/resourcechange"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/rollout"
@@ -299,7 +299,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 				}
 			}
 			klog.Info("Setting up cluster resource placement eviction controller")
-			if err := (&placementeviction.Reconciler{
+			if err := (&clusterresourceplacementeviction.Reconciler{
 				Client:         mgr.GetClient(),
 				UncachedReader: mgr.GetAPIReader(),
 			}).SetupWithManager(mgr); err != nil {
