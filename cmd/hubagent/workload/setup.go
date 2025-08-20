@@ -37,10 +37,10 @@ import (
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/bindingwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterinventory/clusterprofile"
-	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacementeviction"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/memberclusterplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/overrider"
+	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placement"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placementwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/resourcechange"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/rollout"
@@ -159,8 +159,8 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	validator.ResourceInformer = dynamicInformerManager // webhook needs this to check resource scope
 	validator.RestMapper = mgr.GetRESTMapper()          // webhook needs this to validate GVK of resource selector
 
-	// Set up  a custom controller to reconcile cluster resource placement
-	crpc := &clusterresourceplacement.Reconciler{
+	// Set up  a custom controller to reconcile placement objects
+	crpc := &placement.Reconciler{
 		Client:                                  mgr.GetClient(),
 		Recorder:                                mgr.GetEventRecorderFor(crpControllerName),
 		RestMapper:                              mgr.GetRESTMapper(),
