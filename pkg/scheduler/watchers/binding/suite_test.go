@@ -49,7 +49,7 @@ var (
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecs(t, "Scheduler Source Cluster Resource Binding Controller Suite")
+	RunSpecs(t, "Scheduler Source Binding Controller Suite")
 }
 
 var _ = BeforeSuite(func() {
