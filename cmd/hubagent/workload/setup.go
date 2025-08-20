@@ -37,10 +37,10 @@ import (
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/bindingwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterinventory/clusterprofile"
-	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacementeviction"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/memberclusterplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/overrider"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placement"
+	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placementeviction"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placementwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/resourcechange"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/rollout"
@@ -68,6 +68,7 @@ const (
 	crpControllerV1Alpha1Name = crpControllerName + "-v1alpha1"
 	crpControllerV1Beta1Name  = crpControllerName + "-v1beta1"
 	rpControllerName          = "resource-placement-controller"
+	placementControllerName   = "placement-controller"
 
 	resourceChangeControllerName = "resource-change-controller"
 	mcPlacementControllerName    = "memberCluster-placement-controller"
@@ -160,9 +161,9 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	validator.RestMapper = mgr.GetRESTMapper()          // webhook needs this to validate GVK of resource selector
 
 	// Set up  a custom controller to reconcile placement objects
-	crpc := &placement.Reconciler{
+	pc := &placement.Reconciler{
 		Client:                                  mgr.GetClient(),
-		Recorder:                                mgr.GetEventRecorderFor(crpControllerName),
+		Recorder:                                mgr.GetEventRecorderFor(placementControllerName),
 		RestMapper:                              mgr.GetRESTMapper(),
 		InformerManager:                         dynamicInformerManager,
 		ResourceConfig:                          resourceConfig,
@@ -186,7 +187,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			}
 		}
 		klog.Info("Setting up clusterResourcePlacement v1alpha1 controller")
-		clusterResourcePlacementControllerV1Alpha1 = controller.NewController(crpControllerV1Alpha1Name, controller.NamespaceKeyFunc, crpc.ReconcileV1Alpha1, rateLimiter)
+		clusterResourcePlacementControllerV1Alpha1 = controller.NewController(crpControllerV1Alpha1Name, controller.NamespaceKeyFunc, pc.ReconcileV1Alpha1, rateLimiter)
 		klog.Info("Setting up member cluster change controller")
 		mcp := &memberclusterplacement.Reconciler{
 			InformerManager:     dynamicInformerManager,
@@ -203,7 +204,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			}
 		}
 		klog.Info("Setting up clusterResourcePlacement v1beta1 controller")
-		clusterResourcePlacementControllerV1Beta1 = controller.NewController(crpControllerV1Beta1Name, controller.NamespaceKeyFunc, crpc.Reconcile, rateLimiter)
+		clusterResourcePlacementControllerV1Beta1 = controller.NewController(crpControllerV1Beta1Name, controller.NamespaceKeyFunc, pc.Reconcile, rateLimiter)
 		klog.Info("Setting up clusterResourcePlacement watcher")
 		if err := (&placementwatcher.Reconciler{
 			PlacementController: clusterResourcePlacementControllerV1Beta1,
@@ -238,7 +239,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 				}
 			}
 			klog.Info("Setting up resourcePlacement controller")
-			resourcePlacementController = controller.NewController(rpControllerName, controller.NamespaceKeyFunc, crpc.Reconcile, rateLimiter)
+			resourcePlacementController = controller.NewController(rpControllerName, controller.NamespaceKeyFunc, pc.Reconcile, rateLimiter)
 			klog.Info("Setting up resourcePlacement watcher")
 			if err := (&placementwatcher.Reconciler{
 				PlacementController: resourcePlacementController,
@@ -298,7 +299,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 				}
 			}
 			klog.Info("Setting up cluster resource placement eviction controller")
-			if err := (&clusterresourceplacementeviction.Reconciler{
+			if err := (&placementeviction.Reconciler{
 				Client:         mgr.GetClient(),
 				UncachedReader: mgr.GetAPIReader(),
 			}).SetupWithManager(mgr); err != nil {
