@@ -39,12 +39,12 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterinventory/clusterprofile"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacementeviction"
-	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterschedulingpolicysnapshot"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/memberclusterplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/overrider"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placementwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/resourcechange"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/rollout"
+	"github.com/kubefleet-dev/kubefleet/pkg/controllers/schedulingpolicysnapshot"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/updaterun"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workgenerator"
 	"github.com/kubefleet-dev/kubefleet/pkg/resourcewatcher"
@@ -222,7 +222,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		}
 
 		klog.Info("Setting up clusterSchedulingPolicySnapshot watcher")
-		if err := (&clusterschedulingpolicysnapshot.Reconciler{
+		if err := (&schedulingpolicysnapshot.Reconciler{
 			Client:              mgr.GetClient(),
 			PlacementController: clusterResourcePlacementControllerV1Beta1,
 		}).SetupWithManagerForClusterSchedulingPolicySnapshot(mgr); err != nil {
@@ -257,7 +257,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			}
 
 			klog.Info("Setting up schedulingPolicySnapshot watcher")
-			if err := (&clusterschedulingpolicysnapshot.Reconciler{
+			if err := (&schedulingpolicysnapshot.Reconciler{
 				Client:              mgr.GetClient(),
 				PlacementController: resourcePlacementController,
 			}).SetupWithManagerForSchedulingPolicySnapshot(mgr); err != nil {
