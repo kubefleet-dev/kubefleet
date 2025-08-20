@@ -4,11 +4,12 @@ metadata:
   name: crp-1
 spec:
   resourceSelectors:
-    - group: apiextensions.k8s.io
-      kind: CustomResourceDefinition
-      name: testresources.test.kubernetes-fleet.io
+    - group: ""
+      kind: Namespace
+      name: test-ns
       version: v1
   policy:
-    placementType: PickN
+    placementType: PickAll
   strategy:
     type: RollingUpdate
+  statusReportingScope: NamespaceAccessible

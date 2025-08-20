@@ -123,6 +123,7 @@ type ClusterResourcePlacement struct {
 
 // PlacementSpec defines the desired state of ClusterResourcePlacement and ResourcePlacement.
 // +kubebuilder:validation:XValidation:rule="!(self.statusReportingScope == 'NamespaceAccessible' && size(self.resourceSelectors.filter(x, x.kind == 'Namespace')) != 1)",message="when statusReportingScope is NamespaceAccessible, exactly one resourceSelector with kind 'Namespace' is required"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.statusReportingScope) || self.statusReportingScope == oldSelf.statusReportingScope",message="statusReportingScope is immutable"
 type PlacementSpec struct {
 	// ResourceSelectors is an array of selectors used to select cluster scoped resources. The selectors are `ORed`.
 	// You can have 1-100 selectors.
