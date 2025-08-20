@@ -39,10 +39,10 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterinventory/clusterprofile"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacementeviction"
-	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacementwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterschedulingpolicysnapshot"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/memberclusterplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/overrider"
+	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placementwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/resourcechange"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/rollout"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/updaterun"
@@ -205,7 +205,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		klog.Info("Setting up clusterResourcePlacement v1beta1 controller")
 		clusterResourcePlacementControllerV1Beta1 = controller.NewController(crpControllerV1Beta1Name, controller.NamespaceKeyFunc, crpc.Reconcile, rateLimiter)
 		klog.Info("Setting up clusterResourcePlacement watcher")
-		if err := (&clusterresourceplacementwatcher.Reconciler{
+		if err := (&placementwatcher.Reconciler{
 			PlacementController: clusterResourcePlacementControllerV1Beta1,
 		}).SetupWithManagerForClusterResourcePlacement(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up the clusterResourcePlacement watcher")
@@ -240,7 +240,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			klog.Info("Setting up resourcePlacement controller")
 			resourcePlacementController = controller.NewController(rpControllerName, controller.NamespaceKeyFunc, crpc.Reconcile, rateLimiter)
 			klog.Info("Setting up resourcePlacement watcher")
-			if err := (&clusterresourceplacementwatcher.Reconciler{
+			if err := (&placementwatcher.Reconciler{
 				PlacementController: resourcePlacementController,
 			}).SetupWithManagerForResourcePlacement(mgr); err != nil {
 				klog.ErrorS(err, "Unable to set up the resourcePlacement watcher")

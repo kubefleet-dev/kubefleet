@@ -41,8 +41,8 @@ import (
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/bindingwatcher"
-	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacementwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterschedulingpolicysnapshot"
+	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placementwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/metrics"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
@@ -141,7 +141,7 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManagerForClusterSchedulingPolicySnapshot(mgr)
 	Expect(err).Should(Succeed(), "failed to create clusterSchedulingPolicySnapshot watcher")
 
-	err = (&clusterresourceplacementwatcher.Reconciler{
+	err = (&placementwatcher.Reconciler{
 		PlacementController: crpController,
 	}).SetupWithManagerForClusterResourcePlacement(mgr)
 	Expect(err).Should(Succeed(), "failed to create clusterResourcePlacement watcher")
