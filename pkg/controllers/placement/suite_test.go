@@ -65,7 +65,7 @@ const (
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecs(t, "ClusterResourcePlacement Controller Suite")
+	RunSpecs(t, "Placement Controller Suite")
 }
 
 var _ = BeforeSuite(func() {

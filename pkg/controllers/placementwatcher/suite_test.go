@@ -53,7 +53,7 @@ var (
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecs(t, "ClusterResourcePlacement Watcher Suite")
+	RunSpecs(t, "Placement Watcher Suite")
 }
 
 var _ = BeforeSuite(func() {

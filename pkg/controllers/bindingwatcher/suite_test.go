@@ -52,7 +52,7 @@ var (
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecs(t, "ClusterResourceBinding Watcher Suite")
+	RunSpecs(t, "Binding Watcher Suite")
 }
 
 var _ = BeforeSuite(func() {
