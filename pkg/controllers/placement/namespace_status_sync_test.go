@@ -44,7 +44,7 @@ func TestExtractNamespaceFromResourceSelectors(t *testing.T) {
 			placement: placementv1beta1.ClusterResourcePlacement{
 				Spec: placementv1beta1.PlacementSpec{
 					StatusReportingScope: placementv1beta1.NamespaceAccessible,
-					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "",
 							Version: "v1",
@@ -61,7 +61,7 @@ func TestExtractNamespaceFromResourceSelectors(t *testing.T) {
 			placement: placementv1beta1.ClusterResourcePlacement{
 				Spec: placementv1beta1.PlacementSpec{
 					StatusReportingScope: placementv1beta1.ClusterScopeOnly,
-					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "",
 							Version: "v1",
@@ -78,7 +78,7 @@ func TestExtractNamespaceFromResourceSelectors(t *testing.T) {
 			placement: placementv1beta1.ClusterResourcePlacement{
 				Spec: placementv1beta1.PlacementSpec{
 					StatusReportingScope: placementv1beta1.NamespaceAccessible,
-					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "apps",
 							Version: "v1",
@@ -132,7 +132,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				},
 				Spec: placementv1beta1.PlacementSpec{
 					StatusReportingScope: placementv1beta1.NamespaceAccessible,
-					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "",
 							Version: "v1",
@@ -169,7 +169,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				},
 				Spec: placementv1beta1.PlacementSpec{
 					StatusReportingScope: placementv1beta1.NamespaceAccessible,
-					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "",
 							Version: "v1",
@@ -215,7 +215,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				},
 				Spec: placementv1beta1.PlacementSpec{
 					StatusReportingScope: placementv1beta1.ClusterScopeOnly,
-					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "",
 							Version: "v1",
@@ -236,7 +236,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				},
 				Spec: placementv1beta1.PlacementSpec{
 					StatusReportingScope: placementv1beta1.NamespaceAccessible,
-					ResourceSelectors: []placementv1beta1.ClusterResourceSelector{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "",
 							Version: "v1",
