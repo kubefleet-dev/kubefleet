@@ -437,7 +437,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 		})
 
 		It("should deny update of ClusterResourcePlacement StatusReportingScope to NamespaceAccessible due to immutability", func() {
-			Eventually(func() error {
+			Eventually(func(g Gomega) error {
 				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
 				if err != nil {
 					return err
@@ -448,8 +448,8 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 					return err
 				}
 				var statusErr *k8sErrors.StatusError
-				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("statusReportingScope is immutable"))
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("statusReportingScope is immutable"))
 				return nil
 			}, eventuallyTimeout, interval).Should(Succeed(), "Failed to deny update on CRP")
 		})
@@ -508,7 +508,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 		})
 
 		It("should deny update of ClusterResourcePlacement with StatusReportingScope NamespaceAccessible and multiple namespace selectors", func() {
-			Eventually(func() error {
+			Eventually(func(g Gomega) error {
 				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
 				if err != nil {
 					return err
@@ -532,14 +532,14 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 					return err
 				}
 				var statusErr *k8sErrors.StatusError
-				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("when statusReportingScope is NamespaceAccessible, exactly one resourceSelector with kind 'Namespace' is required"))
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("when statusReportingScope is NamespaceAccessible, exactly one resourceSelector with kind 'Namespace' is required"))
 				return nil
 			}, eventuallyTimeout, interval).Should(Succeed(), "Failed to deny update on CRP")
 		})
 
 		It("should deny update of ClusterResourcePlacement with StatusReportingScope NamespaceAccessible, no namespace selectors", func() {
-			Eventually(func() error {
+			Eventually(func(g Gomega) error {
 				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
 				if err != nil {
 					return err
@@ -563,14 +563,14 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 					return err
 				}
 				var statusErr *k8sErrors.StatusError
-				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("when statusReportingScope is NamespaceAccessible, exactly one resourceSelector with kind 'Namespace' is required"))
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("when statusReportingScope is NamespaceAccessible, exactly one resourceSelector with kind 'Namespace' is required"))
 				return nil
 			}, eventuallyTimeout, interval).Should(Succeed(), "Failed to deny update on CRP")
 		})
 
 		It("should deny update of ClusterResourcePlacement StatusReportingScope to ClusterScopeOnly due to immutability", func() {
-			Eventually(func() error {
+			Eventually(func(g Gomega) error {
 				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
 				if err != nil {
 					return err
@@ -581,14 +581,14 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 					return err
 				}
 				var statusErr *k8sErrors.StatusError
-				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("statusReportingScope is immutable"))
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("statusReportingScope is immutable"))
 				return nil
 			}, eventuallyTimeout, interval).Should(Succeed(), "Failed to deny update on CRP")
 		})
 
 		It("should deny update of ClusterResourcePlacement StatusReportingScope to empty string", func() {
-			Eventually(func() error {
+			Eventually(func(g Gomega) error {
 				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
 				if err != nil {
 					return err
@@ -599,8 +599,8 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 					return err
 				}
 				var statusErr *k8sErrors.StatusError
-				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("statusReportingScope is immutable"))
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("statusReportingScope is immutable"))
 				return nil
 			}, eventuallyTimeout, interval).Should(Succeed(), "Failed to deny update on CRP")
 		})
