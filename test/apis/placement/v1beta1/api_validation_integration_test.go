@@ -416,7 +416,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				}
 				g.Expect(crp.Spec.StatusReportingScope).To(Equal(placementv1beta1.ClusterScopeOnly), "CRP should have default StatusReportingScope ClusterScopeOnly")
 				return nil
-			}, eventuallyTimeout, interval).Should(Succeed(), "Failed to deny update on CRP")
+			}, eventuallyTimeout, interval).Should(Succeed(), "Failed to update CRP")
 		})
 
 		It("should allow update of ClusterResourcePlacement with default StatusReportingScope, multiple namespace resource selectors", func() {
@@ -446,7 +446,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 					},
 				}...)
 				return hubClient.Update(ctx, &crp)
-			}, eventuallyTimeout, interval).Should(Succeed(), "Failed to deny update on CRP")
+			}, eventuallyTimeout, interval).Should(Succeed(), "Failed to update CRP")
 		})
 
 		It("should allow update of ClusterResourcePlacement with StatusReportingScope ClusterScopeOnly, multiple namespace resource selectors", func() {
@@ -477,7 +477,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				}...)
 				crp.Spec.StatusReportingScope = placementv1beta1.ClusterScopeOnly
 				return hubClient.Update(ctx, &crp)
-			}, eventuallyTimeout, interval).Should(Succeed(), "Failed to deny update on CRP")
+			}, eventuallyTimeout, interval).Should(Succeed(), "Failed update CRP")
 		})
 
 		It("should deny update of ClusterResourcePlacement StatusReportingScope to NamespaceAccessible due to immutability", func() {
