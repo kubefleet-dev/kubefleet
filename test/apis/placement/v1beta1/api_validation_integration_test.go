@@ -398,6 +398,27 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			Expect(hubClient.Delete(ctx, &crp)).Should(Succeed())
 		})
 
+		It("should allow update of ClusterResourcePlacement with empty string for StatusReportingScope", func() {
+			Eventually(func(g Gomega) error {
+				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
+				if err != nil {
+					return err
+				}
+				g.Expect(crp.Spec.StatusReportingScope).To(Equal(placementv1beta1.ClusterScopeOnly), "CRP should have default StatusReportingScope ClusterScopeOnly")
+				crp.Spec.StatusReportingScope = "" // Empty string should default to ClusterScopeOnly
+				err = hubClient.Update(ctx, &crp)
+				if k8sErrors.IsConflict(err) {
+					return err
+				}
+				err = hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
+				if err != nil {
+					return err
+				}
+				g.Expect(crp.Spec.StatusReportingScope).To(Equal(placementv1beta1.ClusterScopeOnly), "CRP should have default StatusReportingScope ClusterScopeOnly")
+				return nil
+			}, eventuallyTimeout, interval).Should(Succeed(), "Failed to deny update on CRP")
+		})
+
 		It("should allow update of ClusterResourcePlacement with default StatusReportingScope, multiple namespace resource selectors", func() {
 			Eventually(func() error {
 				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
