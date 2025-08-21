@@ -282,6 +282,29 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 		var crp placementv1beta1.ClusterResourcePlacement
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 
+		It("should deny creation of ClusterResourcePlacement with Unknown StatusReportingScope and multiple namespace selectors", func() {
+			crp = placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:   "",
+							Version: "v1",
+							Kind:    "Namespace",
+							Name:    "test-ns-1",
+						},
+					},
+					StatusReportingScope: "UnknownScope", // Invalid scope
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("supported values: \"ClusterScopeOnly\", \"NamespaceAccessible\""))
+		})
+
 		It("should deny creation of ClusterResourcePlacement with StatusReportingScope NamespaceAccessible and multiple namespace selectors", func() {
 			crp = placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
@@ -453,6 +476,24 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				return nil
 			}, eventuallyTimeout, interval).Should(Succeed(), "Failed to deny update on CRP")
 		})
+
+		It("should deny update of ClusterResourcePlacement StatusReportingScope to unknown scope", func() {
+			Eventually(func(g Gomega) error {
+				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
+				if err != nil {
+					return err
+				}
+				crp.Spec.StatusReportingScope = "UnknownScope" // Invalid scope
+				err = hubClient.Update(ctx, &crp)
+				if k8sErrors.IsConflict(err) {
+					return err
+				}
+				var statusErr *k8sErrors.StatusError
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("supported values: \"ClusterScopeOnly\", \"NamespaceAccessible\""))
+				return nil
+			}, eventuallyTimeout, interval).Should(Succeed(), "Failed to deny update on CRP")
+		})
 	})
 
 	Context("Test ClusterResourcePlacement NamespaceAccessible StatusReportingScope validation - update cases", func() {
@@ -601,6 +642,24 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				var statusErr *k8sErrors.StatusError
 				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
 				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("statusReportingScope is immutable"))
+				return nil
+			}, eventuallyTimeout, interval).Should(Succeed(), "Failed to deny update on CRP")
+		})
+
+		It("should deny update of ClusterResourcePlacement StatusReportingScope to unknown scope", func() {
+			Eventually(func(g Gomega) error {
+				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
+				if err != nil {
+					return err
+				}
+				crp.Spec.StatusReportingScope = "UnknownScope" // Invalid scope
+				err = hubClient.Update(ctx, &crp)
+				if k8sErrors.IsConflict(err) {
+					return err
+				}
+				var statusErr *k8sErrors.StatusError
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("supported values: \"ClusterScopeOnly\", \"NamespaceAccessible\""))
 				return nil
 			}, eventuallyTimeout, interval).Should(Succeed(), "Failed to deny update on CRP")
 		})
