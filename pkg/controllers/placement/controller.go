@@ -159,16 +159,18 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 			ObservedGeneration: placementObj.GetGeneration(),
 		}
 		placementObj.SetConditions(scheduleCondition)
-		if updateErr := r.Client.Status().Update(ctx, placementObj); updateErr != nil {
-			klog.ErrorS(updateErr, "Failed to update the status", "placement", placementKObj)
-			return ctrl.Result{}, controller.NewUpdateIgnoreConflictError(updateErr)
-		}
 
 		// Sync ClusterResourcePlacementStatus object if StatusReportingScope is NamespaceAccessible
 		if syncErr := r.syncClusterResourcePlacementStatus(ctx, placementObj); syncErr != nil {
 			klog.ErrorS(syncErr, "Failed to sync ClusterResourcePlacementStatus", "placement", placementKObj)
 			return ctrl.Result{}, syncErr
 		}
+
+		if updateErr := r.Client.Status().Update(ctx, placementObj); updateErr != nil {
+			klog.ErrorS(updateErr, "Failed to update the status", "placement", placementKObj)
+			return ctrl.Result{}, controller.NewUpdateIgnoreConflictError(updateErr)
+		}
+
 		// no need to retry faster, the user needs to fix the resource selectors
 		return ctrl.Result{RequeueAfter: controllerResyncPeriod}, nil
 	}
@@ -210,17 +212,17 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 		return ctrl.Result{}, err
 	}
 
-	if err := r.Client.Status().Update(ctx, placementObj); err != nil {
-		klog.ErrorS(err, "Failed to update the status", "placement", placementKObj)
-		return ctrl.Result{}, err
-	}
-	klog.V(2).InfoS("Updated the placement status", "placement", placementKObj)
-
 	// Sync ClusterResourcePlacementStatus object if StatusReportingScope is NamespaceAccessible
 	if err := r.syncClusterResourcePlacementStatus(ctx, placementObj); err != nil {
 		klog.ErrorS(err, "Failed to sync ClusterResourcePlacementStatus", "placement", placementKObj)
 		return ctrl.Result{}, err
 	}
+
+	if err := r.Client.Status().Update(ctx, placementObj); err != nil {
+		klog.ErrorS(err, "Failed to update the status", "placement", placementKObj)
+		return ctrl.Result{}, err
+	}
+	klog.V(2).InfoS("Updated the placement status", "placement", placementKObj)
 
 	// We skip checking the last resource condition (available) because it will be covered by checking isRolloutCompleted func.
 	for i := condition.RolloutStartedCondition; i < condition.TotalCondition-1; i++ {
