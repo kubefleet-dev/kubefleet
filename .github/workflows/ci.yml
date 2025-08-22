@@ -140,9 +140,9 @@ jobs:
       - name: Run e2e tests
         run: |
           if [ "${{ matrix.customized-settings }}" = "default" ]; then
-            make e2e-tests LABEL_FILTER="!custom && !joinleave && !rp"
+            make e2e-tests LABEL_FILTER="!custom && !joinleave && !resourceplacement"
           elif [ "${{ matrix.customized-settings }}" = "resourceplacement" ]; then
-            make e2e-tests LABEL_FILTER="!custom && rp"
+            make e2e-tests LABEL_FILTER="!custom && resourceplacement"
           elif [ "${{ matrix.customized-settings }}" = "joinleave" ]; then
             make e2e-tests LABEL_FILTER="!custom && joinleave"
           else

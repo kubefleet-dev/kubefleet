@@ -47,7 +47,7 @@ test suites, follow the steps below:
 
    or run tests related to resourcePlacement (rp) only with the following command:
    ```sh
-   ginkgo --label-filter="rp" -v -p .
+   ginkgo --label-filter="resourceplacement" -v -p .
    ```
 
    or create a launch.json in your vscode workspace.
