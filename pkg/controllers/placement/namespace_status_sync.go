@@ -20,9 +20,7 @@ import (
 	"context"
 	"fmt"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -71,58 +69,28 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 	}
 
 	// Try to get the existing ClusterResourcePlacementStatus
-	crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
-	if err := r.Client.Get(ctx, types.NamespacedName{Name: crp.Name, Namespace: targetNamespace}, crpStatus); err != nil {
-		if apierrors.IsNotFound(err) {
-			// Object doesn't exist, create it.
-			crpStatus = &placementv1beta1.ClusterResourcePlacementStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      crp.Name, // Same name as CRP
-					Namespace: targetNamespace,
-				},
-				// Don't set Status here - it will be updated separately after creation
-			}
-
-			// Set CRP as owner - this ensures automatic cleanup when CRP is deleted
-			if err := controllerutil.SetControllerReference(crp, crpStatus, r.Scheme); err != nil {
-				klog.ErrorS(err, "Failed to set controller reference", "crp", klog.KObj(crp), "namespace", targetNamespace)
-				return fmt.Errorf("failed to set controller reference: %w", err)
-			}
-
-			if err := r.Client.Create(ctx, crpStatus); err != nil {
-				klog.ErrorS(err, "Failed to create ClusterResourcePlacementStatus", "crp", klog.KObj(crp), "namespace", targetNamespace)
-				return fmt.Errorf("failed to create ClusterResourcePlacementStatus: %w", err)
-			}
-
-			klog.V(2).InfoS("Created ClusterResourcePlacementStatus with owner reference", "crp", klog.KObj(crp), "namespace", targetNamespace)
-
-			// Fetch the created object fresh to get the correct metadata for status update
-			if err := r.Client.Get(ctx, types.NamespacedName{Name: crp.Name, Namespace: targetNamespace}, crpStatus); err != nil {
-				klog.ErrorS(err, "Failed to get ClusterResourcePlacementStatus after creation", "crp", klog.KObj(crp), "namespace", targetNamespace)
-				return fmt.Errorf("failed to get ClusterResourcePlacementStatus after creation: %w", err)
-			}
-
-			// Now update the status separately
-			crpStatus.Status = *crp.Status.DeepCopy()
-			if err := r.Client.Status().Update(ctx, crpStatus); err != nil {
-				klog.ErrorS(err, "Failed to update ClusterResourcePlacementStatus status after creation", "crp", klog.KObj(crp), "namespace", targetNamespace)
-				return fmt.Errorf("failed to update ClusterResourcePlacementStatus status: %w", err)
-			}
-
-			klog.V(2).InfoS("Updated ClusterResourcePlacementStatus status after creation", "crp", klog.KObj(crp), "namespace", targetNamespace)
-			return nil
-		}
-		klog.ErrorS(err, "Failed to get ClusterResourcePlacementStatus", "crp", klog.KObj(crp), "namespace", targetNamespace)
-		return fmt.Errorf("failed to get ClusterResourcePlacementStatus: %w", err)
+	crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      crp.Name, // Same name as CRP
+			Namespace: targetNamespace,
+		},
 	}
 
-	// Object exists, update it.
-	crpStatus.Status = *crp.Status.DeepCopy()
-	if err := r.Client.Status().Update(ctx, crpStatus); err != nil {
-		klog.ErrorS(err, "Failed to update ClusterResourcePlacementStatus", "crp", klog.KObj(crp), "namespace", targetNamespace)
-		return fmt.Errorf("failed to update ClusterResourcePlacementStatus: %w", err)
+	// Use CreateOrUpdate to handle both creation and update cases
+	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, crpStatus, func() error {
+		// Set the placement status and update time
+		crpStatus.PlacementStatus = *crp.Status.DeepCopy()
+		crpStatus.LastUpdatedTime = metav1.Now()
+
+		// Set CRP as owner - this ensures automatic cleanup when CRP is deleted
+		return controllerutil.SetControllerReference(crp, crpStatus, r.Scheme)
+	})
+
+	if err != nil {
+		klog.ErrorS(err, "Failed to create or update ClusterResourcePlacementStatus", "crp", klog.KObj(crp), "namespace", targetNamespace)
+		return fmt.Errorf("failed to create or update ClusterResourcePlacementStatus: %w", err)
 	}
 
-	klog.V(2).InfoS("Updated ClusterResourcePlacementStatus", "crp", klog.KObj(crp), "namespace", targetNamespace)
+	klog.V(2).InfoS("Successfully handled ClusterResourcePlacementStatus", "crp", klog.KObj(crp), "namespace", targetNamespace, "operation", op)
 	return nil
 }

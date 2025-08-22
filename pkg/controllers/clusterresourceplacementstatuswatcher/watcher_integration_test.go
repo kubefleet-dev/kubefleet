@@ -82,9 +82,10 @@ var _ = Describe("Test ClusterResourcePlacementStatus Watcher - delete events", 
 						},
 					},
 				},
-				Status: fleetv1beta1.PlacementStatus{
+				PlacementStatus: fleetv1beta1.PlacementStatus{
 					ObservedResourceIndex: "0",
 				},
+				LastUpdatedTime: metav1.Now(),
 			}
 			Expect(k8sClient.Create(ctx, crps)).Should(Succeed(), "failed to create ClusterResourcePlacementStatus")
 
@@ -144,9 +145,10 @@ var _ = Describe("Test ClusterResourcePlacementStatus Watcher - delete events", 
 						},
 					},
 				},
-				Status: fleetv1beta1.PlacementStatus{
+				PlacementStatus: fleetv1beta1.PlacementStatus{
 					ObservedResourceIndex: "0",
 				},
+				LastUpdatedTime: metav1.Now(),
 			}
 			Expect(k8sClient.Create(ctx, crps)).Should(Succeed(), "failed to create ClusterResourcePlacementStatus")
 
@@ -178,9 +180,10 @@ var _ = Describe("Test ClusterResourcePlacementStatus Watcher - delete events", 
 					Name:      "non-existent-crp",
 					Namespace: testNamespace,
 				},
-				Status: fleetv1beta1.PlacementStatus{
+				PlacementStatus: fleetv1beta1.PlacementStatus{
 					ObservedResourceIndex: "0",
 				},
+				LastUpdatedTime: metav1.Now(),
 			}
 			Expect(k8sClient.Create(ctx, crps)).Should(Succeed(), "failed to create ClusterResourcePlacementStatus")
 

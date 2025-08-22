@@ -200,9 +200,10 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 						Name:      "test-crp",
 						Namespace: "test-namespace",
 					},
-					Status: placementv1beta1.PlacementStatus{
+					PlacementStatus: placementv1beta1.PlacementStatus{
 						ObservedResourceIndex: "old-index",
 					},
+					LastUpdatedTime: metav1.Now(),
 				},
 			},
 			want: expectUpdate,
@@ -255,7 +256,6 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 			fakeClient := fake.NewClientBuilder().
 				WithScheme(scheme).
 				WithObjects(tc.existingObjects...).
-				WithStatusSubresource(&placementv1beta1.ClusterResourcePlacementStatus{}).
 				Build()
 
 			reconciler := &Reconciler{
@@ -301,12 +301,17 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 						Name:      crp.Name,
 						Namespace: targetNamespace,
 					},
-					Status: crp.Status,
+					PlacementStatus: crp.Status,
 				}
 
-				// Ignore metadata fields that Kubernetes sets automatically
-				if diff := cmp.Diff(wantStatus, *crpStatus, cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion", "UID", "CreationTimestamp", "Generation", "ManagedFields", "OwnerReferences")); diff != "" {
+				// Ignore metadata fields that Kubernetes sets automatically and LastUpdatedTime since it's time-dependent
+				if diff := cmp.Diff(wantStatus, *crpStatus, cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion", "UID", "CreationTimestamp", "Generation", "ManagedFields", "OwnerReferences"), cmpopts.IgnoreFields(placementv1beta1.ClusterResourcePlacementStatus{}, "LastUpdatedTime")); diff != "" {
 					t.Errorf("ClusterResourcePlacementStatus mismatch (-want +got):\n%s", diff)
+				}
+
+				// Verify LastUpdatedTime is set
+				if crpStatus.LastUpdatedTime.IsZero() {
+					t.Error("Expected LastUpdatedTime to be set, but it was zero")
 				}
 
 				// Verify owner reference is set correctly for creation case

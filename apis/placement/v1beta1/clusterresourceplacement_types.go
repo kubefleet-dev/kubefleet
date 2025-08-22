@@ -1613,12 +1613,14 @@ func (rpl *ResourcePlacementList) GetPlacementObjs() []PlacementObj {
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope="Namespaced",shortName=crps,categories={fleet,fleet-placement}
 // +kubebuilder:storageversion
-// +kubebuilder:printcolumn:JSONPath=`.status.observedResourceIndex`,name="Resource-Index",type=string
+// +kubebuilder:printcolumn:JSONPath=`.statusReplica.observedResourceIndex`,name="Resource-Index",type=string
+// +kubebuilder:printcolumn:JSONPath=`.lastUpdatedTime`,name="Last-Updated",type=string
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // ClusterResourcePlacementStatus is a namespaced resource that mirrors the PlacementStatus of a corresponding
 // ClusterResourcePlacement object. This allows namespace-scoped access to cluster-scoped placement status.
+// The LastUpdatedTime field is automatically updated whenever the CRPS object is modified.
 //
 // This object will be created within the target namespace that contains resources being managed by the CRP.
 // When multiple ClusterResourcePlacements target the same namespace, each ClusterResourcePlacementStatus within that
@@ -1634,7 +1636,8 @@ type ClusterResourcePlacementStatus struct {
 	// +kubebuilder:validation:Required
 	PlacementStatus `json:"statusReplica,omitempty"`
 
-	// ObservationTime is the time when we observe the configuration drifts for the resource.
+	// LastUpdatedTime is the timestamp when this CRPS object was last updated.
+	// This field is automatically set to the current time whenever the CRPS object is created or modified.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:Format=date-time
