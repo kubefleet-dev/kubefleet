@@ -1465,12 +1465,17 @@ func checkIfStatusErrorWithMessage(err error, errorMsg string) error {
 	return fmt.Errorf("error message %s not found in error %w", errorMsg, err)
 }
 
-// buildOwnerReference builds an owner reference given a cluster and a CRP name.
+// buildOwnerReference builds an owner reference given a cluster and a placement name.
 //
-// This function assumes that the CRP has only one associated Work object (no resource snapshot
+// This function assumes that the placement has only one associated Work object (no resource snapshot
 // sub-index, no envelope object used).
-func buildOwnerReference(cluster *framework.Cluster, crpName string) *metav1.OwnerReference {
-	workName := fmt.Sprintf("%s-work", crpName)
+func buildOwnerReference(cluster *framework.Cluster, placementName, placementNamespace string) *metav1.OwnerReference {
+	var workName string
+	if placementNamespace == "" {
+		workName = fmt.Sprintf("%s-work", placementName)
+	} else {
+		workName = fmt.Sprintf("%s.%s-work", placementNamespace, placementName)
+	}
 
 	appliedWork := placementv1beta1.AppliedWork{}
 	Expect(cluster.KubeClient.Get(ctx, types.NamespacedName{Name: workName}, &appliedWork)).Should(Succeed(), "Failed to get applied work object")

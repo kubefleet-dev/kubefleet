@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workapplier"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
@@ -27,26 +28,18 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workapplier"
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
 )
 
-var (
-	unmanagedLabelKey    = "foo"
-	unmanagedLabelVal1   = "bar"
-	managedDataFieldKey  = "data"
-	managedDataFieldVal1 = "custom-1"
-	managedDataFieldVal2 = "custom-2"
-)
-
-var _ = Describe("take over existing resources", func() {
+var _ = Describe("take over existing resources using RP", func() {
 	Context("always take over", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 
 		var existingNS *corev1.Namespace
 
@@ -69,24 +62,74 @@ var _ = Describe("take over existing resources", func() {
 				managedDataFieldKey: managedDataFieldVal1,
 			}
 			Expect(memberCluster1EastProdClient.Create(ctx, &cm)).To(Succeed())
-
 			applyStrategy := &placementv1beta1.ApplyStrategy{
 				ComparisonOption: placementv1beta1.ComparisonOptionTypePartialComparison,
 				WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeAlways,
 			}
-			createCRPWithApplyStrategy(crpName, applyStrategy, nil)
+
+			// Create the CRP with Namespace-only selector with apply strategy
+			crp := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+					// Add a custom finalizer; this would allow us to better observe
+					// the behavior of the controllers.
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: namespaceOnlySelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+						ApplyStrategy: applyStrategy,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
+
+			// Create the RP in the same namespace selecting namespaced resources
+			// with apply strategy.
+			rp := &placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       rpName,
+					Namespace:  nsName,
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: configMapSelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+						ApplyStrategy: applyStrategy,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create RP")
 		})
 
 		It("should update CRP status as expected", func() {
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0")
+			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "0")
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("should update RP status as expected", func() {
+			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), allMemberClusterNames, nil, "0")
+			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
 		It("should take over the existing resources on clusters", func() {
 			expectedOwnerRef := buildOwnerReference(memberCluster1EastProd, crpName, "")
 
 			ns := &corev1.Namespace{}
-			nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 			Expect(memberCluster1EastProdClient.Get(ctx, client.ObjectKey{Name: nsName}, ns)).To(Succeed())
 
 			wantNS := existingNS.DeepCopy()
@@ -107,6 +150,8 @@ var _ = Describe("take over existing resources", func() {
 			)
 			Expect(diff).To(BeEmpty(), "Namespace diff (-got +want):\n%s", diff)
 
+			expectedOwnerRef = buildOwnerReference(memberCluster1EastProd, rpName, nsName)
+
 			cm := &corev1.ConfigMap{}
 			cmName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
 			Expect(memberCluster1EastProdClient.Get(ctx, client.ObjectKey{Name: cmName, Namespace: nsName}, cm)).To(Succeed())
@@ -115,7 +160,7 @@ var _ = Describe("take over existing resources", func() {
 			wantCM := appConfigMap()
 			wantCM.OwnerReferences = []metav1.OwnerReference{*expectedOwnerRef}
 
-			// No need to use an Eventually block as this spec runs after the CRP status has been verified.
+			// No need to use an Eventually block as this spec runs after the RP status has been verified.
 			diff = cmp.Diff(
 				cm, &wantCM,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
@@ -138,12 +183,14 @@ var _ = Describe("take over existing resources", func() {
 		})
 
 		AfterAll(func() {
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 	})
 
 	Context("take over if no diff, partial comparison", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 		cmName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
 
@@ -174,19 +221,71 @@ var _ = Describe("take over existing resources", func() {
 				ComparisonOption: placementv1beta1.ComparisonOptionTypePartialComparison,
 				WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeIfNoDiff,
 			}
-			createCRPWithApplyStrategy(crpName, applyStrategy, nil)
+
+			// Create the CRP with Namespace-only selector with apply strategy
+			crp := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+					// Add a custom finalizer; this would allow us to better observe
+					// the behavior of the controllers.
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: namespaceOnlySelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+						ApplyStrategy: applyStrategy,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
+
+			// Create the RP in the same namespace selecting namespaced resources
+			// with apply strategy.
+			rp := &placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       rpName,
+					Namespace:  nsName,
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: configMapSelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+						ApplyStrategy: applyStrategy,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create RP")
 		})
 
 		It("should update CRP status as expected", func() {
-			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.PlacementStatus {
+			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "0")
+			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("should update RP status as expected", func() {
+			buildWantRPStatus := func(rpGeneration int64) *placementv1beta1.PlacementStatus {
 				return &placementv1beta1.PlacementStatus{
-					Conditions:        crpAppliedFailedConditions(crpGeneration),
-					SelectedResources: workResourceIdentifiers(),
+					Conditions:        rpAppliedFailedConditions(rpGeneration),
+					SelectedResources: appConfigMapIdentifiers(),
 					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           memberCluster1EastProdName,
 							ObservedResourceIndex: "0",
-							Conditions:            perClusterApplyFailedConditions(crpGeneration),
+							Conditions:            perClusterApplyFailedConditions(rpGeneration),
 							FailedPlacements: []placementv1beta1.FailedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -225,12 +324,12 @@ var _ = Describe("take over existing resources", func() {
 						{
 							ClusterName:           memberCluster2EastCanaryName,
 							ObservedResourceIndex: "0",
-							Conditions:            perClusterRolloutCompletedConditions(crpGeneration, true, false),
+							Conditions:            perClusterRolloutCompletedConditions(rpGeneration, true, false),
 						},
 						{
 							ClusterName:           memberCluster3WestProdName,
 							ObservedResourceIndex: "0",
-							Conditions:            perClusterRolloutCompletedConditions(crpGeneration, true, false),
+							Conditions:            perClusterRolloutCompletedConditions(rpGeneration, true, false),
 						},
 					},
 					ObservedResourceIndex: "0",
@@ -238,17 +337,17 @@ var _ = Describe("take over existing resources", func() {
 			}
 
 			Eventually(func() error {
-				crp := &placementv1beta1.ClusterResourcePlacement{}
-				if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+				rp := &placementv1beta1.ResourcePlacement{}
+				if err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: nsName}, rp); err != nil {
 					return err
 				}
-				wantCRPStatus := buildWantCRPStatus(crp.Generation)
+				wantRPStatus := buildWantRPStatus(rp.Generation)
 
-				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
-					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
+				if diff := cmp.Diff(rp.Status, *wantRPStatus, placementStatusCmpOptions...); diff != "" {
+					return fmt.Errorf("RP status diff (-got, +want): %s", diff)
 				}
 				return nil
-			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
 		It("should take over existing resources with no diff on clusters", func() {
@@ -287,7 +386,7 @@ var _ = Describe("take over existing resources", func() {
 				managedDataFieldKey: managedDataFieldVal1,
 			}
 
-			// No need to use an Eventually block as this spec runs after the CRP status has been verified.
+			// No need to use an Eventually block as this spec runs after the RP status has been verified.
 			diff := cmp.Diff(
 				cm, &wantCM,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
@@ -310,12 +409,16 @@ var _ = Describe("take over existing resources", func() {
 		})
 
 		AfterAll(func() {
+			// The pre-existing namespace has not been taken over and must be deleted manually.
+			cleanWorkResourcesOnCluster(memberCluster1EastProd)
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters[1:])
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 	})
 
 	Context("take over if no diff, full comparison", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 		cmName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
 
@@ -346,14 +449,61 @@ var _ = Describe("take over existing resources", func() {
 				ComparisonOption: placementv1beta1.ComparisonOptionTypeFullComparison,
 				WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeIfNoDiff,
 			}
-			createCRPWithApplyStrategy(crpName, applyStrategy, nil)
+
+			// Create the CRP with Namespace-only selector with apply strategy
+			crp := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+					// Add a custom finalizer; this would allow us to better observe
+					// the behavior of the controllers.
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: namespaceOnlySelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+						ApplyStrategy: applyStrategy,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
+
+			// Create the RP in the same namespace selecting namespaced resources
+			// with apply strategy.
+			rp := &placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       rpName,
+					Namespace:  nsName,
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: configMapSelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+						ApplyStrategy: applyStrategy,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create RP")
 		})
 
 		It("should update CRP status as expected", func() {
 			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.PlacementStatus {
 				return &placementv1beta1.PlacementStatus{
 					Conditions:        crpAppliedFailedConditions(crpGeneration),
-					SelectedResources: workResourceIdentifiers(),
+					SelectedResources: workNamespaceIdentifiers(),
 					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           memberCluster1EastProdName,
@@ -365,20 +515,6 @@ var _ = Describe("take over existing resources", func() {
 										Version: "v1",
 										Kind:    "Namespace",
 										Name:    nsName,
-									},
-									Condition: metav1.Condition{
-										Type:               string(placementv1beta1.PerClusterAppliedConditionType),
-										Status:             metav1.ConditionFalse,
-										ObservedGeneration: 0,
-										Reason:             string(workapplier.ApplyOrReportDiffResTypeFailedToTakeOver),
-									},
-								},
-								{
-									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-										Version:   "v1",
-										Kind:      "ConfigMap",
-										Name:      cmName,
-										Namespace: nsName,
 									},
 									Condition: metav1.Condition{
 										Type:               string(placementv1beta1.PerClusterAppliedConditionType),
@@ -400,22 +536,6 @@ var _ = Describe("take over existing resources", func() {
 										{
 											Path:          fmt.Sprintf("/metadata/labels/%s", unmanagedLabelKey),
 											ValueInMember: unmanagedLabelVal1,
-										},
-									},
-								},
-								{
-									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-										Version:   "v1",
-										Kind:      "ConfigMap",
-										Name:      cmName,
-										Namespace: nsName,
-									},
-									TargetClusterObservedGeneration: ptr.To(int64(0)),
-									ObservedDiffs: []placementv1beta1.PatchDetail{
-										{
-											Path:          "/data/data",
-											ValueInMember: managedDataFieldVal1,
-											ValueInHub:    "test",
 										},
 									},
 								},
@@ -448,6 +568,80 @@ var _ = Describe("take over existing resources", func() {
 				}
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("should update RP status as expected", func() {
+			buildWantRPStatus := func(rpGeneration int64) *placementv1beta1.PlacementStatus {
+				return &placementv1beta1.PlacementStatus{
+					Conditions:        rpAppliedFailedConditions(rpGeneration),
+					SelectedResources: appConfigMapIdentifiers(),
+					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+						{
+							ClusterName:           memberCluster1EastProdName,
+							ObservedResourceIndex: "0",
+							Conditions:            perClusterApplyFailedConditions(rpGeneration),
+							FailedPlacements: []placementv1beta1.FailedResourcePlacement{
+								{
+									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
+										Version:   "v1",
+										Kind:      "ConfigMap",
+										Name:      cmName,
+										Namespace: nsName,
+									},
+									Condition: metav1.Condition{
+										Type:               string(placementv1beta1.PerClusterAppliedConditionType),
+										Status:             metav1.ConditionFalse,
+										ObservedGeneration: 0,
+										Reason:             string(workapplier.ApplyOrReportDiffResTypeFailedToTakeOver),
+									},
+								},
+							},
+							DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
+								{
+									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
+										Version:   "v1",
+										Kind:      "ConfigMap",
+										Name:      cmName,
+										Namespace: nsName,
+									},
+									TargetClusterObservedGeneration: ptr.To(int64(0)),
+									ObservedDiffs: []placementv1beta1.PatchDetail{
+										{
+											Path:          "/data/data",
+											ValueInMember: managedDataFieldVal1,
+											ValueInHub:    "test",
+										},
+									},
+								},
+							},
+						},
+						{
+							ClusterName:           memberCluster2EastCanaryName,
+							ObservedResourceIndex: "0",
+							Conditions:            perClusterRolloutCompletedConditions(rpGeneration, true, false),
+						},
+						{
+							ClusterName:           memberCluster3WestProdName,
+							ObservedResourceIndex: "0",
+							Conditions:            perClusterRolloutCompletedConditions(rpGeneration, true, false),
+						},
+					},
+					ObservedResourceIndex: "0",
+				}
+			}
+
+			Eventually(func() error {
+				rp := &placementv1beta1.ResourcePlacement{}
+				if err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: nsName}, rp); err != nil {
+					return err
+				}
+				wantRPStatus := buildWantRPStatus(rp.Generation)
+
+				if diff := cmp.Diff(rp.Status, *wantRPStatus, placementStatusCmpOptions...); diff != "" {
+					return fmt.Errorf("RP status diff (-got, +want): %s", diff)
+				}
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
 		It("should not take over existing resources with diff on clusters", func() {
@@ -506,15 +700,17 @@ var _ = Describe("take over existing resources", func() {
 		AfterAll(func() {
 			// The pre-existing namespace has not been taken over and must be deleted manually.
 			cleanWorkResourcesOnCluster(memberCluster1EastProd)
-
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 	})
 })
 
-var _ = Describe("detect drifts on placed resources", func() {
+var _ = Describe("detect drifts on placed resources using RP", func() {
+	//TODO: Comeback to this test since it keeps failing.
 	Context("always apply, full comparison", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 		cmName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
 
@@ -526,12 +722,63 @@ var _ = Describe("detect drifts on placed resources", func() {
 				ComparisonOption: placementv1beta1.ComparisonOptionTypeFullComparison,
 				WhenToApply:      placementv1beta1.WhenToApplyTypeAlways,
 			}
-			createCRPWithApplyStrategy(crpName, applyStrategy, nil)
+			// Create the CRP with Namespace-only selector with apply strategy
+			crp := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+					// Add a custom finalizer; this would allow us to better observe
+					// the behavior of the controllers.
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: namespaceOnlySelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+						ApplyStrategy: applyStrategy,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
+
+			// Create the RP in the same namespace selecting namespaced resources
+			// with apply strategy.
+			rp := &placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       rpName,
+					Namespace:  nsName,
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: configMapSelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+						ApplyStrategy: applyStrategy,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create RP")
 		})
 
 		It("should update CRP status as expected", func() {
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0")
+			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "0")
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("should update RP status as expected", func() {
+			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), allMemberClusterNames, nil, "0")
+			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
 		It("can edit the placed resources on clusters", func() {
@@ -558,7 +805,7 @@ var _ = Describe("detect drifts on placed resources", func() {
 			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.PlacementStatus {
 				return &placementv1beta1.PlacementStatus{
 					Conditions:        crpRolloutCompletedConditions(crpGeneration, false),
-					SelectedResources: workResourceIdentifiers(),
+					SelectedResources: workNamespaceIdentifiers(),
 					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           memberCluster1EastProdName,
@@ -613,8 +860,13 @@ var _ = Describe("detect drifts on placed resources", func() {
 			}, eventuallyDuration*3, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
+		It("should update RP status as expected", func() {
+			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), allMemberClusterNames, nil, "0")
+			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
+		})
+
 		It("should overwrite drifts on managed fields", func() {
-			expectedOwnerRef := buildOwnerReference(memberCluster1EastProd, crpName, "")
+			expectedOwnerRef := buildOwnerReference(memberCluster1EastProd, rpName, nsName)
 
 			cm := &corev1.ConfigMap{}
 			Expect(memberCluster1EastProdClient.Get(ctx, client.ObjectKey{Name: cmName, Namespace: nsName}, cm)).To(Succeed())
@@ -648,12 +900,14 @@ var _ = Describe("detect drifts on placed resources", func() {
 		})
 
 		AfterAll(func() {
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 	})
 
 	Context("apply if no drift, partial comparison", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 		cmName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
 
@@ -665,12 +919,64 @@ var _ = Describe("detect drifts on placed resources", func() {
 				ComparisonOption: placementv1beta1.ComparisonOptionTypePartialComparison,
 				WhenToApply:      placementv1beta1.WhenToApplyTypeIfNotDrifted,
 			}
-			createCRPWithApplyStrategy(crpName, applyStrategy, nil)
+
+			// Create the CRP with Namespace-only selector with apply strategy
+			crp := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+					// Add a custom finalizer; this would allow us to better observe
+					// the behavior of the controllers.
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: namespaceOnlySelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+						ApplyStrategy: applyStrategy,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
+
+			// Create the RP in the same namespace selecting namespaced resources
+			// with apply strategy.
+			rp := &placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       rpName,
+					Namespace:  nsName,
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: configMapSelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+						ApplyStrategy: applyStrategy,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create RP")
 		})
 
 		It("should update CRP status as expected", func() {
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0")
+			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "0")
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("should update RP status as expected", func() {
+			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), allMemberClusterNames, nil, "0")
+			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
 		It("can edit the placed resources on clusters", func() {
@@ -694,15 +1000,20 @@ var _ = Describe("detect drifts on placed resources", func() {
 		})
 
 		It("should update CRP status as expected", func() {
-			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.PlacementStatus {
+			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "0")
+			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("should update RP status as expected", func() {
+			buildWantRPStatus := func(rpGeneration int64) *placementv1beta1.PlacementStatus {
 				return &placementv1beta1.PlacementStatus{
-					Conditions:        crpAppliedFailedConditions(crpGeneration),
-					SelectedResources: workResourceIdentifiers(),
+					Conditions:        rpAppliedFailedConditions(rpGeneration),
+					SelectedResources: appConfigMapIdentifiers(),
 					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           memberCluster1EastProdName,
 							ObservedResourceIndex: "0",
-							Conditions:            perClusterApplyFailedConditions(crpGeneration),
+							Conditions:            perClusterApplyFailedConditions(rpGeneration),
 							FailedPlacements: []placementv1beta1.FailedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -741,12 +1052,12 @@ var _ = Describe("detect drifts on placed resources", func() {
 						{
 							ClusterName:           memberCluster2EastCanaryName,
 							ObservedResourceIndex: "0",
-							Conditions:            perClusterRolloutCompletedConditions(crpGeneration, true, false),
+							Conditions:            perClusterRolloutCompletedConditions(rpGeneration, true, false),
 						},
 						{
 							ClusterName:           memberCluster3WestProdName,
 							ObservedResourceIndex: "0",
-							Conditions:            perClusterRolloutCompletedConditions(crpGeneration, true, false),
+							Conditions:            perClusterRolloutCompletedConditions(rpGeneration, true, false),
 						},
 					},
 					ObservedResourceIndex: "0",
@@ -754,19 +1065,19 @@ var _ = Describe("detect drifts on placed resources", func() {
 			}
 
 			Eventually(func() error {
-				crp := &placementv1beta1.ClusterResourcePlacement{}
-				if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+				rp := &placementv1beta1.ResourcePlacement{}
+				if err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: nsName}, rp); err != nil {
 					return err
 				}
-				wantCRPStatus := buildWantCRPStatus(crp.Generation)
+				wantRPStatus := buildWantRPStatus(rp.Generation)
 
-				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
-					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
+				if diff := cmp.Diff(rp.Status, *wantRPStatus, placementStatusCmpOptions...); diff != "" {
+					return fmt.Errorf("RP status diff (-got, +want): %s", diff)
 				}
 				return nil
 				// Use a longer eventually timeout, as the Fleet is set to detect drifts
 				// every 15 seconds by default.
-			}, eventuallyDuration*3, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+			}, eventuallyDuration*3, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
 		It("should not overwrite drifts on fields", func() {
@@ -796,6 +1107,8 @@ var _ = Describe("detect drifts on placed resources", func() {
 			)
 			Expect(diff).To(BeEmpty(), "Namespace diff (-got +want):\n%s", diff)
 
+			expectedOwnerRef = buildOwnerReference(memberCluster1EastProd, rpName, nsName)
+
 			cm := &corev1.ConfigMap{}
 			Expect(memberCluster1EastProdClient.Get(ctx, client.ObjectKey{Name: cmName, Namespace: nsName}, cm)).To(Succeed())
 
@@ -809,7 +1122,7 @@ var _ = Describe("detect drifts on placed resources", func() {
 				*expectedOwnerRef,
 			}
 
-			// No need to use an Eventually block as this spec runs after the CRP status has been verified.
+			// No need to use an Eventually block as this spec runs after the RP status has been verified.
 			diff = cmp.Diff(
 				cm, &wantCM,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
@@ -832,12 +1145,14 @@ var _ = Describe("detect drifts on placed resources", func() {
 		})
 
 		AfterAll(func() {
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 	})
 
 	Context("apply if no drift, full comparison", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 		cmName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
 
@@ -849,12 +1164,64 @@ var _ = Describe("detect drifts on placed resources", func() {
 				ComparisonOption: placementv1beta1.ComparisonOptionTypeFullComparison,
 				WhenToApply:      placementv1beta1.WhenToApplyTypeIfNotDrifted,
 			}
-			createCRPWithApplyStrategy(crpName, applyStrategy, nil)
+
+			// Create the CRP with Namespace-only selector with apply strategy
+			crp := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+					// Add a custom finalizer; this would allow us to better observe
+					// the behavior of the controllers.
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: namespaceOnlySelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+						ApplyStrategy: applyStrategy,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
+
+			// Create the RP in the same namespace selecting namespaced resources
+			// with apply strategy.
+			rp := &placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       rpName,
+					Namespace:  nsName,
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: configMapSelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+						ApplyStrategy: applyStrategy,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create RP")
 		})
 
 		It("should update CRP status as expected", func() {
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0")
+			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "0")
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("should update RP status as expected", func() {
+			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), allMemberClusterNames, nil, "0")
+			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
 		It("can edit the placed resources on clusters", func() {
@@ -881,7 +1248,7 @@ var _ = Describe("detect drifts on placed resources", func() {
 			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.PlacementStatus {
 				return &placementv1beta1.PlacementStatus{
 					Conditions:        crpAppliedFailedConditions(crpGeneration),
-					SelectedResources: workResourceIdentifiers(),
+					SelectedResources: workNamespaceIdentifiers(),
 					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           memberCluster1EastProdName,
@@ -893,20 +1260,6 @@ var _ = Describe("detect drifts on placed resources", func() {
 										Version: "v1",
 										Kind:    "Namespace",
 										Name:    nsName,
-									},
-									Condition: metav1.Condition{
-										Type:               string(placementv1beta1.PerClusterAppliedConditionType),
-										Status:             metav1.ConditionFalse,
-										ObservedGeneration: 0,
-										Reason:             string(workapplier.ApplyOrReportDiffResTypeFoundDrifts),
-									},
-								},
-								{
-									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-										Version:   "v1",
-										Kind:      "ConfigMap",
-										Name:      cmName,
-										Namespace: nsName,
 									},
 									Condition: metav1.Condition{
 										Type:               string(placementv1beta1.PerClusterAppliedConditionType),
@@ -931,22 +1284,6 @@ var _ = Describe("detect drifts on placed resources", func() {
 										},
 									},
 								},
-								{
-									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-										Version:   "v1",
-										Kind:      "ConfigMap",
-										Name:      cmName,
-										Namespace: nsName,
-									},
-									TargetClusterObservedGeneration: 0,
-									ObservedDrifts: []placementv1beta1.PatchDetail{
-										{
-											Path:          fmt.Sprintf("/data/%s", managedDataFieldKey),
-											ValueInMember: managedDataFieldVal1,
-											ValueInHub:    "test",
-										},
-									},
-								},
 							},
 						},
 						{
@@ -980,6 +1317,82 @@ var _ = Describe("detect drifts on placed resources", func() {
 			}, eventuallyDuration*3, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
+		It("should update RP status as expected", func() {
+			buildWantRPStatus := func(rpGeneration int64) *placementv1beta1.PlacementStatus {
+				return &placementv1beta1.PlacementStatus{
+					Conditions:        rpAppliedFailedConditions(rpGeneration),
+					SelectedResources: appConfigMapIdentifiers(),
+					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+						{
+							ClusterName:           memberCluster1EastProdName,
+							ObservedResourceIndex: "0",
+							Conditions:            perClusterApplyFailedConditions(rpGeneration),
+							FailedPlacements: []placementv1beta1.FailedResourcePlacement{
+								{
+									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
+										Version:   "v1",
+										Kind:      "ConfigMap",
+										Name:      cmName,
+										Namespace: nsName,
+									},
+									Condition: metav1.Condition{
+										Type:               string(placementv1beta1.PerClusterAppliedConditionType),
+										Status:             metav1.ConditionFalse,
+										ObservedGeneration: 0,
+										Reason:             string(workapplier.ApplyOrReportDiffResTypeFoundDrifts),
+									},
+								},
+							},
+							DriftedPlacements: []placementv1beta1.DriftedResourcePlacement{
+								{
+									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
+										Version:   "v1",
+										Kind:      "ConfigMap",
+										Name:      cmName,
+										Namespace: nsName,
+									},
+									TargetClusterObservedGeneration: 0,
+									ObservedDrifts: []placementv1beta1.PatchDetail{
+										{
+											Path:          fmt.Sprintf("/data/%s", managedDataFieldKey),
+											ValueInMember: managedDataFieldVal1,
+											ValueInHub:    "test",
+										},
+									},
+								},
+							},
+						},
+						{
+							ClusterName:           memberCluster2EastCanaryName,
+							ObservedResourceIndex: "0",
+							Conditions:            perClusterRolloutCompletedConditions(rpGeneration, true, false),
+						},
+						{
+							ClusterName:           memberCluster3WestProdName,
+							ObservedResourceIndex: "0",
+							Conditions:            perClusterRolloutCompletedConditions(rpGeneration, true, false),
+						},
+					},
+					ObservedResourceIndex: "0",
+				}
+			}
+
+			Eventually(func() error {
+				rp := &placementv1beta1.ResourcePlacement{}
+				if err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: nsName}, rp); err != nil {
+					return err
+				}
+				wantRPStatus := buildWantRPStatus(rp.Generation)
+
+				if diff := cmp.Diff(rp.Status, *wantRPStatus, placementStatusCmpOptions...); diff != "" {
+					return fmt.Errorf("RP status diff (-got, +want): %s", diff)
+				}
+				return nil
+				// Use a longer eventually timeout, as the Fleet is set to detect drifts
+				// every 15 seconds by default.
+			}, eventuallyDuration*3, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
+		})
+
 		It("should not overwrite drifts on fields", func() {
 			expectedOwnerRef := buildOwnerReference(memberCluster1EastProd, crpName, "")
 
@@ -1006,6 +1419,8 @@ var _ = Describe("detect drifts on placed resources", func() {
 				ignoreObjectMetaAnnotationField,
 			)
 			Expect(diff).To(BeEmpty(), "Namespace diff (-got +want):\n%s", diff)
+
+			expectedOwnerRef = buildOwnerReference(memberCluster1EastProd, rpName, nsName)
 
 			cm := &corev1.ConfigMap{}
 			Expect(memberCluster1EastProdClient.Get(ctx, client.ObjectKey{Name: cmName, Namespace: nsName}, cm)).To(Succeed())
@@ -1043,14 +1458,16 @@ var _ = Describe("detect drifts on placed resources", func() {
 		})
 
 		AfterAll(func() {
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 	})
 })
 
-var _ = Describe("report diff mode", func() {
+var _ = Describe("report diff mode using RP", func() {
 	Context("do not touch anything", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 		cmName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
 
@@ -1079,14 +1496,60 @@ var _ = Describe("report diff mode", func() {
 				Type:             placementv1beta1.ApplyStrategyTypeReportDiff,
 				WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeNever,
 			}
-			createCRPWithApplyStrategy(crpName, applyStrategy, nil)
+			// Create the CRP with Namespace-only selector with apply strategy
+			crp := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+					// Add a custom finalizer; this would allow us to better observe
+					// the behavior of the controllers.
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: namespaceOnlySelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+						ApplyStrategy: applyStrategy,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
+
+			// Create the RP in the same namespace selecting namespaced resources
+			// with apply strategy.
+			rp := &placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       rpName,
+					Namespace:  nsName,
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: configMapSelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+						ApplyStrategy: applyStrategy,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create RP")
 		})
 
 		It("should update CRP status as expected", func() {
 			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.PlacementStatus {
 				return &placementv1beta1.PlacementStatus{
 					Conditions:        crpDiffReportedConditions(crpGeneration, false),
-					SelectedResources: workResourceIdentifiers(),
+					SelectedResources: workNamespaceIdentifiers(),
 					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           memberCluster1EastProdName,
@@ -1108,22 +1571,6 @@ var _ = Describe("report diff mode", func() {
 										},
 									},
 								},
-								{
-									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-										Version:   "v1",
-										Kind:      "ConfigMap",
-										Name:      cmName,
-										Namespace: nsName,
-									},
-									TargetClusterObservedGeneration: ptr.To(int64(0)),
-									ObservedDiffs: []placementv1beta1.PatchDetail{
-										{
-											Path:          "/data/data",
-											ValueInMember: managedDataFieldVal1,
-											ValueInHub:    "test",
-										},
-									},
-								},
 							},
 						},
 						{
@@ -1137,20 +1584,6 @@ var _ = Describe("report diff mode", func() {
 										Version: "v1",
 										Kind:    "Namespace",
 										Name:    nsName,
-									},
-									ObservedDiffs: []placementv1beta1.PatchDetail{
-										{
-											Path:       "/",
-											ValueInHub: "(the whole object)",
-										},
-									},
-								},
-								{
-									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-										Version:   "v1",
-										Kind:      "ConfigMap",
-										Name:      cmName,
-										Namespace: nsName,
 									},
 									ObservedDiffs: []placementv1beta1.PatchDetail{
 										{
@@ -1180,6 +1613,85 @@ var _ = Describe("report diff mode", func() {
 										},
 									},
 								},
+							},
+						},
+					},
+					ObservedResourceIndex: "0",
+				}
+			}
+
+			Eventually(func() error {
+				crp := &placementv1beta1.ClusterResourcePlacement{}
+				if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+					return err
+				}
+				wantCRPStatus := buildWantCRPStatus(crp.Generation)
+
+				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
+					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
+				}
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("should update RP status as expected", func() {
+			buildWantRPStatus := func(rpGeneration int64) *placementv1beta1.PlacementStatus {
+				return &placementv1beta1.PlacementStatus{
+					Conditions:        rpDiffReportedConditions(rpGeneration, false),
+					SelectedResources: appConfigMapIdentifiers(),
+					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+						{
+							ClusterName:           memberCluster1EastProdName,
+							ObservedResourceIndex: "0",
+							Conditions:            perClusterDiffReportedConditions(rpGeneration),
+							FailedPlacements:      []placementv1beta1.FailedResourcePlacement{},
+							DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
+								{
+									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
+										Version:   "v1",
+										Kind:      "ConfigMap",
+										Name:      cmName,
+										Namespace: nsName,
+									},
+									TargetClusterObservedGeneration: ptr.To(int64(0)),
+									ObservedDiffs: []placementv1beta1.PatchDetail{
+										{
+											Path:          "/data/data",
+											ValueInMember: managedDataFieldVal1,
+											ValueInHub:    "test",
+										},
+									},
+								},
+							},
+						},
+						{
+							ClusterName:           memberCluster2EastCanaryName,
+							ObservedResourceIndex: "0",
+							Conditions:            perClusterDiffReportedConditions(rpGeneration),
+							FailedPlacements:      []placementv1beta1.FailedResourcePlacement{},
+							DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
+								{
+									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
+										Version:   "v1",
+										Kind:      "ConfigMap",
+										Name:      cmName,
+										Namespace: nsName,
+									},
+									ObservedDiffs: []placementv1beta1.PatchDetail{
+										{
+											Path:       "/",
+											ValueInHub: "(the whole object)",
+										},
+									},
+								},
+							},
+						},
+						{
+							ClusterName:           memberCluster3WestProdName,
+							ObservedResourceIndex: "0",
+							Conditions:            perClusterDiffReportedConditions(rpGeneration),
+							FailedPlacements:      []placementv1beta1.FailedResourcePlacement{},
+							DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
 										Version:   "v1",
@@ -1202,17 +1714,17 @@ var _ = Describe("report diff mode", func() {
 			}
 
 			Eventually(func() error {
-				crp := &placementv1beta1.ClusterResourcePlacement{}
-				if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+				rp := &placementv1beta1.ResourcePlacement{}
+				if err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: nsName}, rp); err != nil {
 					return err
 				}
-				wantCRPStatus := buildWantCRPStatus(crp.Generation)
+				wantRPStatus := buildWantRPStatus(rp.Generation)
 
-				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
-					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
+				if diff := cmp.Diff(rp.Status, *wantRPStatus, placementStatusCmpOptions...); diff != "" {
+					return fmt.Errorf("RP status diff (-got, +want): %s", diff)
 				}
 				return nil
-			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
 		It("should not touch pre-existing resources", func() {
@@ -1295,7 +1807,7 @@ var _ = Describe("report diff mode", func() {
 			buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.PlacementStatus {
 				return &placementv1beta1.PlacementStatus{
 					Conditions:        crpDiffReportedConditions(crpGeneration, false),
-					SelectedResources: workResourceIdentifiers(),
+					SelectedResources: workNamespaceIdentifiers(),
 					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           memberCluster1EastProdName,
@@ -1315,20 +1827,6 @@ var _ = Describe("report diff mode", func() {
 										Version: "v1",
 										Kind:    "Namespace",
 										Name:    nsName,
-									},
-									ObservedDiffs: []placementv1beta1.PatchDetail{
-										{
-											Path:       "/",
-											ValueInHub: "(the whole object)",
-										},
-									},
-								},
-								{
-									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-										Version:   "v1",
-										Kind:      "ConfigMap",
-										Name:      cmName,
-										Namespace: nsName,
 									},
 									ObservedDiffs: []placementv1beta1.PatchDetail{
 										{
@@ -1358,6 +1856,68 @@ var _ = Describe("report diff mode", func() {
 										},
 									},
 								},
+							},
+						},
+					},
+					ObservedResourceIndex: "0",
+				}
+			}
+
+			Eventually(func() error {
+				crp := &placementv1beta1.ClusterResourcePlacement{}
+				if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+					return err
+				}
+				wantCRPStatus := buildWantCRPStatus(crp.Generation)
+
+				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
+					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
+				}
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("should update RP status as expected", func() {
+			buildWantRPStatus := func(rpGeneration int64) *placementv1beta1.PlacementStatus {
+				return &placementv1beta1.PlacementStatus{
+					Conditions:        rpDiffReportedConditions(rpGeneration, false),
+					SelectedResources: appConfigMapIdentifiers(),
+					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+						{
+							ClusterName:           memberCluster1EastProdName,
+							ObservedResourceIndex: "0",
+							Conditions:            perClusterDiffReportedConditions(rpGeneration),
+							FailedPlacements:      []placementv1beta1.FailedResourcePlacement{},
+							DiffedPlacements:      []placementv1beta1.DiffedResourcePlacement{},
+						},
+						{
+							ClusterName:           memberCluster2EastCanaryName,
+							ObservedResourceIndex: "0",
+							Conditions:            perClusterDiffReportedConditions(rpGeneration),
+							FailedPlacements:      []placementv1beta1.FailedResourcePlacement{},
+							DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
+								{
+									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
+										Version:   "v1",
+										Kind:      "ConfigMap",
+										Name:      cmName,
+										Namespace: nsName,
+									},
+									ObservedDiffs: []placementv1beta1.PatchDetail{
+										{
+											Path:       "/",
+											ValueInHub: "(the whole object)",
+										},
+									},
+								},
+							},
+						},
+						{
+							ClusterName:           memberCluster3WestProdName,
+							ObservedResourceIndex: "0",
+							Conditions:            perClusterDiffReportedConditions(rpGeneration),
+							FailedPlacements:      []placementv1beta1.FailedResourcePlacement{},
+							DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
 										Version:   "v1",
@@ -1380,30 +1940,31 @@ var _ = Describe("report diff mode", func() {
 			}
 
 			Eventually(func() error {
-				crp := &placementv1beta1.ClusterResourcePlacement{}
-				if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+				rp := &placementv1beta1.ResourcePlacement{}
+				if err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: nsName}, rp); err != nil {
 					return err
 				}
-				wantCRPStatus := buildWantCRPStatus(crp.Generation)
+				wantRPStatus := buildWantRPStatus(rp.Generation)
 
-				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
-					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
+				if diff := cmp.Diff(rp.Status, *wantRPStatus, placementStatusCmpOptions...); diff != "" {
+					return fmt.Errorf("RP status diff (-got, +want): %s", diff)
 				}
 				return nil
-			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
 		AfterAll(func() {
 			// The pre-existing namespace has not been taken over and must be deleted manually.
 			cleanWorkResourcesOnCluster(memberCluster1EastProd)
-
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 	})
 })
 
-var _ = Describe("mixed diff and drift reportings", Ordered, func() {
+var _ = Describe("mixed diff and drift reportings using RP", Ordered, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+	rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 	nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 	deployName := fmt.Sprintf(appDeploymentNameTemplate, GinkgoParallelProcess())
 
@@ -1439,32 +2000,70 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 		ns2.Labels[managedDataFieldKey] = managedDataFieldVal2
 		Expect(memberCluster3WestProdClient.Create(ctx, ns2)).To(Succeed())
 
-		// Create the CRP.
+		applyStrategy := &placementv1beta1.ApplyStrategy{
+			ComparisonOption: placementv1beta1.ComparisonOptionTypePartialComparison,
+			WhenToApply:      placementv1beta1.WhenToApplyTypeIfNotDrifted,
+			Type:             placementv1beta1.ApplyStrategyTypeServerSideApply,
+			WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeIfNoDiff,
+			ServerSideApplyConfig: &placementv1beta1.ServerSideApplyConfig{
+				ForceConflicts: true,
+			},
+		}
+
+		// Create the CRP with Namespace-only selector with apply strategy
 		crp := &placementv1beta1.ClusterResourcePlacement{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: crpName,
+				// Add a custom finalizer; this would allow us to better observe
+				// the behavior of the controllers.
+				Finalizers: []string{customDeletionBlockerFinalizer},
 			},
 			Spec: placementv1beta1.PlacementSpec{
-				ResourceSelectors: workResourceSelector(),
+				ResourceSelectors: namespaceOnlySelector(),
+				Policy: &placementv1beta1.PlacementPolicy{
+					PlacementType: placementv1beta1.PickAllPlacementType,
+				},
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
 						UnavailablePeriodSeconds: ptr.To(2),
-						MaxUnavailable:           ptr.To(intstr.FromString("100%")),
 					},
-					ApplyStrategy: &placementv1beta1.ApplyStrategy{
-						ComparisonOption: placementv1beta1.ComparisonOptionTypePartialComparison,
-						WhenToApply:      placementv1beta1.WhenToApplyTypeIfNotDrifted,
-						Type:             placementv1beta1.ApplyStrategyTypeServerSideApply,
-						WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeIfNoDiff,
-						ServerSideApplyConfig: &placementv1beta1.ServerSideApplyConfig{
-							ForceConflicts: true,
-						},
-					},
+					ApplyStrategy: applyStrategy,
 				},
 			},
 		}
-		Expect(hubClient.Create(ctx, crp)).To(Succeed())
+		Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
+
+		// Create the RP in the same namespace selecting namespaced resources
+		// with apply strategy.
+		rp := &placementv1beta1.ResourcePlacement{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       rpName,
+				Namespace:  nsName,
+				Finalizers: []string{customDeletionBlockerFinalizer},
+			},
+			Spec: placementv1beta1.PlacementSpec{
+				ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+					{
+						Kind:    "Deployment",
+						Name:    deployName,
+						Version: "v1",
+						Group:   "apps",
+					},
+				},
+				Policy: &placementv1beta1.PlacementPolicy{
+					PlacementType: placementv1beta1.PickAllPlacementType,
+				},
+				Strategy: placementv1beta1.RolloutStrategy{
+					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+						UnavailablePeriodSeconds: ptr.To(2),
+					},
+					ApplyStrategy: applyStrategy,
+				},
+			},
+		}
+		Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create RP")
 	})
 
 	It("can introduce drifts", func() {
@@ -1505,6 +2104,85 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 						Name:    nsName,
 						Version: "v1",
 					},
+				},
+				PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+					{
+						ClusterName:           memberCluster1EastProdName,
+						ObservedResourceIndex: "0",
+						Conditions:            perClusterRolloutCompletedConditions(crpGeneration, true, false),
+						FailedPlacements:      []placementv1beta1.FailedResourcePlacement{},
+						DiffedPlacements:      []placementv1beta1.DiffedResourcePlacement{},
+					},
+					{
+						ClusterName:           memberCluster2EastCanaryName,
+						ObservedResourceIndex: "0",
+						Conditions:            perClusterRolloutCompletedConditions(crpGeneration, true, false),
+						FailedPlacements:      []placementv1beta1.FailedResourcePlacement{},
+						DriftedPlacements:     []placementv1beta1.DriftedResourcePlacement{},
+					},
+					{
+						ClusterName:           memberCluster3WestProdName,
+						ObservedResourceIndex: "0",
+						Conditions:            perClusterApplyFailedConditions(crpGeneration),
+						FailedPlacements: []placementv1beta1.FailedResourcePlacement{
+							{
+								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
+									Version: "v1",
+									Kind:    "Namespace",
+									Name:    nsName,
+								},
+								Condition: metav1.Condition{
+									Type:               string(placementv1beta1.PerClusterAppliedConditionType),
+									Status:             metav1.ConditionFalse,
+									ObservedGeneration: 0,
+									Reason:             string(workapplier.ApplyOrReportDiffResTypeFailedToTakeOver),
+								},
+							},
+						},
+						DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
+							{
+								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
+									Version: "v1",
+									Kind:    "Namespace",
+									Name:    nsName,
+								},
+								TargetClusterObservedGeneration: ptr.To(int64(0)),
+								ObservedDiffs: []placementv1beta1.PatchDetail{
+									{
+										Path:          fmt.Sprintf("/metadata/labels/%s", managedDataFieldKey),
+										ValueInMember: managedDataFieldVal2,
+										ValueInHub:    managedDataFieldVal1,
+									},
+								},
+							},
+						},
+						DriftedPlacements: []placementv1beta1.DriftedResourcePlacement{},
+					},
+				},
+				ObservedResourceIndex: "0",
+			}
+		}
+
+		Eventually(func() error {
+			crp := &placementv1beta1.ClusterResourcePlacement{}
+			if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+				return err
+			}
+			wantCRPStatus := buildWantCRPStatus(crp.Generation)
+
+			if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
+				return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
+			}
+
+			return nil
+		}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+	})
+
+	It("should update RP status as expected", func() {
+		buildWantRPStatus := func(rpGeneration int64) *placementv1beta1.PlacementStatus {
+			return &placementv1beta1.PlacementStatus{
+				Conditions: rpAppliedFailedConditions(rpGeneration),
+				SelectedResources: []placementv1beta1.ResourceIdentifier{
 					{
 						Kind:      "Deployment",
 						Name:      deployName,
@@ -1517,7 +2195,7 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 					{
 						ClusterName:           memberCluster1EastProdName,
 						ObservedResourceIndex: "0",
-						Conditions:            perClusterApplyFailedConditions(crpGeneration),
+						Conditions:            perClusterApplyFailedConditions(rpGeneration),
 						FailedPlacements: []placementv1beta1.FailedResourcePlacement{
 							{
 								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1558,7 +2236,7 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 					{
 						ClusterName:           memberCluster2EastCanaryName,
 						ObservedResourceIndex: "0",
-						Conditions:            perClusterApplyFailedConditions(crpGeneration),
+						Conditions:            perClusterApplyFailedConditions(rpGeneration),
 						FailedPlacements: []placementv1beta1.FailedResourcePlacement{
 							{
 								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1599,21 +2277,8 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 					{
 						ClusterName:           memberCluster3WestProdName,
 						ObservedResourceIndex: "0",
-						Conditions:            perClusterApplyFailedConditions(crpGeneration),
+						Conditions:            perClusterApplyFailedConditions(rpGeneration),
 						FailedPlacements: []placementv1beta1.FailedResourcePlacement{
-							{
-								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-									Version: "v1",
-									Kind:    "Namespace",
-									Name:    nsName,
-								},
-								Condition: metav1.Condition{
-									Type:               string(placementv1beta1.PerClusterAppliedConditionType),
-									Status:             metav1.ConditionFalse,
-									ObservedGeneration: 0,
-									Reason:             string(workapplier.ApplyOrReportDiffResTypeFailedToTakeOver),
-								},
-							},
 							{
 								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
 									Version:   "v1",
@@ -1630,23 +2295,7 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 								},
 							},
 						},
-						DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
-							{
-								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-									Version: "v1",
-									Kind:    "Namespace",
-									Name:    nsName,
-								},
-								TargetClusterObservedGeneration: ptr.To(int64(0)),
-								ObservedDiffs: []placementv1beta1.PatchDetail{
-									{
-										Path:          fmt.Sprintf("/metadata/labels/%s", managedDataFieldKey),
-										ValueInMember: managedDataFieldVal2,
-										ValueInHub:    managedDataFieldVal1,
-									},
-								},
-							},
-						},
+						DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{},
 						DriftedPlacements: []placementv1beta1.DriftedResourcePlacement{
 							{
 								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1673,18 +2322,18 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 		}
 
 		Eventually(func() error {
-			crp := &placementv1beta1.ClusterResourcePlacement{}
-			if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+			rp := &placementv1beta1.ResourcePlacement{}
+			if err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: nsName}, rp); err != nil {
 				return err
 			}
-			wantCRPStatus := buildWantCRPStatus(crp.Generation)
+			wantRPStatus := buildWantRPStatus(rp.Generation)
 
-			if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
-				return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
+			if diff := cmp.Diff(rp.Status, *wantRPStatus, placementStatusCmpOptions...); diff != "" {
+				return fmt.Errorf("RP status diff (-got, +want): %s", diff)
 			}
 
 			// Populate the timestamps.
-			for _, placementStatus := range crp.Status.PerClusterPlacementStatuses {
+			for _, placementStatus := range rp.Status.PerClusterPlacementStatuses {
 				switch placementStatus.ClusterName {
 				case memberCluster1EastProdName:
 					lastDeployDiffObservedTimeOnCluster1 = placementStatus.DiffedPlacements[0].ObservationTime
@@ -1695,7 +2344,7 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 				}
 			}
 			return nil
-		}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 
 		// Verify the timestamps.
 		Expect(lastDeployDiffObservedTimeOnCluster1.After(startTime.Time)).To(BeTrue(), "The diff observation time on cluster 1 is before the test spec start time")
@@ -1738,11 +2387,6 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 	})
 
 	It("should update CRP status as expected", func() {
-		var refreshedLastDeployDiffObservedTimeOnCluster1 metav1.Time
-		var refreshedFirstDeployDiffObservedTimeOnCluster1 metav1.Time
-		var refreshedLastDeployDriftObservedTimeOnCluster2 metav1.Time
-		var refreshedFirstDeployDriftObservedTimeOnCluster2 metav1.Time
-
 		buildWantCRPStatus := func(crpGeneration int64) *placementv1beta1.PlacementStatus {
 			return &placementv1beta1.PlacementStatus{
 				Conditions: crpAppliedFailedConditions(crpGeneration),
@@ -1752,6 +2396,90 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 						Name:    nsName,
 						Version: "v1",
 					},
+				},
+				PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+					{
+						ClusterName:           memberCluster1EastProdName,
+						ObservedResourceIndex: "0",
+						Conditions:            perClusterRolloutCompletedConditions(crpGeneration, true, false),
+						FailedPlacements:      []placementv1beta1.FailedResourcePlacement{},
+						DiffedPlacements:      []placementv1beta1.DiffedResourcePlacement{},
+					},
+					{
+						ClusterName:           memberCluster2EastCanaryName,
+						ObservedResourceIndex: "0",
+						Conditions:            perClusterRolloutCompletedConditions(crpGeneration, true, false),
+						FailedPlacements:      []placementv1beta1.FailedResourcePlacement{},
+						DriftedPlacements:     []placementv1beta1.DriftedResourcePlacement{},
+					},
+					{
+						ClusterName:           memberCluster3WestProdName,
+						ObservedResourceIndex: "0",
+						Conditions:            perClusterApplyFailedConditions(crpGeneration),
+						FailedPlacements: []placementv1beta1.FailedResourcePlacement{
+							{
+								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
+									Version: "v1",
+									Kind:    "Namespace",
+									Name:    nsName,
+								},
+								Condition: metav1.Condition{
+									Type:               string(placementv1beta1.PerClusterAppliedConditionType),
+									Status:             metav1.ConditionFalse,
+									ObservedGeneration: 0,
+									Reason:             string(workapplier.ApplyOrReportDiffResTypeFailedToTakeOver),
+								},
+							},
+						},
+						DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
+							{
+								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
+									Version: "v1",
+									Kind:    "Namespace",
+									Name:    nsName,
+								},
+								TargetClusterObservedGeneration: ptr.To(int64(0)),
+								ObservedDiffs: []placementv1beta1.PatchDetail{
+									{
+										Path:          fmt.Sprintf("/metadata/labels/%s", managedDataFieldKey),
+										ValueInMember: managedDataFieldVal2,
+										ValueInHub:    managedDataFieldVal1,
+									},
+								},
+							},
+						},
+						DriftedPlacements: []placementv1beta1.DriftedResourcePlacement{},
+					},
+				},
+				ObservedResourceIndex: "0",
+			}
+		}
+
+		Eventually(func() error {
+			crp := &placementv1beta1.ClusterResourcePlacement{}
+			if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+				return err
+			}
+			wantCRPStatus := buildWantCRPStatus(crp.Generation)
+
+			if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
+				return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
+			}
+
+			return nil
+		}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+	})
+
+	It("should update RP status as expected", func() {
+		var refreshedLastDeployDiffObservedTimeOnCluster1 metav1.Time
+		var refreshedFirstDeployDiffObservedTimeOnCluster1 metav1.Time
+		var refreshedLastDeployDriftObservedTimeOnCluster2 metav1.Time
+		var refreshedFirstDeployDriftObservedTimeOnCluster2 metav1.Time
+
+		buildWantRPStatus := func(rpGeneration int64) *placementv1beta1.PlacementStatus {
+			return &placementv1beta1.PlacementStatus{
+				Conditions: rpAppliedFailedConditions(rpGeneration),
+				SelectedResources: []placementv1beta1.ResourceIdentifier{
 					{
 						Group:     "apps",
 						Kind:      "Deployment",
@@ -1764,7 +2492,7 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 					{
 						ClusterName:           memberCluster1EastProdName,
 						ObservedResourceIndex: "0",
-						Conditions:            perClusterApplyFailedConditions(crpGeneration),
+						Conditions:            perClusterApplyFailedConditions(rpGeneration),
 						FailedPlacements: []placementv1beta1.FailedResourcePlacement{
 							{
 								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1805,7 +2533,7 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 					{
 						ClusterName:           memberCluster2EastCanaryName,
 						ObservedResourceIndex: "0",
-						Conditions:            perClusterApplyFailedConditions(crpGeneration),
+						Conditions:            perClusterApplyFailedConditions(rpGeneration),
 						FailedPlacements: []placementv1beta1.FailedResourcePlacement{
 							{
 								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1846,21 +2574,8 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 					{
 						ClusterName:           memberCluster3WestProdName,
 						ObservedResourceIndex: "0",
-						Conditions:            perClusterApplyFailedConditions(crpGeneration),
+						Conditions:            perClusterApplyFailedConditions(rpGeneration),
 						FailedPlacements: []placementv1beta1.FailedResourcePlacement{
-							{
-								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-									Version: "v1",
-									Kind:    "Namespace",
-									Name:    nsName,
-								},
-								Condition: metav1.Condition{
-									Type:               string(placementv1beta1.PerClusterAppliedConditionType),
-									Status:             metav1.ConditionFalse,
-									ObservedGeneration: 0,
-									Reason:             string(workapplier.ApplyOrReportDiffResTypeFailedToTakeOver),
-								},
-							},
 							{
 								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
 									Version:   "v1",
@@ -1877,23 +2592,7 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 								},
 							},
 						},
-						DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
-							{
-								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-									Version: "v1",
-									Kind:    "Namespace",
-									Name:    nsName,
-								},
-								TargetClusterObservedGeneration: ptr.To(int64(0)),
-								ObservedDiffs: []placementv1beta1.PatchDetail{
-									{
-										Path:          fmt.Sprintf("/metadata/labels/%s", managedDataFieldKey),
-										ValueInMember: managedDataFieldVal2,
-										ValueInHub:    managedDataFieldVal1,
-									},
-								},
-							},
-						},
+						DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{},
 						DriftedPlacements: []placementv1beta1.DriftedResourcePlacement{
 							{
 								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1920,18 +2619,18 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 		}
 
 		Eventually(func() error {
-			crp := &placementv1beta1.ClusterResourcePlacement{}
-			if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+			rp := &placementv1beta1.ResourcePlacement{}
+			if err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: nsName}, rp); err != nil {
 				return err
 			}
-			wantCRPStatus := buildWantCRPStatus(crp.Generation)
+			wantRPStatus := buildWantRPStatus(rp.Generation)
 
-			if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
-				return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
+			if diff := cmp.Diff(rp.Status, *wantRPStatus, placementStatusCmpOptions...); diff != "" {
+				return fmt.Errorf("RP status diff (-got, +want): %s", diff)
 			}
 
 			// Populate the timestamps.
-			for _, placementStatus := range crp.Status.PerClusterPlacementStatuses {
+			for _, placementStatus := range rp.Status.PerClusterPlacementStatuses {
 				switch placementStatus.ClusterName {
 				case memberCluster1EastProdName:
 					refreshedLastDeployDiffObservedTimeOnCluster1 = placementStatus.DiffedPlacements[0].ObservationTime
@@ -1942,7 +2641,7 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 				}
 			}
 			return nil
-		}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 
 		// Verify the timestamps.
 		Expect(refreshedLastDeployDiffObservedTimeOnCluster1.After(lastDeployDiffObservedTimeOnCluster1.Time)).To(BeTrue(), "The diff observation time on cluster 1 is not refreshed")
@@ -1989,13 +2688,6 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 						Name:    nsName,
 						Version: "v1",
 					},
-					{
-						Group:     "apps",
-						Kind:      "Deployment",
-						Name:      deployName,
-						Version:   "v1",
-						Namespace: nsName,
-					},
 				},
 				PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 					{
@@ -2030,21 +2722,6 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 									Reason:             string(workapplier.ApplyOrReportDiffResTypeFailedToTakeOver),
 								},
 							},
-							{
-								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-									Version:   "v1",
-									Group:     "apps",
-									Kind:      "Deployment",
-									Name:      deployName,
-									Namespace: nsName,
-								},
-								Condition: metav1.Condition{
-									Type:               string(placementv1beta1.PerClusterAppliedConditionType),
-									Status:             metav1.ConditionFalse,
-									ObservedGeneration: 2,
-									Reason:             string(workapplier.ApplyOrReportDiffResTypeFoundDrifts),
-								},
-							},
 						},
 						DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
 							{
@@ -2063,6 +2740,80 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 								},
 							},
 						},
+						DriftedPlacements: []placementv1beta1.DriftedResourcePlacement{},
+					},
+				},
+				ObservedResourceIndex: "0",
+			}
+		}
+
+		Eventually(func() error {
+			crp := &placementv1beta1.ClusterResourcePlacement{}
+			if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+				return err
+			}
+			wantCRPStatus := buildWantCRPStatus(crp.Generation)
+
+			if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
+				return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
+			}
+			return nil
+			// Give the system a bit more breathing room for the Deployment (nginx) to become
+			// available; on certain environments it might take longer to pull the image and have
+			// the container up and running.
+		}, longEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+	})
+
+	It("should update RP status as expected", func() {
+		buildWantRPStatus := func(rpGeneration int64) *placementv1beta1.PlacementStatus {
+			return &placementv1beta1.PlacementStatus{
+				Conditions: rpAppliedFailedConditions(rpGeneration),
+				SelectedResources: []placementv1beta1.ResourceIdentifier{
+					{
+						Group:     "apps",
+						Kind:      "Deployment",
+						Name:      deployName,
+						Version:   "v1",
+						Namespace: nsName,
+					},
+				},
+				PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+					{
+						ClusterName:           memberCluster1EastProdName,
+						ObservedResourceIndex: "0",
+						Conditions:            perClusterRolloutCompletedConditions(rpGeneration, true, false),
+						FailedPlacements:      []placementv1beta1.FailedResourcePlacement{},
+						DiffedPlacements:      []placementv1beta1.DiffedResourcePlacement{},
+					},
+					{
+						ClusterName:           memberCluster2EastCanaryName,
+						ObservedResourceIndex: "0",
+						Conditions:            perClusterRolloutCompletedConditions(rpGeneration, true, false),
+						FailedPlacements:      []placementv1beta1.FailedResourcePlacement{},
+						DriftedPlacements:     []placementv1beta1.DriftedResourcePlacement{},
+					},
+					{
+						ClusterName:           memberCluster3WestProdName,
+						ObservedResourceIndex: "0",
+						Conditions:            perClusterApplyFailedConditions(rpGeneration),
+						FailedPlacements: []placementv1beta1.FailedResourcePlacement{
+							{
+								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
+									Version:   "v1",
+									Group:     "apps",
+									Kind:      "Deployment",
+									Name:      deployName,
+									Namespace: nsName,
+								},
+								Condition: metav1.Condition{
+									Type:               string(placementv1beta1.PerClusterAppliedConditionType),
+									Status:             metav1.ConditionFalse,
+									ObservedGeneration: 2,
+									Reason:             string(workapplier.ApplyOrReportDiffResTypeFoundDrifts),
+								},
+							},
+						},
+						DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{},
 						DriftedPlacements: []placementv1beta1.DriftedResourcePlacement{
 							{
 								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -2089,20 +2840,20 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 		}
 
 		Eventually(func() error {
-			crp := &placementv1beta1.ClusterResourcePlacement{}
-			if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+			rp := &placementv1beta1.ResourcePlacement{}
+			if err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: nsName}, rp); err != nil {
 				return err
 			}
-			wantCRPStatus := buildWantCRPStatus(crp.Generation)
+			wantRPStatus := buildWantRPStatus(rp.Generation)
 
-			if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
-				return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
+			if diff := cmp.Diff(rp.Status, *wantRPStatus, placementStatusCmpOptions...); diff != "" {
+				return fmt.Errorf("RP status diff (-got, +want): %s", diff)
 			}
 			return nil
 			// Give the system a bit more breathing room for the Deployment (nginx) to become
 			// available; on certain environments it might take longer to pull the image and have
 			// the container up and running.
-		}, longEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		}, longEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 	})
 
 	It("can update manifests", func() {
@@ -2142,13 +2893,6 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 						Kind:    "Namespace",
 						Name:    nsName,
 						Version: "v1",
-					},
-					{
-						Group:     "apps",
-						Kind:      "Deployment",
-						Name:      deployName,
-						Version:   "v1",
-						Namespace: nsName,
 					},
 				},
 				PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
@@ -2199,7 +2943,78 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 		}, longEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 	})
 
+	It("should update RP status as expected", func() {
+		buildWantRPStatus := func(rpGeneration int64, observedResourceIndex string) *placementv1beta1.PlacementStatus {
+			return &placementv1beta1.PlacementStatus{
+				ObservedResourceIndex: observedResourceIndex,
+				Conditions:            rpRolloutCompletedConditions(rpGeneration, false),
+				SelectedResources: []placementv1beta1.ResourceIdentifier{
+					{
+						Group:     "apps",
+						Kind:      "Deployment",
+						Name:      deployName,
+						Version:   "v1",
+						Namespace: nsName,
+					},
+				},
+				PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+					{
+						ClusterName:           memberCluster1EastProdName,
+						ObservedResourceIndex: observedResourceIndex,
+						Conditions:            perClusterRolloutCompletedConditions(rpGeneration, true, false),
+						FailedPlacements:      []placementv1beta1.FailedResourcePlacement{},
+						DiffedPlacements:      []placementv1beta1.DiffedResourcePlacement{},
+					},
+					{
+						ClusterName:           memberCluster2EastCanaryName,
+						ObservedResourceIndex: observedResourceIndex,
+						Conditions:            perClusterRolloutCompletedConditions(rpGeneration, true, false),
+						FailedPlacements:      []placementv1beta1.FailedResourcePlacement{},
+						DriftedPlacements:     []placementv1beta1.DriftedResourcePlacement{},
+					},
+					{
+						ClusterName:           memberCluster3WestProdName,
+						ObservedResourceIndex: observedResourceIndex,
+						Conditions:            perClusterRolloutCompletedConditions(rpGeneration, true, false),
+						FailedPlacements:      []placementv1beta1.FailedResourcePlacement{},
+						DiffedPlacements:      []placementv1beta1.DiffedResourcePlacement{},
+						DriftedPlacements:     []placementv1beta1.DriftedResourcePlacement{},
+					},
+				},
+			}
+		}
+
+		Eventually(func() error {
+			rp := &placementv1beta1.ResourcePlacement{}
+			if err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: nsName}, rp); err != nil {
+				return err
+			}
+
+			// There is no guarantee on how many resource snapshots Fleet will create based
+			// on the previous round of changes; consequently the test spec here drops the field
+			// for comparison.
+			wantRPStatus := buildWantRPStatus(rp.Generation, rp.Status.ObservedResourceIndex)
+
+			if diff := cmp.Diff(rp.Status, *wantRPStatus, placementStatusCmpOptions...); diff != "" {
+				return fmt.Errorf("RP status diff (-got, +want): %s", diff)
+			}
+			return nil
+			// Give the system a bit more breathing room for the Deployment (nginx) to become
+			// available; on certain environments it might take longer to pull the image and have
+			// the container up and running.
+		}, longEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
+	})
+
 	AfterAll(func() {
+		// Must delete RP first, otherwise resources might get re-created.
+		rp := &placementv1beta1.ResourcePlacement{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      rpName,
+				Namespace: nsName,
+			},
+		}
+		Expect(client.IgnoreNotFound(hubClient.Delete(ctx, rp))).To(Succeed(), "Failed to delete RP")
+
 		// Must delete CRP first, otherwise resources might get re-created.
 		crp := &placementv1beta1.ClusterResourcePlacement{
 			ObjectMeta: metav1.ObjectMeta{
@@ -2215,6 +3030,7 @@ var _ = Describe("mixed diff and drift reportings", Ordered, func() {
 		Expect(client.IgnoreNotFound(memberCluster2EastCanaryClient.Delete(ctx, &ns))).To(Succeed())
 		Expect(client.IgnoreNotFound(memberCluster3WestProdClient.Delete(ctx, &ns))).To(Succeed())
 
+		ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 	})
 })
