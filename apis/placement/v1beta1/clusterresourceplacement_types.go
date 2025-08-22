@@ -1612,7 +1612,6 @@ func (rpl *ResourcePlacementList) GetPlacementObjs() []PlacementObj {
 // +genclient:Namespaced
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope="Namespaced",shortName=crps,categories={fleet,fleet-placement}
-// +kubebuilder:subresource:status
 // +kubebuilder:storageversion
 // +kubebuilder:printcolumn:JSONPath=`.status.observedResourceIndex`,name="Resource-Index",type=string
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
@@ -1631,11 +1630,15 @@ type ClusterResourcePlacementStatus struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// The observed status of ClusterResourcePlacementStatus which mirrors the PlacementStatus of the corresponding ClusterResourcePlacement.
-	// This includes information about the namespace and resources within that namespace that are being managed by the placement.
-	// The status will show placement details for resources selected by the ClusterResourcePlacement's ResourceSelectors.
-	// +kubebuilder:validation:Optional
-	Status PlacementStatus `json:"status,omitempty"`
+	// Replica of the ClusterResourcePlacement status.
+	// +kubebuilder:validation:Required
+	PlacementStatus `json:"statusReplica,omitempty"`
+
+	// ObservationTime is the time when we observe the configuration drifts for the resource.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Format=date-time
+	LastUpdatedTime metav1.Time `json:"lastUpdatedTime,omitempty"`
 }
 
 // ClusterResourcePlacementStatusList contains a list of ClusterResourcePlacementStatus.
@@ -1645,18 +1648,6 @@ type ClusterResourcePlacementStatusList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []ClusterResourcePlacementStatus `json:"items"`
-}
-
-// SetConditions sets the conditions of the ClusterResourcePlacementStatus.
-func (m *ClusterResourcePlacementStatus) SetConditions(conditions ...metav1.Condition) {
-	for _, c := range conditions {
-		meta.SetStatusCondition(&m.Status.Conditions, c)
-	}
-}
-
-// GetCondition returns the condition of the ClusterResourcePlacementStatus objects.
-func (m *ClusterResourcePlacementStatus) GetCondition(conditionType string) *metav1.Condition {
-	return meta.FindStatusCondition(m.Status.Conditions, conditionType)
 }
 
 func init() {

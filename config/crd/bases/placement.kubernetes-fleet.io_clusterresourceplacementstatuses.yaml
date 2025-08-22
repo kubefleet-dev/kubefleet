@@ -400,13 +400,15 @@ spec:
               In CamelCase.
               More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
+          lastUpdatedTime:
+            description: ObservationTime is the time when we observe the configuration
+              drifts for the resource.
+            format: date-time
+            type: string
           metadata:
             type: object
-          status:
-            description: |-
-              The observed status of ClusterResourcePlacementStatus which mirrors the PlacementStatus of the corresponding ClusterResourcePlacement.
-              This includes information about the namespace and resources within that namespace that are being managed by the placement.
-              The status will show placement details for resources selected by the ClusterResourcePlacement's ResourceSelectors.
+          statusReplica:
+            description: Replica of the ClusterResourcePlacement status.
             properties:
               conditions:
                 description: |-
@@ -1005,8 +1007,10 @@ spec:
                   type: object
                 type: array
             type: object
+        required:
+        - lastUpdatedTime
+        - statusReplica
         type: object
     served: true
     storage: true
-    subresources:
-      status: {}
+    subresources: {}
