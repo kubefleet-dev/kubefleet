@@ -51,22 +51,25 @@ func New(clientID, scope string) authtoken.Provider {
 // FetchToken gets a new token to make request to the associated fleet' hub cluster.
 func (a *AuthTokenProvider) FetchToken(ctx context.Context) (authtoken.AuthToken, error) {
 	token := authtoken.AuthToken{}
+
+	// We may race at startup with a sidecar which inserts an iptables rule
+	// to intercept IMDS calls.  If we get here before such an iptables rule
+	// is inserted, we will inadvertently connect to real IMDS, which won't
+	// be able to service our request.  IMDS does not set 'Connection:
+	// close' on 400 errors.  Default Go HTTP client behavior will keep the
+	// underlying TCP connection open for re-use, unaffected by iptables,
+	// causing all further requests to continue to be sent to real IMDS and
+	// fail.  Use a separate HTTP client for IMDS calls, where connection
+	// re-use is disabled.
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
+	}
+
 	opts := &azidentity.ManagedIdentityCredentialOptions{
-		// We may race at startup with a sidecar which inserts an iptables rule
-		// to intercept IMDS calls.  If we get here before such an iptables rule
-		// is inserted, we will inadvertently connect to real IMDS, which won't
-		// be able to service our request.  IMDS does not set 'Connection:
-		// close' on 400 errors.  Default Go HTTP client behavior will keep the
-		// underlying TCP connection open for re-use, unaffected by iptables,
-		// causing all further requests to continue to be sent to real IMDS and
-		// fail.  Use a separate HTTP client for IMDS calls, where connection
-		// re-use is disabled.
 		ClientOptions: azcore.ClientOptions{
-			Transport: &http.Client{
-				Transport: &http.Transport{
-					DisableKeepAlives: true,
-				},
-			},
+			Transport: httpClient,
 		},
 		ID: azidentity.ClientID(a.ClientID),
 	}
@@ -87,6 +90,7 @@ func (a *AuthTokenProvider) FetchToken(ctx context.Context) (authtoken.AuthToken
 			})
 			if err != nil {
 				klog.ErrorS(err, "Failed to GetToken", "scope", a.Scope)
+				httpClient.CloseIdleConnections()
 			}
 			return err
 		})
