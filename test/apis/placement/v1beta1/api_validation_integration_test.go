@@ -51,6 +51,7 @@ const (
 	croNameTemplate                   = "test-cro-%d"
 	roNameTemplate                    = "test-ro-%d"
 	testNamespace                     = "test-ns"
+	unknownScope                      = "UnknownScope"
 )
 
 var _ = Describe("Test placement v1beta1 API validation", func() {
@@ -297,7 +298,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 							Name:    "test-ns-1",
 						},
 					},
-					StatusReportingScope: "UnknownScope", // Invalid scope
+					StatusReportingScope: unknownScope, // Invalid scope
 				},
 			}
 			err := hubClient.Create(ctx, &crp)
@@ -324,12 +325,6 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 							Version: "v1",
 							Kind:    "Namespace",
 							Name:    "test-ns-2",
-						},
-						{
-							Group:   "rbac.authorization.k8s.io",
-							Version: "v1",
-							Kind:    "ClusterRole",
-							Name:    "test-cluster-role",
 						},
 					},
 					StatusReportingScope: placementv1beta1.NamespaceAccessible,
@@ -401,49 +396,25 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 
 		It("should allow empty string for StatusReportingScope in a ClusterResourcePlacement when StatusReportingScope is not set", func() {
 			Eventually(func(g Gomega) error {
-				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
-				if err != nil {
-					return err
-				}
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
 				g.Expect(crp.Spec.StatusReportingScope).To(Equal(placementv1beta1.ClusterScopeOnly), "CRP should have default StatusReportingScope ClusterScopeOnly")
 				crp.Spec.StatusReportingScope = "" // Empty string should default to ClusterScopeOnly
-				err = hubClient.Update(ctx, &crp)
-				if k8sErrors.IsConflict(err) {
-					return err
-				}
-				err = hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
-				if err != nil {
-					return err
-				}
+				g.Expect(hubClient.Update(ctx, &crp)).Should(Succeed())
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
 				g.Expect(crp.Spec.StatusReportingScope).To(Equal(placementv1beta1.ClusterScopeOnly), "CRP should have default StatusReportingScope ClusterScopeOnly")
 				return nil
 			}, eventuallyTimeout, interval).Should(Succeed(), "Failed to update CRP")
 		})
 
 		It("should allow update of ClusterResourcePlacement which has default StatusReportingScope, multiple namespace resource selectors", func() {
-			Eventually(func() error {
-				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
-				if err != nil {
-					return err
-				}
+			Eventually(func(g Gomega) error {
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
 				crp.Spec.ResourceSelectors = append(crp.Spec.ResourceSelectors, []placementv1beta1.ResourceSelectorTerm{
 					{
 						Group:   "",
 						Version: "v1",
 						Kind:    "Namespace",
 						Name:    "test-ns-2",
-					},
-					{
-						Group:   "rbac.authorization.k8s.io",
-						Version: "v1",
-						Kind:    "ClusterRole",
-						Name:    "test-cluster-role",
-					},
-					{
-						Group:   "",
-						Version: "v1",
-						Kind:    "PersistentVolume",
-						Name:    "test-pv",
 					},
 				}...)
 				return hubClient.Update(ctx, &crp)
@@ -451,29 +422,14 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 		})
 
 		It("should allow update of ClusterResourcePlacement with StatusReportingScope ClusterScopeOnly, multiple namespace resource selectors", func() {
-			Eventually(func() error {
-				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
-				if err != nil {
-					return err
-				}
+			Eventually(func(g Gomega) error {
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
 				crp.Spec.ResourceSelectors = append(crp.Spec.ResourceSelectors, []placementv1beta1.ResourceSelectorTerm{
 					{
 						Group:   "",
 						Version: "v1",
 						Kind:    "Namespace",
 						Name:    "test-ns-2",
-					},
-					{
-						Group:   "rbac.authorization.k8s.io",
-						Version: "v1",
-						Kind:    "ClusterRole",
-						Name:    "test-cluster-role",
-					},
-					{
-						Group:   "",
-						Version: "v1",
-						Kind:    "PersistentVolume",
-						Name:    "test-pv",
 					},
 				}...)
 				crp.Spec.StatusReportingScope = placementv1beta1.ClusterScopeOnly
@@ -483,12 +439,9 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 
 		It("should deny update of ClusterResourcePlacement StatusReportingScope to NamespaceAccessible due to immutability", func() {
 			Eventually(func(g Gomega) error {
-				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
-				if err != nil {
-					return err
-				}
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
 				crp.Spec.StatusReportingScope = placementv1beta1.NamespaceAccessible
-				err = hubClient.Update(ctx, &crp)
+				err := hubClient.Update(ctx, &crp)
 				if k8sErrors.IsConflict(err) {
 					return err
 				}
@@ -501,12 +454,9 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 
 		It("should deny update of ClusterResourcePlacement StatusReportingScope to unknown scope", func() {
 			Eventually(func(g Gomega) error {
-				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
-				if err != nil {
-					return err
-				}
-				crp.Spec.StatusReportingScope = "UnknownScope" // Invalid scope
-				err = hubClient.Update(ctx, &crp)
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
+				crp.Spec.StatusReportingScope = unknownScope // Invalid scope
+				err := hubClient.Update(ctx, &crp)
 				if k8sErrors.IsConflict(err) {
 					return err
 				}
@@ -547,11 +497,8 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 		})
 
 		It("should allow update of ClusterResourcePlacement with StatusReportingScope NamespaceAccessible, one namespace plus other cluster-scoped resources", func() {
-			Eventually(func() error {
-				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
-				if err != nil {
-					return err
-				}
+			Eventually(func(g Gomega) error {
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
 				crp.Spec.ResourceSelectors = append(crp.Spec.ResourceSelectors, []placementv1beta1.ResourceSelectorTerm{
 					{
 						Group:   "rbac.authorization.k8s.io",
@@ -572,10 +519,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 
 		It("should deny update of ClusterResourcePlacement with StatusReportingScope NamespaceAccessible and multiple namespace selectors", func() {
 			Eventually(func(g Gomega) error {
-				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
-				if err != nil {
-					return err
-				}
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
 				crp.Spec.ResourceSelectors = append(crp.Spec.ResourceSelectors, []placementv1beta1.ResourceSelectorTerm{
 					{
 						Group:   "",
@@ -584,7 +528,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 						Name:    "test-ns-2",
 					},
 				}...)
-				err = hubClient.Update(ctx, &crp)
+				err := hubClient.Update(ctx, &crp)
 				if k8sErrors.IsConflict(err) {
 					return err
 				}
@@ -597,10 +541,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 
 		It("should deny update of ClusterResourcePlacement with StatusReportingScope NamespaceAccessible, no namespace selectors", func() {
 			Eventually(func(g Gomega) error {
-				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
-				if err != nil {
-					return err
-				}
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
 				crp.Spec.ResourceSelectors = []placementv1beta1.ResourceSelectorTerm{
 					{
 						Group:   "rbac.authorization.k8s.io",
@@ -615,7 +556,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 						Name:    "test-pv",
 					},
 				}
-				err = hubClient.Update(ctx, &crp)
+				err := hubClient.Update(ctx, &crp)
 				if k8sErrors.IsConflict(err) {
 					return err
 				}
@@ -628,12 +569,9 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 
 		It("should deny update of ClusterResourcePlacement StatusReportingScope to ClusterScopeOnly due to immutability", func() {
 			Eventually(func(g Gomega) error {
-				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
-				if err != nil {
-					return err
-				}
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
 				crp.Spec.StatusReportingScope = placementv1beta1.ClusterScopeOnly
-				err = hubClient.Update(ctx, &crp)
+				err := hubClient.Update(ctx, &crp)
 				if k8sErrors.IsConflict(err) {
 					return err
 				}
@@ -646,12 +584,9 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 
 		It("should deny update of ClusterResourcePlacement StatusReportingScope to empty string", func() {
 			Eventually(func(g Gomega) error {
-				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
-				if err != nil {
-					return err
-				}
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
 				crp.Spec.StatusReportingScope = ""
-				err = hubClient.Update(ctx, &crp)
+				err := hubClient.Update(ctx, &crp)
 				if k8sErrors.IsConflict(err) {
 					return err
 				}
@@ -664,12 +599,9 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 
 		It("should deny update of ClusterResourcePlacement StatusReportingScope to unknown scope", func() {
 			Eventually(func(g Gomega) error {
-				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)
-				if err != nil {
-					return err
-				}
-				crp.Spec.StatusReportingScope = "UnknownScope" // Invalid scope
-				err = hubClient.Update(ctx, &crp)
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp)).Should(Succeed())
+				crp.Spec.StatusReportingScope = unknownScope // Invalid scope
+				err := hubClient.Update(ctx, &crp)
 				if k8sErrors.IsConflict(err) {
 					return err
 				}
@@ -706,12 +638,6 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 						{
 							Group:   "",
 							Version: "v1",
-							Kind:    "ConfigMap",
-							Name:    "test-cm-2",
-						},
-						{
-							Group:   "",
-							Version: "v1",
 							Kind:    "Secret",
 							Name:    "test-secret",
 						},
@@ -743,7 +669,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 							Name:    "test-secret",
 						},
 					},
-					StatusReportingScope: placementv1beta1.NamespaceAccessible,
+					StatusReportingScope: placementv1beta1.ClusterScopeOnly,
 				},
 			}
 			Expect(hubClient.Create(ctx, &rp)).Should(Succeed())
@@ -810,11 +736,8 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			Expect(hubClient.Create(ctx, &rp)).Should(Succeed())
 
-			Eventually(func() error {
-				err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: testNamespace}, &rp)
-				if err != nil {
-					return err
-				}
+			Eventually(func(g Gomega) error {
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: testNamespace}, &rp)).Should(Succeed())
 				rp.Spec.StatusReportingScope = placementv1beta1.NamespaceAccessible
 				return hubClient.Update(ctx, &rp)
 			}, eventuallyTimeout, interval).Should(Succeed(), "ResourcePlacement should allow StatusReportingScope updates since CEL immutability validation doesn't apply")
@@ -840,7 +763,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 							Name:    "test-cm",
 						},
 					},
-					StatusReportingScope: "UnknownScope", // Invalid scope
+					StatusReportingScope: unknownScope, // Invalid scope
 				},
 			}
 			err := hubClient.Create(ctx, &rp)
@@ -870,12 +793,9 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			Expect(hubClient.Create(ctx, &rp)).Should(Succeed())
 
 			Eventually(func(g Gomega) error {
-				err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: testNamespace}, &rp)
-				if err != nil {
-					return err
-				}
-				rp.Spec.StatusReportingScope = "UnknownScope" // Invalid scope - should fail due to enum validation
-				err = hubClient.Update(ctx, &rp)
+				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: testNamespace}, &rp)).Should(Succeed())
+				rp.Spec.StatusReportingScope = unknownScope // Invalid scope - should fail due to enum validation
+				err := hubClient.Update(ctx, &rp)
 				if k8sErrors.IsConflict(err) {
 					return err
 				}
