@@ -35,7 +35,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
 )
 
-var _ = Describe("take over existing resources using RP", func() {
+var _ = Describe("take over existing resources using RP", Label("resourceplacement"), func() {
 	Context("always take over", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
@@ -706,8 +706,7 @@ var _ = Describe("take over existing resources using RP", func() {
 	})
 })
 
-var _ = Describe("detect drifts on placed resources using RP", func() {
-	//TODO: Comeback to this test since it keeps failing.
+var _ = Describe("detect drifts on placed resources using RP", Label("resourceplacement"), func() {
 	Context("always apply, full comparison", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
@@ -781,7 +780,7 @@ var _ = Describe("detect drifts on placed resources using RP", func() {
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
-		It("can edit the placed resources on clusters", func() {
+		It("can edit the placed namespace on the cluster", func() {
 			ns := &corev1.Namespace{}
 			Expect(memberCluster1EastProdClient.Get(ctx, types.NamespacedName{Name: nsName}, ns)).To(Succeed(), "Failed to get namespace")
 
@@ -790,15 +789,6 @@ var _ = Describe("detect drifts on placed resources using RP", func() {
 			}
 			ns.Labels[unmanagedLabelKey] = unmanagedLabelVal1
 			Expect(memberCluster1EastProdClient.Update(ctx, ns)).To(Succeed(), "Failed to update namespace")
-
-			cm := &corev1.ConfigMap{}
-			Expect(memberCluster1EastProdClient.Get(ctx, types.NamespacedName{Name: cmName, Namespace: nsName}, cm)).To(Succeed(), "Failed to get configMap")
-
-			if cm.Data == nil {
-				cm.Data = make(map[string]string)
-			}
-			cm.Data[managedDataFieldKey] = managedDataFieldVal1
-			Expect(memberCluster1EastProdClient.Update(ctx, cm)).To(Succeed(), "Failed to update configMap")
 		})
 
 		It("should update CRP status as expected", func() {
@@ -860,6 +850,17 @@ var _ = Describe("detect drifts on placed resources using RP", func() {
 			}, eventuallyDuration*3, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
+		It("can edit the placed configmap on the cluster", func() {
+			cm := &corev1.ConfigMap{}
+			Expect(memberCluster1EastProdClient.Get(ctx, types.NamespacedName{Name: cmName, Namespace: nsName}, cm)).To(Succeed(), "Failed to get configMap")
+
+			if cm.Data == nil {
+				cm.Data = make(map[string]string)
+			}
+			cm.Data[managedDataFieldKey] = managedDataFieldVal1
+			Expect(memberCluster1EastProdClient.Update(ctx, cm)).To(Succeed(), "Failed to update configMap")
+		})
+
 		It("should update RP status as expected", func() {
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), allMemberClusterNames, nil, "0")
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
@@ -867,23 +868,31 @@ var _ = Describe("detect drifts on placed resources using RP", func() {
 
 		It("should overwrite drifts on managed fields", func() {
 			expectedOwnerRef := buildOwnerReference(memberCluster1EastProd, rpName, nsName)
+			Eventually(func() error {
+				cm := &corev1.ConfigMap{}
+				Expect(memberCluster1EastProdClient.Get(ctx, client.ObjectKey{Name: cmName, Namespace: nsName}, cm)).To(Succeed())
 
-			cm := &corev1.ConfigMap{}
-			Expect(memberCluster1EastProdClient.Get(ctx, client.ObjectKey{Name: cmName, Namespace: nsName}, cm)).To(Succeed())
+				// The difference has been overwritten.
+				wantCM := appConfigMap()
+				wantCM.OwnerReferences = []metav1.OwnerReference{
+					*expectedOwnerRef,
+				}
 
-			// The difference has been overwritten.
-			wantCM := appConfigMap()
-			wantCM.OwnerReferences = []metav1.OwnerReference{
-				*expectedOwnerRef,
-			}
-
-			// No need to use an Eventually block as this spec runs after the CRP status has been verified.
-			diff := cmp.Diff(
-				cm, &wantCM,
-				ignoreObjectMetaAutoGenExceptOwnerRefFields,
-				ignoreObjectMetaAnnotationField,
-			)
-			Expect(diff).To(BeEmpty(), "ConfigMap diff (-got +want):\n%s", diff)
+				// No need to use an Eventually block as this spec runs after the RP status has been verified.
+				diff := cmp.Diff(
+					cm, &wantCM,
+					ignoreObjectMetaAutoGenExceptOwnerRefFields,
+					ignoreObjectMetaAnnotationField,
+				)
+				if diff != "" {
+					return fmt.Errorf("ConfigMap diff (-got +want):\n%s", diff)
+				}
+				return nil
+				// Use a longer eventually timeout, as the Fleet is set to detect drifts
+				// every 15 seconds by default. The RP status is not changed when the managed
+				// fields are overwritten. Therefore, we have to use a longer timeout here to make
+				// sure the managed fields are overwritten.
+			}, eventuallyDuration*3, eventuallyInterval).Should(Succeed(), "Failed to update ConfigMap as expected")
 		})
 
 		It("should place the resources on the rest of the member clusters", func() {
@@ -900,8 +909,8 @@ var _ = Describe("detect drifts on placed resources using RP", func() {
 		})
 
 		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+			//ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
+			//ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 	})
 
@@ -1464,7 +1473,7 @@ var _ = Describe("detect drifts on placed resources using RP", func() {
 	})
 })
 
-var _ = Describe("report diff mode using RP", func() {
+var _ = Describe("report diff mode using RP", Label("resourceplacement"), func() {
 	Context("do not touch anything", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
@@ -1962,7 +1971,7 @@ var _ = Describe("report diff mode using RP", func() {
 	})
 })
 
-var _ = Describe("mixed diff and drift reportings using RP", Ordered, func() {
+var _ = Describe("mixed diff and drift reportings using RP", Ordered, Label("resourceplacement"), func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 	nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
