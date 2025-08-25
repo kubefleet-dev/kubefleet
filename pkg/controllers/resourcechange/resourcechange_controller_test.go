@@ -1201,6 +1201,46 @@ func TestCollectAllAffectedPlacementsV1Beta1_ClusterResourcePlacement(t *testing
 			},
 			wantCRP: map[string]bool{"crp-with-selected-resource": true},
 		},
+		"match ClusterResourcePlacement (even with namespace only) with previously selected resource": {
+			key: keys.ClusterWideKey{
+				ResourceIdentifier: namespaceScopedResourceIdentifier,
+			},
+			res: matchRes,
+			crpList: []*placementv1beta1.ClusterResourcePlacement{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "crp-with-selected-resource",
+					},
+					Spec: placementv1beta1.PlacementSpec{
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+							{
+								Group:   corev1.GroupName,
+								Version: "v1",
+								Kind:    matchRes.Kind,
+								LabelSelector: &metav1.LabelSelector{
+									MatchLabels: map[string]string{
+										"nonexistent": "label",
+									},
+								},
+								SelectionScope: placementv1beta1.NamespaceOnly,
+							},
+						},
+					},
+					Status: placementv1beta1.PlacementStatus{
+						SelectedResources: []placementv1beta1.ResourceIdentifier{
+							{
+								Group:     "apps",
+								Version:   "v1",
+								Kind:      "Deployment",
+								Name:      "test-deployment",
+								Namespace: "test-namespace",
+							},
+						},
+					},
+				},
+			},
+			wantCRP: map[string]bool{"crp-with-selected-resource": true},
+		},
 		"does not match ClusterResourcePlacement with previously selected resource when namespace is different": {
 			key: keys.ClusterWideKey{
 				ResourceIdentifier: namespaceScopedResourceIdentifier,

@@ -436,7 +436,7 @@ func collectAllAffectedPlacementsV1Beta1(key keys.ClusterWideKey, res *unstructu
 			// For the clusterResourcePlacement, we skip the namespace scoped resources if the placement is cluster scoped.
 			if key.Namespace != "" && isSelectNamespaceOnly(selector) && placement.GetNamespace() == "" {
 				// If the selector is namespace only, we skip the namespace scoped resources.
-				klog.V(2).InfoS("Skipping namespace scoped resource for namespace only selector", "obj", klog.KRef(res.GetNamespace(), res.GetName()), "selector", selector, "placement", klog.KObj(placement))
+				klog.V(2).InfoS("Skipping namespace scoped resource for namespace only selector", "key", key, "obj", klog.KRef(res.GetNamespace(), res.GetName()), "selector", selector, "placement", klog.KObj(placement))
 				continue
 			}
 
