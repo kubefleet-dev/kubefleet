@@ -20,7 +20,7 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .statusReplica.observedResourceIndex
+    - jsonPath: .sourceStatus.observedResourceIndex
       name: Resource-Index
       type: string
     - jsonPath: .lastUpdatedTime
@@ -35,7 +35,7 @@ spec:
         description: |-
           ClusterResourcePlacementStatus is a namespaced resource that mirrors the PlacementStatus of a corresponding
           ClusterResourcePlacement object. This allows namespace-scoped access to cluster-scoped placement status.
-          The LastUpdatedTime field is updated whenever the CRPS object is modified.
+          The LastUpdatedTime field is updated whenever the CRPS object is updated.
 
           This object will be created within the target namespace that contains resources being managed by the CRP.
           When multiple ClusterResourcePlacements target the same namespace, each ClusterResourcePlacementStatus within that
@@ -67,8 +67,8 @@ spec:
             type: string
           metadata:
             type: object
-          statusReplica:
-            description: Replica of the ClusterResourcePlacement status.
+          sourceStatus:
+            description: Source status copied from the corresponding ClusterResourcePlacement.
             properties:
               conditions:
                 description: |-
@@ -669,7 +669,7 @@ spec:
             type: object
         required:
         - lastUpdatedTime
-        - statusReplica
+        - sourceStatus
         type: object
     served: true
     storage: true
