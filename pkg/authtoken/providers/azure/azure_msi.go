@@ -81,7 +81,7 @@ func (a *AuthTokenProvider) FetchToken(ctx context.Context) (authtoken.AuthToken
 				// is inserted, we will inadvertently connect to real IMDS, which won't
 				// be able to service our request.  IMDS does not set 'Connection:
 				// close' on 400 errors.  Default Go HTTP client behavior will keep the
-				// underlying TCP connection open for re-use, unaffected by iptables,
+				// underlying TCP connection open for reuse, unaffected by iptables,
 				// causing all further requests to continue to be sent to real IMDS and
 				// fail.  If an error is returned from the IMDS call, explicitly close the
 				// connection used by the HTTP client.
