@@ -40,12 +40,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/metrics"
 	bindingutils "github.com/kubefleet-dev/kubefleet/pkg/utils/binding"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/defaulter"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/overrider"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Reconciler recomputes the cluster resource binding.
@@ -648,6 +650,12 @@ func (r *Reconciler) updateBindings(ctx context.Context, bindings []toBeUpdatedB
 			errs.Go(func() error {
 				if err := r.Client.Update(cctx, binding.desiredBinding); err != nil {
 					klog.ErrorS(err, "Failed to update a binding to the latest resource", "binding", bindObj)
+					if errors.IsConflict(err) {
+						metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+							"controller": "rollout",
+							"op_name":    "update_bound_binding_to_use_latest_resource",
+						}).Inc() // record the conflict error
+					}
 					return controller.NewUpdateIgnoreConflictError(err)
 				}
 				klog.V(2).InfoS("Updated a binding to the latest resource", "binding", bindObj, "spec", binding.desiredBinding.GetBindingSpec())
@@ -658,6 +666,12 @@ func (r *Reconciler) updateBindings(ctx context.Context, bindings []toBeUpdatedB
 			errs.Go(func() error {
 				if err := r.Client.Update(cctx, binding.desiredBinding); err != nil {
 					klog.ErrorS(err, "Failed to mark a binding bound", "binding", bindObj)
+					if errors.IsConflict(err) {
+						metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+							"controller": "rollout",
+							"op_name":    "update_scheduled_binding_to_bound_state",
+						}).Inc() // record the conflict error
+					}
 					return controller.NewUpdateIgnoreConflictError(err)
 				}
 				klog.V(2).InfoS("Marked a binding bound", "binding", bindObj)
@@ -1084,6 +1098,12 @@ func (r *Reconciler) updateBindingStatus(ctx context.Context, binding placementv
 	binding.SetConditions(cond)
 	if err := r.Client.Status().Update(ctx, binding); err != nil {
 		klog.ErrorS(err, "Failed to update binding status", "binding", klog.KObj(binding), "condition", cond)
+		if errors.IsConflict(err) {
+			metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+				"controller": "rollout",
+				"op_name":    "update_binding_status",
+			}).Inc() // record the conflict error
+		}
 		return controller.NewUpdateIgnoreConflictError(err)
 	}
 	klog.V(2).InfoS("Updated the status of a binding", "binding", klog.KObj(binding), "condition", cond)

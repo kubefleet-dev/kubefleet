@@ -37,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	pkgmetrics "github.com/kubefleet-dev/kubefleet/pkg/metrics"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/queue"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/annotations"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
@@ -91,6 +92,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, key controller.QueueKey) (ct
 		controllerutil.AddFinalizer(placementObj, fleetv1beta1.PlacementCleanupFinalizer)
 		if err := r.Client.Update(ctx, placementObj); err != nil {
 			klog.ErrorS(err, "Failed to add placement finalizer", "placement", klog.KObj(placementObj))
+			if apierrors.IsConflict(err) {
+				pkgmetrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+					"controller": "clusterresourceplacement",
+					"op_name":    "add_finalizer",
+				}).Inc() // record the conflict error
+			}
 			return ctrl.Result{}, controller.NewUpdateIgnoreConflictError(err)
 		}
 	}
@@ -116,6 +123,12 @@ func (r *Reconciler) handleDelete(ctx context.Context, placementObj fleetv1beta1
 	controllerutil.RemoveFinalizer(placementObj, fleetv1beta1.PlacementCleanupFinalizer)
 	if err := r.Client.Update(ctx, placementObj); err != nil {
 		klog.ErrorS(err, "Failed to remove placement finalizer", "placement", placementKObj)
+		if apierrors.IsConflict(err) {
+			pkgmetrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+				"controller": "clusterresourceplacement",
+				"op_name":    "remove_finalizer",
+			}).Inc() // record the conflict error
+		}
 		return ctrl.Result{}, err
 	}
 	klog.V(2).InfoS("Removed placement-cleanup finalizer", "placement", placementKObj)
@@ -161,6 +174,12 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 		placementObj.SetConditions(scheduleCondition)
 		if updateErr := r.Client.Status().Update(ctx, placementObj); updateErr != nil {
 			klog.ErrorS(updateErr, "Failed to update the status", "placement", placementKObj)
+			if apierrors.IsConflict(err) {
+				pkgmetrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+					"controller": "clusterresourceplacement",
+					"op_name":    "failed_to_select_resources_set_scheduled_condition",
+				}).Inc() // record the conflict error
+			}
 			return ctrl.Result{}, controller.NewUpdateIgnoreConflictError(updateErr)
 		}
 		// no need to retry faster, the user needs to fix the resource selectors
@@ -206,6 +225,12 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 
 	if err := r.Client.Status().Update(ctx, placementObj); err != nil {
 		klog.ErrorS(err, "Failed to update the status", "placement", placementKObj)
+		if apierrors.IsConflict(err) {
+			pkgmetrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+				"controller": "clusterresourceplacement",
+				"op_name":    "update_status",
+			}).Inc() // record the conflict error
+		}
 		return ctrl.Result{}, err
 	}
 	klog.V(2).InfoS("Updated the placement status", "placement", placementKObj)
@@ -307,6 +332,12 @@ func (r *Reconciler) getOrCreateSchedulingPolicySnapshot(ctx context.Context, pl
 		latestPolicySnapshot.SetLabels(labels)
 		if err := r.Client.Update(ctx, latestPolicySnapshot); err != nil {
 			klog.ErrorS(err, "Failed to set the isLatestSnapshot label to false", "placement", placementKObj, "policySnapshot", klog.KObj(latestPolicySnapshot))
+			if apierrors.IsConflict(err) {
+				pkgmetrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+					"controller": "clusterresourceplacement",
+					"op_name":    "update_policy_snapshot_set_latest_label_true_to_false",
+				}).Inc() // record the conflict error
+			}
 			return nil, controller.NewUpdateIgnoreConflictError(err)
 		}
 		klog.V(2).InfoS("Marked the existing policySnapshot as inactive", "placement", placementKObj, "policySnapshot", klog.KObj(latestPolicySnapshot))
@@ -497,6 +528,12 @@ func (r *Reconciler) getOrCreateResourceSnapshot(ctx context.Context, placement 
 		latestResourceSnapshot.SetLabels(labels)
 		if err := r.Client.Update(ctx, latestResourceSnapshot); err != nil {
 			klog.ErrorS(err, "Failed to set the isLatestSnapshot label to false", "resourceSnapshot", klog.KObj(latestResourceSnapshot))
+			if apierrors.IsConflict(err) {
+				pkgmetrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+					"controller": "clusterresourceplacement",
+					"op_name":    "update_resource_snapshot_set_latest_label_true_to_false",
+				}).Inc() // record the conflict error
+			}
 			return ctrl.Result{}, nil, controller.NewUpdateIgnoreConflictError(err)
 		}
 		klog.V(2).InfoS("Marked the existing resourceSnapshot as inactive", "placement", placementKObj, "resourceSnapshot", klog.KObj(latestResourceSnapshot))
@@ -557,6 +594,12 @@ func (r *Reconciler) shouldCreateNewResourceSnapshotNow(ctx context.Context, lat
 		latestResourceSnapshot.GetAnnotations()[fleetv1beta1.NextResourceSnapshotCandidateDetectionTimeAnnotation] = now.Format(time.RFC3339)
 		if err := r.Client.Update(ctx, latestResourceSnapshot); err != nil {
 			klog.ErrorS(err, "Failed to update the NextResourceSnapshotCandidateDetectionTime annotation", "resourceSnapshot", snapshotKObj)
+			if apierrors.IsConflict(err) {
+				pkgmetrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+					"controller": "clusterresourceplacement",
+					"op_name":    "update_resource_snapshot_set_next_candidate_detection_time_annotation",
+				}).Inc() // record the conflict error
+			}
 			return ctrl.Result{}, controller.NewUpdateIgnoreConflictError(err)
 		}
 		nextResourceSnapshotCandidateDetectionTime = now
@@ -719,6 +762,12 @@ func (r *Reconciler) ensureLatestPolicySnapshot(ctx context.Context, placementOb
 	}
 	if err := r.Client.Update(ctx, latest); err != nil {
 		klog.ErrorS(err, "Failed to update the policySnapshot", "policySnapshot", latestKObj)
+		if apierrors.IsConflict(err) {
+			pkgmetrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+				"controller": "clusterresourceplacement",
+				"op_name":    "update_policy_snapshot_set_pickn_cluster_count",
+			}).Inc() // record the conflict error
+		}
 		return controller.NewUpdateIgnoreConflictError(err)
 	}
 	return nil
@@ -738,6 +787,12 @@ func (r *Reconciler) ensureLatestResourceSnapshot(ctx context.Context, latest fl
 	latest.SetLabels(labels)
 	if err := r.Client.Update(ctx, latest); err != nil {
 		klog.ErrorS(err, "Failed to update the resourceSnapshot", "resourceSnapshot", klog.KObj(latest))
+		if apierrors.IsConflict(err) {
+			pkgmetrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+				"controller": "clusterresourceplacement",
+				"op_name":    "update_resource_snapshot_set_latest_label_true",
+			}).Inc() // record the conflict error
+		}
 		return controller.NewUpdateIgnoreConflictError(err)
 	}
 	klog.V(2).InfoS("ResourceSnapshot's IsLatestSnapshotLabel was updated to true", "resourceSnapshot", klog.KObj(latest))

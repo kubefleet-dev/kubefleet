@@ -40,6 +40,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/framework"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/queue"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Scheduler is the scheduler for Fleet workloads.
@@ -322,6 +323,12 @@ func (s *Scheduler) cleanUpAllBindingsFor(ctx context.Context, placement fleetv1
 		controllerutil.RemoveFinalizer(binding, fleetv1beta1.SchedulerBindingCleanupFinalizer)
 		if err := s.client.Update(ctx, binding); err != nil {
 			klog.ErrorS(err, "Failed to remove scheduler reconcile finalizer from binding", "binding", klog.KObj(binding))
+			if apiErrors.IsConflict(err) {
+				metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+					"controller": "scheduler",
+					"op_name":    "remove_binding_finalizer",
+				}).Inc() // record the conflict error
+			}
 			return controller.NewUpdateIgnoreConflictError(err)
 		}
 		// Delete the binding if it has not been marked for deletion yet.
@@ -338,6 +345,12 @@ func (s *Scheduler) cleanUpAllBindingsFor(ctx context.Context, placement fleetv1
 	controllerutil.RemoveFinalizer(placement, fleetv1beta1.SchedulerCleanupFinalizer)
 	if err := s.client.Update(ctx, placement); err != nil {
 		klog.ErrorS(err, "Failed to remove scheduler cleanup finalizer from placement", "placement", placementRef)
+		if apiErrors.IsConflict(err) {
+			metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+				"controller": "scheduler",
+				"op_name":    "remove_placement_finalizer",
+			}).Inc() // record the conflict error
+		}
 		return controller.NewUpdateIgnoreConflictError(err)
 	}
 
@@ -407,6 +420,12 @@ func (s *Scheduler) addSchedulerCleanUpFinalizer(ctx context.Context, placement 
 
 		if err := s.client.Update(ctx, placement); err != nil {
 			klog.ErrorS(err, "Failed to update placement", "placement", klog.KObj(placement))
+			if apiErrors.IsConflict(err) {
+				metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+					"controller": "scheduler",
+					"op_name":    "add_placement_finalizer",
+				}).Inc() // record the conflict error
+			}
 			return controller.NewUpdateIgnoreConflictError(err)
 		}
 	}

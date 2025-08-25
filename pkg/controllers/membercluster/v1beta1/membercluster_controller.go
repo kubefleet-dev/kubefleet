@@ -47,6 +47,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -146,7 +147,14 @@ func (r *Reconciler) handleDelete(ctx context.Context, mc *clusterv1beta1.Member
 		}
 		klog.V(2).InfoS("The member cluster namespace is not found, remove the finalizer", "memberCluster", mcObjRef)
 		controllerutil.RemoveFinalizer(mc, placementv1beta1.MemberClusterFinalizer)
-		return runtime.Result{}, controller.NewUpdateIgnoreConflictError(r.Update(ctx, mc))
+		err := r.Update(ctx, mc)
+		if apierrors.IsConflict(err) {
+			metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+				"controller": "membercluster",
+				"op_name":    "remove_finalizer",
+			}).Inc() // record the conflict error
+		}
+		return runtime.Result{}, controller.NewUpdateIgnoreConflictError(err)
 	}
 	// check if the namespace is being deleted already, just wait for it to be deleted
 	if !currentNS.DeletionTimestamp.IsZero() {
@@ -270,7 +278,14 @@ func (r *Reconciler) ensureFinalizer(ctx context.Context, mc *clusterv1beta1.Mem
 	}
 	klog.InfoS("Added the member cluster finalizer", "memberCluster", klog.KObj(mc))
 	controllerutil.AddFinalizer(mc, placementv1beta1.MemberClusterFinalizer)
-	return r.Update(ctx, mc, client.FieldOwner(utils.MCControllerFieldManagerName))
+	err := r.Update(ctx, mc, client.FieldOwner(utils.MCControllerFieldManagerName))
+	if apierrors.IsConflict(err) {
+		metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+			"controller": "membercluster",
+			"op_name":    "add_finalizer",
+		}).Inc() // record the conflict error
+	}
+	return err
 }
 
 // join takes the actions to make hub cluster ready for member cluster to join, including:
@@ -401,6 +416,12 @@ func (r *Reconciler) syncRole(ctx context.Context, mc *clusterv1beta1.MemberClus
 	currentRole.Rules = expectedRole.Rules
 	klog.V(2).InfoS("updating role", "memberCluster", klog.KObj(mc), "role", roleName)
 	if err := r.Client.Update(ctx, &currentRole, client.FieldOwner(utils.MCControllerFieldManagerName)); err != nil {
+		if apierrors.IsConflict(err) {
+			metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+				"controller": "clusterresourceplacement",
+				"op_name":    "update_role",
+			}).Inc() // record the conflict error
+		}
 		return "", fmt.Errorf("failed to update role %s with rules %+v: %w", roleName, currentRole.Rules, err)
 	}
 	r.recorder.Event(mc, corev1.EventTypeNormal, eventReasonRoleUpdated, "role was updated")
@@ -450,6 +471,12 @@ func (r *Reconciler) syncRoleBinding(ctx context.Context, mc *clusterv1beta1.Mem
 	currentRoleBinding.RoleRef = expectedRoleBinding.RoleRef
 	klog.V(2).InfoS("updating role binding", "memberCluster", klog.KObj(mc), "subject", mc.Spec.Identity)
 	if err := r.Client.Update(ctx, &expectedRoleBinding, client.FieldOwner(utils.MCControllerFieldManagerName)); err != nil {
+		if apierrors.IsConflict(err) {
+			metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+				"controller": "membercluster",
+				"op_name":    "update_role_binding",
+			}).Inc() // record the conflict error
+		}
 		return fmt.Errorf("failed to update role binding %s: %w", roleBindingName, err)
 	}
 	r.recorder.Event(mc, corev1.EventTypeNormal, eventReasonRoleBindingUpdated, "role binding was updated")
@@ -495,6 +522,12 @@ func (r *Reconciler) syncInternalMemberCluster(ctx context.Context, mc *clusterv
 	currentImc.Spec = expectedImc.Spec
 	klog.V(2).InfoS("updating internal member cluster", "InternalMemberCluster", klog.KObj(currentImc), "spec", currentImc.Spec)
 	if err := r.Client.Update(ctx, currentImc, client.FieldOwner(utils.MCControllerFieldManagerName)); err != nil {
+		if apierrors.IsConflict(err) {
+			metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+				"controller": "membercluster",
+				"op_name":    "update_internal_member_cluster",
+			}).Inc() // record the conflict error
+		}
 		return nil, controller.NewAPIServerError(false, fmt.Errorf("failed to update internal member cluster %s with spec %+v: %w", klog.KObj(currentImc), currentImc.Spec, err))
 	}
 	r.recorder.Event(mc, corev1.EventTypeNormal, eventReasonIMCSpecUpdated, "internal member cluster spec updated")
@@ -549,7 +582,14 @@ func (r *Reconciler) updateMemberClusterStatus(ctx context.Context, mc *clusterv
 			return apierrors.IsServiceUnavailable(err) || apierrors.IsServerTimeout(err) || apierrors.IsTooManyRequests(err)
 		},
 		func() error {
-			return r.Client.Status().Update(ctx, mc)
+			err := r.Client.Status().Update(ctx, mc)
+			if apierrors.IsConflict(err) {
+				metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+					"controller": "membercluster",
+					"op_name":    "update_status",
+				}).Inc() // record the conflict error
+			}
+			return err
 		})
 }
 

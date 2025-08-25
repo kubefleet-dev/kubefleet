@@ -523,7 +523,30 @@ func generateRawContent(object *unstructured.Unstructured) ([]byte, error) {
 		}
 	}
 
+	// Experimental change: switch to a more efficient (allegedly) JSON encoder/decoder.
+	//rawContent, err := goccyjson.Marshal(object.Object)
+
 	rawContent, err := object.MarshalJSON()
+	/**
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal the unstructured object gvk = %s, name =%s: %w", object.GroupVersionKind(), object.GetName(), err)
+	}
+
+	compressedRawContentBuffer := bytes.NewBuffer([]byte{})
+	gzWriter := gzip.NewWriter(compressedRawContentBuffer)
+
+	_, err = gzWriter.Write(rawContent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compress data: %w", err)
+	}
+	if err := gzWriter.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close gzip writer: %w", err)
+	}
+
+	compressedRawContent := compressedRawContentBuffer.Bytes()
+	klog.InfoS("[experimental] data compressed", "sizeBefore", len(rawContent), "sizeAfter", len(compressedRawContent), "ratio", float64(len(rawContent))/float64(len(compressedRawContent)))
+	**/
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal the unstructured object gvk = %s, name =%s: %w", object.GroupVersionKind(), object.GetName(), err)
 	}

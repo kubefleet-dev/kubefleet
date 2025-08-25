@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	//goccyjson "github.com/goccy/go-json"
 )
 
 // HashOf returns the hash of the resource.

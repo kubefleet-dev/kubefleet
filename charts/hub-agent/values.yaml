@@ -26,11 +26,11 @@ namespace:
 
 resources:
   limits:
-    cpu: 500m
-    memory: 1Gi
+    cpu: 4
+    memory: 6Gi
   requests:
-    cpu: 100m
-    memory: 128Mi
+    cpu: 1
+    memory: 1Gi
 
 tolerations: []
 

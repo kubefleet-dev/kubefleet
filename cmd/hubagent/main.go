@@ -87,7 +87,8 @@ func init() {
 
 	metrics.Registry.MustRegister(fleetmetrics.JoinResultMetrics, fleetmetrics.LeaveResultMetrics,
 		fleetmetrics.PlacementApplyFailedCount, fleetmetrics.PlacementApplySucceedCount,
-		fleetmetrics.SchedulingCycleDurationMilliseconds, fleetmetrics.SchedulerActiveWorkers)
+		fleetmetrics.SchedulingCycleDurationMilliseconds, fleetmetrics.SchedulerActiveWorkers,
+		fleetmetrics.FleetUpdateConflictsTotal)
 }
 
 func main() {
@@ -118,6 +119,39 @@ func main() {
 		Scheme: scheme,
 		Cache: cache.Options{
 			SyncPeriod: &opts.ResyncPeriod.Duration,
+			/**
+			DefaultTransform: func(objI interface{}) (interface{}, error) {
+				obj, ok := objI.(metav1.Object)
+				if !ok {
+					// No need to transform; return the object as it is.
+					return objI, nil
+				}
+
+				// Drop metadata fields that are not relevant for Fleet.
+				obj.SetManagedFields(nil)
+				//obj.SetOwnerReferences(nil)
+				return obj, nil
+			},
+			ByObject: map[client.Object]cache.ByObject{
+				&placementv1beta1.Work{}: {
+					Transform: func(objI interface{}) (interface{}, error) {
+						obj, ok := objI.(*placementv1beta1.Work)
+						if !ok {
+							// No need to transform, return the object as it is.
+							return objI, nil
+						}
+
+						// Drop metadata fields that are not relevant for Fleet.
+						obj.SetManagedFields(nil)
+
+						// Drop the embedded workloads in the spec as the hub agent only writes to them,
+						// but never reads them.
+						obj.Spec.Workload.Manifests = nil
+						return obj, nil
+					},
+				},
+			},
+			*/
 		},
 		LeaderElection:             opts.LeaderElection.LeaderElect,
 		LeaderElectionID:           opts.LeaderElection.ResourceName,

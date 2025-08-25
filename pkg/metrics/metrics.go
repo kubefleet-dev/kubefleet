@@ -134,3 +134,14 @@ var (
 		Help: "Total number of processing requests of manifest objects, including retries and periodic checks",
 	}, []string{"apply_status", "availability_status", "diff_reporting_status", "drift_detection_status", "diff_detection_status"})
 )
+
+// Experimental metrics.
+var (
+	FleetUpdateConflictsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "fleet_update_conflicts_total",
+		Help: "Total number of update conflicts encountered when processing object updates",
+	}, []string{
+		"controller",
+		"op_name",
+	})
+)

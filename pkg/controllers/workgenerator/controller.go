@@ -50,12 +50,14 @@ import (
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/metrics"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/labels"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/resource"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -276,6 +278,12 @@ func (r *Reconciler) updateBindingStatusWithRetry(ctx context.Context, resourceB
 	err := r.Client.Status().Update(ctx, resourceBinding)
 	if err != nil {
 		klog.ErrorS(err, "Failed to update the binding status, will retry", "binding", bindingRef, "bindingStatus", resourceBinding.GetBindingStatus())
+		if apierrors.IsConflict(err) {
+			metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+				"controller": "workgenerator",
+				"op_name":    "update_binding_status",
+			}).Inc() // record the conflict error
+		}
 		errAfterRetries := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 			// Get the latest binding object using the utility function
 			bindingKey := types.NamespacedName{Namespace: resourceBinding.GetNamespace(), Name: resourceBinding.GetName()}
@@ -301,6 +309,12 @@ func (r *Reconciler) updateBindingStatusWithRetry(ctx context.Context, resourceB
 			latestBinding.SetBindingStatus(*resourceBinding.GetBindingStatus())
 			if err := r.Client.Status().Update(ctx, latestBinding); err != nil {
 				klog.ErrorS(err, "Failed to update the binding status", "binding", bindingRef, "bindingStatus", latestBinding.GetBindingStatus())
+				if apierrors.IsConflict(err) {
+					metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+						"controller": "workgenerator",
+						"op_name":    "update_binding_status_retries",
+					}).Inc() // record the conflict error
+				}
 				return err
 			}
 			klog.V(2).InfoS("Successfully updated the binding status", "binding", bindingRef, "bindingStatus", latestBinding.GetBindingStatus())
@@ -340,6 +354,12 @@ func (r *Reconciler) handleDelete(ctx context.Context, resourceBinding fleetv1be
 		controllerutil.RemoveFinalizer(resourceBinding, fleetv1beta1.WorkFinalizer)
 		if err = r.Client.Update(ctx, resourceBinding); err != nil {
 			klog.ErrorS(err, "Failed to remove the work finalizer from resource binding", "binding", klog.KObj(resourceBinding))
+			if apierrors.IsConflict(err) {
+				metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+					"controller": "workgenerator",
+					"op_name":    "remove_finalizer",
+				}).Inc() // record the conflict error
+			}
 			return controllerruntime.Result{}, controller.NewUpdateIgnoreConflictError(err)
 		}
 		klog.V(2).InfoS("The resource binding is deleted", "binding", klog.KObj(resourceBinding))
@@ -373,7 +393,14 @@ func (r *Reconciler) ensureFinalizer(ctx context.Context, resourceBinding fleetv
 		}
 
 		controllerutil.AddFinalizer(resourceBinding, fleetv1beta1.WorkFinalizer)
-		return r.Client.Update(ctx, resourceBinding)
+		err := r.Client.Update(ctx, resourceBinding)
+		if apierrors.IsConflict(err) {
+			metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+				"controller": "workgenerator",
+				"op_name":    "add_finalizer",
+			}).Inc() // record the conflict error
+		}
+		return err
 	})
 	if errAfterRetries != nil {
 		klog.ErrorS(errAfterRetries, "Failed to add the work finalizer after retries", "binding", klog.KObj(resourceBinding))
@@ -591,6 +618,12 @@ func (r *Reconciler) processOneSelectedResource(
 	newWork []*fleetv1beta1.Work,
 	simpleManifests []fleetv1beta1.Manifest,
 ) ([]*fleetv1beta1.Work, []fleetv1beta1.Manifest, error) {
+	// Experimental: pass the JSON content directly to the work object.
+	/**
+	simpleManifests = append(simpleManifests, fleetv1beta1.Manifest(*selectedResource))
+	return newWork, simpleManifests, nil
+	*/
+
 	// Unmarshal the YAML content into an unstructured object.
 	var uResource unstructured.Unstructured
 	if unMarshallErr := uResource.UnmarshalJSON(selectedResource.Raw); unMarshallErr != nil {
@@ -665,6 +698,12 @@ func (r *Reconciler) syncApplyStrategy(
 	existingWork.Spec.ApplyStrategy = resourceBinding.GetBindingSpec().ApplyStrategy.DeepCopy()
 	if err := r.Client.Update(ctx, existingWork); err != nil {
 		klog.ErrorS(err, "Failed to update the apply strategy on the work", "work", klog.KObj(existingWork), "binding", klog.KObj(resourceBinding))
+		if apierrors.IsConflict(err) {
+			metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+				"controller": "workgenerator",
+				"op_name":    "update_work_apply_strategy",
+			}).Inc() // record the conflict error
+		}
 		return true, controller.NewUpdateIgnoreConflictError(err)
 	}
 	klog.V(2).InfoS("Successfully updated the apply strategy on the work", "work", klog.KObj(existingWork), "binding", klog.KObj(resourceBinding))
@@ -805,6 +844,12 @@ func (r *Reconciler) upsertWork(ctx context.Context, newWork, existingWork *flee
 	existingWork.Spec.ApplyStrategy = newWork.Spec.ApplyStrategy
 	if err := r.Client.Update(ctx, existingWork); err != nil {
 		klog.ErrorS(err, "Failed to update the work associated with the resourceSnapshot", "resourceSnapshot", resourceSnapshotObj, "work", workObj)
+		if apierrors.IsConflict(err) {
+			metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+				"controller": "workgenerator",
+				"op_name":    "update_work",
+			}).Inc() // record the conflict error
+		}
 		return true, controller.NewUpdateIgnoreConflictError(err)
 	}
 	klog.V(2).InfoS("Successfully updated the work associated with the resourceSnapshot", "resourceSnapshot", resourceSnapshotObj, "work", workObj)

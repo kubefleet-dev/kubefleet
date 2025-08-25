@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
+	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,12 +40,14 @@ import (
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/metrics"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/clustereligibilitychecker"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/queue"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/annotations"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/parallelizer"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -376,6 +379,12 @@ var markUnscheduledForAndUpdate = func(ctx context.Context, hubClient client.Cli
 	if err == nil {
 		klog.V(2).InfoS("Marked binding as unscheduled", "binding", klog.KObj(binding))
 	}
+	if errors.IsConflict(err) {
+		metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+			"controller": "schedulerframework",
+			"op_name":    "mark_binding_as_unscheduler",
+		}).Inc() // record the conflict error
+	}
 	return err
 }
 
@@ -385,6 +394,12 @@ var removeFinalizerAndUpdate = func(ctx context.Context, hubClient client.Client
 	err := hubClient.Update(ctx, binding, &client.UpdateOptions{})
 	if err == nil {
 		klog.V(2).InfoS("Removed scheduler binding cleanup finalizer", "binding", klog.KObj(binding))
+	}
+	if errors.IsConflict(err) {
+		metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+			"controller": "schedulerframework",
+			"op_name":    "remove_binding_finalizer",
+		}).Inc() // record the conflict error
 	}
 	return err
 }
@@ -794,6 +809,12 @@ func (f *framework) updatePolicySnapshotStatusFromBindings(
 	meta.SetStatusCondition(&policyStatus.Conditions, newCondition)
 	if err := f.client.Status().Update(ctx, policy, &client.SubResourceUpdateOptions{}); err != nil {
 		klog.ErrorS(err, "Failed to update policy snapshot status", "schedulingPolicySnapshot", policyRef)
+		if errors.IsConflict(err) {
+			metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+				"controller": "schedulerframework",
+				"op_name":    "update_policy_snapshot_status_pickall_pickn",
+			}).Inc() // record the conflict error
+		}
 		return controller.NewAPIServerError(false, err)
 	}
 	return nil
@@ -1382,6 +1403,12 @@ func (f *framework) updatePolicySnapshotStatusForPickFixedPlacementType(
 	meta.SetStatusCondition(&policyStatus.Conditions, newCondition)
 	if err := f.client.Status().Update(ctx, policy, &client.SubResourceUpdateOptions{}); err != nil {
 		klog.ErrorS(err, "Failed to update policy snapshot status", "policySnapshot", policyRef)
+		if errors.IsConflict(err) {
+			metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+				"controller": "schedulerframework",
+				"op_name":    "update_policy_snapshot_status_pickfixed",
+			}).Inc() // record the conflict error
+		}
 		return controller.NewAPIServerError(false, err)
 	}
 

@@ -44,6 +44,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // propertyProviderConfig is a group of settings for configuring the the property provider.
@@ -561,7 +562,14 @@ func (r *Reconciler) updateInternalMemberClusterWithRetry(ctx context.Context, i
 			return apierrors.IsServiceUnavailable(err) || apierrors.IsServerTimeout(err) || apierrors.IsTooManyRequests(err)
 		},
 		func() error {
-			return r.hubClient.Status().Update(ctx, imc)
+			err := r.hubClient.Status().Update(ctx, imc)
+			if apierrors.IsConflict(err) {
+				metrics.FleetUpdateConflictsTotal.With(prometheus.Labels{
+					"controller": "internalmembercluster",
+					"op_name":    "update_internal_member_cluster_status",
+				}).Inc() // record the conflict error
+			}
+			return err
 		})
 }
 

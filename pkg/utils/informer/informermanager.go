@@ -130,7 +130,26 @@ func (s *informerManagerImpl) AddDynamicResources(dynResources []APIResourceMeta
 			s.apiResources[newRes.GroupVersionKind] = &newRes
 			// TODO (rzhang): remember the ResourceEventHandlerRegistration and remove it when the resource is deleted
 			// TODO: handle error which only happens if the informer is stopped
-			_, _ = s.informerFactory.ForResource(newRes.GroupVersionResource).Informer().AddEventHandler(handler)
+			informer := s.informerFactory.ForResource(newRes.GroupVersionResource).Informer()
+			/**
+			_ = informer.SetTransform(func(objI interface{}) (interface{}, error) {
+				obj, hasObjMetadata := objI.(metav1.Object)
+				if !hasObjMetadata {
+					// No need to transform; return the object as it is.
+					return objI, nil
+				}
+
+				// Drop metadata fields that are not relevant for Fleet.
+				obj.SetManagedFields(nil)
+				obj.SetOwnerReferences(nil)
+				obj.SetUID("")
+				obj.SetResourceVersion("")
+				obj.SetLabels(nil)
+				obj.SetAnnotations(nil)
+				return obj, nil
+			})
+			*/
+			_, _ = informer.AddEventHandler(handler)
 			klog.InfoS("Added an informer for a new resource", "res", newRes)
 		} else if !dynRes.isPresent {
 			// we just mark it as enabled as we should not add another eventhandler to the informer as it's still
