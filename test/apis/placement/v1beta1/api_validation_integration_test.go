@@ -696,7 +696,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			Expect(hubClient.Create(ctx, &rp)).Should(Succeed())
 		})
 
-		It("should allow creation of ResourcePlacement with StatusReportingScope is not specified", func() {
+		It("should allow creation of ResourcePlacement with StatusReportingScope not specified", func() {
 			rp = placementv1beta1.ResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      rpName,
@@ -716,7 +716,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			Expect(hubClient.Create(ctx, &rp)).Should(Succeed())
 		})
 
-		It("should allow update of ResourcePlacement StatusReportingScope (no immutability constraint)", func() {
+		It("should allow update of ResourcePlacement StatusReportingScope, no immutability constraint", func() {
 			rp = placementv1beta1.ResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      rpName,
