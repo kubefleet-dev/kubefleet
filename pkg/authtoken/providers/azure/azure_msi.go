@@ -52,21 +52,7 @@ func New(clientID, scope string) authtoken.Provider {
 func (a *AuthTokenProvider) FetchToken(ctx context.Context) (authtoken.AuthToken, error) {
 	token := authtoken.AuthToken{}
 
-	// We may race at startup with a sidecar which inserts an iptables rule
-	// to intercept IMDS calls.  If we get here before such an iptables rule
-	// is inserted, we will inadvertently connect to real IMDS, which won't
-	// be able to service our request.  IMDS does not set 'Connection:
-	// close' on 400 errors.  Default Go HTTP client behavior will keep the
-	// underlying TCP connection open for re-use, unaffected by iptables,
-	// causing all further requests to continue to be sent to real IMDS and
-	// fail.  Use a separate HTTP client for IMDS calls, where connection
-	// re-use is disabled.
-	httpClient := &http.Client{
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-		},
-	}
-
+	httpClient := &http.Client{}
 	opts := &azidentity.ManagedIdentityCredentialOptions{
 		ClientOptions: azcore.ClientOptions{
 			Transport: httpClient,
@@ -90,6 +76,15 @@ func (a *AuthTokenProvider) FetchToken(ctx context.Context) (authtoken.AuthToken
 			})
 			if err != nil {
 				klog.ErrorS(err, "Failed to GetToken", "scope", a.Scope)
+				// We may race at startup with a sidecar which inserts an iptables rule
+				// to intercept IMDS calls.  If we get here before such an iptables rule
+				// is inserted, we will inadvertently connect to real IMDS, which won't
+				// be able to service our request.  IMDS does not set 'Connection:
+				// close' on 400 errors.  Default Go HTTP client behavior will keep the
+				// underlying TCP connection open for re-use, unaffected by iptables,
+				// causing all further requests to continue to be sent to real IMDS and
+				// fail.  If an error is returned from the IMDS call, explicitly close the
+				// connection used by the HTTP client.
 				httpClient.CloseIdleConnections()
 			}
 			return err
