@@ -909,8 +909,8 @@ var _ = Describe("detect drifts on placed resources using RP", Label("resourcepl
 		})
 
 		AfterAll(func() {
-			//ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			//ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
+			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 	})
 
