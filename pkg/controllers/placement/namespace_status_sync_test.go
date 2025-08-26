@@ -282,15 +282,12 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 			}
 
 			crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
-			err = fakeClient.Get(context.Background(), types.NamespacedName{
-				Name:      crp.Name,
-				Namespace: targetNamespace,
-			}, crpStatus)
+			err = fakeClient.Get(context.Background(), types.NamespacedName{Name: crp.Name, Namespace: targetNamespace}, crpStatus)
 
 			if !tc.expectOperation && err == nil {
 				t.Fatal("Expected no ClusterResourcePlacementStatus to be present, but one exists")
 			}
-			
+
 			if err != nil {
 				t.Fatalf("expected ClusterResourcePlacementStatus to exist but got error: %v", err)
 			}
