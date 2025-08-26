@@ -44,7 +44,7 @@ var (
 	}
 )
 
-var _ = FDescribe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
+var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 	Context("Create and Update ClusterResourcePlacementStatus, StatusReportingScope is NamespaceAccessible", func() {
 		var crpName string
 		var crp *placementv1beta1.ClusterResourcePlacement
