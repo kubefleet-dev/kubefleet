@@ -27,10 +27,20 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+)
+
+var (
+	// Define comparison options for ignoring auto-generated and time-dependent fields
+	crpsCmpOpts = []cmp.Option{
+		cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion", "UID", "CreationTimestamp", "Generation", "ManagedFields", "OwnerReferences"),
+		cmpopts.IgnoreFields(placementv1beta1.ClusterResourcePlacementStatus{}, "LastUpdatedTime"),
+	}
 )
 
 func TestExtractNamespaceFromResourceSelectors(t *testing.T) {
@@ -111,18 +121,11 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 		t.Fatalf("failed to add fleet scheme: %v", err)
 	}
 
-	type expectation int
-	const (
-		expectCreation expectation = iota
-		expectUpdate
-		expectNoOperation
-	)
-
 	testCases := []struct {
 		name            string
 		placementObj    placementv1beta1.PlacementObj
 		existingObjects []client.Object
-		want            expectation
+		expectOperation bool
 	}{
 		{
 			name: "Create new ClusterResourcePlacementStatus",
@@ -159,7 +162,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 					},
 				},
 			},
-			want: expectCreation,
+			expectOperation: true,
 		},
 		{
 			name: "Update existing ClusterResourcePlacementStatus",
@@ -206,7 +209,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 					LastUpdatedTime: metav1.Now(),
 				},
 			},
-			want: expectUpdate,
+			expectOperation: true,
 		},
 		{
 			name: "ClusterScopeOnly should not sync",
@@ -226,7 +229,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 					},
 				},
 			},
-			want: expectNoOperation,
+			expectOperation: false,
 		},
 		{
 			name: "ResourcePlacement should not sync",
@@ -247,7 +250,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 					},
 				},
 			},
-			want: expectNoOperation,
+			expectOperation: false,
 		},
 	}
 
@@ -268,11 +271,6 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				t.Fatalf("syncClusterResourcePlacementStatus() failed: %v", err)
 			}
 
-			if tc.want == expectNoOperation {
-				// Verify no ClusterResourcePlacementStatus was created or updated
-				return
-			}
-
 			// Verify the ClusterResourcePlacementStatus exists
 			crp, ok := tc.placementObj.(*placementv1beta1.ClusterResourcePlacement)
 			if !ok {
@@ -290,47 +288,50 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				Namespace: targetNamespace,
 			}, crpStatus)
 
-			if tc.want == expectCreation || tc.want == expectUpdate {
-				if err != nil {
-					t.Fatalf("expected ClusterResourcePlacementStatus to exist but got error: %v", err)
-				}
+			if !tc.expectOperation && !k8serrors.IsNotFound(err) {
+				t.Fatal("Expected no ClusterResourcePlacementStatus to be created, but one exists")
+			}
+			
+			if err != nil {
+				t.Fatalf("expected ClusterResourcePlacementStatus to exist but got error: %v", err)
+			}
 
-				// Use cmp.Diff to compare the key fields
-				wantStatus := placementv1beta1.ClusterResourcePlacementStatus{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      crp.Name,
-						Namespace: targetNamespace,
-					},
-					PlacementStatus: crp.Status,
-				}
+			// Use cmp.Diff to compare the key fields
+			wantStatus := placementv1beta1.ClusterResourcePlacementStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      crp.Name,
+					Namespace: targetNamespace,
+				},
+				PlacementStatus: crp.Status,
+			}
 
-				// Ignore metadata fields that Kubernetes sets automatically and LastUpdatedTime since it's time-dependent
-				if diff := cmp.Diff(wantStatus, *crpStatus, cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion", "UID", "CreationTimestamp", "Generation", "ManagedFields", "OwnerReferences"), cmpopts.IgnoreFields(placementv1beta1.ClusterResourcePlacementStatus{}, "LastUpdatedTime")); diff != "" {
-					t.Errorf("ClusterResourcePlacementStatus mismatch (-want +got):\n%s", diff)
-				}
+			// Ignore metadata fields that Kubernetes sets automatically and LastUpdatedTime since it's time-dependent
+			if diff := cmp.Diff(wantStatus, *crpStatus, crpsCmpOpts...); diff != "" {
+				t.Fatalf("ClusterResourcePlacementStatus mismatch (-want +got):\n%s", diff)
+			}
 
-				// Verify LastUpdatedTime is set
-				if crpStatus.LastUpdatedTime.IsZero() {
-					t.Error("Expected LastUpdatedTime to be set, but it was zero")
-				}
+			// Verify LastUpdatedTime is set
+			if crpStatus.LastUpdatedTime.IsZero() {
+				t.Fatal("Expected LastUpdatedTime to be set, but it was zero")
+			}
 
-				// Verify owner reference is set correctly for creation case
-				if tc.want == expectCreation {
-					if len(crpStatus.OwnerReferences) == 0 {
-						t.Error("Expected owner reference to be set, but none found")
-					} else {
-						ownerRef := crpStatus.OwnerReferences[0]
-						if ownerRef.Name != crp.Name {
-							t.Errorf("Expected owner reference name %s, got %s", crp.Name, ownerRef.Name)
-						}
-						if ownerRef.Kind != "ClusterResourcePlacement" {
-							t.Errorf("Expected owner reference kind ClusterResourcePlacement, got %s", ownerRef.Kind)
-						}
-						if ownerRef.Controller == nil || !*ownerRef.Controller {
-							t.Error("Expected owner reference to be marked as controller")
-						}
-					}
-				}
+			// Verify owner reference is set correctly for both creation and update cases
+			if len(crpStatus.OwnerReferences) == 0 {
+				t.Fatal("Expected owner reference to be set, but none found")
+			}
+
+			wantOwnerRef := metav1.OwnerReference{
+				APIVersion:         "placement.kubernetes-fleet.io/v1beta1",
+				Kind:               "ClusterResourcePlacement",
+				Name:               crp.Name,
+				UID:                crp.UID,
+				Controller:         ptr.To(true),
+				BlockOwnerDeletion: ptr.To(true),
+			}
+
+			gotOwnerRef := crpStatus.OwnerReferences[0]
+			if diff := cmp.Diff(wantOwnerRef, gotOwnerRef); diff != "" {
+				t.Fatalf("Owner reference mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
