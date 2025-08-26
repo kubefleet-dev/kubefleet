@@ -35,45 +35,13 @@ import (
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
 )
 
-var (
-	nsName  = fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
-	cm1Name = fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
-	cm2Name = fmt.Sprintf(appConfigMapNameTemplate+"-%d", 2, GinkgoParallelProcess())
-
-	configMapSelectors = []placementv1beta1.ResourceSelectorTerm{
-		{
-			Group:   "",
-			Kind:    "ConfigMap",
-			Version: "v1",
-			Name:    cm1Name,
-		},
-		{
-			Group:   "",
-			Kind:    "ConfigMap",
-			Version: "v1",
-			Name:    cm2Name,
-		},
-	}
-	appConfigMapsIdentifiers = []placementv1beta1.ResourceIdentifier{
-		{
-			Kind:      "ConfigMap",
-			Name:      cm1Name,
-			Version:   "v1",
-			Namespace: nsName,
-		},
-		{
-			Kind:      "ConfigMap",
-			Name:      cm2Name,
-			Version:   "v1",
-			Namespace: nsName,
-		},
-	}
-)
-
 var _ = Describe("take over existing resources using RP", Label("resourceplacement"), func() {
 	Context("always take over", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
+		cm1Name := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
+		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", 2, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create the resources on the hub cluster.
@@ -133,7 +101,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
 				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: configMapSelectors,
+					ResourceSelectors: multipleConfigMapsSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
 					},
@@ -158,7 +126,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 		})
 
 		It("should update RP status as expected", func() {
-			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapsIdentifiers, allMemberClusterNames, nil, "0")
+			rpStatusUpdatedActual := rpStatusUpdatedActual(multipleAppConfigMapIdentifiers(), allMemberClusterNames, nil, "0")
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
@@ -222,6 +190,8 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
+		cm1Name := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
+		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", 2, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create the resources on the hub cluster.
@@ -281,7 +251,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
 				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: configMapSelectors,
+					ResourceSelectors: multipleConfigMapsSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
 					},
@@ -309,7 +279,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 			buildWantRPStatus := func(rpGeneration int64) *placementv1beta1.PlacementStatus {
 				return &placementv1beta1.PlacementStatus{
 					Conditions:        rpAppliedFailedConditions(rpGeneration),
-					SelectedResources: appConfigMapsIdentifiers,
+					SelectedResources: multipleAppConfigMapIdentifiers(),
 					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           memberCluster1EastProdName,
@@ -444,6 +414,8 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
+		cm1Name := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
+		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", 2, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create the resources on the hub cluster.
@@ -503,7 +475,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
 				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: configMapSelectors,
+					ResourceSelectors: multipleConfigMapsSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
 					},
@@ -531,7 +503,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 			buildWantRPStatus := func(rpGeneration int64) *placementv1beta1.PlacementStatus {
 				return &placementv1beta1.PlacementStatus{
 					Conditions:        rpAppliedFailedConditions(rpGeneration),
-					SelectedResources: appConfigMapsIdentifiers,
+					SelectedResources: multipleAppConfigMapIdentifiers(),
 					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           memberCluster1EastProdName,
@@ -695,6 +667,8 @@ var _ = Describe("detect drifts on placed resources using RP", Label("resourcepl
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
+		cm1Name := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
+		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", 2, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create the resources on the hub cluster.
@@ -735,7 +709,7 @@ var _ = Describe("detect drifts on placed resources using RP", Label("resourcepl
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
 				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: configMapSelectors,
+					ResourceSelectors: multipleConfigMapsSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
 					},
@@ -760,7 +734,7 @@ var _ = Describe("detect drifts on placed resources using RP", Label("resourcepl
 		})
 
 		It("should update RP status as expected", func() {
-			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapsIdentifiers, allMemberClusterNames, nil, "0")
+			rpStatusUpdatedActual := rpStatusUpdatedActual(multipleAppConfigMapIdentifiers(), allMemberClusterNames, nil, "0")
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
@@ -784,7 +758,7 @@ var _ = Describe("detect drifts on placed resources using RP", Label("resourcepl
 		})
 
 		It("should update RP status as expected", func() {
-			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapsIdentifiers, allMemberClusterNames, nil, "0")
+			rpStatusUpdatedActual := rpStatusUpdatedActual(multipleAppConfigMapIdentifiers(), allMemberClusterNames, nil, "0")
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
@@ -836,6 +810,8 @@ var _ = Describe("detect drifts on placed resources using RP", Label("resourcepl
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
+		cm1Name := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
+		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", 2, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create the resources on the hub cluster.
@@ -876,7 +852,7 @@ var _ = Describe("detect drifts on placed resources using RP", Label("resourcepl
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
 				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: configMapSelectors,
+					ResourceSelectors: multipleConfigMapsSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
 					},
@@ -901,7 +877,7 @@ var _ = Describe("detect drifts on placed resources using RP", Label("resourcepl
 		})
 
 		It("should update RP status as expected", func() {
-			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapsIdentifiers, allMemberClusterNames, nil, "0")
+			rpStatusUpdatedActual := rpStatusUpdatedActual(multipleAppConfigMapIdentifiers(), allMemberClusterNames, nil, "0")
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
@@ -929,7 +905,7 @@ var _ = Describe("detect drifts on placed resources using RP", Label("resourcepl
 			buildWantRPStatus := func(rpGeneration int64) *placementv1beta1.PlacementStatus {
 				return &placementv1beta1.PlacementStatus{
 					Conditions:        rpAppliedFailedConditions(rpGeneration),
-					SelectedResources: appConfigMapsIdentifiers,
+					SelectedResources: multipleAppConfigMapIdentifiers(),
 					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           memberCluster1EastProdName,
@@ -1067,6 +1043,8 @@ var _ = Describe("detect drifts on placed resources using RP", Label("resourcepl
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
+		cm1Name := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
+		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", 2, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create the resources on the hub cluster.
@@ -1107,7 +1085,7 @@ var _ = Describe("detect drifts on placed resources using RP", Label("resourcepl
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
 				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: configMapSelectors,
+					ResourceSelectors: multipleConfigMapsSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
 					},
@@ -1132,7 +1110,7 @@ var _ = Describe("detect drifts on placed resources using RP", Label("resourcepl
 		})
 
 		It("should update RP status as expected", func() {
-			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapsIdentifiers, allMemberClusterNames, nil, "0")
+			rpStatusUpdatedActual := rpStatusUpdatedActual(multipleAppConfigMapIdentifiers(), allMemberClusterNames, nil, "0")
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
@@ -1160,7 +1138,7 @@ var _ = Describe("detect drifts on placed resources using RP", Label("resourcepl
 			buildWantRPStatus := func(rpGeneration int64) *placementv1beta1.PlacementStatus {
 				return &placementv1beta1.PlacementStatus{
 					Conditions:        rpAppliedFailedConditions(rpGeneration),
-					SelectedResources: appConfigMapsIdentifiers,
+					SelectedResources: multipleAppConfigMapIdentifiers(),
 					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           memberCluster1EastProdName,
@@ -1331,6 +1309,8 @@ var _ = Describe("report diff mode using RP", Label("resourceplacement"), func()
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
+		cm1Name := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
+		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", 2, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create the resources on the hub cluster.
@@ -1390,7 +1370,7 @@ var _ = Describe("report diff mode using RP", Label("resourceplacement"), func()
 					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
 				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: configMapSelectors,
+					ResourceSelectors: multipleConfigMapsSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
 					},
@@ -1419,7 +1399,7 @@ var _ = Describe("report diff mode using RP", Label("resourceplacement"), func()
 			buildWantRPStatus := func(rpGeneration int64) *placementv1beta1.PlacementStatus {
 				return &placementv1beta1.PlacementStatus{
 					Conditions:        rpDiffReportedConditions(rpGeneration, false),
-					SelectedResources: appConfigMapsIdentifiers,
+					SelectedResources: multipleAppConfigMapIdentifiers(),
 					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           memberCluster1EastProdName,
@@ -1633,7 +1613,7 @@ var _ = Describe("report diff mode using RP", Label("resourceplacement"), func()
 			buildWantRPStatus := func(rpGeneration int64) *placementv1beta1.PlacementStatus {
 				return &placementv1beta1.PlacementStatus{
 					Conditions:        rpDiffReportedConditions(rpGeneration, false),
-					SelectedResources: appConfigMapsIdentifiers,
+					SelectedResources: multipleAppConfigMapIdentifiers(),
 					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
 							ClusterName:           memberCluster1EastProdName,

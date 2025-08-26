@@ -90,6 +90,23 @@ func configMapSelector() []placementv1beta1.ResourceSelectorTerm {
 	}
 }
 
+func multipleConfigMapsSelector() []placementv1beta1.ResourceSelectorTerm {
+	return []placementv1beta1.ResourceSelectorTerm{
+		{
+			Group:   "",
+			Kind:    "ConfigMap",
+			Version: "v1",
+			Name:    fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess()),
+		},
+		{
+			Group:   "",
+			Kind:    "ConfigMap",
+			Version: "v1",
+			Name:    fmt.Sprintf(appConfigMapNameTemplate+"-%d", GinkgoParallelProcess(), 2),
+		},
+	}
+}
+
 func configMapOverrideSelector() []placementv1beta1.ResourceSelector {
 	return []placementv1beta1.ResourceSelector{
 		{
