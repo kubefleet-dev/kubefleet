@@ -84,7 +84,7 @@ func TestExtractNamespaceFromResourceSelectors(t *testing.T) {
 			want: "",
 		},
 		{
-			name: "NamespaceAccessible without namespace selector",
+			name: "NamespaceAccessible without namespace selector", // CEL validation should prevent this case
 			placement: placementv1beta1.ClusterResourcePlacement{
 				Spec: placementv1beta1.PlacementSpec{
 					StatusReportingScope: placementv1beta1.NamespaceAccessible,
@@ -288,8 +288,8 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				Namespace: targetNamespace,
 			}, crpStatus)
 
-			if !tc.expectOperation && !k8serrors.IsNotFound(err) {
-				t.Fatal("Expected no ClusterResourcePlacementStatus to be created, but one exists")
+			if !tc.expectOperation && err == nil {
+				t.Fatal("Expected no ClusterResourcePlacementStatus to be present, but one exists")
 			}
 			
 			if err != nil {
