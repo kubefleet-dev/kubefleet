@@ -41,7 +41,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 		cm1Name := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
-		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", 2, GinkgoParallelProcess())
+		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", GinkgoParallelProcess(), 2)
 
 		BeforeAll(func() {
 			// Create the resources on the hub cluster.
@@ -191,7 +191,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 		cm1Name := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
-		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", 2, GinkgoParallelProcess())
+		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", GinkgoParallelProcess(), 2)
 
 		BeforeAll(func() {
 			// Create the resources on the hub cluster.
@@ -415,7 +415,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 		cm1Name := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
-		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", 2, GinkgoParallelProcess())
+		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", GinkgoParallelProcess(), 2)
 
 		BeforeAll(func() {
 			// Create the resources on the hub cluster.
@@ -668,7 +668,7 @@ var _ = Describe("detect drifts on placed resources using RP", Label("resourcepl
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 		cm1Name := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
-		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", 2, GinkgoParallelProcess())
+		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", GinkgoParallelProcess(), 2)
 
 		BeforeAll(func() {
 			// Create the resources on the hub cluster.
@@ -811,7 +811,7 @@ var _ = Describe("detect drifts on placed resources using RP", Label("resourcepl
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 		cm1Name := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
-		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", 2, GinkgoParallelProcess())
+		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", GinkgoParallelProcess(), 2)
 
 		BeforeAll(func() {
 			// Create the resources on the hub cluster.
@@ -1044,7 +1044,7 @@ var _ = Describe("detect drifts on placed resources using RP", Label("resourcepl
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 		cm1Name := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
-		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", 2, GinkgoParallelProcess())
+		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", GinkgoParallelProcess(), 2)
 
 		BeforeAll(func() {
 			// Create the resources on the hub cluster.
@@ -1310,7 +1310,7 @@ var _ = Describe("report diff mode using RP", Label("resourceplacement"), func()
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 		cm1Name := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
-		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", 2, GinkgoParallelProcess())
+		cm2Name := fmt.Sprintf(appConfigMapNameTemplate+"-%d", GinkgoParallelProcess(), 2)
 
 		BeforeAll(func() {
 			// Create the resources on the hub cluster.
