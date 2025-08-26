@@ -215,6 +215,46 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 			want := map[string]string{roTestAnnotationKey: roTestAnnotationValue1}
 			checkIfOverrideAnnotationsOnAllMemberClusters(false, want)
 		})
+
+		It("update ro and no update on the configmap itself", func() {
+			Eventually(func() error {
+				ro := &placementv1beta1.ResourceOverride{}
+				if err := hubClient.Get(ctx, types.NamespacedName{Name: roName, Namespace: workNamespace}, ro); err != nil {
+					return err
+				}
+				ro.Spec.Policy.OverrideRules = append(ro.Spec.Policy.OverrideRules, placementv1beta1.OverrideRule{
+					ClusterSelector: &placementv1beta1.ClusterSelector{
+						ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
+							{
+								LabelSelector: &metav1.LabelSelector{
+									MatchLabels: map[string]string{
+										"invalid-key": "invalid-value",
+									},
+								},
+							},
+						},
+					},
+					OverrideType: placementv1beta1.DeleteOverrideType,
+				})
+				return hubClient.Update(ctx, ro)
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update ro as expected", crpName)
+		})
+
+		It("should refresh the RP status even as there is no change on the resources", func() {
+			wantRONames := []placementv1beta1.NamespacedName{
+				{Namespace: workNamespace, Name: fmt.Sprintf(placementv1beta1.OverrideSnapshotNameFmt, roName, 2)},
+			}
+			rpStatusUpdatedActual := rpStatusWithOverrideUpdatedActual(appConfigMapIdentifiers(), allMemberClusterNames, "0", nil, wantRONames)
+			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP %s status as expected", rpName)
+		})
+
+		// This check will ignore the annotation of resources.
+		It("should place the selected resources on member clusters", checkIfPlacedWorkResourcesOnAllMemberClusters)
+
+		It("should have override annotations on the configmap", func() {
+			want := map[string]string{roTestAnnotationKey: roTestAnnotationValue1}
+			checkIfOverrideAnnotationsOnAllMemberClusters(false, want)
+		})
 	})
 
 	Context("creating resourceOverride with multiple jsonPatchOverrides to override configMap for ResourcePlacement", Ordered, func() {
