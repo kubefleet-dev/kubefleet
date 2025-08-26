@@ -31,6 +31,10 @@ import (
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
+const (
+	crpsEventuallyDuration = time.Second * 20
+)
+
 var (
 	// Define comparison options for ignoring auto-generated and time-dependent fields
 	crpsCmpOpts = []cmp.Option{
@@ -40,7 +44,7 @@ var (
 	}
 )
 
-var _ = FDescribe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
+var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 	Context("Create and Update ClusterResourcePlacementStatus, StatusReportingScope is NamespaceAccessible", func() {
 		var crpName string
 		var crp *placementv1beta1.ClusterResourcePlacement
@@ -72,11 +76,12 @@ var _ = FDescribe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 
 		It("should update CRP status as expected", func() {
 			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+			// CRP status update may take longer due to the additional step of creating/updating ClusterResourcePlacementStatus
+			Eventually(crpStatusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
 		It("should sync ClusterResourcePlacementStatus with CRP status", func() {
-			crpsMatchesActual := crpsMatchesCRPActual(crpName, appNamespace().Name, crp)
+			crpsMatchesActual := crpsStatusMatchesCRPActual(crpName, appNamespace().Name, crp)
 			Eventually(crpsMatchesActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "ClusterResourcePlacementStatus should match expected structure and CRP status")
 		})
 	})
@@ -88,7 +93,7 @@ var _ = FDescribe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		BeforeAll(func() {
 			// Create test resources that will be selected by the CRP
 			createWorkResources()
-			
+
 			crpName = fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 			crp = &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
@@ -133,7 +138,7 @@ var _ = FDescribe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 	})
 })
 
-func crpsMatchesCRPActual(crpName, targetNamespace string, crp *placementv1beta1.ClusterResourcePlacement) func() error {
+func crpsStatusMatchesCRPActual(crpName, targetNamespace string, crp *placementv1beta1.ClusterResourcePlacement) func() error {
 	return func() error {
 		crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
 		crpStatusKey := types.NamespacedName{
