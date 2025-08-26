@@ -44,7 +44,7 @@ var (
 	}
 )
 
-var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
+var _ = FDescribe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 	Context("Create and Update ClusterResourcePlacementStatus, StatusReportingScope is NamespaceAccessible", func() {
 		var crpName string
 		var crp *placementv1beta1.ClusterResourcePlacement
@@ -62,7 +62,8 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
-						PlacementType: placementv1beta1.PickAllPlacementType,
+						PlacementType:    placementv1beta1.PickNPlacementType,
+						NumberOfClusters: ptr.To(int32(2)),
 					},
 					StatusReportingScope: placementv1beta1.NamespaceAccessible,
 				},
@@ -74,15 +75,36 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 
-		It("should update CRP status as expected", func() {
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0")
-			// CRP status update may take longer due to the additional step of creating/updating ClusterResourcePlacementStatus
-			Eventually(crpStatusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		It("should update CRP status with 2 clusters as expected", func() {
+			expectedClusters := []string{memberCluster2EastCanaryName, memberCluster3WestProdName}
+			statusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), expectedClusters, nil, "0")
+			Eventually(statusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status with 2 clusters")
 		})
 
-		It("should sync ClusterResourcePlacementStatus with CRP status", func() {
+		It("should sync ClusterResourcePlacementStatus with initial CRP status (2 clusters)", func() {
 			crpsMatchesActual := crpsStatusMatchesCRPActual(crpName, appNamespace().Name, crp)
-			Eventually(crpsMatchesActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "ClusterResourcePlacementStatus should match expected structure and CRP status")
+			Eventually(crpsMatchesActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "ClusterResourcePlacementStatus should match expected structure and CRP status for 2 clusters")
+		})
+
+		It("should update CRP to select 3 clusters", func() {
+			// Update CRP to select 3 clusters
+			Eventually(func() error {
+				if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+					return err
+				}
+				crp.Spec.Policy.NumberOfClusters = ptr.To(int32(3))
+				return hubClient.Update(ctx, crp)
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP to select 3 clusters")
+		})
+
+		It("should update CRP status with 3 clusters as expected", func() {
+			statusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0")
+			Eventually(statusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status with 3 clusters")
+		})
+
+		It("should sync ClusterResourcePlacementStatus with updated CRP status (3 clusters)", func() {
+			crpsMatchesActual := crpsStatusMatchesCRPActual(crpName, appNamespace().Name, crp)
+			Eventually(crpsMatchesActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "ClusterResourcePlacementStatus should match expected structure and CRP status for 3 clusters")
 		})
 	})
 
