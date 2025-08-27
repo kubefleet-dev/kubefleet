@@ -47,18 +47,15 @@ var (
 
 var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 	Context("Create and Update ClusterResourcePlacementStatus, StatusReportingScope is NamespaceAccessible", func() {
-		var crpName string
-		var crp *placementv1beta1.ClusterResourcePlacement
+		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create test resources that will be selected by the CRP.
 			createWorkResources()
 
-			crpName = fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
-			crp = &placementv1beta1.ClusterResourcePlacement{
+			crp := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       crpName,
-					Finalizers: []string{customDeletionBlockerFinalizer},
 				},
 				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
@@ -73,6 +70,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		})
 
 		AfterAll(func() {
+			// CRP is already deleted, ensure related resources are cleaned up.
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 
@@ -83,13 +81,14 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		})
 
 		It("should sync ClusterResourcePlacementStatus with initial CRP status (2 clusters)", func() {
-			crpsMatchesActual := crpsStatusMatchesCRPActual(crpName, appNamespace().Name, crp)
+			crpsMatchesActual := crpsStatusMatchesCRPActual(crpName, appNamespace().Name)
 			Eventually(crpsMatchesActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "ClusterResourcePlacementStatus should match expected structure and CRP status for 2 clusters")
 		})
 
 		It("should update CRP to select 3 clusters", func() {
 			// Update CRP to select 3 clusters.
 			Eventually(func() error {
+				crp := &placementv1beta1.ClusterResourcePlacement{}
 				if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
 					return err
 				}
@@ -104,21 +103,51 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		})
 
 		It("should sync ClusterResourcePlacementStatus with updated CRP status (3 clusters)", func() {
-			crpsMatchesActual := crpsStatusMatchesCRPActual(crpName, appNamespace().Name, crp)
+			crpsMatchesActual := crpsStatusMatchesCRPActual(crpName, appNamespace().Name)
 			Eventually(crpsMatchesActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "ClusterResourcePlacementStatus should match expected structure and CRP status for 3 clusters")
+		})
+
+		It("delete CRP", func() {
+			// Delete the CRP.
+			crp := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+				},
+			}
+			Expect(hubClient.Delete(ctx, crp)).Should(SatisfyAny(Succeed()), "Failed to delete CRP")
+
+			// Wait for the CRP to be deleted.
+			Eventually(func() bool {
+				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp)
+				return k8serrors.IsNotFound(err)
+			}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "CRP should be deleted")
+		})
+
+		It("should ensure ClusterResourcePlacementStatus is deleted after CRP deletion", func() {
+			crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
+			crpStatusKey := types.NamespacedName{
+				Name:      crpName,
+				Namespace: appNamespace().Name,
+			}
+
+			Eventually(func() bool {
+				return k8serrors.IsNotFound(hubClient.Get(ctx, crpStatusKey, crpStatus))
+			}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "ClusterResourcePlacementStatus should be deleted after CRP deletion")
+
+			Consistently(func() bool {
+				return k8serrors.IsNotFound(hubClient.Get(ctx, crpStatusKey, crpStatus))
+			}, consistentlyDuration, consistentlyInterval).Should(BeTrue(), "ClusterResourcePlacementStatus should be deleted after CRP deletion")
 		})
 	})
 
-	Context("StatusReportingScope is ClusterScopeOnly", func() {
-		var crpName string
-		var crp *placementv1beta1.ClusterResourcePlacement
+	Context("StatusReportingScope is ClusterScopeOnly", Ordered, func() {
+		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create test resources that will be selected by the CRP.
 			createWorkResources()
 
-			crpName = fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
-			crp = &placementv1beta1.ClusterResourcePlacement{
+			crp := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       crpName,
 					Finalizers: []string{customDeletionBlockerFinalizer},
@@ -152,12 +181,12 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 
 			Consistently(func() bool {
 				return k8serrors.IsNotFound(hubClient.Get(ctx, crpStatusKey, crpStatus))
-			}, 10*time.Second, 1*time.Second).Should(BeTrue(), "ClusterResourcePlacementStatus should not be created when StatusReportingScope is ClusterScopeOnly")
+			}, consistentlyDuration, consistentlyInterval).Should(BeTrue(), "ClusterResourcePlacementStatus should not be created when StatusReportingScope is ClusterScopeOnly")
 		})
 	})
 })
 
-func crpsStatusMatchesCRPActual(crpName, targetNamespace string, crp *placementv1beta1.ClusterResourcePlacement) func() error {
+func crpsStatusMatchesCRPActual(crpName, targetNamespace string) func() error {
 	return func() error {
 		crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
 		crpStatusKey := types.NamespacedName{
@@ -170,6 +199,7 @@ func crpsStatusMatchesCRPActual(crpName, targetNamespace string, crp *placementv
 		}
 
 		// Get latest CRP status.
+		crp := &placementv1beta1.ClusterResourcePlacement{}
 		if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
 			return fmt.Errorf("failed to get CRP: %w", err)
 		}
