@@ -83,6 +83,23 @@ func TestExtractNamespaceFromResourceSelectors(t *testing.T) {
 			want: "",
 		},
 		{
+			name: "StatusReportingScope is not specified, should return empty",
+			placement: placementv1beta1.ClusterResourcePlacement{
+				Spec: placementv1beta1.PlacementSpec{
+					StatusReportingScope: placementv1beta1.ClusterScopeOnly,
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:   "",
+							Version: "v1",
+							Kind:    "Namespace",
+							Name:    "test-namespace",
+						},
+					},
+				},
+			},
+			want: "",
+		},
+		{
 			name: "NamespaceAccessible without namespace selector", // CEL validation should prevent this case.
 			placement: placementv1beta1.ClusterResourcePlacement{
 				Spec: placementv1beta1.PlacementSpec{
