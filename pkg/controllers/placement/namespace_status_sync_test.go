@@ -125,6 +125,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 		placementObj    placementv1beta1.PlacementObj
 		existingObjects []client.Object
 		expectOperation bool
+		targetNamespace string
 	}{
 		{
 			name: "Create new ClusterResourcePlacementStatus",
@@ -162,6 +163,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				},
 			},
 			expectOperation: true,
+			targetNamespace: "test-namespace",
 		},
 		{
 			name: "Update existing ClusterResourcePlacementStatus",
@@ -209,6 +211,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				},
 			},
 			expectOperation: true,
+			targetNamespace: "test-namespace",
 		},
 		{
 			name: "ClusterScopeOnly should not sync",
@@ -229,6 +232,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				},
 			},
 			expectOperation: false,
+			targetNamespace: "",
 		},
 		{
 			name: "ResourcePlacement should not sync",
@@ -250,6 +254,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				},
 			},
 			expectOperation: false,
+			targetNamespace: "",
 		},
 	}
 
@@ -276,13 +281,12 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				return // ResourcePlacement case.
 			}
 
-			targetNamespace := extractNamespaceFromResourceSelectors(tc.placementObj)
-			if targetNamespace == "" {
+			if tc.targetNamespace == "" {
 				return // No sync expected.
 			}
 
 			crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
-			err = fakeClient.Get(context.Background(), types.NamespacedName{Name: crp.Name, Namespace: targetNamespace}, crpStatus)
+			err = fakeClient.Get(context.Background(), types.NamespacedName{Name: crp.Name, Namespace: tc.targetNamespace}, crpStatus)
 
 			if !tc.expectOperation && err == nil {
 				t.Fatal("Expected no ClusterResourcePlacementStatus to be present, but one exists")
@@ -301,7 +305,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 			wantStatus := placementv1beta1.ClusterResourcePlacementStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      crp.Name,
-					Namespace: targetNamespace,
+					Namespace: tc.targetNamespace,
 					OwnerReferences: []metav1.OwnerReference{
 						{
 							APIVersion:         "placement.kubernetes-fleet.io/v1beta1",
