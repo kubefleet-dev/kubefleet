@@ -896,7 +896,7 @@ var _ = Describe("validating resource placement using different apply strategies
 
 			BeforeAll(func() {
 				// In the clusterResourcePlacement test, it selects two resources, ns and configMap.
-				// Similarily, configMap maps to ns while anotherConfigMap maps to configMap.
+				// Similarly, configMap maps to ns while anotherConfigMap maps to configMap.
 				createConfigMap()
 				createAnotherConfigMap(anotherConfigMapName)
 
