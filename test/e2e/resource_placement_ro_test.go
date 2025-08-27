@@ -37,8 +37,8 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 
 	BeforeEach(OncePerOrdered, func() {
-		By("creating work resources")
-		createWorkResources()
+		By("creating namespace")
+		createNamespace()
 
 		// Create the CRP with Namespace-only selector.
 		crp := &placementv1beta1.ClusterResourcePlacement{
@@ -78,6 +78,8 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 		workNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
+			createConfigMap()
+
 			// Create the RP in the same namespace selecting namespaced resources.
 			rp := &placementv1beta1.ResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
@@ -264,6 +266,8 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 		roSnapShotName := fmt.Sprintf(placementv1beta1.OverrideSnapshotNameFmt, roName, 0)
 
 		BeforeAll(func() {
+			createConfigMap()
+
 			ro := &placementv1beta1.ResourceOverride{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      roName,
@@ -356,6 +360,8 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 		workNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
+			createConfigMap()
+
 			// Create the RP.
 			rp := &placementv1beta1.ResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
@@ -476,7 +482,7 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 		It("should have override annotations on the configmap", func() {
 			for i, cluster := range allMemberClusters {
 				wantAnnotations := map[string]string{roTestAnnotationKey: fmt.Sprintf("%s-%d", roTestAnnotationValue, i)}
-				Expect(validateOverrideAnnotationOfConfigMapOnCluster(cluster, wantAnnotations)).Should(Succeed(), "Failed to override the annotation of configmap on %s", cluster.ClusterName)
+				Expect(validateAnnotationOfConfigMapOnCluster(cluster, wantAnnotations)).Should(Succeed(), "Failed to override the annotation of configmap on %s", cluster.ClusterName)
 			}
 		})
 	})
@@ -488,6 +494,8 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 		roSnapShotName := fmt.Sprintf(placementv1beta1.OverrideSnapshotNameFmt, roName, 0)
 
 		BeforeAll(func() {
+			createConfigMap()
+
 			// Create the bad ro.
 			ro := &placementv1beta1.ResourceOverride{
 				ObjectMeta: metav1.ObjectMeta{
@@ -575,6 +583,8 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 		workNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
+			createConfigMap()
+
 			// Create the RP.
 			rp := &placementv1beta1.ResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
@@ -658,6 +668,8 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 		roSnapShotName := fmt.Sprintf(placementv1beta1.OverrideSnapshotNameFmt, roName, 0)
 
 		BeforeAll(func() {
+			createConfigMap()
+
 			// Create the ro before rp so that the observed resource index is predictable.
 			ro := &placementv1beta1.ResourceOverride{
 				ObjectMeta: metav1.ObjectMeta{
@@ -773,6 +785,8 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 		roSnapShotName := fmt.Sprintf(placementv1beta1.OverrideSnapshotNameFmt, roName, 0)
 
 		BeforeAll(func() {
+			createConfigMap()
+
 			// Create the ro before rp so that the observed resource index is predictable.
 			ro := &placementv1beta1.ResourceOverride{
 				ObjectMeta: metav1.ObjectMeta{
@@ -875,7 +889,7 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 			for idx := 0; idx < 2; idx++ {
 				cluster := allMemberClusters[idx]
 				wantAnnotations := map[string]string{roTestAnnotationKey: roTestAnnotationValue}
-				Expect(validateOverrideAnnotationOfConfigMapOnCluster(cluster, wantAnnotations)).Should(Succeed(), "Failed to override the annotation of configmap on %s", cluster.ClusterName)
+				Expect(validateAnnotationOfConfigMapOnCluster(cluster, wantAnnotations)).Should(Succeed(), "Failed to override the annotation of configmap on %s", cluster.ClusterName)
 			}
 		})
 
@@ -897,6 +911,8 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 		workNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
+			createConfigMap()
+
 			// Create the ro before rp so that the observed resource index is predictable.
 			ro := &placementv1beta1.ResourceOverride{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1072,6 +1088,8 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 		roSnapShotName := fmt.Sprintf(placementv1beta1.OverrideSnapshotNameFmt, roName, 0)
 
 		BeforeAll(func() {
+			createConfigMap()
+
 			// Create the bad ro.
 			ro := &placementv1beta1.ResourceOverride{
 				ObjectMeta: metav1.ObjectMeta{
