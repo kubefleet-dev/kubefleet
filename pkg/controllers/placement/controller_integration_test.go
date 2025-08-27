@@ -2155,17 +2155,6 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 
 	Context("When creating a ClusterResourcePlacement with NamespaceAccessible StatusReportingScope and nonexistent target namespace", func() {
 		BeforeEach(func() {
-			// Reset metric before each test
-			metrics.FleetPlacementStatusLastTimeStampSeconds.Reset()
-		})
-
-		AfterEach(func() {
-			By("Deleting crp")
-			Expect(k8sClient.Delete(ctx, gotCRP)).Should(Succeed())
-			retrieveAndValidateCRPDeletion(gotCRP)
-		})
-
-		It("Should handle missing target namespace gracefully", func() {
 			By("Create a new crp with NamespaceAccessible StatusReportingScope targeting nonexistent namespace")
 			crp = &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
@@ -2189,29 +2178,49 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, crp)).Should(Succeed(), "Failed to create crp with NamespaceAccessible scope")
+		})
 
-			By("Validate CRP keeps retrying due to missing namespace (conditions remain nil)")
-			// Currently, missing namespace errors are treated as API server errors, not user errors,
-			// so no InvalidResourceSelectors condition is set. The controller will keep retrying.
+		AfterEach(func() {
+			By("Deleting crp")
+			crp := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testCRPName,
+				},
+			}
+			Expect(k8sClient.Delete(ctx, crp)).Should(Succeed())
+			retrieveAndValidateCRPDeletion(crp)
+		})
+
+		It("Should handle missing target namespace", func() {
+			By("Validate CRP keeps retrying due to missing namespace (status remain nil)")
 			wantCRP := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       testCRPName,
 					Finalizers: []string{placementv1beta1.PlacementCleanupFinalizer},
 				},
 				Spec: crp.Spec,
-				Status: placementv1beta1.PlacementStatus{
-					Conditions: nil, // No conditions set for API server errors
-				},
 			}
-			gotCRP = retrieveAndValidateClusterResourcePlacement(testCRPName, wantCRP)
+			retrieveAndValidateClusterResourcePlacement(testCRPName, wantCRP)
+			Consistently(func() error {
+				gotCRP := &placementv1beta1.ClusterResourcePlacement{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: testCRPName}, gotCRP); err != nil {
+					return err
+				}
+				if diff := cmp.Diff(wantCRP, gotCRP, cmpCRPOptions); diff != "" {
+					return fmt.Errorf("clusterResourcePlacement mismatch (-want, +got) :\n%s", diff)
+				}
+				return nil
+			}, 10*time.Second, interval).Should(Succeed(), "ClusterResourcePlacement status must be nil")
 
 			By("Ensure no ClusterResourcePlacementStatus is created in the nonexistent namespace")
-			crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
-			err := k8sClient.Get(ctx, types.NamespacedName{
-				Name:      testCRPName,
-				Namespace: "nonexistent-namespace",
-			}, crpStatus)
-			Expect(errors.IsNotFound(err)).Should(BeTrue(), "ClusterResourcePlacementStatus should not exist in nonexistent namespace")
+			Consistently(func() bool {
+				crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      testCRPName,
+					Namespace: "nonexistent-namespace",
+				}, crpStatus)
+				return errors.IsNotFound(err)
+			}, 10*time.Second, interval).Should(BeTrue(), "ClusterResourcePlacementStatus should not exist in nonexistent namespace")
 		})
 	})
 })
