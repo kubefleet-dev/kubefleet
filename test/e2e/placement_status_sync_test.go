@@ -55,7 +55,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 
 			crp := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:       crpName,
+					Name: crpName,
 				},
 				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: workResourceSelector(),
