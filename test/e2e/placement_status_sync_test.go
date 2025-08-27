@@ -108,7 +108,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		})
 	})
 
-	Context("StatusReportingScope is not NamespaceAccessible", func() {
+	Context("StatusReportingScope is ClusterScopeOnly", func() {
 		var crpName string
 		var crp *placementv1beta1.ClusterResourcePlacement
 
@@ -130,14 +130,11 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 					StatusReportingScope: placementv1beta1.ClusterScopeOnly,
 				},
 			}
+			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 		})
 
 		AfterAll(func() {
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
-		})
-
-		It("should create CRP with ClusterScopeOnly StatusReportingScope", func() {
-			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 		})
 
 		It("should update CRP status as expected", func() {
