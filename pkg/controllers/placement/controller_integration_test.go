@@ -2166,7 +2166,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							Group:   corev1.GroupName,
 							Version: "v1",
 							Kind:    "Namespace",
-							Name:    "nonexistent-namespace", // This namespace doesn't exist
+							Name:    "nonexistent-namespace", // This namespace doesn't exist.
 						},
 					},
 					StatusReportingScope: placementv1beta1.NamespaceAccessible,
@@ -2215,11 +2215,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			By("Ensure no ClusterResourcePlacementStatus is created in the nonexistent namespace")
 			Consistently(func() bool {
 				crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      testCRPName,
-					Namespace: "nonexistent-namespace",
-				}, crpStatus)
-				return errors.IsNotFound(err)
+				return errors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: testCRPName, Namespace: "nonexistent-namespace"}, crpStatus))
 			}, 10*time.Second, interval).Should(BeTrue(), "ClusterResourcePlacementStatus should not exist in nonexistent namespace")
 		})
 	})

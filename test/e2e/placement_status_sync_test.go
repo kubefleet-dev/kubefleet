@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -150,8 +151,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 			}
 
 			Consistently(func() bool {
-				err := hubClient.Get(ctx, crpStatusKey, crpStatus)
-				return err != nil // Should continue to return error (not found).
+				return k8serrors.IsNotFound(hubClient.Get(ctx, crpStatusKey, crpStatus))
 			}, 10*time.Second, 1*time.Second).Should(BeTrue(), "ClusterResourcePlacementStatus should not be created when StatusReportingScope is ClusterScopeOnly")
 		})
 	})

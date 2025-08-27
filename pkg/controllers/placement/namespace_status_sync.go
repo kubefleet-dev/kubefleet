@@ -68,14 +68,12 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 		return nil
 	}
 
-	// Try to get the existing ClusterResourcePlacementStatus.
 	crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      crp.Name, // Same name as CRP.
 			Namespace: targetNamespace,
 		},
 	}
-
 	// Use CreateOrUpdate to handle both creation and update cases.
 	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, crpStatus, func() error {
 		// Set the placement status and update time.
