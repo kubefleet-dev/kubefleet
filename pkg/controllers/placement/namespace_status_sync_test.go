@@ -35,7 +35,7 @@ import (
 )
 
 var (
-	// Define comparison options for ignoring auto-generated and time-dependent fields
+	// Define comparison options for ignoring auto-generated and time-dependent fields.
 	crpsCmpOpts = []cmp.Option{
 		cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion", "UID", "CreationTimestamp", "Generation", "ManagedFields"),
 		cmpopts.IgnoreFields(placementv1beta1.ClusterResourcePlacementStatus{}, "LastUpdatedTime"),
@@ -83,7 +83,7 @@ func TestExtractNamespaceFromResourceSelectors(t *testing.T) {
 			want: "",
 		},
 		{
-			name: "NamespaceAccessible without namespace selector", // CEL validation should prevent this case
+			name: "NamespaceAccessible without namespace selector", // CEL validation should prevent this case.
 			placement: placementv1beta1.ClusterResourcePlacement{
 				Spec: placementv1beta1.PlacementSpec{
 					StatusReportingScope: placementv1beta1.NamespaceAccessible,
@@ -270,15 +270,15 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				t.Fatalf("syncClusterResourcePlacementStatus() failed: %v", err)
 			}
 
-			// Verify the ClusterResourcePlacementStatus exists
+			// Verify the ClusterResourcePlacementStatus exists.
 			crp, ok := tc.placementObj.(*placementv1beta1.ClusterResourcePlacement)
 			if !ok {
-				return // ResourcePlacement case
+				return // ResourcePlacement case.
 			}
 
 			targetNamespace := extractNamespaceFromResourceSelectors(tc.placementObj)
 			if targetNamespace == "" {
-				return // No sync expected
+				return // No sync expected.
 			}
 
 			crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
@@ -292,12 +292,12 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				t.Fatalf("expected ClusterResourcePlacementStatus to exist but got error: %v", err)
 			}
 
-			// Verify LastUpdatedTime is set
+			// Verify LastUpdatedTime is set.
 			if crpStatus.LastUpdatedTime.IsZero() {
 				t.Fatal("Expected LastUpdatedTime to be set, but it was zero")
 			}
 
-			// Use cmp.Diff to compare the key fields
+			// Use cmp.Diff to compare the key fields.
 			wantStatus := placementv1beta1.ClusterResourcePlacementStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      crp.Name,
@@ -316,7 +316,7 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				PlacementStatus: crp.Status,
 			}
 
-			// Ignore metadata fields that Kubernetes sets automatically and LastUpdatedTime since it's time-dependent
+			// Ignore metadata fields that Kubernetes sets automatically and LastUpdatedTime since it's time-dependent.
 			if diff := cmp.Diff(wantStatus, *crpStatus, crpsCmpOpts...); diff != "" {
 				t.Fatalf("ClusterResourcePlacementStatus mismatch (-want +got):\n%s", diff)
 			}

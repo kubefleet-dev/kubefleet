@@ -36,7 +36,7 @@ const (
 )
 
 var (
-	// Define comparison options for ignoring auto-generated and time-dependent fields
+	// Define comparison options for ignoring auto-generated and time-dependent fields.
 	crpsCmpOpts = []cmp.Option{
 		cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion", "UID", "CreationTimestamp", "Generation", "ManagedFields"),
 		cmpopts.IgnoreFields(placementv1beta1.ClusterResourcePlacementStatus{}, "LastUpdatedTime"),
@@ -50,7 +50,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		var crp *placementv1beta1.ClusterResourcePlacement
 
 		BeforeAll(func() {
-			// Create test resources that will be selected by the CRP
+			// Create test resources that will be selected by the CRP.
 			createWorkResources()
 
 			crpName = fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
@@ -87,7 +87,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		})
 
 		It("should update CRP to select 3 clusters", func() {
-			// Update CRP to select 3 clusters
+			// Update CRP to select 3 clusters.
 			Eventually(func() error {
 				if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
 					return err
@@ -113,7 +113,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		var crp *placementv1beta1.ClusterResourcePlacement
 
 		BeforeAll(func() {
-			// Create test resources that will be selected by the CRP
+			// Create test resources that will be selected by the CRP.
 			createWorkResources()
 
 			crpName = fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
@@ -154,7 +154,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 
 			Consistently(func() bool {
 				err := hubClient.Get(ctx, crpStatusKey, crpStatus)
-				return err != nil // Should continue to return error (not found)
+				return err != nil // Should continue to return error (not found).
 			}, 10*time.Second, 1*time.Second).Should(BeTrue(), "ClusterResourcePlacementStatus should not be created when StatusReportingScope is ClusterScopeOnly")
 		})
 	})
@@ -172,12 +172,12 @@ func crpsStatusMatchesCRPActual(crpName, targetNamespace string, crp *placementv
 			return fmt.Errorf("failed to get CRPS: %w", err)
 		}
 
-		// Get latest CRP status
+		// Get latest CRP status.
 		if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
 			return fmt.Errorf("failed to get CRP: %w", err)
 		}
 
-		// Construct expected CRPS
+		// Construct expected CRPS.
 		wantCRPS := &placementv1beta1.ClusterResourcePlacementStatus{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      crpName,
@@ -196,7 +196,7 @@ func crpsStatusMatchesCRPActual(crpName, targetNamespace string, crp *placementv
 			PlacementStatus: crp.Status,
 		}
 
-		// Compare CRPS with expected, ignoring fields that vary
+		// Compare CRPS with expected, ignoring fields that vary.
 		if diff := cmp.Diff(wantCRPS, crpStatus, crpsCmpOpts...); diff != "" {
 			return fmt.Errorf("CRPS does not match expected (-want, +got): %s", diff)
 		}

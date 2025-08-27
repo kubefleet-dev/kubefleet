@@ -32,57 +32,57 @@ import (
 func extractNamespaceFromResourceSelectors(placementObj placementv1beta1.PlacementObj) string {
 	spec := placementObj.GetPlacementSpec()
 
-	// Only process if StatusReportingScope is NamespaceAccessible
+	// Only process if StatusReportingScope is NamespaceAccessible.
 	if spec.StatusReportingScope != placementv1beta1.NamespaceAccessible {
 		return ""
 	}
 
-	// CEL validation ensures exactly one Namespace selector exists when NamespaceAccessible
+	// CEL validation ensures exactly one Namespace selector exists when NamespaceAccessible.
 	for _, selector := range spec.ResourceSelectors {
 		if selector.Kind == "Namespace" {
 			return selector.Name
 		}
 	}
 
-	// This should never happen due to CEL validation, but defensive programming
+	// This should never happen due to CEL validation, but defensive programming.
 	klog.V(2).InfoS("No Namespace selector found despite NamespaceAccessible scope", "placement", klog.KObj(placementObj))
 	return ""
 }
 
 // syncClusterResourcePlacementStatus creates or updates ClusterResourcePlacementStatus
-// object in the target namespace when StatusReportingScope is NamespaceAccessible
+// object in the target namespace when StatusReportingScope is NamespaceAccessible.
 func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, placementObj placementv1beta1.PlacementObj) error {
-	// Only sync for ClusterResourcePlacement objects (not ResourcePlacement)
+	// Only sync for ClusterResourcePlacement objects (not ResourcePlacement).
 	crp, ok := placementObj.(*placementv1beta1.ClusterResourcePlacement)
 	if !ok {
-		// This is a ResourcePlacement, not a ClusterResourcePlacement - skip sync
+		// This is a ResourcePlacement, not a ClusterResourcePlacement - skip sync.
 		klog.V(2).InfoS("Skipped processing RP to create/update ClusterResourcePlacementStatus")
 		return nil
 	}
 
-	// Extract target namespace
+	// Extract target namespace.
 	targetNamespace := extractNamespaceFromResourceSelectors(placementObj)
 	if targetNamespace == "" {
-		// Not NamespaceAccessible or no namespace found - skip sync
+		// Not NamespaceAccessible or no namespace found - skip sync.
 		klog.V(2).InfoS("Skipped processing CRP to create/update ClusterResourcePlacementStatus", "crp", klog.KObj(crp))
 		return nil
 	}
 
-	// Try to get the existing ClusterResourcePlacementStatus
+	// Try to get the existing ClusterResourcePlacementStatus.
 	crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      crp.Name, // Same name as CRP
+			Name:      crp.Name, // Same name as CRP.
 			Namespace: targetNamespace,
 		},
 	}
 
-	// Use CreateOrUpdate to handle both creation and update cases
+	// Use CreateOrUpdate to handle both creation and update cases.
 	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, crpStatus, func() error {
-		// Set the placement status and update time
+		// Set the placement status and update time.
 		crpStatus.PlacementStatus = *crp.Status.DeepCopy()
 		crpStatus.LastUpdatedTime = metav1.Now()
 
-		// Set CRP as owner - this ensures automatic cleanup when CRP is deleted
+		// Set CRP as owner - this ensures automatic cleanup when CRP is deleted.
 		return controllerutil.SetControllerReference(crp, crpStatus, r.Scheme)
 	})
 
