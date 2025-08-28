@@ -62,7 +62,7 @@ var _ = Describe("validating resource placement using different apply strategies
 		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 	})
 
-	var _ = Describe("validating RP when resources exists", Ordered, func() {
+	Describe("validating RP when resources exists", Ordered, func() {
 		BeforeAll(func() {
 			By("creating configMap on hub cluster")
 			createConfigMap()
@@ -581,7 +581,7 @@ var _ = Describe("validating resource placement using different apply strategies
 		})
 	})
 
-	var _ = Describe("SSA", Ordered, func() {
+	Describe("SSA", Ordered, func() {
 		Context("use server-side apply to place resources (with changes)", func() {
 			// The key here should match the one used in the default config map.
 			cmDataKey := "data"
@@ -876,7 +876,7 @@ var _ = Describe("validating resource placement using different apply strategies
 
 	})
 
-	var _ = Describe("switching apply strategies", func() {
+	Describe("switching apply strategies", func() {
 		Context("switch from client-side apply to report diff", Ordered, func() {
 			anotherConfigMapName := types.NamespacedName{Name: fmt.Sprintf("another-config-map-%d", GinkgoParallelProcess()), Namespace: workNamespaceName}
 			selectedResources := []placementv1beta1.ResourceIdentifier{
