@@ -90,19 +90,19 @@ func configMapSelector() []placementv1beta1.ResourceSelectorTerm {
 	}
 }
 
-func multipleConfigMapsSelector() []placementv1beta1.ResourceSelectorTerm {
+func multipleConfigMapsSelector(cm1Name, cm2Name string) []placementv1beta1.ResourceSelectorTerm {
 	return []placementv1beta1.ResourceSelectorTerm{
 		{
 			Group:   "",
 			Kind:    "ConfigMap",
 			Version: "v1",
-			Name:    fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess()),
+			Name:    cm1Name,
 		},
 		{
 			Group:   "",
 			Kind:    "ConfigMap",
 			Version: "v1",
-			Name:    fmt.Sprintf(appConfigMapNameTemplate+"-%d", GinkgoParallelProcess(), 2),
+			Name:    cm2Name,
 		},
 	}
 }
