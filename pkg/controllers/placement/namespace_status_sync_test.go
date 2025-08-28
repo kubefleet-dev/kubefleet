@@ -60,6 +60,12 @@ func TestExtractNamespaceFromResourceSelectors(t *testing.T) {
 							Kind:    "Namespace",
 							Name:    "test-namespace",
 						},
+						{
+							Group:   "rbac.authorization.k8s.io",
+							Version: "v1",
+							Kind:    "ClusterRole",
+							Name:    "test-cluster-role",
+						},
 					},
 				},
 			},
