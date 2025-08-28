@@ -21,10 +21,13 @@ import (
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 )
 
 // extractNamespaceFromResourceSelectors extracts the namespace name from ResourceSelectors
@@ -34,18 +37,27 @@ func extractNamespaceFromResourceSelectors(placementObj placementv1beta1.Placeme
 
 	// Only process if StatusReportingScope is NamespaceAccessible.
 	if spec.StatusReportingScope != placementv1beta1.NamespaceAccessible {
+		klog.V(2).InfoS("StatusReportingScope is not NamespaceAccessible", "placement", klog.KObj(placementObj))
 		return ""
 	}
 
 	// CEL validation ensures exactly one Namespace selector exists when NamespaceAccessible.
 	for _, selector := range spec.ResourceSelectors {
-		if selector.Kind == "Namespace" {
+		selectorGVK := schema.GroupVersionKind{
+			Group:   selector.Group,
+			Version: selector.Version,
+			Kind:    selector.Kind,
+		}
+		// Check if this is a namespace selector by comparing with the standard namespace GVK
+		if selectorGVK == utils.NamespaceGVK {
 			return selector.Name
 		}
 	}
 
 	// This should never happen due to CEL validation, but defensive programming.
-	klog.V(2).InfoS("No Namespace selector found despite NamespaceAccessible scope", "placement", klog.KObj(placementObj))
+	klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("no namespace selector found despite NamespaceAccessible scope")),
+		"Failed to find valid Namespace selector for NamespaceAccessible scope",
+		"placement", klog.KObj(placementObj))
 	return ""
 }
 
