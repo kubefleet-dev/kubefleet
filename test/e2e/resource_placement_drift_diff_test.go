@@ -99,11 +99,11 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 
 	AfterEach(OncePerOrdered, func() {
 		// The pre-existing resource that have not been taken over and must be deleted manually.
-		cleanConfigMapResourceOnCluster(types.NamespacedName{Name: cm2Name, Namespace: nsName}, memberCluster1EastProd)
+		cleanupAnotherConfigMapOnMemberCluster(types.NamespacedName{Name: cm2Name, Namespace: nsName}, memberCluster1EastProd)
 		cleanWorkResourcesOnCluster(memberCluster1EastProd)
 
 		// Clean up second configMap on the hub cluster.
-		cleanConfigMapResourceOnCluster(types.NamespacedName{Name: cm2Name, Namespace: nsName}, hubCluster)
+		cleanupAnotherConfigMap(types.NamespacedName{Name: cm2Name, Namespace: nsName})
 
 		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 	})
@@ -629,11 +629,11 @@ var _ = Describe("detect drifts on placed resources using RP", Ordered, Label("r
 
 	AfterEach(OncePerOrdered, func() {
 		// The pre-existing resource that have not been taken over and must be deleted manually.
-		cleanConfigMapResourceOnCluster(types.NamespacedName{Name: cm2Name, Namespace: nsName}, memberCluster1EastProd)
+		cleanupAnotherConfigMapOnMemberCluster(types.NamespacedName{Name: cm2Name, Namespace: nsName}, memberCluster1EastProd)
 		cleanWorkResourcesOnCluster(memberCluster1EastProd)
 
 		// Clean up second configMap on the hub cluster.
-		cleanConfigMapResourceOnCluster(types.NamespacedName{Name: cm2Name, Namespace: nsName}, hubCluster)
+		cleanupAnotherConfigMap(types.NamespacedName{Name: cm2Name, Namespace: nsName})
 
 		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 	})
@@ -1589,7 +1589,7 @@ var _ = Describe("report diff mode using RP", Label("resourceplacement"), func()
 		AfterAll(func() {
 			// The pre-existing namespace resources that have not been taken over and must be deleted manually.
 			cleanWorkResourcesOnCluster(memberCluster1EastProd)
-			cleanConfigMapResourceOnCluster(types.NamespacedName{Name: cm2Name, Namespace: nsName}, memberCluster1EastProd)
+			cleanupAnotherConfigMapOnMemberCluster(types.NamespacedName{Name: cm2Name, Namespace: nsName}, memberCluster1EastProd)
 
 			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
