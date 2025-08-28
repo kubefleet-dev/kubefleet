@@ -97,7 +97,7 @@ var _ = Describe("validating resource placement using different apply strategies
 			})
 
 			AfterAll(func() {
-				By(fmt.Sprintf("deleting placement %s", rpName))
+				By(fmt.Sprintf("deleting placement %s/%s", workNamespaceName, rpName))
 				cleanupPlacement(types.NamespacedName{Name: rpName, Namespace: workNamespaceName})
 
 				By("deleting created config map on member cluster")
@@ -157,7 +157,7 @@ var _ = Describe("validating resource placement using different apply strategies
 			})
 
 			AfterAll(func() {
-				By(fmt.Sprintf("deleting placement %s", rpName))
+				By(fmt.Sprintf("deleting placement %s/%s", workNamespaceName, rpName))
 				cleanupPlacement(types.NamespacedName{Name: rpName, Namespace: workNamespaceName})
 			})
 
@@ -211,7 +211,7 @@ var _ = Describe("validating resource placement using different apply strategies
 			})
 
 			AfterAll(func() {
-				By(fmt.Sprintf("deleting placement %s", rpName))
+				By(fmt.Sprintf("deleting placement %s/%s", workNamespaceName, rpName))
 				cleanupPlacement(types.NamespacedName{Name: rpName, Namespace: workNamespaceName})
 			})
 
@@ -265,7 +265,7 @@ var _ = Describe("validating resource placement using different apply strategies
 			})
 
 			AfterAll(func() {
-				By(fmt.Sprintf("deleting placement %s", rpName))
+				By(fmt.Sprintf("deleting placement %s/%s", workNamespaceName, rpName))
 				cleanupPlacement(types.NamespacedName{Name: rpName, Namespace: workNamespaceName})
 
 				By("deleting created config map on member cluster")
@@ -382,7 +382,7 @@ var _ = Describe("validating resource placement using different apply strategies
 			})
 
 			AfterAll(func() {
-				By(fmt.Sprintf("deleting placement %s", rpName))
+				By(fmt.Sprintf("deleting placement %s/%s", workNamespaceName, rpName))
 				cleanupPlacement(types.NamespacedName{Name: rpName, Namespace: workNamespaceName})
 
 				By("deleting created config map on member cluster")
