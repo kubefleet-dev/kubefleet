@@ -28,7 +28,7 @@ import (
 
 const (
 	eventuallyTimeout         = time.Second * 10
-	consistentlyDuration      = time.Second * 5
+	consistentlyTimeout      = time.Second * 15
 	consistentlyCheckInterval = time.Millisecond * 250
 	eventuallyCheckInterval   = time.Millisecond * 250
 )
@@ -260,5 +260,5 @@ var _ = Describe("Test ClusterResourcePlacementStatus Watcher - delete events", 
 func consistentlyCheckPlacementControllerQueueIsEmpty() {
 	Consistently(func() string {
 		return fakePlacementController.Key()
-	}, consistentlyDuration, consistentlyCheckInterval).Should(BeEmpty(), "placement controller queue should be empty")
+	}, consistentlyTimeout, consistentlyCheckInterval).Should(BeEmpty(), "placement controller queue should be empty")
 }
