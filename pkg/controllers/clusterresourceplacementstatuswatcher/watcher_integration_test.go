@@ -21,7 +21,6 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -47,45 +46,11 @@ var _ = Describe("Test ClusterResourcePlacementStatus Watcher - delete events", 
 			testCRPName := "test-crp-1"
 
 			By("Creating a ClusterResourcePlacement")
-			crp = &placementv1beta1.ClusterResourcePlacement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: testCRPName,
-				},
-				Spec: placementv1beta1.PlacementSpec{
-					StatusReportingScope: placementv1beta1.NamespaceAccessible,
-					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
-						{
-							Group:   "",
-							Version: "v1",
-							Kind:    "Namespace",
-							Name:    testNamespace,
-						},
-					},
-				},
-			}
+			crp = buildCRP(testCRPName, placementv1beta1.NamespaceAccessible)
 			Expect(k8sClient.Create(ctx, crp)).Should(Succeed(), "failed to create ClusterResourcePlacement")
 
 			By("Creating a ClusterResourcePlacementStatus in the target namespace")
-			crps = &placementv1beta1.ClusterResourcePlacementStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      testCRPName, // Same name as CRP
-					Namespace: testNamespace,
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion:         placementv1beta1.GroupVersion.String(),
-							Kind:               "ClusterResourcePlacement",
-							Name:               testCRPName,
-							UID:                crp.UID,
-							Controller:         ptr.To(true),
-							BlockOwnerDeletion: ptr.To(true),
-						},
-					},
-				},
-				PlacementStatus: placementv1beta1.PlacementStatus{
-					ObservedResourceIndex: "0",
-				},
-				LastUpdatedTime: metav1.Now(),
-			}
+			crps = buildCRPS(testCRPName, testNamespace)
 			Expect(k8sClient.Create(ctx, crps)).Should(Succeed(), "failed to create ClusterResourcePlacementStatus")
 
 			By("Ensuring placement controller queue is initially empty")
@@ -144,26 +109,7 @@ var _ = Describe("Test ClusterResourcePlacementStatus Watcher - delete events", 
 			Expect(k8sClient.Create(ctx, crp)).Should(Succeed(), "failed to create ClusterResourcePlacement")
 
 			By("Creating a ClusterResourcePlacementStatus in the target namespace")
-			crps = &placementv1beta1.ClusterResourcePlacementStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      testCRPName, // Same name as CRP
-					Namespace: testNamespace,
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion:         placementv1beta1.GroupVersion.String(),
-							Kind:               "ClusterResourcePlacement",
-							Name:               testCRPName,
-							UID:                crp.UID,
-							Controller:         ptr.To(true),
-							BlockOwnerDeletion: ptr.To(true),
-						},
-					},
-				},
-				PlacementStatus: placementv1beta1.PlacementStatus{
-					ObservedResourceIndex: "0",
-				},
-				LastUpdatedTime: metav1.Now(),
-			}
+			crps = buildCRPS(testCRPName, testNamespace)
 			Expect(k8sClient.Create(ctx, crps)).Should(Succeed(), "failed to create ClusterResourcePlacementStatus")
 
 			By("Deleting the ClusterResourcePlacement (will have deletionTimestamp due to finalizer)")
@@ -189,16 +135,7 @@ var _ = Describe("Test ClusterResourcePlacementStatus Watcher - delete events", 
 	Context("When CRPS is deleted but CRP doesn't exist", func() {
 		It("Should NOT enqueue anything for reconciliation", func() {
 			By("Creating a ClusterResourcePlacementStatus without corresponding CRP")
-			crps = &placementv1beta1.ClusterResourcePlacementStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "non-existent-crp",
-					Namespace: testNamespace,
-				},
-				PlacementStatus: placementv1beta1.PlacementStatus{
-					ObservedResourceIndex: "0",
-				},
-				LastUpdatedTime: metav1.Now(),
-			}
+			crps = buildCRPS("non-existent-crp", testNamespace)
 			Expect(k8sClient.Create(ctx, crps)).Should(Succeed(), "failed to create ClusterResourcePlacementStatus")
 
 			By("Deleting the ClusterResourcePlacementStatus")
@@ -214,35 +151,11 @@ var _ = Describe("Test ClusterResourcePlacementStatus Watcher - delete events", 
 			testCRPName := "test-crp-cluster-scoped"
 
 			By("Creating a ClusterResourcePlacement with ClusterScoped status reporting")
-			crp = &placementv1beta1.ClusterResourcePlacement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: testCRPName,
-				},
-				Spec: placementv1beta1.PlacementSpec{
-					StatusReportingScope: placementv1beta1.ClusterScopeOnly, // Not NamespaceAccessible
-					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
-						{
-							Group:   "",
-							Version: "v1",
-							Kind:    "Namespace",
-							Name:    testNamespace,
-						},
-					},
-				},
-			}
+			crp = buildCRP(testCRPName, placementv1beta1.ClusterScopeOnly)
 			Expect(k8sClient.Create(ctx, crp)).Should(Succeed(), "failed to create ClusterResourcePlacement")
 
 			By("Creating a ClusterResourcePlacementStatus (simulating orphaned CRPS)")
-			crps = &placementv1beta1.ClusterResourcePlacementStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      testCRPName, // Same name as CRP
-					Namespace: testNamespace,
-				},
-				PlacementStatus: placementv1beta1.PlacementStatus{
-					ObservedResourceIndex: "0",
-				},
-				LastUpdatedTime: metav1.Now(),
-			}
+			crps = buildCRPS(testCRPName, testNamespace)
 			Expect(k8sClient.Create(ctx, crps)).Should(Succeed(), "failed to create ClusterResourcePlacementStatus")
 
 			By("Deleting the ClusterResourcePlacementStatus")
@@ -261,4 +174,36 @@ func consistentlyCheckPlacementControllerQueueIsEmpty() {
 	Consistently(func() string {
 		return fakePlacementController.Key()
 	}, consistentlyTimeout, consistentlyCheckInterval).Should(BeEmpty(), "placement controller queue should be empty")
+}
+
+func buildCRPS(name, namespace string) *placementv1beta1.ClusterResourcePlacementStatus {
+	return &placementv1beta1.ClusterResourcePlacementStatus{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		PlacementStatus: placementv1beta1.PlacementStatus{
+			ObservedResourceIndex: "0",
+		},
+		LastUpdatedTime: metav1.Now(),
+	}
+}
+
+func buildCRP(name string, statusReportingScope placementv1beta1.StatusReportingScope) *placementv1beta1.ClusterResourcePlacement {
+	return &placementv1beta1.ClusterResourcePlacement{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: placementv1beta1.PlacementSpec{
+			StatusReportingScope: statusReportingScope,
+			ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+				{
+					Group:   "",
+					Version: "v1",
+					Kind:    "Namespace",
+					Name:    testNamespace,
+				},
+			},
+		},
+	}
 }
