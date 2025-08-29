@@ -131,7 +131,6 @@ var _ = BeforeSuite(func() {
 	Eventually(func() bool {
 		return mgr.GetCache().WaitForCacheSync(ctx)
 	}, time.Second*10, time.Second*2).To(BeTrue(), "failed to wait for cache to sync")
-	println("Cache is synced")
 })
 
 var _ = AfterSuite(func() {
