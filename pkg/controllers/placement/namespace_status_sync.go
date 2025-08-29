@@ -61,6 +61,7 @@ func extractNamespaceFromResourceSelectors(placementObj placementv1beta1.Placeme
 	return ""
 }
 
+// TODO: Need to handle the case where namespace selector changes on the CRP.
 // syncClusterResourcePlacementStatus creates or updates ClusterResourcePlacementStatus
 // object in the target namespace when StatusReportingScope is NamespaceAccessible.
 func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, placementObj placementv1beta1.PlacementObj) error {
