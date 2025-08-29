@@ -29,7 +29,7 @@ func TestBuildDeleteEventPredicate(t *testing.T) {
 	tests := []struct {
 		name     string
 		testFunc func() bool
-		expected bool
+		want     bool
 	}{
 		{
 			name: "GenericEvent should return false",
@@ -44,7 +44,7 @@ func TestBuildDeleteEventPredicate(t *testing.T) {
 				}
 				return predicate.Generic(genericEvent)
 			},
-			expected: false,
+			want: false,
 		},
 		{
 			name: "DeleteEvent with nil object should return false",
@@ -55,15 +55,15 @@ func TestBuildDeleteEventPredicate(t *testing.T) {
 				}
 				return predicate.Delete(deleteEvent)
 			},
-			expected: false,
+			want: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.testFunc()
-			if result != tt.expected {
-				t.Errorf("Expected %v, but got %v", tt.expected, result)
+			got := tt.testFunc()
+			if got != tt.want {
+				t.Errorf("want %v, but got %v", tt.want, got)
 			}
 		})
 	}
