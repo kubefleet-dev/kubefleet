@@ -128,7 +128,10 @@ var _ = BeforeSuite(func() {
 	// before moving onto the test stage, otherwise some Update events might not be caught properly.
 	//
 	// This is wrapped in an Eventually block as the manager might not have started yet.
-	Eventually(mgr.GetCache().WaitForCacheSync(ctx), time.Second*10, time.Second*2).To(BeTrue(), "failed to wait for cache to sync")
+	Eventually(func() bool {
+		return mgr.GetCache().WaitForCacheSync(ctx)
+	}, time.Second*10, time.Second*2).To(BeTrue(), "failed to wait for cache to sync")
+	println("Cache is synced")
 })
 
 var _ = AfterSuite(func() {
