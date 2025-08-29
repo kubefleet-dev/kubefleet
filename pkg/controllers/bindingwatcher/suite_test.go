@@ -124,7 +124,7 @@ var _ = BeforeSuite(func() {
 	}()
 
 	// Note (chenyu1): for the binding watcher integration tests, must wait for the cache to sync
-	// before moving onto the test stage, otherwise some events might not be catched.
+	// before moving onto the test stage, otherwise some Update events might not be caught properly.
 	mgr.GetCache().WaitForCacheSync(ctx)
 })
 
