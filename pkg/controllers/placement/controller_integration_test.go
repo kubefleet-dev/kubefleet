@@ -2198,6 +2198,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 				Spec: crp.Spec,
 			}
 			retrieveAndValidateClusterResourcePlacement(testCRPName, wantCRP)
+			// Ensure that CRP status remains nil as the controller keeps retrying.
 			Consistently(func() error {
 				gotCRP := &placementv1beta1.ClusterResourcePlacement{}
 				if err := k8sClient.Get(ctx, types.NamespacedName{Name: testCRPName}, gotCRP); err != nil {
@@ -2208,7 +2209,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 				}
 				return nil
 			}, consistentlyTimeout, interval).Should(Succeed(), "ClusterResourcePlacement status must be nil")
-
+			// Namespace doesn't exist, so no CRPS should be created - sanity check.
 			By("Ensure no ClusterResourcePlacementStatus is created in the nonexistent namespace")
 			Consistently(func() bool {
 				crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
@@ -2288,8 +2289,8 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 					Name: namespaceName,
 				},
 			}
+			// Namespace cleanup is not supported in envtest https://book.kubebuilder.io/reference/envtest#namespace-usage-limitation.
 			Expect(k8sClient.Delete(ctx, namespace)).Should(Succeed())
-			// namespace deletion is not supported in envtest https://book.kubebuilder.io/reference/envtest#namespace-usage-limitation.
 		})
 
 		It("Should handle invalid resource selector", func() {
