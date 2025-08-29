@@ -107,8 +107,7 @@ func buildDeleteEventPredicate() predicate.Predicate {
 				return false
 			}
 
-			crpsRef := klog.KObj(e.Object)
-			klog.V(3).InfoS("CRPS delete event received", "crps", crpsRef)
+			klog.V(2).InfoS("CRPS delete event received", "crps",  klog.KObj(e.Object))
 			return true
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
