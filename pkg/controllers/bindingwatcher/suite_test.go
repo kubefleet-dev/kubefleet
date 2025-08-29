@@ -122,6 +122,10 @@ var _ = BeforeSuite(func() {
 		err = mgr.Start(ctx)
 		Expect(err).Should(Succeed(), "failed to run manager")
 	}()
+
+	// Note (chenyu1): for the binding watcher integration tests, must wait for the cache to sync
+	// before moving onto the test stage, otherwise some events might not be catched.
+	mgr.GetCache().WaitForCacheSync(ctx)
 })
 
 var _ = AfterSuite(func() {
