@@ -28,7 +28,7 @@ import (
 
 const (
 	eventuallyTimeout         = time.Second * 10
-	consistentlyTimeout      = time.Second * 15
+	consistentlyTimeout       = time.Second * 15
 	consistentlyCheckInterval = time.Millisecond * 250
 	eventuallyCheckInterval   = time.Millisecond * 250
 )
