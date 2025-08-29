@@ -2273,7 +2273,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			By("Deleting crps")
 			crps := &placementv1beta1.ClusterResourcePlacementStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: testCRPName,
+					Name:      testCRPName,
 					Namespace: namespaceName,
 				},
 			}
