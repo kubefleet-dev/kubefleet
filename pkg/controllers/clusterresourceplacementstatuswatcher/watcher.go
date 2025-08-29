@@ -72,6 +72,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
+	// Check if CRP has NamespaceAccessible status reporting scope, only CRPs with NamespaceAccessible scope should have CRPS objects
+	if crp.Spec.StatusReportingScope != placementv1beta1.NamespaceAccessible {
+		// CRP doesn't have NamespaceAccessible scope, but CRPS existed - this is unexpected behavior.
+		// The CRPS deletion is actually cleaning up an inconsistent state, so no reconciliation needed.
+		klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("CRPS existed for CRP without NamespaceAccessible scope")),
+			"Unexpected CRPS found for CRP without NamespaceAccessible scope, deletion cleans up inconsistent state",
+			"crp", klog.KObj(crp), "crps", crpsRef, "statusReportingScope", crp.Spec.StatusReportingScope)
+		return ctrl.Result{}, nil
+	}
+
 	// Check if CRP is being deleted
 	if crp.GetDeletionTimestamp() != nil {
 		// CRP is being deleted, CRPS deletion is expected - no action needed
@@ -79,10 +89,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, nil
 	}
 
-	// CRP exists and is not being deleted, but its CRPS was deleted
-	// This might be an accidental deletion or external cleanup
-	// Trigger CRP reconciliation to recreate the CRPS
-	klog.V(2).InfoS("CRP exists without deletion timestamp, enqueueing for reconciliation to recreate CRPS", "crp", klog.KObj(crp), "crps", crpsRef)
+	// CRP exists, is not being deleted, and has NamespaceAccessible scope, but its CRPS was deleted.
+	// This might be an accidental deletion or external cleanup, trigger CRP reconciliation to recreate the CRPS.
+	klog.V(2).InfoS("CRP exists without deletion timestamp and has NamespaceAccessible scope, enqueueing for reconciliation to recreate CRPS",
+		"crp", klog.KObj(crp), "crps", crpsRef)
 	r.PlacementController.Enqueue(controller.GetObjectKeyFromNamespaceName(crp.GetNamespace(), crp.GetName()))
 
 	return ctrl.Result{}, nil

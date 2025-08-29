@@ -27,7 +27,7 @@ import (
 )
 
 const (
-	eventuallyTimeout         = time.Second * 20
+	eventuallyTimeout         = time.Second * 10
 	consistentlyDuration      = time.Second * 5
 	consistentlyCheckInterval = time.Millisecond * 250
 	eventuallyCheckInterval   = time.Millisecond * 250
@@ -206,6 +206,53 @@ var _ = Describe("Test ClusterResourcePlacementStatus Watcher - delete events", 
 
 			By("Checking that nothing is enqueued for reconciliation")
 			consistentlyCheckPlacementControllerQueueIsEmpty()
+		})
+	})
+
+	Context("When CRPS is deleted but CRP has non-NamespaceAccessible StatusReportingScope", func() {
+		It("Should NOT enqueue CRP for reconciliation", func() {
+			testCRPName := "test-crp-cluster-scoped"
+
+			By("Creating a ClusterResourcePlacement with ClusterScoped status reporting")
+			crp = &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testCRPName,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					StatusReportingScope: placementv1beta1.ClusterScopeOnly, // Not NamespaceAccessible
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:   "",
+							Version: "v1",
+							Kind:    "Namespace",
+							Name:    testNamespace,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, crp)).Should(Succeed(), "failed to create ClusterResourcePlacement")
+
+			By("Creating a ClusterResourcePlacementStatus (simulating orphaned CRPS)")
+			crps = &placementv1beta1.ClusterResourcePlacementStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      testCRPName, // Same name as CRP
+					Namespace: testNamespace,
+				},
+				PlacementStatus: placementv1beta1.PlacementStatus{
+					ObservedResourceIndex: "0",
+				},
+				LastUpdatedTime: metav1.Now(),
+			}
+			Expect(k8sClient.Create(ctx, crps)).Should(Succeed(), "failed to create ClusterResourcePlacementStatus")
+
+			By("Deleting the ClusterResourcePlacementStatus")
+			Expect(k8sClient.Delete(ctx, crps)).Should(Succeed(), "failed to delete ClusterResourcePlacementStatus")
+
+			By("Checking that CRP is NOT enqueued for reconciliation due to non-NamespaceAccessible scope")
+			consistentlyCheckPlacementControllerQueueIsEmpty()
+
+			By("Cleaning up the ClusterResourcePlacement")
+			Expect(k8sClient.Delete(ctx, crp)).Should(Succeed(), "failed to delete ClusterResourcePlacement")
 		})
 	})
 })
