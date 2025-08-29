@@ -34,7 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/test/utils/controller"
 )
 
@@ -77,7 +77,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).Should(Succeed())
 	Expect(cfg).NotTo(BeNil())
 
-	err = fleetv1beta1.AddToScheme(scheme.Scheme)
+	err = placementv1beta1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	By("construct the k8s client")

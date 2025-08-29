@@ -95,7 +95,7 @@ var _ = Describe("Test ClusterResourcePlacementStatus Watcher - delete events", 
 			// Fetch the current CRPS to get the latest resource version
 			updatedCRPS := &placementv1beta1.ClusterResourcePlacementStatus{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testCRPName, Namespace: testNamespace}, updatedCRPS)).Should(Succeed())
-			
+
 			// Add a label to the CRPS
 			if updatedCRPS.Labels == nil {
 				updatedCRPS.Labels = make(map[string]string)
