@@ -20,7 +20,6 @@ import (
 	"fmt"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workapplier"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
@@ -32,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workapplier"
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
 )
 
@@ -372,6 +372,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 		})
 
 		AfterAll(func() {
+			cleanupConfigMapOnCluster(memberCluster1EastProd)
 			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 		})
 	})
@@ -567,6 +568,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 		})
 
 		AfterAll(func() {
+			cleanupConfigMapOnCluster(memberCluster1EastProd)
 			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 		})
 	})
