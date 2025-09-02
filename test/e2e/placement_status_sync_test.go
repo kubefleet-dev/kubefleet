@@ -36,7 +36,7 @@ const (
 )
 
 var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
-	Context("Create and Update ClusterResourcePlacementStatus, StatusReportingScope is NamespaceAccessible", func() {
+	Context("Create, Update & Delete ClusterResourcePlacementStatus, StatusReportingScope is NamespaceAccessible", func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
