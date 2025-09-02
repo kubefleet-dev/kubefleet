@@ -97,6 +97,37 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 			Eventually(crpsMatchesActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "ClusterResourcePlacementStatus should match expected structure and CRP status for 3 clusters")
 		})
 
+		It("should delete ClusterResourcePlacementStatus manually", func() {
+			crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      crpName,
+					Namespace: appNamespace().Name,
+				},
+			}
+			Expect(hubClient.Delete(ctx, crpStatus)).To(Succeed(), "Failed to delete ClusterResourcePlacementStatus")
+		})
+
+		It("should recreate ClusterResourcePlacementStatus automatically after manual deletion", func() {
+			crpStatusKey := types.NamespacedName{
+				Name:      crpName,
+				Namespace: appNamespace().Name,
+			}
+
+			// Wait for CRPS to be recreated by the controller
+			Eventually(func() bool {
+				crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
+				err := hubClient.Get(ctx, crpStatusKey, crpStatus)
+				if err != nil {
+					return false
+				}
+				return crpStatus.DeletionTimestamp == nil
+			}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "ClusterResourcePlacementStatus should be recreated after manual deletion")
+
+			// Verify the recreated CRPS matches the current CRP status
+			crpsMatchesActual := statussyncutils.CRPSStatusMatchesCRPActual(ctx, hubClient, crpName, appNamespace().Name)
+			Eventually(crpsMatchesActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Recreated ClusterResourcePlacementStatus should match current CRP status")
+		})
+
 		It("delete CRP", func() {
 			// Delete the CRP.
 			crp := &placementv1beta1.ClusterResourcePlacement{
