@@ -201,7 +201,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 		})
 
 		AfterAll(func() {
-			ensureRPCleanUp(types.NamespacedName{Name: rpName, Namespace: nsName})
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 		})
 	})
 
@@ -372,7 +372,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 		})
 
 		AfterAll(func() {
-			ensureRPCleanUp(types.NamespacedName{Name: rpName, Namespace: nsName})
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 		})
 	})
 
@@ -567,7 +567,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 		})
 
 		AfterAll(func() {
-			ensureRPCleanUp(types.NamespacedName{Name: rpName, Namespace: nsName})
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 		})
 	})
 })
@@ -731,7 +731,7 @@ var _ = Describe("detect drifts on placed resources using RP", Ordered, Label("r
 		})
 
 		AfterAll(func() {
-			ensureRPCleanUp(types.NamespacedName{Name: rpName, Namespace: nsName})
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 		})
 	})
 
@@ -930,7 +930,7 @@ var _ = Describe("detect drifts on placed resources using RP", Ordered, Label("r
 		})
 
 		AfterAll(func() {
-			ensureRPCleanUp(types.NamespacedName{Name: rpName, Namespace: nsName})
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 		})
 	})
 
@@ -1160,7 +1160,7 @@ var _ = Describe("detect drifts on placed resources using RP", Ordered, Label("r
 		})
 
 		AfterAll(func() {
-			ensureRPCleanUp(types.NamespacedName{Name: rpName, Namespace: nsName})
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 		})
 	})
 })

@@ -1640,24 +1640,6 @@ func ensureRPAndRelatedResourcesDeleted(rpKey types.NamespacedName, memberCluste
 	cleanupConfigMap()
 }
 
-func ensureRPCleanUp(rpKey types.NamespacedName) {
-	// Delete the ResourcePlacement.
-	rp := &placementv1beta1.ResourcePlacement{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      rpKey.Name,
-			Namespace: rpKey.Namespace,
-		},
-	}
-	Expect(client.IgnoreNotFound(hubClient.Delete(ctx, rp))).Should(Succeed(), "Failed to delete ResourcePlacement")
-
-	// Verify that related finalizers have been removed from the ResourcePlacement.
-	finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromPlacementActual(rpKey)
-	Eventually(finalizerRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove controller finalizers from ResourcePlacement")
-
-	// Remove the custom deletion blocker finalizer from the ResourcePlacement.
-	cleanupPlacement(rpKey)
-}
-
 func retrievePlacement(placementKey types.NamespacedName) (placementv1beta1.PlacementObj, error) {
 	var placement placementv1beta1.PlacementObj
 	if placementKey.Namespace == "" {
