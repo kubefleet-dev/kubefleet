@@ -586,18 +586,6 @@ var _ = Describe("detect drifts on placed resources using RP", Ordered, Label("r
 		cm2.Name = cm2Name
 		Expect(hubClient.Create(ctx, &cm2)).To(Succeed())
 
-		By("Create the resources on one of the member clusters")
-		ns := appNamespace()
-		Expect(memberCluster1EastProdClient.Create(ctx, &ns)).To(Succeed())
-
-		cm1 := appConfigMap()
-		Expect(memberCluster1EastProdClient.Create(ctx, &cm1)).To(Succeed())
-
-		// Update the configMap labels (unmanaged field).
-		cm2 = appConfigMap()
-		cm2.Name = cm2Name
-		Expect(memberCluster1EastProdClient.Create(ctx, &cm2)).To(Succeed())
-
 		By("Create the CRP with Namespace-only selector")
 		crpName = fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		crp := &placementv1beta1.ClusterResourcePlacement{
