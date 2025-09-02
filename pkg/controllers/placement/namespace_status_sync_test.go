@@ -22,7 +22,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -92,7 +94,6 @@ func TestExtractNamespaceFromResourceSelectors(t *testing.T) {
 			name: "StatusReportingScope is not specified, should return empty",
 			placement: placementv1beta1.ClusterResourcePlacement{
 				Spec: placementv1beta1.PlacementSpec{
-					StatusReportingScope: placementv1beta1.ClusterScopeOnly,
 					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 						{
 							Group:   "",
@@ -254,8 +255,15 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 					},
 				},
 			},
+			existingObjects: []client.Object{
+				&corev1.Namespace{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-namespace",
+					},
+				},
+			},
 			expectOperation: false,
-			targetNamespace: "",
+			targetNamespace: "test-namespace",
 		},
 		{
 			name: "ResourcePlacement should not sync",
@@ -276,8 +284,15 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 					},
 				},
 			},
+			existingObjects: []client.Object{
+				&corev1.Namespace{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-namespace",
+					},
+				},
+			},
 			expectOperation: false,
-			targetNamespace: "",
+			targetNamespace: "test-namespace",
 		},
 	}
 
@@ -298,21 +313,17 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				t.Fatalf("syncClusterResourcePlacementStatus() failed: %v", err)
 			}
 
-			// Verify the ClusterResourcePlacementStatus exists.
-			crp, ok := tc.placementObj.(*placementv1beta1.ClusterResourcePlacement)
-			if !ok {
-				return // ResourcePlacement case.
-			}
-
-			if tc.targetNamespace == "" {
-				return // No sync expected.
-			}
-
 			crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
-			err = fakeClient.Get(context.Background(), types.NamespacedName{Name: crp.Name, Namespace: tc.targetNamespace}, crpStatus)
+			err = fakeClient.Get(context.Background(), types.NamespacedName{Name: tc.placementObj.GetName(), Namespace: tc.targetNamespace}, crpStatus)
 
-			if !tc.expectOperation && err == nil {
-				t.Fatal("Expected no ClusterResourcePlacementStatus to be present, but one exists")
+			if !tc.expectOperation {
+				if err == nil {
+					t.Fatal("Expected no ClusterResourcePlacementStatus to be present, but one exists")
+				}
+				// CRPS should not exist.
+				if k8serrors.IsNotFound(err) {
+					return
+				}
 			}
 
 			if err != nil {
@@ -322,6 +333,12 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 			// Verify LastUpdatedTime is set.
 			if crpStatus.LastUpdatedTime.IsZero() {
 				t.Fatal("Expected LastUpdatedTime to be set, but it was zero")
+			}
+
+			// Verify the ClusterResourcePlacementStatus exists.
+			crp, ok := tc.placementObj.(*placementv1beta1.ClusterResourcePlacement)
+			if !ok {
+				return // ResourcePlacement case.
 			}
 
 			// Use cmp.Diff to compare the key fields.
