@@ -51,7 +51,7 @@ import (
 // Note that most of the cases below are Serial ones, as they manipulate the list of member
 // clusters in the test environment directly, which may incur side effects when running in
 // parallel with other test cases.
-var _ = Describe("responding to specific member cluster changes using RP", Label("joinleave"), func() {
+var _ = Describe("responding to specific member cluster changes using RP", Label("resourceplacement"), func() {
 	var crpName, nsName string
 
 	BeforeEach(OncePerOrdered, func() {
