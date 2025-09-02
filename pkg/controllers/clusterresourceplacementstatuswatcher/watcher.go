@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"time"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
@@ -63,13 +63,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	crp := &placementv1beta1.ClusterResourcePlacement{}
 
 	if err := r.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
-		if apierrors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			// CRP doesn't exist, this is expected cleanup - no action needed
 			klog.V(2).InfoS("CRP not found, expected cleanup", "crp", crpName, "crps", crpsRef)
-			return ctrl.Result{}, nil
+		} else {
+			klog.ErrorS(err, "Failed to get CRP", "crp", crpName, "crps", crpsRef)
 		}
-		klog.ErrorS(err, "Failed to get CRP", "crp", crpName, "crps", crpsRef)
-		return ctrl.Result{}, err
+		return ctrl.Result{}, controller.NewAPIServerError(true, client.IgnoreNotFound(err))
 	}
 
 	// Check if CRP has NamespaceAccessible status reporting scope, only CRPs with NamespaceAccessible scope should have CRPS objects
