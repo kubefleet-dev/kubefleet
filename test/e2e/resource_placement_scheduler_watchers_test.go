@@ -87,7 +87,6 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 		crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "0")
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Should select all clusters")
 		Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Should select all clusters")
-
 	})
 
 	AfterEach(OncePerOrdered, func() {
