@@ -99,7 +99,7 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 
 	if err != nil {
 		klog.ErrorS(err, "Failed to create or update ClusterResourcePlacementStatus", "crp", klog.KObj(crp), "namespace", targetNamespace)
-		return fmt.Errorf("failed to create or update ClusterResourcePlacementStatus: %w", err)
+		return controller.NewAPIServerError(false, fmt.Errorf("failed to create or update ClusterResourcePlacementStatus: %w", err))
 	}
 
 	klog.V(2).InfoS("Successfully handled ClusterResourcePlacementStatus", "crp", klog.KObj(crp), "namespace", targetNamespace, "operation", op)
