@@ -282,11 +282,10 @@ var _ = Describe("mixed ClusterResourcePlacement and ResourcePlacement negative 
 
 		AfterAll(func() {
 			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: workNamespaceName}, allMemberClusters)
-			for idx := range allMemberClusters {
-				memberCluster := allMemberClusters[idx]
-				By(fmt.Sprintf("deleting namespace on member cluster %s", memberCluster.ClusterName))
-				cleanWorkResourcesOnCluster(memberCluster)
-			}
+			By("CRP should take over the work resources")
+			// ConfigMap on the hub was deleted in the previous step.
+			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "1")
+			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 
