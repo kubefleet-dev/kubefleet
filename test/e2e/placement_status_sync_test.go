@@ -118,8 +118,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 			// Wait for CRPS to be recreated by the controller
 			Eventually(func() bool {
 				crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
-				err := hubClient.Get(ctx, crpStatusKey, crpStatus)
-				if err != nil {
+				if err := hubClient.Get(ctx, crpStatusKey, crpStatus); err != nil {
 					return false
 				}
 				return crpStatus.DeletionTimestamp == nil
@@ -141,8 +140,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 
 			// Wait for the CRP to be deleted.
 			Eventually(func() bool {
-				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp)
-				return k8serrors.IsNotFound(err)
+				return k8serrors.IsNotFound(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp))
 			}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "CRP should be deleted")
 		})
 
@@ -256,12 +254,11 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 
 			// Wait for the namespace to be deleted.
 			Eventually(func() bool {
-				err := hubClient.Get(ctx, types.NamespacedName{Name: workNamespace.Name}, &workNamespace)
-				return k8serrors.IsNotFound(err)
+				return k8serrors.IsNotFound(hubClient.Get(ctx, types.NamespacedName{Name: workNamespace.Name}, &workNamespace))
 			}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "Work resources namespace should be deleted")
 		})
 
-		It("should not automatically recreate the namespace and ClusterResourcePlacementStatus", func() {
+		It("should not automatically recreate the namespace", func() {
 			// The namespace should remain deleted as it won't be automatically recreated.
 			Consistently(func() bool {
 				workNamespace := &corev1.Namespace{}
@@ -273,8 +270,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 			// Get the CRP status immediately after namespace deletion.
 			Eventually(func() error {
 				crp := &placementv1beta1.ClusterResourcePlacement{}
-				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp)
-				if err != nil {
+				if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
 					return err
 				}
 				crpStatusBeforeWait = *crp.Status.DeepCopy()
@@ -299,11 +295,9 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 			// Since CRPS can't be updated (namespace doesn't exist), CRP status should remain unchanged.
 			Consistently(func() error {
 				crp := &placementv1beta1.ClusterResourcePlacement{}
-				err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp)
-				if err != nil {
+				if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
 					return err
 				}
-
 				currentStatus := crp.Status
 				// Compare the entire status using cmp.Diff for better error reporting.
 				if diff := cmp.Diff(crpStatusBeforeWait, currentStatus); diff != "" {
