@@ -116,7 +116,7 @@ type ClusterResourcePlacement struct {
 	// +kubebuilder:validation:XValidation:rule="!((has(oldSelf.policy) && !has(self.policy)) || (has(oldSelf.policy) && has(self.policy) && has(self.policy.placementType) && has(oldSelf.policy.placementType) && self.policy.placementType != oldSelf.policy.placementType))",message="placement type is immutable"
 	// +kubebuilder:validation:XValidation:rule="!(self.statusReportingScope == 'NamespaceAccessible' && size(self.resourceSelectors.filter(x, x.kind == 'Namespace')) != 1)",message="when statusReportingScope is NamespaceAccessible, exactly one resourceSelector with kind 'Namespace' is required"
 	// +kubebuilder:validation:XValidation:rule="!has(oldSelf.statusReportingScope) || self.statusReportingScope == oldSelf.statusReportingScope",message="statusReportingScope is immutable"
-	// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.statusReportingScope) && oldSelf.statusReportingScope == 'NamespaceAccessible' && oldSelf.resourceSelectors.filter(x, x.kind == 'Namespace')[0].name != self.resourceSelectors.filter(x, x.kind == 'Namespace')[0].name)",message="namespace name in resourceSelectors is immutable when statusReportingScope is NamespaceAccessible"
+	// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.statusReportingScope) && oldSelf.statusReportingScope == 'NamespaceAccessible' && size(self.resourceSelectors) <= 100 && size(oldSelf.resourceSelectors) <= 100 && oldSelf.resourceSelectors.filter(x, x.kind == 'Namespace')[0].name != self.resourceSelectors.filter(x, x.kind == 'Namespace')[0].name)",message="namespace name in resourceSelectors is immutable when statusReportingScope is NamespaceAccessible"
 	Spec PlacementSpec `json:"spec"`
 
 	// The observed status of ClusterResourcePlacement.
