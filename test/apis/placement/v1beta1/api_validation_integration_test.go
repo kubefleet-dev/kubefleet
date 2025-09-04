@@ -429,7 +429,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 		})
 	})
 
-	FContext("Test ClusterResourcePlacement ClusterScopeOnly StatusReportingScope validation - update cases", func() {
+	Context("Test ClusterResourcePlacement ClusterScopeOnly StatusReportingScope validation - update cases", func() {
 		var crp placementv1beta1.ClusterResourcePlacement
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 
