@@ -52,7 +52,7 @@ import (
 // clusters in the test environment directly, which may incur side effects when running in
 // parallel with other test cases.
 var _ = Describe("responding to specific member cluster changes using RP", Label("resourceplacement"), func() {
-	var crpName, nsName string
+	var crpName, nsName, rpName string
 
 	BeforeEach(OncePerOrdered, func() {
 		By("Create resources to be placed")
@@ -86,15 +86,16 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 		By("crp should propagate namespace to all clusters")
 		crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "0")
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Should select all clusters")
-		Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Should select all clusters")
 	})
 
 	AfterEach(OncePerOrdered, func() {
+		ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
+		ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
 		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 	})
 
 	Context("cluster becomes eligible for PickAll RPs, just joined", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create the RP.
@@ -142,14 +143,6 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
 		})
 
-		It("crp should pick the new cluster along with other healthy clusters", func() {
-			targetClusterNames := allMemberClusterNames
-			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
 		It("rp should pick the new cluster along with other healthy clusters", func() {
 			targetClusterNames := allMemberClusterNames
 			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
@@ -157,15 +150,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("cluster becomes eligible for PickAll RPs, label changed", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create a new member cluster.
@@ -217,14 +205,6 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, crpName, workNamespaceIdentifiers())
 		})
 
-		It("crp should pick all clusters to propagate namespace", func() {
-			targetClusterNames := allMemberClusterNames
-			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Should select all clusters")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Should select all clusters")
-		})
-
 		It("rp should not pick any cluster", func() {
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), nil, nil, "0")
 			Eventually(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Should not select any cluster")
@@ -246,7 +226,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 		})
 
 		It("should propagate works for the updated cluster; can mark them as applied", func() {
-			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
+			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, workResourceIdentifiers())
 		})
 
 		It("should pick the new cluster", func() {
@@ -255,15 +235,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("cluster becomes eligible for PickAll RPs, node count changed", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create the RP to select clusters with node count > 4.
@@ -361,13 +336,11 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 				}
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to delete the node")
-
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 		})
 	})
 
 	Context("cluster becomes eligible for PickAll RPs, health condition changed", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create a new member cluster.
@@ -417,14 +390,6 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
 		})
 
-		It("crp should pick the cluster, along with other healthy clusters", func() {
-			targetClusterNames := allMemberClusterNames
-			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
 		It("rp should pick the cluster, along with other healthy clusters", func() {
 			targetClusterNames := allMemberClusterNames
 			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
@@ -432,15 +397,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("selected cluster becomes ineligible for PickAll RPs, label changed", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create a new member cluster.
@@ -496,13 +456,6 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
 		})
 
-		It("crp should pick all the clusters", func() {
-			targetClusterNames := append(allMemberClusterNames, fakeClusterName1ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
 		It("rp should pick the cluster", func() {
 			targetClusterNames := []string{fakeClusterName1ForWatcherTests}
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), targetClusterNames, nil, "0")
@@ -527,15 +480,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), targetClusterNames, nil, "0")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("selected cluster becomes ineligible for PickAll RPs, health condition changed", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create a new member cluster.
@@ -572,6 +520,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 		})
 
 		It("should propagate works for the new cluster; can mark them as applied", func() {
+			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, crpName, workNamespaceIdentifiers())
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
 		})
 
@@ -593,15 +542,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), targetClusterNames, nil, "0")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("selected cluster becomes ineligible for PickAll RPs, left", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create a new member cluster.
@@ -639,14 +583,6 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
 		})
 
-		It("crp should pick the new cluster, along with other healthy clusters", func() {
-			targetClusterNames := allMemberClusterNames
-			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
 		It("rp should pick the new cluster, along with other healthy clusters", func() {
 			targetClusterNames := allMemberClusterNames
 			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
@@ -675,15 +611,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("cluster becomes ineligible for PickAll RPs, capacity changed", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create the RP.
@@ -780,13 +711,11 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 				}
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to delete the node")
-
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 		})
 	})
 
 	Context("cluster becomes eligible for PickFixed RPs, just joined", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create the RP.
@@ -833,29 +762,16 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
 		})
 
-		It("crp should pick the new cluster", func() {
-			targetClusterNames := allMemberClusterNames
-			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
 		It("rp should pick the new cluster", func() {
 			targetClusterNames := []string{fakeClusterName1ForWatcherTests}
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), targetClusterNames, nil, "0")
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("cluster becomes eligible for PickFixed RPs, health condition changed", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create a new member cluster.
@@ -904,29 +820,16 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
 		})
 
-		It("crp should pick the new cluster", func() {
-			targetClusterNames := allMemberClusterNames
-			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
 		It("rp should pick the new cluster", func() {
 			targetClusterNames := []string{fakeClusterName1ForWatcherTests}
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), targetClusterNames, nil, "0")
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("selected cluster becomes ineligible for PickFixed RPs, left", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create a new member cluster.
@@ -965,14 +868,6 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
 		})
 
-		It("crp should pick the new cluster", func() {
-			targetClusterNames := allMemberClusterNames
-			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
 		It("rp should pick the new cluster", func() {
 			targetClusterNames := []string{fakeClusterName1ForWatcherTests}
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), targetClusterNames, nil, "0")
@@ -990,15 +885,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("selected cluster becomes ineligible for PickFixed RPs, health condition changed", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create a new member cluster.
@@ -1037,14 +927,6 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
 		})
 
-		It("crp should pick the new cluster", func() {
-			targetClusterNames := allMemberClusterNames
-			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
 		It("rp should pick the new cluster", func() {
 			targetClusterNames := []string{fakeClusterName1ForWatcherTests}
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), targetClusterNames, nil, "0")
@@ -1061,15 +943,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), targetClusterNames, nil, "0")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Should keep the cluster as picked")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("cluster becomes eligible for unfulfilled PickN RPs, just joined", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create the RP.
@@ -1118,14 +995,6 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
 		})
 
-		It("crp should pick the new cluster along with other healthy clusters", func() {
-			targetClusterNames := allMemberClusterNames
-			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
 		It("rp should pick the new cluster along with other healthy clusters", func() {
 			targetClusterNames := allMemberClusterNames
 			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
@@ -1133,15 +1002,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("cluster becomes eligible for unfulfilled PickN RPs, label changed", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create a new member cluster.
@@ -1215,29 +1079,16 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
 		})
 
-		It("crp should pick the new cluster", func() {
-			targetClusterNames := allMemberClusterNames
-			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
 		It("rp should pick the new cluster", func() {
 			targetClusterNames := []string{fakeClusterName1ForWatcherTests}
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), targetClusterNames, nil, "0")
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("cluster becomes eligible for unfulfilled PickN RPs, health condition changed", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create a new member cluster.
@@ -1301,29 +1152,16 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
 		})
 
-		It("crp should pick the new cluster", func() {
-			targetClusterNames := allMemberClusterNames
-			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
 		It("rp should pick the new cluster", func() {
 			targetClusterNames := []string{fakeClusterName1ForWatcherTests}
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), targetClusterNames, nil, "0")
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("cluster becomes eligible for unfulfilled PickN RPs, topology spread balanced", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create the RP.
@@ -1391,15 +1229,6 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName2ForWatcherTests, rpName, appConfigMapIdentifiers())
 		})
 
-		It("crp should pick both new clusters, along with other clusters", func() {
-			var targetClusterNames []string
-			targetClusterNames = append(targetClusterNames, allMemberClusterNames...)
-			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests, fakeClusterName2ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
 		It("rp should pick both new clusters, along with other clusters", func() {
 			var targetClusterNames []string
 			targetClusterNames = append(targetClusterNames, allMemberClusterNames...)
@@ -1410,14 +1239,12 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 		})
 
 		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
 			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName2ForWatcherTests)
 		})
 	})
 
 	Context("cluster becomes eligible for unfulfilled PickN RPs, capacity changed", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create the RP.
@@ -1530,13 +1357,11 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 				}
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to delete the node")
-
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Namespace: nsName, Name: rpName}, []*framework.Cluster{memberCluster3WestProd})
 		})
 	})
 
 	Context("cluster appears for unfulfilled PickN RPs, topology spread constraints violated", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create the RP.
@@ -1590,15 +1415,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("selected cluster becomes ineligible for fulfilled PickN RPs, left", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create a new member cluster.
@@ -1637,14 +1457,6 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
 		})
 
-		It("crp should pick the new cluster, along with other healthy clusters", func() {
-			targetClusterNames := allMemberClusterNames
-			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
 		It("rp should pick the new cluster, along with other healthy clusters", func() {
 			targetClusterNames := allMemberClusterNames
 			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
@@ -1673,15 +1485,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("selected cluster becomes ineligible for fulfilled PickN RPs, label changed", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create a new member cluster.
@@ -1733,14 +1540,6 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 		It("should propagate works for the new cluster; can mark them as applied", func() {
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, crpName, workNamespaceIdentifiers())
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
-		})
-
-		It("crp should pick the new cluster, along with other healthy clusters", func() {
-			targetClusterNames := allMemberClusterNames
-			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
 		It("rp should pick the new cluster", func() {
@@ -1767,15 +1566,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), targetClusterNames, nil, "0")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Should keep the cluster as picked")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("selected cluster becomes ineligible for fulfilled PickN RPs, health condition changed", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create a new member cluster.
@@ -1829,14 +1623,6 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
 		})
 
-		It("crp should pick the new cluster, along with other healthy clusters", func() {
-			targetClusterNames := allMemberClusterNames
-			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
 		It("rp should pick the new cluster", func() {
 			targetClusterNames := []string{fakeClusterName1ForWatcherTests}
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), targetClusterNames, nil, "0")
@@ -1853,15 +1639,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), targetClusterNames, nil, "0")
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Should keep the cluster as picked")
 		})
-
-		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
-		})
 	})
 
 	Context("selected cluster becomes ineligible for fulfilled PickN RPs, topology spread constraint violated", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create new member clusters.
@@ -1914,15 +1695,6 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName2ForWatcherTests, rpName, appConfigMapIdentifiers())
 		})
 
-		It("crp should pick both new clusters, along with other clusters", func() {
-			var targetClusterNames []string
-			targetClusterNames = append(targetClusterNames, allMemberClusterNames...)
-			targetClusterNames = append(targetClusterNames, fakeClusterName1ForWatcherTests, fakeClusterName2ForWatcherTests)
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), targetClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
-
 		It("rp should pick both new clusters, along with other clusters", func() {
 			var targetClusterNames []string
 			targetClusterNames = append(targetClusterNames, allMemberClusterNames...)
@@ -1953,14 +1725,12 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 		})
 
 		AfterAll(func() {
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
-			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
 			ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName2ForWatcherTests)
 		})
 	})
 
 	Context("selected cluster becomes ineligible for fulfilled PickN RPs, node count changed", Serial, Ordered, func() {
-		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpName = fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
 			// Create the RP.
@@ -2047,8 +1817,6 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 				}
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to delete the node")
-
-			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Namespace: nsName, Name: rpName}, []*framework.Cluster{memberCluster3WestProd})
 		})
 	})
 })
