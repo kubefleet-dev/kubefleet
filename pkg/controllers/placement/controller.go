@@ -142,6 +142,20 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 		}
 	}
 
+	// Validate namespace selector consistency for NamespaceAccessible CRPs
+	if validationCondition := validateNamespaceSelectorConsistency(placementObj); validationCondition != nil {
+		placementObj.SetConditions(*validationCondition)
+
+		// Update the placement status and return early to prevent further processing
+		if err := r.Client.Status().Update(ctx, placementObj); err != nil {
+			klog.ErrorS(err, "Failed to update placement status with namespace selector validation error", "placement", placementKObj)
+			return ctrl.Result{}, controller.NewUpdateIgnoreConflictError(err)
+		}
+
+		klog.V(2).InfoS("Updated placement status with namespace selector validation error", "placement", placementKObj)
+		return ctrl.Result{}, nil
+	}
+
 	// validate the resource selectors first before creating any snapshot
 	envelopeObjCount, selectedResources, selectedResourceIDs, err := r.selectResourcesForPlacement(placementObj)
 	if err != nil {

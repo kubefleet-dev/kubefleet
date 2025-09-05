@@ -27,6 +27,7 @@ import (
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 )
 
@@ -131,5 +132,46 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 	}
 
 	klog.V(2).InfoS("Successfully handled ClusterResourcePlacementStatus", "crp", klog.KObj(crp), "namespace", targetNamespace, "operation", op)
+	return nil
+}
+
+// validateNamespaceSelectorConsistency validates that the namespace selector hasn't changed
+// for NamespaceAccessible CRPs. Returns a condition if validation fails, nil if validation passes.
+func validateNamespaceSelectorConsistency(placementObj placementv1beta1.PlacementObj) *metav1.Condition {
+	// Check if it's a NamespaceAccessible CRP
+	isNamespaceAccessible, targetNamespaceFromSelector := isNamespaceAccessibleCRP(placementObj)
+	if !isNamespaceAccessible {
+		return nil
+	}
+
+	// Get the current target namespace from CRP status selected resources
+	placementStatus := placementObj.GetPlacementStatus()
+	currentTargetNamespace := ""
+
+	// Extract namespace from selected resources in status
+	for _, resource := range placementStatus.SelectedResources {
+		if resource.Kind == "Namespace" && resource.Group == "" && resource.Version == "v1" {
+			currentTargetNamespace = resource.Name
+			break
+		}
+	}
+
+	// If both namespaces exist and they don't match, it means the namespace selector changed
+	if currentTargetNamespace != "" && currentTargetNamespace != targetNamespaceFromSelector {
+		klog.V(2).InfoS("Namespace selector has changed for NamespaceAccessible CRP",
+			"placement", klog.KObj(placementObj),
+			"currentTargetNamespace", currentTargetNamespace,
+			"newTargetNamespace", targetNamespaceFromSelector)
+
+		// Return StatusSynced condition set to Unknown with appropriate reason and message
+		return &metav1.Condition{
+			Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
+			Status:             metav1.ConditionUnknown,
+			Reason:             condition.InvalidResourceSelectorsReason,
+			Message:            fmt.Sprintf("Namespace resource selector is choosing a different namespace '%s' from what was originally picked '%s'. This is not allowed for NamespaceAccessible ClusterResourcePlacements.", targetNamespaceFromSelector, currentTargetNamespace),
+			ObservedGeneration: placementObj.GetGeneration(),
+		}
+	}
+
 	return nil
 }
