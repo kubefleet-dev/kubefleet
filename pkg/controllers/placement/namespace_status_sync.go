@@ -27,6 +27,7 @@ import (
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 )
 
@@ -61,26 +62,54 @@ func extractNamespaceFromResourceSelectors(placementObj placementv1beta1.Placeme
 	return ""
 }
 
-// TODO: Need to handle the case where namespace selector changes on the CRP.
+// isNamespaceAccessibleCRP checks if the placement object is a ClusterResourcePlacement
+// with NamespaceAccessible scope and returns the target namespace.
+// isNamespaceAccessible is true only for CRP objects with NamespaceAccessible scope.
+// targetNamespace is the namespace where CRPS should be created (empty if not applicable).
+func isNamespaceAccessibleCRP(placementObj placementv1beta1.PlacementObj) (bool, string) {
+	_, ok := placementObj.(*placementv1beta1.ClusterResourcePlacement)
+	if !ok {
+		return false, ""
+	}
+
+	// Extract target namespace using the same logic as syncClusterResourcePlacementStatus.
+	targetNamespace := extractNamespaceFromResourceSelectors(placementObj)
+	if targetNamespace == "" {
+		// Not NamespaceAccessible or no namespace found - no sync needed.
+		return false, ""
+	}
+
+	return true, targetNamespace
+}
+
+// filterStatusSyncedCondition removes the ClusterResourcePlacementStatusSynced condition
+// from the placement status conditions since it doesn't apply to CRPS objects.
+func filterStatusSyncedCondition(status placementv1beta1.PlacementStatus) placementv1beta1.PlacementStatus {
+	filteredStatus := status.DeepCopy()
+
+	// Filter out the ClusterResourcePlacementStatusSynced condition
+	filteredConditions := make([]metav1.Condition, 0, len(filteredStatus.Conditions))
+	for _, condition := range filteredStatus.Conditions {
+		if condition.Type != string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType) {
+			filteredConditions = append(filteredConditions, condition)
+		}
+	}
+	filteredStatus.Conditions = filteredConditions
+
+	return *filteredStatus
+}
+
 // syncClusterResourcePlacementStatus creates or updates ClusterResourcePlacementStatus
 // object in the target namespace when StatusReportingScope is NamespaceAccessible.
 func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, placementObj placementv1beta1.PlacementObj) error {
-	// Only sync for ClusterResourcePlacement objects (not ResourcePlacement).
-	crp, ok := placementObj.(*placementv1beta1.ClusterResourcePlacement)
-	if !ok {
-		// This is a ResourcePlacement, not a ClusterResourcePlacement - skip sync.
-		klog.V(2).InfoS("Skipped processing RP to create/update ClusterResourcePlacementStatus")
+	isNamespaceAccessible, targetNamespace := isNamespaceAccessibleCRP(placementObj)
+	if !isNamespaceAccessible {
+		// Not a NamespaceAccessible CRP - skip sync.
+		klog.V(2).InfoS("Skipped processing placement to create/update ClusterResourcePlacementStatus", "placement", klog.KObj(placementObj))
 		return nil
 	}
 
-	// Extract target namespace.
-	targetNamespace := extractNamespaceFromResourceSelectors(placementObj)
-	if targetNamespace == "" {
-		// Not NamespaceAccessible or no namespace found - skip sync.
-		klog.V(2).InfoS("Skipped processing CRP to create/update ClusterResourcePlacementStatus", "crp", klog.KObj(crp))
-		return nil
-	}
-
+	crp, _ := placementObj.(*placementv1beta1.ClusterResourcePlacement)
 	crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      crp.Name, // Same name as CRP.
@@ -89,8 +118,8 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 	}
 	// Use CreateOrUpdate to handle both creation and update cases.
 	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, crpStatus, func() error {
-		// Set the placement status and update time.
-		crpStatus.PlacementStatus = *crp.Status.DeepCopy()
+		// Set the placement status (excluding StatusSynced condition) and update time.
+		crpStatus.PlacementStatus = filterStatusSyncedCondition(crp.Status)
 		crpStatus.LastUpdatedTime = metav1.Now()
 
 		// Set CRP as owner - this ensures automatic cleanup when CRP is deleted.
@@ -103,5 +132,46 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 	}
 
 	klog.V(2).InfoS("Successfully handled ClusterResourcePlacementStatus", "crp", klog.KObj(crp), "namespace", targetNamespace, "operation", op)
+	return nil
+}
+
+// validateNamespaceSelectorConsistency validates that the namespace selector hasn't changed
+// for NamespaceAccessible CRPs. Returns a condition if validation fails, nil if validation passes.
+func validateNamespaceSelectorConsistency(placementObj placementv1beta1.PlacementObj) *metav1.Condition {
+	// Check if it's a NamespaceAccessible CRP
+	isNamespaceAccessible, targetNamespaceFromSelector := isNamespaceAccessibleCRP(placementObj)
+	if !isNamespaceAccessible {
+		return nil
+	}
+
+	// Get the current target namespace from CRP status selected resources
+	placementStatus := placementObj.GetPlacementStatus()
+	currentTargetNamespace := ""
+
+	// Extract namespace from selected resources in status
+	for _, resource := range placementStatus.SelectedResources {
+		if resource.Kind == "Namespace" && resource.Group == "" && resource.Version == "v1" {
+			currentTargetNamespace = resource.Name
+			break
+		}
+	}
+
+	// If both namespaces exist and they don't match, it means the namespace selector changed
+	if currentTargetNamespace != "" && currentTargetNamespace != targetNamespaceFromSelector {
+		klog.V(2).InfoS("Namespace selector has changed for NamespaceAccessible CRP",
+			"placement", klog.KObj(placementObj),
+			"currentTargetNamespace", currentTargetNamespace,
+			"newTargetNamespace", targetNamespaceFromSelector)
+
+		// Return StatusSynced condition set to Unknown with appropriate reason and message
+		return &metav1.Condition{
+			Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
+			Status:             metav1.ConditionUnknown,
+			Reason:             condition.InvalidResourceSelectorsReason,
+			Message:            fmt.Sprintf("Namespace resource selector is choosing a different namespace '%s' from what was originally picked '%s'. This is not allowed for NamespaceAccessible ClusterResourcePlacements.", targetNamespaceFromSelector, currentTargetNamespace),
+			ObservedGeneration: placementObj.GetGeneration(),
+		}
+	}
+
 	return nil
 }
