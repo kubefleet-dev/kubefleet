@@ -142,6 +142,19 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 		}
 	}
 
+	// Validate namespace selector consistency for NamespaceAccessible CRPs.
+	if isNamespaceAccessibleCRP(placementObj) {
+		isValid, err := r.validateNamespaceSelectorConsistency(ctx, placementObj)
+		if err != nil {
+			klog.V(2).InfoS("Namespace selector validation failed, stopping reconciliation", "placement", placementKObj, "error", err)
+			return ctrl.Result{}, err
+		}
+		if !isValid {
+			klog.V(2).InfoS("Invalid Namespace selector specified for NamespaceAccessible CRP, stopping reconciliation", "placement", placementKObj)
+			return ctrl.Result{}, nil
+		}
+	}
+
 	// validate the resource selectors first before creating any snapshot
 	envelopeObjCount, selectedResources, selectedResourceIDs, err := r.selectResourcesForPlacement(placementObj)
 	if err != nil {
@@ -160,15 +173,17 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 		}
 		placementObj.SetConditions(scheduleCondition)
 
-		// Sync ClusterResourcePlacementStatus object if StatusReportingScope is NamespaceAccessible
-		if syncErr := r.syncClusterResourcePlacementStatus(ctx, placementObj); syncErr != nil {
-			klog.ErrorS(syncErr, "Failed to sync ClusterResourcePlacementStatus", "placement", placementKObj)
-			return ctrl.Result{}, syncErr
-		}
-
+		// First update CRP status with the schedule condition
 		if updateErr := r.Client.Status().Update(ctx, placementObj); updateErr != nil {
 			klog.ErrorS(updateErr, "Failed to update the status", "placement", placementKObj)
 			return ctrl.Result{}, controller.NewUpdateIgnoreConflictError(updateErr)
+		}
+		klog.V(2).InfoS("Updated the placement status with scheduled condition", "placement", placementKObj)
+
+		if isNamespaceAccessible := isNamespaceAccessibleCRP(placementObj); isNamespaceAccessible {
+			if err := r.handleNamespaceAccessibleCRP(ctx, placementObj); err != nil {
+				return ctrl.Result{}, err
+			}
 		}
 
 		// no need to retry faster, the user needs to fix the resource selectors
@@ -212,17 +227,17 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 		return ctrl.Result{}, err
 	}
 
-	// Sync ClusterResourcePlacementStatus object if StatusReportingScope is NamespaceAccessible
-	if err := r.syncClusterResourcePlacementStatus(ctx, placementObj); err != nil {
-		klog.ErrorS(err, "Failed to sync ClusterResourcePlacementStatus", "placement", placementKObj)
-		return ctrl.Result{}, err
-	}
-
 	if err := r.Client.Status().Update(ctx, placementObj); err != nil {
 		klog.ErrorS(err, "Failed to update the status", "placement", placementKObj)
 		return ctrl.Result{}, err
 	}
 	klog.V(2).InfoS("Updated the placement status", "placement", placementKObj)
+
+	if isNamespaceAccessible := isNamespaceAccessibleCRP(placementObj); isNamespaceAccessible {
+		if err := r.handleNamespaceAccessibleCRP(ctx, placementObj); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
 
 	// We skip checking the last resource condition (available) because it will be covered by checking isRolloutCompleted func.
 	for i := condition.RolloutStartedCondition; i < condition.TotalCondition-1; i++ {
@@ -1274,4 +1289,35 @@ func emitPlacementStatusMetric(placementObj fleetv1beta1.PlacementObj) {
 	// Emit the "Completed" condition metric to indicate that the placement has completed.
 	// This condition is used solely for metric reporting purposes.
 	metrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), "Completed", string(metav1.ConditionTrue), "Completed").SetToCurrentTime()
+}
+
+// buildStatusSyncedCondition creates a StatusSynced condition based on the sync result.
+func buildStatusSyncedCondition(generation int64, targetNamespace string, syncErr error) metav1.Condition {
+	if targetNamespace == "" && syncErr == nil {
+		return metav1.Condition{
+			Type:               string(fleetv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
+			Status:             metav1.ConditionUnknown,
+			Reason:             condition.InvalidResourceSelectorsReason,
+			Message:            "NamespaceAccessible ClusterResourcePlacement doesn't specify a resource selector which selects a namespace",
+			ObservedGeneration: generation,
+		}
+	}
+	// Determine condition based on sync result
+	if syncErr != nil {
+		return metav1.Condition{
+			Type:               string(fleetv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
+			Status:             metav1.ConditionFalse,
+			Reason:             condition.StatusSyncFailedReason,
+			Message:            fmt.Sprintf("Failed to create or update ClusterResourcePlacementStatus: %v", syncErr),
+			ObservedGeneration: generation,
+		}
+	}
+
+	return metav1.Condition{
+		Type:               string(fleetv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
+		Status:             metav1.ConditionTrue,
+		Reason:             condition.StatusSyncSucceededReason,
+		Message:            fmt.Sprintf("Successfully created or updated ClusterResourcePlacementStatus in namespace '%s'", targetNamespace),
+		ObservedGeneration: generation,
+	}
 }

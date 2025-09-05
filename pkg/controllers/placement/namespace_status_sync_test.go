@@ -24,7 +24,6 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 
 	corev1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -42,181 +41,73 @@ var (
 		cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion", "UID", "CreationTimestamp", "Generation", "ManagedFields"),
 		cmpopts.IgnoreFields(placementv1beta1.ClusterResourcePlacementStatus{}, "LastUpdatedTime"),
 	}
+
+	crpCmpOpts = []cmp.Option{
+		cmpopts.IgnoreFields(metav1.Condition{}, "LastTransitionTime"),
+	}
 )
 
-func TestExtractNamespaceFromResourceSelectors(t *testing.T) {
+func TestHandleNamespaceAccessibleCRP(t *testing.T) {
 	testCases := []struct {
-		name      string
-		placement placementv1beta1.ClusterResourcePlacement
-		want      string
+		name              string
+		placementObjName  string
+		existingObjects   []client.Object
+		targetNamespace   string
+		wantCRPSOperation bool
+		wantCRPCondition  *metav1.Condition
+		wantError         bool
 	}{
 		{
-			name: "NamespaceAccessible with namespace selector",
-			placement: placementv1beta1.ClusterResourcePlacement{
-				Spec: placementv1beta1.PlacementSpec{
-					StatusReportingScope: placementv1beta1.NamespaceAccessible,
-					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
-						{
-							Group:   "",
-							Version: "v1",
-							Kind:    "Namespace",
-							Name:    "test-namespace",
-						},
-						{
-							Group:   "rbac.authorization.k8s.io",
-							Version: "v1",
-							Kind:    "ClusterRole",
-							Name:    "test-cluster-role",
-						},
-					},
-				},
-			},
-			want: "test-namespace",
-		},
-		{
-			name: "ClusterScopeOnly should return empty",
-			placement: placementv1beta1.ClusterResourcePlacement{
-				Spec: placementv1beta1.PlacementSpec{
-					StatusReportingScope: placementv1beta1.ClusterScopeOnly,
-					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
-						{
-							Group:   "",
-							Version: "v1",
-							Kind:    "Namespace",
-							Name:    "test-namespace",
-						},
-					},
-				},
-			},
-			want: "",
-		},
-		{
-			name: "StatusReportingScope is not specified, should return empty",
-			placement: placementv1beta1.ClusterResourcePlacement{
-				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
-						{
-							Group:   "",
-							Version: "v1",
-							Kind:    "Namespace",
-							Name:    "test-namespace",
-						},
-					},
-				},
-			},
-			want: "",
-		},
-		{
-			name: "NamespaceAccessible without namespace selector", // CEL validation should prevent this case.
-			placement: placementv1beta1.ClusterResourcePlacement{
-				Spec: placementv1beta1.PlacementSpec{
-					StatusReportingScope: placementv1beta1.NamespaceAccessible,
-					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
-						{
-							Group:   "apps",
-							Version: "v1",
-							Kind:    "Deployment",
-							Name:    "test-deployment",
-						},
-					},
-				},
-			},
-			want: "",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := extractNamespaceFromResourceSelectors(&tc.placement)
-			if got != tc.want {
-				t.Errorf("extractNamespaceFromResourceSelectors() = %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestSyncClusterResourcePlacementStatus(t *testing.T) {
-	scheme := runtime.NewScheme()
-	if err := clientgoscheme.AddToScheme(scheme); err != nil {
-		t.Fatalf("failed to add client go scheme: %v", err)
-	}
-	if err := placementv1beta1.AddToScheme(scheme); err != nil {
-		t.Fatalf("failed to add fleet scheme: %v", err)
-	}
-
-	testCases := []struct {
-		name            string
-		placementObj    placementv1beta1.PlacementObj
-		existingObjects []client.Object
-		expectOperation bool
-		targetNamespace string
-	}{
-		{
-			name: "Create new ClusterResourcePlacementStatus",
-			placementObj: &placementv1beta1.ClusterResourcePlacement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-crp",
-				},
-				Spec: placementv1beta1.PlacementSpec{
-					StatusReportingScope: placementv1beta1.NamespaceAccessible,
-					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
-						{
-							Group:   "",
-							Version: "v1",
-							Kind:    "Namespace",
-							Name:    "test-namespace",
-						},
-					},
-				},
-				Status: placementv1beta1.PlacementStatus{
-					ObservedResourceIndex: "test-index",
-					Conditions: []metav1.Condition{
-						{
-							Type:   "TestCondition",
-							Status: metav1.ConditionTrue,
-							Reason: "TestReason",
-						},
-					},
-				},
-			},
+			name:             "successful sync - create new CRPS and set StatusSynced to True",
+			placementObjName: "test-crp",
 			existingObjects: []client.Object{
+				&placementv1beta1.ClusterResourcePlacement{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "test-crp",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.PlacementSpec{
+						StatusReportingScope: placementv1beta1.NamespaceAccessible,
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+							{
+								Group:   "",
+								Version: "v1",
+								Kind:    "Namespace",
+								Name:    "test-namespace",
+							},
+						},
+					},
+					Status: placementv1beta1.PlacementStatus{
+						ObservedResourceIndex: "0",
+						Conditions: []metav1.Condition{
+							{
+								Type:   "TestCondition",
+								Status: metav1.ConditionTrue,
+								Reason: "TestReason",
+							},
+						},
+					},
+				},
 				&corev1.Namespace{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "test-namespace",
 					},
 				},
 			},
-			expectOperation: true,
-			targetNamespace: "test-namespace",
+			targetNamespace:   "test-namespace",
+			wantCRPSOperation: true,
+			wantCRPCondition: &metav1.Condition{
+				Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
+				Status:             metav1.ConditionTrue,
+				Reason:             "StatusSyncSucceeded",
+				Message:            "Successfully created or updated ClusterResourcePlacementStatus in namespace 'test-namespace'",
+				ObservedGeneration: 1,
+			},
+			wantError: false,
 		},
 		{
-			name: "Update existing ClusterResourcePlacementStatus",
-			placementObj: &placementv1beta1.ClusterResourcePlacement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-crp",
-				},
-				Spec: placementv1beta1.PlacementSpec{
-					StatusReportingScope: placementv1beta1.NamespaceAccessible,
-					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
-						{
-							Group:   "",
-							Version: "v1",
-							Kind:    "Namespace",
-							Name:    "test-namespace",
-						},
-					},
-				},
-				Status: placementv1beta1.PlacementStatus{
-					ObservedResourceIndex: "updated-index",
-					Conditions: []metav1.Condition{
-						{
-							Type:   "UpdatedCondition",
-							Status: metav1.ConditionTrue,
-							Reason: "UpdatedReason",
-						},
-					},
-				},
-			},
+			name:             "successful sync - update existing CRPS and set StatusSynced to True",
+			placementObjName: "test-crp",
 			existingObjects: []client.Object{
 				&corev1.Namespace{
 					ObjectMeta: metav1.ObjectMeta{
@@ -229,78 +120,100 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 						Namespace: "test-namespace",
 					},
 					PlacementStatus: placementv1beta1.PlacementStatus{
-						ObservedResourceIndex: "old-index",
+						ObservedResourceIndex: "0",
+						Conditions: []metav1.Condition{
+							{
+								Type:   string(placementv1beta1.ClusterResourcePlacementScheduledConditionType),
+								Status: metav1.ConditionFalse,
+								Reason: "OldReason",
+							},
+						},
 					},
-					LastUpdatedTime: metav1.Now(),
 				},
-			},
-			expectOperation: true,
-			targetNamespace: "test-namespace",
-		},
-		{
-			name: "ClusterScopeOnly should not sync",
-			placementObj: &placementv1beta1.ClusterResourcePlacement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-crp",
-				},
-				Spec: placementv1beta1.PlacementSpec{
-					StatusReportingScope: placementv1beta1.ClusterScopeOnly,
-					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
-						{
-							Group:   "",
-							Version: "v1",
-							Kind:    "Namespace",
-							Name:    "test-namespace",
+				&placementv1beta1.ClusterResourcePlacement{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "test-crp",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.PlacementSpec{
+						StatusReportingScope: placementv1beta1.NamespaceAccessible,
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+							{
+								Group:   "",
+								Version: "v1",
+								Kind:    "Namespace",
+								Name:    "test-namespace",
+							},
+						},
+					},
+					Status: placementv1beta1.PlacementStatus{
+						ObservedResourceIndex: "0",
+						Conditions: []metav1.Condition{
+							{
+								Type:   string(placementv1beta1.ClusterResourcePlacementScheduledConditionType),
+								Status: metav1.ConditionTrue,
+								Reason: "UpdatedReason",
+							},
 						},
 					},
 				},
 			},
-			existingObjects: []client.Object{
-				&corev1.Namespace{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "test-namespace",
-					},
-				},
+			targetNamespace:   "test-namespace",
+			wantCRPSOperation: true,
+			wantCRPCondition: &metav1.Condition{
+				Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
+				Status:             metav1.ConditionTrue,
+				Reason:             "StatusSyncSucceeded",
+				Message:            "Successfully created or updated ClusterResourcePlacementStatus in namespace 'test-namespace'",
+				ObservedGeneration: 1,
 			},
-			expectOperation: false,
-			targetNamespace: "test-namespace",
+			wantError: false,
 		},
 		{
-			name: "ResourcePlacement should not sync",
-			placementObj: &placementv1beta1.ResourcePlacement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-rp",
-					Namespace: "test-namespace",
-				},
-				Spec: placementv1beta1.PlacementSpec{
-					StatusReportingScope: placementv1beta1.NamespaceAccessible,
-					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
-						{
-							Group:   "",
-							Version: "v1",
-							Kind:    "Namespace",
-							Name:    "test-namespace",
+			name:             "sync failure - missing namespace selector returns error",
+			placementObjName: "test-crp-no-ns",
+			existingObjects: []client.Object{
+				&placementv1beta1.ClusterResourcePlacement{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "test-crp-no-ns",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.PlacementSpec{
+						StatusReportingScope: placementv1beta1.NamespaceAccessible,
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+							{
+								Group:   "rbac.authorization.k8s.io",
+								Version: "v1",
+								Kind:    "ClusterRole",
+								Name:    "test-cluster-role",
+							},
 						},
 					},
-				},
-			},
-			existingObjects: []client.Object{
-				&corev1.Namespace{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "test-namespace",
+					Status: placementv1beta1.PlacementStatus{
+						ObservedResourceIndex: "0",
 					},
 				},
 			},
-			expectOperation: false,
-			targetNamespace: "test-namespace",
+			targetNamespace:   "",
+			wantCRPSOperation: false,
+			wantCRPCondition: &metav1.Condition{
+				Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
+				Status:             metav1.ConditionUnknown,
+				Reason:             "InvalidResourceSelectors",
+				Message:            "NamespaceAccessible ClusterResourcePlacement doesn't specify a resource selector which selects a namespace",
+				ObservedGeneration: 1,
+			},
+			wantError: false,
 		},
 	}
 
 	for _, tc := range testCases {
+		scheme := statusSyncServiceScheme(t)
 		t.Run(tc.name, func(t *testing.T) {
 			fakeClient := fake.NewClientBuilder().
 				WithScheme(scheme).
 				WithObjects(tc.existingObjects...).
+				WithStatusSubresource(&placementv1beta1.ClusterResourcePlacement{}).
 				Build()
 
 			reconciler := &Reconciler{
@@ -308,62 +221,315 @@ func TestSyncClusterResourcePlacementStatus(t *testing.T) {
 				Scheme: scheme,
 			}
 
-			err := reconciler.syncClusterResourcePlacementStatus(context.Background(), tc.placementObj)
-			if err != nil {
-				t.Fatalf("syncClusterResourcePlacementStatus() failed: %v", err)
+			// Get the CRP from the fake client to ensure it has proper metadata (ResourceVersion, UID, etc.)
+			gotCRP := &placementv1beta1.ClusterResourcePlacement{}
+			if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: tc.placementObjName}, gotCRP); err != nil {
+				t.Fatalf("Failed to get CRP from fake client: %v", err)
 			}
 
-			crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{}
-			err = fakeClient.Get(context.Background(), types.NamespacedName{Name: tc.placementObj.GetName(), Namespace: tc.targetNamespace}, crpStatus)
+			// Call handleNamespaceAccessibleCRP with the CRP from the client
+			err := reconciler.handleNamespaceAccessibleCRP(context.Background(), gotCRP)
 
-			if !tc.expectOperation {
-				if err == nil {
-					t.Fatal("Expected no ClusterResourcePlacementStatus to be present, but one exists")
-				}
-				// CRPS should not exist.
-				if k8serrors.IsNotFound(err) {
-					return
-				}
+			// Check if error expectation matches
+			if tc.wantError && err == nil {
+				t.Fatal("Expected error but got none")
+			}
+			if !tc.wantError && err != nil {
+				t.Fatalf("handleNamespaceAccessibleCRP() failed: %v", err)
 			}
 
-			if err != nil {
-				t.Fatalf("expected ClusterResourcePlacementStatus to exist but got error: %v", err)
-			}
-
-			// Verify LastUpdatedTime is set.
-			if crpStatus.LastUpdatedTime.IsZero() {
-				t.Fatal("Expected LastUpdatedTime to be set, but it was zero")
-			}
-
-			// Verify the ClusterResourcePlacementStatus exists.
-			crp, ok := tc.placementObj.(*placementv1beta1.ClusterResourcePlacement)
-			if !ok {
-				return // ResourcePlacement case.
-			}
-
-			// Use cmp.Diff to compare the key fields.
-			wantStatus := placementv1beta1.ClusterResourcePlacementStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      crp.Name,
+			// Check ClusterResourcePlacementStatus creation/update using cmp.Diff
+			if tc.wantCRPSOperation && tc.targetNamespace != "" {
+				gotCRPS := &placementv1beta1.ClusterResourcePlacementStatus{}
+				getErr := fakeClient.Get(context.Background(), types.NamespacedName{
+					Name:      tc.placementObjName,
 					Namespace: tc.targetNamespace,
-					OwnerReferences: []metav1.OwnerReference{
-						{
-							APIVersion:         "placement.kubernetes-fleet.io/v1beta1",
-							Kind:               "ClusterResourcePlacement",
-							Name:               crp.Name,
-							UID:                crp.UID,
-							Controller:         ptr.To(true),
-							BlockOwnerDeletion: ptr.To(true),
+				}, gotCRPS)
+
+				if getErr != nil {
+					if !tc.wantError {
+						t.Fatalf("Expected ClusterResourcePlacementStatus to be created/updated but got error: %v", getErr)
+					}
+				} else {
+					// Construct expected CRPS based on the CRP
+					wantCRPS := &placementv1beta1.ClusterResourcePlacementStatus{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      tc.placementObjName,
+							Namespace: tc.targetNamespace,
+							OwnerReferences: []metav1.OwnerReference{
+								{
+									APIVersion:         "placement.kubernetes-fleet.io/v1beta1",
+									Kind:               "ClusterResourcePlacement",
+									Name:               tc.placementObjName,
+									Controller:         ptr.To(true),
+									BlockOwnerDeletion: ptr.To(true),
+								},
+							},
 						},
-					},
-				},
-				PlacementStatus: crp.Status,
+						PlacementStatus: gotCRP.Status,
+					}
+
+					// Filter out StatusSynced condition from the expected CRPS
+					filteredConditions := make([]metav1.Condition, 0)
+					for _, cond := range gotCRP.Status.Conditions {
+						if cond.Type != string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType) {
+							filteredConditions = append(filteredConditions, cond)
+						}
+					}
+					wantCRPS.PlacementStatus.Conditions = filteredConditions
+
+					// Use cmp.Diff to compare CRPS objects
+					if diff := cmp.Diff(wantCRPS, gotCRPS, crpsCmpOpts...); diff != "" {
+						t.Fatalf("ClusterResourcePlacementStatus mismatch (-want +got):\n%s", diff)
+					}
+
+					// Additional validation that LastUpdatedTime is set (ignored in comparison)
+					if gotCRPS.LastUpdatedTime.IsZero() {
+						t.Fatal("Expected LastUpdatedTime to be set on CRPS")
+					}
+				}
 			}
 
-			// Ignore metadata fields that Kubernetes sets automatically and LastUpdatedTime since it's time-dependent.
-			if diff := cmp.Diff(wantStatus, *crpStatus, crpsCmpOpts...); diff != "" {
-				t.Fatalf("ClusterResourcePlacementStatus mismatch (-want +got):\n%s", diff)
+			// Check StatusSynced condition on the original CRP using cmp.Diff
+			if tc.wantCRPCondition != nil {
+				updatedCRP := &placementv1beta1.ClusterResourcePlacement{}
+				if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: tc.placementObjName}, updatedCRP); err != nil {
+					t.Fatalf("Failed to get updated CRP: %v", err)
+				}
+
+				// Use GetCondition to find the StatusSynced condition
+				gotCondition := updatedCRP.GetCondition(string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType))
+				if gotCondition == nil {
+					t.Fatal("Expected StatusSynced condition to be set on CRP")
+				}
+
+				// Use cmp.Diff to compare conditions
+				if diff := cmp.Diff(tc.wantCRPCondition, gotCondition, crpCmpOpts...); diff != "" {
+					t.Fatalf("StatusSynced condition mismatch (-want +got):\n%s", diff)
+				}
 			}
 		})
 	}
+}
+
+func TestValidateNamespaceSelectorConsistency(t *testing.T) {
+	testCases := []struct {
+		name             string
+		placementObjName string
+		existingObjects  []client.Object
+		wantCRPCondition *metav1.Condition
+		wantIsValid      bool
+		wantError        bool
+	}{
+		{
+			name:             "no namespace selector - should set StatusSynced to Unknown and return false",
+			placementObjName: "test-crp-no-selector",
+			existingObjects: []client.Object{
+				&placementv1beta1.ClusterResourcePlacement{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "test-crp-no-selector",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.PlacementSpec{
+						StatusReportingScope: placementv1beta1.NamespaceAccessible,
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+							{
+								Group:   "rbac.authorization.k8s.io",
+								Version: "v1",
+								Kind:    "ClusterRole",
+								Name:    "test-cluster-role",
+							},
+						},
+					},
+					Status: placementv1beta1.PlacementStatus{
+						ObservedResourceIndex: "0",
+					},
+				},
+			},
+			wantCRPCondition: &metav1.Condition{
+				Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
+				Status:             metav1.ConditionUnknown,
+				Reason:             "InvalidResourceSelectors",
+				Message:            "NamespaceAccessible ClusterResourcePlacement doesn't specify a resource selector which selects a namespace",
+				ObservedGeneration: 1,
+			},
+			wantIsValid: false,
+			wantError:   false,
+		},
+		{
+			name:             "empty selected resources status - should pass validation and return true",
+			placementObjName: "test-crp-empty-selected",
+			existingObjects: []client.Object{
+				&placementv1beta1.ClusterResourcePlacement{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "test-crp-empty-selected",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.PlacementSpec{
+						StatusReportingScope: placementv1beta1.NamespaceAccessible,
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+							{
+								Group:   "",
+								Version: "v1",
+								Kind:    "Namespace",
+								Name:    "test-namespace",
+							},
+						},
+					},
+					Status: placementv1beta1.PlacementStatus{
+						ObservedResourceIndex: "0",
+						SelectedResources:     []placementv1beta1.ResourceIdentifier{}, // Empty selected resources
+					},
+				},
+			},
+			wantCRPCondition: nil, // No condition should be set
+			wantIsValid:      true,
+			wantError:        false,
+		},
+		{
+			name:             "consistent namespace selector - should pass validation and return true",
+			placementObjName: "test-crp-consistent",
+			existingObjects: []client.Object{
+				&placementv1beta1.ClusterResourcePlacement{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "test-crp-consistent",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.PlacementSpec{
+						StatusReportingScope: placementv1beta1.NamespaceAccessible,
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+							{
+								Group:   "",
+								Version: "v1",
+								Kind:    "Namespace",
+								Name:    "test-namespace",
+							},
+						},
+					},
+					Status: placementv1beta1.PlacementStatus{
+						ObservedResourceIndex: "0",
+						SelectedResources: []placementv1beta1.ResourceIdentifier{
+							{
+								Group:     "",
+								Version:   "v1",
+								Kind:      "Namespace",
+								Name:      "test-namespace",
+								Namespace: "",
+							},
+						},
+					},
+				},
+			},
+			wantCRPCondition: nil, // No condition should be set
+			wantIsValid:      true,
+			wantError:        false,
+		},
+		{
+			name:             "inconsistent namespace selector - should set StatusSynced to Unknown and return false",
+			placementObjName: "test-crp-inconsistent",
+			existingObjects: []client.Object{
+				&placementv1beta1.ClusterResourcePlacement{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "test-crp-inconsistent",
+						Generation: 2,
+					},
+					Spec: placementv1beta1.PlacementSpec{
+						StatusReportingScope: placementv1beta1.NamespaceAccessible,
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+							{
+								Group:   "",
+								Version: "v1",
+								Kind:    "Namespace",
+								Name:    "new-namespace", // Changed from original
+							},
+						},
+					},
+					Status: placementv1beta1.PlacementStatus{
+						ObservedResourceIndex: "0",
+						SelectedResources: []placementv1beta1.ResourceIdentifier{
+							{
+								Group:     "",
+								Version:   "v1",
+								Kind:      "Namespace",
+								Name:      "original-namespace", // Original namespace in status
+								Namespace: "",
+							},
+						},
+					},
+				},
+			},
+			wantCRPCondition: &metav1.Condition{
+				Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
+				Status:             metav1.ConditionUnknown,
+				Reason:             "InvalidResourceSelectors",
+				Message:            "namespace resource selector is choosing a different namespace 'new-namespace' from what was originally picked 'original-namespace'. This is not allowed for NamespaceAccessible ClusterResourcePlacements.",
+				ObservedGeneration: 2,
+			},
+			wantIsValid: false,
+			wantError:   false,
+		},
+	}
+
+	for _, tc := range testCases {
+		scheme := statusSyncServiceScheme(t)
+		t.Run(tc.name, func(t *testing.T) {
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(tc.existingObjects...).
+				WithStatusSubresource(&placementv1beta1.ClusterResourcePlacement{}).
+				Build()
+
+			reconciler := &Reconciler{
+				Client: fakeClient,
+				Scheme: scheme,
+			}
+
+			// Get the CRP from the fake client to ensure it has proper metadata
+			gotCRP := &placementv1beta1.ClusterResourcePlacement{}
+			if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: tc.placementObjName}, gotCRP); err != nil {
+				t.Fatalf("Failed to get CRP from fake client: %v", err)
+			}
+
+			// Call validateNamespaceSelectorConsistency
+			gotIsValid, err := reconciler.validateNamespaceSelectorConsistency(context.Background(), gotCRP)
+
+			// Check if error expectation matches
+			if tc.wantError && err == nil {
+				t.Fatal("Expected error but got none")
+			}
+			if !tc.wantError && err != nil {
+				t.Fatalf("validateNamespaceSelectorConsistency() failed: %v", err)
+			}
+
+			// Check if validity expectation matches
+			if tc.wantIsValid != gotIsValid {
+				t.Fatalf("validateNamespaceSelectorConsistency() validity mismatch: want %v, got %v", tc.wantIsValid, gotIsValid)
+			}
+
+			// Check StatusSynced condition on the CRP - always get the updated CRP and compare expected vs actual
+			updatedCRP := &placementv1beta1.ClusterResourcePlacement{}
+			if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: tc.placementObjName}, updatedCRP); err != nil {
+				t.Fatalf("Failed to get updated CRP: %v", err)
+			}
+
+			// Use GetCondition to find the StatusSynced condition
+			gotCondition := updatedCRP.GetCondition(string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType))
+
+			// Use cmp.Diff to compare conditions (handles nil == nil, condition == condition, and nil != condition cases)
+			if diff := cmp.Diff(tc.wantCRPCondition, gotCondition, crpCmpOpts...); diff != "" {
+				t.Fatalf("StatusSynced condition mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func statusSyncServiceScheme(t *testing.T) *runtime.Scheme {
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add client go scheme: %v", err)
+	}
+	if err := placementv1beta1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add scheme: %v", err)
+	}
+	return scheme
 }
