@@ -611,6 +611,15 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("supported values: \"ClusterScopeOnly\", \"NamespaceAccessible\""))
 		})
+
+		It("should deny update of namespace name in resourceSelectors when StatusReportingScope is NamespaceAccessible", func() {
+			// Try to change the namespace name from "test-ns-1" to "different-ns"
+			crp.Spec.ResourceSelectors[0].Name = "different-ns"
+			err := hubClient.Update(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("namespace name in resourceSelectors is immutable when statusReportingScope is NamespaceAccessible"))
+		})
 	})
 
 	Context("Test ResourcePlacement StatusReportingScope validation, allow cases", func() {
