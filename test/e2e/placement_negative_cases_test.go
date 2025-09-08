@@ -485,7 +485,7 @@ var _ = Describe("handling errors and failures gracefully", func() {
 			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "CRP status has changed unexpectedly")
 		})
 
-		It("should place some manifests on member clusters", func() {
+		It("should place the other manifests on member clusters", func() {
 			Eventually(func() error {
 				return validateWorkNamespaceOnCluster(memberCluster1EastProd, types.NamespacedName{Name: workNamespaceName})
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")

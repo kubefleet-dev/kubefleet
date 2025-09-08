@@ -52,7 +52,7 @@ var _ = Describe("handling errors and failures gracefully for resource placement
 		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 	})
 
-	// This test spec uses envelopes for placement as it is a bit tricky to simulate
+	// Many test specs below use envelopes for placement as it is a bit tricky to simulate
 	// decoding errors with resources created directly in the hub cluster.
 	//
 	// TO-DO (chenyu1): reserve an API group exclusively on the hub cluster so that
@@ -83,8 +83,7 @@ var _ = Describe("handling errors and failures gracefully for resource placement
 					cmDataKey: cmDataVal1,
 				},
 			}
-			// Given Fleet's current resource sorting logic, this configMap
-			// will be considered as the duplicated resource entry.
+			// Prepare a malformed config map.
 			badConfigMap := configMap.DeepCopy()
 			badConfigMap.TypeMeta = metav1.TypeMeta{
 				APIVersion: "dummy/v10",
@@ -94,6 +93,7 @@ var _ = Describe("handling errors and failures gracefully for resource placement
 			Expect(err).To(BeNil(), "Failed to marshal configMap %s", badConfigMap.Name)
 			resourceEnvelope.Data["cm1.yaml"] = runtime.RawExtension{Raw: badCMBytes}
 
+			// Prepare a regular config map.
 			wrappedCM2 := configMap.DeepCopy()
 			wrappedCM2.Name = wrappedCMName2
 			wrappedCM2.Data[cmDataKey] = cmDataVal2
@@ -101,7 +101,7 @@ var _ = Describe("handling errors and failures gracefully for resource placement
 			Expect(err).To(BeNil(), "Failed to marshal configMap %s", wrappedCM2.Name)
 			resourceEnvelope.Data["cm2.yaml"] = runtime.RawExtension{Raw: wrappedCM2Bytes}
 
-			Expect(hubClient.Create(ctx, resourceEnvelope)).To(Succeed(), "Failed to create configMap %s", resourceEnvelope.Name)
+			Expect(hubClient.Create(ctx, resourceEnvelope)).To(Succeed(), "Failed to create resource envelope %s", resourceEnvelope.Name)
 
 			// Create a ResourcePlacement.
 			rp := &placementv1beta1.ResourcePlacement{
@@ -260,7 +260,7 @@ var _ = Describe("handling errors and failures gracefully for resource placement
 			badCMBytes, err := json.Marshal(badConfigMap)
 			Expect(err).To(BeNil(), "Failed to marshal configMap %s", badConfigMap.Name)
 			resourceEnvelope.Data["cm1.yaml"] = runtime.RawExtension{Raw: badCMBytes}
-			Expect(hubClient.Create(ctx, resourceEnvelope)).To(Succeed(), "Failed to create configMap %s", resourceEnvelope.Name)
+			Expect(hubClient.Create(ctx, resourceEnvelope)).To(Succeed(), "Failed to create resource envelope %s", resourceEnvelope.Name)
 
 			// Create a ResourcePlacement.
 			rp := &placementv1beta1.ResourcePlacement{
@@ -342,6 +342,182 @@ var _ = Describe("handling errors and failures gracefully for resource placement
 				}
 				return nil
 			}, consistentlyDuration, consistentlyInterval).Should(Succeed(), "The malformed configMap has been applied unexpectedly")
+		})
+
+		AfterAll(func() {
+			// Remove the ResourcePlacement from the hub cluster.
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: workNamespaceName}, []*framework.Cluster{memberCluster1EastProd})
+		})
+	})
+
+	Context("pre-processing failure in apply ops (duplicated)", Ordered, func() {
+		BeforeAll(func() {
+			// Use an envelope to create duplicate resource entries.
+			// Create an envelope resource to wrap the configMaps.
+			resourceEnvelope := &placementv1beta1.ResourceEnvelope{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      envelopeName,
+					Namespace: workNamespaceName,
+				},
+				Data: map[string]runtime.RawExtension{},
+			}
+
+			// Create configMaps as wrapped resources.
+			configMap := &corev1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: corev1.SchemeGroupVersion.String(),
+					Kind:       "ConfigMap",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: workNamespaceName,
+					Name:      wrappedCMName1,
+				},
+				Data: map[string]string{
+					cmDataKey: cmDataVal1,
+				},
+			}
+			// Prepare a regular config map and a duplicate.
+			wrappedCM := configMap.DeepCopy()
+			wrappedCM.Name = wrappedCMName1
+			wrappedCM.Data[cmDataKey] = cmDataVal1
+			wrappedCMBytes, err := json.Marshal(wrappedCM)
+			Expect(err).To(BeNil(), "Failed to marshal configMap %s", wrappedCM.Name)
+			resourceEnvelope.Data["cm1.yaml"] = runtime.RawExtension{Raw: wrappedCMBytes}
+
+			// Note: due to how work generator sorts manifests, the CM below will actually be
+			// applied first.
+			duplicatedCM := configMap.DeepCopy()
+			duplicatedCM.Name = wrappedCMName1
+			duplicatedCM.Data[cmDataKey] = cmDataVal2
+			duplicatedCMBytes, err := json.Marshal(duplicatedCM)
+			Expect(err).To(BeNil(), "Failed to marshal configMap %s", duplicatedCM.Name)
+			resourceEnvelope.Data["cm2.yaml"] = runtime.RawExtension{Raw: duplicatedCMBytes}
+
+			Expect(hubClient.Create(ctx, resourceEnvelope)).To(Succeed(), "Failed to create resource envelope %s", resourceEnvelope.Name)
+
+			// Create a ResourcePlacement.
+			rp := &placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      rpName,
+					Namespace: workNamespaceName,
+					// Add a custom finalizer; this would allow us to better observe
+					// the behavior of the controllers.
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:   placementv1beta1.GroupVersion.Group,
+							Kind:    placementv1beta1.ResourceEnvelopeKind,
+							Version: placementv1beta1.GroupVersion.Version,
+							Name:    envelopeName,
+						},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickFixedPlacementType,
+						ClusterNames: []string{
+							memberCluster1EastProdName,
+						},
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create ResourcePlacement")
+		})
+
+		It("should update ResourcePlacement status as expected", func() {
+			rpStatusUpdatedActual := func() error {
+				rp := &placementv1beta1.ResourcePlacement{}
+				if err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: workNamespaceName}, rp); err != nil {
+					return err
+				}
+
+				wantStatus := placementv1beta1.PlacementStatus{
+					Conditions: rpAppliedFailedConditions(rp.Generation),
+					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+						{
+							ClusterName:           memberCluster1EastProdName,
+							ObservedResourceIndex: "0",
+							FailedPlacements: []placementv1beta1.FailedResourcePlacement{
+								{
+									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
+										Group:     "",
+										Version:   "v1",
+										Kind:      "ConfigMap",
+										Namespace: workNamespaceName,
+										Name:      wrappedCMName1,
+										Envelope: &placementv1beta1.EnvelopeIdentifier{
+											Name:      envelopeName,
+											Namespace: workNamespaceName,
+											Type:      placementv1beta1.ResourceEnvelopeType,
+										},
+									},
+									Condition: metav1.Condition{
+										Type:               placementv1beta1.WorkConditionTypeApplied,
+										Status:             metav1.ConditionFalse,
+										Reason:             string(workapplier.ApplyOrReportDiffResTypeDuplicated),
+										ObservedGeneration: 0,
+									},
+								},
+							},
+							Conditions: perClusterApplyFailedConditions(rp.Generation),
+						},
+					},
+					SelectedResources: []placementv1beta1.ResourceIdentifier{
+						{
+							Group:     placementv1beta1.GroupVersion.Group,
+							Kind:      placementv1beta1.ResourceEnvelopeKind,
+							Version:   placementv1beta1.GroupVersion.Version,
+							Name:      envelopeName,
+							Namespace: workNamespaceName,
+						},
+					},
+					ObservedResourceIndex: "0",
+				}
+				if diff := cmp.Diff(rp.Status, wantStatus, placementStatusCmpOptions...); diff != "" {
+					return fmt.Errorf("ResourcePlacement status diff (-got, +want): %s", diff)
+				}
+				return nil
+			}
+			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update ResourcePlacement status as expected")
+			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "ResourcePlacement status has changed unexpectedly")
+		})
+
+		It("should place the other manifests on member clusters", func() {
+			Eventually(func() error {
+				cm := &corev1.ConfigMap{}
+				if err := memberCluster1EastProdClient.Get(ctx, types.NamespacedName{Name: wrappedCMName1, Namespace: workNamespaceName}, cm); err != nil {
+					return err
+				}
+
+				wantCM := &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      wrappedCMName1,
+						Namespace: workNamespaceName,
+					},
+					Data: map[string]string{
+						cmDataKey: cmDataVal2,
+					},
+				}
+				// Rebuild the configMap for ease of comparison.
+				rebuiltGotCM := &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      cm.Name,
+						Namespace: cm.Namespace,
+					},
+					Data: cm.Data,
+				}
+
+				if diff := cmp.Diff(rebuiltGotCM, wantCM); diff != "" {
+					return fmt.Errorf("configMap diff (-got, +want): %s", diff)
+				}
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the configMap object #1")
 		})
 
 		AfterAll(func() {
