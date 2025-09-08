@@ -29,7 +29,7 @@ var _ = Describe("handling errors and failures gracefully", func() {
 	wrappedCMName2 := "app-2"
 
 	cmDataKey := "foo"
-	cmDataVal1 := "bar"
+	cmDataVal1 := cmDataVal
 	cmDataVal2 := "baz"
 
 	// Many test specs below use envelopes for placement as it is a bit tricky to simulate

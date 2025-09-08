@@ -29,7 +29,7 @@ var _ = Describe("handling errors and failures gracefully for resource placement
 	wrappedCMName2 := "app-2"
 
 	cmDataKey := "foo"
-	cmDataVal1 := "bar"
+	cmDataVal1 := cmDataVal
 	cmDataVal2 := "baz"
 
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
