@@ -145,11 +145,12 @@ func (s *informerManagerImpl) AddDynamicResources(dynResources []APIResourceMeta
 				// TO-DO (chenyu1): cross-reference the logic here with the stripping-off process to make
 				// sure that the same fields are dropped in both places.
 				obj.SetManagedFields(nil)
-				obj.SetOwnerReferences(nil)
-				obj.SetUID("")
 				obj.SetSelfLink("")
-				obj.SetResourceVersion("")
-				obj.SetDeletionTimestamp(nil)
+
+				// Note (chenyu1): the v1alpha1 API implementations read the following fields.
+				//obj.SetOwnerReferences(nil)
+				//obj.SetUID("")
+				//obj.SetResourceVersion("")
 
 				return obj, nil
 			})
