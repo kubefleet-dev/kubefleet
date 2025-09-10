@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -130,7 +131,34 @@ func (s *informerManagerImpl) AddDynamicResources(dynResources []APIResourceMeta
 			s.apiResources[newRes.GroupVersionKind] = &newRes
 			// TODO (rzhang): remember the ResourceEventHandlerRegistration and remove it when the resource is deleted
 			// TODO: handle error which only happens if the informer is stopped
-			_, _ = s.informerFactory.ForResource(newRes.GroupVersionResource).Informer().AddEventHandler(handler)
+			informer := s.informerFactory.ForResource(newRes.GroupVersionResource).Informer()
+			err := informer.SetTransform(func(objI interface{}) (interface{}, error) {
+				obj, hasObjMetadata := objI.(metav1.Object)
+				if !hasObjMetadata {
+					// No need to transform; return the object as it is.
+					return objI, nil
+				}
+
+				// Drop the following metadata fields as Fleet never reads them (or more specifically,
+				// they will be stripped off before placement anyway).
+				//
+				// TO-DO (chenyu1): cross-reference the logic here with the stripping-off process to make
+				// sure that the same fields are dropped in both places.
+				obj.SetManagedFields(nil)
+				obj.SetOwnerReferences(nil)
+				obj.SetUID("")
+				obj.SetSelfLink("")
+				obj.SetResourceVersion("")
+				obj.SetDeletionTimestamp(nil)
+
+				return obj, nil
+			})
+			if err != nil {
+				// The SetTransform func would only fail if the informer has already started. In this case,
+				// no further action is needed.
+				klog.ErrorS(err, "Failed to set transform func for informer", "gvr", newRes.GroupVersionResource)
+			}
+			_, _ = informer.AddEventHandler(handler)
 			klog.InfoS("Added an informer for a new resource", "res", newRes)
 		} else if !dynRes.isPresent {
 			// we just mark it as enabled as we should not add another eventhandler to the informer as it's still
