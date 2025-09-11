@@ -292,7 +292,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 			Expect(hubClient.Create(ctx, &ns)).To(Succeed(), "Failed to create new-namespace")
 			// Wait for namespace creation
 			Eventually(func() error {
-				return hubClient.Get(ctx, types.NamespacedName{Name: "new-namespace"}, ns)
+				return hubClient.Get(ctx, types.NamespacedName{Name: "new-namespace"}, &ns)
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to get new -amespace")
 
 			// Create CRP with NamespaceAccessible scope.
