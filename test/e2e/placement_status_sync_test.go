@@ -289,7 +289,11 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 					Name: "new-namespace",
 				},
 			}
-			Expect(hubClient.Create(ctx, &ns)).To(Succeed(), "Failed to create additional namespace")
+			Expect(hubClient.Create(ctx, &ns)).To(Succeed(), "Failed to create new-namespace")
+			// Wait for namespace creation
+			Eventually(func() error {
+				return hubClient.Get(ctx, types.NamespacedName{Name: "new-namespace"}, ns)
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to get new -amespace")
 
 			// Create CRP with NamespaceAccessible scope.
 			crp := &placementv1beta1.ClusterResourcePlacement{
@@ -317,7 +321,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 					Name: "new-namespace",
 				},
 			}
-			Expect(hubClient.Delete(ctx, ns)).To(Succeed(), "Failed to delete additional namespace")
+			Expect(hubClient.Delete(ctx, ns)).To(Succeed(), "Failed to delete new-namespace")
 		})
 
 		It("should update CRP status with initial namespace selection", func() {

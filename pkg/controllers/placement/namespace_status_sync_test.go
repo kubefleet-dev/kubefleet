@@ -221,16 +221,16 @@ func TestHandleNamespaceAccessibleCRP(t *testing.T) {
 				Scheme: scheme,
 			}
 
-			// Get the CRP from the fake client to ensure it has proper metadata (ResourceVersion, UID, etc.)
+			// Get the CRP from the fake client to ensure it has proper metadata and when handleNamespaceAccessibleCRP is called CRP must already exist.
 			gotCRP := &placementv1beta1.ClusterResourcePlacement{}
 			if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: tc.placementObjName}, gotCRP); err != nil {
 				t.Fatalf("Failed to get CRP from fake client: %v", err)
 			}
 
-			// Call handleNamespaceAccessibleCRP with the CRP from the client
+			// Call handleNamespaceAccessibleCRP with the CRP from the client.
 			err := reconciler.handleNamespaceAccessibleCRP(context.Background(), gotCRP)
 
-			// Check if error expectation matches
+			// Check if error expectation matches.
 			if tc.wantError && err == nil {
 				t.Fatal("Expected error but got none")
 			}
@@ -238,7 +238,7 @@ func TestHandleNamespaceAccessibleCRP(t *testing.T) {
 				t.Fatalf("handleNamespaceAccessibleCRP() failed: %v", err)
 			}
 
-			// Check ClusterResourcePlacementStatus creation/update using cmp.Diff
+			// Check ClusterResourcePlacementStatus creation/update using cmp.Diff.
 			if tc.wantCRPSOperation && tc.targetNamespace != "" {
 				gotCRPS := &placementv1beta1.ClusterResourcePlacementStatus{}
 				getErr := fakeClient.Get(context.Background(), types.NamespacedName{
@@ -251,7 +251,7 @@ func TestHandleNamespaceAccessibleCRP(t *testing.T) {
 						t.Fatalf("Expected ClusterResourcePlacementStatus to be created/updated but got error: %v", getErr)
 					}
 				} else {
-					// Construct expected CRPS based on the CRP
+					// Construct expected CRPS based on the CRP.
 					wantCRPS := &placementv1beta1.ClusterResourcePlacementStatus{
 						ObjectMeta: metav1.ObjectMeta{
 							Name:      tc.placementObjName,
@@ -269,7 +269,7 @@ func TestHandleNamespaceAccessibleCRP(t *testing.T) {
 						PlacementStatus: gotCRP.Status,
 					}
 
-					// Filter out StatusSynced condition from the expected CRPS
+					// Filter out StatusSynced condition from the expected CRPS.
 					filteredConditions := make([]metav1.Condition, 0)
 					for _, cond := range gotCRP.Status.Conditions {
 						if cond.Type != string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType) {
@@ -278,19 +278,19 @@ func TestHandleNamespaceAccessibleCRP(t *testing.T) {
 					}
 					wantCRPS.PlacementStatus.Conditions = filteredConditions
 
-					// Use cmp.Diff to compare CRPS objects
+					// Use cmp.Diff to compare CRPS objects.
 					if diff := cmp.Diff(wantCRPS, gotCRPS, crpsCmpOpts...); diff != "" {
 						t.Fatalf("ClusterResourcePlacementStatus mismatch (-want +got):\n%s", diff)
 					}
 
-					// Additional validation that LastUpdatedTime is set (ignored in comparison)
+					// Additional validation that LastUpdatedTime is set (ignored in comparison).
 					if gotCRPS.LastUpdatedTime.IsZero() {
 						t.Fatal("Expected LastUpdatedTime to be set on CRPS")
 					}
 				}
 			}
 
-			// Check StatusSynced condition on the original CRP using cmp.Diff
+			// Check StatusSynced condition on the original CRP using cmp.Diff.
 			if tc.wantCRPCondition != nil {
 				updatedCRP := &placementv1beta1.ClusterResourcePlacement{}
 				if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: tc.placementObjName}, updatedCRP); err != nil {
@@ -378,7 +378,7 @@ func TestValidateNamespaceSelectorConsistency(t *testing.T) {
 					},
 					Status: placementv1beta1.PlacementStatus{
 						ObservedResourceIndex: "0",
-						SelectedResources:     []placementv1beta1.ResourceIdentifier{}, // Empty selected resources
+						SelectedResources:     []placementv1beta1.ResourceIdentifier{}, // Empty selected resources.
 					},
 				},
 			},
@@ -420,7 +420,7 @@ func TestValidateNamespaceSelectorConsistency(t *testing.T) {
 					},
 				},
 			},
-			wantCRPCondition: nil, // No condition should be set
+			wantCRPCondition: nil, // No condition should be set.
 			wantIsValid:      true,
 			wantError:        false,
 		},
@@ -440,7 +440,7 @@ func TestValidateNamespaceSelectorConsistency(t *testing.T) {
 								Group:   "",
 								Version: "v1",
 								Kind:    "Namespace",
-								Name:    "new-namespace", // Changed from original
+								Name:    "new-namespace", // Changed from original.
 							},
 						},
 					},
@@ -451,7 +451,7 @@ func TestValidateNamespaceSelectorConsistency(t *testing.T) {
 								Group:     "",
 								Version:   "v1",
 								Kind:      "Namespace",
-								Name:      "original-namespace", // Original namespace in status
+								Name:      "original-namespace", // Original namespace in status.
 								Namespace: "",
 							},
 						},
@@ -484,16 +484,16 @@ func TestValidateNamespaceSelectorConsistency(t *testing.T) {
 				Scheme: scheme,
 			}
 
-			// Get the CRP from the fake client to ensure it has proper metadata
+			// Get the CRP from the fake client to ensure it has proper metadata and when validateNamespaceSelectorConsistency is called CRP must already exist.
 			gotCRP := &placementv1beta1.ClusterResourcePlacement{}
 			if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: tc.placementObjName}, gotCRP); err != nil {
 				t.Fatalf("Failed to get CRP from fake client: %v", err)
 			}
 
-			// Call validateNamespaceSelectorConsistency
+			// Call validateNamespaceSelectorConsistency.
 			gotIsValid, err := reconciler.validateNamespaceSelectorConsistency(context.Background(), gotCRP)
 
-			// Check if error expectation matches
+			// Check if error expectation matches.
 			if tc.wantError && err == nil {
 				t.Fatal("Expected error but got none")
 			}
@@ -501,21 +501,21 @@ func TestValidateNamespaceSelectorConsistency(t *testing.T) {
 				t.Fatalf("validateNamespaceSelectorConsistency() failed: %v", err)
 			}
 
-			// Check if validity expectation matches
+			// Check if validity expectation matches.
 			if tc.wantIsValid != gotIsValid {
 				t.Fatalf("validateNamespaceSelectorConsistency() validity mismatch: want %v, got %v", tc.wantIsValid, gotIsValid)
 			}
 
-			// Check StatusSynced condition on the CRP - always get the updated CRP and compare expected vs actual
+			// Check StatusSynced condition on the CRP - always get the updated CRP and compare expected vs actual.
 			updatedCRP := &placementv1beta1.ClusterResourcePlacement{}
 			if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: tc.placementObjName}, updatedCRP); err != nil {
 				t.Fatalf("Failed to get updated CRP: %v", err)
 			}
 
-			// Use GetCondition to find the StatusSynced condition
+			// Use GetCondition to find the StatusSynced condition.
 			gotCondition := updatedCRP.GetCondition(string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType))
 
-			// Use cmp.Diff to compare conditions (handles nil == nil, condition == condition, and nil != condition cases)
+			// Use cmp.Diff to compare conditions (handles nil == nil, condition == condition, and nil != condition cases).
 			if diff := cmp.Diff(tc.wantCRPCondition, gotCondition, crpCmpOpts...); diff != "" {
 				t.Fatalf("StatusSynced condition mismatch (-want +got):\n%s", diff)
 			}
