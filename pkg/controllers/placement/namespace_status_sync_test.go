@@ -170,7 +170,7 @@ func TestHandleNamespaceAccessibleCRP(t *testing.T) {
 			wantError: false,
 		},
 		{
-			name:             "sync failure - missing namespace selector returns error",
+			name:             "sync failure - missing namespace selector and set StatusSynced to Unknown",
 			placementObjName: "test-crp-no-ns",
 			existingObjects: []client.Object{
 				&placementv1beta1.ClusterResourcePlacement{
