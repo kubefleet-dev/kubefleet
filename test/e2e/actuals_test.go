@@ -1530,7 +1530,8 @@ func customizedPlacementStatusUpdatedActual(
 		}
 		for i := 0; i < len(wantUnselectedClusters); i++ {
 			wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.PerClusterPlacementStatus{
-				Conditions: perClusterScheduleFailedConditions(placement.GetGeneration()),
+				ClusterName: wantUnselectedClusters[i],
+				Conditions:  perClusterScheduleFailedConditions(placement.GetGeneration()),
 			})
 		}
 

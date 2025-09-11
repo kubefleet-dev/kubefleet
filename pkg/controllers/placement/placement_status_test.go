@@ -936,6 +936,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 						},
 					},
 					{
+						ClusterName:           "member-2",
 						ObservedResourceIndex: "", // Empty as schedule failed.
 						Conditions: []metav1.Condition{
 							{
@@ -948,6 +949,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 						},
 					},
 					{
+						ClusterName:           "member-3",
 						ObservedResourceIndex: "", // Empty as schedule failed.
 						Conditions: []metav1.Condition{
 							{
@@ -1146,6 +1148,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 				},
 				PerClusterPlacementStatuses: []fleetv1beta1.PerClusterPlacementStatus{
 					{
+						ClusterName: "member-1",
 						Conditions: []metav1.Condition{
 							{
 								Status:             metav1.ConditionFalse,
@@ -1158,6 +1161,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 						},
 					},
 					{
+						ClusterName: "member-2",
 						Conditions: []metav1.Condition{
 							{
 								Status:             metav1.ConditionFalse,
@@ -3177,6 +3181,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 						},
 					},
 					{
+						ClusterName:           "unselected-cluster",
 						ObservedResourceIndex: "", // Empty as the cluster is not selected.
 						Conditions: []metav1.Condition{
 							{
@@ -3286,6 +3291,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 						},
 					},
 					{
+						ClusterName:           "unselected-cluster",
 						ObservedResourceIndex: "", // Empty as the cluster is not selected.
 						Conditions: []metav1.Condition{
 							{
@@ -3493,6 +3499,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 						},
 					},
 					{
+						ClusterName:           "unselected-cluster",
 						ObservedResourceIndex: "", // Empty as the cluster is not selected.
 						Conditions: []metav1.Condition{
 							{
