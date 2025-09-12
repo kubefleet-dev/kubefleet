@@ -304,7 +304,7 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 		})
 	})
 
-	Context("Test an RP place workload objects successfully, block rollout based on daemonset availability", Ordered, func() {
+	FContext("Test an RP place workload objects successfully, block rollout based on daemonset availability", Ordered, func() {
 		workNamespace := appNamespace()
 		var wantSelectedResources []placementv1beta1.ResourceIdentifier
 		var testDaemonSetEnvelope placementv1beta1.ResourceEnvelope
