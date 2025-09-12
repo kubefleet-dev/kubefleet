@@ -86,7 +86,9 @@ func buildFailedToSchedulePerClusterPlacementStatuses(
 	// In the earlier step it has been guaranteed that failedToScheduleClusterCount is less than or equal to the
 	// total number of unselected clusters; here Fleet still performs a sanity check.
 	for i := 0; i < failedToScheduleClusterCount && i < len(unselected); i++ {
-		perClusterStatus := fleetv1beta1.PerClusterPlacementStatus{}
+		perClusterStatus := fleetv1beta1.PerClusterPlacementStatus{
+			ClusterName: unselected[i].ClusterName,
+		}
 		failedToScheduleCond := metav1.Condition{
 			Status:             metav1.ConditionFalse,
 			Type:               string(fleetv1beta1.PerClusterScheduledConditionType),
