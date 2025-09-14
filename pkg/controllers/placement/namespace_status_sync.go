@@ -92,15 +92,6 @@ func filterStatusSyncedCondition(status placementv1beta1.PlacementStatus) placem
 
 // buildStatusSyncedCondition creates a StatusSynced condition based on the sync result.
 func buildStatusSyncedCondition(generation int64, targetNamespace string, syncErr error) metav1.Condition {
-	if targetNamespace == "" && syncErr == nil {
-		return metav1.Condition{
-			Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
-			Status:             metav1.ConditionUnknown,
-			Reason:             condition.InvalidResourceSelectorsReason,
-			Message:            "NamespaceAccessible ClusterResourcePlacement doesn't specify a resource selector which selects a namespace",
-			ObservedGeneration: generation,
-		}
-	}
 	// Determine condition based on sync result
 	if syncErr != nil {
 		return metav1.Condition{
@@ -108,6 +99,16 @@ func buildStatusSyncedCondition(generation int64, targetNamespace string, syncEr
 			Status:             metav1.ConditionFalse,
 			Reason:             condition.StatusSyncFailedReason,
 			Message:            fmt.Sprintf("Failed to create or update ClusterResourcePlacementStatus: %v", syncErr),
+			ObservedGeneration: generation,
+		}
+	}
+
+	if targetNamespace == "" {
+		return metav1.Condition{
+			Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
+			Status:             metav1.ConditionUnknown,
+			Reason:             condition.InvalidResourceSelectorsReason,
+			Message:            "NamespaceAccessible ClusterResourcePlacement doesn't specify a resource selector which selects a namespace",
 			ObservedGeneration: generation,
 		}
 	}
