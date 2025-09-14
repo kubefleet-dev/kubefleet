@@ -238,7 +238,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 
-		It("should update CRP status with 2 clusters as expected", func() {
+		It("should update CRP status with synced condition set to true", func() {
 			// Wait for CRP status to be updated.
 			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionTrue)
 			Eventually(statusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status")

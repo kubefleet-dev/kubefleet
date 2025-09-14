@@ -1271,7 +1271,7 @@ func placementStatusWithOverrideUpdatedActual(
 
 func namespaceAccessibleCRPStatusUpdatedActual(wantSelectedResourceIdentifiers []placementv1beta1.ResourceIdentifier, wantSelectedClusters, wantUnselectedClusters []string, wantObservedResourceIndex string, statusSyncedConditionStatus metav1.ConditionStatus) func() error {
 	crpKey := types.NamespacedName{Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())}
-	return customizedPlacementStatusUpdatedActualWithStatusSynced(crpKey, wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, true, statusSyncedConditionStatus)
+	return customizedCRPStatusUpdatedActualWithStatusSynced(crpKey, wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, true, statusSyncedConditionStatus)
 }
 
 func crpStatusUpdatedActual(wantSelectedResourceIdentifiers []placementv1beta1.ResourceIdentifier, wantSelectedClusters, wantUnselectedClusters []string, wantObservedResourceIndex string) func() error {
@@ -1525,7 +1525,7 @@ func customizedPlacementStatusUpdatedActual(
 			return fmt.Errorf("failed to get placement %s: %w", placementKey, err)
 		}
 
-		wantStatus := buildWantCRPStatus(placementKey, placement.GetGeneration(), wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, resourceIsTrackable)
+		wantStatus := buildWantPlacementStatus(placementKey, placement.GetGeneration(), wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, resourceIsTrackable)
 		if diff := cmp.Diff(placement.GetPlacementStatus(), wantStatus, placementStatusCmpOptions...); diff != "" {
 			return fmt.Errorf("Placement status diff (-got, +want): %s", diff)
 		}
@@ -1533,7 +1533,7 @@ func customizedPlacementStatusUpdatedActual(
 	}
 }
 
-func buildWantCRPStatus(
+func buildWantPlacementStatus(
 	placementKey types.NamespacedName,
 	placementGeneration int64,
 	wantSelectedResourceIdentifiers []placementv1beta1.ResourceIdentifier,
@@ -1585,11 +1585,7 @@ func buildWantCRPStatus(
 	return wantStatus
 }
 
-// customizedPlacementStatusUpdatedActualWithStatusSynced extends customizedPlacementStatusUpdatedActual
-// to optionally include the ClusterResourcePlacementStatusSyncedConditionType condition.
-// This is useful for integration tests that need to verify the StatusSynced condition without modifying
-// the widely-used customizedPlacementStatusUpdatedActual function.
-func customizedPlacementStatusUpdatedActualWithStatusSynced(
+func customizedCRPStatusUpdatedActualWithStatusSynced(
 	placementKey types.NamespacedName,
 	wantSelectedResourceIdentifiers []placementv1beta1.ResourceIdentifier,
 	wantSelectedClusters, wantUnselectedClusters []string,
@@ -1611,7 +1607,6 @@ func customizedPlacementStatusUpdatedActualWithStatusSynced(
 	}
 }
 
-// buildWantCRPStatusWithStatusSynced extends buildWantCRPStatus to optionally include StatusSynced condition
 func buildWantCRPStatusWithStatusSynced(
 	placementKey types.NamespacedName,
 	placementGeneration int64,
@@ -1625,9 +1620,9 @@ func buildWantCRPStatusWithStatusSynced(
 	// Start with the base status
 	if statusSyncedConditionStatus == metav1.ConditionUnknown {
 		// Only StatusSynced condition should get updated in this scenario, since namespace selector has changed.
-		wantStatus = buildWantCRPStatus(placementKey, placementGeneration-1, wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, resourceIsTrackable)
+		wantStatus = buildWantPlacementStatus(placementKey, placementGeneration-1, wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, resourceIsTrackable)
 	} else {
-		wantStatus = buildWantCRPStatus(placementKey, placementGeneration, wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, true)
+		wantStatus = buildWantPlacementStatus(placementKey, placementGeneration, wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, resourceIsTrackable)
 	}
 
 	var statusSyncedCondition metav1.Condition

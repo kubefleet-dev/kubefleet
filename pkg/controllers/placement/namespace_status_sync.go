@@ -90,6 +90,37 @@ func filterStatusSyncedCondition(status placementv1beta1.PlacementStatus) placem
 	return *filteredStatus
 }
 
+// buildStatusSyncedCondition creates a StatusSynced condition based on the sync result.
+func buildStatusSyncedCondition(generation int64, targetNamespace string, syncErr error) metav1.Condition {
+	if targetNamespace == "" && syncErr == nil {
+		return metav1.Condition{
+			Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
+			Status:             metav1.ConditionUnknown,
+			Reason:             condition.InvalidResourceSelectorsReason,
+			Message:            "NamespaceAccessible ClusterResourcePlacement doesn't specify a resource selector which selects a namespace",
+			ObservedGeneration: generation,
+		}
+	}
+	// Determine condition based on sync result
+	if syncErr != nil {
+		return metav1.Condition{
+			Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
+			Status:             metav1.ConditionFalse,
+			Reason:             condition.StatusSyncFailedReason,
+			Message:            fmt.Sprintf("Failed to create or update ClusterResourcePlacementStatus: %v", syncErr),
+			ObservedGeneration: generation,
+		}
+	}
+
+	return metav1.Condition{
+		Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
+		Status:             metav1.ConditionTrue,
+		Reason:             condition.StatusSyncSucceededReason,
+		Message:            fmt.Sprintf("Successfully created or updated ClusterResourcePlacementStatus in namespace '%s'", targetNamespace),
+		ObservedGeneration: generation,
+	}
+}
+
 // setSyncedConditionAndUpdateStatus is a helper function that sets a StatusSynced condition
 // on the placement object and updates its status. This consolidates the common pattern of
 // setting StatusSynced conditions and updating placement status throughout the namespace
@@ -117,7 +148,7 @@ func (r *Reconciler) setSyncedConditionAndUpdateStatus(ctx context.Context, plac
 // with filtered status (excluding StatusSynced condition), and sets the CRP as owner for
 // automatic cleanup. Returns an error if the operation fails or if the target namespace name is empty.
 func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, placementObj placementv1beta1.PlacementObj) (string, error) {
-	placementKObj := klog.KObj(&placementv1beta1.ClusterApprovalRequest{})
+	placementKObj := klog.KObj(placementObj)
 	crp, _ := placementObj.(*placementv1beta1.ClusterResourcePlacement)
 
 	// Extract target namespace from resource selectors.
@@ -159,7 +190,7 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 // the target namespace, builds a StatusSynced condition based on the sync result, adds
 // the condition to the CRP, and updates the CRP status.
 func (r *Reconciler) handleNamespaceAccessibleCRP(ctx context.Context, placementObj placementv1beta1.PlacementObj) error {
-	// Sync ClusterResourcePlacementStatus object if StatusReportingScope is NamespaceAccessible
+	// Sync ClusterResourcePlacementStatus object if StatusReportingScope is NamespaceAccessible.
 	targetNamespace, syncErr := r.syncClusterResourcePlacementStatus(ctx, placementObj)
 
 	// Build and set the StatusSynced condition based on the sync result, targetNamespace.
