@@ -135,7 +135,7 @@ func (r *Reconciler) setSyncedConditionAndUpdateStatus(ctx context.Context, plac
 	// Update the placement status.
 	if err := r.Client.Status().Update(ctx, placementObj); err != nil {
 		klog.ErrorS(err, "Failed to update the placement status with StatusSynced condition", "crp", placementKObj)
-		return err
+		return controller.NewUpdateIgnoreConflictError(err)
 	}
 
 	klog.V(2).InfoS("Updated the placement status with StatusSynced condition", "crp", placementKObj)
