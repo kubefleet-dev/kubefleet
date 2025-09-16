@@ -288,6 +288,15 @@ func TestHandleNamespaceAccessibleCRP(t *testing.T) {
 						t.Fatal("Expected LastUpdatedTime to be set on CRPS")
 					}
 				}
+			} else {
+				// Ensure no CRPS exists in any namespace.
+				crpsList := &placementv1beta1.ClusterResourcePlacementStatusList{}
+				if err := fakeClient.List(context.Background(), crpsList); err != nil {
+					t.Fatalf("Failed to list ClusterResourcePlacementStatus: %v", err)
+				}
+				if len(crpsList.Items) != 0 {
+					t.Fatalf("Expected no ClusterResourcePlacementStatus to exist, but found %d", len(crpsList.Items))
+				}
 			}
 
 			// Check StatusSynced condition on the original CRP using cmp.Diff.
