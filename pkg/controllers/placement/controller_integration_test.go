@@ -2308,7 +2308,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 				Spec: crp.Spec,
 				Status: placementv1beta1.PlacementStatus{
 					Conditions: []metav1.Condition{
-						// ObservedResourceIndes is not set because resource selector is invalid.
+						// ObservedResourceIndex is not set because resource selector is invalid.
 						{
 							Status: metav1.ConditionFalse,
 							Type:   string(placementv1beta1.ClusterResourcePlacementScheduledConditionType),

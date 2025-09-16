@@ -291,22 +291,20 @@ func TestHandleNamespaceAccessibleCRP(t *testing.T) {
 			}
 
 			// Check StatusSynced condition on the original CRP using cmp.Diff.
-			if tc.wantCRPCondition != nil {
-				updatedCRP := &placementv1beta1.ClusterResourcePlacement{}
-				if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: tc.placementObjName}, updatedCRP); err != nil {
-					t.Fatalf("Failed to get updated CRP: %v", err)
-				}
+			updatedCRP := &placementv1beta1.ClusterResourcePlacement{}
+			if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: tc.placementObjName}, updatedCRP); err != nil {
+				t.Fatalf("Failed to get updated CRP: %v", err)
+			}
 
-				// Use GetCondition to find the StatusSynced condition
-				gotCondition := updatedCRP.GetCondition(string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType))
-				if gotCondition == nil {
-					t.Fatal("Expected StatusSynced condition to be set on CRP")
-				}
+			// Use GetCondition to find the StatusSynced condition
+			gotCondition := updatedCRP.GetCondition(string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType))
+			if gotCondition == nil {
+				t.Fatal("Expected StatusSynced condition to be set on CRP")
+			}
 
-				// Use cmp.Diff to compare conditions
-				if diff := cmp.Diff(tc.wantCRPCondition, gotCondition, crpCmpOpts...); diff != "" {
-					t.Fatalf("StatusSynced condition mismatch (-want +got):\n%s", diff)
-				}
+			// Use cmp.Diff to compare conditions
+			if diff := cmp.Diff(tc.wantCRPCondition, gotCondition, crpCmpOpts...); diff != "" {
+				t.Fatalf("StatusSynced condition mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

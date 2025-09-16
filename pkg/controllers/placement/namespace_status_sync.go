@@ -75,7 +75,7 @@ func isNamespaceAccessibleCRP(placementObj placementv1beta1.PlacementObj) bool {
 // creating ClusterResourcePlacementStatus objects because the StatusSynced
 // condition is only relevant for the main CRP object, not the CRPS object.
 // Returns a filtered copy of the status with all conditions except StatusSynced.
-func filterStatusSyncedCondition(status *placementv1beta1.PlacementStatus) placementv1beta1.PlacementStatus {
+func filterStatusSyncedCondition(status *placementv1beta1.PlacementStatus) *placementv1beta1.PlacementStatus {
 	filteredStatus := status.DeepCopy()
 
 	// Filter out the ClusterResourcePlacementStatusSynced condition.
@@ -87,7 +87,7 @@ func filterStatusSyncedCondition(status *placementv1beta1.PlacementStatus) place
 	}
 	filteredStatus.Conditions = filteredConditions
 
-	return *filteredStatus
+	return filteredStatus
 }
 
 // buildStatusSyncedCondition creates a StatusSynced condition based on the sync result.
@@ -170,7 +170,7 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 	// Use CreateOrUpdate to handle both creation and update cases.
 	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, crpStatus, func() error {
 		// Set the placement status (excluding StatusSynced condition) and update time.
-		crpStatus.PlacementStatus = filterStatusSyncedCondition(&crp.Status)
+		crpStatus.PlacementStatus = *filterStatusSyncedCondition(&crp.Status)
 		crpStatus.LastUpdatedTime = metav1.Now()
 
 		// Set CRP as owner - this ensures automatic cleanup when CRP is deleted.
@@ -215,7 +215,7 @@ func (r *Reconciler) handleNamespaceAccessibleCRP(ctx context.Context, placement
 // StatusSynced condition accordingly. Returns an error if validation fails or if
 // there are issues updating the placement status.
 func (r *Reconciler) validateNamespaceSelectorConsistency(ctx context.Context, placementObj placementv1beta1.PlacementObj) (bool, error) {
-	placementKObj := klog.KObj(&placementv1beta1.ClusterApprovalRequest{})
+	placementKObj := klog.KObj(placementObj)
 	crp, _ := placementObj.(*placementv1beta1.ClusterResourcePlacement)
 
 	// Extract target namespace from resource selectors.
