@@ -278,7 +278,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 
 	Context("NamespaceAccessible CRP with namespace selector change for consistency validation - namespace exists", func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
-
+		newNamespaceName := "new-namespace"
 		BeforeAll(func() {
 			// Create work resources that will be selected by the CRP.
 			createWorkResources()
@@ -286,14 +286,14 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 			// Create another namespace.
 			ns := corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "new-namespace",
+					Name: newNamespaceName,
 				},
 			}
 			Expect(hubClient.Create(ctx, &ns)).To(Succeed(), "Failed to create new-namespace")
 			// Wait for namespace creation
 			Eventually(func() error {
-				return hubClient.Get(ctx, types.NamespacedName{Name: "new-namespace"}, &ns)
-			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to get new -amespace")
+				return hubClient.Get(ctx, types.NamespacedName{Name: newNamespaceName}, &ns)
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), fmt.Sprintf("Failed to get %s", newNamespaceName))
 
 			// Create CRP with NamespaceAccessible scope.
 			crp := &placementv1beta1.ClusterResourcePlacement{
@@ -318,7 +318,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 			// Delete the additional namespace.
 			ns := &corev1.Namespace{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "new-namespace",
+					Name: newNamespaceName,
 				},
 			}
 			Expect(hubClient.Delete(ctx, ns)).To(Succeed(), "Failed to delete new-namespace")
@@ -346,7 +346,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 						Group:   corev1.GroupName,
 						Version: "v1",
 						Kind:    "Namespace",
-						Name:    "random-namespace",
+						Name:    newNamespaceName,
 					},
 				}
 				return hubClient.Update(ctx, crp)

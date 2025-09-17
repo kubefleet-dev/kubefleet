@@ -58,6 +58,7 @@ func extractNamespaceFromResourceSelectors(crp *placementv1beta1.ClusterResource
 func isNamespaceAccessibleCRP(placementObj placementv1beta1.PlacementObj) bool {
 	crp, ok := placementObj.(*placementv1beta1.ClusterResourcePlacement)
 	if !ok {
+		klog.V(2).InfoS("Skipped processing RP to create/update ClusterResourcePlacementStatus", "placement", klog.KObj(placementObj))
 		return false
 	}
 
