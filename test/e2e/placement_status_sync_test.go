@@ -210,7 +210,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		})
 	})
 
-	FContext("Namespace deletion with ClusterResourcePlacementStatus, StatusReportingScope is NamespaceAccessible", Ordered, func() {
+	Context("Namespace deletion with ClusterResourcePlacementStatus, StatusReportingScope is NamespaceAccessible", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
