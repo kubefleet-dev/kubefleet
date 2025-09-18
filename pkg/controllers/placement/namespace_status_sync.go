@@ -100,23 +100,13 @@ func filterStatusSyncedCondition(status *placementv1beta1.PlacementStatus) *plac
 }
 
 // buildStatusSyncedCondition creates a StatusSynced condition based on the sync result.
-func buildNamespaceAccessibleCondition(generation int64, isSyncError, isResourceSelectorInvalid bool, msg string) metav1.Condition {
-	if isSyncError {
+func buildNamepsaceAccessibleStatusSyncedCondition(syncErr error, targetNamespace string, generation int64) metav1.Condition {
+	if syncErr != nil {
 		return metav1.Condition{
 			Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
 			Status:             metav1.ConditionFalse,
 			Reason:             condition.StatusSyncFailedReason,
-			Message:            msg,
-			ObservedGeneration: generation,
-		}
-	}
-
-	if isResourceSelectorInvalid {
-		return metav1.Condition{
-			Type:               string(placementv1beta1.ClusterResourcePlacementScheduledConditionType),
-			Status:             metav1.ConditionFalse,
-			Reason:             condition.InvalidResourceSelectorsReason,
-			Message:            msg,
+			Message:            fmt.Sprintf(failedCRPSMessageFmt, syncErr),
 			ObservedGeneration: generation,
 		}
 	}
@@ -125,6 +115,17 @@ func buildNamespaceAccessibleCondition(generation int64, isSyncError, isResource
 		Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
 		Status:             metav1.ConditionTrue,
 		Reason:             condition.StatusSyncSucceededReason,
+		Message:            fmt.Sprintf(successfulCRPSMessageFmt, targetNamespace),
+		ObservedGeneration: generation,
+	}
+}
+
+// buildNamespaceAccessibleScheduledCondition creates a Scheduled condition with invalid resource selector reason.
+func buildNamespaceAccessibleScheduledCondition(generation int64, msg string) metav1.Condition {
+	return metav1.Condition{
+		Type:               string(placementv1beta1.ClusterResourcePlacementScheduledConditionType),
+		Status:             metav1.ConditionFalse,
+		Reason:             condition.InvalidResourceSelectorsReason,
 		Message:            msg,
 		ObservedGeneration: generation,
 	}
@@ -153,20 +154,13 @@ func (r *Reconciler) setConditionAndUpdateStatus(ctx context.Context, placementO
 // object in the target namespace for ClusterResourcePlacements with NamespaceAccessible scope.
 // It extracts the target namespace from the CRP's resource selectors, creates/updates a CRPS object
 // with filtered status (excluding StatusSynced condition), and sets the CRP as owner for
-// automatic cleanup. Returns an error if the operation fails or if the target namespace name is empty.
-func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, placementObj placementv1beta1.PlacementObj) (string, error) {
-	placementKObj := klog.KObj(placementObj)
-	crp, _ := placementObj.(*placementv1beta1.ClusterResourcePlacement)
-
-	// Extract target namespace from resource selectors.
-	targetNamespace := extractNamespaceFromResourceSelectors(crp)
+// automatic cleanup. Returns an error if the operation fails.
+func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, crp *placementv1beta1.ClusterResourcePlacement, targetNamespace string) error {
 	if targetNamespace == "" {
-		klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("no namespace selector found despite NamespaceAccessible scope")),
-			"Failed to find valid Namespace selector for NamespaceAccessible scope",
-			"crp", placementKObj)
-		return "", nil
+		// No valid target namespace - skip sync.
+		return nil
 	}
-
+	crpKObj := klog.KObj(crp)
 	crpStatus := &placementv1beta1.ClusterResourcePlacementStatus{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      crp.Name,
@@ -184,12 +178,12 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 	})
 
 	if err != nil {
-		klog.ErrorS(err, "Failed to create or update ClusterResourcePlacementStatus", "crp", placementKObj, "namespace", targetNamespace)
-		return "", controller.NewAPIServerError(false, fmt.Errorf("failed to create or update ClusterResourcePlacementStatus: %w", err))
+		klog.ErrorS(err, "Failed to create or update ClusterResourcePlacementStatus", "crp", crpKObj, "namespace", targetNamespace)
+		return controller.NewAPIServerError(false, fmt.Errorf("failed to create or update ClusterResourcePlacementStatus: %w", err))
 	}
 
-	klog.V(2).InfoS("Successfully handled ClusterResourcePlacementStatus", "crp", placementKObj, "namespace", targetNamespace, "operation", op)
-	return targetNamespace, nil
+	klog.V(2).InfoS("Successfully handled ClusterResourcePlacementStatus", "crp", crpKObj, "namespace", targetNamespace, "operation", op)
+	return nil
 }
 
 // handleNamespaceAccessibleCRP handles the complete workflow for ClusterResourcePlacements
@@ -197,18 +191,27 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 // the target namespace, builds a StatusSynced/Scheduled condition based on the sync result,
 // target namespace adds the condition to the CRP, and updates the CRP status.
 func (r *Reconciler) handleNamespaceAccessibleCRP(ctx context.Context, placementObj placementv1beta1.PlacementObj) error {
-	targetNamespace, syncErr := r.syncClusterResourcePlacementStatus(ctx, placementObj)
+	placementKObj := klog.KObj(placementObj)
+	crp, _ := placementObj.(*placementv1beta1.ClusterResourcePlacement)
+	// Extract target namespace from resource selectors.
+	targetNamespace := extractNamespaceFromResourceSelectors(crp)
+	if targetNamespace == "" {
+		klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("no namespace selector found despite NamespaceAccessible scope")),
+			"Failed to find valid Namespace selector for NamespaceAccessible scope",
+			"crp", placementKObj)
+	}
+	syncErr := r.syncClusterResourcePlacementStatus(ctx, crp, targetNamespace)
 
 	var namespaceAccessibleCondition metav1.Condition
 	if syncErr != nil {
 		// status synced condition with error.
-		namespaceAccessibleCondition = buildNamespaceAccessibleCondition(placementObj.GetGeneration(), true, false, fmt.Sprintf(failedCRPSMessageFmt, syncErr))
+		namespaceAccessibleCondition = buildNamepsaceAccessibleStatusSyncedCondition(syncErr, targetNamespace, placementObj.GetGeneration())
 	} else if targetNamespace == "" {
 		// scheduled condition with invalid resource selector reason.
-		namespaceAccessibleCondition = buildNamespaceAccessibleCondition(placementObj.GetGeneration(), false, true, noNamespaceResourceSelectorMsg)
+		namespaceAccessibleCondition = buildNamespaceAccessibleScheduledCondition(placementObj.GetGeneration(), noNamespaceResourceSelectorMsg)
 	} else {
 		// successful status synced condition.
-		namespaceAccessibleCondition = buildNamespaceAccessibleCondition(placementObj.GetGeneration(), false, false, fmt.Sprintf(successfulCRPSMessageFmt, targetNamespace))
+		namespaceAccessibleCondition = buildNamepsaceAccessibleStatusSyncedCondition(syncErr, targetNamespace, placementObj.GetGeneration())
 	}
 
 	if err := r.setConditionAndUpdateStatus(ctx, placementObj, namespaceAccessibleCondition); err != nil {
@@ -263,7 +266,7 @@ func (r *Reconciler) validateNamespaceSelectorConsistency(ctx context.Context, p
 		klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("no namespace selector found despite NamespaceAccessible scope")),
 			"Failed to find valid Namespace selector for NamespaceAccessible scope",
 			"crp", placementKObj)
-		scheduledCondition := buildNamespaceAccessibleCondition(placementObj.GetGeneration(), false, true, noNamespaceResourceSelectorMsg)
+		scheduledCondition := buildNamespaceAccessibleScheduledCondition(placementObj.GetGeneration(), noNamespaceResourceSelectorMsg)
 		if err := r.setConditionAndUpdateStatus(ctx, placementObj, scheduledCondition); err != nil {
 			return false, err
 		}
@@ -277,7 +280,7 @@ func (r *Reconciler) validateNamespaceSelectorConsistency(ctx context.Context, p
 			"currentTargetNamespace", currentTargetNamespace,
 			"newTargetNamespace", targetNamespaceFromSelector)
 
-		scheduledCondition := buildNamespaceAccessibleCondition(placementObj.GetGeneration(), false, true, fmt.Sprintf(namespaceConsistencyMessageFmt, targetNamespaceFromSelector, currentTargetNamespace))
+		scheduledCondition := buildNamespaceAccessibleScheduledCondition(placementObj.GetGeneration(), fmt.Sprintf(namespaceConsistencyMessageFmt, targetNamespaceFromSelector, currentTargetNamespace))
 
 		// Set condition and update placement status.
 		if err := r.setConditionAndUpdateStatus(ctx, placementObj, scheduledCondition); err != nil {
