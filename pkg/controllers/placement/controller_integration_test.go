@@ -2317,7 +2317,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 						{
 							Status: metav1.ConditionTrue,
 							Type:   string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
-							Reason: "StatusSyncSucceeded",
+							Reason: condition.StatusSyncSucceededReason,
 						},
 					},
 				},

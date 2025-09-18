@@ -43,10 +43,6 @@ var (
 		cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion", "UID", "CreationTimestamp", "Generation", "ManagedFields"),
 		cmpopts.IgnoreFields(placementv1beta1.ClusterResourcePlacementStatus{}, "LastUpdatedTime"),
 	}
-
-	crpCmpOpts = []cmp.Option{
-		cmpopts.IgnoreFields(metav1.Condition{}, "LastTransitionTime"),
-	}
 )
 
 func TestHandleNamespaceAccessibleCRP(t *testing.T) {
@@ -543,7 +539,7 @@ func verifyCRPCondition(t *testing.T, fakeClient client.WithWatch, placementName
 		}
 	}
 
-	if diff := cmp.Diff(wantCondition, gotCondition, crpCmpOpts...); diff != "" {
-		t.Fatalf("StatusSynced condition mismatch (-want +got):\n%s", diff)
+	if diff := cmp.Diff(wantCondition, gotCondition, cmpopts.IgnoreFields(metav1.Condition{}, "LastTransitionTime")); diff != "" {
+		t.Fatalf("Namespace Accessible condition mismatch (-want +got):\n%s", diff)
 	}
 }

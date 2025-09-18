@@ -36,7 +36,7 @@ const (
 
 	failedCRPSMessageFmt           = "Failed to create or update ClusterResourcePlacementStatus: %v"
 	successfulCRPSMessageFmt       = "Successfully created or updated ClusterResourcePlacementStatus in namespace '%s'"
-	namespaceConsistencyMessageFmt = "namespace resource selector is choosing a different namespace '%s' from what was originally picked '%s'. This is not allowed for NamespaceAccessible ClusterResourcePlacements."
+	namespaceConsistencyMessageFmt = "namespace resource selector is choosing a different namespace '%s' from what was originally picked '%s'. This is not allowed for NamespaceAccessible ClusterResourcePlacement"
 )
 
 // extractNamespaceFromResourceSelectors extracts the target namespace name from the
@@ -197,15 +197,17 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 // the target namespace, builds a StatusSynced condition based on the sync result, adds
 // the condition to the CRP, and updates the CRP status.
 func (r *Reconciler) handleNamespaceAccessibleCRP(ctx context.Context, placementObj placementv1beta1.PlacementObj) error {
-	// Sync ClusterResourcePlacementStatus object if StatusReportingScope is NamespaceAccessible.
 	targetNamespace, syncErr := r.syncClusterResourcePlacementStatus(ctx, placementObj)
 
 	var namespaceAccessibleCondition metav1.Condition
 	if syncErr != nil {
+		// status synced condition with error.
 		namespaceAccessibleCondition = buildNamespaceAccessibleCondition(placementObj.GetGeneration(), true, false, fmt.Sprintf(failedCRPSMessageFmt, syncErr))
 	} else if targetNamespace == "" {
+		// scheduled condition with invalid resource selector reason.
 		namespaceAccessibleCondition = buildNamespaceAccessibleCondition(placementObj.GetGeneration(), false, true, noNamespaceResourceSelectorMsg)
 	} else {
+		// successful status synced condition.
 		namespaceAccessibleCondition = buildNamespaceAccessibleCondition(placementObj.GetGeneration(), false, false, fmt.Sprintf(successfulCRPSMessageFmt, targetNamespace))
 	}
 
