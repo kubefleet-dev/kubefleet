@@ -1296,7 +1296,7 @@ const (
 	// * True: Fleet has successfully created or updated the ClusterResourcePlacementStatus object
 	//   in the target namespace.
 	// * False: Fleet has failed to create or update the ClusterResourcePlacementStatus object
-	//   in the target namespace or when user doesn't specify a namespace resource selector.
+	//   in the target namespace.
 	ClusterResourcePlacementStatusSyncedConditionType ClusterResourcePlacementConditionType = "ClusterResourcePlacementStatusSynced"
 )
 
