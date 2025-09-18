@@ -289,7 +289,6 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), fmt.Sprintf("Failed to get %s", appNamespace().Name))
 		})
 
-
 		It("should update CRP status with Status synced condition set to true", func() {
 			// Wait for CRP status to be updated.
 			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "2", metav1.ConditionTrue, false)
@@ -376,6 +375,22 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 
 		It("should update CRP status with scheduled condition set to false", func() {
 			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionTrue, true)
+			Eventually(statusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status")
+		})
+
+		It("should update CRP to select original namespace", func() {
+			Eventually(func() error {
+				crp := &placementv1beta1.ClusterResourcePlacement{}
+				if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+					return err
+				}
+				crp.Spec.ResourceSelectors = workResourceSelector()
+				return hubClient.Update(ctx, crp)
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP to select different namespace")
+		})
+
+		It("should update CRP status with scheduled condition set to true", func() {
+			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionTrue, false)
 			Eventually(statusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status")
 		})
 	})
