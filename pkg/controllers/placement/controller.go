@@ -146,11 +146,11 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 	if isNamespaceAccessibleCRP(placementObj) {
 		isValid, err := r.validateNamespaceSelectorConsistency(ctx, placementObj)
 		if err != nil {
-			klog.V(2).ErrorS(err, "Namespace selector validation failed, stopping reconciliation", "placement", placementKObj)
+			klog.V(2).ErrorS(err, "Namespace resource selector validation failed for NamespaceAccessible CRP", "placement", placementKObj)
 			return ctrl.Result{}, err
 		}
 		if !isValid {
-			klog.V(2).InfoS("Invalid Namespace selector specified for NamespaceAccessible CRP, stopping reconciliation", "placement", placementKObj)
+			klog.V(2).InfoS("Invalid Namespace resource selector specified for NamespaceAccessible CRP, stopping reconciliation", "placement", placementKObj)
 			return ctrl.Result{}, nil
 		}
 	}
@@ -173,7 +173,6 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 		}
 		placementObj.SetConditions(scheduleCondition)
 
-		// First update CRP status with the schedule condition
 		if updateErr := r.Client.Status().Update(ctx, placementObj); updateErr != nil {
 			klog.ErrorS(updateErr, "Failed to update the status", "placement", placementKObj)
 			return ctrl.Result{}, controller.NewUpdateIgnoreConflictError(updateErr)

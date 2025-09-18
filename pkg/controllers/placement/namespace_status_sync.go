@@ -194,8 +194,8 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, pla
 
 // handleNamespaceAccessibleCRP handles the complete workflow for ClusterResourcePlacements
 // with NamespaceAccessible scope. It syncs the ClusterResourcePlacementStatus object in
-// the target namespace, builds a StatusSynced condition based on the sync result, adds
-// the condition to the CRP, and updates the CRP status.
+// the target namespace, builds a StatusSynced/Scheduled condition based on the sync result,
+// target namespace adds the condition to the CRP, and updates the CRP status.
 func (r *Reconciler) handleNamespaceAccessibleCRP(ctx context.Context, placementObj placementv1beta1.PlacementObj) error {
 	targetNamespace, syncErr := r.syncClusterResourcePlacementStatus(ctx, placementObj)
 
@@ -223,11 +223,11 @@ func (r *Reconciler) handleNamespaceAccessibleCRP(ctx context.Context, placement
 	return nil
 }
 
-// validateNamespaceSelectorConsistency validates that ClusterResourcePlacements with
+// validateNamespaceSelectorConsistency validates that ClusterResourcePlacement with
 // NamespaceAccessible scope have consistent namespace selectors. This function assumes
 // the placement is already confirmed to be NamespaceAccessible. It checks if the
 // namespace selector has changed from what was originally selected and sets the
-// StatusSynced condition accordingly. Returns an error if validation fails or if
+// Scheduled condition accordingly. Returns an error if validation fails or if
 // there are issues updating the placement status.
 func (r *Reconciler) validateNamespaceSelectorConsistency(ctx context.Context, placementObj placementv1beta1.PlacementObj) (bool, error) {
 	placementKObj := klog.KObj(placementObj)
@@ -250,6 +250,7 @@ func (r *Reconciler) validateNamespaceSelectorConsistency(ctx context.Context, p
 		}
 	}
 
+	// CRP status has not been populated or no namespace selected by CRP.
 	if currentTargetNamespace == "" {
 		klog.V(2).InfoS("No namespace selected yet in status", "crp", placementKObj)
 		// No namespace selected yet - skip validation for now.
@@ -269,10 +270,7 @@ func (r *Reconciler) validateNamespaceSelectorConsistency(ctx context.Context, p
 		return false, nil
 	}
 
-	// * If currentTargetNamespace is empty, we skip this check for one of the following reasons,
-	//	 - CRP status had not been populated yet.
-	//   - CRP is not selecting any namespace (though this should be caught by CEL validation).
-	// * If both namespaces exist and they don't match, it means the namespace selector changed.
+	// If both namespaces exist and they don't match, it means the namespace selector changed.
 	if currentTargetNamespace != targetNamespaceFromSelector {
 		klog.V(2).InfoS("Namespace selector has changed for NamespaceAccessible CRP",
 			"crp", placementKObj,

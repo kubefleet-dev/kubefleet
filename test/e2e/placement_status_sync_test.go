@@ -335,7 +335,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		})
 
 		It("should update CRP to select a different namespace", func() {
-			// Update CRP to select the changed namespace instead.
+			// Update CRP to select the new-namespace instead.
 			Eventually(func() error {
 				crp := &placementv1beta1.ClusterResourcePlacement{}
 				if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
@@ -398,7 +398,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		})
 
 		It("should update CRP to select a non-existent namespace", func() {
-			// Update CRP to select the changed namespace instead.
+			// Update CRP to select the non-existent-namespace instead.
 			Eventually(func() error {
 				crp := &placementv1beta1.ClusterResourcePlacement{}
 				if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {

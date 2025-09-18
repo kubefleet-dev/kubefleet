@@ -1619,6 +1619,7 @@ func buildWantCRPStatusWithStatusSynced(
 	isResourceSelectorInvalid bool,
 ) *placementv1beta1.PlacementStatus {
 	if isResourceSelectorInvalid {
+		// when namespace resource selector is invalid, the observed generation doesn't change for all condition expect Scheduled.
 		placementGeneration = placementGeneration - 1
 	}
 	wantStatus := buildWantPlacementStatus(placementKey, placementGeneration, wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, resourceIsTrackable)
@@ -1647,6 +1648,7 @@ func buildWantCRPStatusWithStatusSynced(
 			if wantStatus.Conditions[i].Type == string(placementv1beta1.ClusterResourcePlacementScheduledConditionType) {
 				wantStatus.Conditions[i].Status = metav1.ConditionFalse
 				wantStatus.Conditions[i].Reason = condition.InvalidResourceSelectorsReason
+				// when namespace resource selector is invalid, the observed generation is only updated for Scheduled condition.
 				wantStatus.Conditions[i].ObservedGeneration = placementGeneration + 1
 			}
 		}
