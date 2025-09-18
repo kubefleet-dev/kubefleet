@@ -1269,9 +1269,9 @@ func placementStatusWithOverrideUpdatedActual(
 	}
 }
 
-func namespaceAccessibleCRPStatusUpdatedActual(wantSelectedResourceIdentifiers []placementv1beta1.ResourceIdentifier, wantSelectedClusters, wantUnselectedClusters []string, wantObservedResourceIndex string, statusSyncedConditionStatus metav1.ConditionStatus) func() error {
+func namespaceAccessibleCRPStatusUpdatedActual(wantSelectedResourceIdentifiers []placementv1beta1.ResourceIdentifier, wantSelectedClusters, wantUnselectedClusters []string, wantObservedResourceIndex string, statusSyncedConditionStatus metav1.ConditionStatus, isResourceSelectorInvalid bool) func() error {
 	crpKey := types.NamespacedName{Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())}
-	return customizedCRPStatusUpdatedActualWithStatusSynced(crpKey, wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, true, statusSyncedConditionStatus)
+	return customizedCRPStatusUpdatedActualWithStatusSynced(crpKey, wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, true, statusSyncedConditionStatus, isResourceSelectorInvalid)
 }
 
 func crpStatusUpdatedActual(wantSelectedResourceIdentifiers []placementv1beta1.ResourceIdentifier, wantSelectedClusters, wantUnselectedClusters []string, wantObservedResourceIndex string) func() error {
@@ -1592,6 +1592,7 @@ func customizedCRPStatusUpdatedActualWithStatusSynced(
 	wantObservedResourceIndex string,
 	resourceIsTrackable bool,
 	statusSyncedConditionStatus metav1.ConditionStatus,
+	isResourceSelectorInvalid bool,
 ) func() error {
 	return func() error {
 		placement, err := retrievePlacement(placementKey)
@@ -1599,7 +1600,7 @@ func customizedCRPStatusUpdatedActualWithStatusSynced(
 			return fmt.Errorf("failed to get placement %s: %w", placementKey, err)
 		}
 
-		wantStatus := buildWantCRPStatusWithStatusSynced(placementKey, placement.GetGeneration(), wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, resourceIsTrackable, statusSyncedConditionStatus)
+		wantStatus := buildWantCRPStatusWithStatusSynced(placementKey, placement.GetGeneration(), wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, resourceIsTrackable, statusSyncedConditionStatus, isResourceSelectorInvalid)
 		if diff := cmp.Diff(placement.GetPlacementStatus(), wantStatus, placementStatusCmpOptions...); diff != "" {
 			return fmt.Errorf("Placement status diff (-got, +want): %s", diff)
 		}
@@ -1615,18 +1616,14 @@ func buildWantCRPStatusWithStatusSynced(
 	wantObservedResourceIndex string,
 	resourceIsTrackable bool,
 	statusSyncedConditionStatus metav1.ConditionStatus,
+	isResourceSelectorInvalid bool,
 ) *placementv1beta1.PlacementStatus {
-	var wantStatus *placementv1beta1.PlacementStatus
-	// Start with the base status
-	if statusSyncedConditionStatus == metav1.ConditionUnknown {
-		// Only StatusSynced condition should get updated in this scenario, since namespace selector has changed.
-		wantStatus = buildWantPlacementStatus(placementKey, placementGeneration-1, wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, resourceIsTrackable)
-	} else {
-		wantStatus = buildWantPlacementStatus(placementKey, placementGeneration, wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, resourceIsTrackable)
+	if isResourceSelectorInvalid {
+		placementGeneration = placementGeneration - 1
 	}
+	wantStatus := buildWantPlacementStatus(placementKey, placementGeneration, wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, resourceIsTrackable)
 
 	var statusSyncedCondition metav1.Condition
-	// Add the StatusSynced condition based on isStatusSynced
 	switch statusSyncedConditionStatus {
 	case metav1.ConditionTrue:
 		statusSyncedCondition = metav1.Condition{
@@ -1642,16 +1639,18 @@ func buildWantCRPStatusWithStatusSynced(
 			Reason:             condition.StatusSyncFailedReason,
 			ObservedGeneration: placementGeneration,
 		}
-	case metav1.ConditionUnknown:
-		statusSyncedCondition = metav1.Condition{
-			Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
-			Status:             metav1.ConditionUnknown,
-			Reason:             condition.InvalidResourceSelectorsReason,
-			ObservedGeneration: placementGeneration,
-		}
 	}
 	wantStatus.Conditions = append(wantStatus.Conditions, statusSyncedCondition)
 
+	if isResourceSelectorInvalid {
+		for i := range wantStatus.Conditions {
+			if wantStatus.Conditions[i].Type == string(placementv1beta1.ClusterResourcePlacementScheduledConditionType) {
+				wantStatus.Conditions[i].Status = metav1.ConditionFalse
+				wantStatus.Conditions[i].Reason = condition.InvalidResourceSelectorsReason
+				wantStatus.Conditions[i].ObservedGeneration = placementGeneration + 1
+			}
+		}
+	}
 	return wantStatus
 }
 

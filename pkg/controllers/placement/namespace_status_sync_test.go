@@ -18,6 +18,7 @@ package placement
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -33,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 )
 
 var (
@@ -100,7 +102,7 @@ func TestHandleNamespaceAccessibleCRP(t *testing.T) {
 				Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
 				Status:             metav1.ConditionTrue,
 				Reason:             "StatusSyncSucceeded",
-				Message:            "Successfully created or updated ClusterResourcePlacementStatus in namespace 'test-namespace'",
+				Message:            fmt.Sprintf(successfulCRPSMessageFmt, "test-namespace"),
 				ObservedGeneration: 1,
 			},
 			wantError: false,
@@ -164,13 +166,13 @@ func TestHandleNamespaceAccessibleCRP(t *testing.T) {
 				Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
 				Status:             metav1.ConditionTrue,
 				Reason:             "StatusSyncSucceeded",
-				Message:            "Successfully created or updated ClusterResourcePlacementStatus in namespace 'test-namespace'",
+				Message:            fmt.Sprintf(successfulCRPSMessageFmt, "test-namespace"),
 				ObservedGeneration: 1,
 			},
 			wantError: false,
 		},
 		{
-			name:             "sync failure - missing namespace selector and set StatusSynced to Unknown",
+			name:             "sync failure - missing namespace selector and set Scheduled condition to false",
 			placementObjName: "test-crp-no-ns",
 			existingObjects: []client.Object{
 				&placementv1beta1.ClusterResourcePlacement{
@@ -197,10 +199,10 @@ func TestHandleNamespaceAccessibleCRP(t *testing.T) {
 			targetNamespace:   "",
 			wantCRPSOperation: false,
 			wantCRPCondition: &metav1.Condition{
-				Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
-				Status:             metav1.ConditionUnknown,
-				Reason:             "InvalidResourceSelectors",
-				Message:            "NamespaceAccessible ClusterResourcePlacement doesn't specify a resource selector which selects a namespace",
+				Type:               string(placementv1beta1.ClusterResourcePlacementScheduledConditionType),
+				Status:             metav1.ConditionFalse,
+				Reason:             condition.InvalidResourceSelectorsReason,
+				Message:            noNamespaceResourceSelectorMsg,
 				ObservedGeneration: 1,
 			},
 			wantError: false,
@@ -299,22 +301,7 @@ func TestHandleNamespaceAccessibleCRP(t *testing.T) {
 				}
 			}
 
-			// Check StatusSynced condition on the original CRP using cmp.Diff.
-			updatedCRP := &placementv1beta1.ClusterResourcePlacement{}
-			if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: tc.placementObjName}, updatedCRP); err != nil {
-				t.Fatalf("Failed to get updated CRP: %v", err)
-			}
-
-			// Use GetCondition to find the StatusSynced condition
-			gotCondition := updatedCRP.GetCondition(string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType))
-			if gotCondition == nil {
-				t.Fatal("Expected StatusSynced condition to be set on CRP")
-			}
-
-			// Use cmp.Diff to compare conditions
-			if diff := cmp.Diff(tc.wantCRPCondition, gotCondition, crpCmpOpts...); diff != "" {
-				t.Fatalf("StatusSynced condition mismatch (-want +got):\n%s", diff)
-			}
+			verifyCRPCondition(t, fakeClient, tc.placementObjName, tc.wantCRPCondition)
 		})
 	}
 }
@@ -329,7 +316,7 @@ func TestValidateNamespaceSelectorConsistency(t *testing.T) {
 		wantError        bool
 	}{
 		{
-			name:             "no namespace selector - should set StatusSynced to Unknown and return false",
+			name:             "no namespace selector - should set Scheduled to false and return false",
 			placementObjName: "test-crp-no-selector",
 			existingObjects: []client.Object{
 				&placementv1beta1.ClusterResourcePlacement{
@@ -350,14 +337,23 @@ func TestValidateNamespaceSelectorConsistency(t *testing.T) {
 					},
 					Status: placementv1beta1.PlacementStatus{
 						ObservedResourceIndex: "0",
+						SelectedResources: []placementv1beta1.ResourceIdentifier{
+							{
+								Group:     "",
+								Version:   "v1",
+								Kind:      "Namespace",
+								Name:      "test-namespace",
+								Namespace: "",
+							},
+						},
 					},
 				},
 			},
 			wantCRPCondition: &metav1.Condition{
-				Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
-				Status:             metav1.ConditionUnknown,
-				Reason:             "InvalidResourceSelectors",
-				Message:            "NamespaceAccessible ClusterResourcePlacement doesn't specify a resource selector which selects a namespace",
+				Type:               string(placementv1beta1.ClusterResourcePlacementScheduledConditionType),
+				Status:             metav1.ConditionFalse,
+				Reason:             condition.InvalidResourceSelectorsReason,
+				Message:            noNamespaceResourceSelectorMsg,
 				ObservedGeneration: 1,
 			},
 			wantIsValid: false,
@@ -432,7 +428,7 @@ func TestValidateNamespaceSelectorConsistency(t *testing.T) {
 			wantError:        false,
 		},
 		{
-			name:             "inconsistent namespace selector - should set StatusSynced to Unknown and return false",
+			name:             "inconsistent namespace selector - should set Scheduled to false and return false",
 			placementObjName: "test-crp-inconsistent",
 			existingObjects: []client.Object{
 				&placementv1beta1.ClusterResourcePlacement{
@@ -466,10 +462,10 @@ func TestValidateNamespaceSelectorConsistency(t *testing.T) {
 				},
 			},
 			wantCRPCondition: &metav1.Condition{
-				Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
-				Status:             metav1.ConditionUnknown,
-				Reason:             "InvalidResourceSelectors",
-				Message:            "namespace resource selector is choosing a different namespace 'new-namespace' from what was originally picked 'original-namespace'. This is not allowed for NamespaceAccessible ClusterResourcePlacements.",
+				Type:               string(placementv1beta1.ClusterResourcePlacementScheduledConditionType),
+				Status:             metav1.ConditionFalse,
+				Reason:             condition.InvalidResourceSelectorsReason,
+				Message:            fmt.Sprintf(namespaceConsistencyMessageFmt, "new-namespace", "original-namespace"),
 				ObservedGeneration: 2,
 			},
 			wantIsValid: false,
@@ -513,19 +509,7 @@ func TestValidateNamespaceSelectorConsistency(t *testing.T) {
 				t.Fatalf("validateNamespaceSelectorConsistency() validity mismatch: want %v, got %v", tc.wantIsValid, gotIsValid)
 			}
 
-			// Check StatusSynced condition on the CRP - always get the updated CRP and compare expected vs actual.
-			updatedCRP := &placementv1beta1.ClusterResourcePlacement{}
-			if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: tc.placementObjName}, updatedCRP); err != nil {
-				t.Fatalf("Failed to get updated CRP: %v", err)
-			}
-
-			// Use GetCondition to find the StatusSynced condition.
-			gotCondition := updatedCRP.GetCondition(string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType))
-
-			// Use cmp.Diff to compare conditions (handles nil == nil, condition == condition, and nil != condition cases).
-			if diff := cmp.Diff(tc.wantCRPCondition, gotCondition, crpCmpOpts...); diff != "" {
-				t.Fatalf("StatusSynced condition mismatch (-want +got):\n%s", diff)
-			}
+			verifyCRPCondition(t, fakeClient, tc.placementObjName, tc.wantCRPCondition)
 		})
 	}
 }
@@ -539,4 +523,27 @@ func statusSyncServiceScheme(t *testing.T) *runtime.Scheme {
 		t.Fatalf("failed to add scheme: %v", err)
 	}
 	return scheme
+}
+
+func verifyCRPCondition(t *testing.T, fakeClient client.WithWatch, placementName string, wantCondition *metav1.Condition) {
+	updatedCRP := &placementv1beta1.ClusterResourcePlacement{}
+	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: placementName}, updatedCRP); err != nil {
+		t.Fatalf("Failed to get updated CRP: %v", err)
+	}
+
+	var gotCondition *metav1.Condition
+	if wantCondition == nil {
+		gotCondition = nil
+	} else {
+		switch wantCondition.Type {
+		case string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType):
+			gotCondition = updatedCRP.GetCondition(string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType))
+		case string(placementv1beta1.ClusterResourcePlacementScheduledConditionType):
+			gotCondition = updatedCRP.GetCondition(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))
+		}
+	}
+
+	if diff := cmp.Diff(wantCondition, gotCondition, crpCmpOpts...); diff != "" {
+		t.Fatalf("StatusSynced condition mismatch (-want +got):\n%s", diff)
+	}
 }

@@ -31,6 +31,14 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 )
 
+const (
+	noNamespaceResourceSelectorMsg = "NamespaceAccessible ClusterResourcePlacement doesn't specify a resource selector which selects a namespace"
+
+	failedCRPSMessageFmt           = "Failed to create or update ClusterResourcePlacementStatus: %v"
+	successfulCRPSMessageFmt       = "Successfully created or updated ClusterResourcePlacementStatus in namespace '%s'"
+	namespaceConsistencyMessageFmt = "namespace resource selector is choosing a different namespace '%s' from what was originally picked '%s'. This is not allowed for NamespaceAccessible ClusterResourcePlacements."
+)
+
 // extractNamespaceFromResourceSelectors extracts the target namespace name from the
 // ClusterResourcePlacement's ResourceSelectors. This function looks for a Namespace
 // resource selector and returns its name. Returns empty string if no Namespace
@@ -92,24 +100,23 @@ func filterStatusSyncedCondition(status *placementv1beta1.PlacementStatus) *plac
 }
 
 // buildStatusSyncedCondition creates a StatusSynced condition based on the sync result.
-func buildStatusSyncedCondition(generation int64, targetNamespace string, syncErr error) metav1.Condition {
-	// Determine condition based on sync result
-	if syncErr != nil {
+func buildNamespaceAccessibleCondition(generation int64, isSyncError, isResourceSelectorInvalid bool, msg string) metav1.Condition {
+	if isSyncError {
 		return metav1.Condition{
 			Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
 			Status:             metav1.ConditionFalse,
 			Reason:             condition.StatusSyncFailedReason,
-			Message:            fmt.Sprintf("Failed to create or update ClusterResourcePlacementStatus: %v", syncErr),
+			Message:            msg,
 			ObservedGeneration: generation,
 		}
 	}
 
-	if targetNamespace == "" {
+	if isResourceSelectorInvalid {
 		return metav1.Condition{
-			Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
-			Status:             metav1.ConditionUnknown,
+			Type:               string(placementv1beta1.ClusterResourcePlacementScheduledConditionType),
+			Status:             metav1.ConditionFalse,
 			Reason:             condition.InvalidResourceSelectorsReason,
-			Message:            "NamespaceAccessible ClusterResourcePlacement doesn't specify a resource selector which selects a namespace",
+			Message:            msg,
 			ObservedGeneration: generation,
 		}
 	}
@@ -118,16 +125,14 @@ func buildStatusSyncedCondition(generation int64, targetNamespace string, syncEr
 		Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
 		Status:             metav1.ConditionTrue,
 		Reason:             condition.StatusSyncSucceededReason,
-		Message:            fmt.Sprintf("Successfully created or updated ClusterResourcePlacementStatus in namespace '%s'", targetNamespace),
+		Message:            msg,
 		ObservedGeneration: generation,
 	}
 }
 
-// setSyncedConditionAndUpdateStatus is a helper function that sets a StatusSynced condition
-// on the placement object and updates its status. This consolidates the common pattern of
-// setting StatusSynced conditions and updating placement status throughout the namespace
-// status sync functions.
-func (r *Reconciler) setSyncedConditionAndUpdateStatus(ctx context.Context, placementObj placementv1beta1.PlacementObj, condition metav1.Condition) error {
+// setConditionAndUpdateStatus is a helper function that sets the argued condition on the placement
+// object and updates its status.
+func (r *Reconciler) setConditionAndUpdateStatus(ctx context.Context, placementObj placementv1beta1.PlacementObj, condition metav1.Condition) error {
 	placementKObj := klog.KObj(placementObj)
 
 	// Set the condition on the placement object.
@@ -195,9 +200,16 @@ func (r *Reconciler) handleNamespaceAccessibleCRP(ctx context.Context, placement
 	// Sync ClusterResourcePlacementStatus object if StatusReportingScope is NamespaceAccessible.
 	targetNamespace, syncErr := r.syncClusterResourcePlacementStatus(ctx, placementObj)
 
-	// Build and set the StatusSynced condition based on the sync result, targetNamespace.
-	statusSyncCondition := buildStatusSyncedCondition(placementObj.GetGeneration(), targetNamespace, syncErr)
-	if err := r.setSyncedConditionAndUpdateStatus(ctx, placementObj, statusSyncCondition); err != nil {
+	var namespaceAccessibleCondition metav1.Condition
+	if syncErr != nil {
+		namespaceAccessibleCondition = buildNamespaceAccessibleCondition(placementObj.GetGeneration(), true, false, fmt.Sprintf(failedCRPSMessageFmt, syncErr))
+	} else if targetNamespace == "" {
+		namespaceAccessibleCondition = buildNamespaceAccessibleCondition(placementObj.GetGeneration(), false, true, noNamespaceResourceSelectorMsg)
+	} else {
+		namespaceAccessibleCondition = buildNamespaceAccessibleCondition(placementObj.GetGeneration(), false, false, fmt.Sprintf(successfulCRPSMessageFmt, targetNamespace))
+	}
+
+	if err := r.setConditionAndUpdateStatus(ctx, placementObj, namespaceAccessibleCondition); err != nil {
 		return err
 	}
 
@@ -219,19 +231,6 @@ func (r *Reconciler) validateNamespaceSelectorConsistency(ctx context.Context, p
 	placementKObj := klog.KObj(placementObj)
 	crp, _ := placementObj.(*placementv1beta1.ClusterResourcePlacement)
 
-	// Extract target namespace from resource selectors.
-	targetNamespaceFromSelector := extractNamespaceFromResourceSelectors(crp)
-	if targetNamespaceFromSelector == "" {
-		klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("no namespace selector found despite NamespaceAccessible scope")),
-			"Failed to find valid Namespace selector for NamespaceAccessible scope",
-			"crp", placementKObj)
-		statusSyncCondition := buildStatusSyncedCondition(placementObj.GetGeneration(), targetNamespaceFromSelector, nil)
-		if err := r.setSyncedConditionAndUpdateStatus(ctx, placementObj, statusSyncCondition); err != nil {
-			return false, err
-		}
-		return false, nil
-	}
-
 	placementStatus := placementObj.GetPlacementStatus()
 	currentTargetNamespace := ""
 
@@ -249,31 +248,42 @@ func (r *Reconciler) validateNamespaceSelectorConsistency(ctx context.Context, p
 		}
 	}
 
+	if currentTargetNamespace == "" {
+		klog.V(2).InfoS("No namespace selected yet in status", "crp", placementKObj)
+		// No namespace selected yet - skip validation for now.
+		return true, nil
+	}
+
+	// Extract target namespace from resource selectors in spec.
+	targetNamespaceFromSelector := extractNamespaceFromResourceSelectors(crp)
+	if targetNamespaceFromSelector == "" {
+		klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("no namespace selector found despite NamespaceAccessible scope")),
+			"Failed to find valid Namespace selector for NamespaceAccessible scope",
+			"crp", placementKObj)
+		scheduledCondition := buildNamespaceAccessibleCondition(placementObj.GetGeneration(), false, true, noNamespaceResourceSelectorMsg)
+		if err := r.setConditionAndUpdateStatus(ctx, placementObj, scheduledCondition); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+
 	// * If currentTargetNamespace is empty, we skip this check for one of the following reasons,
 	//	 - CRP status had not been populated yet.
 	//   - CRP is not selecting any namespace (though this should be caught by CEL validation).
 	// * If both namespaces exist and they don't match, it means the namespace selector changed.
-	if currentTargetNamespace != "" && currentTargetNamespace != targetNamespaceFromSelector {
+	if currentTargetNamespace != targetNamespaceFromSelector {
 		klog.V(2).InfoS("Namespace selector has changed for NamespaceAccessible CRP",
 			"crp", placementKObj,
 			"currentTargetNamespace", currentTargetNamespace,
 			"newTargetNamespace", targetNamespaceFromSelector)
 
-		messageFmt := "namespace resource selector is choosing a different namespace '%s' from what was originally picked '%s'. This is not allowed for NamespaceAccessible ClusterResourcePlacements."
-		// Build StatusSynced condition set to Unknown with appropriate reason and message.
-		statusSyncCondition := metav1.Condition{
-			Type:               string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType),
-			Status:             metav1.ConditionUnknown,
-			Reason:             condition.InvalidResourceSelectorsReason,
-			Message:            fmt.Sprintf(messageFmt, targetNamespaceFromSelector, currentTargetNamespace),
-			ObservedGeneration: placementObj.GetGeneration(),
-		}
+		scheduledCondition := buildNamespaceAccessibleCondition(placementObj.GetGeneration(), false, true, fmt.Sprintf(namespaceConsistencyMessageFmt, targetNamespaceFromSelector, currentTargetNamespace))
 
 		// Set condition and update placement status.
-		if err := r.setSyncedConditionAndUpdateStatus(ctx, placementObj, statusSyncCondition); err != nil {
+		if err := r.setConditionAndUpdateStatus(ctx, placementObj, scheduledCondition); err != nil {
 			return false, err
 		}
-		klog.ErrorS(controller.NewUserError(fmt.Errorf(messageFmt, currentTargetNamespace, targetNamespaceFromSelector)),
+		klog.ErrorS(controller.NewUserError(fmt.Errorf(namespaceConsistencyMessageFmt, currentTargetNamespace, targetNamespaceFromSelector)),
 			"Namespace selector inconsistency detected",
 			"crp", placementKObj)
 		return false, nil

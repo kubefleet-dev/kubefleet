@@ -67,7 +67,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 
 		It("should update CRP status with 2 clusters with synced condition set to true as expected", func() {
 			expectedClusters := []string{memberCluster2EastCanaryName, memberCluster3WestProdName}
-			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), expectedClusters, nil, "0", metav1.ConditionTrue)
+			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), expectedClusters, nil, "0", metav1.ConditionTrue, false)
 			Eventually(statusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status with 2 clusters")
 		})
 
@@ -89,7 +89,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		})
 
 		It("should update CRP status with 3 clusters with synced condition set to true as expected", func() {
-			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionTrue)
+			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionTrue, false)
 			Eventually(statusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status with 3 clusters")
 		})
 
@@ -129,7 +129,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		})
 
 		It("CRP status should remain unchanged", func() {
-			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionTrue)
+			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionTrue, false)
 			Consistently(statusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP status with 3 clusters")
 		})
 
@@ -240,7 +240,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 
 		It("should update CRP status with synced condition set to true", func() {
 			// Wait for CRP status to be updated.
-			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionTrue)
+			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionTrue, false)
 			Eventually(statusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status")
 		})
 
@@ -271,7 +271,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 
 		It("should update CRP status with Status synced condition set to false", func() {
 			// Wait for CRP status to be updated.
-			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual([]placementv1beta1.ResourceIdentifier{}, allMemberClusterNames, nil, "1", metav1.ConditionFalse)
+			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual([]placementv1beta1.ResourceIdentifier{}, allMemberClusterNames, nil, "1", metav1.ConditionFalse, false)
 			Eventually(statusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status")
 		})
 	})
@@ -325,7 +325,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		})
 
 		It("should update CRP status with initial namespace selection", func() {
-			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionTrue)
+			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionTrue, false)
 			Eventually(statusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status")
 		})
 
@@ -353,8 +353,8 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP to select different namespace")
 		})
 
-		It("should update CRP status with status synced condition set to unknown", func() {
-			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionUnknown)
+		It("should update CRP status with scheduled condition set to false", func() {
+			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionTrue, true)
 			Eventually(statusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status")
 		})
 	})
@@ -388,7 +388,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		})
 
 		It("should update CRP status with initial namespace selection", func() {
-			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionTrue)
+			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionTrue, false)
 			Eventually(statusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status")
 		})
 
@@ -416,8 +416,8 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP to select different namespace")
 		})
 
-		It("should update CRP status with status synced condition set to unknown", func() {
-			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionUnknown)
+		It("should update CRP status with scheduled condition set to false", func() {
+			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0", metav1.ConditionTrue, true)
 			Eventually(statusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status")
 		})
 	})
