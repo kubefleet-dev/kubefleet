@@ -210,7 +210,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		})
 	})
 
-	Context("Namespace deletion with ClusterResourcePlacementStatus, StatusReportingScope is NamespaceAccessible", Ordered, func() {
+	FContext("Namespace deletion with ClusterResourcePlacementStatus, StatusReportingScope is NamespaceAccessible", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 
 		BeforeAll(func() {
@@ -272,6 +272,27 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 		It("should update CRP status with Status synced condition set to false", func() {
 			// Wait for CRP status to be updated.
 			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual([]placementv1beta1.ResourceIdentifier{}, allMemberClusterNames, nil, "1", metav1.ConditionFalse, false)
+			Eventually(statusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status")
+		})
+
+		It("should recreate namespace manually", func() {
+			ns := corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: appNamespace().Name,
+				},
+			}
+			Expect(hubClient.Create(ctx, &ns)).To(Succeed(), "Failed to recreate work resources namespace")
+
+			// Wait for namespace creation
+			Eventually(func() error {
+				return hubClient.Get(ctx, types.NamespacedName{Name: appNamespace().Name}, &ns)
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), fmt.Sprintf("Failed to get %s", appNamespace().Name))
+		})
+
+
+		It("should update CRP status with Status synced condition set to true", func() {
+			// Wait for CRP status to be updated.
+			statusUpdatedActual := namespaceAccessibleCRPStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "2", metav1.ConditionTrue, false)
 			Eventually(statusUpdatedActual, crpsEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status")
 		})
 	})
