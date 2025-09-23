@@ -539,6 +539,10 @@ type RolloutStrategy struct {
 	// DeleteStrategy configures the deletion behavior when the ClusterResourcePlacement is deleted.
 	// +kubebuilder:validation:Optional
 	DeleteStrategy *DeleteStrategy `json:"deleteStrategy,omitempty"`
+
+	// ReportBackStrategy describes how to report back the status of applied resources on the member cluster.
+	// +kubebuilder:validation:Optional
+	ReportBackStrategy *ReportBackStrategy `json:"reportBackStrategy,omitempty"`
 }
 
 // ApplyStrategy describes when and how to apply the selected resource to the target cluster.
@@ -1468,6 +1472,52 @@ const (
 	// when the placement is deleted. This is the default behavior.
 	DeletePropagationPolicyDelete DeletePropagationPolicy = "Delete"
 )
+
+type ReportBackStrategyType string
+
+const (
+	// ReportBackStrategyTypeDisabled disables status back-reporting from the member clusters.
+	ReportBackStrategyTypeDisabled ReportBackStrategyType = "Disabled"
+
+	// ReportBackStrategyTypeMirrorIfPossible enables status back-reporting by
+	// copying the status fields verbatim to the corresponding objects on the hub cluster side. This is
+	// only performed when the placement object has a scheduling policy that selects exactly one
+	// member cluster (i.e., a pickFixed scheduling policy with exactly one cluster name, or
+	// a pickN scheduling policy with the numberOfClusters field set to 1). If multiple member clusters
+	// are selected, KubeFleet will fall back to the Copy strategy, as described below.
+	ReportBackStrategyTypeMirrorIfPossible ReportBackStrategyType = "MirrorIfPossible"
+
+	// ReportBackStrategyTypeCopy enables status back-reporting by copying
+	// the status fields verbatim via the Work API on the hub cluster side. Users may look up
+	// the status of a specific resource applied to a specific member cluster by inspecting the
+	// corresponding Work object on the hub cluster side.
+	ReportBackStrategyTypeCopy ReportBackStrategyType = "Copy"
+)
+
+// ReportBackStrategy describes how to report back the resource status from member clusters.
+type ReportBackStrategy struct {
+	// Type dictates the type of the report back strategy to use.
+	//
+	// Available options include:
+	//
+	// * Disabled: status back-reporting is disabled. This is the default behavior.
+	//
+	// * MirrorIfPossible: status back-reporting is enabled by copying the status fields verbatim to
+	//   the corresponding objects on the hub cluster side. This is only performed when the placement
+	//   object has a scheduling policy that selects exactly one member cluster (i.e., a pickFixed
+	//   scheduling policy with exactly one cluster name, or a pickN scheduling policy with the
+	//   numberOfClusters field set to 1). If multiple member clusters are selected, KubeFleet will
+	//   fall back to the Copy strategy.
+	//
+	// * Copy: status back-reporting is enabled by copying the status fields verbatim via the Work API
+	//   on the hub cluster side. Users may look up the status of a specific resource applied to a
+	//   specific member cluster by inspecting the corresponding Work object on the hub cluster side.
+	//
+	// +kubebuilder:default=Disabled
+	// +kubebuilder:validation:Enum=Disabled;MirrorIfPossible;Copy
+	// +kubebuilder:validation:Required
+	Type ReportBackStrategyType `json:"type"`
+}
 
 // ClusterResourcePlacementList contains a list of ClusterResourcePlacement.
 // +kubebuilder:resource:scope="Cluster"

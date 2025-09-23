@@ -531,6 +531,37 @@ spec:
                     - Never
                     type: string
                 type: object
+              reportBackStrategy:
+                description: ReportBackStrategy describes how to report back the status
+                  of applied resources on the member cluster.
+                properties:
+                  type:
+                    default: Disabled
+                    description: |-
+                      Type dictates the type of the report back strategy to use.
+
+                      Available options include:
+
+                      * Disabled: status back-reporting is disabled. This is the default behavior.
+
+                      * MirrorIfPossible: status back-reporting is enabled by copying the status fields verbatim to
+                        the corresponding objects on the hub cluster side. This is only performed when the placement
+                        object has a scheduling policy that selects exactly one member cluster (i.e., a pickFixed
+                        scheduling policy with exactly one cluster name, or a pickN scheduling policy with the
+                        numberOfClusters field set to 1). If multiple member clusters are selected, KubeFleet will
+                        fall back to the Copy strategy.
+
+                      * Copy: status back-reporting is enabled by copying the status fields verbatim via the Work API
+                        on the hub cluster side. Users may look up the status of a specific resource applied to a
+                        specific member cluster by inspecting the corresponding Work object on the hub cluster side.
+                    enum:
+                    - Disabled
+                    - MirrorIfPossible
+                    - Copy
+                    type: string
+                required:
+                - type
+                type: object
               workload:
                 description: Workload represents the manifest workload to be deployed
                   on spoke cluster
@@ -624,6 +655,28 @@ spec:
                     ManifestCondition represents the conditions of the resources deployed on
                     spoke cluster.
                   properties:
+                    backReportedStatus:
+                      description: BackReportedStatus is the status reported back
+                        from the member cluster (if applicable).
+                      properties:
+                        observationTime:
+                          description: ObservationTime is the timestamp when the status
+                            was last back reported.
+                          format: date-time
+                          type: string
+                        observedInMemberClusterGeneration:
+                          description: |-
+                            ObservedInMemberClusterGeneration is the generation of the applied resource on the member
+                            cluster side.
+                          format: int64
+                          type: integer
+                        observedStatus:
+                          type: object
+                          x-kubernetes-embedded-resource: true
+                          x-kubernetes-preserve-unknown-fields: true
+                      required:
+                      - observationTime
+                      type: object
                     conditions:
                       description: Conditions represents the conditions of this resource
                         on spoke cluster
@@ -695,7 +748,7 @@ spec:
                       properties:
                         firstDiffedObservedTime:
                           description: |-
-                            FirsftDiffedObservedTime is the timestamp when the configuration difference
+                            FirstDiffedObservedTime is the timestamp when the configuration difference
                             was first detected.
                           format: date-time
                           type: string
@@ -765,8 +818,8 @@ spec:
                         at the same time.
                       properties:
                         firstDriftedObservedTime:
-                          description: FirsftDriftedObservedTime is the timestamp
-                            when the drift was first detected.
+                          description: FirftDriftedObservedTime is the timestamp when
+                            the drift was first detected.
                           format: date-time
                           type: string
                         observationTime:
