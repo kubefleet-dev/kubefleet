@@ -72,7 +72,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, key controller.QueueKey) (ct
 		klog.V(2).InfoS("Placement reconciliation ends", "placementKey", placementKey, "latency", latency)
 	}()
 
-	placementObj, err := controller.FetchPlacementFromKey(ctx, r.Client, queue.PlacementKey(placementKey))
+	placementObj, err := controller.FetchPlacementFromQueueKey(ctx, r.Client, queue.PlacementKey(placementKey))
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			klog.V(4).InfoS("Ignoring NotFound placement", "placementKey", placementKey)

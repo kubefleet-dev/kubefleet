@@ -72,7 +72,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	}()
 
 	// Get the placement object (either ClusterResourcePlacement or ResourcePlacement)
-	placementObj, err := controller.FetchPlacementFromKey(ctx, r.Client, controller.GetObjectKeyFromRequest(req))
+	placementObj, err := controller.FetchPlacementFromQueueKey(ctx, r.Client, controller.GetObjectKeyFromRequest(req))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			klog.V(4).InfoS("Ignoring NotFound placement", "placementKey", placementKey)

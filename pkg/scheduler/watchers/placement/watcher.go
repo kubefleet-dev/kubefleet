@@ -55,7 +55,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	// Retrieve the placement object (either ClusterResourcePlacement or ResourcePlacement).
 	placementKey := controller.GetObjectKeyFromRequest(req)
-	placement, err := controller.FetchPlacementFromKey(ctx, r.Client, placementKey)
+	placement, err := controller.FetchPlacementFromQueueKey(ctx, r.Client, placementKey)
 	if err != nil {
 		klog.ErrorS(err, "Failed to get placement", "placement", placementRef)
 		return ctrl.Result{}, controller.NewAPIServerError(true, client.IgnoreNotFound(err))
