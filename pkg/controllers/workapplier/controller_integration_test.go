@@ -27,6 +27,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -75,7 +76,7 @@ var (
 )
 
 // createWorkObject creates a new Work object with the given name, manifests, and apply strategy.
-func createWorkObject(workName string, applyStrategy *fleetv1beta1.ApplyStrategy, rawManifestJSON ...[]byte) {
+func createWorkObject(workName, memberClusterReservedNSName string, applyStrategy *fleetv1beta1.ApplyStrategy, rawManifestJSON ...[]byte) {
 	manifests := make([]fleetv1beta1.Manifest, len(rawManifestJSON))
 	for idx := range rawManifestJSON {
 		manifests[idx] = fleetv1beta1.Manifest{
@@ -88,7 +89,7 @@ func createWorkObject(workName string, applyStrategy *fleetv1beta1.ApplyStrategy
 	work := &fleetv1beta1.Work{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      workName,
-			Namespace: memberReservedNSName,
+			Namespace: memberClusterReservedNSName,
 		},
 		Spec: fleetv1beta1.WorkSpec{
 			Workload: fleetv1beta1.WorkloadTemplate{
@@ -111,7 +112,7 @@ func updateWorkObject(workName string, applyStrategy *fleetv1beta1.ApplyStrategy
 	}
 
 	work := &fleetv1beta1.Work{}
-	Expect(hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName}, work)).To(Succeed())
+	Expect(hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, work)).To(Succeed())
 
 	work.Spec.Workload.Manifests = manifests
 	work.Spec.ApplyStrategy = applyStrategy
@@ -131,7 +132,7 @@ func workFinalizerAddedActual(workName string) func() error {
 	return func() error {
 		// Retrieve the Work object.
 		work := &fleetv1beta1.Work{}
-		if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName}, work); err != nil {
+		if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, work); err != nil {
 			return fmt.Errorf("failed to retrieve the Work object: %w", err)
 		}
 
@@ -147,7 +148,7 @@ func appliedWorkCreatedActual(workName string) func() error {
 	return func() error {
 		// Retrieve the AppliedWork object.
 		appliedWork := &fleetv1beta1.AppliedWork{}
-		if err := memberClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName}, appliedWork); err != nil {
+		if err := memberClient1.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, appliedWork); err != nil {
 			return fmt.Errorf("failed to retrieve the AppliedWork object: %w", err)
 		}
 
@@ -157,7 +158,7 @@ func appliedWorkCreatedActual(workName string) func() error {
 			},
 			Spec: fleetv1beta1.AppliedWorkSpec{
 				WorkName:      workName,
-				WorkNamespace: memberReservedNSName,
+				WorkNamespace: memberReservedNSName1,
 			},
 		}
 		if diff := cmp.Diff(
@@ -174,7 +175,7 @@ func appliedWorkCreatedActual(workName string) func() error {
 func prepareAppliedWorkOwnerRef(workName string) *metav1.OwnerReference {
 	// Retrieve the AppliedWork object.
 	appliedWork := &fleetv1beta1.AppliedWork{}
-	Expect(memberClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName}, appliedWork)).To(Succeed(), "Failed to retrieve the AppliedWork object")
+	Expect(memberClient1.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, appliedWork)).To(Succeed(), "Failed to retrieve the AppliedWork object")
 
 	// Prepare the expected OwnerReference.
 	return &metav1.OwnerReference{
@@ -190,7 +191,7 @@ func regularNSObjectAppliedActual(nsName string, appliedWorkOwnerRef *metav1.Own
 	return func() error {
 		// Retrieve the NS object.
 		gotNS := &corev1.Namespace{}
-		if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, gotNS); err != nil {
+		if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, gotNS); err != nil {
 			return fmt.Errorf("failed to retrieve the NS object: %w", err)
 		}
 
@@ -222,7 +223,7 @@ func regularDeploymentObjectAppliedActual(nsName, deployName string, appliedWork
 	return func() error {
 		// Retrieve the Deployment object.
 		gotDeploy := &appsv1.Deployment{}
-		if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy); err != nil {
+		if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy); err != nil {
 			return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
 		}
 
@@ -281,11 +282,65 @@ func regularDeploymentObjectAppliedActual(nsName, deployName string, appliedWork
 	}
 }
 
+func regularJobObjectAppliedActual(nsName, jobName string, appliedWorkOwnerRef *metav1.OwnerReference) func() error {
+	return func() error {
+		// Retrieve the Job object.
+		gotJob := &batchv1.Job{}
+		if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: jobName}, gotJob); err != nil {
+			return fmt.Errorf("failed to retrieve the Job object: %w", err)
+		}
+
+		// Check that the Job object has been created as expected.
+
+		// To ignore default values automatically, here the test suite rebuilds the objects.
+		wantJob := job.DeepCopy()
+		wantJob.TypeMeta = metav1.TypeMeta{}
+		wantJob.Namespace = nsName
+		wantJob.Name = jobName
+		wantJob.OwnerReferences = []metav1.OwnerReference{
+			*appliedWorkOwnerRef,
+		}
+
+		rebuiltGotJob := &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace:       gotJob.Namespace,
+				Name:            gotJob.Name,
+				OwnerReferences: gotJob.OwnerReferences,
+			},
+			Spec: batchv1.JobSpec{
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							"app": gotJob.Spec.Template.ObjectMeta.Labels["app"],
+						},
+					},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{
+								Name:    gotJob.Spec.Template.Spec.Containers[0].Name,
+								Image:   gotJob.Spec.Template.Spec.Containers[0].Image,
+								Command: gotJob.Spec.Template.Spec.Containers[0].Command,
+							},
+						},
+						RestartPolicy: gotJob.Spec.Template.Spec.RestartPolicy,
+					},
+				},
+				Parallelism: gotJob.Spec.Parallelism,
+				Completions: gotJob.Spec.Completions,
+			},
+		}
+		if diff := cmp.Diff(rebuiltGotJob, wantJob); diff != "" {
+			return fmt.Errorf("job diff (-got +want):\n%s", diff)
+		}
+		return nil
+	}
+}
+
 func regularClusterRoleObjectAppliedActual(clusterRoleName string, appliedWorkOwnerRef *metav1.OwnerReference) func() error {
 	return func() error {
 		// Retrieve the ClusterRole object.
 		gotClusterRole := &rbacv1.ClusterRole{}
-		if err := memberClient.Get(ctx, client.ObjectKey{Name: clusterRoleName}, gotClusterRole); err != nil {
+		if err := memberClient1.Get(ctx, client.ObjectKey{Name: clusterRoleName}, gotClusterRole); err != nil {
 			return fmt.Errorf("failed to retrieve the ClusterRole object: %w", err)
 		}
 
@@ -318,7 +373,7 @@ func regularConfigMapObjectAppliedActual(nsName, configMapName string, appliedWo
 	return func() error {
 		// Retrieve the ConfigMap object.
 		gotConfigMap := &corev1.ConfigMap{}
-		if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, gotConfigMap); err != nil {
+		if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, gotConfigMap); err != nil {
 			return fmt.Errorf("failed to retrieve the ConfigMap object: %w", err)
 		}
 
@@ -351,7 +406,7 @@ func regularConfigMapObjectAppliedActual(nsName, configMapName string, appliedWo
 func markDeploymentAsAvailable(nsName, deployName string) {
 	// Retrieve the Deployment object.
 	gotDeploy := &appsv1.Deployment{}
-	Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
+	Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
 
 	// Mark the Deployment object as available.
 	now := metav1.Now()
@@ -377,7 +432,7 @@ func markDeploymentAsAvailable(nsName, deployName string) {
 			},
 		},
 	}
-	Expect(memberClient.Status().Update(ctx, gotDeploy)).To(Succeed(), "Failed to mark the Deployment object as available")
+	Expect(memberClient1.Status().Update(ctx, gotDeploy)).To(Succeed(), "Failed to mark the Deployment object as available")
 }
 
 func workStatusUpdated(
@@ -390,7 +445,7 @@ func workStatusUpdated(
 	return func() error {
 		// Retrieve the Work object.
 		work := &fleetv1beta1.Work{}
-		if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName}, work); err != nil {
+		if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, work); err != nil {
 			return fmt.Errorf("failed to retrieve the Work object: %w", err)
 		}
 
@@ -459,7 +514,7 @@ func appliedWorkStatusUpdated(workName string, appliedResourceMeta []fleetv1beta
 	return func() error {
 		// Retrieve the AppliedWork object.
 		appliedWork := &fleetv1beta1.AppliedWork{}
-		if err := memberClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName}, appliedWork); err != nil {
+		if err := memberClient1.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, appliedWork); err != nil {
 			return fmt.Errorf("failed to retrieve the AppliedWork object: %w", err)
 		}
 
@@ -478,7 +533,7 @@ func workRemovedActual(workName string) func() error {
 	// Wait for the removal of the Work object.
 	return func() error {
 		work := &fleetv1beta1.Work{}
-		if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName}, work); !errors.IsNotFound(err) && err != nil {
+		if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, work); !errors.IsNotFound(err) && err != nil {
 			return fmt.Errorf("work object still exists or an unexpected error occurred: %w", err)
 		}
 		if controllerutil.ContainsFinalizer(work, fleetv1beta1.WorkFinalizer) {
@@ -489,12 +544,12 @@ func workRemovedActual(workName string) func() error {
 	}
 }
 
-func deleteWorkObject(workName string) {
+func deleteWorkObject(workName, memberClusterReservedNSName string) {
 	// Retrieve the Work object.
 	work := &fleetv1beta1.Work{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      workName,
-			Namespace: memberReservedNSName,
+			Namespace: memberClusterReservedNSName,
 		},
 	}
 	Expect(hubClient.Delete(ctx, work)).To(Succeed(), "Failed to delete the Work object")
@@ -503,7 +558,7 @@ func deleteWorkObject(workName string) {
 func checkNSOwnerReferences(workName, nsName string) {
 	// Retrieve the AppliedWork object.
 	appliedWork := &fleetv1beta1.AppliedWork{}
-	Expect(memberClient.Get(ctx, client.ObjectKey{Name: workName}, appliedWork)).To(Succeed(), "Failed to retrieve the AppliedWork object")
+	Expect(memberClient1.Get(ctx, client.ObjectKey{Name: workName}, appliedWork)).To(Succeed(), "Failed to retrieve the AppliedWork object")
 
 	// Check that the Namespace object has the AppliedWork as an owner reference.
 	ns := &corev1.Namespace{
@@ -511,7 +566,7 @@ func checkNSOwnerReferences(workName, nsName string) {
 			Name: nsName,
 		},
 	}
-	Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, ns)).To(Succeed(), "Failed to retrieve the Namespace object")
+	Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, ns)).To(Succeed(), "Failed to retrieve the Namespace object")
 	Expect(ns.OwnerReferences).To(ContainElement(metav1.OwnerReference{
 		APIVersion:         fleetv1beta1.GroupVersion.String(),
 		Kind:               "AppliedWork",
@@ -525,7 +580,7 @@ func appliedWorkRemovedActual(workName, nsName string) func() error {
 	return func() error {
 		// Retrieve the AppliedWork object.
 		appliedWork := &fleetv1beta1.AppliedWork{}
-		if err := memberClient.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); err != nil {
+		if err := memberClient1.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); err != nil {
 			if errors.IsNotFound(err) {
 				// The AppliedWork object has been deleted, which is expected.
 				return nil
@@ -536,7 +591,7 @@ func appliedWorkRemovedActual(workName, nsName string) func() error {
 			// The AppliedWork object is being deleted, but the finalizer is still present. Remove the finalizer as there
 			// are no real built-in controllers in this test environment to handle garbage collection.
 			controllerutil.RemoveFinalizer(appliedWork, metav1.FinalizerDeleteDependents)
-			Expect(memberClient.Update(ctx, appliedWork)).To(Succeed(), "Failed to remove the finalizer from the AppliedWork object")
+			Expect(memberClient1.Update(ctx, appliedWork)).To(Succeed(), "Failed to remove the finalizer from the AppliedWork object")
 		}
 		return fmt.Errorf("appliedWork object still exists")
 	}
@@ -551,11 +606,11 @@ func regularDeployRemovedActual(nsName, deployName string) func() error {
 				Name:      deployName,
 			},
 		}
-		if err := memberClient.Delete(ctx, deploy); err != nil && !errors.IsNotFound(err) {
+		if err := memberClient1.Delete(ctx, deploy); err != nil && !errors.IsNotFound(err) {
 			return fmt.Errorf("failed to delete the Deployment object: %w", err)
 		}
 
-		if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, deploy); !errors.IsNotFound(err) {
+		if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, deploy); !errors.IsNotFound(err) {
 			return fmt.Errorf("deployment object still exists or an unexpected error occurred: %w", err)
 		}
 		return nil
@@ -570,11 +625,11 @@ func regularClusterRoleRemovedActual(clusterRoleName string) func() error {
 				Name: clusterRoleName,
 			},
 		}
-		if err := memberClient.Delete(ctx, clusterRole); err != nil && !errors.IsNotFound(err) {
+		if err := memberClient1.Delete(ctx, clusterRole); err != nil && !errors.IsNotFound(err) {
 			return fmt.Errorf("failed to delete the ClusterRole object: %w", err)
 		}
 
-		if err := memberClient.Get(ctx, client.ObjectKey{Name: clusterRoleName}, clusterRole); !errors.IsNotFound(err) {
+		if err := memberClient1.Get(ctx, client.ObjectKey{Name: clusterRoleName}, clusterRole); !errors.IsNotFound(err) {
 			return fmt.Errorf("clusterRole object still exists or an unexpected error occurred: %w", err)
 		}
 		return nil
@@ -590,12 +645,12 @@ func regularConfigMapRemovedActual(nsName, configMapName string) func() error {
 				Name:      configMapName,
 			},
 		}
-		if err := memberClient.Delete(ctx, configMap); err != nil && !errors.IsNotFound(err) {
+		if err := memberClient1.Delete(ctx, configMap); err != nil && !errors.IsNotFound(err) {
 			return fmt.Errorf("failed to delete the ConfigMap object: %w", err)
 		}
 
 		// Check that the ConfigMap object has been deleted.
-		if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, configMap); !errors.IsNotFound(err) {
+		if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, configMap); !errors.IsNotFound(err) {
 			return fmt.Errorf("configMap object still exists or an unexpected error occurred: %w", err)
 		}
 		return nil
@@ -606,7 +661,7 @@ func regularNSObjectNotAppliedActual(nsName string) func() error {
 	return func() error {
 		// Retrieve the NS object.
 		ns := &corev1.Namespace{}
-		if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, ns); !errors.IsNotFound(err) {
+		if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, ns); !errors.IsNotFound(err) {
 			return fmt.Errorf("namespace object exists or an unexpected error occurred: %w", err)
 		}
 		return nil
@@ -622,8 +677,24 @@ func regularDeployNotRemovedActual(nsName, deployName string) func() error {
 				Name:      deployName,
 			},
 		}
-		if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, deploy); err != nil {
+		if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, deploy); err != nil {
 			return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
+		}
+		return nil
+	}
+}
+
+func regularJobNotRemovedActual(nsName, jobName string) func() error {
+	return func() error {
+		// Retrieve the Job object.
+		job := &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: nsName,
+				Name:      jobName,
+			},
+		}
+		if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: jobName}, job); err != nil {
+			return fmt.Errorf("failed to retrieve the Job object: %w", err)
 		}
 		return nil
 	}
@@ -653,7 +724,7 @@ var _ = Describe("applying manifests", func() {
 			regularDeployJSON := marshalK8sObjJSON(regularDeploy)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, nil, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -673,13 +744,13 @@ var _ = Describe("applying manifests", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the Deployment object has been applied as expected.
 			regularDeploymentObjectAppliedActual := regularDeploymentObjectAppliedActual(nsName, deployName, appliedWorkOwnerRef)
 			Eventually(regularDeploymentObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the deployment object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
 		})
 
 		It("can mark the deployment as available", func() {
@@ -790,7 +861,7 @@ var _ = Describe("applying manifests", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure applied manifest has been removed.
 			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
@@ -808,7 +879,7 @@ var _ = Describe("applying manifests", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -835,7 +906,7 @@ var _ = Describe("applying manifests", func() {
 			regularDeployJSON := marshalK8sObjJSON(regularDeploy)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, nil, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -855,13 +926,13 @@ var _ = Describe("applying manifests", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the Deployment object has been applied as expected.
 			regularDeploymentObjectAppliedActual := regularDeploymentObjectAppliedActual(nsName, deployName, appliedWorkOwnerRef)
 			Eventually(regularDeploymentObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the deployment object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
 		})
 
 		It("can mark the deployment as available", func() {
@@ -1053,7 +1124,7 @@ var _ = Describe("applying manifests", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
@@ -1066,7 +1137,7 @@ var _ = Describe("applying manifests", func() {
 			workRemovedActual := workRemovedActual(workName)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -1101,7 +1172,7 @@ var _ = Describe("applying manifests", func() {
 			regularDeployJSON := marshalK8sObjJSON(regularDeploy)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, nil, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -1121,7 +1192,7 @@ var _ = Describe("applying manifests", func() {
 			Eventually(func() error {
 				// Retrieve the NS object.
 				gotNS := &corev1.Namespace{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, gotNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, gotNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -1150,14 +1221,14 @@ var _ = Describe("applying manifests", func() {
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 		})
 
 		It("should not apply the Deployment object", func() {
 			Consistently(func() error {
 				// List all Deployments.
 				gotDeployList := &appsv1.DeploymentList{}
-				if err := memberClient.List(ctx, gotDeployList, client.InNamespace(nsName)); err != nil {
+				if err := memberClient1.List(ctx, gotDeployList, client.InNamespace(nsName)); err != nil {
 					return fmt.Errorf("failed to list Deployment objects: %w", err)
 				}
 
@@ -1250,7 +1321,7 @@ var _ = Describe("applying manifests", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
@@ -1264,7 +1335,7 @@ var _ = Describe("applying manifests", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -1301,7 +1372,7 @@ var _ = Describe("applying manifests", func() {
 			regularConfigMapJSON := marshalK8sObjJSON(regularConfigMap)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, nil, regularNSJSON, decodingErredDeployJSON, regularConfigMapJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, decodingErredDeployJSON, regularConfigMapJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -1321,12 +1392,12 @@ var _ = Describe("applying manifests", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the ConfigMap object has been applied as expected.
 			regularConfigMapObjectAppliedActual := regularConfigMapObjectAppliedActual(nsName, configMapName, appliedWorkOwnerRef)
 			Eventually(regularConfigMapObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the ConfigMap object")
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, regularConfigMap)).To(Succeed(), "Failed to retrieve the ConfigMap object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, regularConfigMap)).To(Succeed(), "Failed to retrieve the ConfigMap object")
 		})
 
 		It("should update the Work object status", func() {
@@ -1442,7 +1513,7 @@ var _ = Describe("applying manifests", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure applied manifest has been removed.
 			regularConfigMapRemovedActual := regularConfigMapRemovedActual(nsName, configMapName)
@@ -1460,7 +1531,7 @@ var _ = Describe("applying manifests", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -1489,7 +1560,7 @@ var _ = Describe("applying manifests", func() {
 			malformedConfigMapJSON := marshalK8sObjJSON(malformedConfigMap)
 
 			// Create a new Work object with all the manifest JSONs and proper apply strategy.
-			createWorkObject(workName, nil, regularNSJSON, malformedConfigMapJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, malformedConfigMapJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -1508,7 +1579,7 @@ var _ = Describe("applying manifests", func() {
 			Consistently(func() error {
 				configMap := &corev1.ConfigMap{}
 				objKey := client.ObjectKey{Namespace: nsName, Name: malformedConfigMap.Name}
-				if err := memberClient.Get(ctx, objKey, configMap); !errors.IsNotFound(err) {
+				if err := memberClient1.Get(ctx, objKey, configMap); !errors.IsNotFound(err) {
 					return fmt.Errorf("the config map exists, or an unexpected error has occurred: %w", err)
 				}
 				return nil
@@ -1520,7 +1591,7 @@ var _ = Describe("applying manifests", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 		})
 
 		It("should update the Work object status", func() {
@@ -1605,7 +1676,7 @@ var _ = Describe("applying manifests", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
@@ -1650,7 +1721,7 @@ var _ = Describe("work applier garbage collection", func() {
 			regularDeployJSON := marshalK8sObjJSON(regularDeploy)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, &fleetv1beta1.ApplyStrategy{AllowCoOwnership: true}, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, &fleetv1beta1.ApplyStrategy{AllowCoOwnership: true}, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -1670,13 +1741,13 @@ var _ = Describe("work applier garbage collection", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the Deployment object has been applied as expected.
 			regularDeploymentObjectAppliedActual := regularDeploymentObjectAppliedActual(nsName, deployName, appliedWorkOwnerRef)
 			Eventually(regularDeploymentObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the deployment object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
 		})
 
 		It("can mark the deployment as available", func() {
@@ -1788,16 +1859,16 @@ var _ = Describe("work applier garbage collection", func() {
 		It("can update Deployment object to add another owner reference", func() {
 			// Retrieve the Deployment object.
 			gotDeploy := &appsv1.Deployment{}
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
 
 			// Add another owner reference to the Deployment object.
 			gotDeploy.OwnerReferences = append(gotDeploy.OwnerReferences, anotherOwnerReference)
-			Expect(memberClient.Update(ctx, gotDeploy)).To(Succeed(), "Failed to update the Deployment object with another owner reference")
+			Expect(memberClient1.Update(ctx, gotDeploy)).To(Succeed(), "Failed to update the Deployment object with another owner reference")
 
 			// Ensure that the Deployment object has been updated as expected.
 			Eventually(func() error {
 				// Retrieve the Deployment object again.
-				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy); err != nil {
 					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
 				}
 
@@ -1819,14 +1890,14 @@ var _ = Describe("work applier garbage collection", func() {
 
 		It("should start deleting the Work object", func() {
 			// Start deleting the Work object.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 		})
 
 		It("should start deleting the AppliedWork object", func() {
 			// Ensure that the Work object is being deleted.
 			Eventually(func() error {
 				appliedWork := &fleetv1beta1.AppliedWork{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); err != nil {
 					return err
 				}
 				if !appliedWork.DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(appliedWork, metav1.FinalizerDeleteDependents) {
@@ -1844,7 +1915,7 @@ var _ = Describe("work applier garbage collection", func() {
 			Eventually(func() error {
 				// Retrieve the Deployment object again.
 				gotDeploy := &appsv1.Deployment{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy); err != nil {
 					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
 				}
 				// Check that the Deployment object has been updated as expected.
@@ -1876,13 +1947,13 @@ var _ = Describe("work applier garbage collection", func() {
 
 			// Ensure that the Deployment object still exists.
 			Consistently(func() error {
-				return memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)
+				return memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)
 			}, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Deployment object has been removed unexpectedly")
 			// Delete objects created by the test suite so that the next test case can run without issues.
-			Expect(memberClient.Delete(ctx, regularDeploy)).To(Succeed(), "Failed to delete the Deployment object")
+			Expect(memberClient1.Delete(ctx, regularDeploy)).To(Succeed(), "Failed to delete the Deployment object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -1915,7 +1986,7 @@ var _ = Describe("work applier garbage collection", func() {
 			regularClusterRoleJSON := marshalK8sObjJSON(regularClusterRole)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, &fleetv1beta1.ApplyStrategy{AllowCoOwnership: true}, regularNSJSON, regularDeployJSON, regularClusterRoleJSON)
+			createWorkObject(workName, memberReservedNSName1, &fleetv1beta1.ApplyStrategy{AllowCoOwnership: true}, regularNSJSON, regularDeployJSON, regularClusterRoleJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -1935,19 +2006,19 @@ var _ = Describe("work applier garbage collection", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the Deployment object has been applied as expected.
 			regularDeploymentObjectAppliedActual := regularDeploymentObjectAppliedActual(nsName, deployName, appliedWorkOwnerRef)
 			Eventually(regularDeploymentObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the deployment object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
 
 			// Ensure that the ClusterRole object has been applied as expected.
 			regularClusterRoleObjectAppliedActual := regularClusterRoleObjectAppliedActual(clusterRoleName, appliedWorkOwnerRef)
 			Eventually(regularClusterRoleObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the clusterRole object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: clusterRoleName}, regularClusterRole)).To(Succeed(), "Failed to retrieve the clusterRole object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: clusterRoleName}, regularClusterRole)).To(Succeed(), "Failed to retrieve the clusterRole object")
 		})
 
 		It("can mark the deployment as available", func() {
@@ -2094,11 +2165,11 @@ var _ = Describe("work applier garbage collection", func() {
 		It("can update ClusterRole object to add another owner reference", func() {
 			// Retrieve the ClusterRole object.
 			gotClusterRole := &rbacv1.ClusterRole{}
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: clusterRoleName}, gotClusterRole)).To(Succeed(), "Failed to retrieve the ClusterRole object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: clusterRoleName}, gotClusterRole)).To(Succeed(), "Failed to retrieve the ClusterRole object")
 
 			// Retrieve the Deployment object.
 			gotDeploy := &appsv1.Deployment{}
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
 
 			// Add another owner reference to the ClusterRole object.
 			// Note: This is an invalid owner reference, as it adds a namespace-scoped object as an owner of a cluster-scoped object.
@@ -2108,12 +2179,12 @@ var _ = Describe("work applier garbage collection", func() {
 				Name:       gotDeploy.Name,
 				UID:        gotDeploy.UID,
 			})
-			Expect(memberClient.Update(ctx, gotClusterRole)).To(Succeed(), "Failed to update the ClusterRole object with another owner reference")
+			Expect(memberClient1.Update(ctx, gotClusterRole)).To(Succeed(), "Failed to update the ClusterRole object with another owner reference")
 
 			// Ensure that the ClusterRole object has been updated as expected.
 			Eventually(func() error {
 				// Retrieve the ClusterRole object again.
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: clusterRoleName}, gotClusterRole); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: clusterRoleName}, gotClusterRole); err != nil {
 					return fmt.Errorf("failed to retrieve the ClusterRole object: %w", err)
 				}
 
@@ -2135,14 +2206,14 @@ var _ = Describe("work applier garbage collection", func() {
 
 		It("should start deleting the Work object", func() {
 			// Start deleting the Work object.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 		})
 
 		It("should start deleting the AppliedWork object", func() {
 			// Ensure that the Work object is being deleted.
 			Eventually(func() error {
 				appliedWork := &fleetv1beta1.AppliedWork{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); err != nil {
 					return err
 				}
 				if !appliedWork.DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(appliedWork, metav1.FinalizerDeleteDependents) {
@@ -2160,7 +2231,7 @@ var _ = Describe("work applier garbage collection", func() {
 			Eventually(func() error {
 				// Retrieve the ClusterRole object again.
 				gotClusterRole := &rbacv1.ClusterRole{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: clusterRoleName}, gotClusterRole); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: clusterRoleName}, gotClusterRole); err != nil {
 					return fmt.Errorf("failed to retrieve the ClusterRole object: %w", err)
 				}
 
@@ -2196,12 +2267,12 @@ var _ = Describe("work applier garbage collection", func() {
 
 			// Ensure that the ClusterRole object still exists.
 			Consistently(func() error {
-				return memberClient.Get(ctx, client.ObjectKey{Name: clusterRoleName}, regularClusterRole)
+				return memberClient1.Get(ctx, client.ObjectKey{Name: clusterRoleName}, regularClusterRole)
 			}, consistentlyDuration, consistentlyInterval).Should(BeNil(), "ClusterRole object has been removed unexpectedly")
 			// Delete objects created by the test suite so that the next test case can run without issues.
-			Expect(memberClient.Delete(ctx, regularClusterRole)).To(Succeed(), "Failed to delete the clusterRole object")
+			Expect(memberClient1.Delete(ctx, regularClusterRole)).To(Succeed(), "Failed to delete the clusterRole object")
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -2234,7 +2305,7 @@ var _ = Describe("work applier garbage collection", func() {
 			regularClusterRoleJSON := marshalK8sObjJSON(regularClusterRole)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, &fleetv1beta1.ApplyStrategy{AllowCoOwnership: true}, regularNSJSON, regularDeployJSON, regularClusterRoleJSON)
+			createWorkObject(workName, memberReservedNSName1, &fleetv1beta1.ApplyStrategy{AllowCoOwnership: true}, regularNSJSON, regularDeployJSON, regularClusterRoleJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -2254,19 +2325,19 @@ var _ = Describe("work applier garbage collection", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the Deployment object has been applied as expected.
 			regularDeploymentObjectAppliedActual := regularDeploymentObjectAppliedActual(nsName, deployName, appliedWorkOwnerRef)
 			Eventually(regularDeploymentObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the deployment object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
 
 			// Ensure that the ClusterRole object has been applied as expected.
 			regularClusterRoleObjectAppliedActual := regularClusterRoleObjectAppliedActual(clusterRoleName, appliedWorkOwnerRef)
 			Eventually(regularClusterRoleObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the clusterRole object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: clusterRoleName}, regularClusterRole)).To(Succeed(), "Failed to retrieve the clusterRole object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: clusterRoleName}, regularClusterRole)).To(Succeed(), "Failed to retrieve the clusterRole object")
 		})
 
 		It("can mark the deployment as available", func() {
@@ -2413,11 +2484,11 @@ var _ = Describe("work applier garbage collection", func() {
 		It("can update Deployment object to add another owner reference", func() {
 			// Retrieve the ClusterRole object.
 			gotClusterRole := &rbacv1.ClusterRole{}
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: clusterRoleName}, gotClusterRole)).To(Succeed(), "Failed to retrieve the ClusterRole object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: clusterRoleName}, gotClusterRole)).To(Succeed(), "Failed to retrieve the ClusterRole object")
 
 			// Retrieve the Deployment object.
 			gotDeploy := &appsv1.Deployment{}
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
 
 			// Add another owner reference to the Deployment object.
 			gotDeploy.OwnerReferences = append(gotDeploy.OwnerReferences, metav1.OwnerReference{
@@ -2426,12 +2497,12 @@ var _ = Describe("work applier garbage collection", func() {
 				Name:       gotClusterRole.Name,
 				UID:        gotClusterRole.UID,
 			})
-			Expect(memberClient.Update(ctx, gotDeploy)).To(Succeed(), "Failed to update the Deployment object with another owner reference")
+			Expect(memberClient1.Update(ctx, gotDeploy)).To(Succeed(), "Failed to update the Deployment object with another owner reference")
 
 			// Ensure that the Deployment object has been updated as expected.
 			Eventually(func() error {
 				// Retrieve the Deployment object again.
-				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy); err != nil {
 					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
 				}
 
@@ -2453,14 +2524,14 @@ var _ = Describe("work applier garbage collection", func() {
 
 		It("should start deleting the Work object", func() {
 			// Start deleting the Work object.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 		})
 
 		It("should start deleting the AppliedWork object", func() {
 			// Ensure that the Work object is being deleted.
 			Eventually(func() error {
 				appliedWork := &fleetv1beta1.AppliedWork{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); err != nil {
 					return err
 				}
 				if !appliedWork.DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(appliedWork, metav1.FinalizerDeleteDependents) {
@@ -2478,7 +2549,7 @@ var _ = Describe("work applier garbage collection", func() {
 			Eventually(func() error {
 				// Retrieve the Deployment object.
 				gotDeploy := &appsv1.Deployment{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, gotDeploy); err != nil {
 					return fmt.Errorf("failed to retrieve the ClusterRole object: %w", err)
 				}
 
@@ -2513,12 +2584,12 @@ var _ = Describe("work applier garbage collection", func() {
 
 			// Ensure that the Deployment object still exists.
 			Consistently(func() error {
-				return memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)
+				return memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)
 			}, consistentlyDuration, consistentlyInterval).Should(BeNil(), "Deployment object has been removed unexpectedly")
 			// Delete objects created by the test suite so that the next test case can run without issues.
-			Expect(memberClient.Delete(ctx, regularDeploy)).To(Succeed(), "Failed to delete the Deployment object")
+			Expect(memberClient1.Delete(ctx, regularDeploy)).To(Succeed(), "Failed to delete the Deployment object")
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 })
@@ -2547,8 +2618,8 @@ var _ = Describe("drift detection and takeover", func() {
 			regularDeployJSON := marshalK8sObjJSON(regularDeploy)
 
 			// Create the resources on the member cluster side.
-			Expect(memberClient.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
-			Expect(memberClient.Create(ctx, regularDeploy)).To(Succeed(), "Failed to create the Deployment object")
+			Expect(memberClient1.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
+			Expect(memberClient1.Create(ctx, regularDeploy)).To(Succeed(), "Failed to create the Deployment object")
 
 			markDeploymentAsAvailable(nsName, deployName)
 
@@ -2557,7 +2628,7 @@ var _ = Describe("drift detection and takeover", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeIfNoDiff,
 			}
-			createWorkObject(workName, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -2577,13 +2648,13 @@ var _ = Describe("drift detection and takeover", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the Deployment object has been applied as expected.
 			regularDeploymentObjectAppliedActual := regularDeploymentObjectAppliedActual(nsName, deployName, appliedWorkOwnerRef)
 			Eventually(regularDeploymentObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the deployment object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
 		})
 
 		It("can mark the deployment as available", func() {
@@ -2692,7 +2763,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure applied manifest has been removed.
 			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
@@ -2710,7 +2781,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -2747,8 +2818,8 @@ var _ = Describe("drift detection and takeover", func() {
 			regularDeploy.Spec.Replicas = ptr.To(int32(2))
 
 			// Create the resources on the member cluster side.
-			Expect(memberClient.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
-			Expect(memberClient.Create(ctx, regularDeploy)).To(Succeed(), "Failed to create the Deployment object")
+			Expect(memberClient1.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
+			Expect(memberClient1.Create(ctx, regularDeploy)).To(Succeed(), "Failed to create the Deployment object")
 
 			markDeploymentAsAvailable(nsName, deployName)
 
@@ -2757,7 +2828,7 @@ var _ = Describe("drift detection and takeover", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeIfNoDiff,
 			}
-			createWorkObject(workName, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -2789,7 +2860,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 			Eventually(func() error {
 				// Retrieve the NS object.
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -2818,7 +2889,7 @@ var _ = Describe("drift detection and takeover", func() {
 			wantDeploy.Spec.Replicas = ptr.To(int32(2))
 
 			Consistently(func() error {
-				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy); err != nil {
 					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
 				}
 
@@ -2962,7 +3033,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the Deployment object has been left alone.
 			regularDeployNotRemovedActual := regularDeployNotRemovedActual(nsName, deployName)
@@ -2976,7 +3047,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -3012,8 +3083,8 @@ var _ = Describe("drift detection and takeover", func() {
 			regularDeploy.Spec.Replicas = ptr.To(int32(2))
 
 			// Create the resources on the member cluster side.
-			Expect(memberClient.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
-			Expect(memberClient.Create(ctx, regularDeploy)).To(Succeed(), "Failed to create the Deployment object")
+			Expect(memberClient1.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
+			Expect(memberClient1.Create(ctx, regularDeploy)).To(Succeed(), "Failed to create the Deployment object")
 
 			markDeploymentAsAvailable(nsName, deployName)
 
@@ -3022,7 +3093,7 @@ var _ = Describe("drift detection and takeover", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypeFullComparison,
 				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeIfNoDiff,
 			}
-			createWorkObject(workName, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -3048,7 +3119,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 			Consistently(func() error {
 				// Retrieve the NS object.
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -3075,7 +3146,7 @@ var _ = Describe("drift detection and takeover", func() {
 			wantDeploy.Spec.Replicas = ptr.To(int32(2))
 
 			Consistently(func() error {
-				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy); err != nil {
 					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
 				}
 
@@ -3240,7 +3311,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the Deployment object has been left alone.
 			regularDeployNotRemovedActual := regularDeployNotRemovedActual(nsName, deployName)
@@ -3254,7 +3325,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -3285,7 +3356,7 @@ var _ = Describe("drift detection and takeover", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				WhenToApply:      fleetv1beta1.WhenToApplyTypeIfNotDrifted,
 			}
-			createWorkObject(workName, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -3305,13 +3376,13 @@ var _ = Describe("drift detection and takeover", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the Deployment object has been applied as expected.
 			regularDeploymentObjectAppliedActual := regularDeploymentObjectAppliedActual(nsName, deployName, appliedWorkOwnerRef)
 			Eventually(regularDeploymentObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the deployment object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
 		})
 
 		It("can mark the deployment as available", func() {
@@ -3425,7 +3496,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(func() error {
 				// Retrieve the Deployment object.
 				updatedDeploy := &appsv1.Deployment{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, updatedDeploy); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, updatedDeploy); err != nil {
 					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
 				}
 
@@ -3433,7 +3504,7 @@ var _ = Describe("drift detection and takeover", func() {
 				updatedDeploy.Spec.Replicas = ptr.To(int32(2))
 
 				// Update the Deployment object.
-				if err := memberClient.Update(ctx, updatedDeploy); err != nil {
+				if err := memberClient1.Update(ctx, updatedDeploy); err != nil {
 					return fmt.Errorf("failed to update the Deployment object: %w", err)
 				}
 				return nil
@@ -3442,7 +3513,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(func() error {
 				// Retrieve the NS object.
 				updatedNS := &corev1.Namespace{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -3453,7 +3524,7 @@ var _ = Describe("drift detection and takeover", func() {
 				updatedNS.Labels[dummyLabelKey] = dummyLabelValue1
 
 				// Update the NS object.
-				if err := memberClient.Update(ctx, updatedNS); err != nil {
+				if err := memberClient1.Update(ctx, updatedNS); err != nil {
 					return fmt.Errorf("failed to update the NS object: %w", err)
 				}
 				return nil
@@ -3477,7 +3548,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 			Consistently(func() error {
 				// Retrieve the NS object.
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -3509,7 +3580,7 @@ var _ = Describe("drift detection and takeover", func() {
 			wantDeploy.Spec.Replicas = ptr.To(int32(2))
 
 			Consistently(func() error {
-				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy); err != nil {
 					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
 				}
 
@@ -3654,7 +3725,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the Deployment object has been left alone.
 			regularDeployNotRemovedActual := regularDeployNotRemovedActual(nsName, deployName)
@@ -3663,6 +3734,403 @@ var _ = Describe("drift detection and takeover", func() {
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
 			checkNSOwnerReferences(workName, nsName)
+
+			// Ensure that the AppliedWork object has been removed.
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
+
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
+
+			// The environment prepared by the envtest package does not support namespace
+			// deletion; consequently this test suite would not attempt to verify its deletion.
+		})
+	})
+
+	// Note (chenyu1): this test case is built upon the mutable scheduling directives
+	// feature that is enabled in Kubernetes since version 1.27. This feature is designed
+	// specifically for cloud-native queue implementations, which allow them to
+	// fine-tune how Job pods are scheduled by modifying certain scheduling-related
+	// fields when the Job is just created in the suspended state. Without this feature
+	// we wouldn't be able to introduce drifts to Job objects once they are created.
+	Context("detect drifts (apply if no drift, drift occurred, partial comparison, degraded mode)", Ordered, func() {
+		workName := fmt.Sprintf(workNameTemplate, utils.RandStr())
+		// The environment prepared by the envtest package does not support namespace
+		// deletion; each test case would use a new namespace.
+		nsName := fmt.Sprintf(nsNameTemplate, utils.RandStr())
+
+		var appliedWorkOwnerRef *metav1.OwnerReference
+		var regularNS *corev1.Namespace
+		var regularJob *batchv1.Job
+
+		BeforeAll(func() {
+			// Prepare a NS object.
+			regularNS = ns.DeepCopy()
+			regularNS.Name = nsName
+			regularNSJSON := marshalK8sObjJSON(regularNS)
+
+			// Prepare a Job object.
+			regularJob = job.DeepCopy()
+			regularJob.Namespace = nsName
+			regularJob.Name = jobName
+			regularJob.Spec.Suspend = ptr.To(true)
+			regularJob.Spec.Template.Labels[dummyLabelKey] = dummyLabelValue1
+			regularJobJSON := marshalK8sObjJSON(regularJob)
+
+			// Create a new Work object with all the manifest JSONs and proper apply strategy.
+			applyStrategy := &fleetv1beta1.ApplyStrategy{
+				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
+				WhenToApply:      fleetv1beta1.WhenToApplyTypeIfNotDrifted,
+				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeAlways,
+			}
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularJobJSON)
+		})
+
+		It("should add cleanup finalizer to the Work object", func() {
+			finalizerAddedActual := workFinalizerAddedActual(workName)
+			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
+		})
+
+		It("should prepare an AppliedWork object", func() {
+			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
+
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+		})
+
+		It("should update the Work object status", func() {
+			// Prepare the status information.
+			workConds := []metav1.Condition{
+				{
+					Type:   fleetv1beta1.WorkConditionTypeApplied,
+					Status: metav1.ConditionTrue,
+					Reason: condition.WorkAllManifestsAppliedReason,
+				},
+				{
+					Type:   fleetv1beta1.WorkConditionTypeAvailable,
+					Status: metav1.ConditionTrue,
+					Reason: condition.WorkNotTrackableReason,
+				},
+			}
+			manifestConds := []fleetv1beta1.ManifestCondition{
+				{
+					Identifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:  0,
+						Group:    "",
+						Version:  "v1",
+						Kind:     "Namespace",
+						Resource: "namespaces",
+						Name:     nsName,
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeApplied,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(ApplyOrReportDiffResTypeApplied),
+							ObservedGeneration: 0,
+						},
+						{
+							Type:               fleetv1beta1.WorkConditionTypeAvailable,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(AvailabilityResultTypeAvailable),
+							ObservedGeneration: 0,
+						},
+					},
+				},
+				{
+					Identifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:   1,
+						Group:     "batch",
+						Version:   "v1",
+						Kind:      "Job",
+						Resource:  "jobs",
+						Name:      jobName,
+						Namespace: nsName,
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeApplied,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(ApplyOrReportDiffResTypeApplied),
+							ObservedGeneration: 1,
+						},
+						{
+							Type:               fleetv1beta1.WorkConditionTypeAvailable,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(AvailabilityResultTypeNotTrackable),
+							ObservedGeneration: 1,
+						},
+					},
+				},
+			}
+
+			workStatusUpdatedActual := workStatusUpdated(workName, workConds, manifestConds, nil, nil)
+			Eventually(workStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update work status")
+		})
+
+		It("should apply all manifests", func() {
+			// Ensure that the NS object has been applied as expected.
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
+
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+
+			// Ensure that the Job object has been applied as expected.
+			regularJobObjectAppliedActual := regularJobObjectAppliedActual(nsName, jobName, appliedWorkOwnerRef)
+			Eventually(regularJobObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the job object")
+
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: jobName, Namespace: nsName}, regularJob)).To(Succeed(), "Failed to retrieve the Job object")
+		})
+
+		It("should update the AppliedWork object status", func() {
+			// Prepare the status information.
+			appliedResourceMeta := []fleetv1beta1.AppliedResourceMeta{
+				{
+					WorkResourceIdentifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:  0,
+						Group:    "",
+						Version:  "v1",
+						Kind:     "Namespace",
+						Resource: "namespaces",
+						Name:     nsName,
+					},
+					UID: regularNS.UID,
+				},
+				{
+					WorkResourceIdentifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:   1,
+						Group:     "batch",
+						Version:   "v1",
+						Kind:      "Job",
+						Resource:  "jobs",
+						Name:      jobName,
+						Namespace: nsName,
+					},
+					UID: regularJob.UID,
+				},
+			}
+
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
+		})
+
+		It("can update the job object directly on the member cluster side", func() {
+			// Update the labels in the pod template.
+			//
+			// This is only possible when the Job is just created in the suspended state.
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: jobName}, regularJob)).To(Succeed(), "Failed to retrieve the Job object")
+
+			// Use an Eventually block to guard transient errors.
+			Eventually(func() error {
+				regularJob.Spec.Template.Labels[dummyLabelKey] = dummyLabelValue2
+				return memberClient1.Update(ctx, regularJob)
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update the Job object")
+
+			// Unsuspend the Job object. This would make the pod template immutable.
+			Eventually(func() error {
+				regularJob.Spec.Suspend = ptr.To(false)
+				return memberClient1.Update(ctx, regularJob)
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to unsuspend the Job object")
+		})
+
+		It("should update the Work object status", func() {
+			// Prepare the status information.
+			workConds := []metav1.Condition{
+				{
+					Type:   fleetv1beta1.WorkConditionTypeApplied,
+					Status: metav1.ConditionFalse,
+					Reason: condition.WorkNotAllManifestsAppliedReason,
+				},
+			}
+			manifestConds := []fleetv1beta1.ManifestCondition{
+				{
+					Identifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:  0,
+						Group:    "",
+						Version:  "v1",
+						Kind:     "Namespace",
+						Resource: "namespaces",
+						Name:     nsName,
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeApplied,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(ApplyOrReportDiffResTypeApplied),
+							ObservedGeneration: 0,
+						},
+						{
+							Type:               fleetv1beta1.WorkConditionTypeAvailable,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(AvailabilityResultTypeAvailable),
+							ObservedGeneration: 0,
+						},
+					},
+				},
+				{
+					Identifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:   1,
+						Group:     "batch",
+						Version:   "v1",
+						Kind:      "Job",
+						Resource:  "jobs",
+						Name:      jobName,
+						Namespace: nsName,
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeApplied,
+							Status:             metav1.ConditionFalse,
+							Reason:             string(ApplyOrReportDiffResTypeFoundDriftsInDegradedMode),
+							ObservedGeneration: regularJob.Generation,
+						},
+					},
+					DriftDetails: &fleetv1beta1.DriftDetails{
+						ObservedInMemberClusterGeneration: regularJob.Generation,
+						ObservedDrifts: []fleetv1beta1.PatchDetail{
+							{
+								Path:          "/spec/template/metadata/labels/foo",
+								ValueInMember: dummyLabelValue2,
+								ValueInHub:    dummyLabelValue1,
+							},
+						},
+					},
+				},
+			}
+
+			// Use custom status comparison logic as in this test case drift calculation is expected
+			// to run in degraded mode, which includes additional dynamic output that need to be
+			// filtered out.
+			Eventually(func() error {
+				// Retrieve the Work object.
+				work := &fleetv1beta1.Work{}
+				if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, work); err != nil {
+					return fmt.Errorf("failed to retrieve the Work object: %w", err)
+				}
+
+				// Prepare the expected Work object status.
+
+				// Update the conditions with the observed generation.
+				//
+				// Note that the observed generation of a manifest condition is that of an applied
+				// resource, not that of the Work object.
+				for idx := range workConds {
+					workConds[idx].ObservedGeneration = work.Generation
+				}
+				wantWorkStatus := fleetv1beta1.WorkStatus{
+					Conditions:         workConds,
+					ManifestConditions: manifestConds,
+				}
+
+				if len(work.Status.ManifestConditions) == 2 && work.Status.ManifestConditions[1].DriftDetails != nil {
+					println(fmt.Sprintf("see me:\n%+v", work.Status.ManifestConditions[1].DriftDetails.ObservedDrifts))
+				}
+				// Check that the Work object status has been updated as expected.
+				if diff := cmp.Diff(
+					work.Status, wantWorkStatus,
+					ignoreFieldConditionLTTMsg,
+					ignoreDiffDetailsObsTime, ignoreDriftDetailsObsTime,
+					cmpopts.SortSlices(lessFuncPatchDetail),
+					cmpopts.IgnoreSliceElements(func(d fleetv1beta1.PatchDetail) bool {
+						return d.Path != "/spec/template/metadata/labels/foo"
+					}),
+				); diff != "" {
+					return fmt.Errorf("work status diff (-got, +want):\n%s", diff)
+				}
+
+				// For simplicity reasons, the diff timestamps are not checked.
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update work status")
+		})
+
+		It("should not apply the job manifest", func() {
+			// Ensure that the changes made before have not been overwritten.
+			Consistently(func() error {
+				// Retrieve the Job object.
+				gotJob := &batchv1.Job{}
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: jobName}, gotJob); err != nil {
+					return fmt.Errorf("failed to retrieve the Job object: %w", err)
+				}
+
+				// Check that the Job object has been created as expected.
+
+				// To ignore default values automatically, here the test suite rebuilds the objects.
+				wantJob := job.DeepCopy()
+				wantJob.TypeMeta = metav1.TypeMeta{}
+				wantJob.Namespace = nsName
+				wantJob.Name = jobName
+				wantJob.OwnerReferences = []metav1.OwnerReference{
+					*appliedWorkOwnerRef,
+				}
+				wantJob.Spec.Template.Labels[dummyLabelKey] = dummyLabelValue2
+				wantJob.Spec.Suspend = ptr.To(false)
+
+				rebuiltGotJob := &batchv1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace:       gotJob.Namespace,
+						Name:            gotJob.Name,
+						OwnerReferences: gotJob.OwnerReferences,
+					},
+					Spec: batchv1.JobSpec{
+						Template: corev1.PodTemplateSpec{
+							ObjectMeta: metav1.ObjectMeta{
+								Labels: map[string]string{
+									"app":         gotJob.Spec.Template.ObjectMeta.Labels["app"],
+									dummyLabelKey: gotJob.Spec.Template.ObjectMeta.Labels[dummyLabelKey],
+								},
+							},
+							Spec: corev1.PodSpec{
+								Containers: []corev1.Container{
+									{
+										Name:    gotJob.Spec.Template.Spec.Containers[0].Name,
+										Image:   gotJob.Spec.Template.Spec.Containers[0].Image,
+										Command: gotJob.Spec.Template.Spec.Containers[0].Command,
+									},
+								},
+								RestartPolicy: gotJob.Spec.Template.Spec.RestartPolicy,
+							},
+						},
+						Suspend:     gotJob.Spec.Suspend,
+						Parallelism: gotJob.Spec.Parallelism,
+						Completions: gotJob.Spec.Completions,
+					},
+				}
+				if diff := cmp.Diff(rebuiltGotJob, wantJob); diff != "" {
+					return fmt.Errorf("job diff (-got +want):\n%s", diff)
+				}
+				return nil
+			}, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to leave the Job object alone")
+
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: jobName, Namespace: nsName}, regularJob)).To(Succeed(), "Failed to retrieve the Job object")
+		})
+
+		It("should update the AppliedWork object status", func() {
+			// Prepare the status information.
+			appliedResourceMeta := []fleetv1beta1.AppliedResourceMeta{
+				{
+					WorkResourceIdentifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:  0,
+						Group:    "",
+						Version:  "v1",
+						Kind:     "Namespace",
+						Resource: "namespaces",
+						Name:     nsName,
+					},
+					UID: regularNS.UID,
+				},
+			}
+
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
+		})
+
+		AfterAll(func() {
+			// Delete the Work object and related resources.
+			deleteWorkObject(workName, memberReservedNSName1)
+
+			// Ensure that the Job object has been left alone.
+			jobNotRemovedActual := regularJobNotRemovedActual(nsName, jobName)
+			Consistently(jobNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the job object")
 
 			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
@@ -3698,7 +4166,7 @@ var _ = Describe("drift detection and takeover", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypeFullComparison,
 				WhenToApply:      fleetv1beta1.WhenToApplyTypeIfNotDrifted,
 			}
-			createWorkObject(workName, applyStrategy, regularNSJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -3718,7 +4186,7 @@ var _ = Describe("drift detection and takeover", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 		})
 
 		It("should update the Work object status", func() {
@@ -3790,7 +4258,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(func() error {
 				// Retrieve the NS object.
 				updatedNS := &corev1.Namespace{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -3801,7 +4269,7 @@ var _ = Describe("drift detection and takeover", func() {
 				updatedNS.Labels[dummyLabelKey] = dummyLabelValue1
 
 				// Update the NS object.
-				if err := memberClient.Update(ctx, updatedNS); err != nil {
+				if err := memberClient1.Update(ctx, updatedNS); err != nil {
 					return fmt.Errorf("failed to update the NS object: %w", err)
 				}
 				return nil
@@ -3824,7 +4292,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 			Consistently(func() error {
 				// Retrieve the NS object.
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -3900,7 +4368,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
@@ -3910,7 +4378,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -3938,7 +4406,7 @@ var _ = Describe("drift detection and takeover", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				WhenToApply:      fleetv1beta1.WhenToApplyTypeAlways,
 			}
-			createWorkObject(workName, applyStrategy, regularNSJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -3958,7 +4426,7 @@ var _ = Describe("drift detection and takeover", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 		})
 
 		It("should update the Work object status", func() {
@@ -4030,7 +4498,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(func() error {
 				// Retrieve the NS object.
 				updatedNS := &corev1.Namespace{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -4041,7 +4509,7 @@ var _ = Describe("drift detection and takeover", func() {
 				updatedNS.Labels[dummyLabelKey] = dummyLabelValue2
 
 				// Update the NS object.
-				if err := memberClient.Update(ctx, updatedNS); err != nil {
+				if err := memberClient1.Update(ctx, updatedNS); err != nil {
 					return fmt.Errorf("failed to update the NS object: %w", err)
 				}
 				return nil
@@ -4065,7 +4533,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 			nsOverwrittenActual := func() error {
 				// Retrieve the NS object.
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -4154,7 +4622,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
@@ -4168,7 +4636,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -4195,7 +4663,7 @@ var _ = Describe("drift detection and takeover", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				WhenToApply:      fleetv1beta1.WhenToApplyTypeIfNotDrifted,
 			}
-			createWorkObject(workName, applyStrategy, marshalK8sObjJSON(regularNS))
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, marshalK8sObjJSON(regularNS))
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -4215,7 +4683,7 @@ var _ = Describe("drift detection and takeover", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 		})
 
 		It("should update the Work object status", func() {
@@ -4287,7 +4755,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(func() error {
 				// Retrieve the NS object.
 				updatedNS := &corev1.Namespace{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -4298,7 +4766,7 @@ var _ = Describe("drift detection and takeover", func() {
 				updatedNS.Labels[dummyLabelKey] = dummyLabelValue2
 
 				// Update the NS object.
-				if err := memberClient.Update(ctx, updatedNS); err != nil {
+				if err := memberClient1.Update(ctx, updatedNS); err != nil {
 					return fmt.Errorf("failed to update the NS object: %w", err)
 				}
 				return nil
@@ -4321,7 +4789,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 			Consistently(func() error {
 				// Retrieve the NS object.
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -4428,7 +4896,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 			Eventually(func() error {
 				// Retrieve the NS object.
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -4515,7 +4983,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
@@ -4529,7 +4997,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -4556,7 +5024,7 @@ var _ = Describe("drift detection and takeover", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				WhenToApply:      fleetv1beta1.WhenToApplyTypeIfNotDrifted,
 			}
-			createWorkObject(workName, applyStrategy, marshalK8sObjJSON(regularNS))
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, marshalK8sObjJSON(regularNS))
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -4576,7 +5044,7 @@ var _ = Describe("drift detection and takeover", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 		})
 
 		It("should update the Work object status", func() {
@@ -4648,7 +5116,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(func() error {
 				// Retrieve the NS object.
 				updatedNS := &corev1.Namespace{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -4659,7 +5127,7 @@ var _ = Describe("drift detection and takeover", func() {
 				updatedNS.Labels[dummyLabelKey] = dummyLabelValue2
 
 				// Update the NS object.
-				if err := memberClient.Update(ctx, updatedNS); err != nil {
+				if err := memberClient1.Update(ctx, updatedNS); err != nil {
 					return fmt.Errorf("failed to update the NS object: %w", err)
 				}
 				return nil
@@ -4724,7 +5192,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(func() error {
 				// Retrieve the NS object.
 				updatedNS := &corev1.Namespace{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -4735,7 +5203,7 @@ var _ = Describe("drift detection and takeover", func() {
 				updatedNS.Labels[dummyLabelKey] = dummyLabelValue4
 
 				// Update the NS object.
-				if err := memberClient.Update(ctx, updatedNS); err != nil {
+				if err := memberClient1.Update(ctx, updatedNS); err != nil {
 					return fmt.Errorf("failed to update the NS object: %w", err)
 				}
 				return nil
@@ -4793,7 +5261,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
@@ -4807,7 +5275,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -4835,13 +5303,13 @@ var _ = Describe("drift detection and takeover", func() {
 			regularNSJSON := marshalK8sObjJSON(regularNS)
 
 			// Create the resources on the member cluster side.
-			Expect(memberClient.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
+			Expect(memberClient1.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
 
 			// Create a new Work object with all the manifest JSONs and proper apply strategy.
 			applyStrategy := &fleetv1beta1.ApplyStrategy{
 				WhenToTakeOver: fleetv1beta1.WhenToTakeOverTypeNever,
 			}
-			createWorkObject(workName, applyStrategy, regularNSJSON, marshalK8sObjJSON(regularDeploy))
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, marshalK8sObjJSON(regularDeploy))
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -4861,14 +5329,14 @@ var _ = Describe("drift detection and takeover", func() {
 			regularDeploymentObjectAppliedActual := regularDeploymentObjectAppliedActual(nsName, deployName, appliedWorkOwnerRef)
 			Eventually(regularDeploymentObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the deployment object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
 		})
 
 		It("should not apply the manifests that have corresponding resources", func() {
 			Eventually(func() error {
 				// Retrieve the NS object.
 				updatedNS := &corev1.Namespace{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -4975,7 +5443,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure applied manifest has been removed.
 			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
@@ -4989,7 +5457,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 })
@@ -5014,7 +5482,7 @@ var _ = Describe("report diff", func() {
 			applyStrategy := &fleetv1beta1.ApplyStrategy{
 				Type: fleetv1beta1.ApplyStrategyTypeReportDiff,
 			}
-			createWorkObject(workName, applyStrategy, regularNSJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -5085,7 +5553,7 @@ var _ = Describe("report diff", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
@@ -5095,7 +5563,7 @@ var _ = Describe("report diff", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -5122,18 +5590,18 @@ var _ = Describe("report diff", func() {
 			regularDeployJSON := marshalK8sObjJSON(regularDeploy)
 
 			// Create the objects first in the member cluster.
-			Expect(memberClient.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
+			Expect(memberClient1.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
 
 			// Create a diff in the replica count field.
 			regularDeploy.Spec.Replicas = ptr.To(int32(2))
-			Expect(memberClient.Create(ctx, regularDeploy)).To(Succeed(), "Failed to create the Deployment object")
+			Expect(memberClient1.Create(ctx, regularDeploy)).To(Succeed(), "Failed to create the Deployment object")
 
 			// Create a new Work object with all the manifest JSONs and proper apply strategy.
 			applyStrategy := &fleetv1beta1.ApplyStrategy{
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				Type:             fleetv1beta1.ApplyStrategyTypeReportDiff,
 			}
-			createWorkObject(workName, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -5161,7 +5629,7 @@ var _ = Describe("report diff", func() {
 			wantDeploy.Spec.Replicas = ptr.To(int32(2))
 
 			deployOwnedButNotApplied := func() error {
-				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy); err != nil {
 					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
 				}
 
@@ -5221,7 +5689,7 @@ var _ = Describe("report diff", func() {
 			}
 
 			nsOwnedButNotApplied := func() error {
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -5322,7 +5790,7 @@ var _ = Describe("report diff", func() {
 			Eventually(func() error {
 				// Retrieve the Deployment object.
 				updatedDeploy := &appsv1.Deployment{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, updatedDeploy); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, updatedDeploy); err != nil {
 					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
 				}
 
@@ -5330,7 +5798,7 @@ var _ = Describe("report diff", func() {
 				updatedDeploy.Spec.Replicas = ptr.To(int32(1))
 
 				// Update the Deployment object.
-				if err := memberClient.Update(ctx, updatedDeploy); err != nil {
+				if err := memberClient1.Update(ctx, updatedDeploy); err != nil {
 					return fmt.Errorf("failed to update the Deployment object: %w", err)
 				}
 				return nil
@@ -5409,7 +5877,7 @@ var _ = Describe("report diff", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the Deployment object has been left alone.
 			regularDeployNotRemovedActual := regularDeployNotRemovedActual(nsName, deployName)
@@ -5423,7 +5891,7 @@ var _ = Describe("report diff", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -5449,11 +5917,11 @@ var _ = Describe("report diff", func() {
 			regularDeployJSON := marshalK8sObjJSON(regularDeploy)
 
 			// Create the objects first in the member cluster.
-			Expect(memberClient.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
+			Expect(memberClient1.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
 
 			// Create a diff in the replica count field.
 			regularDeploy.Spec.Replicas = ptr.To(int32(2))
-			Expect(memberClient.Create(ctx, regularDeploy)).To(Succeed(), "Failed to create the Deployment object")
+			Expect(memberClient1.Create(ctx, regularDeploy)).To(Succeed(), "Failed to create the Deployment object")
 
 			// Create a new Work object with all the manifest JSONs and proper apply strategy.
 			applyStrategy := &fleetv1beta1.ApplyStrategy{
@@ -5461,7 +5929,7 @@ var _ = Describe("report diff", func() {
 				Type:             fleetv1beta1.ApplyStrategyTypeReportDiff,
 				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeNever,
 			}
-			createWorkObject(workName, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -5479,7 +5947,7 @@ var _ = Describe("report diff", func() {
 			Consistently(func() error {
 				// Retrieve the NS object.
 				updatedNS := &corev1.Namespace{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -5503,7 +5971,7 @@ var _ = Describe("report diff", func() {
 			Consistently(func() error {
 				// Retrieve the Deployment object.
 				updatedDeploy := &appsv1.Deployment{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, updatedDeploy); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, updatedDeploy); err != nil {
 					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
 				}
 
@@ -5624,7 +6092,7 @@ var _ = Describe("report diff", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure applied manifest has been removed.
 			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
@@ -5638,7 +6106,7 @@ var _ = Describe("report diff", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -5670,7 +6138,7 @@ var _ = Describe("report diff", func() {
 			applyStrategy := &fleetv1beta1.ApplyStrategy{
 				Type: fleetv1beta1.ApplyStrategyTypeReportDiff,
 			}
-			createWorkObject(workName, applyStrategy, regularNSJSON, malformedConfigMapJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, malformedConfigMapJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -5689,7 +6157,7 @@ var _ = Describe("report diff", func() {
 			Consistently(func() error {
 				configMap := &corev1.ConfigMap{}
 				objKey := client.ObjectKey{Namespace: nsName, Name: malformedConfigMap.Name}
-				if err := memberClient.Get(ctx, objKey, configMap); !errors.IsNotFound(err) {
+				if err := memberClient1.Get(ctx, objKey, configMap); !errors.IsNotFound(err) {
 					return fmt.Errorf("the config map exists, or an unexpected error has occurred: %w", err)
 				}
 				return nil
@@ -5768,7 +6236,273 @@ var _ = Describe("report diff", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
+
+			// Ensure that the AppliedWork object has been removed.
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
+
+			workRemovedActual := workRemovedActual(workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
+
+			// The environment prepared by the envtest package does not support namespace
+			// deletion; consequently this test suite would not attempt so verify its deletion.
+		})
+	})
+
+	Context("report diff only (partial comparison, degraded)", Ordered, func() {
+		workName := fmt.Sprintf(workNameTemplate, utils.RandStr())
+		// The environment prepared by the envtest package does not support namespace
+		// deletion; each test case would use a new namespace.
+		nsName := fmt.Sprintf(nsNameTemplate, utils.RandStr())
+
+		//var appliedWorkOwnerRef *metav1.OwnerReference
+		var regularNS *corev1.Namespace
+		var regularJob *batchv1.Job
+
+		BeforeAll(func() {
+			// Prepare a NS object.
+			regularNS = ns.DeepCopy()
+			regularNS.Name = nsName
+			regularNSJSON := marshalK8sObjJSON(regularNS)
+
+			// Prepare a Job object.
+			regularJob = job.DeepCopy()
+			regularJob.Namespace = nsName
+			regularJob.Name = jobName
+
+			// Create the objects first in the member cluster.
+			Expect(memberClient1.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
+			Expect(memberClient1.Create(ctx, regularJob)).To(Succeed(), "Failed to create the Job object")
+
+			// Update the values on the hub cluster side so that diffs will be found.
+			updatedJob := job.DeepCopy()
+			updatedJob.Namespace = nsName
+			updatedJob.Name = jobName
+			// `.spec.completions` is an immutable field in Job objects.
+			updatedJob.Spec.Completions = ptr.To(int32(3))
+			// `.spec.template` is an immutable field in Job objects.
+			updatedJob.Spec.Template.Spec.Containers[0].Image = "busybox:v0.0.1"
+			updatedJSONJSON := marshalK8sObjJSON(updatedJob)
+
+			// Create a new Work object with all the manifest JSONs and proper apply strategy.
+			applyStrategy := &fleetv1beta1.ApplyStrategy{
+				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
+				Type:             fleetv1beta1.ApplyStrategyTypeReportDiff,
+				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeNever,
+			}
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, updatedJSONJSON)
+		})
+
+		It("should add cleanup finalizer to the Work object", func() {
+			finalizerAddedActual := workFinalizerAddedActual(workName)
+			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
+		})
+
+		It("should prepare an AppliedWork object", func() {
+			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
+
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+		})
+
+		It("should update the Work object status", func() {
+			// Prepare the status information.
+			workConds := []metav1.Condition{
+				{
+					Type:   fleetv1beta1.WorkConditionTypeDiffReported,
+					Status: metav1.ConditionFalse,
+					Reason: condition.WorkNotAllManifestsDiffReportedReason,
+				},
+			}
+			manifestConds := []fleetv1beta1.ManifestCondition{
+				{
+					Identifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:  0,
+						Group:    "",
+						Version:  "v1",
+						Kind:     "Namespace",
+						Resource: "namespaces",
+						Name:     nsName,
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeDiffReported,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(ApplyOrReportDiffResTypeNoDiffFound),
+							ObservedGeneration: 0,
+						},
+					},
+				},
+				{
+					Identifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:   1,
+						Group:     "batch",
+						Version:   "v1",
+						Kind:      "Job",
+						Resource:  "jobs",
+						Name:      jobName,
+						Namespace: nsName,
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeDiffReported,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(ApplyOrReportDiffResTypeFoundDiffInDegradedMode),
+							ObservedGeneration: 1,
+						},
+					},
+					DiffDetails: &fleetv1beta1.DiffDetails{
+						ObservedInMemberClusterGeneration: &regularJob.Generation,
+						ObservedDiffs: []fleetv1beta1.PatchDetail{
+							{
+								Path:          "/spec/completions",
+								ValueInMember: "2",
+								ValueInHub:    "3",
+							},
+							{
+								Path:          "/spec/template/spec/containers/0/image",
+								ValueInMember: "busybox",
+								ValueInHub:    "busybox:v0.0.1",
+							},
+						},
+					},
+				},
+			}
+
+			// Use custom status comparison logic as in this test case diff calculation is expected
+			// to run in degraded mode, which includes additional dynamic output that need to be
+			// filtered out.
+			Eventually(func() error {
+				// Retrieve the Work object.
+				work := &fleetv1beta1.Work{}
+				if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, work); err != nil {
+					return fmt.Errorf("failed to retrieve the Work object: %w", err)
+				}
+
+				// Prepare the expected Work object status.
+
+				// Update the conditions with the observed generation.
+				//
+				// Note that the observed generation of a manifest condition is that of an applied
+				// resource, not that of the Work object.
+				for idx := range workConds {
+					workConds[idx].ObservedGeneration = work.Generation
+				}
+				wantWorkStatus := fleetv1beta1.WorkStatus{
+					Conditions:         workConds,
+					ManifestConditions: manifestConds,
+				}
+
+				// Check that the Work object status has been updated as expected.
+				if diff := cmp.Diff(
+					work.Status, wantWorkStatus,
+					ignoreFieldConditionLTTMsg,
+					ignoreDiffDetailsObsTime, ignoreDriftDetailsObsTime,
+					cmpopts.SortSlices(lessFuncPatchDetail),
+					cmpopts.IgnoreSliceElements(func(d fleetv1beta1.PatchDetail) bool {
+						return d.Path != "/spec/completions" && d.Path != "/spec/template/spec/containers/0/image"
+					}),
+				); diff != "" {
+					return fmt.Errorf("work status diff (-got, +want):\n%s", diff)
+				}
+
+				// For simplicity reasons, the diff timestamps are not checked.
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update work status")
+		})
+
+		It("should not own the objects or apply the manifests to them", func() {
+			Consistently(func() error {
+				// Retrieve the NS object.
+				updatedNS := &corev1.Namespace{}
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, updatedNS); err != nil {
+					return fmt.Errorf("failed to retrieve the NS object: %w", err)
+				}
+
+				// Rebuild the NS object to ignore default values automatically.
+				rebuiltGotNS := &corev1.Namespace{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            updatedNS.Name,
+						OwnerReferences: updatedNS.OwnerReferences,
+					},
+				}
+
+				wantNS := ns.DeepCopy()
+				wantNS.Name = nsName
+				if diff := cmp.Diff(rebuiltGotNS, wantNS, ignoreFieldTypeMetaInNamespace); diff != "" {
+					return fmt.Errorf("namespace diff (-got +want):\n%s", diff)
+				}
+				return nil
+			}, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to leave the NS object alone")
+
+			Consistently(func() error {
+				// Retrieve the Job object.
+				updatedJob := &batchv1.Job{}
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: jobName}, updatedJob); err != nil {
+					return fmt.Errorf("failed to retrieve the Job object: %w", err)
+				}
+
+				// Rebuild the Job object to ignore default values automatically.
+				if len(updatedJob.Spec.Template.Spec.Containers) != 1 {
+					return fmt.Errorf("unexpected number of containers in the Job pod template spec: %d, want 1", len(updatedJob.Spec.Template.Spec.Containers))
+				}
+				rebuiltGotJob := &batchv1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace:       updatedJob.Namespace,
+						Name:            updatedJob.Name,
+						OwnerReferences: updatedJob.OwnerReferences,
+					},
+					Spec: batchv1.JobSpec{
+						Parallelism: updatedJob.Spec.Parallelism,
+						Completions: updatedJob.Spec.Completions,
+						Template: corev1.PodTemplateSpec{
+							ObjectMeta: metav1.ObjectMeta{
+								Labels: map[string]string{
+									"app": updatedJob.Spec.Template.ObjectMeta.Labels["app"],
+								},
+							},
+							Spec: corev1.PodSpec{
+								Containers: []corev1.Container{
+									{
+										Name:    updatedJob.Spec.Template.Spec.Containers[0].Name,
+										Image:   updatedJob.Spec.Template.Spec.Containers[0].Image,
+										Command: updatedJob.Spec.Template.Spec.Containers[0].Command,
+									},
+								},
+								RestartPolicy: corev1.RestartPolicyNever,
+							},
+						},
+					},
+				}
+
+				wantJob := job.DeepCopy()
+				wantJob.TypeMeta = metav1.TypeMeta{}
+				wantJob.Namespace = nsName
+				wantJob.Name = jobName
+
+				if diff := cmp.Diff(rebuiltGotJob, wantJob); diff != "" {
+					return fmt.Errorf("job diff (-got +want):\n%s", diff)
+				}
+				return nil
+			}, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to leave the Job object alone")
+		})
+
+		It("should have no applied object reportings in the AppliedWork status", func() {
+			// Prepare the status information.
+			var appliedResourceMeta []fleetv1beta1.AppliedResourceMeta
+
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
+		})
+
+		AfterAll(func() {
+			// Delete the Work object and related resources.
+			deleteWorkObject(workName, memberReservedNSName1)
+
+			// Ensure that the Job object has been left alone.
+			jobNotRemovedActual := regularJobNotRemovedActual(nsName, jobName)
+			Consistently(jobNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the job object")
 
 			// Ensure that the AppliedWork object has been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
@@ -5807,18 +6541,18 @@ var _ = Describe("handling different apply strategies", func() {
 			regularDeployJSON := marshalK8sObjJSON(regularDeploy)
 
 			// Create the objects first in the member cluster.
-			Expect(memberClient.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
+			Expect(memberClient1.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
 
 			// Create a diff in the replica count field.
 			regularDeploy.Spec.Replicas = ptr.To(int32(2))
-			Expect(memberClient.Create(ctx, regularDeploy)).To(Succeed(), "Failed to create the Deployment object")
+			Expect(memberClient1.Create(ctx, regularDeploy)).To(Succeed(), "Failed to create the Deployment object")
 
 			// Create a new Work object with all the manifest JSONs and proper apply strategy.
 			applyStrategy := &fleetv1beta1.ApplyStrategy{
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				Type:             fleetv1beta1.ApplyStrategyTypeReportDiff,
 			}
-			createWorkObject(workName, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -5846,7 +6580,7 @@ var _ = Describe("handling different apply strategies", func() {
 			wantDeploy.Spec.Replicas = ptr.To(int32(2))
 
 			deployOwnedButNotApplied := func() error {
-				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy); err != nil {
 					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
 				}
 
@@ -5906,7 +6640,7 @@ var _ = Describe("handling different apply strategies", func() {
 			}
 
 			nsOwnedButNotApplied := func() error {
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -6005,7 +6739,7 @@ var _ = Describe("handling different apply strategies", func() {
 		It("can update the apply strategy", func() {
 			Eventually(func() error {
 				work := &fleetv1beta1.Work{}
-				if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName}, work); err != nil {
+				if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, work); err != nil {
 					return fmt.Errorf("failed to retrieve the Work object: %w", err)
 				}
 
@@ -6126,7 +6860,7 @@ var _ = Describe("handling different apply strategies", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure applied manifest has been removed.
 			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
@@ -6144,7 +6878,7 @@ var _ = Describe("handling different apply strategies", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -6175,7 +6909,7 @@ var _ = Describe("handling different apply strategies", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				Type:             fleetv1beta1.ApplyStrategyTypeServerSideApply,
 			}
-			createWorkObject(workName, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -6195,13 +6929,13 @@ var _ = Describe("handling different apply strategies", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the Deployment object has been applied as expected.
 			regularDeploymentObjectAppliedActual := regularDeploymentObjectAppliedActual(nsName, deployName, appliedWorkOwnerRef)
 			Eventually(regularDeploymentObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the deployment object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
 		})
 
 		It("should update the AppliedWork object status", func() {
@@ -6309,7 +7043,7 @@ var _ = Describe("handling different apply strategies", func() {
 		It("can update the apply strategy", func() {
 			Eventually(func() error {
 				work := &fleetv1beta1.Work{}
-				if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName}, work); err != nil {
+				if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, work); err != nil {
 					return fmt.Errorf("failed to retrieve the Work object: %w", err)
 				}
 
@@ -6387,7 +7121,7 @@ var _ = Describe("handling different apply strategies", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure applied manifest has been removed.
 			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
@@ -6405,7 +7139,7 @@ var _ = Describe("handling different apply strategies", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -6433,10 +7167,10 @@ var _ = Describe("handling different apply strategies", func() {
 
 			// Create objects in the member cluster.
 			preExistingNS := regularNS.DeepCopy()
-			Expect(memberClient.Create(ctx, preExistingNS)).To(Succeed(), "Failed to create the NS object")
+			Expect(memberClient1.Create(ctx, preExistingNS)).To(Succeed(), "Failed to create the NS object")
 			preExistingDeploy := regularDeploy.DeepCopy()
 			preExistingDeploy.Spec.Replicas = ptr.To(int32(2))
-			Expect(memberClient.Create(ctx, preExistingDeploy)).To(Succeed(), "Failed to create the Deployment object")
+			Expect(memberClient1.Create(ctx, preExistingDeploy)).To(Succeed(), "Failed to create the Deployment object")
 
 			// Create a new Work object with all the manifest JSONs and proper apply strategy.
 			applyStrategy := &fleetv1beta1.ApplyStrategy{
@@ -6444,7 +7178,7 @@ var _ = Describe("handling different apply strategies", func() {
 				Type:             fleetv1beta1.ApplyStrategyTypeClientSideApply,
 				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeNever,
 			}
-			createWorkObject(workName, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -6467,7 +7201,7 @@ var _ = Describe("handling different apply strategies", func() {
 
 			Consistently(func() error {
 				preExistingNS := &corev1.Namespace{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, preExistingNS); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, preExistingNS); err != nil {
 					return fmt.Errorf("failed to retrieve the NS object: %w", err)
 				}
 
@@ -6493,7 +7227,7 @@ var _ = Describe("handling different apply strategies", func() {
 
 			Consistently(func() error {
 				preExistingDeploy := &appsv1.Deployment{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, preExistingDeploy); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, preExistingDeploy); err != nil {
 					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
 				}
 
@@ -6598,7 +7332,7 @@ var _ = Describe("handling different apply strategies", func() {
 		It("can update the apply strategy", func() {
 			Eventually(func() error {
 				work := &fleetv1beta1.Work{}
-				if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName}, work); err != nil {
+				if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, work); err != nil {
 					return fmt.Errorf("failed to retrieve the Work object: %w", err)
 				}
 
@@ -6619,7 +7353,7 @@ var _ = Describe("handling different apply strategies", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 		})
 
 		It("should not take over some objects", func() {
@@ -6632,7 +7366,7 @@ var _ = Describe("handling different apply strategies", func() {
 
 			Consistently(func() error {
 				preExistingDeploy := &appsv1.Deployment{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, preExistingDeploy); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, preExistingDeploy); err != nil {
 					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
 				}
 
@@ -6772,7 +7506,7 @@ var _ = Describe("handling different apply strategies", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure applied manifest has been removed.
 			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
@@ -6790,7 +7524,7 @@ var _ = Describe("handling different apply strategies", func() {
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 
@@ -6843,7 +7577,7 @@ var _ = Describe("handling different apply strategies", func() {
 			oversizedCMJSON := marshalK8sObjJSON(oversizedCM)
 
 			// Create a new Work object with all the manifest JSONs and proper apply strategy.
-			createWorkObject(workName, nil, regularNSJSON, oversizedCMJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, oversizedCMJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -6863,12 +7597,12 @@ var _ = Describe("handling different apply strategies", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the oversized ConfigMap object has been applied as expected via SSA.
 			Eventually(func() error {
 				gotConfigMap := &corev1.ConfigMap{}
-				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, gotConfigMap); err != nil {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, gotConfigMap); err != nil {
 					return fmt.Errorf("failed to retrieve the ConfigMap object: %w", err)
 				}
 
@@ -6913,7 +7647,7 @@ var _ = Describe("handling different apply strategies", func() {
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the oversized configMap object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, oversizedCM)).To(Succeed(), "Failed to retrieve the ConfigMap object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, oversizedCM)).To(Succeed(), "Failed to retrieve the ConfigMap object")
 		})
 
 		It("should update the Work object status", func() {
@@ -6988,7 +7722,7 @@ var _ = Describe("handling different apply strategies", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that all applied manifests have been removed.
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
@@ -7002,18 +7736,18 @@ var _ = Describe("handling different apply strategies", func() {
 						Name:      configMapName,
 					},
 				}
-				if err := memberClient.Delete(ctx, cm); err != nil && !errors.IsNotFound(err) {
+				if err := memberClient1.Delete(ctx, cm); err != nil && !errors.IsNotFound(err) {
 					return fmt.Errorf("failed to delete the ConfigMap object: %w", err)
 				}
 
-				if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, cm); !errors.IsNotFound(err) {
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, cm); !errors.IsNotFound(err) {
 					return fmt.Errorf("the ConfigMap object still exists or an unexpected error occurred: %w", err)
 				}
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the oversized configMap object")
 
 			// The environment prepared by the envtest package does not support namespace
-			// deletion; consequently this test suite would not attempt so verify its deletion.
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 })
@@ -7051,7 +7785,7 @@ var _ = Describe("negative cases", func() {
 			malformedConfigMapJSON := marshalK8sObjJSON(malformedConfigMap)
 
 			// Create a Work object with all the manifest JSONs.
-			createWorkObject(workName, nil, regularNSJSON, malformedConfigMapJSON, regularConfigMapJson)
+			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, malformedConfigMapJSON, regularConfigMapJson)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -7071,13 +7805,13 @@ var _ = Describe("negative cases", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the ConfigMap object has been applied as expected.
 			regularConfigMapAppliedActual := regularConfigMapObjectAppliedActual(nsName, configMapName, appliedWorkOwnerRef)
 			Eventually(regularConfigMapAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the ConfigMap object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, regularConfigMap)).To(Succeed(), "Failed to retrieve the ConfigMap object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, regularConfigMap)).To(Succeed(), "Failed to retrieve the ConfigMap object")
 		})
 
 		It("should update the Work object status", func() {
@@ -7198,7 +7932,7 @@ var _ = Describe("negative cases", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure applied manifest has been removed.
 			regularConfigMapRemovedActual := regularConfigMapRemovedActual(nsName, configMapName)
@@ -7244,7 +7978,7 @@ var _ = Describe("negative cases", func() {
 			regularConfigMapJSON := marshalK8sObjJSON(regularConfigMap)
 
 			// Create a Work object with all the manifest JSONs.
-			createWorkObject(workName, nil, regularNSJSON, regularConfigMapJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, regularConfigMapJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -7264,7 +7998,7 @@ var _ = Describe("negative cases", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 		})
 
 		It("should update the Work object status", func() {
@@ -7349,7 +8083,7 @@ var _ = Describe("negative cases", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
@@ -7395,7 +8129,7 @@ var _ = Describe("negative cases", func() {
 			duplicatedConfigMap.Data[dummyLabelKey] = dummyLabelValue2
 
 			// Create a Work object with all the manifest JSONs.
-			createWorkObject(workName, nil, regularNSJSON, regularConfigMapJSON, duplicatedConfigMapJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, regularConfigMapJSON, duplicatedConfigMapJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -7415,13 +8149,13 @@ var _ = Describe("negative cases", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the ConfigMap object has been applied as expected.
 			regularConfigMapAppliedActual := regularConfigMapObjectAppliedActual(nsName, configMapName, appliedWorkOwnerRef)
 			Eventually(regularConfigMapAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the ConfigMap object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, regularConfigMap)).To(Succeed(), "Failed to retrieve the ConfigMap object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, regularConfigMap)).To(Succeed(), "Failed to retrieve the ConfigMap object")
 		})
 
 		It("should update the Work object status", func() {
@@ -7590,7 +8324,7 @@ var _ = Describe("negative cases", func() {
 			duplicatedConfigMapJSON := marshalK8sObjJSON(duplicatedConfigMap)
 
 			// Create a Work object with all the manifest JSONs.
-			createWorkObject(workName, nil, regularNSJSON, regularConfigMapJSON, malformedConfigMapJSON, configMapWithGenerateNameJSON, duplicatedConfigMapJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, regularConfigMapJSON, malformedConfigMapJSON, configMapWithGenerateNameJSON, duplicatedConfigMapJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -7610,13 +8344,13 @@ var _ = Describe("negative cases", func() {
 			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the ConfigMap object has been applied as expected.
 			regularConfigMapAppliedActual := regularConfigMapObjectAppliedActual(nsName, configMapName, appliedWorkOwnerRef)
 			Eventually(regularConfigMapAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the ConfigMap object")
 
-			Expect(memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, regularConfigMap)).To(Succeed(), "Failed to retrieve the ConfigMap object")
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, regularConfigMap)).To(Succeed(), "Failed to retrieve the ConfigMap object")
 		})
 
 		It("should update the Work object status", func() {
@@ -7774,7 +8508,7 @@ var _ = Describe("negative cases", func() {
 
 		AfterAll(func() {
 			// Delete the Work object and related resources.
-			deleteWorkObject(workName)
+			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure applied manifest has been removed.
 			regularConfigMapRemovedActual := regularConfigMapRemovedActual(nsName, configMapName)

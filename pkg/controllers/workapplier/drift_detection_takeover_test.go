@@ -98,16 +98,17 @@ func TestTakeOverPreExistingObject(t *testing.T) {
 	})
 
 	testCases := []struct {
-		name                        string
-		gvr                         *schema.GroupVersionResource
-		manifestObj                 *unstructured.Unstructured
-		inMemberClusterObj          *unstructured.Unstructured
-		workObj                     *fleetv1beta1.Work
-		applyStrategy               *fleetv1beta1.ApplyStrategy
-		expectedAppliedWorkOwnerRef *metav1.OwnerReference
-		wantErred                   bool
-		wantTakeOverObj             *unstructured.Unstructured
-		wantPatchDetails            []fleetv1beta1.PatchDetail
+		name                             string
+		gvr                              *schema.GroupVersionResource
+		manifestObj                      *unstructured.Unstructured
+		inMemberClusterObj               *unstructured.Unstructured
+		workObj                          *fleetv1beta1.Work
+		applyStrategy                    *fleetv1beta1.ApplyStrategy
+		expectedAppliedWorkOwnerRef      *metav1.OwnerReference
+		wantErred                        bool
+		wantTakeOverObj                  *unstructured.Unstructured
+		wantPatchDetails                 []fleetv1beta1.PatchDetail
+		wantDiffCalculatedInDegradedMode bool
 	}{
 		{
 			name:               "existing non-Fleet owner, co-ownership not allowed",
@@ -129,7 +130,7 @@ func TestTakeOverPreExistingObject(t *testing.T) {
 			workObj: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "dummy-work",
-					Namespace: memberReservedNSName,
+					Namespace: memberReservedNSName1,
 				},
 			},
 			applyStrategy: &fleetv1beta1.ApplyStrategy{
@@ -206,10 +207,10 @@ func TestTakeOverPreExistingObject(t *testing.T) {
 			r := &Reconciler{
 				hubClient:          fakeHubClient,
 				spokeDynamicClient: fakeMemberClient,
-				workNameSpace:      memberReservedNSName,
+				workNameSpace:      memberReservedNSName1,
 			}
 
-			takenOverObj, patchDetails, err := r.takeOverPreExistingObject(
+			takenOverObj, patchDetails, diffCalculatedInDegradedMode, err := r.takeOverPreExistingObject(
 				ctx,
 				tc.gvr,
 				tc.manifestObj, tc.inMemberClusterObj,
@@ -230,6 +231,9 @@ func TestTakeOverPreExistingObject(t *testing.T) {
 			}
 			if diff := cmp.Diff(patchDetails, tc.wantPatchDetails); diff != "" {
 				t.Errorf("patchDetails mismatches (-got, +want):\n%s", diff)
+			}
+			if diffCalculatedInDegradedMode != tc.wantDiffCalculatedInDegradedMode {
+				t.Errorf("diffCalculatedInDegradedMode = %v, want %v", diffCalculatedInDegradedMode, tc.wantDiffCalculatedInDegradedMode)
 			}
 		})
 	}
@@ -496,7 +500,7 @@ func TestRemoveLeftBehindAppliedWorkOwnerRefs(t *testing.T) {
 			workObj: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      workName,
-					Namespace: memberReservedNSName,
+					Namespace: memberReservedNSName1,
 				},
 			},
 		},
@@ -512,7 +516,7 @@ func TestRemoveLeftBehindAppliedWorkOwnerRefs(t *testing.T) {
 
 			r := &Reconciler{
 				hubClient:     fakeHubClient,
-				workNameSpace: memberReservedNSName,
+				workNameSpace: memberReservedNSName1,
 			}
 
 			gotOwnerRefs, err := r.removeLeftBehindAppliedWorkOwnerRefs(ctx, tc.ownerRefs)
