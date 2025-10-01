@@ -80,68 +80,6 @@ type UpdateRunObjList interface {
 	UpdateRunListItemGetter
 }
 
-// UpdateStrategySpecGetterSetter offers the functionality to work with StagedUpdateStrategySpec.
-// +kubebuilder:object:generate=false
-type UpdateStrategySpecGetterSetter interface {
-	GetStagedUpdateStrategySpec() *StagedUpdateStrategySpec
-	SetStagedUpdateStrategySpec(StagedUpdateStrategySpec)
-}
-
-// UpdateStrategyObj offers the functionality to work with staged update strategy objects, including ClusterStagedUpdateStrategies and StagedUpdateStrategies.
-// +kubebuilder:object:generate=false
-type UpdateStrategyObj interface {
-	client.Object
-	UpdateStrategySpecGetterSetter
-}
-
-// UpdateStrategyListItemGetter offers the functionality to get a list of UpdateStrategyObj items.
-// +kubebuilder:object:generate=false
-type UpdateStrategyListItemGetter interface {
-	GetUpdateStrategyObjs() []UpdateStrategyObj
-}
-
-// UpdateStrategyObjList offers the functionality to work with staged update strategy object list.
-// +kubebuilder:object:generate=false
-type UpdateStrategyObjList interface {
-	client.ObjectList
-	UpdateStrategyListItemGetter
-}
-
-// ApprovalRequestSpecGetterSetter offers the functionality to work with ApprovalRequestSpec.
-// +kubebuilder:object:generate=false
-type ApprovalRequestSpecGetterSetter interface {
-	GetApprovalRequestSpec() *ApprovalRequestSpec
-	SetApprovalRequestSpec(ApprovalRequestSpec)
-}
-
-// ApprovalRequestStatusGetterSetter offers the functionality to work with ApprovalRequestStatus.
-// +kubebuilder:object:generate=false
-type ApprovalRequestStatusGetterSetter interface {
-	GetApprovalRequestStatus() *ApprovalRequestStatus
-	SetApprovalRequestStatus(ApprovalRequestStatus)
-}
-
-// ApprovalRequestObj offers the functionality to work with approval request objects, including ClusterApprovalRequests and ApprovalRequests.
-// +kubebuilder:object:generate=false
-type ApprovalRequestObj interface {
-	apis.ConditionedObj
-	ApprovalRequestSpecGetterSetter
-	ApprovalRequestStatusGetterSetter
-}
-
-// ApprovalRequestListItemGetter offers the functionality to get a list of ApprovalRequestObj items.
-// +kubebuilder:object:generate=false
-type ApprovalRequestListItemGetter interface {
-	GetApprovalRequestObjs() []ApprovalRequestObj
-}
-
-// ApprovalRequestObjList offers the functionality to work with approval request object list.
-// +kubebuilder:object:generate=false
-type ApprovalRequestObjList interface {
-	client.ObjectList
-	ApprovalRequestListItemGetter
-}
-
 // +genclient
 // +genclient:Cluster
 // +kubebuilder:object:root=true
@@ -229,6 +167,33 @@ type StagedUpdateRunSpec struct {
 	// and recorded in the status field.
 	// +kubebuilder:validation:Required
 	StagedUpdateStrategyName string `json:"stagedRolloutStrategyName"`
+}
+
+// UpdateStrategySpecGetterSetter offers the functionality to work with StagedUpdateStrategySpec.
+// +kubebuilder:object:generate=false
+type UpdateStrategySpecGetterSetter interface {
+	GetStagedUpdateStrategySpec() *StagedUpdateStrategySpec
+	SetStagedUpdateStrategySpec(StagedUpdateStrategySpec)
+}
+
+// UpdateStrategyObj offers the functionality to work with staged update strategy objects, including ClusterStagedUpdateStrategies and StagedUpdateStrategies.
+// +kubebuilder:object:generate=false
+type UpdateStrategyObj interface {
+	client.Object
+	UpdateStrategySpecGetterSetter
+}
+
+// UpdateStrategyListItemGetter offers the functionality to get a list of UpdateStrategyObj items.
+// +kubebuilder:object:generate=false
+type UpdateStrategyListItemGetter interface {
+	GetUpdateStrategyObjs() []UpdateStrategyObj
+}
+
+// UpdateStrategyObjList offers the functionality to work with staged update strategy object list.
+// +kubebuilder:object:generate=false
+type UpdateStrategyObjList interface {
+	client.ObjectList
+	UpdateStrategyListItemGetter
 }
 
 // +genclient
@@ -590,6 +555,41 @@ func (c *ClusterStagedUpdateRunList) GetUpdateRunObjs() []UpdateRunObj {
 		objs[i] = &c.Items[i]
 	}
 	return objs
+}
+
+// ApprovalRequestSpecGetterSetter offers the functionality to work with ApprovalRequestSpec.
+// +kubebuilder:object:generate=false
+type ApprovalRequestSpecGetterSetter interface {
+	GetApprovalRequestSpec() *ApprovalRequestSpec
+	SetApprovalRequestSpec(ApprovalRequestSpec)
+}
+
+// ApprovalRequestStatusGetterSetter offers the functionality to work with ApprovalRequestStatus.
+// +kubebuilder:object:generate=false
+type ApprovalRequestStatusGetterSetter interface {
+	GetApprovalRequestStatus() *ApprovalRequestStatus
+	SetApprovalRequestStatus(ApprovalRequestStatus)
+}
+
+// ApprovalRequestObj offers the functionality to work with approval request objects, including ClusterApprovalRequests and ApprovalRequests.
+// +kubebuilder:object:generate=false
+type ApprovalRequestObj interface {
+	apis.ConditionedObj
+	ApprovalRequestSpecGetterSetter
+	ApprovalRequestStatusGetterSetter
+}
+
+// ApprovalRequestListItemGetter offers the functionality to get a list of ApprovalRequestObj items.
+// +kubebuilder:object:generate=false
+type ApprovalRequestListItemGetter interface {
+	GetApprovalRequestObjs() []ApprovalRequestObj
+}
+
+// ApprovalRequestObjList offers the functionality to work with approval request object list.
+// +kubebuilder:object:generate=false
+type ApprovalRequestObjList interface {
+	client.ObjectList
+	ApprovalRequestListItemGetter
 }
 
 // +genclient
