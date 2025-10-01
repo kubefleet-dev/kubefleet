@@ -48,15 +48,15 @@ var _ ApprovalRequestObjList = &ApprovalRequestList{}
 // UpdateRunSpecGetterSetter offers the functionality to work with StagedUpdateRunSpec.
 // +kubebuilder:object:generate=false
 type UpdateRunSpecGetterSetter interface {
-	GetStagedUpdateRunSpec() *StagedUpdateRunSpec
-	SetStagedUpdateRunSpec(StagedUpdateRunSpec)
+	GetUpdateRunSpec() *StagedUpdateRunSpec
+	SetUpdateRunSpec(StagedUpdateRunSpec)
 }
 
 // UpdateRunStatusGetterSetter offers the functionality to work with StagedUpdateRunStatus.
 // +kubebuilder:object:generate=false
 type UpdateRunStatusGetterSetter interface {
-	GetStagedUpdateRunStatus() *StagedUpdateRunStatus
-	SetStagedUpdateRunStatus(StagedUpdateRunStatus)
+	GetUpdateRunStatus() *StagedUpdateRunStatus
+	SetUpdateRunStatus(StagedUpdateRunStatus)
 }
 
 // UpdateRunObj offers the functionality to work with staged update run objects, including ClusterStagedUpdateRuns and StagedUpdateRuns.
@@ -126,23 +126,23 @@ func (c *ClusterStagedUpdateRun) SetConditions(conditions ...metav1.Condition) {
 	c.Status.Conditions = conditions
 }
 
-// GetStagedUpdateRunSpec returns the staged update run spec.
-func (c *ClusterStagedUpdateRun) GetStagedUpdateRunSpec() *StagedUpdateRunSpec {
+// GetUpdateRunSpec returns the staged update run spec.
+func (c *ClusterStagedUpdateRun) GetUpdateRunSpec() *StagedUpdateRunSpec {
 	return &c.Spec
 }
 
-// SetStagedUpdateRunSpec sets the staged update run spec.
-func (c *ClusterStagedUpdateRun) SetStagedUpdateRunSpec(spec StagedUpdateRunSpec) {
+// SetUpdateRunSpec sets the staged update run spec.
+func (c *ClusterStagedUpdateRun) SetUpdateRunSpec(spec StagedUpdateRunSpec) {
 	c.Spec = spec
 }
 
-// GetStagedUpdateRunStatus returns the staged update run status.
-func (c *ClusterStagedUpdateRun) GetStagedUpdateRunStatus() *StagedUpdateRunStatus {
+// GetUpdateRunStatus returns the staged update run status.
+func (c *ClusterStagedUpdateRun) GetUpdateRunStatus() *StagedUpdateRunStatus {
 	return &c.Status
 }
 
-// SetStagedUpdateRunStatus sets the staged update run status.
-func (c *ClusterStagedUpdateRun) SetStagedUpdateRunStatus(status StagedUpdateRunStatus) {
+// SetUpdateRunStatus sets the staged update run status.
+func (c *ClusterStagedUpdateRun) SetUpdateRunStatus(status StagedUpdateRunStatus) {
 	c.Status = status
 }
 
@@ -172,8 +172,8 @@ type StagedUpdateRunSpec struct {
 // UpdateStrategySpecGetterSetter offers the functionality to work with StagedUpdateStrategySpec.
 // +kubebuilder:object:generate=false
 type UpdateStrategySpecGetterSetter interface {
-	GetStagedUpdateStrategySpec() *StagedUpdateStrategySpec
-	SetStagedUpdateStrategySpec(StagedUpdateStrategySpec)
+	GetUpdateStrategySpec() *StagedUpdateStrategySpec
+	SetUpdateStrategySpec(StagedUpdateStrategySpec)
 }
 
 // UpdateStrategyObj offers the functionality to work with staged update strategy objects, including ClusterStagedUpdateStrategies and StagedUpdateStrategies.
@@ -215,13 +215,13 @@ type ClusterStagedUpdateStrategy struct {
 	Spec StagedUpdateStrategySpec `json:"spec"`
 }
 
-// GetStagedUpdateStrategySpec returns the staged update strategy spec.
-func (c *ClusterStagedUpdateStrategy) GetStagedUpdateStrategySpec() *StagedUpdateStrategySpec {
+// GetUpdateStrategySpec returns the staged update strategy spec.
+func (c *ClusterStagedUpdateStrategy) GetUpdateStrategySpec() *StagedUpdateStrategySpec {
 	return &c.Spec
 }
 
-// SetStagedUpdateStrategySpec sets the staged update strategy spec.
-func (c *ClusterStagedUpdateStrategy) SetStagedUpdateStrategySpec(spec StagedUpdateStrategySpec) {
+// SetUpdateStrategySpec sets the staged update strategy spec.
+func (c *ClusterStagedUpdateStrategy) SetUpdateStrategySpec(spec StagedUpdateStrategySpec) {
 	c.Spec = spec
 }
 
@@ -756,23 +756,23 @@ func (s *StagedUpdateRun) SetConditions(conditions ...metav1.Condition) {
 	s.Status.Conditions = conditions
 }
 
-// GetStagedUpdateRunSpec returns the staged update run spec.
-func (s *StagedUpdateRun) GetStagedUpdateRunSpec() *StagedUpdateRunSpec {
+// GetUpdateRunSpec returns the staged update run spec.
+func (s *StagedUpdateRun) GetUpdateRunSpec() *StagedUpdateRunSpec {
 	return &s.Spec
 }
 
-// SetStagedUpdateRunSpec sets the staged update run spec.
-func (s *StagedUpdateRun) SetStagedUpdateRunSpec(spec StagedUpdateRunSpec) {
+// SetUpdateRunSpec sets the staged update run spec.
+func (s *StagedUpdateRun) SetUpdateRunSpec(spec StagedUpdateRunSpec) {
 	s.Spec = spec
 }
 
-// GetStagedUpdateRunStatus returns the staged update run status.
-func (s *StagedUpdateRun) GetStagedUpdateRunStatus() *StagedUpdateRunStatus {
+// GetUpdateRunStatus returns the staged update run status.
+func (s *StagedUpdateRun) GetUpdateRunStatus() *StagedUpdateRunStatus {
 	return &s.Status
 }
 
-// SetStagedUpdateRunStatus sets the staged update run status.
-func (s *StagedUpdateRun) SetStagedUpdateRunStatus(status StagedUpdateRunStatus) {
+// SetUpdateRunStatus sets the staged update run status.
+func (s *StagedUpdateRun) SetUpdateRunStatus(status StagedUpdateRunStatus) {
 	s.Status = status
 }
 
@@ -811,13 +811,13 @@ type StagedUpdateStrategy struct {
 	Spec StagedUpdateStrategySpec `json:"spec"`
 }
 
-// GetStagedUpdateStrategySpec returns the staged update strategy spec.
-func (s *StagedUpdateStrategy) GetStagedUpdateStrategySpec() *StagedUpdateStrategySpec {
+// GetUpdateStrategySpec returns the staged update strategy spec.
+func (s *StagedUpdateStrategy) GetUpdateStrategySpec() *StagedUpdateStrategySpec {
 	return &s.Spec
 }
 
-// SetStagedUpdateStrategySpec sets the staged update strategy spec.
-func (s *StagedUpdateStrategy) SetStagedUpdateStrategySpec(spec StagedUpdateStrategySpec) {
+// SetUpdateStrategySpec sets the staged update strategy spec.
+func (s *StagedUpdateStrategy) SetUpdateStrategySpec(spec StagedUpdateStrategySpec) {
 	s.Spec = spec
 }
 
