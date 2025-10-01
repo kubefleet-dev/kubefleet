@@ -59,7 +59,7 @@ type UpdateRunStatusGetterSetter interface {
 	SetStagedUpdateRunStatus(StagedUpdateRunStatus)
 }
 
-// UpdateRunObj offers the functionality to work with staged update run objects.
+// UpdateRunObj offers the functionality to work with staged update run objects, including ClusterStagedUpdateRuns and StagedUpdateRuns.
 // +kubebuilder:object:generate=false
 type UpdateRunObj interface {
 	apis.ConditionedObj
@@ -87,7 +87,7 @@ type UpdateStrategySpecGetterSetter interface {
 	SetStagedUpdateStrategySpec(StagedUpdateStrategySpec)
 }
 
-// UpdateStrategyObj offers the functionality to work with staged update strategy objects.
+// UpdateStrategyObj offers the functionality to work with staged update strategy objects, including ClusterStagedUpdateStrategies and StagedUpdateStrategies.
 // +kubebuilder:object:generate=false
 type UpdateStrategyObj interface {
 	client.Object
@@ -121,7 +121,7 @@ type ApprovalRequestStatusGetterSetter interface {
 	SetApprovalRequestStatus(ApprovalRequestStatus)
 }
 
-// ApprovalRequestObj offers the functionality to work with approval request objects.
+// ApprovalRequestObj offers the functionality to work with approval request objects, including ClusterApprovalRequests and ApprovalRequests.
 // +kubebuilder:object:generate=false
 type ApprovalRequestObj interface {
 	apis.ConditionedObj
