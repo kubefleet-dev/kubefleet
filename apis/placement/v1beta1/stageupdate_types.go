@@ -45,18 +45,18 @@ var _ ApprovalRequestObj = &ApprovalRequest{}
 var _ ApprovalRequestObjList = &ClusterApprovalRequestList{}
 var _ ApprovalRequestObjList = &ApprovalRequestList{}
 
-// UpdateRunSpecGetterSetter offers the functionality to work with StagedUpdateRunSpec.
+// UpdateRunSpecGetterSetter offers the functionality to work with UpdateRunSpec.
 // +kubebuilder:object:generate=false
 type UpdateRunSpecGetterSetter interface {
-	GetUpdateRunSpec() *StagedUpdateRunSpec
-	SetUpdateRunSpec(StagedUpdateRunSpec)
+	GetUpdateRunSpec() *UpdateRunSpec
+	SetUpdateRunSpec(UpdateRunSpec)
 }
 
-// UpdateRunStatusGetterSetter offers the functionality to work with StagedUpdateRunStatus.
+// UpdateRunStatusGetterSetter offers the functionality to work with UpdateRunStatus.
 // +kubebuilder:object:generate=false
 type UpdateRunStatusGetterSetter interface {
-	GetUpdateRunStatus() *StagedUpdateRunStatus
-	SetUpdateRunStatus(StagedUpdateRunStatus)
+	GetUpdateRunStatus() *UpdateRunStatus
+	SetUpdateRunStatus(UpdateRunStatus)
 }
 
 // UpdateRunObj offers the functionality to work with staged update run objects, including ClusterStagedUpdateRuns and StagedUpdateRuns.
@@ -109,11 +109,11 @@ type ClusterStagedUpdateRun struct {
 	// The desired state of ClusterStagedUpdateRun. The spec is immutable.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="The spec field is immutable"
-	Spec StagedUpdateRunSpec `json:"spec"`
+	Spec UpdateRunSpec `json:"spec"`
 
 	// The observed status of ClusterStagedUpdateRun.
 	// +kubebuilder:validation:Optional
-	Status StagedUpdateRunStatus `json:"status,omitempty"`
+	Status UpdateRunStatus `json:"status,omitempty"`
 }
 
 // GetCondition returns the condition of the ClusterStagedUpdateRun.
@@ -127,28 +127,28 @@ func (c *ClusterStagedUpdateRun) SetConditions(conditions ...metav1.Condition) {
 }
 
 // GetUpdateRunSpec returns the staged update run spec.
-func (c *ClusterStagedUpdateRun) GetUpdateRunSpec() *StagedUpdateRunSpec {
+func (c *ClusterStagedUpdateRun) GetUpdateRunSpec() *UpdateRunSpec {
 	return &c.Spec
 }
 
 // SetUpdateRunSpec sets the staged update run spec.
-func (c *ClusterStagedUpdateRun) SetUpdateRunSpec(spec StagedUpdateRunSpec) {
+func (c *ClusterStagedUpdateRun) SetUpdateRunSpec(spec UpdateRunSpec) {
 	c.Spec = spec
 }
 
 // GetUpdateRunStatus returns the staged update run status.
-func (c *ClusterStagedUpdateRun) GetUpdateRunStatus() *StagedUpdateRunStatus {
+func (c *ClusterStagedUpdateRun) GetUpdateRunStatus() *UpdateRunStatus {
 	return &c.Status
 }
 
 // SetUpdateRunStatus sets the staged update run status.
-func (c *ClusterStagedUpdateRun) SetUpdateRunStatus(status StagedUpdateRunStatus) {
+func (c *ClusterStagedUpdateRun) SetUpdateRunStatus(status UpdateRunStatus) {
 	c.Status = status
 }
 
-// StagedUpdateRunSpec defines the desired rollout strategy and the snapshot indices of the resources to be updated.
+// UpdateRunSpec defines the desired rollout strategy and the snapshot indices of the resources to be updated.
 // It specifies a stage-by-stage update process across selected clusters for the given ResourcePlacement object.
-type StagedUpdateRunSpec struct {
+type UpdateRunSpec struct {
 	// PlacementName is the name of placement that this update run is applied to.
 	// There can be multiple active update runs for each placement, but
 	// it's up to the DevOps team to ensure they don't conflict with each other.
@@ -169,11 +169,11 @@ type StagedUpdateRunSpec struct {
 	StagedUpdateStrategyName string `json:"stagedRolloutStrategyName"`
 }
 
-// UpdateStrategySpecGetterSetter offers the functionality to work with StagedUpdateStrategySpec.
+// UpdateStrategySpecGetterSetter offers the functionality to work with UpdateStrategySpec.
 // +kubebuilder:object:generate=false
 type UpdateStrategySpecGetterSetter interface {
-	GetUpdateStrategySpec() *StagedUpdateStrategySpec
-	SetUpdateStrategySpec(StagedUpdateStrategySpec)
+	GetUpdateStrategySpec() *UpdateStrategySpec
+	SetUpdateStrategySpec(UpdateStrategySpec)
 }
 
 // UpdateStrategyObj offers the functionality to work with staged update strategy objects, including ClusterStagedUpdateStrategies and StagedUpdateStrategies.
@@ -212,21 +212,21 @@ type ClusterStagedUpdateStrategy struct {
 
 	// The desired state of ClusterStagedUpdateStrategy.
 	// +kubebuilder:validation:Required
-	Spec StagedUpdateStrategySpec `json:"spec"`
+	Spec UpdateStrategySpec `json:"spec"`
 }
 
 // GetUpdateStrategySpec returns the staged update strategy spec.
-func (c *ClusterStagedUpdateStrategy) GetUpdateStrategySpec() *StagedUpdateStrategySpec {
+func (c *ClusterStagedUpdateStrategy) GetUpdateStrategySpec() *UpdateStrategySpec {
 	return &c.Spec
 }
 
 // SetUpdateStrategySpec sets the staged update strategy spec.
-func (c *ClusterStagedUpdateStrategy) SetUpdateStrategySpec(spec StagedUpdateStrategySpec) {
+func (c *ClusterStagedUpdateStrategy) SetUpdateStrategySpec(spec UpdateStrategySpec) {
 	c.Spec = spec
 }
 
-// StagedUpdateStrategySpec defines the desired state of the StagedUpdateStrategy.
-type StagedUpdateStrategySpec struct {
+// UpdateStrategySpec defines the desired state of the StagedUpdateStrategy.
+type UpdateStrategySpec struct {
 	// Stage specifies the configuration for each update stage.
 	// +kubebuilder:validation:MaxItems=31
 	// +kubebuilder:validation:Required
@@ -298,8 +298,8 @@ type AfterStageTask struct {
 	WaitTime *metav1.Duration `json:"waitTime,omitempty"`
 }
 
-// StagedUpdateRunStatus defines the observed state of the ClusterStagedUpdateRun.
-type StagedUpdateRunStatus struct {
+// UpdateRunStatus defines the observed state of the ClusterStagedUpdateRun.
+type UpdateRunStatus struct {
 	// PolicySnapShotIndexUsed records the policy snapshot index of the ClusterResourcePlacement (CRP) that
 	// the update run is based on. The index represents the latest policy snapshot at the start of the update run.
 	// If a newer policy snapshot is detected after the run starts, the staged update run is abandoned.
@@ -321,13 +321,13 @@ type StagedUpdateRunStatus struct {
 	// +kubebuilder:validation:Optional
 	ApplyStrategy *ApplyStrategy `json:"appliedStrategy,omitempty"`
 
-	// StagedUpdateStrategySnapshot is the snapshot of the StagedUpdateStrategy used for the update run.
+	// UpdateStrategySnapshot is the snapshot of the UpdateStrategy used for the update run.
 	// The snapshot is immutable during the update run.
 	// The strategy is applied to the list of clusters scheduled by the CRP according to the current policy.
 	// The update run fails to initialize if the strategy fails to produce a valid list of stages where each selected
 	// cluster is included in exactly one stage.
 	// +kubebuilder:validation:Optional
-	StagedUpdateStrategySnapshot *StagedUpdateStrategySpec `json:"stagedUpdateStrategySnapshot,omitempty"`
+	UpdateStrategySnapshot *UpdateStrategySpec `json:"updateStrategySnapshot,omitempty"`
 
 	// StagesStatus lists the current updating status of each stage.
 	// The list is empty if the update run is not started or failed to initialize.
@@ -739,11 +739,11 @@ type StagedUpdateRun struct {
 	// The desired state of StagedUpdateRun. The spec is immutable.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="The spec field is immutable"
-	Spec StagedUpdateRunSpec `json:"spec"`
+	Spec UpdateRunSpec `json:"spec"`
 
 	// The observed status of StagedUpdateRun.
 	// +kubebuilder:validation:Optional
-	Status StagedUpdateRunStatus `json:"status,omitempty"`
+	Status UpdateRunStatus `json:"status,omitempty"`
 }
 
 // GetCondition returns the condition of the StagedUpdateRun.
@@ -757,22 +757,22 @@ func (s *StagedUpdateRun) SetConditions(conditions ...metav1.Condition) {
 }
 
 // GetUpdateRunSpec returns the staged update run spec.
-func (s *StagedUpdateRun) GetUpdateRunSpec() *StagedUpdateRunSpec {
+func (s *StagedUpdateRun) GetUpdateRunSpec() *UpdateRunSpec {
 	return &s.Spec
 }
 
 // SetUpdateRunSpec sets the staged update run spec.
-func (s *StagedUpdateRun) SetUpdateRunSpec(spec StagedUpdateRunSpec) {
+func (s *StagedUpdateRun) SetUpdateRunSpec(spec UpdateRunSpec) {
 	s.Spec = spec
 }
 
 // GetUpdateRunStatus returns the staged update run status.
-func (s *StagedUpdateRun) GetUpdateRunStatus() *StagedUpdateRunStatus {
+func (s *StagedUpdateRun) GetUpdateRunStatus() *UpdateRunStatus {
 	return &s.Status
 }
 
 // SetUpdateRunStatus sets the staged update run status.
-func (s *StagedUpdateRun) SetUpdateRunStatus(status StagedUpdateRunStatus) {
+func (s *StagedUpdateRun) SetUpdateRunStatus(status UpdateRunStatus) {
 	s.Status = status
 }
 
@@ -808,16 +808,16 @@ type StagedUpdateStrategy struct {
 
 	// The desired state of StagedUpdateStrategy.
 	// +kubebuilder:validation:Required
-	Spec StagedUpdateStrategySpec `json:"spec"`
+	Spec UpdateStrategySpec `json:"spec"`
 }
 
 // GetUpdateStrategySpec returns the staged update strategy spec.
-func (s *StagedUpdateStrategy) GetUpdateStrategySpec() *StagedUpdateStrategySpec {
+func (s *StagedUpdateStrategy) GetUpdateStrategySpec() *UpdateStrategySpec {
 	return &s.Spec
 }
 
 // SetUpdateStrategySpec sets the staged update strategy spec.
-func (s *StagedUpdateStrategy) SetUpdateStrategySpec(spec StagedUpdateStrategySpec) {
+func (s *StagedUpdateStrategy) SetUpdateStrategySpec(spec UpdateStrategySpec) {
 	s.Spec = spec
 }
 
