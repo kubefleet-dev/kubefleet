@@ -327,7 +327,7 @@ type UpdateRunStatus struct {
 	// The update run fails to initialize if the strategy fails to produce a valid list of stages where each selected
 	// cluster is included in exactly one stage.
 	// +kubebuilder:validation:Optional
-	UpdateStrategySnapshot *UpdateStrategySpec `json:"updateStrategySnapshot,omitempty"`
+	UpdateStrategySnapshot *UpdateStrategySpec `json:"stagedUpdateStrategySnapshot,omitempty"`
 
 	// StagesStatus lists the current updating status of each stage.
 	// The list is empty if the update run is not started or failed to initialize.
