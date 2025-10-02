@@ -818,7 +818,7 @@ spec:
                         at the same time.
                       properties:
                         firstDriftedObservedTime:
-                          description: FirftDriftedObservedTime is the timestamp when
+                          description: FirstDriftedObservedTime is the timestamp when
                             the drift was first detected.
                           format: date-time
                           type: string

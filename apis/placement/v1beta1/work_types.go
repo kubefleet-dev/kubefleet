@@ -146,7 +146,7 @@ type DriftDetails struct {
 	// +kubebuilder:validation:Required
 	ObservedInMemberClusterGeneration int64 `json:"observedInMemberClusterGeneration"`
 
-	// FirftDriftedObservedTime is the timestamp when the drift was first detected.
+	// FirstDriftedObservedTime is the timestamp when the drift was first detected.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Type=string
