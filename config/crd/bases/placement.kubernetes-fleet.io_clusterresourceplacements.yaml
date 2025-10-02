@@ -1960,7 +1960,7 @@ spec:
 
                           * Disabled: status back-reporting is disabled. This is the default behavior.
 
-                          * MirrorIfPossible: status back-reporting is enabled by copying the status fields verbatim to
+                          * Mirror: status back-reporting is enabled by copying the status fields verbatim to
                             the corresponding objects on the hub cluster side. This is only performed when the placement
                             object has a scheduling policy that selects exactly one member cluster (i.e., a pickFixed
                             scheduling policy with exactly one cluster name, or a pickN scheduling policy with the
@@ -1972,7 +1972,7 @@ spec:
                             specific member cluster by inspecting the corresponding Work object on the hub cluster side.
                         enum:
                         - Disabled
-                        - MirrorIfPossible
+                        - Mirror
                         - Copy
                         type: string
                     required:

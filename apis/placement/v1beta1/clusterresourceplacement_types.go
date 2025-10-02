@@ -1490,13 +1490,13 @@ const (
 	// ReportBackStrategyTypeDisabled disables status back-reporting from the member clusters.
 	ReportBackStrategyTypeDisabled ReportBackStrategyType = "Disabled"
 
-	// ReportBackStrategyTypeMirrorIfPossible enables status back-reporting by
+	// ReportBackStrategyTypeMirror enables status back-reporting by
 	// copying the status fields verbatim to the corresponding objects on the hub cluster side. This is
 	// only performed when the placement object has a scheduling policy that selects exactly one
 	// member cluster (i.e., a pickFixed scheduling policy with exactly one cluster name, or
 	// a pickN scheduling policy with the numberOfClusters field set to 1). If multiple member clusters
 	// are selected, KubeFleet will fall back to the Copy strategy, as described below.
-	ReportBackStrategyTypeMirrorIfPossible ReportBackStrategyType = "MirrorIfPossible"
+	ReportBackStrategyTypeMirror ReportBackStrategyType = "Mirror"
 
 	// ReportBackStrategyTypeCopy enables status back-reporting by copying
 	// the status fields verbatim via the Work API on the hub cluster side. Users may look up
@@ -1513,7 +1513,7 @@ type ReportBackStrategy struct {
 	//
 	// * Disabled: status back-reporting is disabled. This is the default behavior.
 	//
-	// * MirrorIfPossible: status back-reporting is enabled by copying the status fields verbatim to
+	// * Mirror: status back-reporting is enabled by copying the status fields verbatim to
 	//   the corresponding objects on the hub cluster side. This is only performed when the placement
 	//   object has a scheduling policy that selects exactly one member cluster (i.e., a pickFixed
 	//   scheduling policy with exactly one cluster name, or a pickN scheduling policy with the
@@ -1525,7 +1525,7 @@ type ReportBackStrategy struct {
 	//   specific member cluster by inspecting the corresponding Work object on the hub cluster side.
 	//
 	// +kubebuilder:default=Disabled
-	// +kubebuilder:validation:Enum=Disabled;MirrorIfPossible;Copy
+	// +kubebuilder:validation:Enum=Disabled;Mirror;Copy
 	// +kubebuilder:validation:Required
 	Type ReportBackStrategyType `json:"type"`
 }
