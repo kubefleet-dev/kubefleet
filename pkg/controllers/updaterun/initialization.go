@@ -343,8 +343,7 @@ func (r *Reconciler) computeRunStageStatus(
 	allSelectedClusters := make(map[string]struct{}, len(scheduledBindings))
 	allPlacedClusters := make(map[string]struct{})
 	for _, binding := range scheduledBindings {
-		bindingSpec := binding.GetBindingSpec()
-		allSelectedClusters[bindingSpec.TargetCluster] = struct{}{}
+		allSelectedClusters[binding.GetBindingSpec().TargetCluster] = struct{}{}
 	}
 	stagesStatus := make([]placementv1beta1.StageUpdatingStatus, 0, len(updateRunStatus.UpdateStrategySnapshot.Stages))
 
