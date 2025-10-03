@@ -1965,15 +1965,15 @@ spec:
                             object has a scheduling policy that selects exactly one member cluster (i.e., a pickFixed
                             scheduling policy with exactly one cluster name, or a pickN scheduling policy with the
                             numberOfClusters field set to 1). If multiple member clusters are selected, KubeFleet will
-                            fall back to the Copy strategy.
+                            fall back to the ReplicatePerCluster strategy.
 
-                          * Copy: status back-reporting is enabled by copying the status fields verbatim via the Work API
+                          * ReplicatePerCluster: status back-reporting is enabled by copying the status fields verbatim via the Work API
                             on the hub cluster side. Users may look up the status of a specific resource applied to a
                             specific member cluster by inspecting the corresponding Work object on the hub cluster side.
                         enum:
                         - Disabled
                         - Mirror
-                        - Copy
+                        - ReplicatePerCluster
                         type: string
                     required:
                     - type

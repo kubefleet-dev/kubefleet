@@ -1495,14 +1495,14 @@ const (
 	// only performed when the placement object has a scheduling policy that selects exactly one
 	// member cluster (i.e., a pickFixed scheduling policy with exactly one cluster name, or
 	// a pickN scheduling policy with the numberOfClusters field set to 1). If multiple member clusters
-	// are selected, KubeFleet will fall back to the Copy strategy, as described below.
+	// are selected, KubeFleet will fall back to the ReplicatePerCluster strategy, as described below.
 	ReportBackStrategyTypeMirror ReportBackStrategyType = "Mirror"
 
-	// ReportBackStrategyTypeCopy enables status back-reporting by copying
+	// ReportBackStrategyTypeReplicatePerCluster enables status back-reporting by copying
 	// the status fields verbatim via the Work API on the hub cluster side. Users may look up
 	// the status of a specific resource applied to a specific member cluster by inspecting the
 	// corresponding Work object on the hub cluster side.
-	ReportBackStrategyTypeCopy ReportBackStrategyType = "Copy"
+	ReportBackStrategyTypeReplicatePerCluster ReportBackStrategyType = "ReplicatePerCluster"
 )
 
 // ReportBackStrategy describes how to report back the resource status from member clusters.
@@ -1518,14 +1518,14 @@ type ReportBackStrategy struct {
 	//   object has a scheduling policy that selects exactly one member cluster (i.e., a pickFixed
 	//   scheduling policy with exactly one cluster name, or a pickN scheduling policy with the
 	//   numberOfClusters field set to 1). If multiple member clusters are selected, KubeFleet will
-	//   fall back to the Copy strategy.
+	//   fall back to the ReplicatePerCluster strategy.
 	//
-	// * Copy: status back-reporting is enabled by copying the status fields verbatim via the Work API
+	// * ReplicatePerCluster: status back-reporting is enabled by copying the status fields verbatim via the Work API
 	//   on the hub cluster side. Users may look up the status of a specific resource applied to a
 	//   specific member cluster by inspecting the corresponding Work object on the hub cluster side.
 	//
 	// +kubebuilder:default=Disabled
-	// +kubebuilder:validation:Enum=Disabled;Mirror;Copy
+	// +kubebuilder:validation:Enum=Disabled;Mirror;ReplicatePerCluster
 	// +kubebuilder:validation:Required
 	Type ReportBackStrategyType `json:"type"`
 }

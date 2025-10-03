@@ -211,12 +211,6 @@ type BackReportedStatus struct {
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:Format=date-time
 	ObservationTime metav1.Time `json:"observationTime"`
-
-	// ObservedInMemberClusterGeneration is the generation of the applied resource on the member
-	// cluster side.
-	//
-	// +kubebuilder:validation:Optional
-	ObservedInMemberClusterGeneration int64 `json:"observedInMemberClusterGeneration"`
 }
 
 // ManifestCondition represents the conditions of the resources deployed on
