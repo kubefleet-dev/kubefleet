@@ -822,7 +822,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 			By("Validating the initialization failed")
-			validateFailedInitCondition(ctx, updateRun, "no master resourceSnapshot found for clusterResourcePlacement")
+			validateFailedInitCondition(ctx, updateRun, "no master resourceSnapshot found for placement")
 
 			By("Checking update run status metrics are emitted")
 			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
