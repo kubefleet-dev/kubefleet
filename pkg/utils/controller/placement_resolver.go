@@ -35,8 +35,8 @@ const (
 	namespaceSeparator = "/"
 )
 
-// FetchPlacementFromQueueKey resolves a queue PlacementKey to a concrete placement object that implements PlacementObj.
-func FetchPlacementFromQueueKey(ctx context.Context, c client.Reader, placementKey queue.PlacementKey) (fleetv1beta1.PlacementObj, error) {
+// FetchPlacementFromKey resolves a PlacementKey to a concrete placement object that implements PlacementObj.
+func FetchPlacementFromKey(ctx context.Context, c client.Reader, placementKey queue.PlacementKey) (fleetv1beta1.PlacementObj, error) {
 	// Extract namespace and name from the placement key
 	namespace, name, err := ExtractNamespaceNameFromKey(placementKey)
 	if err != nil {

@@ -90,6 +90,19 @@ func TestFetchUpdateStrategyFromNamespacedName(t *testing.T) {
 						},
 					},
 				},
+				&placementv1beta1.StagedUpdateStrategy{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-strategy",
+						Namespace: "test-namespace",
+					},
+					Spec: placementv1beta1.UpdateStrategySpec{
+						Stages: []placementv1beta1.StageConfig{
+							{
+								Name: "stage-1",
+							},
+						},
+					},
+				},
 			},
 			wantErr:      true,
 			wantStrategy: nil,
@@ -157,6 +170,18 @@ func TestFetchUpdateStrategyFromNamespacedName(t *testing.T) {
 			name:        "namespaced strategy key - StagedUpdateStrategy not found",
 			strategyKey: types.NamespacedName{Namespace: "test-namespace", Name: "test-strategy"},
 			objects: []client.Object{
+				&placementv1beta1.ClusterStagedUpdateStrategy{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-strategy",
+					},
+					Spec: placementv1beta1.UpdateStrategySpec{
+						Stages: []placementv1beta1.StageConfig{
+							{
+								Name: "stage-1",
+							},
+						},
+					},
+				},
 				&placementv1beta1.StagedUpdateStrategy{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "test-strategy",

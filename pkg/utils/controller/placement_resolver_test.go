@@ -32,7 +32,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/queue"
 )
 
-func TestFetchPlacementFromQueueKey(t *testing.T) {
+func TestFetchPlacementFromKey(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := fleetv1beta1.AddToScheme(scheme); err != nil {
 		t.Fatalf("Failed to add scheme: %v", err)
@@ -302,7 +302,7 @@ func TestFetchPlacementFromQueueKey(t *testing.T) {
 				WithObjects(tt.objects...).
 				Build()
 
-			placement, err := FetchPlacementFromQueueKey(context.Background(), fakeClient, tt.placementKey)
+			placement, err := FetchPlacementFromKey(context.Background(), fakeClient, tt.placementKey)
 
 			if tt.wantErr {
 				if err == nil {
@@ -329,7 +329,7 @@ func TestFetchPlacementFromQueueKey(t *testing.T) {
 			// Ignore resource version field for consistent comparison
 			if diff := cmp.Diff(placement, tt.wantPlacement,
 				cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion")); diff != "" {
-				t.Errorf("FetchPlacementFromQueueKey() diff (-got +want):\n%s", diff)
+				t.Errorf("FetchPlacementFromKey() diff (-got +want):\n%s", diff)
 			}
 
 			// Verify the concrete type matches expected

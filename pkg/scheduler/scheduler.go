@@ -134,7 +134,7 @@ func (s *Scheduler) scheduleOnce(ctx context.Context, worker int) {
 	}()
 
 	// Retrieve the placement object (either ClusterResourcePlacement or ResourcePlacement).
-	placement, err := controller.FetchPlacementFromQueueKey(ctx, s.client, placementKey)
+	placement, err := controller.FetchPlacementFromKey(ctx, s.client, placementKey)
 	if err != nil {
 		if apiErrors.IsNotFound(err) {
 			// The placement has been gone before the scheduler gets a chance to

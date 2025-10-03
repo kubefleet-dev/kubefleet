@@ -43,7 +43,7 @@ func (r *Reconciler) validate(
 	updateRunCopy := updateRun.DeepCopy()
 	klog.V(2).InfoS("Start to validate the clusterStagedUpdateRun", "clusterStagedUpdateRun", updateRunRef)
 
-	// Validate the ClusterResourcePlacement object referenced by the ClusterStagedUpdateRun.
+	// Validate the Placement object referenced by the UpdateRun.
 	placementName, err := r.validatePlacement(ctx, updateRunCopy)
 	if err != nil {
 		return -1, nil, nil, err
