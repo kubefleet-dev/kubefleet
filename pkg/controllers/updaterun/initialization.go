@@ -39,8 +39,8 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/overrider"
 )
 
-// initialize initializes the ClusterStagedUpdateRun object with all the stages computed during the initialization.
-// This function is called only once during the initialization of the ClusterStagedUpdateRun.
+// initialize initializes the UpdateRun object with all the stages computed during the initialization.
+// This function is called only once during the initialization of the UpdateRun.
 func (r *Reconciler) initialize(
 	ctx context.Context,
 	updateRun placementv1beta1.UpdateRunObj,
