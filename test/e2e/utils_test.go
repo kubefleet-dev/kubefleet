@@ -330,7 +330,7 @@ func checkIfAzurePropertyProviderIsWorking() {
 				return fmt.Errorf("member cluster status conditions diff (-got, +want):\n%s", diff)
 			}
 			return nil
-		}, longEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to confirm that Azure property provider is up and running")
+		}, longEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to confirm that Azure property provider is up and running on cluster", memberCluster)
 	}
 }
 
