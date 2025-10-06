@@ -1526,8 +1526,15 @@ func customizedPlacementStatusUpdatedActual(
 		}
 
 		wantStatus := buildWantPlacementStatus(placementKey, placement.GetGeneration(), wantSelectedResourceIdentifiers, wantSelectedClusters, wantUnselectedClusters, wantObservedResourceIndex, resourceIsTrackable)
-		if diff := cmp.Diff(placement.GetPlacementStatus(), wantStatus, placementStatusCmpOptions...); diff != "" {
-			return fmt.Errorf("Placement status diff (-got, +want): %s", diff)
+		if wantObservedResourceIndex == "0" {
+			// When the observedResourceIndex is "0", it means the placement is just created and the placement controller
+			if diff := cmp.Diff(placement.GetPlacementStatus(), wantStatus, placementStatusCmpOptionsOnCreate...); diff != "" {
+				return fmt.Errorf("Placement status diff (-got, +want): %s", diff)
+			}
+		} else {
+			if diff := cmp.Diff(placement.GetPlacementStatus(), wantStatus, placementStatusCmpOptions...); diff != "" {
+				return fmt.Errorf("Placement status diff (-got, +want): %s", diff)
+			}
 		}
 		return nil
 	}
@@ -2009,7 +2016,7 @@ func updateRunStatusSucceededActual(
 	wantPolicyIndex string,
 	wantClusterCount int,
 	wantApplyStrategy *placementv1beta1.ApplyStrategy,
-	wantStrategySpec *placementv1beta1.StagedUpdateStrategySpec,
+	wantStrategySpec *placementv1beta1.UpdateStrategySpec,
 	wantSelectedClusters [][]string,
 	wantUnscheduledClusters []string,
 	wantCROs map[string][]string,
@@ -2021,11 +2028,11 @@ func updateRunStatusSucceededActual(
 			return err
 		}
 
-		wantStatus := placementv1beta1.StagedUpdateRunStatus{
-			PolicySnapshotIndexUsed:      wantPolicyIndex,
-			PolicyObservedClusterCount:   wantClusterCount,
-			ApplyStrategy:                wantApplyStrategy.DeepCopy(),
-			StagedUpdateStrategySnapshot: wantStrategySpec,
+		wantStatus := placementv1beta1.UpdateRunStatus{
+			PolicySnapshotIndexUsed:    wantPolicyIndex,
+			PolicyObservedClusterCount: wantClusterCount,
+			ApplyStrategy:              wantApplyStrategy.DeepCopy(),
+			UpdateStrategySnapshot:     wantStrategySpec,
 		}
 		stagesStatus := make([]placementv1beta1.StageUpdatingStatus, len(wantStrategySpec.Stages))
 		for i, stage := range wantStrategySpec.Stages {
