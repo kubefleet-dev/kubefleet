@@ -553,11 +553,6 @@ spec:
                     - OriginalResource
                     - WorkAPI
                     type: string
-                    x-kubernetes-validations:
-                    - message: A destination is required when type for ReportBackStrategy
-                        is 'Mirror'
-                      rule: '(self.type == ''Mirror'' ? size(self.destination) > 0
-                        : true)'
                   type:
                     default: Disabled
                     description: |-

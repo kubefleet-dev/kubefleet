@@ -1541,7 +1541,6 @@ type ReportBackStrategy struct {
 	//
 	// +kubebuilder:validation:Enum=OriginalResource;WorkAPI
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:XValidation:rule="(self.type == 'Mirror' ? size(self.destination) > 0 : true)",message="A destination is required when type for ReportBackStrategy is 'Mirror'"
 	Destination *ReportBackDestination `json:"destination,omitempty"`
 }
 
