@@ -1951,6 +1951,36 @@ spec:
                     description: ReportBackStrategy describes how to report back the
                       status of applied resources on the member cluster.
                     properties:
+                      destination:
+                        description: |-
+                          Destination dictates where to copy the status fields to when the report back strategy type is Mirror.
+
+                          Available options include:
+
+                          * OriginalResource: the status fields will be copied verbatim to the original resource on the hub cluster side.
+                            This is only performed when the placement object has a scheduling policy that selects exactly one member cluster
+                            (i.e., a pickFixed scheduling policy with exactly one cluster name, or a pickN scheduling policy with the numberOfClusters
+                            field set to 1).
+
+                          * WorkAPI: the status fields will be copied verbatim via the Work API on the hub cluster side. Users may look up
+                            the status of a specific resource applied to a specific member cluster by inspecting the corresponding Work object
+                            on the hub cluster side. This is the default behavior.
+                        enum:
+                        - OriginalResource
+                        - WorkAPI
+                        type: string
+                        x-kubernetes-validations:
+                        - message: A destination is required when type for ReportBackStrategy
+                            is 'Mirror'
+                          rule: '(self.type == ''Mirror'' ? size(self.destination)
+                            > 0 : true)'
+                        - message: If the destination for ReportBackStrategy is 'OriginalResource',
+                            the placement policy must select exactly one member cluster
+                          rule: '(self.destination == ''OriginalResource'' ? (has(object.spec.policy)
+                            && ( (object.spec.policy.placementType == ''PickN'' &&
+                            object.spec.policy.numberOfClusters == 1) || (object.spec.policy.placementType
+                            == ''PickFixed'' && object.spec.policy.clusterNames.size()
+                            == 1) )) : true)'
                       type:
                         default: Disabled
                         description: |-
@@ -1961,19 +1991,10 @@ spec:
                           * Disabled: status back-reporting is disabled. This is the default behavior.
 
                           * Mirror: status back-reporting is enabled by copying the status fields verbatim to
-                            the corresponding objects on the hub cluster side. This is only performed when the placement
-                            object has a scheduling policy that selects exactly one member cluster (i.e., a pickFixed
-                            scheduling policy with exactly one cluster name, or a pickN scheduling policy with the
-                            numberOfClusters field set to 1). If multiple member clusters are selected, KubeFleet will
-                            fall back to the ReplicatePerCluster strategy.
-
-                          * ReplicatePerCluster: status back-reporting is enabled by copying the status fields verbatim via the Work API
-                            on the hub cluster side. Users may look up the status of a specific resource applied to a
-                            specific member cluster by inspecting the corresponding Work object on the hub cluster side.
+                            a destination on the hub cluster side; see the Destination field for more information.
                         enum:
                         - Disabled
                         - Mirror
-                        - ReplicatePerCluster
                         type: string
                     required:
                     - type

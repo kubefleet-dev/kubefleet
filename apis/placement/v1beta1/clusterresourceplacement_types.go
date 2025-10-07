@@ -1491,18 +1491,23 @@ const (
 	ReportBackStrategyTypeDisabled ReportBackStrategyType = "Disabled"
 
 	// ReportBackStrategyTypeMirror enables status back-reporting by
-	// copying the status fields verbatim to the corresponding objects on the hub cluster side. This is
-	// only performed when the placement object has a scheduling policy that selects exactly one
-	// member cluster (i.e., a pickFixed scheduling policy with exactly one cluster name, or
-	// a pickN scheduling policy with the numberOfClusters field set to 1). If multiple member clusters
-	// are selected, KubeFleet will fall back to the ReplicatePerCluster strategy, as described below.
+	// copying the status fields verbatim to some destination on the hub cluster side.
 	ReportBackStrategyTypeMirror ReportBackStrategyType = "Mirror"
+)
 
-	// ReportBackStrategyTypeReplicatePerCluster enables status back-reporting by copying
-	// the status fields verbatim via the Work API on the hub cluster side. Users may look up
-	// the status of a specific resource applied to a specific member cluster by inspecting the
-	// corresponding Work object on the hub cluster side.
-	ReportBackStrategyTypeReplicatePerCluster ReportBackStrategyType = "ReplicatePerCluster"
+type ReportBackDestination string
+
+const (
+	// ReportBackDestinationOriginalResource implies the status fields will be copied verbatim to the
+	// the original resource on the hub cluster side. This is only performed when the placement object has a
+	// scheduling policy that selects exactly one member cluster (i.e., a pickFixed scheduling policy with
+	// exactly one cluster name, or a pickN scheduling policy with the numberOfClusters field set to 1).
+	ReportBackDestinationOriginalResource ReportBackDestination = "OriginalResource"
+
+	// ReportBackDestinationWorkAPI implies the status fields will be copied verbatim via the Work API
+	// on the hub cluster side. Users may look up the status of a specific resource applied to a specific
+	// member cluster by inspecting the corresponding Work object on the hub cluster side.
+	ReportBackDestinationWorkAPI ReportBackDestination = "WorkAPI"
 )
 
 // ReportBackStrategy describes how to report back the resource status from member clusters.
@@ -1514,20 +1519,31 @@ type ReportBackStrategy struct {
 	// * Disabled: status back-reporting is disabled. This is the default behavior.
 	//
 	// * Mirror: status back-reporting is enabled by copying the status fields verbatim to
-	//   the corresponding objects on the hub cluster side. This is only performed when the placement
-	//   object has a scheduling policy that selects exactly one member cluster (i.e., a pickFixed
-	//   scheduling policy with exactly one cluster name, or a pickN scheduling policy with the
-	//   numberOfClusters field set to 1). If multiple member clusters are selected, KubeFleet will
-	//   fall back to the ReplicatePerCluster strategy.
-	//
-	// * ReplicatePerCluster: status back-reporting is enabled by copying the status fields verbatim via the Work API
-	//   on the hub cluster side. Users may look up the status of a specific resource applied to a
-	//   specific member cluster by inspecting the corresponding Work object on the hub cluster side.
+	//   a destination on the hub cluster side; see the Destination field for more information.
 	//
 	// +kubebuilder:default=Disabled
-	// +kubebuilder:validation:Enum=Disabled;Mirror;ReplicatePerCluster
+	// +kubebuilder:validation:Enum=Disabled;Mirror
 	// +kubebuilder:validation:Required
 	Type ReportBackStrategyType `json:"type"`
+
+	// Destination dictates where to copy the status fields to when the report back strategy type is Mirror.
+	//
+	// Available options include:
+	//
+	// * OriginalResource: the status fields will be copied verbatim to the original resource on the hub cluster side.
+	//   This is only performed when the placement object has a scheduling policy that selects exactly one member cluster
+	//   (i.e., a pickFixed scheduling policy with exactly one cluster name, or a pickN scheduling policy with the numberOfClusters
+	//   field set to 1).
+	//
+	// * WorkAPI: the status fields will be copied verbatim via the Work API on the hub cluster side. Users may look up
+	//   the status of a specific resource applied to a specific member cluster by inspecting the corresponding Work object
+	//   on the hub cluster side. This is the default behavior.
+	//
+	// +kubebuilder:validation:Enum=OriginalResource;WorkAPI
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:XValidation:rule="(self.type == 'Mirror' ? size(self.destination) > 0 : true)",message="A destination is required when type for ReportBackStrategy is 'Mirror'"
+	// +kubebuilder:validation:XValidation:rule="(self.destination == 'OriginalResource' ? (has(object.spec.policy) && ( (object.spec.policy.placementType == 'PickN' && object.spec.policy.numberOfClusters == 1) || (object.spec.policy.placementType == 'PickFixed' && object.spec.policy.clusterNames.size() == 1) )) : true)",message="If the destination for ReportBackStrategy is 'OriginalResource', the placement policy must select exactly one member cluster"
+	Destination *ReportBackDestination `json:"destination,omitempty"`
 }
 
 // ClusterResourcePlacementList contains a list of ClusterResourcePlacement.
