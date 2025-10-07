@@ -1542,7 +1542,6 @@ type ReportBackStrategy struct {
 	// +kubebuilder:validation:Enum=OriginalResource;WorkAPI
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="(self.type == 'Mirror' ? size(self.destination) > 0 : true)",message="A destination is required when type for ReportBackStrategy is 'Mirror'"
-	// +kubebuilder:validation:XValidation:rule="(self.destination == 'OriginalResource' ? (has(object.spec.policy) && ( (object.spec.policy.placementType == 'PickN' && object.spec.policy.numberOfClusters == 1) || (object.spec.policy.placementType == 'PickFixed' && object.spec.policy.clusterNames.size() == 1) )) : true)",message="If the destination for ReportBackStrategy is 'OriginalResource', the placement policy must select exactly one member cluster"
 	Destination *ReportBackDestination `json:"destination,omitempty"`
 }
 
