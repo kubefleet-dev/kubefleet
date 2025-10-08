@@ -542,6 +542,7 @@ type RolloutStrategy struct {
 
 	// ReportBackStrategy describes how to report back the status of applied resources on the member cluster.
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:XValidation:rule="(self == null) || (self.type == 'Mirror' ? size(self.destination) != 0 : true)",message="when reportBackStrategy.type is 'Mirror', a destination must be specified"
 	ReportBackStrategy *ReportBackStrategy `json:"reportBackStrategy,omitempty"`
 }
 
