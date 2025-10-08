@@ -330,7 +330,6 @@ func TestCheckClusterUpdateResult(t *testing.T) {
 	}
 }
 
-// TODO(arvindth): remove this UT once E2E for resource placement is added, adding to increase test coverage for now.
 func TestBuildApprovalRequestObject(t *testing.T) {
 	tests := []struct {
 		name           string

@@ -347,7 +347,7 @@ func (r *Reconciler) checkAfterStageTasksStatus(ctx context.Context, updatingSta
 					}
 					approvalRequestSpec := approvalRequest.GetApprovalRequestSpec()
 					if approvalRequestSpec.TargetStage != updatingStage.Name || approvalRequestSpec.TargetUpdateRun != updateRun.GetName() {
-						unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the approval request task `%s` is targeting update run `%s` and stage `%s` ", approvalRequest.GetName(), approvalRequestSpec.TargetStage, approvalRequestSpec.TargetUpdateRun))
+						unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the approval request task `%s/%s` is targeting update run `%s/%s` and stage `%s`", approvalRequest.GetNamespace(), approvalRequest.GetName(), approvalRequest.GetNamespace(), approvalRequestSpec.TargetUpdateRun, approvalRequestSpec.TargetStage))
 						klog.ErrorS(unexpectedErr, "Found an approval request targeting wrong stage", "approvalRequestTask", requestRef, "stage", updatingStage.Name, "updateRun", updateRunRef)
 						return false, -1, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
 					}
