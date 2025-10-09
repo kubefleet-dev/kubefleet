@@ -83,7 +83,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	removeWaitTimeFromUpdateRunStatus(updateRun)
 
 	// Handle the deletion of the updateRun.
-	if updateRun.GetDeletionTimestamp() != nil && !updateRun.GetDeletionTimestamp().IsZero() {
+	if !updateRun.GetDeletionTimestamp().IsZero() {
 		klog.V(2).InfoS("The updateRun is being deleted", "updateRun", runObjRef)
 		deleted, waitTime, deleteErr := r.handleDelete(ctx, updateRun.DeepCopyObject().(placementv1beta1.UpdateRunObj))
 		if deleteErr != nil {
@@ -181,14 +181,13 @@ func (r *Reconciler) handleDelete(ctx context.Context, updateRun placementv1beta
 	runObjRef := klog.KObj(updateRun)
 	// Delete all the associated approvalRequests.
 	var approvalRequest placementv1beta1.ApprovalRequestObj
-	var deleteOptions []client.DeleteAllOfOption
+	deleteOptions := []client.DeleteAllOfOption{client.MatchingLabels{placementv1beta1.TargetUpdateRunLabel: updateRun.GetName()}}
 	if updateRun.GetNamespace() == "" {
 		approvalRequest = &placementv1beta1.ClusterApprovalRequest{}
 	} else {
 		approvalRequest = &placementv1beta1.ApprovalRequest{}
 		deleteOptions = append(deleteOptions, client.InNamespace(updateRun.GetNamespace()))
 	}
-	deleteOptions = append(deleteOptions, client.MatchingLabels{placementv1beta1.TargetUpdateRunLabel: updateRun.GetName()})
 	if err := r.Client.DeleteAllOf(ctx, approvalRequest, deleteOptions...); err != nil {
 		klog.ErrorS(err, "Failed to delete all associated approvalRequests", "updateRun", runObjRef)
 		return false, 0, controller.NewAPIServerError(false, err)
@@ -196,9 +195,9 @@ func (r *Reconciler) handleDelete(ctx context.Context, updateRun placementv1beta
 	klog.V(2).InfoS("Deleted all approvalRequests associated with the updateRun", "updateRun", runObjRef)
 
 	// Delete the update run status metric.
-	metrics.FleetUpdateRunStatusLastTimestampSeconds.DeletePartialMatch(prometheus.Labels{"name": updateRun.GetName()})
+	metrics.FleetUpdateRunStatusLastTimestampSeconds.DeletePartialMatch(prometheus.Labels{"namespace": updateRun.GetNamespace(), "name": updateRun.GetName()})
 
-	controllerutil.RemoveFinalizer(updateRun, placementv1beta1.ClusterStagedUpdateRunFinalizer)
+	controllerutil.RemoveFinalizer(updateRun, placementv1beta1.UpdateRunFinalizer)
 	if err := r.Client.Update(ctx, updateRun); err != nil {
 		klog.ErrorS(err, "Failed to remove updateRun finalizer", "updateRun", runObjRef)
 		return false, 0, controller.NewUpdateIgnoreConflictError(err)
@@ -208,12 +207,11 @@ func (r *Reconciler) handleDelete(ctx context.Context, updateRun placementv1beta
 
 // ensureFinalizer makes sure that the updateRun CR has a finalizer on it.
 func (r *Reconciler) ensureFinalizer(ctx context.Context, updateRun placementv1beta1.UpdateRunObj) error {
-	if controllerutil.ContainsFinalizer(updateRun, placementv1beta1.ClusterStagedUpdateRunFinalizer) {
+	if controllerutil.ContainsFinalizer(updateRun, placementv1beta1.UpdateRunFinalizer) {
 		return nil
 	}
 	klog.InfoS("Added the updateRun finalizer", "updateRun", klog.KObj(updateRun))
-	// TODO(arvindth): update the variable name for finalizer.
-	controllerutil.AddFinalizer(updateRun, placementv1beta1.ClusterStagedUpdateRunFinalizer)
+	controllerutil.AddFinalizer(updateRun, placementv1beta1.UpdateRunFinalizer)
 	return r.Update(ctx, updateRun, client.FieldOwner(utils.UpdateRunControllerFieldManagerName))
 }
 
@@ -368,21 +366,21 @@ func emitUpdateRunStatusMetric(updateRun placementv1beta1.UpdateRunObj) {
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	succeedCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionSucceeded))
 	if succeedCond != nil && succeedCond.ObservedGeneration == generation {
-		metrics.FleetUpdateRunStatusLastTimestampSeconds.WithLabelValues(updateRun.GetName(), genStr,
+		metrics.FleetUpdateRunStatusLastTimestampSeconds.WithLabelValues(updateRun.GetNamespace(), updateRun.GetName(), genStr,
 			string(placementv1beta1.StagedUpdateRunConditionSucceeded), string(succeedCond.Status), succeedCond.Reason).SetToCurrentTime()
 		return
 	}
 
 	progressingCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionProgressing))
 	if progressingCond != nil && progressingCond.ObservedGeneration == generation {
-		metrics.FleetUpdateRunStatusLastTimestampSeconds.WithLabelValues(updateRun.GetName(), genStr,
+		metrics.FleetUpdateRunStatusLastTimestampSeconds.WithLabelValues(updateRun.GetNamespace(), updateRun.GetName(), genStr,
 			string(placementv1beta1.StagedUpdateRunConditionProgressing), string(progressingCond.Status), progressingCond.Reason).SetToCurrentTime()
 		return
 	}
 
 	initializedCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionInitialized))
 	if initializedCond != nil && initializedCond.ObservedGeneration == generation {
-		metrics.FleetUpdateRunStatusLastTimestampSeconds.WithLabelValues(updateRun.GetName(), genStr,
+		metrics.FleetUpdateRunStatusLastTimestampSeconds.WithLabelValues(updateRun.GetNamespace(), updateRun.GetName(), genStr,
 			string(placementv1beta1.StagedUpdateRunConditionInitialized), string(initializedCond.Status), initializedCond.Reason).SetToCurrentTime()
 		return
 	}

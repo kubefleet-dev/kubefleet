@@ -347,11 +347,11 @@ func TestFetchUpdateRunFromRequest_ClientError(t *testing.T) {
 			_, err := FetchUpdateRunFromRequest(ctx, fakeClient, tt.request)
 
 			if err == nil {
-				t.Fatalf("FetchUpdateRunFromRequest() expected error but got nil")
+				t.Fatalf("FetchUpdateRunFromRequest() want error but got nil")
 			}
 
 			if !errors.Is(err, testError) {
-				t.Fatalf("FetchUpdateRunFromRequest() expected testError but got %v", err)
+				t.Fatalf("FetchUpdateRunFromRequest() want testError but got %v", err)
 			}
 		})
 	}
