@@ -274,8 +274,8 @@ func (r *Reconciler) recordUpdateRunStatus(ctx context.Context, updateRun placem
 	return nil
 }
 
-// SetupWithManager sets up the controller with the Manager.
-func (r *Reconciler) SetupWithManager(mgr runtime.Manager) error {
+// SetupWithManagerForClusterStagedUpdateRun sets up the controller with the Manager for ClusterStagedUpdateRun resources.
+func (r *Reconciler) SetupWithManagerForClusterStagedUpdateRun(mgr runtime.Manager) error {
 	r.recorder = mgr.GetEventRecorderFor("clusterresource-stagedupdaterun-controller")
 	return runtime.NewControllerManagedBy(mgr).
 		Named("clusterresource-stagedupdaterun-controller").
@@ -290,6 +290,26 @@ func (r *Reconciler) SetupWithManager(mgr runtime.Manager) error {
 			DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				klog.V(2).InfoS("Handling a clusterApprovalRequest delete event", "clusterApprovalRequest", klog.KObj(e.Object))
 				handleApprovalRequestDelete(e.Object, q, true)
+			},
+		}).Complete(r)
+}
+
+// SetupWithManagerForStagedUpdateRun sets up the controller with the Manager for StagedUpdateRun resources.
+func (r *Reconciler) SetupWithManagerForStagedUpdateRun(mgr runtime.Manager) error {
+	r.recorder = mgr.GetEventRecorderFor("namespacedresource-stagedupdaterun-controller")
+	return runtime.NewControllerManagedBy(mgr).
+		Named("namespacedresource-stagedupdaterun-controller").
+		For(&placementv1beta1.StagedUpdateRun{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&placementv1beta1.ApprovalRequest{}, &handler.Funcs{
+			// We watch for ApprovalRequest to be approved.
+			UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+				klog.V(2).InfoS("Handling an approvalRequest update event", "approvalRequest", klog.KObj(e.ObjectNew))
+				handleApprovalRequestUpdate(e.ObjectOld, e.ObjectNew, q, false)
+			},
+			// We watch for ApprovalRequest deletion events to recreate it ASAP.
+			DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+				klog.V(2).InfoS("Handling an approvalRequest delete event", "approvalRequest", klog.KObj(e.Object))
+				handleApprovalRequestDelete(e.Object, q, false)
 			},
 		}).Complete(r)
 }
