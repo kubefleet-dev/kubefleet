@@ -32,14 +32,16 @@ import (
 
 func TestHandleClusterApprovalRequestUpdate(t *testing.T) {
 	tests := map[string]struct {
-		oldObj        client.Object
-		newObj        client.Object
-		shouldEnqueue bool
-		queuedName    string
+		oldObj          client.Object
+		newObj          client.Object
+		shouldEnqueue   bool
+		queuedName      string
+		isClusterScoped bool
 	}{
 		"it should not enqueue anything if the obj is not a ClusterApprovalRequest": {
-			oldObj:        &placementv1beta1.ClusterStagedUpdateRun{},
-			shouldEnqueue: false,
+			oldObj:          &placementv1beta1.ClusterStagedUpdateRun{},
+			shouldEnqueue:   false,
+			isClusterScoped: true,
 		},
 		"it should not enqueue anything if targetUpdateRun in spec is empty": {
 			oldObj: &placementv1beta1.ClusterApprovalRequest{
@@ -67,7 +69,8 @@ func TestHandleClusterApprovalRequestUpdate(t *testing.T) {
 					},
 				},
 			},
-			shouldEnqueue: false,
+			shouldEnqueue:   false,
+			isClusterScoped: true,
 		},
 		"it should enqueue the targetUpdateRun if oldObj is not approved while newobj is approved": {
 			oldObj: &placementv1beta1.ClusterApprovalRequest{
@@ -95,8 +98,9 @@ func TestHandleClusterApprovalRequestUpdate(t *testing.T) {
 					},
 				},
 			},
-			shouldEnqueue: true,
-			queuedName:    "test",
+			shouldEnqueue:   true,
+			queuedName:      "test",
+			isClusterScoped: true,
 		},
 		"it should enqueue the targetUpdateRun if oldObj is not declined while newobj is approved": {
 			oldObj: &placementv1beta1.ClusterApprovalRequest{
@@ -133,8 +137,9 @@ func TestHandleClusterApprovalRequestUpdate(t *testing.T) {
 					},
 				},
 			},
-			shouldEnqueue: true,
-			queuedName:    "test",
+			shouldEnqueue:   true,
+			queuedName:      "test",
+			isClusterScoped: true,
 		},
 		"it should enqueue the targetUpdateRun if oldObj is approved while newobj is not approved": {
 			oldObj: &placementv1beta1.ClusterApprovalRequest{
@@ -162,8 +167,9 @@ func TestHandleClusterApprovalRequestUpdate(t *testing.T) {
 					TargetUpdateRun: "test",
 				},
 			},
-			shouldEnqueue: true,
-			queuedName:    "test",
+			shouldEnqueue:   true,
+			queuedName:      "test",
+			isClusterScoped: true,
 		},
 		"it should enqueue the targetUpdateRun if oldObj is approved while newobj is declined": {
 			oldObj: &placementv1beta1.ClusterApprovalRequest{
@@ -200,8 +206,9 @@ func TestHandleClusterApprovalRequestUpdate(t *testing.T) {
 					},
 				},
 			},
-			shouldEnqueue: true,
-			queuedName:    "test",
+			shouldEnqueue:   true,
+			queuedName:      "test",
+			isClusterScoped: true,
 		},
 		"it should not enqueue the targetUpdateRun if neither oldObj nor newobj is approved": {
 			oldObj: &placementv1beta1.ClusterApprovalRequest{
@@ -220,7 +227,8 @@ func TestHandleClusterApprovalRequestUpdate(t *testing.T) {
 					TargetUpdateRun: "test",
 				},
 			},
-			shouldEnqueue: false,
+			shouldEnqueue:   false,
+			isClusterScoped: true,
 		},
 		"it should not enqueue the targetUpdateRun if both oldObj and newobj are approved": {
 			oldObj: &placementv1beta1.ClusterApprovalRequest{
@@ -257,7 +265,8 @@ func TestHandleClusterApprovalRequestUpdate(t *testing.T) {
 					},
 				},
 			},
-			shouldEnqueue: false,
+			shouldEnqueue:   false,
+			isClusterScoped: true,
 		},
 		"it should not enqueue the targetUpdateRun if both oldObj and newobj are declined": {
 			oldObj: &placementv1beta1.ClusterApprovalRequest{
@@ -294,14 +303,15 @@ func TestHandleClusterApprovalRequestUpdate(t *testing.T) {
 					},
 				},
 			},
-			shouldEnqueue: false,
+			shouldEnqueue:   false,
+			isClusterScoped: true,
 		},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			queue := &controllertest.Queue{TypedInterface: workqueue.NewTypedRateLimitingQueue[reconcile.Request](
 				workqueue.DefaultTypedItemBasedRateLimiter[reconcile.Request]())}
-			handleClusterApprovalRequestUpdate(tt.oldObj, tt.newObj, queue)
+			handleApprovalRequestUpdate(tt.oldObj, tt.newObj, queue, tt.isClusterScoped)
 			if got := queue.Len() != 0; got != tt.shouldEnqueue {
 				t.Fatalf("handleClusterApprovalRequest() shouldEnqueue got %t, want %t", got, tt.shouldEnqueue)
 			}
@@ -317,13 +327,15 @@ func TestHandleClusterApprovalRequestUpdate(t *testing.T) {
 
 func TestHandleClusterApprovalRequestDelete(t *testing.T) {
 	tests := map[string]struct {
-		obj           client.Object
-		shouldEnqueue bool
-		queuedName    string
+		obj             client.Object
+		shouldEnqueue   bool
+		queuedName      string
+		isClusterScoped bool
 	}{
 		"it should not enqueue anything if the obj is not a ClusterApprovalRequest": {
-			obj:           &placementv1beta1.ClusterStagedUpdateRun{},
-			shouldEnqueue: false,
+			obj:             &placementv1beta1.ClusterStagedUpdateRun{},
+			shouldEnqueue:   false,
+			isClusterScoped: true,
 		},
 		"it should not enqueue anything if targetUpdateRun in spec is empty": {
 			obj: &placementv1beta1.ClusterApprovalRequest{
@@ -342,8 +354,9 @@ func TestHandleClusterApprovalRequestDelete(t *testing.T) {
 					TargetUpdateRun: "test-update-run",
 				},
 			},
-			shouldEnqueue: true,
-			queuedName:    "test-update-run",
+			shouldEnqueue:   true,
+			queuedName:      "test-update-run",
+			isClusterScoped: true,
 		},
 		"it should enqueue the targetUpdateRun, if ClusterApprovalRequest has only Approved status set to true": {
 			obj: &placementv1beta1.ClusterApprovalRequest{
@@ -363,8 +376,9 @@ func TestHandleClusterApprovalRequestDelete(t *testing.T) {
 					},
 				},
 			},
-			shouldEnqueue: true,
-			queuedName:    "test-update-run",
+			shouldEnqueue:   true,
+			queuedName:      "test-update-run",
+			isClusterScoped: true,
 		},
 		"it should enqueue the targetUpdateRun, if ClusterApprovalRequest has only Approved status set to false": {
 			obj: &placementv1beta1.ClusterApprovalRequest{
@@ -384,8 +398,9 @@ func TestHandleClusterApprovalRequestDelete(t *testing.T) {
 					},
 				},
 			},
-			shouldEnqueue: true,
-			queuedName:    "test-update-run",
+			shouldEnqueue:   true,
+			queuedName:      "test-update-run",
+			isClusterScoped: true,
 		},
 		"it should not enqueue updateRun, if ClusterApprovalRequest has Approved set to false, ApprovalAccepted status set to true": {
 			obj: &placementv1beta1.ClusterApprovalRequest{
@@ -410,7 +425,8 @@ func TestHandleClusterApprovalRequestDelete(t *testing.T) {
 					},
 				},
 			},
-			shouldEnqueue: false,
+			shouldEnqueue:   false,
+			isClusterScoped: true,
 		},
 		"it should not enqueue updateRun, if ClusterApprovalRequest has Approved, ApprovalAccepted status set to true": {
 			obj: &placementv1beta1.ClusterApprovalRequest{
@@ -435,7 +451,8 @@ func TestHandleClusterApprovalRequestDelete(t *testing.T) {
 					},
 				},
 			},
-			shouldEnqueue: false,
+			shouldEnqueue:   false,
+			isClusterScoped: true,
 		},
 	}
 
@@ -443,7 +460,7 @@ func TestHandleClusterApprovalRequestDelete(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			queue := &controllertest.Queue{TypedInterface: workqueue.NewTypedRateLimitingQueue[reconcile.Request](
 				workqueue.DefaultTypedItemBasedRateLimiter[reconcile.Request]())}
-			handleClusterApprovalRequestDelete(tt.obj, queue)
+			handleApprovalRequestDelete(tt.obj, queue, tt.isClusterScoped)
 			if got := queue.Len() != 0; got != tt.shouldEnqueue {
 				t.Fatalf("handleClusterApprovalRequestDelete() shouldEnqueue got %t, want %t", got, tt.shouldEnqueue)
 			}

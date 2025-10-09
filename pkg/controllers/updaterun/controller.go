@@ -284,78 +284,135 @@ func (r *Reconciler) SetupWithManager(mgr runtime.Manager) error {
 			// We watch for ClusterApprovalRequest to be approved.
 			UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				klog.V(2).InfoS("Handling a clusterApprovalRequest update event", "clusterApprovalRequest", klog.KObj(e.ObjectNew))
-				handleClusterApprovalRequestUpdate(e.ObjectOld, e.ObjectNew, q)
+				handleApprovalRequestUpdate(e.ObjectOld, e.ObjectNew, q, true)
 			},
 			// We watch for ClusterApprovalRequest deletion events to recreate it ASAP.
 			DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				klog.V(2).InfoS("Handling a clusterApprovalRequest delete event", "clusterApprovalRequest", klog.KObj(e.Object))
-				handleClusterApprovalRequestDelete(e.Object, q)
+				handleApprovalRequestDelete(e.Object, q, true)
 			},
 		}).Complete(r)
 }
 
-// handleClusterApprovalRequestUpdate finds the ClusterStagedUpdateRun creating the ClusterApprovalRequest,
-// and enqueues it to the ClusterStagedUpdateRun controller queue only when the approved condition is changed.
-func handleClusterApprovalRequestUpdate(oldObj, newObj client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-	oldAppReq, ok := oldObj.(*placementv1beta1.ClusterApprovalRequest)
-	if !ok {
-		klog.V(2).ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("cannot cast runtime object to ClusterApprovalRequest")),
-			"Invalid object type", "object", klog.KObj(oldObj))
-		return
-	}
-	newAppReq, ok := newObj.(*placementv1beta1.ClusterApprovalRequest)
-	if !ok {
-		klog.V(2).ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("cannot cast runtime object to ClusterApprovalRequest")),
-			"Invalid object type", "object", klog.KObj(newObj))
-		return
+// handleApprovalRequestUpdate finds the UpdateRun creating the ApprovalRequest,
+// and enqueues it to the UpdateRun controller queue only when the approved condition is changed.
+// The isClusterScoped parameter determines whether to handle ClusterApprovalRequest (true) or ApprovalRequest (false).
+func handleApprovalRequestUpdate(oldObj, newObj client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request], isClusterScoped bool) {
+	var oldAppReq, newAppReq placementv1beta1.ApprovalRequestObj
+
+	if isClusterScoped {
+		oldClusterAppReq, ok := oldObj.(*placementv1beta1.ClusterApprovalRequest)
+		if !ok {
+			klog.V(2).ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("cannot cast runtime object to ClusterApprovalRequest")),
+				"Invalid object type", "object", klog.KObj(oldObj))
+			return
+		}
+		newClusterAppReq, ok := newObj.(*placementv1beta1.ClusterApprovalRequest)
+		if !ok {
+			klog.V(2).ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("cannot cast runtime object to ClusterApprovalRequest")),
+				"Invalid object type", "object", klog.KObj(newObj))
+			return
+		}
+		oldAppReq = oldClusterAppReq
+		newAppReq = newClusterAppReq
+	} else {
+		oldNamespacedAppReq, ok := oldObj.(*placementv1beta1.ApprovalRequest)
+		if !ok {
+			klog.V(2).ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("cannot cast runtime object to ApprovalRequest")),
+				"Invalid object type", "object", klog.KObj(oldObj))
+			return
+		}
+		newNamespacedAppReq, ok := newObj.(*placementv1beta1.ApprovalRequest)
+		if !ok {
+			klog.V(2).ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("cannot cast runtime object to ApprovalRequest")),
+				"Invalid object type", "object", klog.KObj(newObj))
+			return
+		}
+		oldAppReq = oldNamespacedAppReq
+		newAppReq = newNamespacedAppReq
 	}
 
-	approvedInOld := condition.IsConditionStatusTrue(meta.FindStatusCondition(oldAppReq.Status.Conditions, string(placementv1beta1.ApprovalRequestConditionApproved)), oldAppReq.Generation)
-	approvedInNew := condition.IsConditionStatusTrue(meta.FindStatusCondition(newAppReq.Status.Conditions, string(placementv1beta1.ApprovalRequestConditionApproved)), newAppReq.Generation)
+	approvedInOld := condition.IsConditionStatusTrue(meta.FindStatusCondition(oldAppReq.GetApprovalRequestStatus().Conditions, string(placementv1beta1.ApprovalRequestConditionApproved)), oldAppReq.GetGeneration())
+	approvedInNew := condition.IsConditionStatusTrue(meta.FindStatusCondition(newAppReq.GetApprovalRequestStatus().Conditions, string(placementv1beta1.ApprovalRequestConditionApproved)), newAppReq.GetGeneration())
 
 	if approvedInOld == approvedInNew {
-		klog.V(2).InfoS("The approval status is not changed, ignore queueing", "clusterApprovalRequest", klog.KObj(newAppReq))
+		klog.V(2).InfoS("The approval status is not changed, ignore queueing", "approvalRequest", klog.KObj(newAppReq))
 		return
 	}
 
-	updateRun := newAppReq.Spec.TargetUpdateRun
+	updateRun := newAppReq.GetApprovalRequestSpec().TargetUpdateRun
 	if len(updateRun) == 0 {
-		klog.V(2).ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("TargetUpdateRun field in ClusterApprovalRequest is empty")),
-			"Invalid clusterApprovalRequest", "clusterApprovalRequest", klog.KObj(newAppReq))
+		klog.V(2).ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("TargetUpdateRun field in ApprovalRequest is empty")),
+			"Invalid approval request", "approvalRequest", klog.KObj(newAppReq))
 		return
 	}
+
 	// enqueue to the updaterun controller queue.
-	q.Add(reconcile.Request{
-		NamespacedName: types.NamespacedName{Name: updateRun},
-	})
+	if isClusterScoped {
+		q.Add(reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: updateRun},
+		})
+	} else {
+		q.Add(reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: newAppReq.GetNamespace(),
+				Name:      updateRun,
+			},
+		})
+	}
 }
 
-// handleClusterApprovalRequestDelete finds the ClusterStagedUpdateRun creating the ClusterApprovalRequest,
-// and enqueues it to the ClusterStagedUpdateRun controller queue when the ClusterApprovalRequest is deleted.
-func handleClusterApprovalRequestDelete(obj client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-	appReq, ok := obj.(*placementv1beta1.ClusterApprovalRequest)
-	if !ok {
-		klog.V(2).ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("cannot cast runtime object to ClusterApprovalRequest")),
-			"Invalid object type", "object", klog.KObj(obj))
-		return
+// handleApprovalRequestDelete finds the UpdateRun creating the ApprovalRequest,
+// and enqueues it to the UpdateRun controller queue when the ApprovalRequest is deleted.
+// The isClusterScoped parameter determines whether to handle ClusterApprovalRequest (true) or ApprovalRequest (false).
+func handleApprovalRequestDelete(obj client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request], isClusterScoped bool) {
+	var appReq placementv1beta1.ApprovalRequestObj
+
+	if isClusterScoped {
+		clusterAppReq, ok := obj.(*placementv1beta1.ClusterApprovalRequest)
+		if !ok {
+			klog.V(2).ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("cannot cast runtime object to ClusterApprovalRequest")),
+				"Invalid object type", "object", klog.KObj(obj))
+			return
+		}
+		appReq = clusterAppReq
+	} else {
+		namespacedAppReq, ok := obj.(*placementv1beta1.ApprovalRequest)
+		if !ok {
+			klog.V(2).ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("cannot cast runtime object to ApprovalRequest")),
+				"Invalid object type", "object", klog.KObj(obj))
+			return
+		}
+		appReq = namespacedAppReq
 	}
-	isApproved := meta.FindStatusCondition(appReq.Status.Conditions, string(placementv1beta1.ApprovalRequestConditionApproved))
-	approvalAccepted := condition.IsConditionStatusTrue(meta.FindStatusCondition(appReq.Status.Conditions, string(placementv1beta1.ApprovalRequestConditionApprovalAccepted)), appReq.Generation)
+
+	isApproved := meta.FindStatusCondition(appReq.GetApprovalRequestStatus().Conditions, string(placementv1beta1.ApprovalRequestConditionApproved))
+	approvalAccepted := condition.IsConditionStatusTrue(meta.FindStatusCondition(appReq.GetApprovalRequestStatus().Conditions, string(placementv1beta1.ApprovalRequestConditionApprovalAccepted)), appReq.GetGeneration())
 	if isApproved != nil && approvalAccepted {
-		klog.V(2).InfoS("The approval request has been approved and accepted, ignore queueing for delete event", "clusterApprovalRequest", klog.KObj(appReq))
+		klog.V(2).InfoS("The approval request has been approved and accepted, ignore queueing for delete event", "approvalRequest", klog.KObj(appReq))
 		return
 	}
 
-	updateRun := appReq.Spec.TargetUpdateRun
+	updateRun := appReq.GetApprovalRequestSpec().TargetUpdateRun
 	if len(updateRun) == 0 {
-		klog.V(2).ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("TargetUpdateRun field in ClusterApprovalRequest is empty")),
-			"Invalid clusterApprovalRequest", "clusterApprovalRequest", klog.KObj(appReq))
+		klog.V(2).ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("TargetUpdateRun field in ApprovalRequest is empty")),
+			"Invalid approval request", "approvalRequest", klog.KObj(appReq))
 		return
 	}
+
 	// enqueue to the updaterun controller queue.
-	q.Add(reconcile.Request{
-		NamespacedName: types.NamespacedName{Name: appReq.Spec.TargetUpdateRun},
-	})
+	if isClusterScoped {
+		q.Add(reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: updateRun},
+		})
+	} else {
+		q.Add(reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: appReq.GetNamespace(),
+				Name:      updateRun,
+			},
+		})
+	}
 }
 
 // emitUpdateRunStatusMetric emits the update run status metric based on status conditions in the updateRun.
