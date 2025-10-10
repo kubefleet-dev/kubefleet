@@ -20,6 +20,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -305,11 +307,48 @@ func checkIfAzurePropertyProviderIsWorking() {
 			// the diff output (if any) to omit certain fields.
 
 			// Diff the non-resource properties.
+
+			// Cost properties are checked separately to account for approximation margins.
+			ignoreCostProperties := cmpopts.IgnoreMapEntries(func(k clusterv1beta1.PropertyName, v clusterv1beta1.PropertyValue) bool {
+				return k == azure.PerCPUCoreCostProperty || k == azure.PerGBMemoryCostProperty
+			})
 			if diff := cmp.Diff(
 				mcObj.Status.Properties, wantStatus.Properties,
 				ignoreTimeTypeFields,
+				ignoreCostProperties,
 			); diff != "" {
 				return fmt.Errorf("member cluster status properties diff (-got, +want):\n%s", diff)
+			}
+
+			// Check the cost properties separately.
+			//
+			// The test suite consider cost outputs with a margin of no more than 0.002 to be acceptable.
+			perCPUCoreCostProperty, found := mcObj.Status.Properties[azure.PerCPUCoreCostProperty]
+			wantPerCPUCoreCostProperty, wantFound := wantStatus.Properties[azure.PerCPUCoreCostProperty]
+			if found != wantFound {
+				return fmt.Errorf("member cluster per CPU core cost property diff: found=%v, wantFound=%v", found, wantFound)
+			}
+			perCPUCoreCost, err := strconv.ParseFloat(perCPUCoreCostProperty.Value, 64)
+			wantPerCPUCoreCost, wantErr := strconv.ParseFloat(wantPerCPUCoreCostProperty.Value, 64)
+			if err != nil || wantErr != nil {
+				return fmt.Errorf("failed to parse per CPU core cost property: val=%s, err=%w, wantVal=%s, wantErr=%w", perCPUCoreCostProperty.Value, err, wantPerCPUCoreCostProperty.Value, wantErr)
+			}
+			if diff := math.Abs(perCPUCoreCost - wantPerCPUCoreCost); diff > 0.002 {
+				return fmt.Errorf("member cluster per CPU core cost property diff: got=%f, want=%f, diff=%f", perCPUCoreCost, wantPerCPUCoreCost, diff)
+			}
+
+			perGBMemoryCostProperty, found := mcObj.Status.Properties[azure.PerGBMemoryCostProperty]
+			wantPerGBMemoryCostProperty, wantFound := wantStatus.Properties[azure.PerGBMemoryCostProperty]
+			if found != wantFound {
+				return fmt.Errorf("member cluster per GB memory cost property diff: found=%v, wantFound=%v", found, wantFound)
+			}
+			perGBMemoryCost, err := strconv.ParseFloat(perGBMemoryCostProperty.Value, 64)
+			wantPerGBMemoryCost, wantErr := strconv.ParseFloat(wantPerGBMemoryCostProperty.Value, 64)
+			if err != nil || wantErr != nil {
+				return fmt.Errorf("failed to parse per GB memory cost property: val=%s, err=%w, wantVal=%s, wantErr=%w", perGBMemoryCostProperty.Value, err, wantPerGBMemoryCostProperty.Value, wantErr)
+			}
+			if diff := math.Abs(perGBMemoryCost - wantPerGBMemoryCost); diff > 0.001 {
+				return fmt.Errorf("member cluster per GB memory cost property diff: got=%f, want=%f, diff=%f", perGBMemoryCost, wantPerGBMemoryCost, diff)
 			}
 
 			// Diff the resource usage.
@@ -769,7 +808,7 @@ func cleanWorkResourcesOnCluster(cluster *framework.Cluster) {
 	Expect(client.IgnoreNotFound(cluster.KubeClient.Delete(ctx, &ns))).To(Succeed(), "Failed to delete namespace %s", ns.Name)
 
 	workResourcesRemovedActual := workNamespaceRemovedFromClusterActual(cluster)
-	Eventually(workResourcesRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove work resources from %s cluster", cluster.ClusterName)
+	Eventually(workResourcesRemovedActual, workloadEventuallyDuration, time.Second*5).Should(Succeed(), "Failed to remove work resources from %s cluster", cluster.ClusterName)
 }
 
 // cleanupConfigMap deletes the ConfigMap created by createWorkResources and waits until the resource is not found.
@@ -1202,7 +1241,7 @@ func ensureCRPAndRelatedResourcesDeleted(crpName string, memberClusters []*frame
 		memberCluster := memberClusters[idx]
 
 		workResourcesRemovedActual := workNamespaceRemovedFromClusterActual(memberCluster)
-		Eventually(workResourcesRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove work resources from member cluster %s", memberCluster.ClusterName)
+		Eventually(workResourcesRemovedActual, workloadEventuallyDuration, time.Second*5).Should(Succeed(), "Failed to remove work resources from member cluster %s", memberCluster.ClusterName)
 	}
 
 	// Verify that related finalizers have been removed from the CRP.
@@ -1694,7 +1733,7 @@ func ensureRPAndRelatedResourcesDeleted(rpKey types.NamespacedName, memberCluste
 		memberCluster := memberClusters[idx]
 
 		workResourcesRemovedActual := namespacedResourcesRemovedFromClusterActual(memberCluster, placedResources...)
-		Eventually(workResourcesRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove work resources from member cluster %s", memberCluster.ClusterName)
+		Eventually(workResourcesRemovedActual, workloadEventuallyDuration, time.Second*5).Should(Succeed(), "Failed to remove work resources from member cluster %s", memberCluster.ClusterName)
 	}
 
 	// Verify that related finalizers have been removed from the ResourcePlacement.
