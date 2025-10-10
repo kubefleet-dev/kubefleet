@@ -49,7 +49,7 @@ const (
 )
 
 var (
-	// defaultApplyStrategy is the default apply strategy that CRP mutation webhook will use
+	// defaultApplyStrategy is the default apply strategy that CRP mutation webhook will use.
 	defaultApplyStrategy = &placementv1beta1.ApplyStrategy{
 		ComparisonOption: "PartialComparison",
 		WhenToApply:      "Always",
@@ -61,7 +61,7 @@ var (
 // Note that this container will run in parallel with other containers.
 var _ = Describe("test CRP rollout with staged update run", func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
-	strategyName := fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess())
+	strategyName := fmt.Sprintf(clusterStagedUpdateRunStrategyNameTemplate, GinkgoParallelProcess())
 
 	Context("Test resource rollout and rollback with staged update run", Ordered, func() {
 		updateRunNames := []string{}
@@ -93,7 +93,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
 
 			for i := 0; i < 3; i++ {
-				updateRunNames = append(updateRunNames, fmt.Sprintf(updateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
+				updateRunNames = append(updateRunNames, fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 			}
 
 			oldConfigMap = appConfigMap()
@@ -300,7 +300,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
 
 			for i := 0; i < 3; i++ {
-				updateRunNames = append(updateRunNames, fmt.Sprintf(updateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
+				updateRunNames = append(updateRunNames, fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 			}
 		})
 
@@ -490,7 +490,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
 
 			for i := 0; i < 3; i++ {
-				updateRunNames = append(updateRunNames, fmt.Sprintf(updateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
+				updateRunNames = append(updateRunNames, fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 			}
 		})
 
@@ -646,7 +646,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 
 	Context("Test staged update run with overrides", Ordered, func() {
 		var strategy *placementv1beta1.ClusterStagedUpdateStrategy
-		updateRunName := fmt.Sprintf(updateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), 0)
+		updateRunName := fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), 0)
 		croName := fmt.Sprintf(croNameTemplate, GinkgoParallelProcess())
 		roName := fmt.Sprintf(roNameTemplate, GinkgoParallelProcess())
 		roNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
@@ -827,7 +827,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 	Context("Test staged update run with reportDiff mode", Ordered, func() {
 		var strategy *placementv1beta1.ClusterStagedUpdateStrategy
 		var applyStrategy *placementv1beta1.ApplyStrategy
-		updateRunName := fmt.Sprintf(updateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), 0)
+		updateRunName := fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), 0)
 
 		BeforeAll(func() {
 			// Create a test namespace and a configMap inside it on the hub cluster.
@@ -919,7 +919,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 
 	Context("Test CRP rollout strategy transition from rollingUpdate to external", Ordered, func() {
 		var strategy *placementv1beta1.ClusterStagedUpdateStrategy
-		updateRunName := fmt.Sprintf(updateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), 0)
+		updateRunName := fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), 0)
 		var oldConfigMap, newConfigMap corev1.ConfigMap
 
 		BeforeAll(func() {
@@ -1036,7 +1036,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 
 	Context("Test kubectl-fleet approve plugin with cluster approval requests", Ordered, func() {
 		var strategy *placementv1beta1.ClusterStagedUpdateStrategy
-		updateRunName := fmt.Sprintf(updateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), 0)
+		updateRunName := fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), 0)
 
 		BeforeAll(func() {
 			// Create a test namespace and a configMap inside it on the hub cluster.
@@ -1157,7 +1157,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 
 	Context("Test CRP rollout strategy transition from external to rollingUpdate", Ordered, func() {
 		var strategy *placementv1beta1.ClusterStagedUpdateStrategy
-		updateRunName := fmt.Sprintf(updateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), 0)
+		updateRunName := fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), 0)
 		var oldConfigMap, newConfigMap corev1.ConfigMap
 
 		BeforeAll(func() {
@@ -1277,7 +1277,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 // Note that this container cannot run in parallel with other containers.
 var _ = Describe("Test member cluster join and leave flow with updateRun", Label("joinleave"), Serial, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
-	strategyName := fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess())
+	strategyName := fmt.Sprintf(clusterStagedUpdateRunStrategyNameTemplate, GinkgoParallelProcess())
 	var strategy *placementv1beta1.ClusterStagedUpdateStrategy
 	updateRunNames := []string{}
 
@@ -1329,7 +1329,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Label
 		Expect(hubClient.Create(ctx, strategy)).To(Succeed(), "Failed to create ClusterStagedUpdateStrategy")
 
 		for i := 0; i < 2; i++ {
-			updateRunNames = append(updateRunNames, fmt.Sprintf(updateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
+			updateRunNames = append(updateRunNames, fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 		}
 
 		checkIfRemovedWorkResourcesFromAllMemberClustersConsistently()

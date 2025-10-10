@@ -33,21 +33,11 @@ import (
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
 )
 
-const (
-	// The current stage wait between clusters are 15 seconds for namespaced updaterun
-	namespacedUpdateRunEventuallyDuration = time.Minute
-
-	// Template names for namespaced staged update run resources
-	namespacedUpdateRunStrategyNameTemplate     = "sus-%d"     // StagedUpdateStrategy
-	namespacedUpdateRunNameWithSubIndexTemplate = "sur-%d-%d"  // StagedUpdateRun
-	namespacedApprovalRequestNameTemplate       = "areq-%d-%d" // ApprovalRequest
-)
-
 // Note that this container will run in parallel with other containers.
 var _ = Describe("test RP rollout with namespaced staged update run", func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
-	strategyName := fmt.Sprintf(namespacedUpdateRunStrategyNameTemplate, GinkgoParallelProcess())
+	strategyName := fmt.Sprintf(stagedUpdateRunStrategyNameTemplate, GinkgoParallelProcess())
 	testNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 
 	Context("Test resource rollout and rollback with namespaced staged update run", Ordered, func() {
@@ -88,7 +78,7 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 			strategy = createStagedUpdateStrategySucceed(strategyName, testNamespace)
 
 			for i := 0; i < 3; i++ {
-				updateRunNames = append(updateRunNames, fmt.Sprintf(namespacedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
+				updateRunNames = append(updateRunNames, fmt.Sprintf(stagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 			}
 
 			oldConfigMap = appConfigMap()
@@ -114,11 +104,11 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 		It("Should not rollout any resources to member clusters as there's no update run yet", checkIfRemovedConfigMapFromAllMemberClusters)
 
 		It("Should have the latest resource snapshot", func() {
-			validateLatestNamespacedResourceSnapshot(rpName, testNamespace, resourceSnapshotIndex1st)
+			validateLatestResourceSnapshot(rpName, testNamespace, resourceSnapshotIndex1st)
 		})
 
 		It("Should successfully schedule the rp", func() {
-			validateLatestNamespacedPolicySnapshot(rpName, testNamespace, policySnapshotIndex1st, 3)
+			validateLatestSchedulingPolicySnapshot(rpName, testNamespace, policySnapshotIndex1st, 3)
 		})
 
 		It("Should update rp status as pending rollout", func() {
@@ -147,7 +137,7 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 
 		It("Should rollout resources to all the members and complete the staged update run successfully", func() {
 			namespacedUpdateRunSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[0], testNamespace, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
-			Eventually(namespacedUpdateRunSucceededActual, namespacedUpdateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[0])
+			Eventually(namespacedUpdateRunSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[0])
 			checkIfPlacedConfigMapOnMemberClustersInUpdateRun(allMemberClusters)
 		})
 
@@ -212,7 +202,7 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 
 		It("Should rollout resources to member-cluster-1 and member-cluster-3 too and complete the staged update run successfully", func() {
 			namespacedUpdateRunSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[1], testNamespace, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
-			Eventually(namespacedUpdateRunSucceededActual, namespacedUpdateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[1])
+			Eventually(namespacedUpdateRunSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[1])
 			By("Verify that new the configmap is updated on all member clusters")
 			for idx := range allMemberClusters {
 				configMapActual := configMapPlacedOnClusterActual(allMemberClusters[idx], &newConfigMap)
@@ -250,7 +240,7 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 
 		It("Should rollback resources to member-cluster-1 and member-cluster-3 too and complete the staged update run successfully", func() {
 			namespacedUpdateRunSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[2], testNamespace, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
-			Eventually(namespacedUpdateRunSucceededActual, namespacedUpdateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[1])
+			Eventually(namespacedUpdateRunSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[1])
 			for idx := range allMemberClusters {
 				configMapActual := configMapPlacedOnClusterActual(allMemberClusters[idx], &oldConfigMap)
 				Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to rollback the configmap %s data on cluster %s as expected", oldConfigMap.Name, allMemberClusterNames[idx])
@@ -307,7 +297,7 @@ func createStagedUpdateStrategySucceed(strategyName, namespace string) *placemen
 	return strategy
 }
 
-func validateLatestNamespacedPolicySnapshot(rpName, namespace, wantPolicySnapshotIndex string, wantSelectedClusterCount int) {
+func validateLatestSchedulingPolicySnapshot(rpName, namespace, wantPolicySnapshotIndex string, wantSelectedClusterCount int) {
 	Eventually(func() (string, error) {
 		var policySnapshotList placementv1beta1.SchedulingPolicySnapshotList
 		if err := hubClient.List(ctx, &policySnapshotList, client.InNamespace(namespace), client.MatchingLabels{
@@ -337,7 +327,7 @@ func validateLatestNamespacedPolicySnapshot(rpName, namespace, wantPolicySnapsho
 	}, eventuallyDuration, eventuallyInterval).Should(Equal(wantPolicySnapshotIndex), "Policy snapshot index does not match")
 }
 
-func validateLatestNamespacedResourceSnapshot(rpName, namespace, wantResourceSnapshotIndex string) {
+func validateLatestResourceSnapshot(rpName, namespace, wantResourceSnapshotIndex string) {
 	Eventually(func() (string, error) {
 		rsList := &placementv1beta1.ResourceSnapshotList{}
 		if err := hubClient.List(ctx, rsList, client.InNamespace(namespace), client.MatchingLabels{
@@ -389,7 +379,7 @@ func validateAndApproveNamespacedApprovalRequests(updateRunName, namespace, stag
 			Reason:             "lgtm",
 		})
 		return hubClient.Status().Update(ctx, appReq)
-	}, namespacedUpdateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to get or approve approval request")
+	}, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to get or approve approval request")
 }
 
 func checkIfPlacedConfigMapOnMemberClustersInUpdateRun(clusters []*framework.Cluster) {
