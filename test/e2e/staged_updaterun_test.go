@@ -87,7 +87,7 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 			Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create RP")
 
 			// Create the stagedUpdateStrategy.
-			strategy = createNamespacedStagedUpdateStrategySucceed(strategyName, testNamespace)
+			strategy = createStagedUpdateStrategySucceed(strategyName, testNamespace)
 
 			for i := 0; i < 3; i++ {
 				updateRunNames = append(updateRunNames, fmt.Sprintf(namespacedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
@@ -129,7 +129,7 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 		})
 
 		It("Should create a namespaced staged update run successfully", func() {
-			createNamespacedStagedUpdateRunSucceed(updateRunNames[0], testNamespace, rpName, resourceSnapshotIndex1st, strategyName)
+			createStagedUpdateRunSucceed(updateRunNames[0], testNamespace, rpName, resourceSnapshotIndex1st, strategyName)
 		})
 
 		It("Should rollout resources to member-cluster-2 only and complete stage canary", func() {
@@ -191,7 +191,7 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 		})
 
 		It("Should create a new namespaced staged update run successfully", func() {
-			createNamespacedStagedUpdateRunSucceed(updateRunNames[1], testNamespace, rpName, resourceSnapshotIndex2nd, strategyName)
+			createStagedUpdateRunSucceed(updateRunNames[1], testNamespace, rpName, resourceSnapshotIndex2nd, strategyName)
 		})
 
 		It("Should rollout resources to member-cluster-2 only and complete stage canary", func() {
@@ -229,7 +229,7 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 		})
 
 		It("Should create a new namespaced staged update run with old resourceSnapshotIndex successfully to rollback", func() {
-			createNamespacedStagedUpdateRunSucceed(updateRunNames[2], testNamespace, rpName, resourceSnapshotIndex1st, strategyName)
+			createStagedUpdateRunSucceed(updateRunNames[2], testNamespace, rpName, resourceSnapshotIndex1st, strategyName)
 		})
 
 		It("Should rollback resources to member-cluster-2 only and completes stage canary", func() {
@@ -267,9 +267,7 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 	})
 })
 
-// Utility functions for namespaced staged update run
-
-func createNamespacedStagedUpdateStrategySucceed(strategyName, namespace string) *placementv1beta1.StagedUpdateStrategy {
+func createStagedUpdateStrategySucceed(strategyName, namespace string) *placementv1beta1.StagedUpdateStrategy {
 	strategy := &placementv1beta1.StagedUpdateStrategy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      strategyName,
@@ -357,7 +355,7 @@ func validateLatestNamespacedResourceSnapshot(rpName, namespace, wantResourceSna
 	}, eventuallyDuration, eventuallyInterval).Should(Equal(wantResourceSnapshotIndex), "Resource snapshot index does not match")
 }
 
-func createNamespacedStagedUpdateRunSucceed(updateRunName, namespace, rpName, resourceSnapshotIndex, strategyName string) {
+func createStagedUpdateRunSucceed(updateRunName, namespace, rpName, resourceSnapshotIndex, strategyName string) {
 	updateRun := &placementv1beta1.StagedUpdateRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      updateRunName,
@@ -602,8 +600,6 @@ func namespacedUpdateRunStatusSucceededActual(
 	}
 }
 
-// ConfigMap-specific utility functions for namespaced staged update run tests
-
 func checkIfPlacedConfigMapOnMemberClustersInUpdateRun(clusters []*framework.Cluster) {
 	for idx := range clusters {
 		memberCluster := clusters[idx]
@@ -624,8 +620,6 @@ func checkIfRemovedConfigMapFromMemberClustersConsistently(clusters []*framework
 func checkIfRemovedConfigMapFromAllMemberClustersConsistently() {
 	checkIfRemovedConfigMapFromMemberClustersConsistently(allMemberClusters)
 }
-
-// Condition functions for namespaced resources - adapted from CRP equivalents
 
 func rpRolloutPendingDueToExternalStrategyConditions(generation int64) []metav1.Condition {
 	return []metav1.Condition{

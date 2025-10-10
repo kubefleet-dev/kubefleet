@@ -90,7 +90,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 
 			// Create the clusterStagedUpdateStrategy.
-			strategy = createStagedUpdateStrategySucceed(strategyName)
+			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
 
 			for i := 0; i < 3; i++ {
 				updateRunNames = append(updateRunNames, fmt.Sprintf(updateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
@@ -117,11 +117,11 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		It("Should not rollout any resources to member clusters as there's no update run yet", checkIfRemovedWorkResourcesFromAllMemberClustersConsistently)
 
 		It("Should have the latest resource snapshot", func() {
-			validateLatestResourceSnapshot(crpName, resourceSnapshotIndex1st)
+			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex1st)
 		})
 
 		It("Should successfully schedule the crp", func() {
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 3)
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 3)
 		})
 
 		It("Should update crp status as pending rollout", func() {
@@ -130,7 +130,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should create a staged update run successfully", func() {
-			createStagedUpdateRunSucceed(updateRunNames[0], crpName, resourceSnapshotIndex1st, strategyName)
+			createClusterStagedUpdateRunSucceed(updateRunNames[0], crpName, resourceSnapshotIndex1st, strategyName)
 		})
 
 		It("Should rollout resources to member-cluster-2 only and complete stage canary", func() {
@@ -192,7 +192,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should create a new staged update run successfully", func() {
-			createStagedUpdateRunSucceed(updateRunNames[1], crpName, resourceSnapshotIndex2nd, strategyName)
+			createClusterStagedUpdateRunSucceed(updateRunNames[1], crpName, resourceSnapshotIndex2nd, strategyName)
 		})
 
 		It("Should rollout resources to member-cluster-2 only and complete stage canary", func() {
@@ -230,7 +230,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should create a new staged update run with old resourceSnapshotIndex successfully to rollback", func() {
-			createStagedUpdateRunSucceed(updateRunNames[2], crpName, resourceSnapshotIndex1st, strategyName)
+			createClusterStagedUpdateRunSucceed(updateRunNames[2], crpName, resourceSnapshotIndex1st, strategyName)
 		})
 
 		It("Should rollback resources to member-cluster-2 only and completes stage canary", func() {
@@ -297,7 +297,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 
 			// Create the clusterStagedUpdateStrategy.
-			strategy = createStagedUpdateStrategySucceed(strategyName)
+			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
 
 			for i := 0; i < 3; i++ {
 				updateRunNames = append(updateRunNames, fmt.Sprintf(updateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
@@ -320,11 +320,11 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		It("Should not rollout any resources to member clusters as there's no update run yet", checkIfRemovedWorkResourcesFromAllMemberClustersConsistently)
 
 		It("Should have the latest resource snapshot", func() {
-			validateLatestResourceSnapshot(crpName, resourceSnapshotIndex1st)
+			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex1st)
 		})
 
 		It("Should successfully schedule the crp", func() {
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 2)
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 2)
 		})
 
 		It("Should update crp status as pending rollout", func() {
@@ -333,7 +333,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should create a staged update run successfully", func() {
-			createStagedUpdateRunSucceed(updateRunNames[0], crpName, resourceSnapshotIndex1st, strategyName)
+			createClusterStagedUpdateRunSucceed(updateRunNames[0], crpName, resourceSnapshotIndex1st, strategyName)
 		})
 
 		It("Should rollout resources to member-cluster-2 only and complete stage canary", func() {
@@ -372,7 +372,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should successfully schedule the crp", func() {
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex2nd, 3)
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex2nd, 3)
 		})
 
 		It("Should update crp status as rollout pending", func() {
@@ -381,7 +381,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should create a staged update run successfully", func() {
-			createStagedUpdateRunSucceed(updateRunNames[1], crpName, resourceSnapshotIndex1st, strategyName)
+			createClusterStagedUpdateRunSucceed(updateRunNames[1], crpName, resourceSnapshotIndex1st, strategyName)
 		})
 
 		It("Should still have resources on member-cluster-1 and member-cluster-2 only and completes stage canary", func() {
@@ -421,7 +421,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should successfully schedule the crp", func() {
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex3rd, 1)
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex3rd, 1)
 		})
 
 		It("Should update crp status as rollout pending with member-cluster-3 only", func() {
@@ -430,7 +430,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should create a staged update run successfully", func() {
-			createStagedUpdateRunSucceed(updateRunNames[2], crpName, resourceSnapshotIndex1st, strategyName)
+			createClusterStagedUpdateRunSucceed(updateRunNames[2], crpName, resourceSnapshotIndex1st, strategyName)
 		})
 
 		It("Should still have resources on all member clusters and complete stage canary", func() {
@@ -487,7 +487,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 
 			// Create the clusterStagedUpdateStrategy.
-			strategy = createStagedUpdateStrategySucceed(strategyName)
+			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
 
 			for i := 0; i < 3; i++ {
 				updateRunNames = append(updateRunNames, fmt.Sprintf(updateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
@@ -510,11 +510,11 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		It("Should not rollout any resources to member clusters as there's no update run yet", checkIfRemovedWorkResourcesFromAllMemberClustersConsistently)
 
 		It("Should have the latest resource snapshot", func() {
-			validateLatestResourceSnapshot(crpName, resourceSnapshotIndex1st)
+			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex1st)
 		})
 
 		It("Should successfully schedule the crp", func() {
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 1)
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 1)
 		})
 
 		It("Should update crp status as pending rollout", func() {
@@ -523,7 +523,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should create a staged update run successfully", func() {
-			createStagedUpdateRunSucceed(updateRunNames[0], crpName, resourceSnapshotIndex1st, strategyName)
+			createClusterStagedUpdateRunSucceed(updateRunNames[0], crpName, resourceSnapshotIndex1st, strategyName)
 		})
 
 		It("Should not rollout any resources to member clusters and complete stage canary", func() {
@@ -561,7 +561,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should successfully schedule the crp without creating a new policy snapshot", func() {
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 3)
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 3)
 		})
 
 		It("Should update crp status as rollout pending", func() {
@@ -570,7 +570,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should create a staged update run successfully", func() {
-			createStagedUpdateRunSucceed(updateRunNames[1], crpName, resourceSnapshotIndex1st, strategyName)
+			createClusterStagedUpdateRunSucceed(updateRunNames[1], crpName, resourceSnapshotIndex1st, strategyName)
 		})
 
 		It("Should still have resources on member-cluster-2 and member-cluster-3 only and completes stage canary", func() {
@@ -609,7 +609,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should successfully schedule the crp without creating a new policy snapshot", func() {
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 2)
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 2)
 		})
 
 		It("Should update crp status as rollout completed with member-cluster-2 and member-cluster-3", func() {
@@ -618,7 +618,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should create a staged update run successfully", func() {
-			createStagedUpdateRunSucceed(updateRunNames[2], crpName, resourceSnapshotIndex1st, strategyName)
+			createClusterStagedUpdateRunSucceed(updateRunNames[2], crpName, resourceSnapshotIndex1st, strategyName)
 		})
 
 		It("Should still have resources on all member clusters and complete stage canary", func() {
@@ -752,7 +752,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 
 			// Create the clusterStagedUpdateStrategy.
-			strategy = createStagedUpdateStrategySucceed(strategyName)
+			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
 		})
 
 		AfterAll(func() {
@@ -775,7 +775,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		It("Should not rollout any resources to member clusters as there's no update run yet", checkIfRemovedWorkResourcesFromAllMemberClustersConsistently)
 
 		It("Should have the latest resource snapshot", func() {
-			validateLatestResourceSnapshot(crpName, resourceSnapshotIndex1st)
+			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex1st)
 		})
 
 		It("Should update crp status as pending rollout", func() {
@@ -784,11 +784,11 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should successfully schedule the crp", func() {
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 3)
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 3)
 		})
 
 		It("Should create a staged update run successfully", func() {
-			createStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex1st, strategyName)
+			createClusterStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex1st, strategyName)
 		})
 
 		It("Should rollout resources to member-cluster-2 only and complete stage canary", func() {
@@ -861,7 +861,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 
 			// Create the clusterStagedUpdateStrategy.
-			strategy = createStagedUpdateStrategySucceed(strategyName)
+			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
 		})
 
 		AfterAll(func() {
@@ -878,7 +878,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		It("Should not rollout any resources to member clusters as there's no update run yet", checkIfRemovedWorkResourcesFromAllMemberClustersConsistently)
 
 		It("Should have the latest resource snapshot", func() {
-			validateLatestResourceSnapshot(crpName, resourceSnapshotIndex1st)
+			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex1st)
 		})
 
 		It("Should update crp status as pending rollout", func() {
@@ -887,11 +887,11 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should successfully schedule the crp", func() {
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 3)
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 3)
 		})
 
 		It("Should create a staged update run successfully", func() {
-			createStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex1st, strategyName)
+			createClusterStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex1st, strategyName)
 		})
 
 		It("Should report diff for member-cluster-2 only and completes stage canary", func() {
@@ -944,7 +944,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 
 			// Create the clusterStagedUpdateStrategy for later use.
-			strategy = createStagedUpdateStrategySucceed(strategyName)
+			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
 
 			oldConfigMap = appConfigMap()
 			newConfigMap = appConfigMap()
@@ -998,7 +998,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should have the new resource snapshot but CRP status should remain completed with old snapshot", func() {
-			validateLatestResourceSnapshot(crpName, resourceSnapshotIndex2nd)
+			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex2nd)
 
 			// CRP status should still show completed with old snapshot
 			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
@@ -1007,7 +1007,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Create a staged update run with new resourceSnapshotIndex and verify rollout happens", func() {
-			createStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex2nd, strategyName)
+			createClusterStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex2nd, strategyName)
 
 			// Verify rollout to canary cluster first
 			By("Verify that the new configmap is updated on member-cluster-2 during canary stage")
@@ -1060,7 +1060,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 
 			// Create the clusterStagedUpdateStrategy.
-			strategy = createStagedUpdateStrategySucceed(strategyName)
+			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
 		})
 
 		AfterAll(func() {
@@ -1075,9 +1075,9 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should create a staged update run and verify cluster approval request is created", func() {
-			validateLatestResourceSnapshot(crpName, resourceSnapshotIndex1st)
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 3)
-			createStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex1st, strategyName)
+			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex1st)
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 3)
+			createClusterStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex1st, strategyName)
 
 			// Verify that cluster approval request is created for canary stage.
 			Eventually(func() error {
@@ -1182,7 +1182,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 
 			// Create the clusterStagedUpdateStrategy.
-			strategy = createStagedUpdateStrategySucceed(strategyName)
+			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
 
 			oldConfigMap = appConfigMap()
 			newConfigMap = appConfigMap()
@@ -1203,7 +1203,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		It("Should not rollout any resources to member clusters with external strategy", checkIfRemovedWorkResourcesFromAllMemberClustersConsistently)
 
 		It("Should have the latest resource snapshot", func() {
-			validateLatestResourceSnapshot(crpName, resourceSnapshotIndex1st)
+			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex1st)
 		})
 
 		It("Should update crp status as pending rollout", func() {
@@ -1212,7 +1212,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Create updateRun and verify resources are rolled out", func() {
-			createStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex1st, strategyName)
+			createClusterStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex1st, strategyName)
 
 			validateAndApproveClusterApprovalRequests(updateRunName, envCanary)
 
@@ -1239,7 +1239,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should have new resource snapshot but CRP status should remain completed with old snapshot", func() {
-			validateLatestResourceSnapshot(crpName, resourceSnapshotIndex2nd)
+			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex2nd)
 
 			// CRP status should still show completed with old snapshot
 			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
@@ -1335,11 +1335,11 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Label
 		checkIfRemovedWorkResourcesFromAllMemberClustersConsistently()
 
 		By("Validating created resource snapshot and policy snapshot")
-		validateLatestResourceSnapshot(crpName, resourceSnapshotIndex1st)
-		validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 3)
+		validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex1st)
+		validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 3)
 
 		By("Creating the first staged update run")
-		createStagedUpdateRunSucceed(updateRunNames[0], crpName, resourceSnapshotIndex1st, strategyName)
+		createClusterStagedUpdateRunSucceed(updateRunNames[0], crpName, resourceSnapshotIndex1st, strategyName)
 
 		By("Validating staged update run has succeeded")
 		updateRunSucceededActual := updateRunStatusSucceededActual(updateRunNames[0], policySnapshotIndex1st, 3, defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[0], allMemberClusterNames[1], allMemberClusterNames[2]}}, nil, nil, nil)
@@ -1389,8 +1389,8 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Label
 		})
 
 		It("Should create another staged update run for the same CRP", func() {
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 2)
-			createStagedUpdateRunSucceed(updateRunNames[1], crpName, resourceSnapshotIndex1st, strategyName)
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 2)
+			createClusterStagedUpdateRunSucceed(updateRunNames[1], crpName, resourceSnapshotIndex1st, strategyName)
 		})
 
 		It("Should complete the second staged update run and complete the CRP", func() {
@@ -1437,8 +1437,8 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Label
 		})
 
 		It("Should reschedule to member cluster 1 and create a new staged update run successfully", func() {
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 3)
-			createStagedUpdateRunSucceed(updateRunNames[1], crpName, resourceSnapshotIndex1st, strategyName)
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 3)
+			createClusterStagedUpdateRunSucceed(updateRunNames[1], crpName, resourceSnapshotIndex1st, strategyName)
 		})
 
 		It("Should complete the staged update run, complete CRP, and rollout resources to all member clusters", func() {
@@ -1476,12 +1476,12 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Label
 		})
 
 		It("Should have the latest resource snapshot with updated resources", func() {
-			validateLatestResourceSnapshot(crpName, resourceSnapshotIndex2nd)
+			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex2nd)
 		})
 
 		It("Should reschedule to member cluster 1 and create a new staged update run successfully", func() {
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 3)
-			createStagedUpdateRunSucceed(updateRunNames[1], crpName, resourceSnapshotIndex2nd, strategyName)
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 3)
+			createClusterStagedUpdateRunSucceed(updateRunNames[1], crpName, resourceSnapshotIndex2nd, strategyName)
 		})
 
 		It("Should complete the staged update run, complete CRP, and rollout updated resources to all member clusters", func() {
@@ -1519,8 +1519,8 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Label
 		})
 
 		It("Should reschedule to member cluster 1 and create a new staged update run successfully", func() {
-			validateLatestPolicySnapshot(crpName, policySnapshotIndex1st, 3)
-			createStagedUpdateRunSucceed(updateRunNames[1], crpName, resourceSnapshotIndex1st, strategyName)
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 3)
+			createClusterStagedUpdateRunSucceed(updateRunNames[1], crpName, resourceSnapshotIndex1st, strategyName)
 		})
 
 		It("Should complete the staged update run, complete CRP, and re-place resources to all member clusters", func() {
@@ -1574,7 +1574,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Label
 	})
 })
 
-func createStagedUpdateStrategySucceed(strategyName string) *placementv1beta1.ClusterStagedUpdateStrategy {
+func createClusterStagedUpdateStrategySucceed(strategyName string) *placementv1beta1.ClusterStagedUpdateStrategy {
 	strategy := &placementv1beta1.ClusterStagedUpdateStrategy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: strategyName,
@@ -1615,7 +1615,7 @@ func createStagedUpdateStrategySucceed(strategyName string) *placementv1beta1.Cl
 	return strategy
 }
 
-func validateLatestPolicySnapshot(crpName, wantPolicySnapshotIndex string, wantSelectedClusterCount int) {
+func validateLatestClusterSchedulingPolicySnapshot(crpName, wantPolicySnapshotIndex string, wantSelectedClusterCount int) {
 	Eventually(func() (string, error) {
 		var policySnapshotList placementv1beta1.ClusterSchedulingPolicySnapshotList
 		if err := hubClient.List(ctx, &policySnapshotList, client.MatchingLabels{
@@ -1645,7 +1645,7 @@ func validateLatestPolicySnapshot(crpName, wantPolicySnapshotIndex string, wantS
 	}, eventuallyDuration, eventuallyInterval).Should(Equal(wantPolicySnapshotIndex), "Policy snapshot index does not match")
 }
 
-func validateLatestResourceSnapshot(crpName, wantResourceSnapshotIndex string) {
+func validateLatestClusterResourceSnapshot(crpName, wantResourceSnapshotIndex string) {
 	Eventually(func() (string, error) {
 		crsList := &placementv1beta1.ClusterResourceSnapshotList{}
 		if err := hubClient.List(ctx, crsList, client.MatchingLabels{
@@ -1661,7 +1661,7 @@ func validateLatestResourceSnapshot(crpName, wantResourceSnapshotIndex string) {
 	}, eventuallyDuration, eventuallyInterval).Should(Equal(wantResourceSnapshotIndex), "Resource snapshot index does not match")
 }
 
-func createStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex, strategyName string) {
+func createClusterStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex, strategyName string) {
 	updateRun := &placementv1beta1.ClusterStagedUpdateRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: updateRunName,
