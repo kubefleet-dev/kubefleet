@@ -26,6 +26,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -45,7 +46,7 @@ const (
 )
 
 // Note that this container will run in parallel with other containers.
-var _ = FDescribe("test RP rollout with namespaced staged update run", func() {
+var _ = Describe("test RP rollout with namespaced staged update run", func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 	strategyName := fmt.Sprintf(namespacedUpdateRunStrategyNameTemplate, GinkgoParallelProcess())
@@ -97,20 +98,20 @@ var _ = FDescribe("test RP rollout with namespaced staged update run", func() {
 			newConfigMap.Data["data"] = testConfigMapDataValue
 		})
 
-		// AfterAll(func() {
-		// 	// Remove the custom deletion blocker finalizer from the RP.
-		// 	ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: testNamespace}, allMemberClusters)
+		AfterAll(func() {
+			// Remove the custom deletion blocker finalizer from the RP.
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: testNamespace}, allMemberClusters)
 
-		// 	// Remove all the stagedUpdateRuns.
-		// 	for _, name := range updateRunNames {
-		// 		ensureNamespacedUpdateRunDeletion(name, testNamespace)
-		// 	}
+			// Remove all the stagedUpdateRuns.
+			for _, name := range updateRunNames {
+				ensureNamespacedUpdateRunDeletion(name, testNamespace)
+			}
 
-		// 	// Delete the stagedUpdateStrategy.
-		// 	ensureNamespacedUpdateRunStrategyDeletion(strategyName, testNamespace)
-		// 	// Delete the namespace only CRP.
-		// 	ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
-		// })
+			// Delete the stagedUpdateStrategy.
+			ensureNamespacedUpdateRunStrategyDeletion(strategyName, testNamespace)
+			// Delete the namespace only CRP.
+			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+		})
 
 		It("Should not rollout any resources to member clusters as there's no update run yet", checkIfRemovedConfigMapFromAllMemberClustersConsistently)
 
@@ -153,7 +154,7 @@ var _ = FDescribe("test RP rollout with namespaced staged update run", func() {
 		})
 
 		It("Should update rp status as completed", func() {
-			rpStatusUpdatedActual := rpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
+			rpStatusUpdatedActual := rpStatusWithExternalStrategyActual(appConfigMapIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
 				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil, rpName, testNamespace)
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP %s status as expected", rpName)
 		})
@@ -168,7 +169,7 @@ var _ = FDescribe("test RP rollout with namespaced staged update run", func() {
 		})
 
 		It("Should not update rp status, should still be completed", func() {
-			rpStatusUpdatedActual := rpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
+			rpStatusUpdatedActual := rpStatusWithExternalStrategyActual(appConfigMapIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
 				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil, rpName, testNamespace)
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep RP %s status as expected", rpName)
 		})
@@ -222,7 +223,7 @@ var _ = FDescribe("test RP rollout with namespaced staged update run", func() {
 		})
 
 		It("Should update rp status as completed", func() {
-			rpStatusUpdatedActual := rpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex2nd, true, allMemberClusterNames,
+			rpStatusUpdatedActual := rpStatusWithExternalStrategyActual(appConfigMapIdentifiers(), resourceSnapshotIndex2nd, true, allMemberClusterNames,
 				[]string{resourceSnapshotIndex2nd, resourceSnapshotIndex2nd, resourceSnapshotIndex2nd}, []bool{true, true, true}, nil, nil, rpName, testNamespace)
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP %s status as expected", rpName)
 		})
@@ -259,7 +260,7 @@ var _ = FDescribe("test RP rollout with namespaced staged update run", func() {
 		})
 
 		It("Should update rp status as completed", func() {
-			rpStatusUpdatedActual := rpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
+			rpStatusUpdatedActual := rpStatusWithExternalStrategyActual(appConfigMapIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
 				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil, rpName, testNamespace)
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP %s status as expected", rpName)
 		})
@@ -584,21 +585,16 @@ func namespacedUpdateRunStatusSucceededActual(
 		deleteStageStatus := &placementv1beta1.StageUpdatingStatus{
 			StageName: "kubernetes-fleet.io/deleteStage",
 		}
-		if len(wantUnscheduledClusters) > 0 {
-			deleteStageStatus.Clusters = make([]placementv1beta1.ClusterUpdatingStatus, len(wantUnscheduledClusters))
-			for i, name := range wantUnscheduledClusters {
-				deleteStageStatus.Clusters[i].ClusterName = name
-				deleteStageStatus.Clusters[i].Conditions = updateRunClusterRolloutSucceedConditions(updateRun.Generation)
-			}
-			deleteStageStatus.Conditions = updateRunStageRolloutSucceedConditions(updateRun.Generation)
+		deleteStageStatus.Clusters = make([]placementv1beta1.ClusterUpdatingStatus, len(wantUnscheduledClusters))
+		for i := range deleteStageStatus.Clusters {
+			deleteStageStatus.Clusters[i].ClusterName = wantUnscheduledClusters[i]
+			deleteStageStatus.Clusters[i].Conditions = updateRunClusterRolloutSucceedConditions(updateRun.Generation)
 		}
+		deleteStageStatus.Conditions = updateRunStageRolloutSucceedConditions(updateRun.Generation)
 
 		wantStatus.StagesStatus = stagesStatus
-		if len(wantUnscheduledClusters) > 0 {
-			wantStatus.DeletionStageStatus = deleteStageStatus
-		}
+		wantStatus.DeletionStageStatus = deleteStageStatus
 		wantStatus.Conditions = updateRunSucceedConditions(updateRun.Generation)
-
 		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusCmpOption...); diff != "" {
 			return fmt.Errorf("UpdateRun status diff (-got, +want): %s", diff)
 		}
