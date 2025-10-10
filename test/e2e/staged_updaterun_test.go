@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -30,7 +29,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	scheduler "github.com/kubefleet-dev/kubefleet/pkg/scheduler/framework"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
 )
@@ -104,16 +102,16 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 
 			// Remove all the stagedUpdateRuns.
 			for _, name := range updateRunNames {
-				ensureNamespacedUpdateRunDeletion(name, testNamespace)
+				ensureStagedUpdateRunDeletion(name, testNamespace)
 			}
 
 			// Delete the stagedUpdateStrategy.
-			ensureNamespacedUpdateRunStrategyDeletion(strategyName, testNamespace)
+			ensureStagedUpdateRunStrategyDeletion(strategyName, testNamespace)
 			// Delete the namespace only CRP.
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 
-		It("Should not rollout any resources to member clusters as there's no update run yet", checkIfRemovedConfigMapFromAllMemberClustersConsistently)
+		It("Should not rollout any resources to member clusters as there's no update run yet", checkIfRemovedConfigMapFromAllMemberClusters)
 
 		It("Should have the latest resource snapshot", func() {
 			validateLatestNamespacedResourceSnapshot(rpName, testNamespace, resourceSnapshotIndex1st)
@@ -148,7 +146,7 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 		})
 
 		It("Should rollout resources to all the members and complete the staged update run successfully", func() {
-			namespacedUpdateRunSucceededActual := namespacedUpdateRunStatusSucceededActual(updateRunNames[0], testNamespace, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+			namespacedUpdateRunSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[0], testNamespace, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(namespacedUpdateRunSucceededActual, namespacedUpdateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[0])
 			checkIfPlacedConfigMapOnMemberClustersInUpdateRun(allMemberClusters)
 		})
@@ -213,7 +211,7 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 		})
 
 		It("Should rollout resources to member-cluster-1 and member-cluster-3 too and complete the staged update run successfully", func() {
-			namespacedUpdateRunSucceededActual := namespacedUpdateRunStatusSucceededActual(updateRunNames[1], testNamespace, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+			namespacedUpdateRunSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[1], testNamespace, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(namespacedUpdateRunSucceededActual, namespacedUpdateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[1])
 			By("Verify that new the configmap is updated on all member clusters")
 			for idx := range allMemberClusters {
@@ -251,7 +249,7 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 		})
 
 		It("Should rollback resources to member-cluster-1 and member-cluster-3 too and complete the staged update run successfully", func() {
-			namespacedUpdateRunSucceededActual := namespacedUpdateRunStatusSucceededActual(updateRunNames[2], testNamespace, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+			namespacedUpdateRunSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[2], testNamespace, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(namespacedUpdateRunSucceededActual, namespacedUpdateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[1])
 			for idx := range allMemberClusters {
 				configMapActual := configMapPlacedOnClusterActual(allMemberClusters[idx], &oldConfigMap)
@@ -394,212 +392,6 @@ func validateAndApproveNamespacedApprovalRequests(updateRunName, namespace, stag
 	}, namespacedUpdateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to get or approve approval request")
 }
 
-func ensureNamespacedUpdateRunDeletion(updateRunName, namespace string) {
-	Eventually(func() error {
-		updateRun := &placementv1beta1.StagedUpdateRun{}
-		if err := hubClient.Get(ctx, client.ObjectKey{Name: updateRunName, Namespace: namespace}, updateRun); err != nil {
-			return client.IgnoreNotFound(err)
-		}
-		return hubClient.Delete(ctx, updateRun)
-	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to delete StagedUpdateRun %s", updateRunName)
-
-	// Wait for the staged update run to be deleted.
-	Eventually(func() bool {
-		updateRun := &placementv1beta1.StagedUpdateRun{}
-		return hubClient.Get(ctx, client.ObjectKey{Name: updateRunName, Namespace: namespace}, updateRun) != nil
-	}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "Failed to delete StagedUpdateRun %s", updateRunName)
-}
-
-func ensureNamespacedUpdateRunStrategyDeletion(strategyName, namespace string) {
-	Eventually(func() error {
-		strategy := &placementv1beta1.StagedUpdateStrategy{}
-		if err := hubClient.Get(ctx, client.ObjectKey{Name: strategyName, Namespace: namespace}, strategy); err != nil {
-			return client.IgnoreNotFound(err)
-		}
-		return hubClient.Delete(ctx, strategy)
-	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to delete StagedUpdateStrategy %s", strategyName)
-
-	// Wait for the staged update strategy to be deleted.
-	Eventually(func() bool {
-		strategy := &placementv1beta1.StagedUpdateStrategy{}
-		return hubClient.Get(ctx, client.ObjectKey{Name: strategyName, Namespace: namespace}, strategy) != nil
-	}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "Failed to delete StagedUpdateStrategy %s", strategyName)
-}
-
-func rpStatusWithExternalStrategyActual(
-	wantSelectedResourceIdentifiers []placementv1beta1.ResourceIdentifier,
-	wantObservedResourceIndex string,
-	wantRPRolloutCompleted bool,
-	wantSelectedClusters []string,
-	wantObservedResourceIndexPerCluster []string,
-	wantRolloutCompletedPerCluster []bool,
-	wantClusterResourceOverrides map[string][]string,
-	wantResourceOverrides map[string][]placementv1beta1.NamespacedName,
-	rpName, namespace string,
-) func() error {
-	nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
-	cmName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
-
-	return func() error {
-		rp := &placementv1beta1.ResourcePlacement{}
-		if err := hubClient.Get(ctx, client.ObjectKey{Name: rpName, Namespace: namespace}, rp); err != nil {
-			return err
-		}
-
-		reportDiff := rp.Spec.Strategy.ApplyStrategy != nil && rp.Spec.Strategy.ApplyStrategy.Type == placementv1beta1.ApplyStrategyTypeReportDiff
-
-		var wantPlacementStatus []placementv1beta1.PerClusterPlacementStatus
-		rpHasOverrides := false
-		for i, name := range wantSelectedClusters {
-			if !wantRolloutCompletedPerCluster[i] {
-				// No observed resource index for this cluster, assume rollout is still pending.
-				wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.PerClusterPlacementStatus{
-					ClusterName:           name,
-					Conditions:            perClusterRolloutUnknownConditions(rp.Generation),
-					ObservedResourceIndex: wantObservedResourceIndexPerCluster[i],
-				})
-			} else {
-				wantResourceOverrides, hasRO := wantResourceOverrides[name]
-				wantClusterResourceOverrides, hasCRO := wantClusterResourceOverrides[name]
-				hasOverrides := (hasRO && len(wantResourceOverrides) > 0) || (hasCRO && len(wantClusterResourceOverrides) > 0)
-				if hasOverrides {
-					rpHasOverrides = true
-				}
-				if reportDiff {
-					wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.PerClusterPlacementStatus{
-						ClusterName:                        name,
-						Conditions:                         perClusterDiffReportedConditions(rp.Generation),
-						ApplicableResourceOverrides:        wantResourceOverrides,
-						ApplicableClusterResourceOverrides: wantClusterResourceOverrides,
-						ObservedResourceIndex:              wantObservedResourceIndexPerCluster[i],
-						DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
-							{
-								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-									Version: "v1",
-									Kind:    "Namespace",
-									Name:    nsName,
-								},
-								ObservedDiffs: []placementv1beta1.PatchDetail{
-									{
-										Path:       "/",
-										ValueInHub: "(the whole object)",
-									},
-								},
-							},
-							{
-								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-									Version:   "v1",
-									Kind:      "ConfigMap",
-									Name:      cmName,
-									Namespace: nsName,
-								},
-								ObservedDiffs: []placementv1beta1.PatchDetail{
-									{
-										Path:       "/",
-										ValueInHub: "(the whole object)",
-									},
-								},
-							},
-						},
-					})
-				} else {
-					wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.PerClusterPlacementStatus{
-						ClusterName:                        name,
-						Conditions:                         perClusterRolloutCompletedConditions(rp.Generation, true, hasOverrides),
-						ApplicableResourceOverrides:        wantResourceOverrides,
-						ApplicableClusterResourceOverrides: wantClusterResourceOverrides,
-						ObservedResourceIndex:              wantObservedResourceIndexPerCluster[i],
-					})
-				}
-			}
-		}
-
-		wantStatus := placementv1beta1.PlacementStatus{
-			PerClusterPlacementStatuses: wantPlacementStatus,
-			SelectedResources:           wantSelectedResourceIdentifiers,
-			ObservedResourceIndex:       wantObservedResourceIndex,
-		}
-		if wantRPRolloutCompleted {
-			if reportDiff {
-				wantStatus.Conditions = rpDiffReportedConditions(rp.Generation, rpHasOverrides)
-			} else {
-				wantStatus.Conditions = rpRolloutCompletedConditions(rp.Generation, rpHasOverrides)
-			}
-		} else {
-			wantStatus.Conditions = rpRolloutPendingDueToExternalStrategyConditions(rp.Generation)
-		}
-
-		if diff := cmp.Diff(rp.Status, wantStatus, placementStatusCmpOptions...); diff != "" {
-			return fmt.Errorf("RP status diff (-got, +want): %s", diff)
-		}
-		return nil
-	}
-}
-
-func namespacedUpdateRunStatusSucceededActual(
-	updateRunName, namespace string,
-	wantPolicyIndex string,
-	wantClusterCount int,
-	wantApplyStrategy *placementv1beta1.ApplyStrategy,
-	wantStrategySpec *placementv1beta1.UpdateStrategySpec,
-	wantSelectedClusters [][]string,
-	wantUnscheduledClusters []string,
-	wantCROs map[string][]string,
-	wantROs map[string][]placementv1beta1.NamespacedName,
-) func() error {
-	return func() error {
-		updateRun := &placementv1beta1.StagedUpdateRun{}
-		if err := hubClient.Get(ctx, client.ObjectKey{Name: updateRunName, Namespace: namespace}, updateRun); err != nil {
-			return err
-		}
-
-		wantStatus := placementv1beta1.UpdateRunStatus{
-			PolicySnapshotIndexUsed:    wantPolicyIndex,
-			PolicyObservedClusterCount: wantClusterCount,
-			ApplyStrategy:              wantApplyStrategy.DeepCopy(),
-			UpdateStrategySnapshot:     wantStrategySpec,
-		}
-		stagesStatus := make([]placementv1beta1.StageUpdatingStatus, len(wantStrategySpec.Stages))
-		for i, stage := range wantStrategySpec.Stages {
-			stagesStatus[i].StageName = stage.Name
-			stagesStatus[i].Clusters = make([]placementv1beta1.ClusterUpdatingStatus, len(wantSelectedClusters[i]))
-			for j := range stagesStatus[i].Clusters {
-				stagesStatus[i].Clusters[j].ClusterName = wantSelectedClusters[i][j]
-				stagesStatus[i].Clusters[j].ClusterResourceOverrideSnapshots = wantCROs[wantSelectedClusters[i][j]]
-				stagesStatus[i].Clusters[j].ResourceOverrideSnapshots = wantROs[wantSelectedClusters[i][j]]
-				stagesStatus[i].Clusters[j].Conditions = updateRunClusterRolloutSucceedConditions(updateRun.Generation)
-			}
-			stagesStatus[i].AfterStageTaskStatus = make([]placementv1beta1.AfterStageTaskStatus, len(stage.AfterStageTasks))
-			for j, task := range stage.AfterStageTasks {
-				stagesStatus[i].AfterStageTaskStatus[j].Type = task.Type
-				if task.Type == placementv1beta1.AfterStageTaskTypeApproval {
-					stagesStatus[i].AfterStageTaskStatus[j].ApprovalRequestName = fmt.Sprintf(placementv1beta1.ApprovalTaskNameFmt, updateRun.Name, stage.Name)
-				}
-				stagesStatus[i].AfterStageTaskStatus[j].Conditions = updateRunAfterStageTaskSucceedConditions(updateRun.Generation, task.Type)
-			}
-			stagesStatus[i].Conditions = updateRunStageRolloutSucceedConditions(updateRun.Generation)
-		}
-
-		deleteStageStatus := &placementv1beta1.StageUpdatingStatus{
-			StageName: "kubernetes-fleet.io/deleteStage",
-		}
-		deleteStageStatus.Clusters = make([]placementv1beta1.ClusterUpdatingStatus, len(wantUnscheduledClusters))
-		for i := range deleteStageStatus.Clusters {
-			deleteStageStatus.Clusters[i].ClusterName = wantUnscheduledClusters[i]
-			deleteStageStatus.Clusters[i].Conditions = updateRunClusterRolloutSucceedConditions(updateRun.Generation)
-		}
-		deleteStageStatus.Conditions = updateRunStageRolloutSucceedConditions(updateRun.Generation)
-
-		wantStatus.StagesStatus = stagesStatus
-		wantStatus.DeletionStageStatus = deleteStageStatus
-		wantStatus.Conditions = updateRunSucceedConditions(updateRun.Generation)
-		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusCmpOption...); diff != "" {
-			return fmt.Errorf("UpdateRun status diff (-got, +want): %s", diff)
-		}
-		return nil
-	}
-}
-
 func checkIfPlacedConfigMapOnMemberClustersInUpdateRun(clusters []*framework.Cluster) {
 	for idx := range clusters {
 		memberCluster := clusters[idx]
@@ -614,26 +406,5 @@ func checkIfRemovedConfigMapFromMemberClustersConsistently(clusters []*framework
 		memberCluster := clusters[idx]
 		configMapRemovedActual := namespacedResourcesRemovedFromClusterActual(memberCluster)
 		Consistently(configMapRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove config map from member cluster %s consistently", memberCluster.ClusterName)
-	}
-}
-
-func checkIfRemovedConfigMapFromAllMemberClustersConsistently() {
-	checkIfRemovedConfigMapFromMemberClustersConsistently(allMemberClusters)
-}
-
-func rpRolloutPendingDueToExternalStrategyConditions(generation int64) []metav1.Condition {
-	return []metav1.Condition{
-		{
-			Type:               string(placementv1beta1.ResourcePlacementScheduledConditionType),
-			Status:             metav1.ConditionTrue,
-			Reason:             scheduler.FullyScheduledReason,
-			ObservedGeneration: generation,
-		},
-		{
-			Type:               string(placementv1beta1.ResourcePlacementRolloutStartedConditionType),
-			Status:             metav1.ConditionUnknown,
-			Reason:             condition.RolloutControlledByExternalControllerReason,
-			ObservedGeneration: generation,
-		},
 	}
 }
