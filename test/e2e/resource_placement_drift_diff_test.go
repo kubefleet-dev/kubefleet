@@ -69,6 +69,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 		Expect(memberCluster1EastProdClient.Create(ctx, &cm2)).To(Succeed())
 
 		By("Create the CRP with Namespace-only selector")
+		// Note that this CRP will take over pre-existing namespaces on member clusters.
 		crpName = fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		crp := &placementv1beta1.ClusterResourcePlacement{
 			ObjectMeta: metav1.ObjectMeta{
@@ -98,13 +99,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 	})
 
 	AfterEach(OncePerOrdered, func() {
-		// The pre-existing resource that have not been taken over and must be deleted manually.
-		cleanupAnotherConfigMapOnMemberCluster(types.NamespacedName{Name: cm2Name, Namespace: nsName}, memberCluster1EastProd)
-		cleanWorkResourcesOnCluster(memberCluster1EastProd)
-
-		// Clean up second configMap on the hub cluster.
-		cleanupAnotherConfigMap(types.NamespacedName{Name: cm2Name, Namespace: nsName})
-
+		// No need to clean up pre-existing resources as the namespace has been taken over.
 		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 	})
 
