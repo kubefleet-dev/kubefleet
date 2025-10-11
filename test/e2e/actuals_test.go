@@ -1430,9 +1430,6 @@ func crpStatusWithExternalStrategyActual(
 	wantResourceOverrides map[string][]placementv1beta1.NamespacedName,
 ) func() error {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
-	nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
-	cmName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
-
 	return func() error {
 		crp := &placementv1beta1.ClusterResourcePlacement{}
 		if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
@@ -1441,71 +1438,8 @@ func crpStatusWithExternalStrategyActual(
 
 		reportDiff := crp.Spec.Strategy.ApplyStrategy != nil && crp.Spec.Strategy.ApplyStrategy.Type == placementv1beta1.ApplyStrategyTypeReportDiff
 
-		var wantPlacementStatus []placementv1beta1.PerClusterPlacementStatus
-		crpHasOverrides := false
-		for i, name := range wantSelectedClusters {
-			if !wantRolloutCompletedPerCluster[i] {
-				// No observed resource index for this cluster, assume rollout is still pending.
-				wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.PerClusterPlacementStatus{
-					ClusterName:           name,
-					Conditions:            perClusterRolloutUnknownConditions(crp.Generation),
-					ObservedResourceIndex: wantObservedResourceIndexPerCluster[i],
-				})
-			} else {
-				wantResourceOverrides, hasRO := wantResourceOverrides[name]
-				wantClusterResourceOverrides, hasCRO := wantClusterResourceOverrides[name]
-				hasOverrides := (hasRO && len(wantResourceOverrides) > 0) || (hasCRO && len(wantClusterResourceOverrides) > 0)
-				if hasOverrides {
-					crpHasOverrides = true
-				}
-				if reportDiff {
-					wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.PerClusterPlacementStatus{
-						ClusterName:                        name,
-						Conditions:                         perClusterDiffReportedConditions(crp.Generation),
-						ApplicableResourceOverrides:        wantResourceOverrides,
-						ApplicableClusterResourceOverrides: wantClusterResourceOverrides,
-						ObservedResourceIndex:              wantObservedResourceIndexPerCluster[i],
-						DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
-							{
-								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-									Version: "v1",
-									Kind:    "Namespace",
-									Name:    nsName,
-								},
-								ObservedDiffs: []placementv1beta1.PatchDetail{
-									{
-										Path:       "/",
-										ValueInHub: "(the whole object)",
-									},
-								},
-							},
-							{
-								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-									Version:   "v1",
-									Kind:      "ConfigMap",
-									Name:      cmName,
-									Namespace: nsName,
-								},
-								ObservedDiffs: []placementv1beta1.PatchDetail{
-									{
-										Path:       "/",
-										ValueInHub: "(the whole object)",
-									},
-								},
-							},
-						},
-					})
-				} else {
-					wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.PerClusterPlacementStatus{
-						ClusterName:                        name,
-						Conditions:                         perClusterRolloutCompletedConditions(crp.Generation, true, hasOverrides),
-						ApplicableResourceOverrides:        wantResourceOverrides,
-						ApplicableClusterResourceOverrides: wantClusterResourceOverrides,
-						ObservedResourceIndex:              wantObservedResourceIndexPerCluster[i],
-					})
-				}
-			}
-		}
+		wantPlacementStatus, crpHasOverrides := buildPerClusterPlacementStatusesAndHasOverrides(
+			crp.Generation, reportDiff, wantSelectedClusters, wantObservedResourceIndexPerCluster, wantRolloutCompletedPerCluster, wantClusterResourceOverrides, wantResourceOverrides)
 
 		wantStatus := placementv1beta1.PlacementStatus{
 			PerClusterPlacementStatuses: wantPlacementStatus,
@@ -1540,9 +1474,6 @@ func rpStatusWithExternalStrategyActual(
 	wantResourceOverrides map[string][]placementv1beta1.NamespacedName,
 	rpName, namespace string,
 ) func() error {
-	nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
-	cmName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
-
 	return func() error {
 		rp := &placementv1beta1.ResourcePlacement{}
 		if err := hubClient.Get(ctx, client.ObjectKey{Name: rpName, Namespace: namespace}, rp); err != nil {
@@ -1551,71 +1482,8 @@ func rpStatusWithExternalStrategyActual(
 
 		reportDiff := rp.Spec.Strategy.ApplyStrategy != nil && rp.Spec.Strategy.ApplyStrategy.Type == placementv1beta1.ApplyStrategyTypeReportDiff
 
-		var wantPlacementStatus []placementv1beta1.PerClusterPlacementStatus
-		rpHasOverrides := false
-		for i, name := range wantSelectedClusters {
-			if !wantRolloutCompletedPerCluster[i] {
-				// No observed resource index for this cluster, assume rollout is still pending.
-				wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.PerClusterPlacementStatus{
-					ClusterName:           name,
-					Conditions:            perClusterRolloutUnknownConditions(rp.Generation),
-					ObservedResourceIndex: wantObservedResourceIndexPerCluster[i],
-				})
-			} else {
-				wantResourceOverrides, hasRO := wantResourceOverrides[name]
-				wantClusterResourceOverrides, hasCRO := wantClusterResourceOverrides[name]
-				hasOverrides := (hasRO && len(wantResourceOverrides) > 0) || (hasCRO && len(wantClusterResourceOverrides) > 0)
-				if hasOverrides {
-					rpHasOverrides = true
-				}
-				if reportDiff {
-					wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.PerClusterPlacementStatus{
-						ClusterName:                        name,
-						Conditions:                         perClusterDiffReportedConditions(rp.Generation),
-						ApplicableResourceOverrides:        wantResourceOverrides,
-						ApplicableClusterResourceOverrides: wantClusterResourceOverrides,
-						ObservedResourceIndex:              wantObservedResourceIndexPerCluster[i],
-						DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
-							{
-								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-									Version: "v1",
-									Kind:    "Namespace",
-									Name:    nsName,
-								},
-								ObservedDiffs: []placementv1beta1.PatchDetail{
-									{
-										Path:       "/",
-										ValueInHub: "(the whole object)",
-									},
-								},
-							},
-							{
-								ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-									Version:   "v1",
-									Kind:      "ConfigMap",
-									Name:      cmName,
-									Namespace: nsName,
-								},
-								ObservedDiffs: []placementv1beta1.PatchDetail{
-									{
-										Path:       "/",
-										ValueInHub: "(the whole object)",
-									},
-								},
-							},
-						},
-					})
-				} else {
-					wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.PerClusterPlacementStatus{
-						ClusterName:                        name,
-						Conditions:                         perClusterRolloutCompletedConditions(rp.Generation, true, hasOverrides),
-						ApplicableResourceOverrides:        wantResourceOverrides,
-						ApplicableClusterResourceOverrides: wantClusterResourceOverrides,
-						ObservedResourceIndex:              wantObservedResourceIndexPerCluster[i],
-					})
-				}
-			}
-		}
+		wantPlacementStatus, rpHasOverrides := buildPerClusterPlacementStatusesAndHasOverrides(
+			rp.Generation, reportDiff, wantSelectedClusters, wantObservedResourceIndexPerCluster, wantRolloutCompletedPerCluster, wantClusterResourceOverrides, wantResourceOverrides)
 
 		wantStatus := placementv1beta1.PlacementStatus{
 			PerClusterPlacementStatuses: wantPlacementStatus,
@@ -1637,6 +1505,83 @@ func rpStatusWithExternalStrategyActual(
 		}
 		return nil
 	}
+}
+
+func buildPerClusterPlacementStatusesAndHasOverrides(
+	generation int64,
+	reportDiff bool,
+	wantSelectedClusters []string,
+	wantObservedResourceIndexPerCluster []string,
+	wantRolloutCompletedPerCluster []bool,
+	wantClusterResourceOverrides map[string][]string,
+	wantResourceOverrides map[string][]placementv1beta1.NamespacedName,
+) ([]placementv1beta1.PerClusterPlacementStatus, bool) {
+	nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
+	cmName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
+	var wantPlacementStatuses []placementv1beta1.PerClusterPlacementStatus
+	hasOverrides := false
+	for i, name := range wantSelectedClusters {
+		if !wantRolloutCompletedPerCluster[i] {
+			// No observed resource index for this cluster, assume rollout is still pending.
+			wantPlacementStatuses = append(wantPlacementStatuses, placementv1beta1.PerClusterPlacementStatus{
+				ClusterName:           name,
+				Conditions:            perClusterRolloutUnknownConditions(generation),
+				ObservedResourceIndex: wantObservedResourceIndexPerCluster[i],
+			})
+		} else {
+			wantResourceOverrides, hasRO := wantResourceOverrides[name]
+			wantClusterResourceOverrides, hasCRO := wantClusterResourceOverrides[name]
+			hasOverrides = (hasRO && len(wantResourceOverrides) > 0) || (hasCRO && len(wantClusterResourceOverrides) > 0)
+			if reportDiff {
+				wantPlacementStatuses = append(wantPlacementStatuses, placementv1beta1.PerClusterPlacementStatus{
+					ClusterName:                        name,
+					Conditions:                         perClusterDiffReportedConditions(generation),
+					ApplicableResourceOverrides:        wantResourceOverrides,
+					ApplicableClusterResourceOverrides: wantClusterResourceOverrides,
+					ObservedResourceIndex:              wantObservedResourceIndexPerCluster[i],
+					// TODO(arvindth): Need to update this when we have more test cases for staged UpdateRun.
+					DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
+						{
+							ResourceIdentifier: placementv1beta1.ResourceIdentifier{
+								Version: "v1",
+								Kind:    "Namespace",
+								Name:    nsName,
+							},
+							ObservedDiffs: []placementv1beta1.PatchDetail{
+								{
+									Path:       "/",
+									ValueInHub: "(the whole object)",
+								},
+							},
+						},
+						{
+							ResourceIdentifier: placementv1beta1.ResourceIdentifier{
+								Version:   "v1",
+								Kind:      "ConfigMap",
+								Name:      cmName,
+								Namespace: nsName,
+							},
+							ObservedDiffs: []placementv1beta1.PatchDetail{
+								{
+									Path:       "/",
+									ValueInHub: "(the whole object)",
+								},
+							},
+						},
+					},
+				})
+			} else {
+				wantPlacementStatuses = append(wantPlacementStatuses, placementv1beta1.PerClusterPlacementStatus{
+					ClusterName:                        name,
+					Conditions:                         perClusterRolloutCompletedConditions(generation, true, hasOverrides),
+					ApplicableResourceOverrides:        wantResourceOverrides,
+					ApplicableClusterResourceOverrides: wantClusterResourceOverrides,
+					ObservedResourceIndex:              wantObservedResourceIndexPerCluster[i],
+				})
+			}
+		}
+	}
+	return wantPlacementStatuses, hasOverrides
 }
 
 func customizedPlacementStatusUpdatedActual(
