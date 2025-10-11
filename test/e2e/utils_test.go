@@ -1651,8 +1651,8 @@ func createNamespaceOnlyCRP(crpName string) {
 	createCRPWithApplyStrategy(crpName, nil, namespaceOnlySelector())
 }
 
-// ensureUpdateRunDeletion deletes the update run with the given name and checks all related approval requests are also deleted.
-func ensureUpdateRunDeletion(updateRunName string) {
+// ensureClusterStagedUpdateRunDeletion deletes the cluster staged update run with the given name and checks all related cluster approval requests are also deleted.
+func ensureClusterStagedUpdateRunDeletion(updateRunName string) {
 	updateRun := &placementv1beta1.ClusterStagedUpdateRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: updateRunName,
@@ -1660,20 +1660,53 @@ func ensureUpdateRunDeletion(updateRunName string) {
 	}
 	Expect(client.IgnoreNotFound(hubClient.Delete(ctx, updateRun))).Should(Succeed(), "Failed to delete ClusterStagedUpdateRun %s", updateRunName)
 
-	removedActual := updateRunAndApprovalRequestsRemovedActual(updateRunName)
+	removedActual := clusterStagedUpdateRunAndClusterApprovalRequestsRemovedActual(updateRunName)
 	Eventually(removedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "ClusterStagedUpdateRun or ClusterApprovalRequests still exists")
 }
 
-// ensureUpdateRunStrategyDeletion deletes the update run strategy with the given name.
-func ensureUpdateRunStrategyDeletion(strategyName string) {
+// ensureStagedUpdateRunDeletion deletes the staged update run with the given name and checks all related approval requests are also deleted.
+func ensureStagedUpdateRunDeletion(updateRunName, namespace string) {
+	Eventually(func() error {
+		updateRun := &placementv1beta1.StagedUpdateRun{}
+		if err := hubClient.Get(ctx, client.ObjectKey{Name: updateRunName, Namespace: namespace}, updateRun); err != nil {
+			return client.IgnoreNotFound(err)
+		}
+		return hubClient.Delete(ctx, updateRun)
+	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to delete StagedUpdateRun %s", updateRunName)
+
+	// Wait for the staged update run to be deleted.
+	Eventually(func() bool {
+		updateRun := &placementv1beta1.StagedUpdateRun{}
+		return hubClient.Get(ctx, client.ObjectKey{Name: updateRunName, Namespace: namespace}, updateRun) != nil
+	}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "Failed to delete StagedUpdateRun %s", updateRunName)
+}
+
+// ensureClusterUpdateRunStrategyDeletion deletes the cluster update run strategy with the given name.
+func ensureClusterUpdateRunStrategyDeletion(strategyName string) {
 	strategy := &placementv1beta1.ClusterStagedUpdateStrategy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: strategyName,
 		},
 	}
 	Expect(client.IgnoreNotFound(hubClient.Delete(ctx, strategy))).Should(Succeed(), "Failed to delete ClusterStagedUpdateStrategy %s", strategyName)
-	removedActual := updateRunStrategyRemovedActual(strategyName)
+	removedActual := clusterUpdateRunStrategyRemovedActual(strategyName)
 	Eventually(removedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "ClusterStagedUpdateStrategy still exists")
+}
+
+func ensureStagedUpdateRunStrategyDeletion(strategyName, namespace string) {
+	Eventually(func() error {
+		strategy := &placementv1beta1.StagedUpdateStrategy{}
+		if err := hubClient.Get(ctx, client.ObjectKey{Name: strategyName, Namespace: namespace}, strategy); err != nil {
+			return client.IgnoreNotFound(err)
+		}
+		return hubClient.Delete(ctx, strategy)
+	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to delete StagedUpdateStrategy %s", strategyName)
+
+	// Wait for the staged update strategy to be deleted.
+	Eventually(func() bool {
+		strategy := &placementv1beta1.StagedUpdateStrategy{}
+		return hubClient.Get(ctx, client.ObjectKey{Name: strategyName, Namespace: namespace}, strategy) != nil
+	}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "Failed to delete StagedUpdateStrategy %s", strategyName)
 }
 
 // ensureRPAndRelatedResourcesDeleted deletes rp and verifies resources in the specified namespace placed by the rp are removed from the cluster.
