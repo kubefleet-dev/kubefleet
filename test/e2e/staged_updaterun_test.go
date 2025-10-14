@@ -34,13 +34,13 @@ import (
 )
 
 // Note that this container will run in parallel with other containers.
-var _ = Describe("test RP rollout with namespaced staged update run", func() {
+var _ = Describe("test RP rollout with staged update run", func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 	strategyName := fmt.Sprintf(stagedUpdateRunStrategyNameTemplate, GinkgoParallelProcess())
 	testNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 
-	Context("Test resource rollout and rollback with namespaced staged update run", Ordered, func() {
+	Context("Test resource rollout and rollback with staged update run", Ordered, func() {
 		updateRunNames := []string{}
 		var strategy *placementv1beta1.StagedUpdateStrategy
 		var oldConfigMap, newConfigMap corev1.ConfigMap
@@ -116,7 +116,7 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP %s status as expected", rpName)
 		})
 
-		It("Should create a namespaced staged update run successfully", func() {
+		It("Should create a staged update run successfully", func() {
 			createStagedUpdateRunSucceed(updateRunNames[0], testNamespace, rpName, resourceSnapshotIndex1st, strategyName)
 		})
 
@@ -178,7 +178,7 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed get the new latest resourcensnapshot")
 		})
 
-		It("Should create a new namespaced staged update run successfully", func() {
+		It("Should create a new staged update run successfully", func() {
 			createStagedUpdateRunSucceed(updateRunNames[1], testNamespace, rpName, resourceSnapshotIndex2nd, strategyName)
 		})
 
@@ -216,7 +216,7 @@ var _ = Describe("test RP rollout with namespaced staged update run", func() {
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP %s status as expected", rpName)
 		})
 
-		It("Should create a new namespaced staged update run with old resourceSnapshotIndex successfully to rollback", func() {
+		It("Should create a new staged update run with old resourceSnapshotIndex successfully to rollback", func() {
 			createStagedUpdateRunSucceed(updateRunNames[2], testNamespace, rpName, resourceSnapshotIndex1st, strategyName)
 		})
 
