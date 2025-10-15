@@ -342,19 +342,21 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 				return err
 			}
 
-			for _, gvk := range stagedUpdateRunGVKs {
-				if err = utils.CheckCRDInstalled(discoverClient, gvk); err != nil {
-					klog.ErrorS(err, "Unable to find the required CRD", "GVK", gvk)
+			if opts.EnableResourcePlacement {
+				for _, gvk := range stagedUpdateRunGVKs {
+					if err = utils.CheckCRDInstalled(discoverClient, gvk); err != nil {
+						klog.ErrorS(err, "Unable to find the required CRD", "GVK", gvk)
+						return err
+					}
+				}
+				klog.Info("Setting up stagedUpdateRun controller")
+				if err = (&updaterun.Reconciler{
+					Client:          mgr.GetClient(),
+					InformerManager: dynamicInformerManager,
+				}).SetupWithManagerForStagedUpdateRun(mgr); err != nil {
+					klog.ErrorS(err, "Unable to set up stagedUpdateRun controller")
 					return err
 				}
-			}
-			klog.Info("Setting up stagedUpdateRun controller")
-			if err = (&updaterun.Reconciler{
-				Client:          mgr.GetClient(),
-				InformerManager: dynamicInformerManager,
-			}).SetupWithManagerForStagedUpdateRun(mgr); err != nil {
-				klog.ErrorS(err, "Unable to set up stagedUpdateRun controller")
-				return err
 			}
 		}
 

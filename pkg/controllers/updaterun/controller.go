@@ -276,9 +276,9 @@ func (r *Reconciler) recordUpdateRunStatus(ctx context.Context, updateRun placem
 
 // SetupWithManagerForClusterStagedUpdateRun sets up the controller with the Manager for ClusterStagedUpdateRun resources.
 func (r *Reconciler) SetupWithManagerForClusterStagedUpdateRun(mgr runtime.Manager) error {
-	r.recorder = mgr.GetEventRecorderFor("clusterresource-stagedupdaterun-controller")
+	r.recorder = mgr.GetEventRecorderFor("clusterstagedupdaterun-controller")
 	return runtime.NewControllerManagedBy(mgr).
-		Named("clusterresource-stagedupdaterun-controller").
+		Named("clusterstagedupdaterun-controller").
 		For(&placementv1beta1.ClusterStagedUpdateRun{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&placementv1beta1.ClusterApprovalRequest{}, &handler.Funcs{
 			// We watch for ClusterApprovalRequest to be approved.
@@ -296,9 +296,9 @@ func (r *Reconciler) SetupWithManagerForClusterStagedUpdateRun(mgr runtime.Manag
 
 // SetupWithManagerForStagedUpdateRun sets up the controller with the Manager for StagedUpdateRun resources.
 func (r *Reconciler) SetupWithManagerForStagedUpdateRun(mgr runtime.Manager) error {
-	r.recorder = mgr.GetEventRecorderFor("namespacedresource-stagedupdaterun-controller")
+	r.recorder = mgr.GetEventRecorderFor("stagedupdaterun-controller")
 	return runtime.NewControllerManagedBy(mgr).
-		Named("namespacedresource-stagedupdaterun-controller").
+		Named("stagedupdaterun-controller").
 		For(&placementv1beta1.StagedUpdateRun{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&placementv1beta1.ApprovalRequest{}, &handler.Funcs{
 			// We watch for ApprovalRequest to be approved.
@@ -368,18 +368,12 @@ func handleApprovalRequestUpdate(oldObj, newObj client.Object, q workqueue.Typed
 	}
 
 	// enqueue to the updaterun controller queue.
-	if isClusterScoped {
-		q.Add(reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: updateRun},
-		})
-	} else {
-		q.Add(reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Namespace: newAppReq.GetNamespace(),
-				Name:      updateRun,
-			},
-		})
-	}
+	q.Add(reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Namespace: newAppReq.GetNamespace(),
+			Name:      updateRun,
+		},
+	})
 }
 
 // handleApprovalRequestDelete finds the UpdateRun creating the ApprovalRequest,
@@ -421,18 +415,12 @@ func handleApprovalRequestDelete(obj client.Object, q workqueue.TypedRateLimitin
 	}
 
 	// enqueue to the updaterun controller queue.
-	if isClusterScoped {
-		q.Add(reconcile.Request{
-			NamespacedName: types.NamespacedName{Name: updateRun},
-		})
-	} else {
-		q.Add(reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Namespace: appReq.GetNamespace(),
-				Name:      updateRun,
-			},
-		})
-	}
+	q.Add(reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Namespace: appReq.GetNamespace(),
+			Name:      updateRun,
+		},
+	})
 }
 
 // emitUpdateRunStatusMetric emits the update run status metric based on status conditions in the updateRun.
