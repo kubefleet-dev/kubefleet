@@ -27,6 +27,7 @@ import (
 	appv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -131,7 +132,7 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 					Namespace: workNamespaceName,
 				},
 			}
-			crpStatusUpdatedActual := customizedCRPStatusUpdatedActual(crpName, wantSelectedResources, allMemberClusterNames, nil, "0", true)
+			crpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(types.NamespacedName{Name: crpName}, wantSelectedResources, allMemberClusterNames, nil, "0", true)
 			Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
@@ -176,7 +177,7 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 		})
 
 		It("should update CRP status as success again", func() {
-			crpStatusUpdatedActual := customizedCRPStatusUpdatedActual(crpName, wantSelectedResources, allMemberClusterNames, nil, "2", true)
+			crpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(types.NamespacedName{Name: crpName}, wantSelectedResources, allMemberClusterNames, nil, "2", true)
 			Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
@@ -200,7 +201,7 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 		It("should remove placed resources from all member clusters", checkIfRemovedWorkResourcesFromAllMemberClusters)
 
 		It("should remove controller finalizers from CRP", func() {
-			finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromCRPActual(crpName)
+			finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromPlacementActual(types.NamespacedName{Name: crpName})
 			Eventually(finalizerRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove controller finalizers from CRP")
 		})
 
@@ -325,7 +326,7 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 							Condition: metav1.Condition{
 								Type:               string(placementv1beta1.PerClusterAvailableConditionType),
 								Status:             metav1.ConditionFalse,
-								Reason:             string(workapplier.ManifestProcessingAvailabilityResultTypeNotYetAvailable),
+								Reason:             string(workapplier.AvailabilityResultTypeNotYetAvailable),
 								ObservedGeneration: 1,
 							},
 						},
@@ -360,7 +361,7 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 					return err
 				}
 
-				if diff := cmp.Diff(crp.Status, wantStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(crp.Status, wantStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
@@ -474,7 +475,7 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 						{
 							ClusterName:           memberCluster1EastProdName,
 							ObservedResourceIndex: "0",
-							Conditions:            resourcePlacementWorkSynchronizedFailedConditions(crp.Generation, false),
+							Conditions:            perClusterWorkSynchronizedFailedConditions(crp.Generation, false),
 						},
 					},
 					SelectedResources: []placementv1beta1.ResourceIdentifier{
@@ -493,7 +494,7 @@ var _ = Describe("placing wrapped resources using a CRP", func() {
 					},
 					ObservedResourceIndex: "0",
 				}
-				if diff := cmp.Diff(crp.Status, wantStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(crp.Status, wantStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
@@ -614,7 +615,7 @@ var _ = Describe("Process objects with generate name", Ordered, func() {
 								},
 							},
 						},
-						Conditions: resourcePlacementApplyFailedConditions(crp.Generation),
+						Conditions: perClusterApplyFailedConditions(crp.Generation),
 					},
 				},
 				SelectedResources: []placementv1beta1.ResourceIdentifier{
@@ -633,7 +634,7 @@ var _ = Describe("Process objects with generate name", Ordered, func() {
 				},
 				ObservedResourceIndex: "0",
 			}
-			if diff := cmp.Diff(crp.Status, wantStatus, crpStatusCmpOptions...); diff != "" {
+			if diff := cmp.Diff(crp.Status, wantStatus, placementStatusCmpOptions...); diff != "" {
 				return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 			}
 			return nil
@@ -700,11 +701,11 @@ func checkForRolloutStuckOnOneFailedClusterStatus(wantSelectedResources []placem
 			return err
 		}
 		wantCRPConditions := crpRolloutStuckConditions(crp.Generation)
-		if diff := cmp.Diff(crp.Status.Conditions, wantCRPConditions, crpStatusCmpOptions...); diff != "" {
+		if diff := cmp.Diff(crp.Status.Conditions, wantCRPConditions, placementStatusCmpOptions...); diff != "" {
 			return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 		}
 		// check the selected resources is still right
-		if diff := cmp.Diff(crp.Status.SelectedResources, wantSelectedResources, crpStatusCmpOptions...); diff != "" {
+		if diff := cmp.Diff(crp.Status.SelectedResources, wantSelectedResources, placementStatusCmpOptions...); diff != "" {
 			return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 		}
 		// check the placement status has a failed placement
@@ -720,19 +721,19 @@ func checkForRolloutStuckOnOneFailedClusterStatus(wantSelectedResources []placem
 		for _, placementStatus := range crp.Status.PerClusterPlacementStatuses {
 			// this is the cluster that got the new enveloped resource that was malformed
 			if len(placementStatus.FailedPlacements) != 0 {
-				if diff := cmp.Diff(placementStatus.FailedPlacements, wantFailedResourcePlacement, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(placementStatus.FailedPlacements, wantFailedResourcePlacement, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				// check that the applied error message is correct
 				if !strings.Contains(placementStatus.FailedPlacements[0].Condition.Message, "field is immutable") {
 					return fmt.Errorf("CRP failed resource placement does not have unsupported scope message")
 				}
-				if diff := cmp.Diff(placementStatus.Conditions, resourcePlacementApplyFailedConditions(crp.Generation), crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(placementStatus.Conditions, perClusterApplyFailedConditions(crp.Generation), placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 			} else {
 				// the cluster is stuck behind a rollout schedule since we now have 1 cluster that is not in applied ready status
-				if diff := cmp.Diff(placementStatus.Conditions, resourcePlacementSyncPendingConditions(crp.Generation), crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(placementStatus.Conditions, perClusterSyncPendingConditions(crp.Generation), placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 			}
@@ -795,7 +796,7 @@ func createWrappedResourcesForEnvelopTest() {
 	// Create ResourceEnvelope with ResourceQuota inside
 	quotaBytes, err := json.Marshal(testResourceQuota)
 	Expect(err).Should(Succeed())
-	testResourceEnvelope.Data["resourceQuota1.yaml"] = runtime.RawExtension{Raw: quotaBytes}
+	testResourceEnvelope.Data["resourceQuota.yaml"] = runtime.RawExtension{Raw: quotaBytes}
 	deploymentBytes, err := json.Marshal(testDeployment)
 	Expect(err).Should(Succeed())
 	testResourceEnvelope.Data["deployment.yaml"] = runtime.RawExtension{Raw: deploymentBytes}
@@ -806,6 +807,21 @@ func createWrappedResourcesForEnvelopTest() {
 	Expect(err).Should(Succeed())
 	testClusterResourceEnvelope.Data["clusterRole.yaml"] = runtime.RawExtension{Raw: roleBytes}
 	Expect(hubClient.Create(ctx, &testClusterResourceEnvelope)).To(Succeed(), "Failed to create ClusterResourceEnvelope")
+}
+
+func cleanupWrappedResourcesForEnvelopTest() {
+	By("deleting namespace resources")
+	cleanupWorkResources()
+
+	By(fmt.Sprintf("deleting envelope %s", testClusterResourceEnvelope.Name))
+	Expect(client.IgnoreNotFound(hubClient.Delete(ctx, &testClusterResourceEnvelope))).To(Succeed(), "Failed to delete testClusterResourceEnvelope")
+
+	Eventually(func() error {
+		if err := hubClient.Get(ctx, types.NamespacedName{Name: testClusterResourceEnvelope.Name}, &placementv1beta1.ClusterResourceEnvelope{}); !errors.IsNotFound(err) {
+			return fmt.Errorf("testClusterResourceEnvelope still exists or an unexpected error occurred: %w", err)
+		}
+		return nil
+	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove testClusterResourceEnvelope from hub cluster")
 }
 
 func checkAllResourcesPlacement(memberCluster *framework.Cluster) func() error {

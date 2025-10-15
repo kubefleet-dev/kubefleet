@@ -43,10 +43,10 @@ const (
 
 const (
 	region = "eastus"
-
-	aksNodeSKU1 = "Standard_B4ms"
-	aksNodeSKU2 = "Standard_A4_v2"
-	aksNodeSKU3 = "Standard_F4s"
+	// we need to regularly update the SKUs used in tests as some of them get deprecated over time.
+	aksNodeSKU1 = "Standard_D8s_v5"
+	aksNodeSKU2 = "Standard_E16_v5"
+	aksNodeSKU3 = "Standard_M16ms"
 	// Note (chenyu1): cross-reference between the Azure VM SKU list and the Azure Retail Prices API
 	// for a list of currently known SKUs to be missing from the Azure Retail Prices API.
 	aksNodeKnownMissingSKU1 = "Standard_DS2_v2"
@@ -56,12 +56,14 @@ const (
 )
 
 var (
-	memberTestEnv *envtest.Environment
-	memberClient  client.Client
-	ctx           context.Context
-	cancel        context.CancelFunc
-	p             propertyprovider.PropertyProvider
-	pp            trackers.PricingProvider
+	memberTestEnv             *envtest.Environment
+	memberClient              client.Client
+	ctx                       context.Context
+	cancel                    context.CancelFunc
+	p                         propertyprovider.PropertyProvider
+	pp                        trackers.PricingProvider
+	pWithNoCosts              propertyprovider.PropertyProvider
+	pWithNoAvailableResources propertyprovider.PropertyProvider
 )
 
 // setUpResources help set up resources in the test environment.
@@ -109,10 +111,20 @@ var _ = BeforeSuite(func() {
 	// Set up resources.
 	setUpResources()
 
-	// Start the Azure property provider.
+	// Start an Azure property provider instance with all features on.
 	pp = trackers.NewAKSKarpenterPricingClient(ctx, region)
-	p = NewWithPricingProvider(pp)
+	p = NewWithPricingProvider(pp, "node watcher", "pod watcher", true, true)
 	Expect(p.Start(ctx, memberCfg)).To(Succeed())
+
+	// Start different property provider instances with different features disabled,
+	// to verify the behaviors of feature gates.
+	//
+	// All property providers share the same environment and the same pricing provider
+	// (even though in normal ops they will not).
+	pWithNoCosts = NewWithPricingProvider(nil, "node watcher with costs disabled", "pod watcher with costs disabled", false, true)
+	pWithNoAvailableResources = NewWithPricingProvider(pp, "node watcher with no available resources", "pod watcher with no available resources", true, false)
+	Expect(pWithNoCosts.Start(ctx, memberCfg)).To(Succeed())
+	Expect(pWithNoAvailableResources.Start(ctx, memberCfg)).To(Succeed())
 })
 
 var _ = AfterSuite(func() {

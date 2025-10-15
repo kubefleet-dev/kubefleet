@@ -93,6 +93,11 @@ var (
 	enablePprof                  = flag.Bool("enable-pprof", false, "enable pprof profiling")
 	pprofPort                    = flag.Int("pprof-port", 6065, "port for pprof profiling")
 	hubPprofPort                 = flag.Int("hub-pprof-port", 6066, "port for hub pprof profiling")
+	hubQPS                       = flag.Float64("hub-api-qps", 50, "QPS to use while talking with fleet-apiserver. Doesn't cover events and node heartbeat apis which rate limiting is controlled by a different set of flags.")
+	hubBurst                     = flag.Int("hub-api-burst", 500, "Burst to use while talking with fleet-apiserver. Doesn't cover events and node heartbeat apis which rate limiting is controlled by a different set of flags.")
+	memberQPS                    = flag.Float64("member-api-qps", 250, "QPS to use while talking with fleet-apiserver. Doesn't cover events and node heartbeat apis which rate limiting is controlled by a different set of flags.")
+	memberBurst                  = flag.Int("member-api-burst", 1000, "Burst to use while talking with fleet-apiserver. Doesn't cover events and node heartbeat apis which rate limiting is controlled by a different set of flags.")
+
 	// Work applier requeue rate limiter settings.
 	workApplierRequeueRateLimiterAttemptsWithFixedDelay                              = flag.Int("work-applier-requeue-rate-limiter-attempts-with-fixed-delay", 1, "If set, the work applier will requeue work objects with a fixed delay for the specified number of attempts before switching to exponential backoff.")
 	workApplierRequeueRateLimiterFixedDelaySeconds                                   = flag.Float64("work-applier-requeue-rate-limiter-fixed-delay-seconds", 5.0, "If set, the work applier will requeue work objects with this fixed delay in seconds for the specified number of attempts before switching to exponential backoff.")
@@ -102,6 +107,9 @@ var (
 	workApplierRequeueRateLimiterExponentialBaseForFastBackoff                       = flag.Float64("work-applier-requeue-rate-limiter-exponential-base-for-fast-backoff", 1.5, "If set, the work applier will start to back off fast at this factor after it completes the slow backoff stage, until it reaches the fast backoff delay cap. Its value should be larger than the base value for the slow backoff stage.")
 	workApplierRequeueRateLimiterMaxFastBackoffDelaySeconds                          = flag.Float64("work-applier-requeue-rate-limiter-max-fast-backoff-delay-seconds", 900, "If set, the work applier will not back off longer than this value in seconds when it is in the fast backoff stage.")
 	workApplierRequeueRateLimiterSkipToFastBackoffForAvailableOrDiffReportedWorkObjs = flag.Bool("work-applier-requeue-rate-limiter-skip-to-fast-backoff-for-available-or-diff-reported-work-objs", true, "If set, the rate limiter will skip the slow backoff stage and start fast backoff immediately for work objects that are available or have diff reported.")
+	// Azure property provider feature gates.
+	isAzProviderCostPropertiesEnabled         = flag.Bool("use-cost-properties-in-azure-provider", true, "If set, the Azure property provider will expose cost properties in the member cluster.")
+	isAzProviderAvailableResPropertiesEnabled = flag.Bool("use-available-res-properties-in-azure-provider", true, "If set, the Azure property provider will expose available resources properties in the member cluster.")
 )
 
 func init() {
@@ -147,6 +155,8 @@ func main() {
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	hubConfig, err := buildHubConfig(hubURL, *useCertificateAuth, *tlsClientInsecure)
+	hubConfig.QPS = float32(*hubQPS)
+	hubConfig.Burst = *hubBurst
 	if err != nil {
 		klog.ErrorS(err, "Failed to build Kubernetes client configuration for the hub cluster")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
@@ -161,6 +171,8 @@ func main() {
 	mcNamespace := fmt.Sprintf(utils.NamespaceNameFormat, mcName)
 
 	memberConfig := ctrl.GetConfigOrDie()
+	memberConfig.QPS = float32(*memberQPS)
+	memberConfig.Burst = *memberBurst
 	// we place the leader election lease on the member cluster to avoid adding load to the hub
 	hubOpts := ctrl.Options{
 		Scheme: scheme,
@@ -461,7 +473,7 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 			// the specific instance wins the leader election.
 			klog.V(1).InfoS("Property Provider is azure, loading cloud config", "cloudConfigFile", *cloudConfigFile)
 			// TODO (britaniar): load cloud config for Azure property provider.
-			pp = azure.New(region)
+			pp = azure.New(region, *isAzProviderCostPropertiesEnabled, *isAzProviderAvailableResPropertiesEnabled)
 		default:
 			// Fall back to not using any property provider if the provided type is none or
 			// not recognizable.

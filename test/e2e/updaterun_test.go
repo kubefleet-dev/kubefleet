@@ -698,7 +698,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 					Namespace: roNamespace,
 				},
 				Spec: placementv1beta1.ResourceOverrideSpec{
-					ResourceSelectors: configMapSelector(),
+					ResourceSelectors: configMapOverrideSelector(),
 					Policy: &placementv1beta1.OverridePolicy{
 						OverrideRules: []placementv1beta1.OverrideRule{
 							{
@@ -819,8 +819,8 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			wantCROAnnotations := map[string]string{croTestAnnotationKey: fmt.Sprintf("%s-%d", croTestAnnotationValue, 0)}
 			wantROAnnotations := map[string]string{roTestAnnotationKey: fmt.Sprintf("%s-%d", roTestAnnotationValue, 1)}
 			Expect(validateAnnotationOfWorkNamespaceOnCluster(allMemberClusters[0], wantCROAnnotations)).Should(Succeed(), "Failed to override the annotation of work namespace on %s", allMemberClusters[0].ClusterName)
-			Expect(validateOverrideAnnotationOfConfigMapOnCluster(allMemberClusters[0], wantCROAnnotations)).Should(Succeed(), "Failed to override the annotation of configmap on %s", allMemberClusters[0].ClusterName)
-			Expect(validateOverrideAnnotationOfConfigMapOnCluster(allMemberClusters[1], wantROAnnotations)).Should(Succeed(), "Failed to override the annotation of configmap on %s", allMemberClusters[1].ClusterName)
+			Expect(validateAnnotationOfConfigMapOnCluster(allMemberClusters[0], wantCROAnnotations)).Should(Succeed(), "Failed to override the annotation of configmap on %s", allMemberClusters[0].ClusterName)
+			Expect(validateAnnotationOfConfigMapOnCluster(allMemberClusters[1], wantROAnnotations)).Should(Succeed(), "Failed to override the annotation of configmap on %s", allMemberClusters[1].ClusterName)
 		})
 	})
 
@@ -1316,7 +1316,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Label
 			ObjectMeta: metav1.ObjectMeta{
 				Name: strategyName,
 			},
-			Spec: placementv1beta1.StagedUpdateStrategySpec{
+			Spec: placementv1beta1.UpdateStrategySpec{
 				Stages: []placementv1beta1.StageConfig{
 					{
 						Name: "all",
@@ -1351,7 +1351,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Label
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
 
 		By("Validating all work resources are placed on all member clusters")
-		checkIfPlacedWorkResourcesOnAllMemberClusters()
+		checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
 
 		By("Unjoining member cluster 1")
 		setMemberClusterToLeave(allMemberClusters[0])
@@ -1574,24 +1574,12 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Label
 	})
 })
 
-func checkIfPlacedWorkResourcesOnAllMemberClusters() {
-	checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
-}
-
-func checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(clusters []*framework.Cluster) {
-	for idx := range clusters {
-		memberCluster := clusters[idx]
-		workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(memberCluster)
-		Eventually(workResourcesPlacedActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster.ClusterName)
-	}
-}
-
 func createStagedUpdateStrategySucceed(strategyName string) *placementv1beta1.ClusterStagedUpdateStrategy {
 	strategy := &placementv1beta1.ClusterStagedUpdateStrategy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: strategyName,
 		},
-		Spec: placementv1beta1.StagedUpdateStrategySpec{
+		Spec: placementv1beta1.UpdateStrategySpec{
 			Stages: []placementv1beta1.StageConfig{
 				{
 					Name: envCanary,
@@ -1678,7 +1666,7 @@ func createStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex,
 		ObjectMeta: metav1.ObjectMeta{
 			Name: updateRunName,
 		},
-		Spec: placementv1beta1.StagedUpdateRunSpec{
+		Spec: placementv1beta1.UpdateRunSpec{
 			PlacementName:            crpName,
 			ResourceSnapshotIndex:    resourceSnapshotIndex,
 			StagedUpdateStrategyName: strategyName,

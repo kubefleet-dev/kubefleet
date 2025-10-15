@@ -365,8 +365,11 @@ spec:
     served: true
     storage: false
   - additionalPrinterColumns:
-    - jsonPath: .status.observedResourceIndex
+    - jsonPath: .sourceStatus.observedResourceIndex
       name: Resource-Index
+      type: string
+    - jsonPath: .lastUpdatedTime
+      name: Last-Updated
       type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
@@ -377,6 +380,7 @@ spec:
         description: |-
           ClusterResourcePlacementStatus is a namespaced resource that mirrors the PlacementStatus of a corresponding
           ClusterResourcePlacement object. This allows namespace-scoped access to cluster-scoped placement status.
+          The LastUpdatedTime field is updated whenever the CRPS object is updated.
 
           This object will be created within the target namespace that contains resources being managed by the CRP.
           When multiple ClusterResourcePlacements target the same namespace, each ClusterResourcePlacementStatus within that
@@ -400,13 +404,16 @@ spec:
               In CamelCase.
               More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
+          lastUpdatedTime:
+            description: |-
+              LastUpdatedTime is the timestamp when this CRPS object was last updated.
+              This field is set to the current time whenever the CRPS object is created or modified.
+            format: date-time
+            type: string
           metadata:
             type: object
-          status:
-            description: |-
-              The observed status of ClusterResourcePlacementStatus which mirrors the PlacementStatus of the corresponding ClusterResourcePlacement.
-              This includes information about the namespace and resources within that namespace that are being managed by the placement.
-              The status will show placement details for resources selected by the ClusterResourcePlacement's ResourceSelectors.
+          sourceStatus:
+            description: Source status copied from the corresponding ClusterResourcePlacement.
             properties:
               conditions:
                 description: |-
@@ -1005,8 +1012,10 @@ spec:
                   type: object
                 type: array
             type: object
+        required:
+        - lastUpdatedTime
+        - sourceStatus
         type: object
     served: true
     storage: true
-    subresources:
-      status: {}
+    subresources: {}

@@ -20,6 +20,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -84,6 +86,18 @@ func createMemberCluster(name, svcAccountName string, labels, annotations map[st
 		},
 	}
 	Expect(hubClient.Create(ctx, mcObj)).To(Succeed(), "Failed to create member cluster object %s", name)
+}
+
+func updateMemberClusterDeleteOptions(name string, deleteOptions *clusterv1beta1.DeleteOptions) {
+	Eventually(func() error {
+		mcObj := &clusterv1beta1.MemberCluster{}
+		if err := hubClient.Get(ctx, types.NamespacedName{Name: name}, mcObj); err != nil {
+			return err
+		}
+
+		mcObj.Spec.DeleteOptions = deleteOptions
+		return hubClient.Update(ctx, mcObj)
+	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update member cluster delete options")
 }
 
 // markMemberClusterAsHealthy marks the specified member cluster as healthy.
@@ -293,11 +307,48 @@ func checkIfAzurePropertyProviderIsWorking() {
 			// the diff output (if any) to omit certain fields.
 
 			// Diff the non-resource properties.
+
+			// Cost properties are checked separately to account for approximation margins.
+			ignoreCostProperties := cmpopts.IgnoreMapEntries(func(k clusterv1beta1.PropertyName, v clusterv1beta1.PropertyValue) bool {
+				return k == azure.PerCPUCoreCostProperty || k == azure.PerGBMemoryCostProperty
+			})
 			if diff := cmp.Diff(
 				mcObj.Status.Properties, wantStatus.Properties,
 				ignoreTimeTypeFields,
+				ignoreCostProperties,
 			); diff != "" {
 				return fmt.Errorf("member cluster status properties diff (-got, +want):\n%s", diff)
+			}
+
+			// Check the cost properties separately.
+			//
+			// The test suite consider cost outputs with a margin of no more than 0.002 to be acceptable.
+			perCPUCoreCostProperty, found := mcObj.Status.Properties[azure.PerCPUCoreCostProperty]
+			wantPerCPUCoreCostProperty, wantFound := wantStatus.Properties[azure.PerCPUCoreCostProperty]
+			if found != wantFound {
+				return fmt.Errorf("member cluster per CPU core cost property diff: found=%v, wantFound=%v", found, wantFound)
+			}
+			perCPUCoreCost, err := strconv.ParseFloat(perCPUCoreCostProperty.Value, 64)
+			wantPerCPUCoreCost, wantErr := strconv.ParseFloat(wantPerCPUCoreCostProperty.Value, 64)
+			if err != nil || wantErr != nil {
+				return fmt.Errorf("failed to parse per CPU core cost property: val=%s, err=%w, wantVal=%s, wantErr=%w", perCPUCoreCostProperty.Value, err, wantPerCPUCoreCostProperty.Value, wantErr)
+			}
+			if diff := math.Abs(perCPUCoreCost - wantPerCPUCoreCost); diff > 0.002 {
+				return fmt.Errorf("member cluster per CPU core cost property diff: got=%f, want=%f, diff=%f", perCPUCoreCost, wantPerCPUCoreCost, diff)
+			}
+
+			perGBMemoryCostProperty, found := mcObj.Status.Properties[azure.PerGBMemoryCostProperty]
+			wantPerGBMemoryCostProperty, wantFound := wantStatus.Properties[azure.PerGBMemoryCostProperty]
+			if found != wantFound {
+				return fmt.Errorf("member cluster per GB memory cost property diff: found=%v, wantFound=%v", found, wantFound)
+			}
+			perGBMemoryCost, err := strconv.ParseFloat(perGBMemoryCostProperty.Value, 64)
+			wantPerGBMemoryCost, wantErr := strconv.ParseFloat(wantPerGBMemoryCostProperty.Value, 64)
+			if err != nil || wantErr != nil {
+				return fmt.Errorf("failed to parse per GB memory cost property: val=%s, err=%w, wantVal=%s, wantErr=%w", perGBMemoryCostProperty.Value, err, wantPerGBMemoryCostProperty.Value, wantErr)
+			}
+			if diff := math.Abs(perGBMemoryCost - wantPerGBMemoryCost); diff > 0.002 {
+				return fmt.Errorf("member cluster per GB memory cost property diff: got=%f, want=%f, diff=%f", perGBMemoryCost, wantPerGBMemoryCost, diff)
 			}
 
 			// Diff the resource usage.
@@ -318,7 +369,7 @@ func checkIfAzurePropertyProviderIsWorking() {
 				return fmt.Errorf("member cluster status conditions diff (-got, +want):\n%s", diff)
 			}
 			return nil
-		}, longEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to confirm that Azure property provider is up and running")
+		}, longEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to confirm that Azure property provider is up and running on cluster", memberCluster.ClusterName)
 	}
 }
 
@@ -339,6 +390,17 @@ func summarizeAKSClusterProperties(memberCluster *framework.Cluster, mcObj *clus
 		return nil, fmt.Errorf("no nodes are found")
 	}
 
+	nodeCountBySKU := map[string]int{}
+	for idx := range nodeList.Items {
+		node := nodeList.Items[idx]
+
+		nodeSKU := node.Labels[trackers.AKSClusterNodeSKULabelName]
+		if len(nodeSKU) == 0 {
+			nodeSKU = trackers.ReservedNameForUndefinedSKU
+		}
+		nodeCountBySKU[nodeSKU]++
+	}
+
 	totalCPUCapacity := resource.Quantity{}
 	totalMemoryCapacity := resource.Quantity{}
 	allocatableCPUCapacity := resource.Quantity{}
@@ -357,6 +419,9 @@ func summarizeAKSClusterProperties(memberCluster *framework.Cluster, mcObj *clus
 		if found {
 			totalHourlyRate += hourlyRate
 		}
+	}
+	if totalHourlyRate <= 0.002 {
+		return nil, fmt.Errorf("total hourly rate is zero or too small; there might be unrecognized SKUs or incorrect pricing data")
 	}
 
 	cpuCores := totalCPUCapacity.AsApproximateFloat64()
@@ -393,18 +458,25 @@ func summarizeAKSClusterProperties(memberCluster *framework.Cluster, mcObj *clus
 		availableMemoryCapacity.Sub(requestedMemoryCapacity)
 	}
 
-	status := clusterv1beta1.MemberClusterStatus{
-		Properties: map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue{
-			propertyprovider.NodeCountProperty: {
-				Value: fmt.Sprintf("%d", nodeCount),
-			},
-			azure.PerCPUCoreCostProperty: {
-				Value: fmt.Sprintf(azure.CostPrecisionTemplate, perCPUCoreCost),
-			},
-			azure.PerGBMemoryCostProperty: {
-				Value: fmt.Sprintf(azure.CostPrecisionTemplate, perGBMemoryCost),
-			},
+	properties := map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue{
+		propertyprovider.NodeCountProperty: {
+			Value: fmt.Sprintf("%d", nodeCount),
 		},
+		azure.PerCPUCoreCostProperty: {
+			Value: fmt.Sprintf(azure.CostPrecisionTemplate, perCPUCoreCost),
+		},
+		azure.PerGBMemoryCostProperty: {
+			Value: fmt.Sprintf(azure.CostPrecisionTemplate, perGBMemoryCost),
+		},
+	}
+	for sku, count := range nodeCountBySKU {
+		pName := clusterv1beta1.PropertyName(fmt.Sprintf(azure.NodeCountPerSKUPropertyTmpl, sku))
+		properties[pName] = clusterv1beta1.PropertyValue{
+			Value: fmt.Sprintf("%d", count),
+		}
+	}
+	status := clusterv1beta1.MemberClusterStatus{
+		Properties: properties,
 		ResourceUsage: clusterv1beta1.ResourceUsage{
 			Capacity: corev1.ResourceList{
 				corev1.ResourceCPU:    totalCPUCapacity,
@@ -640,7 +712,11 @@ func ensureMemberClusterAndRelatedResourcesDeletion(memberClusterName string) {
 	Eventually(func() error {
 		ns := corev1.Namespace{}
 		if err := hubClient.Get(ctx, types.NamespacedName{Name: reservedNSName}, &ns); !k8serrors.IsNotFound(err) {
-			return fmt.Errorf("namespace still exists or an unexpected error occurred: %w", err)
+			if err == nil {
+				return fmt.Errorf("work namespace %s still exists on cluster %s: deletion timestamp: %v, current timestamp: %v",
+					ns.Name, memberClusterName, ns.GetDeletionTimestamp(), time.Now())
+			}
+			return fmt.Errorf("an unexpected error occurred: %w", err)
 		}
 		return nil
 	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove reserved namespace")
@@ -700,9 +776,27 @@ func createWorkResource(name, namespace string) {
 
 // createWorkResources creates some resources on the hub cluster for testing purposes.
 func createWorkResources() {
-	ns := appNamespace()
-	Expect(hubClient.Create(ctx, &ns)).To(Succeed(), "Failed to create namespace %s", ns.Name)
+	createNamespace()
+	createConfigMap()
+}
 
+func createNamespace() {
+	var ns corev1.Namespace
+	Eventually(func() error {
+		ns = appNamespace()
+		err := hubClient.Create(ctx, &ns)
+		if k8serrors.IsAlreadyExists(err) {
+			err = hubClient.Get(ctx, types.NamespacedName{Name: ns.Name}, &ns)
+			if err != nil {
+				return fmt.Errorf("failed to get the namespace %s, err is %+w", ns.Name, err)
+			}
+			return fmt.Errorf("namespace %s already exists, delete time is %v", ns.Name, ns.GetDeletionTimestamp())
+		}
+		return err
+	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to create namespace %s", ns.Name)
+}
+
+func createConfigMap() {
 	configMap := appConfigMap()
 	Expect(hubClient.Create(ctx, &configMap)).To(Succeed(), "Failed to create config map %s", configMap.Name)
 }
@@ -717,7 +811,20 @@ func cleanWorkResourcesOnCluster(cluster *framework.Cluster) {
 	Expect(client.IgnoreNotFound(cluster.KubeClient.Delete(ctx, &ns))).To(Succeed(), "Failed to delete namespace %s", ns.Name)
 
 	workResourcesRemovedActual := workNamespaceRemovedFromClusterActual(cluster)
-	Eventually(workResourcesRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove work resources from %s cluster", cluster.ClusterName)
+	Eventually(workResourcesRemovedActual, workloadEventuallyDuration, time.Second*5).Should(Succeed(), "Failed to remove work resources from %s cluster", cluster.ClusterName)
+}
+
+// cleanupConfigMap deletes the ConfigMap created by createWorkResources and waits until the resource is not found.
+func cleanupConfigMap() {
+	cleanupConfigMapOnCluster(hubCluster)
+}
+
+func cleanupConfigMapOnCluster(cluster *framework.Cluster) {
+	configMap := appConfigMap()
+	Expect(client.IgnoreNotFound(cluster.KubeClient.Delete(ctx, &configMap))).To(Succeed(), "Failed to delete config map %s", configMap.Name)
+
+	configMapRemovedActual := namespacedResourcesRemovedFromClusterActual(cluster)
+	Eventually(configMapRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove config map from %s cluster", cluster.ClusterName)
 }
 
 // setMemberClusterToLeave sets a specific member cluster to leave the fleet.
@@ -757,6 +864,41 @@ func createAnotherValidOwnerReference(nsName string) metav1.OwnerReference {
 	}
 }
 
+func createAnotherValidOwnerReferenceForConfigMap(namespace, configMapName string) metav1.OwnerReference {
+	// Create a configmap to be owner.
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      configMapName,
+			Namespace: namespace,
+		},
+		Data: map[string]string{
+			"key": "value",
+		},
+	}
+	Expect(allMemberClusters[0].KubeClient.Create(ctx, cm)).Should(Succeed(), "Failed to create configmap %s/%s", namespace, configMapName)
+
+	// Get the configmap to ensure to create a valid owner reference.
+	Expect(allMemberClusters[0].KubeClient.Get(ctx, types.NamespacedName{Name: configMapName, Namespace: namespace}, cm)).Should(Succeed(), "Failed to get configmap %s/%s", namespace, configMapName)
+
+	return metav1.OwnerReference{
+		APIVersion: "v1",
+		Kind:       "ConfigMap",
+		Name:       configMapName,
+		UID:        cm.UID,
+	}
+}
+
+func cleanupAnotherValidOwnerReferenceForConfigMap(namespace, configMapName string) {
+	// Cleanup the configmap created for the owner reference.
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      configMapName,
+			Namespace: namespace,
+		},
+	}
+	Expect(allMemberClusters[0].KubeClient.Delete(ctx, cm)).Should(Succeed(), "Failed to delete configmap %s/%s", namespace, configMapName)
+}
+
 func cleanupAnotherValidOwnerReference(nsName string) {
 	// Cleanup the namespace created for the owner reference.
 	ns := &corev1.Namespace{
@@ -793,12 +935,42 @@ func checkIfPlacedWorkResourcesOnMemberClustersConsistently(clusters []*framewor
 	}
 }
 
+func checkIfPlacedWorkResourcesOnAllMemberClusters() {
+	checkIfPlacedWorkResourcesOnMemberClusters(allMemberClusters)
+}
+
+func checkIfPlacedWorkResourcesOnMemberClusters(clusters []*framework.Cluster) {
+	for idx := range clusters {
+		memberCluster := clusters[idx]
+		workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(memberCluster)
+		Eventually(workResourcesPlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster.ClusterName)
+	}
+}
+
+func checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(clusters []*framework.Cluster) {
+	for idx := range clusters {
+		memberCluster := clusters[idx]
+		workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(memberCluster)
+		Eventually(workResourcesPlacedActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster.ClusterName)
+	}
+}
+
 func checkIfPlacedNamespaceResourceOnAllMemberClusters() {
 	for idx := range allMemberClusters {
 		memberCluster := allMemberClusters[idx]
 
 		namespaceResourcePlacedActual := workNamespacePlacedOnClusterActual(memberCluster)
 		Eventually(namespaceResourcePlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work namespace on member cluster %s", memberCluster.ClusterName)
+	}
+}
+
+// checkIfRemovedConfigMapFromMemberCluster verifies that the ConfigMap has been removed from the specified member cluster.
+func checkIfRemovedConfigMapFromMemberClusters(clusters []*framework.Cluster) {
+	for idx := range clusters {
+		memberCluster := clusters[idx]
+
+		configMapRemovedActual := namespacedResourcesRemovedFromClusterActual(memberCluster)
+		Eventually(configMapRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove config map from member cluster %s", memberCluster.ClusterName)
 	}
 }
 
@@ -813,6 +985,10 @@ func checkIfRemovedWorkResourcesFromMemberClusters(clusters []*framework.Cluster
 		workResourcesRemovedActual := workNamespaceRemovedFromClusterActual(memberCluster)
 		Eventually(workResourcesRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove work resources from member cluster %s", memberCluster.ClusterName)
 	}
+}
+
+func checkIfRemovedConfigMapFromAllMemberClusters() {
+	checkIfRemovedConfigMapFromMemberClusters(allMemberClusters)
 }
 
 func checkIfRemovedWorkResourcesFromAllMemberClustersConsistently() {
@@ -849,12 +1025,37 @@ func checkNamespaceExistsWithOwnerRefOnMemberCluster(nsName, crpName string) {
 	}, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Namespace which is not owned by the CRP should not be deleted")
 }
 
-// cleanupCRP deletes the CRP and waits until the resources are not found.
-func cleanupCRP(name string) {
+func checkConfigMapExistsWithOwnerRefOnMemberCluster(namespace, cmName, rpName string) {
+	cmHasNoWorkOwnerRefActual := func() error {
+		cm := &corev1.ConfigMap{}
+		if err := allMemberClusters[0].KubeClient.Get(ctx, types.NamespacedName{Name: cmName, Namespace: namespace}, cm); err != nil {
+			return fmt.Errorf("failed to get configmap %s/%s: %w", namespace, cmName, err)
+		}
+
+		if len(cm.OwnerReferences) > 0 {
+			for _, ownerRef := range cm.OwnerReferences {
+				if ownerRef.APIVersion == placementv1beta1.GroupVersion.String() &&
+					ownerRef.Kind == placementv1beta1.AppliedWorkKind &&
+					ownerRef.Name == fmt.Sprintf("%s.%s-work", namespace, rpName) {
+					if *ownerRef.BlockOwnerDeletion {
+						return fmt.Errorf("configmap %s/%s owner reference for AppliedWork should have been updated to have BlockOwnerDeletion set to false", namespace, cmName)
+					}
+				}
+			}
+		}
+		return nil
+	}
+
+	// Must use Eventually checks first, as Fleet agents might not act fast enough in the test environment.
+	Eventually(cmHasNoWorkOwnerRefActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "ConfigMap still has AppliedWork owner reference")
+	Consistently(cmHasNoWorkOwnerRefActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "ConfigMap which is not owned by the RP should not be deleted")
+}
+
+// cleanupPlacement deletes the placement and waits until the resources are not found.
+func cleanupPlacement(placementKey types.NamespacedName) {
 	// TODO(Arvindthiru): There is a conflict which requires the Eventually block, not sure of series of operations that leads to it yet.
 	Eventually(func() error {
-		crp := &placementv1beta1.ClusterResourcePlacement{}
-		err := hubClient.Get(ctx, types.NamespacedName{Name: name}, crp)
+		placement, err := retrievePlacement(placementKey)
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
@@ -862,19 +1063,19 @@ func cleanupCRP(name string) {
 			return err
 		}
 
-		// Delete the CRP (again, if applicable).
+		// Delete the placement (again, if applicable).
 		// This helps the After All node to run successfully even if the steps above fail early.
-		if err = hubClient.Delete(ctx, crp); err != nil {
+		if err = hubClient.Delete(ctx, placement); err != nil {
 			return err
 		}
 
-		crp.Finalizers = []string{}
-		return hubClient.Update(ctx, crp)
-	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to delete CRP %s", name)
+		placement.SetFinalizers([]string{})
+		return hubClient.Update(ctx, placement)
+	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to delete placement %s", placementKey)
 
-	// Wait until the CRP is removed.
-	removedActual := crpRemovedActual(name)
-	Eventually(removedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove CRP %s", name)
+	// Wait until the placement is removed.
+	removedActual := placementRemovedActual(placementKey)
+	Eventually(removedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove placement %s", placementKey)
 
 	// Check if work is deleted. Needed to ensure that the Work resource is cleaned up before the next CRP is created.
 	// This is because the Work resource is created with a finalizer that blocks deletion until the all applied work
@@ -882,9 +1083,13 @@ func cleanupCRP(name string) {
 	// and flakiness in subsequent tests.
 	By("Check if work is deleted")
 	var workNS string
+	workName := fmt.Sprintf("%s-work", placementKey.Name)
+	if placementKey.Namespace != "" {
+		workName = fmt.Sprintf("%s.%s", placementKey.Namespace, workName)
+	}
 	work := &placementv1beta1.Work{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: fmt.Sprintf("%s-work", name),
+			Name: workName,
 		},
 	}
 	Eventually(func() bool {
@@ -1020,15 +1225,15 @@ func ensureCRPAndRelatedResourcesDeleted(crpName string, memberClusters []*frame
 		memberCluster := memberClusters[idx]
 
 		workResourcesRemovedActual := workNamespaceRemovedFromClusterActual(memberCluster)
-		Eventually(workResourcesRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove work resources from member cluster %s", memberCluster.ClusterName)
+		Eventually(workResourcesRemovedActual, workloadEventuallyDuration, time.Second*5).Should(Succeed(), "Failed to remove work resources from member cluster %s", memberCluster.ClusterName)
 	}
 
 	// Verify that related finalizers have been removed from the CRP.
-	finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromCRPActual(crpName)
+	finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromPlacementActual(types.NamespacedName{Name: crpName})
 	Eventually(finalizerRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove controller finalizers from CRP")
 
 	// Remove the custom deletion blocker finalizer from the CRP.
-	cleanupCRP(crpName)
+	cleanupPlacement(types.NamespacedName{Name: crpName})
 
 	// Delete the created resources.
 	cleanupWorkResources()
@@ -1063,14 +1268,14 @@ func ensureCRPDisruptionBudgetDeleted(crpDisruptionBudgetName string) {
 // This is mostly used for simulating member agents for virtual clusters.
 //
 // Note that this utility function currently assumes that there is only one work object.
-func verifyWorkPropagationAndMarkAsAvailable(memberClusterName, crpName string, resourceIdentifiers []placementv1beta1.ResourceIdentifier) {
+func verifyWorkPropagationAndMarkAsAvailable(memberClusterName, placementName string, resourceIdentifiers []placementv1beta1.ResourceIdentifier) {
 	memberClusterReservedNS := fmt.Sprintf(utils.NamespaceNameFormat, memberClusterName)
 	// Wait until the works are created.
 	workList := placementv1beta1.WorkList{}
 	Eventually(func() error {
 		workList = placementv1beta1.WorkList{}
 		matchLabelOptions := client.MatchingLabels{
-			placementv1beta1.PlacementTrackingLabel: crpName,
+			placementv1beta1.PlacementTrackingLabel: placementName,
 		}
 		if err := hubClient.List(ctx, &workList, client.InNamespace(memberClusterReservedNS), matchLabelOptions); err != nil {
 			return err
@@ -1105,7 +1310,7 @@ func verifyWorkPropagationAndMarkAsAvailable(memberClusterName, crpName string, 
 				Type:               placementv1beta1.WorkConditionTypeAvailable,
 				Status:             metav1.ConditionTrue,
 				LastTransitionTime: metav1.Now(),
-				Reason:             string(workapplier.ManifestProcessingAvailabilityResultTypeAvailable),
+				Reason:             string(workapplier.AvailabilityResultTypeAvailable),
 				Message:            "Set to be available",
 				ObservedGeneration: w.Generation,
 			})
@@ -1229,6 +1434,24 @@ func updateCRPWithTolerations(tolerations []placementv1beta1.Toleration) {
 	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update cluster resource placement with tolerations %s", crpName)
 }
 
+func updateRPWithTolerations(rpKey types.NamespacedName, tolerations []placementv1beta1.Toleration) {
+	Eventually(func() error {
+		var rp placementv1beta1.ResourcePlacement
+		err := hubClient.Get(ctx, rpKey, &rp)
+		if err != nil {
+			return err
+		}
+		if rp.Spec.Policy == nil {
+			rp.Spec.Policy = &placementv1beta1.PlacementPolicy{
+				Tolerations: tolerations,
+			}
+		} else {
+			rp.Spec.Policy.Tolerations = tolerations
+		}
+		return hubClient.Update(ctx, &rp)
+	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update resource placement with tolerations %s", rpKey)
+}
+
 func cleanupClusterResourceOverride(name string) {
 	cro := &placementv1beta1.ClusterResourceOverride{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1266,7 +1489,7 @@ func checkIfOverrideAnnotationsOnAllMemberClusters(includeNamespace bool, wantAn
 		if includeNamespace {
 			Expect(validateAnnotationOfWorkNamespaceOnCluster(memberCluster, wantAnnotations)).Should(Succeed(), "Failed to override the annotation of work namespace on %s", memberCluster.ClusterName)
 		}
-		Expect(validateOverrideAnnotationOfConfigMapOnCluster(memberCluster, wantAnnotations)).Should(Succeed(), "Failed to override the annotation of config map on %s", memberCluster.ClusterName)
+		Expect(validateAnnotationOfConfigMapOnCluster(memberCluster, wantAnnotations)).Should(Succeed(), "Failed to override the annotation of config map on %s", memberCluster.ClusterName)
 	}
 }
 
@@ -1353,12 +1576,17 @@ func checkIfStatusErrorWithMessage(err error, errorMsg string) error {
 	return fmt.Errorf("error message %s not found in error %w", errorMsg, err)
 }
 
-// buildOwnerReference builds an owner reference given a cluster and a CRP name.
+// buildOwnerReference builds an owner reference given a cluster and a placement name.
 //
-// This function assumes that the CRP has only one associated Work object (no resource snapshot
+// This function assumes that the placement has only one associated Work object (no resource snapshot
 // sub-index, no envelope object used).
-func buildOwnerReference(cluster *framework.Cluster, crpName string) *metav1.OwnerReference {
-	workName := fmt.Sprintf("%s-work", crpName)
+func buildOwnerReference(cluster *framework.Cluster, placementName, placementNamespace string) *metav1.OwnerReference {
+	var workName string
+	if placementNamespace == "" {
+		workName = fmt.Sprintf("%s-work", placementName)
+	} else {
+		workName = fmt.Sprintf("%s.%s-work", placementNamespace, placementName)
+	}
 
 	appliedWork := placementv1beta1.AppliedWork{}
 	Expect(cluster.KubeClient.Get(ctx, types.NamespacedName{Name: workName}, &appliedWork)).Should(Succeed(), "Failed to get applied work object")
@@ -1372,8 +1600,38 @@ func buildOwnerReference(cluster *framework.Cluster, crpName string) *metav1.Own
 	}
 }
 
+// createRPWithApplyStrategy creates a ResourcePlacement with the given name and apply strategy.
+func createRPWithApplyStrategy(rpNamespace, rpName string, applyStrategy *placementv1beta1.ApplyStrategy, resourceSelectors []placementv1beta1.ResourceSelectorTerm) {
+	rp := &placementv1beta1.ResourcePlacement{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      rpName,
+			Namespace: rpNamespace,
+			// Add a custom finalizer; this would allow us to better observe
+			// the behavior of the controllers.
+			Finalizers: []string{customDeletionBlockerFinalizer},
+		},
+		Spec: placementv1beta1.PlacementSpec{
+			ResourceSelectors: configMapSelector(),
+			Strategy: placementv1beta1.RolloutStrategy{
+				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+				RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+					UnavailablePeriodSeconds: ptr.To(2),
+				},
+			},
+		},
+	}
+	if applyStrategy != nil {
+		rp.Spec.Strategy.ApplyStrategy = applyStrategy
+	}
+	if resourceSelectors != nil {
+		rp.Spec.ResourceSelectors = resourceSelectors
+	}
+	By(fmt.Sprintf("creating placement %s", rpName))
+	Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create RP %s", rpName)
+}
+
 // createCRPWithApplyStrategy creates a ClusterResourcePlacement with the given name and apply strategy.
-func createCRPWithApplyStrategy(crpName string, applyStrategy *placementv1beta1.ApplyStrategy) {
+func createCRPWithApplyStrategy(crpName string, applyStrategy *placementv1beta1.ApplyStrategy, resourceSelectors []placementv1beta1.ResourceSelectorTerm) {
 	crp := &placementv1beta1.ClusterResourcePlacement{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: crpName,
@@ -1394,13 +1652,26 @@ func createCRPWithApplyStrategy(crpName string, applyStrategy *placementv1beta1.
 	if applyStrategy != nil {
 		crp.Spec.Strategy.ApplyStrategy = applyStrategy
 	}
+	if resourceSelectors != nil {
+		crp.Spec.ResourceSelectors = resourceSelectors
+	}
 	By(fmt.Sprintf("creating placement %s", crpName))
 	Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP %s", crpName)
 }
 
+// createRP creates a ResourcePlacement with the given name.
+func createRP(rpNamespace, rpName string) {
+	createRPWithApplyStrategy(rpNamespace, rpName, nil, nil)
+}
+
 // createCRP creates a ClusterResourcePlacement with the given name.
 func createCRP(crpName string) {
-	createCRPWithApplyStrategy(crpName, nil)
+	createCRPWithApplyStrategy(crpName, nil, nil)
+}
+
+// createNamespaceOnlyCRP creates a ClusterResourcePlacement with namespace-only selector.
+func createNamespaceOnlyCRP(crpName string) {
+	createCRPWithApplyStrategy(crpName, nil, namespaceOnlySelector())
 }
 
 // ensureUpdateRunDeletion deletes the update run with the given name and checks all related approval requests are also deleted.
@@ -1426,4 +1697,49 @@ func ensureUpdateRunStrategyDeletion(strategyName string) {
 	Expect(client.IgnoreNotFound(hubClient.Delete(ctx, strategy))).Should(Succeed(), "Failed to delete ClusterStagedUpdateStrategy %s", strategyName)
 	removedActual := updateRunStrategyRemovedActual(strategyName)
 	Eventually(removedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "ClusterStagedUpdateStrategy still exists")
+}
+
+// ensureRPAndRelatedResourcesDeleted deletes rp and verifies resources in the specified namespace placed by the rp are removed from the cluster.
+// It checks if the placed configMap is removed by default, as this is tested in most of the test cases.
+// For tests with additional resources placed, e.g. deployments, daemonSets, add those to placedResources.
+func ensureRPAndRelatedResourcesDeleted(rpKey types.NamespacedName, memberClusters []*framework.Cluster, placedResources ...client.Object) {
+	// Delete the ResourcePlacement.
+	rp := &placementv1beta1.ResourcePlacement{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      rpKey.Name,
+			Namespace: rpKey.Namespace,
+		},
+	}
+	Expect(hubClient.Delete(ctx, rp)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}), "Failed to delete ResourcePlacement")
+
+	// Verify that all resources placed have been removed from specified member clusters.
+	for idx := range memberClusters {
+		memberCluster := memberClusters[idx]
+
+		workResourcesRemovedActual := namespacedResourcesRemovedFromClusterActual(memberCluster, placedResources...)
+		Eventually(workResourcesRemovedActual, workloadEventuallyDuration, time.Second*5).Should(Succeed(), "Failed to remove work resources from member cluster %s", memberCluster.ClusterName)
+	}
+
+	// Verify that related finalizers have been removed from the ResourcePlacement.
+	finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromPlacementActual(rpKey)
+	Eventually(finalizerRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove controller finalizers from ResourcePlacement")
+
+	// Remove the custom deletion blocker finalizer from the ResourcePlacement.
+	cleanupPlacement(rpKey)
+
+	// Delete the created resources.
+	cleanupConfigMap()
+}
+
+func retrievePlacement(placementKey types.NamespacedName) (placementv1beta1.PlacementObj, error) {
+	var placement placementv1beta1.PlacementObj
+	if placementKey.Namespace == "" {
+		placement = &placementv1beta1.ClusterResourcePlacement{}
+	} else {
+		placement = &placementv1beta1.ResourcePlacement{}
+	}
+	if err := hubClient.Get(ctx, placementKey, placement); err != nil {
+		return nil, err
+	}
+	return placement, nil
 }

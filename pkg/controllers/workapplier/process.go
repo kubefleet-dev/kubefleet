@@ -37,15 +37,52 @@ func (r *Reconciler) processManifests(
 	work *fleetv1beta1.Work,
 	expectedAppliedWorkOwnerRef *metav1.OwnerReference,
 ) {
-	// TODO: We have to apply the namespace/crd/secret/configmap/pvc first
-	// then we can process some of the manifests in parallel.
-	for _, bundle := range bundles {
-		if bundle.applyOrReportDiffErr != nil {
-			// Skip a manifest if it has failed pre-processing.
-			continue
+	// Process all manifests in parallel.
+	//
+	// There are cases where certain groups of manifests should not be processed in parallel with
+	// each other (e.g., a config map must be applied after its owner namespace is applied);
+	// to address this situation, manifests are processed in waves: manifests in the same wave are
+	// processed in parallel, while different waves are processed sequentially.
+
+	// As a special case, if the ReportDiff mode is on, all manifests are processed in parallel in
+	// one wave.
+	if work.Spec.ApplyStrategy != nil && work.Spec.ApplyStrategy.Type == fleetv1beta1.ApplyStrategyTypeReportDiff {
+		doWork := func(piece int) {
+			if bundles[piece].applyOrReportDiffErr != nil {
+				// Skip a manifest if it has failed pre-processing.
+				return
+			}
+
+			r.processOneManifest(ctx, bundles[piece], work, expectedAppliedWorkOwnerRef)
+			klog.V(2).InfoS("Processed a manifest", "manifestObj", klog.KObj(bundles[piece].manifestObj), "work", klog.KObj(work))
 		}
-		r.processOneManifest(ctx, bundle, work, expectedAppliedWorkOwnerRef)
-		klog.V(2).InfoS("Processed a manifest", "manifestObj", klog.KObj(bundle.manifestObj), "work", klog.KObj(work))
+
+		r.parallelizer.ParallelizeUntil(ctx, len(bundles), doWork, "processingManifestsInReportDiffMode")
+		return
+	}
+
+	// Organize the bundles into different waves of bundles for parallel processing based on their
+	// GVR information.
+	processingWaves := organizeBundlesIntoProcessingWaves(bundles, klog.KObj(work))
+	for idx := range processingWaves {
+		bundlesInWave := processingWaves[idx].bundles
+
+		// TO-DO (chenyu1): evaluate if there is a need to avoid repeated closure
+		// assignment just for capturing variables.
+		doWork := func(piece int) {
+			if bundlesInWave[piece].applyOrReportDiffErr != nil {
+				// Skip a manifest if it has failed pre-processing.
+				//
+				// This added as a sanity check as the organization step normally
+				// would have already skipped all the manifests with processing failures.
+				return
+			}
+
+			r.processOneManifest(ctx, bundlesInWave[piece], work, expectedAppliedWorkOwnerRef)
+			klog.V(2).InfoS("Processed a manifest", "manifestObj", klog.KObj(bundlesInWave[piece].manifestObj), "work", klog.KObj(work))
+		}
+
+		r.parallelizer.ParallelizeUntil(ctx, len(bundlesInWave), doWork, "processingManifests")
 	}
 }
 
@@ -192,13 +229,13 @@ func (r *Reconciler) takeOverInMemberClusterObjectIfApplicable(
 ) (shouldSkipProcessing bool) {
 	if !shouldInitiateTakeOverAttempt(bundle.inMemberClusterObj, work.Spec.ApplyStrategy, expectedAppliedWorkOwnerRef) {
 		// Takeover is not necessary; proceed with the processing.
-		klog.V(2).InfoS("Takeover is not needed; skip the step")
+		klog.V(2).InfoS("Takeover is not needed; skip the step", "work", klog.KObj(work), "GVR", *bundle.gvr, "manifestObj", bundle.workResourceIdentifierStr)
 		return false
 	}
 
 	// Take over the object. Note that this steps adds only the owner reference; no other
 	// fields are modified (on the object from the member cluster).
-	takenOverInMemberClusterObj, configDiffs, err := r.takeOverPreExistingObject(ctx,
+	takenOverInMemberClusterObj, configDiffs, diffCalculatedInDegradedMode, err := r.takeOverPreExistingObject(ctx,
 		bundle.gvr, bundle.manifestObj, bundle.inMemberClusterObj,
 		work.Spec.ApplyStrategy, expectedAppliedWorkOwnerRef)
 	switch {
@@ -209,6 +246,19 @@ func (r *Reconciler) takeOverInMemberClusterObjectIfApplicable(
 		klog.ErrorS(err, "Failed to take over a pre-existing object",
 			"work", klog.KObj(work), "GVR", *bundle.gvr, "manifestObj", klog.KObj(bundle.manifestObj),
 			"inMemberClusterObj", klog.KObj(bundle.inMemberClusterObj), "expectedAppliedWorkOwnerRef", *expectedAppliedWorkOwnerRef)
+		return true
+	case len(configDiffs) > 0 && diffCalculatedInDegradedMode:
+		// Takeover cannot be performed as configuration differences are found between the manifest
+		// object and the object in the member cluster in degraded mode.
+		//
+		// Note that though degraded diff calculation itself is not considered as an error, the
+		// presence of diffs is indeed an error.
+		bundle.diffs = configDiffs
+		bundle.applyOrReportDiffErr = fmt.Errorf("cannot take over object: configuration differences are found between the manifest object and the corresponding object in the member cluster in degraded mode (full comparison is performed instead of partial comparison, as the manifest object is considered to be invalid by the member cluster API server)")
+		bundle.applyOrReportDiffResTyp = ApplyOrReportDiffResTypeFailedToTakeOver
+		klog.V(2).InfoS("Cannot take over object as configuration differences are found between the manifest object and the corresponding object in the member cluster in degraded mode",
+			"work", klog.KObj(work), "GVR", *bundle.gvr, "manifestObj", klog.KObj(bundle.manifestObj),
+			"expectedAppliedWorkOwnerRef", *expectedAppliedWorkOwnerRef)
 		return true
 	case len(configDiffs) > 0:
 		// Takeover cannot be performed as configuration differences are found between the manifest
@@ -300,7 +350,7 @@ func (r *Reconciler) reportDiffOnlyIfApplicable(
 
 	// The object has been created in the member cluster; Fleet will calculate the configuration
 	// diffs between the manifest object and the object from the member cluster.
-	configDiffs, err := r.diffBetweenManifestAndInMemberClusterObjects(ctx,
+	configDiffs, diffCalculatedInDegradedMode, err := r.diffBetweenManifestAndInMemberClusterObjects(ctx,
 		bundle.gvr,
 		bundle.manifestObj, bundle.inMemberClusterObj,
 		work.Spec.ApplyStrategy.ComparisonOption)
@@ -313,6 +363,13 @@ func (r *Reconciler) reportDiffOnlyIfApplicable(
 			"Failed to calculate configuration diffs between the manifest object and the object from the member cluster",
 			"work", klog.KObj(work), "GVR", *bundle.gvr, "manifestObj", klog.KObj(bundle.manifestObj),
 			"inMemberClusterObj", klog.KObj(bundle.inMemberClusterObj), "expectedAppliedWorkOwnerRef", *expectedAppliedWorkOwnerRef)
+	case len(configDiffs) > 0 && diffCalculatedInDegradedMode:
+		// Configuration diffs are found in degraded mode.
+		bundle.diffs = configDiffs
+		bundle.applyOrReportDiffResTyp = ApplyOrReportDiffResTypeFoundDiffInDegradedMode
+		klog.V(2).InfoS("Diff report completed; configuration diffs are found in degraded mode",
+			"GVR", *bundle.gvr, "manifestObj", klog.KObj(bundle.manifestObj),
+			"work", klog.KObj(work))
 	case len(configDiffs) > 0:
 		// Configuration diffs are found.
 		bundle.diffs = configDiffs
@@ -385,7 +442,7 @@ func (r *Reconciler) performPreApplyDriftDetectionIfApplicable(
 		return false
 	default:
 		// Run the drift detection process.
-		drifts, err := r.diffBetweenManifestAndInMemberClusterObjects(ctx,
+		drifts, driftsCalculatedInDegradedMode, err := r.diffBetweenManifestAndInMemberClusterObjects(ctx,
 			bundle.gvr,
 			bundle.manifestObj, bundle.inMemberClusterObj,
 			work.Spec.ApplyStrategy.ComparisonOption)
@@ -396,6 +453,18 @@ func (r *Reconciler) performPreApplyDriftDetectionIfApplicable(
 			bundle.applyOrReportDiffResTyp = ApplyOrReportDiffResTypeFailedToRunDriftDetection
 			klog.ErrorS(err,
 				"Failed to calculate pre-apply drifts between the manifest and the object from the member cluster",
+				"work", klog.KObj(work), "GVR", *bundle.gvr, "manifestObj", klog.KObj(bundle.manifestObj),
+				"inMemberClusterObj", klog.KObj(bundle.inMemberClusterObj), "expectedAppliedWorkOwnerRef", *expectedAppliedWorkOwnerRef)
+			return true
+		case len(drifts) > 0 && driftsCalculatedInDegradedMode:
+			// Configuration drifts are found in degraded mode.
+			//
+			// Note that though degraded drift calculation itself is not considered as an error, the
+			// presence of drifts in the pre-apply drift detection step is indeed an error.
+			bundle.drifts = drifts
+			bundle.applyOrReportDiffErr = fmt.Errorf("cannot apply manifest: drifts are found between the manifest and the object from the member cluster in degraded mode (full comparison is performed instead of partial comparison, as the manifest object is considered to be invalid by the member cluster API server)")
+			bundle.applyOrReportDiffResTyp = ApplyOrReportDiffResTypeFoundDriftsInDegradedMode
+			klog.V(2).InfoS("Cannot apply manifest: drifts are found between the manifest and the object from the member cluster in degraded mode",
 				"work", klog.KObj(work), "GVR", *bundle.gvr, "manifestObj", klog.KObj(bundle.manifestObj),
 				"inMemberClusterObj", klog.KObj(bundle.inMemberClusterObj), "expectedAppliedWorkOwnerRef", *expectedAppliedWorkOwnerRef)
 			return true
@@ -456,7 +525,7 @@ func (r *Reconciler) performPostApplyDriftDetectionIfApplicable(
 		return false
 	}
 
-	drifts, err := r.diffBetweenManifestAndInMemberClusterObjects(ctx,
+	drifts, driftsCalculatedInDegradedMode, err := r.diffBetweenManifestAndInMemberClusterObjects(ctx,
 		bundle.gvr,
 		bundle.manifestObj, bundle.inMemberClusterObj,
 		work.Spec.ApplyStrategy.ComparisonOption)
@@ -472,6 +541,18 @@ func (r *Reconciler) performPostApplyDriftDetectionIfApplicable(
 			"work", klog.KObj(work), "GVR", *bundle.gvr, "manifestObj", klog.KObj(bundle.manifestObj),
 			"inMemberClusterObj", klog.KObj(bundle.inMemberClusterObj), "expectedAppliedWorkOwnerRef", *expectedAppliedWorkOwnerRef)
 		return true
+	case len(drifts) > 0 && driftsCalculatedInDegradedMode:
+		// Configuration drifts are found, but they were calculated in degraded mode.
+		//
+		// Normally this should never happen, as post apply drift detection will only run if the full
+		// comparison mode is enabled, but degraded mode only applies to partial comparison mode.
+
+		// Surface the drifts as normal, but raise an unexpected behavior flag.
+		bundle.drifts = drifts
+		klog.V(2).InfoS("Post-apply drift detection completed; drifts are found in degraded mode",
+			"manifestObj", klog.KObj(bundle.manifestObj), "GVR", *bundle.gvr, "work", klog.KObj(work))
+		// The presence of such drifts are not considered as an error.
+		return false
 	case len(drifts) > 0:
 		// Drifts are found in the post-apply drift detection process.
 		bundle.drifts = drifts

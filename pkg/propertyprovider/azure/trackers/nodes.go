@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/Azure/karpenter-provider-azure/pkg/providers/pricing"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog/v2"
@@ -35,6 +36,8 @@ const (
 	// AKSClusterNodeSKULabelName is the node label added by AKS, which indicated the SKU
 	// of the node.
 	AKSClusterNodeSKULabelName = "beta.kubernetes.io/instance-type"
+
+	ReservedNameForUndefinedSKU = "undefined"
 )
 
 const (
@@ -81,15 +84,14 @@ type NodeTracker struct {
 	totalCapacity    corev1.ResourceList
 	totalAllocatable corev1.ResourceList
 
-	// costs tracks the cost-related information about the cluster.
-	costs *costInfo
-
 	// Below are a list of maps that tracks information about individual nodes in the cluster.
 	capacityByNode    map[string]corev1.ResourceList
 	allocatableByNode map[string]corev1.ResourceList
 	nodeSetBySKU      map[string]NodeSet
 	skuByNode         map[string]string
 
+	// costs tracks the cost-related information about the cluster.
+	costs *costInfo
 	// pricingProvider facilitates cost calculation.
 	pricingProvider PricingProvider
 
@@ -136,6 +138,15 @@ func NewNodeTracker(pp PricingProvider) *NodeTracker {
 //
 // Note that this method assumes that the access lock has been acquired.
 func (nt *NodeTracker) calculateCosts() {
+	// Skip the cost calculation is no pricing provider is available.
+	if nt.pricingProvider == nil {
+		// This error will not be read; it is set here for completeness reasons.
+		nt.costs = &costInfo{
+			err: fmt.Errorf("no pricing provider is set up; cannot calculate costs"),
+		}
+		return
+	}
+
 	totalCapacityCPU := nt.totalCapacity[corev1.ResourceCPU]
 	totalCapacityMemory := nt.totalCapacity[corev1.ResourceMemory]
 
@@ -317,7 +328,7 @@ func (nt *NodeTracker) trackSKU(node *corev1.Node) bool {
 		return true
 	default:
 		// No further action is needed if the node's SKU remains the same.
-		klog.V(2).InfoS("The node's SKU has not changed", "sku", sku, "node", klog.KObj(node))
+		klog.V(3).InfoS("The node's SKU has not changed", "sku", sku, "node", klog.KObj(node))
 		return false
 	}
 }
@@ -561,8 +572,32 @@ func (nt *NodeTracker) Costs() (perCPUCoreCost, perGBMemoryCost float64, warning
 	nt.mu.Lock()
 	defer nt.mu.Unlock()
 
+	if nt.pricingProvider == nil {
+		// Normally this branch will never run; it is set for completeness reasons.
+		wrappedErr := fmt.Errorf("no pricing provider is set up; cannot calculate costs")
+		_ = controller.NewUnexpectedBehaviorError(wrappedErr)
+		return 0.0, 0.0, nil, wrappedErr
+	}
+
 	if nt.costs.lastUpdated.Before(nt.pricingProvider.LastUpdated()) {
 		nt.calculateCosts()
 	}
 	return nt.costs.perCPUCoreHourlyCost, nt.costs.perGBMemoryHourlyCost, nt.costs.warnings, nt.costs.err
+}
+
+// NodeCountPerSKU returns a counter that tracks the number of nodes per SKU in the cluster.
+func (nt *NodeTracker) NodeCountPerSKU() map[string]int {
+	nt.mu.RLock()
+	defer nt.mu.RUnlock()
+
+	// Return a copy to avoid leaks/unexpected edits.
+	res := make(map[string]int, len(nt.nodeSetBySKU))
+	for sku, ns := range nt.nodeSetBySKU {
+		// For those nodes without a SKU, use `undefined` as the SKU name.
+		if len(sku) == 0 {
+			sku = ReservedNameForUndefinedSKU
+		}
+		res[sku] = len(ns)
+	}
+	return res
 }

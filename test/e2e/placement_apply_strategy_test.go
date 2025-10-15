@@ -25,6 +25,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -77,12 +78,12 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 
 			// Create the CRP.
 			strategy := &placementv1beta1.ApplyStrategy{AllowCoOwnership: true}
-			createCRPWithApplyStrategy(crpName, strategy)
+			createCRPWithApplyStrategy(crpName, strategy, nil)
 		})
 
 		AfterAll(func() {
 			By(fmt.Sprintf("deleting placement %s", crpName))
-			cleanupCRP(crpName)
+			cleanupPlacement(types.NamespacedName{Name: crpName})
 
 			By("deleting created work resources on member cluster")
 			cleanWorkResourcesOnCluster(allMemberClusters[0])
@@ -116,7 +117,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		It("should remove controller finalizers from CRP", func() {
-			finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromCRPActual(crpName)
+			finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromPlacementActual(types.NamespacedName{Name: crpName})
 			Eventually(finalizerRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove controller finalizers from CRP %s", crpName)
 		})
 
@@ -136,12 +137,12 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 
 			// Create the CRP.
 			strategy := &placementv1beta1.ApplyStrategy{AllowCoOwnership: false}
-			createCRPWithApplyStrategy(crpName, strategy)
+			createCRPWithApplyStrategy(crpName, strategy, nil)
 		})
 
 		AfterAll(func() {
 			By(fmt.Sprintf("deleting placement %s", crpName))
-			cleanupCRP(crpName)
+			cleanupPlacement(types.NamespacedName{Name: crpName})
 		})
 
 		It("should update CRP status as expected", func() {
@@ -170,7 +171,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		It("should remove the selected resources on member clusters", checkIfRemovedWorkResourcesFromAllMemberClusters)
 
 		It("should remove controller finalizers from CRP", func() {
-			finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromCRPActual(crpName)
+			finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromPlacementActual(types.NamespacedName{Name: crpName})
 			Eventually(finalizerRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove controller finalizers from CRP %s", crpName)
 		})
 	})
@@ -189,12 +190,12 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 				Type:             placementv1beta1.ApplyStrategyTypeServerSideApply,
 				AllowCoOwnership: false,
 			}
-			createCRPWithApplyStrategy(crpName, strategy)
+			createCRPWithApplyStrategy(crpName, strategy, nil)
 		})
 
 		AfterAll(func() {
 			By(fmt.Sprintf("deleting placement %s", crpName))
-			cleanupCRP(crpName)
+			cleanupPlacement(types.NamespacedName{Name: crpName})
 		})
 
 		It("should update CRP status as expected", func() {
@@ -223,7 +224,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		It("should remove the selected resources on member clusters", checkIfRemovedWorkResourcesFromAllMemberClusters)
 
 		It("should remove controller finalizers from CRP", func() {
-			finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromCRPActual(crpName)
+			finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromPlacementActual(types.NamespacedName{Name: crpName})
 			Eventually(finalizerRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove controller finalizers from CRP %s", crpName)
 		})
 	})
@@ -242,12 +243,12 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 				Type:             placementv1beta1.ApplyStrategyTypeServerSideApply,
 				AllowCoOwnership: false,
 			}
-			createCRPWithApplyStrategy(crpName, strategy)
+			createCRPWithApplyStrategy(crpName, strategy, nil)
 		})
 
 		AfterAll(func() {
 			By(fmt.Sprintf("deleting placement %s", crpName))
-			cleanupCRP(crpName)
+			cleanupPlacement(types.NamespacedName{Name: crpName})
 
 			By("deleting created work resources on member cluster")
 			cleanWorkResourcesOnCluster(allMemberClusters[0])
@@ -283,17 +284,17 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 									},
 								},
 							},
-							Conditions: resourcePlacementApplyFailedConditions(crp.Generation),
+							Conditions: perClusterApplyFailedConditions(crp.Generation),
 						},
 						{
 							ClusterName:           memberCluster2EastCanaryName,
 							ObservedResourceIndex: "0",
-							Conditions:            resourcePlacementRolloutCompletedConditions(crp.Generation, true, false),
+							Conditions:            perClusterRolloutCompletedConditions(crp.Generation, true, false),
 						},
 						{
 							ClusterName:           memberCluster3WestProdName,
 							ObservedResourceIndex: "0",
-							Conditions:            resourcePlacementRolloutCompletedConditions(crp.Generation, true, false),
+							Conditions:            perClusterRolloutCompletedConditions(crp.Generation, true, false),
 						},
 					},
 					SelectedResources: []placementv1beta1.ResourceIdentifier{
@@ -311,7 +312,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 					},
 					ObservedResourceIndex: "0",
 				}
-				if diff := cmp.Diff(crp.Status, wantStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(crp.Status, wantStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
@@ -336,7 +337,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		It("should remove controller finalizers from CRP", func() {
-			finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromCRPActual(crpName)
+			finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromPlacementActual(types.NamespacedName{Name: crpName})
 			Eventually(finalizerRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove controller finalizers from CRP %s", crpName)
 		})
 
@@ -371,12 +372,12 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 				ServerSideApplyConfig: &placementv1beta1.ServerSideApplyConfig{ForceConflicts: true},
 				AllowCoOwnership:      true,
 			}
-			createCRPWithApplyStrategy(crpName, strategy)
+			createCRPWithApplyStrategy(crpName, strategy, nil)
 		})
 
 		AfterAll(func() {
 			By(fmt.Sprintf("deleting placement %s", crpName))
-			cleanupCRP(crpName)
+			cleanupPlacement(types.NamespacedName{Name: crpName})
 
 			By("deleting created work resources on member cluster")
 			cleanWorkResourcesOnCluster(allMemberClusters[0])
@@ -412,7 +413,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		It("should remove controller finalizers from CRP", func() {
-			finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromCRPActual(crpName)
+			finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromPlacementActual(types.NamespacedName{Name: crpName})
 			Eventually(finalizerRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove controller finalizers from CRP %s", crpName)
 		})
 
@@ -505,7 +506,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 						{
 							ClusterName:           memberCluster1EastProdName,
 							ObservedResourceIndex: "0",
-							Conditions:            resourcePlacementApplyFailedConditions(crpGeneration),
+							Conditions:            perClusterApplyFailedConditions(crpGeneration),
 							FailedPlacements: []placementv1beta1.FailedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -546,7 +547,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 				}
 				wantCRPStatus := buildWantCRPStatus(conflictedCRP.Generation)
 
-				if diff := cmp.Diff(conflictedCRP.Status, *wantCRPStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(conflictedCRP.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
@@ -559,7 +560,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		It("should not add additional owner reference to affected resources", func() {
-			expectedOwnerRef := buildOwnerReference(memberCluster1EastProd, crpName)
+			expectedOwnerRef := buildOwnerReference(memberCluster1EastProd, crpName, "")
 
 			ns := &corev1.Namespace{}
 			nsName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
@@ -601,9 +602,30 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+			// Must delete the conflicting CRP first, otherwise it might re-create the resources when we check
+			// if the original CRP has been fully deleted.
+			//
+			// And here the test suite will not use the shared common deletion logic as it will attempt to verify
+			// resources that are not managed by the conflicting CRP.
+			Eventually(func() error {
+				conflictedCRP := &placementv1beta1.ClusterResourcePlacement{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: conflictedCRPName,
+					},
+				}
 
-			ensureCRPAndRelatedResourcesDeleted(conflictedCRPName, allMemberClusters)
+				if err := hubClient.Delete(ctx, conflictedCRP); err != nil && !errors.IsNotFound(err) {
+					return fmt.Errorf("failed to delete CRP %s: %w", conflictedCRPName, err)
+				}
+
+				// Wait until the CRP is fully deleted.
+				if err := hubClient.Get(ctx, types.NamespacedName{Name: conflictedCRPName}, conflictedCRP); !errors.IsNotFound(err) {
+					return fmt.Errorf("CRP %s is still present or an unexpected error has occurred: %w", conflictedCRPName, err)
+				}
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to delete CRP %s", conflictedCRPName)
+
+			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 	})
 })
@@ -972,7 +994,7 @@ var _ = Describe("switching apply strategies", func() {
 						{
 							ClusterName:           memberCluster1EastProdName,
 							ObservedResourceIndex: "0",
-							Conditions:            resourcePlacementApplyFailedConditions(crpGeneration),
+							Conditions:            perClusterApplyFailedConditions(crpGeneration),
 							FailedPlacements: []placementv1beta1.FailedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -991,7 +1013,7 @@ var _ = Describe("switching apply strategies", func() {
 						{
 							ClusterName:           memberCluster2EastCanaryName,
 							ObservedResourceIndex: "0",
-							Conditions:            resourcePlacementRolloutCompletedConditions(crpGeneration, true, false),
+							Conditions:            perClusterRolloutCompletedConditions(crpGeneration, true, false),
 						},
 					},
 					ObservedResourceIndex: "0",
@@ -1005,7 +1027,7 @@ var _ = Describe("switching apply strategies", func() {
 				}
 				wantCRPStatus := buildWantCRPStatus(crp.Generation)
 
-				if diff := cmp.Diff(crp.Status, *wantCRPStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
@@ -1039,7 +1061,7 @@ var _ = Describe("switching apply strategies", func() {
 						{
 							ClusterName:           memberCluster1EastProdName,
 							ObservedResourceIndex: "1",
-							Conditions:            resourcePlacementApplyFailedConditions(crpGeneration),
+							Conditions:            perClusterApplyFailedConditions(crpGeneration),
 							FailedPlacements: []placementv1beta1.FailedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1058,7 +1080,7 @@ var _ = Describe("switching apply strategies", func() {
 						{
 							ClusterName:           memberCluster2EastCanaryName,
 							ObservedResourceIndex: "1",
-							Conditions:            resourcePlacementSyncPendingConditions(crpGeneration),
+							Conditions:            perClusterSyncPendingConditions(crpGeneration),
 						},
 					},
 					ObservedResourceIndex: "1",
@@ -1072,7 +1094,7 @@ var _ = Describe("switching apply strategies", func() {
 				}
 				wantCRPStatus := buildWantCRPStatus(crp.Generation)
 
-				if diff := cmp.Diff(crp.Status, *wantCRPStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
@@ -1110,12 +1132,12 @@ var _ = Describe("switching apply strategies", func() {
 						{
 							ClusterName:           memberCluster1EastProdName,
 							ObservedResourceIndex: "1",
-							Conditions:            resourcePlacementDiffReportedConditions(crpGeneration),
+							Conditions:            perClusterDiffReportedConditions(crpGeneration),
 						},
 						{
 							ClusterName:           memberCluster2EastCanaryName,
 							ObservedResourceIndex: "1",
-							Conditions:            resourcePlacementDiffReportedConditions(crpGeneration),
+							Conditions:            perClusterDiffReportedConditions(crpGeneration),
 							DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1147,7 +1169,7 @@ var _ = Describe("switching apply strategies", func() {
 				}
 				wantCRPStatus := buildWantCRPStatus(crp.Generation)
 
-				if diff := cmp.Diff(crp.Status, *wantCRPStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
@@ -1221,7 +1243,7 @@ var _ = Describe("switching apply strategies", func() {
 						{
 							ClusterName:           memberCluster1EastProdName,
 							ObservedResourceIndex: "0",
-							Conditions:            resourcePlacementDiffReportedConditions(crpGeneration),
+							Conditions:            perClusterDiffReportedConditions(crpGeneration),
 							DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1256,7 +1278,7 @@ var _ = Describe("switching apply strategies", func() {
 						{
 							ClusterName:           memberCluster2EastCanaryName,
 							ObservedResourceIndex: "0",
-							Conditions:            resourcePlacementDiffReportedConditions(crpGeneration),
+							Conditions:            perClusterDiffReportedConditions(crpGeneration),
 							DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1299,7 +1321,7 @@ var _ = Describe("switching apply strategies", func() {
 				}
 				wantCRPStatus := buildWantCRPStatus(crp.Generation)
 
-				if diff := cmp.Diff(crp.Status, *wantCRPStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
@@ -1333,7 +1355,7 @@ var _ = Describe("switching apply strategies", func() {
 						{
 							ClusterName:           memberCluster1EastProdName,
 							ObservedResourceIndex: "1",
-							Conditions:            resourcePlacementDiffReportedConditions(crpGeneration),
+							Conditions:            perClusterDiffReportedConditions(crpGeneration),
 							DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1354,7 +1376,7 @@ var _ = Describe("switching apply strategies", func() {
 						{
 							ClusterName:           memberCluster2EastCanaryName,
 							ObservedResourceIndex: "1",
-							Conditions:            resourcePlacementDiffReportedConditions(crpGeneration),
+							Conditions:            perClusterDiffReportedConditions(crpGeneration),
 							DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -1397,7 +1419,7 @@ var _ = Describe("switching apply strategies", func() {
 				}
 				wantCRPStatus := buildWantCRPStatus(crp.Generation)
 
-				if diff := cmp.Diff(crp.Status, *wantCRPStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
@@ -1435,12 +1457,12 @@ var _ = Describe("switching apply strategies", func() {
 						{
 							ClusterName:           memberCluster1EastProdName,
 							ObservedResourceIndex: "1",
-							Conditions:            resourcePlacementRolloutCompletedConditions(crpGeneration, true, false),
+							Conditions:            perClusterRolloutCompletedConditions(crpGeneration, true, false),
 						},
 						{
 							ClusterName:           memberCluster2EastCanaryName,
 							ObservedResourceIndex: "1",
-							Conditions:            resourcePlacementRolloutCompletedConditions(crpGeneration, true, false),
+							Conditions:            perClusterRolloutCompletedConditions(crpGeneration, true, false),
 						},
 					},
 					ObservedResourceIndex: "1",
@@ -1454,7 +1476,7 @@ var _ = Describe("switching apply strategies", func() {
 				}
 				wantCRPStatus := buildWantCRPStatus(crp.Generation)
 
-				if diff := cmp.Diff(crp.Status, *wantCRPStatus, crpStatusCmpOptions...); diff != "" {
+				if diff := cmp.Diff(crp.Status, *wantCRPStatus, placementStatusCmpOptions...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil

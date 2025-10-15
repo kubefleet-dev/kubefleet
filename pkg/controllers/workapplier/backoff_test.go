@@ -33,7 +33,7 @@ import (
 func TestWhenWithFullNormalSequence(t *testing.T) {
 	work := &fleetv1beta1.Work{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: memberReservedNSName,
+			Namespace: memberReservedNSName1,
 			Name:      workName,
 		},
 	}
@@ -150,7 +150,7 @@ func TestWhenWithFullNormalSequence(t *testing.T) {
 func TestWhenWithFullNoSlowBackoffSequence(t *testing.T) {
 	work := &fleetv1beta1.Work{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: memberReservedNSName,
+			Namespace: memberReservedNSName1,
 			Name:      workName,
 		},
 	}
@@ -211,7 +211,7 @@ func TestWhenWithFullNoSlowBackoffSequence(t *testing.T) {
 func TestWhenWithFullNoFastBackoffSequeuce(t *testing.T) {
 	work := &fleetv1beta1.Work{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: memberReservedNSName,
+			Namespace: memberReservedNSName1,
 			Name:      workName,
 		},
 	}
@@ -276,7 +276,7 @@ func TestWhenWithFullNoFastBackoffSequeuce(t *testing.T) {
 func TestWhenWithNoBackoffSequence(t *testing.T) {
 	work := &fleetv1beta1.Work{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: memberReservedNSName,
+			Namespace: memberReservedNSName1,
 			Name:      workName,
 		},
 	}
@@ -768,7 +768,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			name: "first requeue",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: memberReservedNSName,
+					Namespace: memberReservedNSName1,
 					Name:      workName,
 				},
 			},
@@ -779,7 +779,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			name: "second requeue",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: memberReservedNSName,
+					Namespace: memberReservedNSName1,
 					Name:      workName,
 				},
 			},
@@ -790,7 +790,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			name: "requeue (#3) w/ gen change",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 2,
 				},
@@ -802,7 +802,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			name: "requeue #4",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 2,
 				},
@@ -815,7 +815,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			name: "requeue #5",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 2,
 				},
@@ -827,7 +827,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			name: "requeue #6",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 2,
 				},
@@ -839,7 +839,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			name: "requeue #7 w/ processing result change",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 2,
 				},
@@ -855,7 +855,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			name: "requeue #8",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 2,
 				},
@@ -871,7 +871,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			name: "requeue #9",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 2,
 				},
@@ -887,7 +887,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			name: "requeue #10",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 2,
 				},
@@ -903,7 +903,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			name: "requeue #11",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 2,
 				},
@@ -919,7 +919,7 @@ func TestWhenWithGenerationAndProcessingResultChange(t *testing.T) {
 			name: "requeue #12 w/ both gen and processing result change",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 3,
 				},
@@ -970,14 +970,14 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			name: "first requeue",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: memberReservedNSName,
+					Namespace: memberReservedNSName1,
 					Name:      workName,
 				},
 			},
 			bundles: []*manifestProcessingBundle{
 				{
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
-					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeNotYetAvailable,
+					availabilityResTyp:      AvailabilityResultTypeNotYetAvailable,
 				},
 			},
 			wantRequeueDelaySeconds: 5,
@@ -986,7 +986,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			name: "requeue #2, work becomes available",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: memberReservedNSName,
+					Namespace: memberReservedNSName1,
 					Name:      workName,
 				},
 				Status: fleetv1beta1.WorkStatus{
@@ -1001,7 +1001,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			bundles: []*manifestProcessingBundle{
 				{
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
-					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeAvailable,
+					availabilityResTyp:      AvailabilityResultTypeAvailable,
 				},
 			},
 			wantRequeueDelaySeconds: 5, // Use fixed delay, since the processing result has changed.
@@ -1010,7 +1010,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			name: "requeue #3, work stays available",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: memberReservedNSName,
+					Namespace: memberReservedNSName1,
 					Name:      workName,
 				},
 				Status: fleetv1beta1.WorkStatus{
@@ -1025,7 +1025,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			bundles: []*manifestProcessingBundle{
 				{
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
-					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeAvailable,
+					availabilityResTyp:      AvailabilityResultTypeAvailable,
 				},
 			},
 			wantRequeueDelaySeconds: 10, // Start the slow backoff.
@@ -1034,7 +1034,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			name: "requeue #4, work stays available",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: memberReservedNSName,
+					Namespace: memberReservedNSName1,
 					Name:      workName,
 				},
 				Status: fleetv1beta1.WorkStatus{
@@ -1049,7 +1049,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			bundles: []*manifestProcessingBundle{
 				{
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
-					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeAvailable,
+					availabilityResTyp:      AvailabilityResultTypeAvailable,
 				},
 			},
 			wantRequeueDelaySeconds: 50, // Skip to fast back off.
@@ -1058,7 +1058,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			name: "requeue #5, work stays available",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: memberReservedNSName,
+					Namespace: memberReservedNSName1,
 					Name:      workName,
 				},
 				Status: fleetv1beta1.WorkStatus{
@@ -1073,7 +1073,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			bundles: []*manifestProcessingBundle{
 				{
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
-					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeAvailable,
+					availabilityResTyp:      AvailabilityResultTypeAvailable,
 				},
 			},
 			wantRequeueDelaySeconds: 200, // Reached the max. cap.
@@ -1082,7 +1082,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			name: "requeue #6, work changed to ReportDiff mode",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 2,
 				},
@@ -1107,7 +1107,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			name: "requeue #7, no diff found",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 2,
 				},
@@ -1132,7 +1132,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			name: "requeue #8, no diff found",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 2,
 				},
@@ -1157,7 +1157,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			name: "requeue #9, no diff found",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 2,
 				},
@@ -1182,7 +1182,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			name: "requeue #9, diff found",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 2,
 				},
@@ -1207,7 +1207,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			name: "requeue #10, diff found",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 2,
 				},
@@ -1232,7 +1232,7 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 			name: "requeue #11, diff found",
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace:  memberReservedNSName,
+					Namespace:  memberReservedNSName1,
 					Name:       workName,
 					Generation: 2,
 				},
@@ -1272,15 +1272,15 @@ func TestWhenWithSkipToFastBackoff(t *testing.T) {
 // TestForget tests the Forget method.
 func TestForget(t *testing.T) {
 	workNamespacedName1 := types.NamespacedName{
-		Namespace: memberReservedNSName,
+		Namespace: memberReservedNSName1,
 		Name:      fmt.Sprintf(workNameTemplate, "1"),
 	}
 	workNamespacedName2 := types.NamespacedName{
-		Namespace: memberReservedNSName,
+		Namespace: memberReservedNSName1,
 		Name:      fmt.Sprintf(workNameTemplate, "2"),
 	}
 	workNamespacedName3 := types.NamespacedName{
-		Namespace: memberReservedNSName,
+		Namespace: memberReservedNSName1,
 		Name:      fmt.Sprintf(workNameTemplate, "3"),
 	}
 
@@ -1333,7 +1333,7 @@ func TestForget(t *testing.T) {
 			},
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: memberReservedNSName,
+					Namespace: memberReservedNSName1,
 					Name:      workNamespacedName2.Name,
 				},
 			},
@@ -1392,7 +1392,7 @@ func TestForget(t *testing.T) {
 			},
 			work: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: memberReservedNSName,
+					Namespace: memberReservedNSName1,
 					Name:      workNamespacedName3.Name,
 				},
 			},
@@ -1452,7 +1452,7 @@ func TestForget(t *testing.T) {
 func TestComputeProcessingResultHash(t *testing.T) {
 	work := &fleetv1beta1.Work{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: memberReservedNSName,
+			Namespace: memberReservedNSName1,
 			Name:      workName,
 		},
 	}
@@ -1510,7 +1510,7 @@ func TestComputeProcessingResultHash(t *testing.T) {
 			bundles: []*manifestProcessingBundle{
 				{
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
-					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeNotYetAvailable,
+					availabilityResTyp:      AvailabilityResultTypeNotYetAvailable,
 				},
 			},
 			wantHash: "339954d2619310502c70300409bdf65fd6f14d81c12cfade84879e713ea850ea",
@@ -1520,7 +1520,7 @@ func TestComputeProcessingResultHash(t *testing.T) {
 			bundles: []*manifestProcessingBundle{
 				{
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
-					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeAvailable,
+					availabilityResTyp:      AvailabilityResultTypeAvailable,
 				},
 			},
 			wantHash: "708387dadaf07f43d46b032c3afb5d984868107b297dad9c99c2d258584d2377",
@@ -1552,11 +1552,11 @@ func TestComputeProcessingResultHash(t *testing.T) {
 				},
 				{
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
-					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeAvailable,
+					availabilityResTyp:      AvailabilityResultTypeAvailable,
 				},
 				{
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
-					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeNotTrackable,
+					availabilityResTyp:      AvailabilityResultTypeNotTrackable,
 				},
 			},
 			wantHash: "1a001803829ef5509d24d60806593cb5fbfb0445d32b9ab1301e5faea57bbaa9",
@@ -1566,7 +1566,7 @@ func TestComputeProcessingResultHash(t *testing.T) {
 			bundles: []*manifestProcessingBundle{
 				{
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
-					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeAvailable,
+					availabilityResTyp:      AvailabilityResultTypeAvailable,
 				},
 				{
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeFailedToApply,
@@ -1574,7 +1574,7 @@ func TestComputeProcessingResultHash(t *testing.T) {
 				},
 				{
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
-					availabilityResTyp:      ManifestProcessingAvailabilityResultTypeNotTrackable,
+					availabilityResTyp:      AvailabilityResultTypeNotTrackable,
 				},
 			},
 			// Note that different orders of the manifests result in different hashes.
