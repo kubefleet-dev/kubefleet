@@ -56,8 +56,6 @@ import (
 	imcv1beta1 "github.com/kubefleet-dev/kubefleet/pkg/controllers/internalmembercluster/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workapplier"
 	workv1alpha1controller "github.com/kubefleet-dev/kubefleet/pkg/controllers/workv1alpha1"
-	_ "github.com/kubefleet-dev/kubefleet/pkg/metrics/member"
-	_ "github.com/kubefleet-dev/kubefleet/pkg/metrics/shared"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider/azure"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"

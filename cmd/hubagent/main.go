@@ -49,8 +49,6 @@ import (
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/workload"
 	mcv1alpha1 "github.com/kubefleet-dev/kubefleet/pkg/controllers/membercluster/v1alpha1"
 	mcv1beta1 "github.com/kubefleet-dev/kubefleet/pkg/controllers/membercluster/v1beta1"
-	_ "github.com/kubefleet-dev/kubefleet/pkg/metrics/hub"
-	_ "github.com/kubefleet-dev/kubefleet/pkg/metrics/shared"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook"
 	// +kubebuilder:scaffold:imports
 )
