@@ -827,6 +827,22 @@ func cleanupConfigMapOnCluster(cluster *framework.Cluster) {
 	Eventually(configMapRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove config map from %s cluster", cluster.ClusterName)
 }
 
+// cleanupNamespace deletes a specific namespace from the hub cluster and waits until it is removed.
+func cleanupNamespace(namespaceName string) {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: namespaceName,
+		},
+	}
+	Expect(client.IgnoreNotFound(hubClient.Delete(ctx, ns))).To(Succeed(), "Failed to delete namespace %s", namespaceName)
+
+	Eventually(func() bool {
+		ns := &corev1.Namespace{}
+		err := hubClient.Get(ctx, types.NamespacedName{Name: namespaceName}, ns)
+		return k8serrors.IsNotFound(err)
+	}, workloadEventuallyDuration, eventuallyInterval).Should(BeTrue(), "Failed to remove namespace %s from hub cluster", namespaceName)
+}
+
 // setMemberClusterToLeave sets a specific member cluster to leave the fleet.
 func setMemberClusterToLeave(memberCluster *framework.Cluster) {
 	mcObj := &clusterv1beta1.MemberCluster{

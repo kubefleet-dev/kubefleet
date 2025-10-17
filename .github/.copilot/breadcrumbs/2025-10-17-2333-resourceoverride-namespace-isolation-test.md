@@ -91,8 +91,8 @@ Context: "resourceOverride in one namespace should not affect resources in anoth
 
 ## Implementation Checklist
 
-- [ ] Task 1.1: Add CRP namespace isolation test in placement_ro_test.go
-- [ ] Task 2.1: Add RP namespace isolation test in resource_placement_ro_test.go
+- [x] Task 1.1: Add CRP namespace isolation test in placement_ro_test.go
+- [x] Task 2.1: Add RP namespace isolation test in resource_placement_ro_test.go
 - [ ] Task 3.1: Run e2e tests to validate
 - [ ] Task 3.2: Verify all tests pass
 
