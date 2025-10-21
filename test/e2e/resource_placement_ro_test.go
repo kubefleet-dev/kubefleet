@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -1030,5 +1031,178 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 
 		// This check will ignore the annotation of resources.
 		It("should not place the selected resources on member clusters", checkIfRemovedConfigMapFromAllMemberClusters)
+	})
+
+	Context("resourceOverride in one namespace should not affect resources in another namespace for RP", Ordered, func() {
+		rpNameA := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+		rpNameB := fmt.Sprintf(rpNameTemplate+"-%d", GinkgoParallelProcess(), 2)
+		roNameA := fmt.Sprintf(roNameTemplate, GinkgoParallelProcess())
+		namespaceA := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
+		namespaceB := fmt.Sprintf(workNamespaceNameTemplate+"-%d", GinkgoParallelProcess(), 2)
+		configMapNameA := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
+		configMapNameB := fmt.Sprintf(appConfigMapNameTemplate+"-%d", GinkgoParallelProcess(), 2)
+
+		BeforeAll(func() {
+			By("creating namespace A and configmap A")
+			nsA := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      configMapNameA,
+					Namespace: namespaceA,
+				},
+				Data: map[string]string{
+					"data": "test-data-a",
+				},
+			}
+			Expect(hubClient.Create(ctx, nsA)).To(Succeed(), "Failed to create configmap %s", configMapNameA)
+
+			By("creating namespace B and configmap B")
+			nsB := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      configMapNameB,
+					Namespace: namespaceB,
+				},
+				Data: map[string]string{
+					"data": "test-data-b",
+				},
+			}
+			Expect(hubClient.Create(ctx, nsB)).To(Succeed(), "Failed to create configmap %s", configMapNameB)
+
+			By("creating RP A in namespace A")
+			rpA := &placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      rpNameA,
+					Namespace: namespaceA,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:   "",
+							Kind:    "ConfigMap",
+							Version: "v1",
+							Name:    configMapNameA,
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, rpA)).To(Succeed(), "Failed to create RP %s", rpNameA)
+
+			By("creating RP B in namespace B")
+			rpB := &placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      rpNameB,
+					Namespace: namespaceB,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:   "",
+							Kind:    "ConfigMap",
+							Version: "v1",
+							Name:    configMapNameB,
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, rpB)).To(Succeed(), "Failed to create RP %s", rpNameB)
+
+			By("creating resourceOverride in namespace A")
+			roA := &placementv1beta1.ResourceOverride{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      roNameA,
+					Namespace: namespaceA,
+				},
+				Spec: placementv1beta1.ResourceOverrideSpec{
+					Placement: &placementv1beta1.PlacementRef{
+						Name:  rpNameA,
+						Scope: placementv1beta1.NamespaceScoped,
+					},
+					ResourceSelectors: []placementv1beta1.ResourceSelector{
+						{
+							Group:   "",
+							Kind:    "ConfigMap",
+							Version: "v1",
+							Name:    configMapNameA,
+						},
+					},
+					Policy: &placementv1beta1.OverridePolicy{
+						OverrideRules: []placementv1beta1.OverrideRule{
+							{
+								ClusterSelector: &placementv1beta1.ClusterSelector{
+									ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{},
+								},
+								JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
+									{
+										Operator: placementv1beta1.JSONPatchOverrideOpAdd,
+										Path:     "/metadata/annotations",
+										Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "%s"}`, roTestAnnotationKey, roTestAnnotationValue))},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, roA)).To(Succeed(), "Failed to create resourceOverride %s", roNameA)
+		})
+
+		AfterAll(func() {
+			By(fmt.Sprintf("deleting resourceOverride %s", roNameA))
+			cleanupResourceOverride(roNameA, namespaceA)
+
+			By(fmt.Sprintf("deleting RP %s/%s and related resources", namespaceA, rpNameA))
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpNameA, Namespace: namespaceA}, allMemberClusters)
+
+			By(fmt.Sprintf("deleting RP %s/%s and related resources", namespaceB, rpNameB))
+			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpNameB, Namespace: namespaceB}, allMemberClusters)
+		})
+
+		It("should place configmap A on member clusters", func() {
+			for _, memberCluster := range allMemberClusters {
+				Eventually(func() error {
+					cm := &corev1.ConfigMap{}
+					return memberCluster.KubeClient.Get(ctx, types.NamespacedName{Name: configMapNameA, Namespace: namespaceA}, cm)
+				}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place configmap %s on cluster %s", configMapNameA, memberCluster.ClusterName)
+			}
+		})
+
+		It("should place configmap B on member clusters", func() {
+			for _, memberCluster := range allMemberClusters {
+				Eventually(func() error {
+					cm := &corev1.ConfigMap{}
+					return memberCluster.KubeClient.Get(ctx, types.NamespacedName{Name: configMapNameB, Namespace: namespaceB}, cm)
+				}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place configmap %s on cluster %s", configMapNameB, memberCluster.ClusterName)
+			}
+		})
+
+		It("should have override annotations on configmap A only", func() {
+			wantAnnotations := map[string]string{roTestAnnotationKey: roTestAnnotationValue}
+			for _, memberCluster := range allMemberClusters {
+				Eventually(func() error {
+					cm := &corev1.ConfigMap{}
+					if err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{Name: configMapNameA, Namespace: namespaceA}, cm); err != nil {
+						return err
+					}
+					if diff := cmp.Diff(cm.Annotations, wantAnnotations, cmpopts.IgnoreMapEntries(func(k, v string) bool {
+						return k != roTestAnnotationKey
+					})); diff != "" {
+						return fmt.Errorf("configmap annotations diff (-got, +want): %s", diff)
+					}
+					return nil
+				}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "ConfigMap %s should have override annotations on cluster %s", configMapNameA, memberCluster.ClusterName)
+			}
+		})
+
+		It("should not have override annotations on configmap B", func() {
+			for _, memberCluster := range allMemberClusters {
+				Consistently(func() bool {
+					cm := &corev1.ConfigMap{}
+					if err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{Name: configMapNameB, Namespace: namespaceB}, cm); err != nil {
+						return false
+					}
+					_, hasAnnotation := cm.Annotations[roTestAnnotationKey]
+					return !hasAnnotation
+				}, consistentlyDuration, consistentlyInterval).Should(BeTrue(), "ConfigMap %s should not have override annotations on cluster %s", configMapNameB, memberCluster.ClusterName)
+			}
+		})
 	})
 })
