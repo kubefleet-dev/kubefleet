@@ -644,7 +644,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 	})
 
-	Context("Test staged update run with overrides", Ordered, func() {
+	Context("Test cluster staged update run with overrides", Ordered, func() {
 		var strategy *placementv1beta1.ClusterStagedUpdateStrategy
 		updateRunName := fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), 0)
 		croName := fmt.Sprintf(croNameTemplate, GinkgoParallelProcess())
@@ -824,7 +824,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 	})
 
-	Context("Test staged update run with reportDiff mode", Ordered, func() {
+	Context("Test cluster staged update run with reportDiff mode", Ordered, func() {
 		var strategy *placementv1beta1.ClusterStagedUpdateStrategy
 		var applyStrategy *placementv1beta1.ApplyStrategy
 		updateRunName := fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), 0)
