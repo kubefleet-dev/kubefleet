@@ -778,13 +778,13 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex1st)
 		})
 
+		It("Should successfully schedule the crp", func() {
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 3)
+		})
+
 		It("Should update crp status as pending rollout", func() {
 			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(nil, "", false, allMemberClusterNames, []string{"", "", ""}, []bool{false, false, false}, nil, nil)
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
-		})
-
-		It("Should successfully schedule the crp", func() {
-			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 3)
 		})
 
 		It("Should create a cluster staged update run successfully", func() {
@@ -881,13 +881,13 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex1st)
 		})
 
+		It("Should successfully schedule the crp", func() {
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 3)
+		})
+
 		It("Should update crp status as pending rollout", func() {
 			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(nil, "", false, allMemberClusterNames, []string{"", "", ""}, []bool{false, false, false}, nil, nil)
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
-		})
-
-		It("Should successfully schedule the crp", func() {
-			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 3)
 		})
 
 		It("Should create a cluster staged update run successfully", func() {

@@ -639,6 +639,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		roName := fmt.Sprintf(roNameTemplate, GinkgoParallelProcess())
 		roNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 		var wantROs map[string][]placementv1beta1.NamespacedName
+		var wantROAnnotations map[string]string
 
 		BeforeAll(func() {
 			// Create the ro before rp so that the observed resource index is predictable.
@@ -689,6 +690,9 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 				allMemberClusterNames[0]: {placementv1beta1.NamespacedName{Namespace: roNamespace, Name: roName + "-0"}}, // with override snapshot index 0.
 				allMemberClusterNames[1]: {placementv1beta1.NamespacedName{Namespace: roNamespace, Name: roName + "-0"}}, // with override snapshot index 0.
 			}
+
+			// Set the wanted annotations after override.
+			wantROAnnotations = map[string]string{roTestAnnotationKey: fmt.Sprintf("%s-%d", roTestAnnotationValue, 1)}
 
 			// Create the RP with external rollout strategy and pickAll policy.
 			rp := &placementv1beta1.ResourcePlacement{
@@ -750,6 +754,8 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 
 		It("Should rollout resources to member-cluster-2 only and complete stage canary", func() {
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[1]})
+			// Validate the override annotation on configmap on member-cluster-2.
+			Expect(validateAnnotationOfConfigMapOnCluster(allMemberClusters[1], wantROAnnotations)).Should(Succeed(), "Failed to override the annotation of configmap on %s", allMemberClusters[1].ClusterName)
 			checkIfRemovedConfigMapFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0], allMemberClusters[2]})
 
 			By("Validating rp status as member-cluster-2 updated")
@@ -772,7 +778,6 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		})
 
 		It("should have override annotations on the member cluster 1 and member cluster 2", func() {
-			wantROAnnotations := map[string]string{roTestAnnotationKey: fmt.Sprintf("%s-%d", roTestAnnotationValue, 1)}
 			Expect(validateAnnotationOfConfigMapOnCluster(allMemberClusters[0], wantROAnnotations)).Should(Succeed(), "Failed to override the annotation of configmap on %s", allMemberClusters[0].ClusterName)
 			Expect(validateAnnotationOfConfigMapOnCluster(allMemberClusters[1], wantROAnnotations)).Should(Succeed(), "Failed to override the annotation of configmap on %s", allMemberClusters[1].ClusterName)
 			Expect(validateConfigMapNoAnnotationKeyOnCluster(allMemberClusters[2], roTestAnnotationKey)).Should(Succeed(), "Unexpected annotation found on configmap on %s", allMemberClusters[2].ClusterName)
