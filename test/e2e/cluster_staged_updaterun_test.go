@@ -1001,7 +1001,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 
 			// CRP status should still show completed with old snapshot
 			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, resourceSnapshotIndex1st)
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
+			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep CRP %s status as expected", crpName)
 		})
 
 		It("Create a staged update run with new resourceSnapshotIndex and verify rollout happens", func() {

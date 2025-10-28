@@ -955,7 +955,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 
 			// RP status should still show completed with old snapshot.
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), allMemberClusterNames, nil, resourceSnapshotIndex1st)
-			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update RP %s/%s status as expected", testNamespace, rpName)
+			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep RP %s/%s status as expected", testNamespace, rpName)
 		})
 
 		It("Create a staged update run with new resourceSnapshotIndex and verify rollout happens", func() {
