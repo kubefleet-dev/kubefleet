@@ -1000,9 +1000,8 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex2nd)
 
 			// CRP status should still show completed with old snapshot
-			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
-				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil)
-			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep CRP %s status as expected", crpName)
+			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, resourceSnapshotIndex1st)
+			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
 		})
 
 		It("Create a staged update run with new resourceSnapshotIndex and verify rollout happens", func() {

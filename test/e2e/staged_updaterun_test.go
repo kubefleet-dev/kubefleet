@@ -943,7 +943,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		It("Update the configmap on hub but should not rollout to member clusters", func() {
 			updateConfigMapSucceed(&newConfigMap)
 
-			// Verify old configmap is still on all member clusters
+			// Verify old configmap is still on all member clusters.
 			for _, cluster := range allMemberClusters {
 				configMapActual := configMapPlacedOnClusterActual(cluster, &oldConfigMap)
 				Consistently(configMapActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep old configmap %s data on cluster %s", oldConfigMap.Name, cluster.ClusterName)
@@ -953,27 +953,26 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		It("Should have the new resource snapshot but RP status should remain completed with old snapshot", func() {
 			validateLatestResourceSnapshot(rpName, testNamespace, resourceSnapshotIndex2nd)
 
-			// RP status should still show completed with old snapshot
-			rpStatusUpdatedActual := rpStatusWithExternalStrategyActual(appConfigMapIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
-				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil)
-			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep RP %s/%s status as expected", testNamespace, rpName)
+			// RP status should still show completed with old snapshot.
+			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), allMemberClusterNames, nil, resourceSnapshotIndex1st)
+			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to update RP %s/%s status as expected", testNamespace, rpName)
 		})
 
 		It("Create a staged update run with new resourceSnapshotIndex and verify rollout happens", func() {
 			createStagedUpdateRunSucceed(updateRunName, testNamespace, rpName, resourceSnapshotIndex2nd, strategyName)
 
-			// Verify rollout to canary cluster first
+			// Verify rollout to canary cluster first.
 			By("Verify that the new configmap is updated on member-cluster-2 during canary stage")
 			configMapActual := configMapPlacedOnClusterActual(allMemberClusters[1], &newConfigMap)
 			Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update to the new configmap %s on cluster %s", newConfigMap.Name, allMemberClusterNames[1])
 
 			validateAndApproveNamespacedApprovalRequests(updateRunName, testNamespace, envCanary)
 
-			// Verify complete rollout
+			// Verify complete rollout.
 			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunName, testNamespace, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(surSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s/%s succeeded", testNamespace, updateRunName)
 
-			// Verify new configmap is on all member clusters
+			// Verify new configmap is on all member clusters.
 			for _, cluster := range allMemberClusters {
 				configMapActual := configMapPlacedOnClusterActual(cluster, &newConfigMap)
 				Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update to the new configmap %s on cluster %s", newConfigMap.Name, cluster.ClusterName)
@@ -1061,7 +1060,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		It("Update the configmap on hub but should not rollout to member clusters with external strategy", func() {
 			updateConfigMapSucceed(&newConfigMap)
 
-			// Verify old configmap is still on all member clusters
+			// Verify old configmap is still on all member clusters.
 			for _, cluster := range allMemberClusters {
 				configMapActual := configMapPlacedOnClusterActual(cluster, &oldConfigMap)
 				Consistently(configMapActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep old configmap %s data on cluster %s", oldConfigMap.Name, cluster.ClusterName)
@@ -1071,7 +1070,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		It("Should have new resource snapshot but RP status should remain completed with old snapshot", func() {
 			validateLatestResourceSnapshot(rpName, testNamespace, resourceSnapshotIndex2nd)
 
-			// RP status should still show completed with old snapshot
+			// RP status should still show completed with old snapshot.
 			rpStatusUpdatedActual := rpStatusWithExternalStrategyActual(appConfigMapIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
 				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil)
 			Consistently(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep RP %s/%s status as expected", testNamespace, rpName)
@@ -1091,11 +1090,11 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		})
 
 		It("Should automatically rollout new resources to all member clusters with rollingUpdate strategy", func() {
-			// Verify RP status shows all clusters with new resource snapshot
+			// Verify RP status shows all clusters with new resource snapshot.
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), allMemberClusterNames, nil, resourceSnapshotIndex2nd)
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP %s/%s status with rollingUpdate strategy", testNamespace, rpName)
 
-			// Verify new configmap is on all member clusters
+			// Verify new configmap is on all member clusters.
 			for _, cluster := range allMemberClusters {
 				configMapActual := configMapPlacedOnClusterActual(cluster, &newConfigMap)
 				Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update to the new configmap %s on cluster %s", newConfigMap.Name, cluster.ClusterName)
