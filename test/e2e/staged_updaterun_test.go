@@ -935,10 +935,9 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP strategy to external rollout")
 		})
 
-		It("Should update rp status to reflect external rollout strategy", func() {
-			rpStatusUpdatedActual := rpStatusWithExternalStrategyActual(appConfigMapIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
-				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil)
-			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP %s/%s status for external strategy", testNamespace, rpName)
+		It("Should update rp status to reflect external rollout strategy with new observed generation and no other change", func() {
+			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), allMemberClusterNames, nil, resourceSnapshotIndex1st)
+			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP %s/%s status as expected", testNamespace, rpName)
 		})
 
 		It("Update the configmap on hub but should not rollout to member clusters", func() {
