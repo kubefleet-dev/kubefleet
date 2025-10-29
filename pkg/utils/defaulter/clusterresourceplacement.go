@@ -94,6 +94,11 @@ func SetPlacementDefaults(obj fleetv1beta1.PlacementObj) {
 	}
 	SetDefaultsApplyStrategy(spec.Strategy.ApplyStrategy)
 
+	if spec.Strategy.ReportBackStrategy == nil {
+		spec.Strategy.ReportBackStrategy = &fleetv1beta1.ReportBackStrategy{}
+	}
+	SetDefaultStatusBackReportingStrategy(spec.Strategy.ReportBackStrategy)
+
 	if spec.RevisionHistoryLimit == nil {
 		spec.RevisionHistoryLimit = ptr.To(int32(DefaultRevisionHistoryLimitValue))
 	}
@@ -118,5 +123,15 @@ func SetDefaultsApplyStrategy(obj *fleetv1beta1.ApplyStrategy) {
 	}
 	if obj.WhenToTakeOver == "" {
 		obj.WhenToTakeOver = fleetv1beta1.WhenToTakeOverTypeAlways
+	}
+}
+
+func SetDefaultStatusBackReportingStrategy(obj *fleetv1beta1.ReportBackStrategy) {
+	if obj.Type == "" {
+		obj.Type = fleetv1beta1.ReportBackStrategyTypeDisabled
+	}
+	if obj.Type == fleetv1beta1.ReportBackStrategyTypeMirror && obj.Destination == nil {
+		// Normall this combo of values in both fields should never occur.
+		obj.Destination = ptr.To(fleetv1beta1.ReportBackDestinationWorkAPI)
 	}
 }

@@ -1327,7 +1327,7 @@ func TestRunAllPluginsForPickAllPlacementType(t *testing.T) {
 
 			ctx := context.Background()
 			state := NewCycleState([]clusterv1beta1.MemberCluster{}, []placementv1beta1.BindingObj{})
-			scored, filtered, err := f.runAllPluginsForPickAllPlacementType(ctx, state, policy, clusters)
+			scored, filtered, err := f.runAllPluginsForPickAllPlacementType(ctx, state, "", policy, clusters)
 			if tc.expectedToFail {
 				if err == nil {
 					t.Errorf("runAllPluginsForPickAllPlacementType(), want error")
@@ -6257,7 +6257,7 @@ func TestRunAllPluginsForPickNPlacementType(t *testing.T) {
 
 			ctx := context.Background()
 			state := NewCycleState(clusters, nil)
-			scored, filtered, err := f.runAllPluginsForPickNPlacementType(ctx, state, policy, tc.numOfClusters, tc.numOfBoundOrScheduledBindings, clusters)
+			scored, filtered, err := f.runAllPluginsForPickNPlacementType(ctx, state, "", policy, tc.numOfClusters, tc.numOfBoundOrScheduledBindings, clusters)
 			if tc.expectedToFail {
 				if err == nil {
 					t.Errorf("runAllPluginsForPickNPlacementType() returned no error, want error")

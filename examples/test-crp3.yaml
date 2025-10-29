@@ -1,38 +1,17 @@
 apiVersion: placement.kubernetes-fleet.io/v1beta1
 kind: ClusterResourcePlacement
 metadata:
-  name: crp-3
+  name: work
 spec:
   resourceSelectors:
-    - group: apiextensions.k8s.io
-      kind: CustomResourceDefinition
-      name: testresources.test.kubernetes-fleet.io
+    - group: ""
+      kind: Namespace
+      name: non-existent
       version: v1
   policy:
     placementType: PickN
-    numberOfClusters: 3
-    affinity:
-      clusterAffinity:
-        preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 20
-            preference:
-              labelSelector:
-                matchExpressions:
-                  - key: env
-                    operator: In
-                    values:
-                      - canary
-          - weight: 30
-            preference:
-              labelSelector:
-                matchExpressions:
-                  - key: env
-                    operator: In
-                    values:
-                      - prod
-    topologySpreadConstraints:
-      - maxSkew: 1
-        topologyKey: color
-        whenUnsatisfiable: DoNotSchedule
+    numberOfClusters: 1
   strategy:
     type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 100%

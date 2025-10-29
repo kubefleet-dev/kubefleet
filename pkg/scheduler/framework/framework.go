@@ -442,7 +442,7 @@ func (f *framework) runSchedulingCycleForPickAllPlacementType(
 	// to identify clusters that already have placements, in accordance with the latest
 	// scheduling policy, on them. Such clusters will not be scored; it will not be included
 	// as a filtered out cluster, either.
-	scored, filtered, err := f.runAllPluginsForPickAllPlacementType(ctx, state, policy, clusters)
+	scored, filtered, err := f.runAllPluginsForPickAllPlacementType(ctx, state, placementKey, policy, clusters)
 	if err != nil {
 		klog.ErrorS(err, "Failed to run all plugins (pickAll placement type)", "policySnapshot", policyRef)
 		return ctrl.Result{}, err
@@ -511,6 +511,7 @@ func (f *framework) runSchedulingCycleForPickAllPlacementType(
 func (f *framework) runAllPluginsForPickAllPlacementType(
 	ctx context.Context,
 	state *CycleState,
+	placementKey queue.PlacementKey,
 	policy placementv1beta1.PolicySnapshotObj,
 	clusters []clusterv1beta1.MemberCluster,
 ) (scored ScoredClusters, filtered []*filteredClusterWithStatus, err error) {
@@ -539,6 +540,13 @@ func (f *framework) runAllPluginsForPickAllPlacementType(
 	passed, filtered, err := f.runFilterPlugins(ctx, state, policy, clusters)
 	if err != nil {
 		klog.ErrorS(err, "Failed to run filter plugins", "policySnapshot", policyRef)
+		return nil, nil, controller.NewUnexpectedBehaviorError(err)
+	}
+
+	// TO-DO (chenyu1): refactor this as a plugin in a proper extension point.
+	passed, filtered, err = f.runExternalFilterAllProcessor(ctx, state, placementKey, policy, passed, filtered)
+	if err != nil {
+		klog.ErrorS(err, "Failed to run external processor", "policySnapshot", policyRef)
 		return nil, nil, controller.NewUnexpectedBehaviorError(err)
 	}
 
@@ -917,7 +925,7 @@ func (f *framework) runSchedulingCycleForPickNPlacementType(
 	// to identify clusters that already have placements, in accordance with the latest
 	// scheduling policy, on them. Such clusters will not be scored; it will not be included
 	// as a filtered out cluster, either.
-	scored, filtered, err := f.runAllPluginsForPickNPlacementType(ctx, state, policy, numOfClusters, len(bound)+len(scheduled), clusters)
+	scored, filtered, err := f.runAllPluginsForPickNPlacementType(ctx, state, placementKey, policy, numOfClusters, len(bound)+len(scheduled), clusters)
 	if err != nil {
 		klog.ErrorS(err, "Failed to run all plugins", "policySnapshot", policyRef)
 		return ctrl.Result{}, err
@@ -1078,6 +1086,7 @@ func (f *framework) downscale(ctx context.Context, scheduled, bound []placementv
 func (f *framework) runAllPluginsForPickNPlacementType(
 	ctx context.Context,
 	state *CycleState,
+	placementKey queue.PlacementKey,
 	policy placementv1beta1.PolicySnapshotObj,
 	numOfClusters int,
 	numOfBoundOrScheduledBindings int,
@@ -1145,6 +1154,13 @@ func (f *framework) runAllPluginsForPickNPlacementType(
 		return nil, nil, controller.NewUnexpectedBehaviorError(err)
 	}
 
+	// TO-DO (chenyu1): refactor this as a plugin in a proper extension point.
+	passed, filtered, err = f.runExternalFilterAllProcessor(ctx, state, placementKey, policy, passed, filtered)
+	if err != nil {
+		klog.ErrorS(err, "Failed to run external processor", "policySnapshot", policyRef)
+		return nil, nil, controller.NewUnexpectedBehaviorError(err)
+	}
+
 	// Run pre-score plugins.
 	if status := f.runPreScorePlugins(ctx, state, policy); status.IsInteralError() {
 		klog.ErrorS(status.AsError(), "Failed ro run pre-score plugins", "policySnapshot", policyRef)
@@ -1161,6 +1177,12 @@ func (f *framework) runAllPluginsForPickNPlacementType(
 	scored, err = f.runScorePlugins(ctx, state, policy, passed)
 	if err != nil {
 		klog.ErrorS(err, "Failed to run score plugins", "policySnapshot", policyRef)
+		return nil, nil, controller.NewUnexpectedBehaviorError(err)
+	}
+
+	scored, err = f.runExternalScoreAllProcessor(ctx, state, policy, scored)
+	if err != nil {
+		klog.ErrorS(err, "Failed to run external score processor", "policySnapshot", policyRef)
 		return nil, nil, controller.NewUnexpectedBehaviorError(err)
 	}
 

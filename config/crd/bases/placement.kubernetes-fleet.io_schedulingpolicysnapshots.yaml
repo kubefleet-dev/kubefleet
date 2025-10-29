@@ -396,6 +396,31 @@ spec:
                       type: string
                     maxItems: 100
                     type: array
+                  dynamicResourceClaims:
+                    items:
+                      properties:
+                        controllerName:
+                          type: string
+                        count:
+                          format: int64
+                          minimum: 0
+                          type: integer
+                        dynamicResourceClassName:
+                          type: string
+                        matchAttributes:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        resourceName:
+                          type: string
+                        weight:
+                          format: int64
+                          type: integer
+                      required:
+                      - dynamicResourceClassName
+                      - resourceName
+                      type: object
+                    type: array
                   numberOfClusters:
                     description: NumberOfClusters of placement. Only valid if the
                       placement type is "PickN".

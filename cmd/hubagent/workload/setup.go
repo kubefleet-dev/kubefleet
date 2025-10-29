@@ -43,8 +43,10 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/resourcechange"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/rollout"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/schedulingpolicysnapshot"
+	"github.com/kubefleet-dev/kubefleet/pkg/controllers/statusbackreporter"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/updaterun"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workgenerator"
+	azdynamicrp "github.com/kubefleet-dev/kubefleet/pkg/dynamicresourceprovider/azure"
 	"github.com/kubefleet-dev/kubefleet/pkg/resourcewatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/clustereligibilitychecker"
@@ -460,6 +462,25 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			},
 		}).SetupWithManager(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up resourceOverride controller")
+			return err
+		}
+
+		// Set up the status back-reporter.
+		klog.Info("Setting up the status back-reporter")
+		if err := (&statusbackreporter.Reconciler{
+			HubClient:        mgr.GetClient(),
+			HubDynamicClient: dynamicClient,
+		}).SetupWithManager(mgr); err != nil {
+			klog.ErrorS(err, "Unable to set up status back-reporter")
+			return err
+		}
+
+		// Set up the Azure placement scheduling context controller.
+		klog.Info("Setting up the Azure placement scheduling context controller")
+		if err := (&azdynamicrp.Reconciler{
+			HubClient: mgr.GetClient(),
+		}).SetupWithManager(mgr); err != nil {
+			klog.ErrorS(err, "Unable to set up Azure placement scheduling context controller")
 			return err
 		}
 

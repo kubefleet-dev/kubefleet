@@ -133,6 +133,31 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		klog.V(2).InfoS("Apply strategy is up to date on all bindings; continue with the rollout process", "placement", placementObjRef)
 	}
 
+	// Process the status back-reporting strategy updates (if any). This runs independently of
+	// he rollout process.
+	//
+	// Status back-reporting strategy changes will be immediately applied to all bindings that have not been
+	// marked for deletion yet. Note that even unscheduled bindings will receive this update
+	// for simplicity reasons.
+	statusBackReportingStrategyUpdated, err := r.processStatusBackReportingStrategyUpdates(ctx, placementObj, allBindings)
+	switch {
+	case err != nil:
+		klog.ErrorS(err, "Failed to process status back-reporting strategy updates", "placement", placementObjRef)
+		return runtime.Result{}, err
+	case statusBackReportingStrategyUpdated:
+		// After the status back-reporting strategy is updated (a spec change), all status conditions on the
+		// binding object will become stale. To simplify the workflow of
+		// the rollout controller, Fleet will requeue the request now, and let the subsequent
+		// reconciliation loop to handle the status condition refreshing.
+		//
+		// Note that work generator will skip processing bindings with stale
+		// RolloutStarted conditions.
+		klog.V(2).InfoS("Status back-reporting strategy has been updated; requeue the request", "placement", placementObjRef)
+		return reconcile.Result{Requeue: true}, nil
+	default:
+		klog.V(2).InfoS("Status back-reporting strategy is up to date on all bindings; continue with the rollout process", "placement", placementObjRef)
+	}
+
 	// handle the case that a cluster was unselected by the scheduler and then selected again but the unselected binding is not completely deleted yet
 	wait, err := waitForResourcesToCleanUp(allBindings, placementObj)
 	if err != nil {
@@ -1150,6 +1175,65 @@ func (r *Reconciler) processApplyStrategyUpdates(
 	return applyStrategyUpdated, errs.Wait()
 }
 
+func (r *Reconciler) processStatusBackReportingStrategyUpdates(
+	ctx context.Context,
+	placementObj placementv1beta1.PlacementObj,
+	allBindings []placementv1beta1.BindingObj,
+) (statusBackReportingStrategyUpdated bool, err error) {
+	statusBackReportingStrategy := placementObj.GetPlacementSpec().Strategy.ReportBackStrategy
+	if statusBackReportingStrategy == nil {
+		// Initialize the status back-reporting strategy with default values; normally this would not happen
+		// as default values have been set up in the definitions.
+		//
+		//
+		// Note (chenyu1): at this moment, due to the fact that Fleet offers both v1 and v1beta1
+		// APIs at the same time with Kubernetes favoring the v1 API by default, should the
+		// user chooses to use the v1 API, default values for v1beta1 exclusive fields
+		// might not be handled correctly, hence the default value resetting logic added here.
+		statusBackReportingStrategy = &placementv1beta1.ReportBackStrategy{}
+		defaulter.SetDefaultStatusBackReportingStrategy(statusBackReportingStrategy)
+	}
+
+	errs, childCtx := errgroup.WithContext(ctx)
+	for idx := range allBindings {
+		binding := allBindings[idx]
+		if !binding.GetDeletionTimestamp().IsZero() {
+			// The binding has been marked for deletion; no need to push the apply strategy
+			// update there.
+			continue
+		}
+
+		// Verify if the binding has the latest status back-reporting strategy set.
+		if equality.Semantic.DeepEqual(binding.GetBindingSpec().ReportBackStrategy, statusBackReportingStrategy) {
+			// The binding already has the latest status back-reporting strategy set; no need to push the update.
+			klog.V(2).InfoS("The binding already has the latest status back-reporting strategy; skip the back-reporting strategy update", "binding", klog.KObj(binding), "bindingGeneration", binding.GetGeneration())
+			continue
+		}
+
+		// Push the new status back-reporting strategy to the binding.
+		//
+		// The ReportBackStrategy field on binding objects are managed exclusively by the rollout
+		// controller; to avoid unnecessary conflicts, Fleet will patch the field directly.
+		updatedBinding := binding.DeepCopyObject().(placementv1beta1.BindingObj)
+		updatedSpec := updatedBinding.GetBindingSpec()
+		updatedSpec.ReportBackStrategy = statusBackReportingStrategy
+		statusBackReportingStrategyUpdated = true
+
+		errs.Go(func() error {
+			if err := r.Client.Patch(childCtx, updatedBinding, client.MergeFrom(binding)); err != nil {
+				klog.ErrorS(err, "Failed to update binding with new status back-reporting strategy", "binding", klog.KObj(binding))
+				return controller.NewAPIServerError(false, err)
+			}
+			klog.V(2).InfoS("Updated binding with new status back-reporting strategy", "binding", klog.KObj(binding), "beforeUpdateBindingGeneration", binding.GetGeneration(), "afterUpdateBindingGeneration", updatedBinding.GetGeneration())
+			return nil
+		})
+	}
+
+	// The patches are issued in parallel; wait for all of them to complete (or the first error
+	// to return).
+	return statusBackReportingStrategyUpdated, errs.Wait()
+}
+
 // handlePlacement handles the update event of a placement object (ClusterResourcePlacement or ResourcePlacement),
 // which the rollout controller watches.
 func handlePlacement(newPlacementObj, oldPlacementObj client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
@@ -1191,6 +1275,17 @@ func handlePlacement(newPlacementObj, oldPlacementObj client.Object, q workqueue
 	oldApplyStrategy := oldPlacementSpec.Strategy.ApplyStrategy
 	if !equality.Semantic.DeepEqual(newApplyStrategy, oldApplyStrategy) {
 		klog.V(2).InfoS("Detected an update to the apply strategy on the placement", "placement", klog.KObj(newPlacement))
+		q.Add(reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: newPlacement.GetName(), Namespace: newPlacement.GetNamespace()},
+		})
+		return
+	}
+
+	// Check if the status back-reporting strategy has been updated.
+	newStatusBackReportingStrategy := newPlacementSpec.Strategy.ReportBackStrategy
+	oldStatusBackReportingStrategy := oldPlacementSpec.Strategy.ReportBackStrategy
+	if !equality.Semantic.DeepEqual(newStatusBackReportingStrategy, oldStatusBackReportingStrategy) {
+		klog.V(2).InfoS("Detected an update to the status back-reporting strategy on the placement", "placement", klog.KObj(newPlacement))
 		q.Add(reconcile.Request{
 			NamespacedName: types.NamespacedName{Name: newPlacement.GetName(), Namespace: newPlacement.GetNamespace()},
 		})

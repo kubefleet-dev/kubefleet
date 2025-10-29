@@ -262,6 +262,9 @@ type PlacementPolicy struct {
 	// +kubebuilder:validation:MaxItems=100
 	// +kubebuilder:validation:Optional
 	Tolerations []Toleration `json:"tolerations,omitempty"`
+
+	// +optional
+	DynamicResourceClaims []DynamicResourceClaim `json:"dynamicResourceClaims,omitempty"`
 }
 
 // Affinity is a group of cluster affinity scheduling rules. More to be added.
@@ -408,6 +411,22 @@ type PropertySelector struct {
 	// MatchExpressions is an array of PropertySelectorRequirements. The requirements are AND'd.
 	// +kubebuilder:validation:Required
 	MatchExpressions []PropertySelectorRequirement `json:"matchExpressions"`
+}
+
+type DynamicResourceClaim struct {
+	// +kubebuilder:validation:Required
+	// +required
+	ResourceName string `json:"resourceName,omitempty"`
+	// +kubebuilder:validation:Required
+	// +required
+	DynamicResourceClassName string            `json:"dynamicResourceClassName,omitempty"`
+	MatchAttributes          map[string]string `json:"matchAttributes,omitempty"`
+	// +kubebuilder:validation:Minimum=0
+	Count int64 `json:"count,omitempty"`
+	// +optional
+	ControllerName *string `json:"controllerName,omitempty"`
+	// +optional
+	Weight *int64 `json:"weight,omitempty"`
 }
 
 // PropertySorter helps user specify how to sort clusters based on a specific property.

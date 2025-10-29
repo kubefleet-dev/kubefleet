@@ -1,0 +1,52 @@
+apiVersion: placement.kubernetes-fleet.io/v1beta1
+kind: ClusterResourcePlacement
+metadata:
+  name: work-2
+spec:
+  resourceSelectors:
+    - group: ""
+      kind: Namespace
+      name: work-2
+      version: v1
+      selectionScope: NamespaceOnly
+  policy:
+    placementType: PickN
+    numberOfClusters: 1
+    dynamicResourceClaims:
+    - resourceName: kubernetes.azure.com/nodes/additional-capacity
+      dynamicResourceClassName: azure-additional-capacity
+      matchAttributes:
+        node.kubernetes.io/instance-type: Standard_NC24ads_A100_v4
+      count: 1
+      controllerName: azure-dynamic-resource-provider
+      weight: 20      
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 100%
+---
+apiVersion: placement.kubernetes-fleet.io/v1beta1
+kind: ResourcePlacement
+metadata:
+  name: app
+  namespace: work-2
+spec:
+  resourceSelectors:
+    - group: ""
+      kind: ConfigMap
+      name: non-existent
+      version: v1
+  policy:
+    placementType: PickAll
+    dynamicResourceClaims:
+    - resourceName: kubernetes.azure.com/nodes/additional-capacity
+      dynamicResourceClassName: azure-additional-capacity
+      matchAttributes:
+        node.kubernetes.io/instance-type: Standard_NC24ads_A100_v4
+      count: 1
+      controllerName: azure-dynamic-resource-provider
+      weight: 20 
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 100%

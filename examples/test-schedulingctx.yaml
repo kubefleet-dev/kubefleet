@@ -1,0 +1,14 @@
+apiVersion: placement.kubernetes-fleet.io/v1beta1
+kind: ResourcePlacementSchedulingContext
+metadata:
+  name: app
+  namespace: work-2
+spec:
+  potentialClusters: ["model-server-cluster-1", "kind-cluster-1"]
+---
+apiVersion: placement.kubernetes-fleet.io/v1beta1
+kind: ClusterResourcePlacementSchedulingContext
+metadata:
+  name: work-2
+spec:
+  potentialClusters: ["model-server-cluster-2", "kind-cluster-2"]

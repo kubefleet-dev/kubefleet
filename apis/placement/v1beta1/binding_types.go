@@ -131,6 +131,11 @@ type ResourceBindingSpec struct {
 	// and is owned by other appliers.
 	// +optional
 	ApplyStrategy *ApplyStrategy `json:"applyStrategy,omitempty"`
+
+	// ReportBackStrategy describes how to report back the status of the applied resources from the member cluster side
+	// to the hub cluster side.
+	// +optional
+	ReportBackStrategy *ReportBackStrategy `json:"reportBackStrategy,omitempty"`
 }
 
 // BindingState is the state of the binding.

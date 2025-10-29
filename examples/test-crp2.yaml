@@ -1,19 +1,20 @@
 apiVersion: placement.kubernetes-fleet.io/v1beta1
 kind: ClusterResourcePlacement
 metadata:
-  name: crp-2
+  name: work
 spec:
   resourceSelectors:
-    - group: apiextensions.k8s.io
-      kind: CustomResourceDefinition
-      name: testresources.test.kubernetes-fleet.io
+    - group: ""
+      kind: Namespace
+      name: work
       version: v1
   policy:
     placementType: PickN
-    numberOfClusters: 3
-    topologySpreadConstraints:
-      - maxSkew: 1
-        topologyKey: color
-        whenUnsatisfiable: DoNotSchedule
+    numberOfClusters: 1
   strategy:
     type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 100%
+    reportBackStrategy:
+      type: Mirror
+      destination: OriginalResource

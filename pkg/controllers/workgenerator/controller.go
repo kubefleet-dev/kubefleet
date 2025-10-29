@@ -444,6 +444,28 @@ func (r *Reconciler) syncAllWork(ctx context.Context, resourceBinding fleetv1bet
 		return false, false, updateErr
 	}
 
+	// Refresh the status back-reporting strategy for all existing works.
+	//
+	// For similar reasons as the case with apply strategies above, this step is also performed
+	// separately from other refreshes.
+	errs, cctx = errgroup.WithContext(ctx)
+	for workName := range existingWorks {
+		w := existingWorks[workName]
+		errs.Go(func() error {
+			updated, err := r.syncStatusBackReportingStrategy(ctx, resourceBinding, w)
+			if err != nil {
+				return err
+			}
+			if updated {
+				updateAny.Store(true)
+			}
+			return nil
+		})
+	}
+	if updateErr := errs.Wait(); updateErr != nil {
+		return false, false, updateErr
+	}
+
 	// the hash256 function can handle empty list https://go.dev/play/p/_4HW17fooXM
 	resourceOverrideSnapshotHash, err := resource.HashOf(resourceBinding.GetBindingSpec().ResourceOverrideSnapshots)
 	if err != nil {
@@ -668,6 +690,26 @@ func (r *Reconciler) syncApplyStrategy(
 		return true, controller.NewUpdateIgnoreConflictError(err)
 	}
 	klog.V(2).InfoS("Successfully updated the apply strategy on the work", "work", klog.KObj(existingWork), "binding", klog.KObj(resourceBinding))
+	return true, nil
+}
+
+func (r *Reconciler) syncStatusBackReportingStrategy(
+	ctx context.Context,
+	resourceBinding fleetv1beta1.BindingObj,
+	existingWork *fleetv1beta1.Work,
+) (bool, error) {
+	// Skip the update if no change on status back-reporting strategy is needed.
+	if equality.Semantic.DeepEqual(existingWork.Spec.ReportBackStrategy, resourceBinding.GetBindingSpec().ReportBackStrategy) {
+		return false, nil
+	}
+
+	// Update the status back-reporting strategy on the work.
+	existingWork.Spec.ReportBackStrategy = resourceBinding.GetBindingSpec().ReportBackStrategy.DeepCopy()
+	if err := r.Client.Update(ctx, existingWork); err != nil {
+		klog.ErrorS(err, "Failed to update the status back-reporting strategy on the work", "work", klog.KObj(existingWork), "binding", klog.KObj(resourceBinding))
+		return true, controller.NewUpdateIgnoreConflictError(err)
+	}
+	klog.V(2).InfoS("Successfully updated the status back-reporting strategy on the work", "work", klog.KObj(existingWork), "binding", klog.KObj(resourceBinding))
 	return true, nil
 }
 

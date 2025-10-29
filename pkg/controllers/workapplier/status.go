@@ -18,10 +18,13 @@ package workapplier
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
@@ -87,6 +90,7 @@ func (r *Reconciler) refreshWorkStatus(
 	}
 
 	isReportDiffModeOn := work.Spec.ApplyStrategy != nil && work.Spec.ApplyStrategy.Type == fleetv1beta1.ApplyStrategyTypeReportDiff
+	isStatusBackReportingOn := work.Spec.ReportBackStrategy != nil && work.Spec.ReportBackStrategy.Type == fleetv1beta1.ReportBackStrategyTypeMirror
 	for idx := range bundles {
 		bundle := bundles[idx]
 
@@ -149,6 +153,15 @@ func (r *Reconciler) refreshWorkStatus(
 				FirstDiffedObservedTime:           *firstDiffedTimestamp,
 				ObservedDiffs:                     bundle.diffs,
 			}
+		}
+
+		// Back-report the status from the member cluster side, if applicable.
+		//
+		// Back-reporting is only performed when:
+		// a) the ReportBackStrategy is of the type Mirror; and
+		// b) the manifest object has been applied successfully.
+		if isStatusBackReportingOn && isManifestObjectApplied(bundle.applyOrReportDiffResTyp) {
+			backReportStatus(bundle.inMemberClusterObj, manifestCond, now, klog.KObj(work))
 		}
 
 		// Tally the stats.
@@ -642,4 +655,32 @@ func prepareRebuiltManifestCondQIdx(bundles []*manifestProcessingBundle) map[str
 		rebuiltManifestCondQIdx[bundle.workResourceIdentifierStr] = idx
 	}
 	return rebuiltManifestCondQIdx
+}
+
+func backReportStatus(
+	inMemberClusterObj *unstructured.Unstructured,
+	manifestCond *fleetv1beta1.ManifestCondition,
+	now metav1.Time,
+	workRef klog.ObjectRef,
+) {
+	if _, ok := inMemberClusterObj.Object["status"]; !ok {
+		klog.V(2).InfoS("cannot back-report status as the applied resource on the member cluster side does not have a status subresource", "work", workRef, "resourceIdentifier", manifestCond.Identifier)
+		return
+	}
+
+	statusBackReportingWrapper := make(map[string]interface{})
+	statusBackReportingWrapper["apiVersion"] = inMemberClusterObj.GetAPIVersion()
+	statusBackReportingWrapper["kind"] = inMemberClusterObj.GetKind()
+	statusBackReportingWrapper["status"] = inMemberClusterObj.Object["status"]
+	statusData, err := json.Marshal(statusBackReportingWrapper)
+	if err != nil {
+		klog.ErrorS(err, "Failed to marshal wrapped back-reported status", "work", workRef, "resourceIdentifier", manifestCond.Identifier)
+	} else {
+		manifestCond.BackReportedStatus = &fleetv1beta1.BackReportedStatus{
+			ObservedStatus: runtime.RawExtension{
+				Raw: statusData,
+			},
+			ObservationTime: now,
+		}
+	}
 }
