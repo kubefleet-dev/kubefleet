@@ -1112,6 +1112,9 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Initialized")].status
       name: Initialized
       type: string
+    - jsonPath: .status.conditions[?(@.type=="Started")].status
+      name: Started
+      type: string
     - jsonPath: .status.conditions[?(@.type=="Succeeded")].status
       name: Succeeded
       type: string
@@ -1173,6 +1176,13 @@ spec:
                   are computed according to the referenced strategy when the update run starts
                   and recorded in the status field.
                 type: string
+              started:
+                description: |-
+                  Started indicates whether the update run should be started.
+                  When false or nil, the update run will initialize but not execute.
+                  When true, the update run will begin execution.
+                  Changing from true to false will gracefully stop the update run.
+                type: boolean
             required:
             - placementName
             - resourceSnapshotIndex
@@ -1416,7 +1426,7 @@ spec:
               conditions:
                 description: |-
                   Conditions is an array of current observed conditions for StagedUpdateRun.
-                  Known conditions are "Initialized", "Progressing", "Succeeded".
+                  Known conditions are "Initialized", "Started", "Progressing", "Succeeded".
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
