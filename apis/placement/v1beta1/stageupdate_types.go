@@ -282,6 +282,10 @@ type StageConfig struct {
 	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'Approval' && has(e.waitTime))",message="AfterStageTaskType is Approval, waitTime is not allowed"
 	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'TimedWait' && !has(e.waitTime))",message="AfterStageTaskType is TimedWait, waitTime is required"
 	AfterStageTasks []AfterStageTask `json:"afterStageTasks,omitempty"`
+
+	// The task that needs to be completed successfully before starting the stage.
+	// +kubebuilder:validation:Optional
+	BeforeStageTask *BeforeStageTask `json:"beforeStageTask,omitempty"`
 }
 
 // AfterStageTask is the collection of post-stage tasks that ALL need to be completed before moving to the next stage.
@@ -289,13 +293,21 @@ type AfterStageTask struct {
 	// The type of the after-stage task.
 	// +kubebuilder:validation:Enum=TimedWait;Approval
 	// +kubebuilder:validation:Required
-	Type AfterStageTaskType `json:"type"`
+	Type StageTaskType `json:"type"`
 
 	// The time to wait after all the clusters in the current stage complete the update before moving to the next stage.
 	// +kubebuilder:validation:Pattern="^0|([0-9]+(\\.[0-9]+)?(s|m|h))+$"
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:Optional
 	WaitTime *metav1.Duration `json:"waitTime,omitempty"`
+}
+
+// BeforeStageTask is the pre-stage task that needs to be completed before starting the stage.
+type BeforeStageTask struct {
+	// The type of the before-stage task.
+	// +kubebuilder:validation:Enum=Approval
+	// +kubebuilder:validation:Required
+	Type StageTaskType `json:"type"`
 }
 
 // UpdateRunStatus defines the observed state of the ClusterStagedUpdateRun.
@@ -392,7 +404,12 @@ type StageUpdatingStatus struct {
 	// Empty if the stage has not finished updating all the clusters.
 	// +kubebuilder:validation:MaxItems=2
 	// +kubebuilder:validation:Optional
-	AfterStageTaskStatus []AfterStageTaskStatus `json:"afterStageTaskStatus,omitempty"`
+	AfterStageTaskStatus []StageTaskStatus `json:"afterStageTaskStatus,omitempty"`
+
+	// The status of the pre-update task associated with the current stage.
+	// Nil if the stage has not finished updating all the clusters.
+	// +kubebuilder:validation:Optional
+	BeforeStageTaskStatus *StageTaskStatus `json:"beforeStageTaskStatus,omitempty"`
 
 	// The time when the update started on the stage. Empty if the stage has not started updating.
 	// +kubebuilder:validation:Optional
@@ -482,11 +499,11 @@ const (
 	ClusterUpdatingConditionSucceeded ClusterUpdatingStatusConditionType = "Succeeded"
 )
 
-type AfterStageTaskStatus struct {
-	// The type of the post-update task.
+type StageTaskStatus struct {
+	// The type of the pre or post update task.
 	// +kubebuilder:validation:Enum=TimedWait;Approval
 	// +kubebuilder:validation:Required
-	Type AfterStageTaskType `json:"type"`
+	Type StageTaskType `json:"type"`
 
 	// The name of the approval request object that is created for this stage.
 	// Only valid if the AfterStageTaskType is Approval.
@@ -498,45 +515,45 @@ type AfterStageTaskStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	//
-	// Conditions is an array of current observed conditions for the specific type of post-update task.
+	// Conditions is an array of current observed conditions for the specific type of pre or post update task.
 	// Known conditions are "ApprovalRequestCreated", "WaitTimeElapsed", and "ApprovalRequestApproved".
 	// +kubebuilder:validation:Optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// AfterStageTaskType identifies a specific type of the AfterStageTask.
+// StageTaskType identifies a specific type of the AfterStageTask or BeforeStageTask.
 // +enum
-type AfterStageTaskType string
+type StageTaskType string
 
 const (
-	// AfterStageTaskTypeTimedWait indicates the post-stage task is a timed wait.
-	AfterStageTaskTypeTimedWait AfterStageTaskType = "TimedWait"
+	// StageTaskTypeTimedWait indicates the stage task is a timed wait.
+	StageTaskTypeTimedWait StageTaskType = "TimedWait"
 
-	// AfterStageTaskTypeApproval indicates the post-stage task is an approval.
-	AfterStageTaskTypeApproval AfterStageTaskType = "Approval"
+	// StageTaskTypeApproval indicates the stage task is an approval.
+	StageTaskTypeApproval StageTaskType = "Approval"
 )
 
-// AfterStageTaskConditionType identifies a specific condition of the AfterStageTask.
+// StageTaskConditionType identifies a specific condition of the AfterStageTask or BeforeStageTask.
 // +enum
-type AfterStageTaskConditionType string
+type StageTaskConditionType string
 
 const (
-	// AfterStageTaskConditionApprovalRequestCreated indicates if the approval request has been created.
+	// StageTaskConditionApprovalRequestCreated indicates if the approval request has been created.
 	// Its condition status can be:
 	// - "True": The approval request has been created.
-	AfterStageTaskConditionApprovalRequestCreated AfterStageTaskConditionType = "ApprovalRequestCreated"
+	StageTaskConditionApprovalRequestCreated StageTaskConditionType = "ApprovalRequestCreated"
 
-	// AfterStageTaskConditionApprovalRequestApproved indicates if the approval request has been approved.
+	// StageTaskConditionApprovalRequestApproved indicates if the approval request has been approved.
 	// Its condition status can be:
 	// - "True": The approval request has been approved.
-	AfterStageTaskConditionApprovalRequestApproved AfterStageTaskConditionType = "ApprovalRequestApproved"
+	StageTaskConditionApprovalRequestApproved StageTaskConditionType = "ApprovalRequestApproved"
 
-	// AfterStageTaskConditionWaitTimeElapsed indicates if the wait time after each stage has elapsed.
+	// StageTaskConditionWaitTimeElapsed indicates if the wait time after each stage has elapsed.
 	// If the status is "False", the condition message will include the remaining wait time.
 	// Its condition status can be:
 	// - "True": The wait time has elapsed.
 	// - "False": The wait time has not elapsed.
-	AfterStageTaskConditionWaitTimeElapsed AfterStageTaskConditionType = "WaitTimeElapsed"
+	StageTaskConditionWaitTimeElapsed StageTaskConditionType = "WaitTimeElapsed"
 )
 
 // ClusterStagedUpdateRunList contains a list of ClusterStagedUpdateRun.

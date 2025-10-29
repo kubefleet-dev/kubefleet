@@ -507,13 +507,13 @@ func generateTestClusterStagedUpdateStrategy() *placementv1beta1.ClusterStagedUp
 					SortingLabelKey: &sortingKey,
 					AfterStageTasks: []placementv1beta1.AfterStageTask{
 						{
-							Type: placementv1beta1.AfterStageTaskTypeTimedWait,
+							Type: placementv1beta1.StageTaskTypeTimedWait,
 							WaitTime: &metav1.Duration{
 								Duration: time.Second * 4,
 							},
 						},
 						{
-							Type: placementv1beta1.AfterStageTaskTypeApproval,
+							Type: placementv1beta1.StageTaskTypeApproval,
 						},
 					},
 				},
@@ -528,10 +528,10 @@ func generateTestClusterStagedUpdateStrategy() *placementv1beta1.ClusterStagedUp
 					// no sortingLabelKey, should sort by cluster name
 					AfterStageTasks: []placementv1beta1.AfterStageTask{
 						{
-							Type: placementv1beta1.AfterStageTaskTypeApproval,
+							Type: placementv1beta1.StageTaskTypeApproval,
 						},
 						{
-							Type: placementv1beta1.AfterStageTaskTypeTimedWait,
+							Type: placementv1beta1.StageTaskTypeTimedWait,
 							WaitTime: &metav1.Duration{
 								Duration: time.Second * 4,
 							},
@@ -719,13 +719,13 @@ func generateTrueCondition(obj client.Object, condType any) metav1.Condition {
 			reason = condition.ClusterUpdatingSucceededReason
 		}
 		typeStr = string(cond)
-	case placementv1beta1.AfterStageTaskConditionType:
+	case placementv1beta1.StageTaskConditionType:
 		switch cond {
-		case placementv1beta1.AfterStageTaskConditionWaitTimeElapsed:
+		case placementv1beta1.StageTaskConditionWaitTimeElapsed:
 			reason = condition.AfterStageTaskWaitTimeElapsedReason
-		case placementv1beta1.AfterStageTaskConditionApprovalRequestCreated:
+		case placementv1beta1.StageTaskConditionApprovalRequestCreated:
 			reason = condition.AfterStageTaskApprovalRequestCreatedReason
-		case placementv1beta1.AfterStageTaskConditionApprovalRequestApproved:
+		case placementv1beta1.StageTaskConditionApprovalRequestApproved:
 			reason = condition.AfterStageTaskApprovalRequestApprovedReason
 		}
 		typeStr = string(cond)

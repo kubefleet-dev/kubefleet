@@ -920,11 +920,11 @@ func TestRemoveWaitTimeFromUpdateRunStatus(t *testing.T) {
 							{
 								AfterStageTasks: []placementv1beta1.AfterStageTask{
 									{
-										Type:     placementv1beta1.AfterStageTaskTypeApproval,
+										Type:     placementv1beta1.StageTaskTypeApproval,
 										WaitTime: &waitTime,
 									},
 									{
-										Type:     placementv1beta1.AfterStageTaskTypeTimedWait,
+										Type:     placementv1beta1.StageTaskTypeTimedWait,
 										WaitTime: &waitTime,
 									},
 								},
@@ -940,10 +940,10 @@ func TestRemoveWaitTimeFromUpdateRunStatus(t *testing.T) {
 							{
 								AfterStageTasks: []placementv1beta1.AfterStageTask{
 									{
-										Type: placementv1beta1.AfterStageTaskTypeApproval,
+										Type: placementv1beta1.StageTaskTypeApproval,
 									},
 									{
-										Type:     placementv1beta1.AfterStageTaskTypeTimedWait,
+										Type:     placementv1beta1.StageTaskTypeTimedWait,
 										WaitTime: &waitTime,
 									},
 								},
@@ -961,7 +961,7 @@ func TestRemoveWaitTimeFromUpdateRunStatus(t *testing.T) {
 							{
 								AfterStageTasks: []placementv1beta1.AfterStageTask{
 									{
-										Type:     placementv1beta1.AfterStageTaskTypeApproval,
+										Type:     placementv1beta1.StageTaskTypeApproval,
 										WaitTime: &waitTime,
 									},
 								},
@@ -969,11 +969,11 @@ func TestRemoveWaitTimeFromUpdateRunStatus(t *testing.T) {
 							{
 								AfterStageTasks: []placementv1beta1.AfterStageTask{
 									{
-										Type:     placementv1beta1.AfterStageTaskTypeTimedWait,
+										Type:     placementv1beta1.StageTaskTypeTimedWait,
 										WaitTime: &waitTime,
 									},
 									{
-										Type:     placementv1beta1.AfterStageTaskTypeApproval,
+										Type:     placementv1beta1.StageTaskTypeApproval,
 										WaitTime: &waitTime,
 									},
 								},
@@ -989,18 +989,18 @@ func TestRemoveWaitTimeFromUpdateRunStatus(t *testing.T) {
 							{
 								AfterStageTasks: []placementv1beta1.AfterStageTask{
 									{
-										Type: placementv1beta1.AfterStageTaskTypeApproval,
+										Type: placementv1beta1.StageTaskTypeApproval,
 									},
 								},
 							},
 							{
 								AfterStageTasks: []placementv1beta1.AfterStageTask{
 									{
-										Type:     placementv1beta1.AfterStageTaskTypeTimedWait,
+										Type:     placementv1beta1.StageTaskTypeTimedWait,
 										WaitTime: &waitTime,
 									},
 									{
-										Type: placementv1beta1.AfterStageTaskTypeApproval,
+										Type: placementv1beta1.StageTaskTypeApproval,
 									},
 								},
 							},

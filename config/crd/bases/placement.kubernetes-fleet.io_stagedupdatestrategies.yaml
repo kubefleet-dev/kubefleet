@@ -85,6 +85,18 @@ spec:
                         rule: '!self.exists(e, e.type == ''Approval'' && has(e.waitTime))'
                       - message: AfterStageTaskType is TimedWait, waitTime is required
                         rule: '!self.exists(e, e.type == ''TimedWait'' && !has(e.waitTime))'
+                    beforeStageTask:
+                      description: The task that needs to be completed successfully
+                        before starting the stage.
+                      properties:
+                        type:
+                          description: The type of the before-stage task.
+                          enum:
+                          - Approval
+                          type: string
+                      required:
+                      - type
+                      type: object
                     labelSelector:
                       description: |-
                         LabelSelector is a label query over all the joined member clusters. Clusters matching the query are selected

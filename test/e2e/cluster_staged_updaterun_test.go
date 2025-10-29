@@ -1588,10 +1588,10 @@ func createClusterStagedUpdateStrategySucceed(strategyName string) *placementv1b
 					},
 					AfterStageTasks: []placementv1beta1.AfterStageTask{
 						{
-							Type: placementv1beta1.AfterStageTaskTypeApproval,
+							Type: placementv1beta1.StageTaskTypeApproval,
 						},
 						{
-							Type: placementv1beta1.AfterStageTaskTypeTimedWait,
+							Type: placementv1beta1.StageTaskTypeTimedWait,
 							WaitTime: &metav1.Duration{
 								Duration: time.Second * 5,
 							},
