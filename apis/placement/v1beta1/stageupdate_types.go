@@ -407,7 +407,6 @@ type StageUpdatingStatus struct {
 	AfterStageTaskStatus []StageTaskStatus `json:"afterStageTaskStatus,omitempty"`
 
 	// The status of the pre-update task associated with the current stage.
-	// Nil if the stage has not finished updating all the clusters.
 	// +kubebuilder:validation:Optional
 	BeforeStageTaskStatus *StageTaskStatus `json:"beforeStageTaskStatus,omitempty"`
 

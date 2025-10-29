@@ -1568,9 +1568,8 @@ spec:
                     maxItems: 2
                     type: array
                   beforeStageTaskStatus:
-                    description: |-
-                      The status of the pre-update task associated with the current stage.
-                      Nil if the stage has not finished updating all the clusters.
+                    description: The status of the pre-update task associated with
+                      the current stage.
                     properties:
                       approvalRequestName:
                         description: |-
@@ -2081,9 +2080,8 @@ spec:
                       maxItems: 2
                       type: array
                     beforeStageTaskStatus:
-                      description: |-
-                        The status of the pre-update task associated with the current stage.
-                        Nil if the stage has not finished updating all the clusters.
+                      description: The status of the pre-update task associated with
+                        the current stage.
                       properties:
                         approvalRequestName:
                           description: |-
