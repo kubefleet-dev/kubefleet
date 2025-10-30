@@ -148,6 +148,18 @@ func (c *ClusterStagedUpdateRun) SetUpdateRunStatus(status UpdateRunStatus) {
 	c.Status = status
 }
 
+// UpdateRunExecutionState represents the desired execution state of an update run.
+// +enum
+type UpdateRunExecutionState string
+
+const (
+	// UpdateRunExecutionStateStarted indicates the update run should be started and actively executing.
+	UpdateRunExecutionStateStarted UpdateRunExecutionState = "Started"
+
+	// UpdateRunExecutionStateStopped indicates the update run should be stopped and not executing.
+	UpdateRunExecutionStateStopped UpdateRunExecutionState = "Stopped"
+)
+
 // UpdateRunSpec defines the desired rollout strategy and the snapshot indices of the resources to be updated.
 // It specifies a stage-by-stage update process across selected clusters for the given ResourcePlacement object.
 type UpdateRunSpec struct {
@@ -170,12 +182,12 @@ type UpdateRunSpec struct {
 	// +kubebuilder:validation:Required
 	StagedUpdateStrategyName string `json:"stagedRolloutStrategyName"`
 
-	// Started indicates whether the update run should be started.
-	// When false or nil, the update run will initialize but not execute.
-	// When true, the update run will begin execution.
-	// Changing from true to false will gracefully stop the update run.
+	// ExecutionState indicates the desired execution state of the update run.
+	// When nil or "Stopped", the update run will initialize but not execute.
+	// When "Started", the update run will begin or continue execution.
 	// +kubebuilder:validation:Optional
-	Started *bool `json:"started,omitempty"`
+	// +kubebuilder:validation:Enum=Started;Stopped
+	ExecutionState *UpdateRunExecutionState `json:"executionState,omitempty"`
 }
 
 // UpdateStrategySpecGetterSetter offers the functionality to work with UpdateStrategySpec.
