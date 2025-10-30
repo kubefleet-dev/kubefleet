@@ -283,7 +283,7 @@ type StageConfig struct {
 	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'TimedWait' && !has(e.waitTime))",message="AfterStageTaskType is TimedWait, waitTime is required"
 	AfterStageTasks []StageTask `json:"afterStageTasks,omitempty"`
 
-	// The collection of tasks that each stage needs to completed successfully before starting the stage.
+	// The collection of tasks that needs to completed successfully by each stage before starting the stage.
 	// Each task is executed in parallel and there cannot be more than one task of the same type.
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=1
