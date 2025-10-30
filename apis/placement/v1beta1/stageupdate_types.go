@@ -292,7 +292,7 @@ type StageConfig struct {
 	BeforeStageTasks []StageTask `json:"beforeStageTasks,omitempty"`
 }
 
-// StageTask is the collection of pre or post stage tasks that ALL need to be completed before starting or moving to the next stage.
+// StageTask is the pre or post stage task that needs to be completed before starting or moving to the next stage.
 type StageTask struct {
 	// The type of the before or after stage task.
 	// +kubebuilder:validation:Enum=TimedWait;Approval
