@@ -1157,15 +1157,6 @@ spec:
             description: The desired state of ClusterStagedUpdateRun. The spec is
               immutable.
             properties:
-              executionState:
-                description: |-
-                  ExecutionState indicates the desired execution state of the update run.
-                  When nil or "Stopped", the update run will initialize but not execute.
-                  When "Started", the update run will begin or continue execution.
-                enum:
-                - Started
-                - Stopped
-                type: string
               placementName:
                 description: |-
                   PlacementName is the name of placement that this update run is applied to.
@@ -1185,10 +1176,21 @@ spec:
                   are computed according to the referenced strategy when the update run starts
                   and recorded in the status field.
                 type: string
+              state:
+                default: Stop
+                description: |-
+                  State indicates the desired state of the update run.
+                  When "Stop", the update run will initialize but not execute.
+                  When "Start", the update run will begin or continue execution.
+                enum:
+                - Start
+                - Stop
+                type: string
             required:
             - placementName
             - resourceSnapshotIndex
             - stagedRolloutStrategyName
+            - state
             type: object
             x-kubernetes-validations:
             - message: The spec field is immutable
