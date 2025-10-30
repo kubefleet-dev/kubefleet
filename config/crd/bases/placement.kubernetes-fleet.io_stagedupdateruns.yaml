@@ -857,6 +857,8 @@ spec:
                           - message: AfterStageTaskType is Approval, waitTime is not
                               allowed
                             rule: '!self.exists(e, e.type == ''Approval'' && has(e.waitTime))'
+                          - message: BeforeStageTaskType cannot be TimedWait
+                            rule: '!self.exists(e, e.type == ''TimedWait'')'
                         labelSelector:
                           description: |-
                             LabelSelector is a label query over all the joined member clusters. Clusters matching the query are selected

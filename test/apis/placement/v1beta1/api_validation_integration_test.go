@@ -1140,6 +1140,36 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			Expect(strategy.Spec.Stages[0].AfterStageTasks[1].WaitTime).Should(Equal(&metav1.Duration{Duration: time.Second * 10}))
 			Expect(hubClient.Delete(ctx, &strategy)).Should(Succeed())
 		})
+
+		It("Should allow creation of ClusterStagedUpdateStrategy with valid BeforeStageTask of type Approval", func() {
+			strategy := placementv1beta1.ClusterStagedUpdateStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.UpdateStrategySpec{
+					Stages: []placementv1beta1.StageConfig{
+						{
+							Name: fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
+							BeforeStageTasks: []placementv1beta1.StageTask{
+								{
+									Type: placementv1beta1.StageTaskTypeApproval,
+								},
+							},
+							AfterStageTasks: []placementv1beta1.StageTask{
+								{
+									Type:     placementv1beta1.StageTaskTypeTimedWait,
+									WaitTime: &metav1.Duration{Duration: time.Second * 10},
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, &strategy)).Should(Succeed())
+			Expect(strategy.Spec.Stages[0].BeforeStageTasks[0].Type).Should(Equal(placementv1beta1.StageTaskTypeApproval))
+			Expect(strategy.Spec.Stages[0].BeforeStageTasks[0].WaitTime).Should(BeNil())
+			Expect(hubClient.Delete(ctx, &strategy)).Should(Succeed())
+		})
 	})
 
 	Context("Test ClusterStagedUpdateStrategy API validation - invalid cases", func() {
@@ -1342,6 +1372,88 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("AfterStageTaskType is TimedWait, waitTime is required"))
 
 			Expect(hubClient.Delete(ctx, &strategy)).Should(Succeed())
+		})
+
+		It("Should deny creation of ClusterStagedUpdateStrategy with BeforeStageTask of type TimedWait", func() {
+			strategy := placementv1beta1.ClusterStagedUpdateStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.UpdateStrategySpec{
+					Stages: []placementv1beta1.StageConfig{
+						{
+							Name: fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
+							BeforeStageTasks: []placementv1beta1.StageTask{
+								{
+									Type:     placementv1beta1.StageTaskTypeTimedWait,
+									WaitTime: &metav1.Duration{Duration: time.Minute * 10},
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &strategy)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("BeforeStageTaskType cannot be TimedWait"))
+		})
+
+		It("Should deny update of ClusterStagedUpdateStrategy when changing BeforeStageTask type to TimedWait", func() {
+			strategy := placementv1beta1.ClusterStagedUpdateStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.UpdateStrategySpec{
+					Stages: []placementv1beta1.StageConfig{
+						{
+							Name: fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
+							BeforeStageTasks: []placementv1beta1.StageTask{
+								{
+									Type: placementv1beta1.StageTaskTypeApproval,
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, &strategy)).Should(Succeed())
+
+			strategy.Spec.Stages[0].BeforeStageTasks[0].Type = placementv1beta1.StageTaskTypeTimedWait
+			strategy.Spec.Stages[0].BeforeStageTasks[0].WaitTime = &metav1.Duration{Duration: time.Minute * 10}
+			err := hubClient.Update(ctx, &strategy)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterStagedUpdateStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("BeforeStageTaskType cannot be TimedWait"))
+
+			Expect(hubClient.Delete(ctx, &strategy)).Should(Succeed())
+		})
+
+		It("Should deny creation of ClusterStagedUpdateStrategy with more than 1 BeforeStageTask", func() {
+			strategy := placementv1beta1.ClusterStagedUpdateStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.UpdateStrategySpec{
+					Stages: []placementv1beta1.StageConfig{
+						{
+							Name: fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
+							BeforeStageTasks: []placementv1beta1.StageTask{
+								{
+									Type: placementv1beta1.StageTaskTypeApproval,
+								},
+								{
+									Type: placementv1beta1.StageTaskTypeApproval,
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &strategy)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("Too many: 2: must have at most 1 items"))
 		})
 	})
 
