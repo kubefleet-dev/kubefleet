@@ -1157,6 +1157,15 @@ spec:
             description: The desired state of ClusterStagedUpdateRun. The spec is
               immutable.
             properties:
+              executionState:
+                description: |-
+                  ExecutionState indicates the desired execution state of the update run.
+                  When nil or "Stopped", the update run will initialize but not execute.
+                  When "Started", the update run will begin or continue execution.
+                enum:
+                - Started
+                - Stopped
+                type: string
               placementName:
                 description: |-
                   PlacementName is the name of placement that this update run is applied to.
@@ -1176,13 +1185,6 @@ spec:
                   are computed according to the referenced strategy when the update run starts
                   and recorded in the status field.
                 type: string
-              started:
-                description: |-
-                  Started indicates whether the update run should be started.
-                  When false or nil, the update run will initialize but not execute.
-                  When true, the update run will begin execution.
-                  Changing from true to false will gracefully stop the update run.
-                type: boolean
             required:
             - placementName
             - resourceSnapshotIndex
