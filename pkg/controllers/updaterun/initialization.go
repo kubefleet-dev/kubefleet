@@ -450,7 +450,7 @@ func (r *Reconciler) computeRunStageStatus(
 
 // validateAfterStageTask valides the afterStageTasks in the stage defined in the UpdateStrategy.
 // The error returned from this function is not retryable.
-func validateAfterStageTask(tasks []placementv1beta1.AfterStageTask) error {
+func validateAfterStageTask(tasks []placementv1beta1.StageTask) error {
 	if len(tasks) == 2 && tasks[0].Type == tasks[1].Type {
 		return fmt.Errorf("afterStageTasks cannot have two tasks of the same type: %s", tasks[0].Type)
 	}

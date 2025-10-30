@@ -281,16 +281,20 @@ type StageConfig struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'Approval' && has(e.waitTime))",message="AfterStageTaskType is Approval, waitTime is not allowed"
 	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'TimedWait' && !has(e.waitTime))",message="AfterStageTaskType is TimedWait, waitTime is required"
-	AfterStageTasks []AfterStageTask `json:"afterStageTasks,omitempty"`
+	AfterStageTasks []StageTask `json:"afterStageTasks,omitempty"`
 
-	// The task that needs to be completed successfully before starting the stage.
+	// The collection of tasks that each stage needs to completed successfully before starting the stage.
+	// Each task is executed in parallel and there cannot be more than one task of the same type.
 	// +kubebuilder:validation:Optional
-	BeforeStageTask *BeforeStageTask `json:"beforeStageTask,omitempty"`
+	// +kubebuilder:validation:MaxItems=1
+	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'Approval' && has(e.waitTime))",message="AfterStageTaskType is Approval, waitTime is not allowed"
+	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'TimedWait')",message="BeforeStageTaskType cannot be TimedWait"
+	BeforeStageTasks []StageTask `json:"beforeStageTasks,omitempty"`
 }
 
-// AfterStageTask is the collection of post-stage tasks that ALL need to be completed before moving to the next stage.
-type AfterStageTask struct {
-	// The type of the after-stage task.
+// StageTask is the collection of pre or post stage tasks that ALL need to be completed before starting or moving to the next stage.
+type StageTask struct {
+	// The type of the before or after stage task.
 	// +kubebuilder:validation:Enum=TimedWait;Approval
 	// +kubebuilder:validation:Required
 	Type StageTaskType `json:"type"`
@@ -300,14 +304,6 @@ type AfterStageTask struct {
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:Optional
 	WaitTime *metav1.Duration `json:"waitTime,omitempty"`
-}
-
-// BeforeStageTask is the pre-stage task that needs to be completed before starting the stage.
-type BeforeStageTask struct {
-	// The type of the before-stage task.
-	// +kubebuilder:validation:Enum=Approval
-	// +kubebuilder:validation:Required
-	Type StageTaskType `json:"type"`
 }
 
 // UpdateRunStatus defines the observed state of the ClusterStagedUpdateRun.
@@ -406,9 +402,10 @@ type StageUpdatingStatus struct {
 	// +kubebuilder:validation:Optional
 	AfterStageTaskStatus []StageTaskStatus `json:"afterStageTaskStatus,omitempty"`
 
-	// The status of the pre-update task associated with the current stage.
+	// The status of the pre-update tasks associated with the current stage.
+	// +kubebuilder:validation:MaxItems=1
 	// +kubebuilder:validation:Optional
-	BeforeStageTaskStatus *StageTaskStatus `json:"beforeStageTaskStatus,omitempty"`
+	BeforeStageTaskStatus []StageTaskStatus `json:"beforeStageTaskStatus,omitempty"`
 
 	// The time when the update started on the stage. Empty if the stage has not started updating.
 	// +kubebuilder:validation:Optional

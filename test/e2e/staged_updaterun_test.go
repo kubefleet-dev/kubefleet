@@ -1118,7 +1118,7 @@ func createStagedUpdateStrategySucceed(strategyName, namespace string) *placemen
 							envLabelName: envCanary, // member-cluster-2
 						},
 					},
-					AfterStageTasks: []placementv1beta1.AfterStageTask{
+					AfterStageTasks: []placementv1beta1.StageTask{
 						{
 							Type: placementv1beta1.StageTaskTypeApproval,
 						},

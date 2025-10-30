@@ -760,7 +760,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 	Context("Cluster staged update run should update clusters one by one - single timedWait after-stage task", Ordered, func() {
 		BeforeAll(func() {
 			By("Creating a strategy with single stage and timedWait after stage task")
-			updateStrategy.Spec.Stages[0].AfterStageTasks = []placementv1beta1.AfterStageTask{
+			updateStrategy.Spec.Stages[0].AfterStageTasks = []placementv1beta1.StageTask{
 				{
 					Type: placementv1beta1.StageTaskTypeTimedWait,
 					WaitTime: &metav1.Duration{
@@ -872,7 +872,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 	Context("Cluster staged update run should update clusters one by one - single approval after-stage task", Ordered, func() {
 		BeforeAll(func() {
 			By("Creating a strategy with single stage and approval after stage task")
-			updateStrategy.Spec.Stages[0].AfterStageTasks = []placementv1beta1.AfterStageTask{
+			updateStrategy.Spec.Stages[0].AfterStageTasks = []placementv1beta1.StageTask{
 				{
 					Type: placementv1beta1.StageTaskTypeApproval,
 				},
@@ -1144,7 +1144,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 	Context("Cluster staged update run should recreate deleted approvalRequest", Ordered, func() {
 		BeforeAll(func() {
 			By("Creating a strategy with single stage and both after stage tasks")
-			updateStrategy.Spec.Stages[0].AfterStageTasks = []placementv1beta1.AfterStageTask{
+			updateStrategy.Spec.Stages[0].AfterStageTasks = []placementv1beta1.StageTask{
 				{
 					Type: placementv1beta1.StageTaskTypeApproval,
 				},
