@@ -185,9 +185,8 @@ type UpdateRunSpec struct {
 	// State indicates the desired state of the update run.
 	// When "Stop", the update run will initialize but not execute.
 	// When "Start", the update run will begin or continue execution.
-	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=Start;Stop
-	// +kubebuilder:default="Stop"
+	// +kubebuilder:default=Stop
 	State State `json:"state"`
 }
 
