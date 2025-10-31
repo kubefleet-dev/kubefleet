@@ -269,6 +269,55 @@ type Affinity struct {
 	// ClusterAffinity contains cluster affinity scheduling rules for the selected resources.
 	// +kubebuilder:validation:Optional
 	ClusterAffinity *ClusterAffinity `json:"clusterAffinity,omitempty"`
+
+	// PlacementAffinity contains placement affinity scheduling rules (e.g. co-locate this placement in the same cluster, region, etc. as some other placement(s)).
+	// +kubebuilder:validation:Optional
+	PlacementAffinity *PlacementAffinity `json:"placementAffinity,omitempty"`
+}
+
+type PlacementAffinity struct {
+	// If the affinity requirements specified by this field are not met at
+	// scheduling time, the placement will not be scheduled onto the cluster.
+	// If the affinity requirements specified by this field cease to be met
+	// at some point during placement execution (e.g. due to a placement label update), the
+	// system won't evict the placement from its cluster.
+	// When there are multiple elements, the lists of clusters corresponding to each
+	// placementAffinityTerm are intersected, i.e. all terms must be satisfied.
+	// +kubebuilder:validation:Optional
+	RequiredDuringSchedulingIgnoredDuringExecution []PlacementAffinityTerm `json:"requiredDuringSchedulingIgnoredDuringExecution,omitempty"`
+}
+
+type PlacementAffinityTerm struct {
+	// LabelSelector is a label query over all the joined placements.
+	// If it's null, this term matches with no placements.
+	LabelSelector *metav1.LabelSelector `json:"labelSelector,omitempty"`
+	// namespaces specifies a static list of namespace names that the term applies to.
+	// The term is applied to the union of the namespaces listed in this field
+	// and the ones selected by namespaceSelector.
+	// null or empty namespaces list and null namespaceSelector means "this placement's namespace".
+	// The field is ignored when affinityScope is cluster.
+	// +kubebuilder:validation:Optional
+	Namespaces []string `json:"namespaces,omitempty"`
+	// This placement should be co-located (affinity) with the placements matching the
+	// labelSelector (in the specified namespaces), where co-located is defined as
+	// running on a cluster whose value of the label with key topologyKey matches that
+	// of any cluster on which any of the selected placements is running.
+	// +kubebuilder:validation:Required
+	TopologyKey string `json:"topologyKey"`
+	// A label query over the set of namespaces that the term applies to.
+	// The term is applied to the union of the namespaces selected by this field
+	// and the ones listed in the namespaces field.
+	// null selector and null or empty namespaces list means "this placement's namespace".
+	// An empty selector ({}) matches all namespaces.
+	// The field is ignored when affinityScope is cluster.
+	// +kubebuilder:validation:Optional
+	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
+	// AffinityScope defines which resources the affinity rules apply to.
+	// For example, when set to "Cluster", the affinity rules apply to the cluster scoped placements.
+	// +kubebuilder:validation:Enum=Cluster;Namespaced
+	// It defaults to the same scope of the current placement.
+	// +kubebuilder:validation:Optional
+	AffinityScope ResourceScope `json:"affinityScope,omitempty"`
 }
 
 // ClusterAffinity contains cluster affinity scheduling rules for the selected resources.
