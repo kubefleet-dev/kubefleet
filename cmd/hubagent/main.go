@@ -35,22 +35,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
-	workv1alpha1 "sigs.k8s.io/work-api/pkg/apis/v1alpha1"
 
 	fleetnetworkingv1alpha1 "go.goms.io/fleet-networking/api/v1alpha1"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	fleetv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/workload"
-	mcv1alpha1 "github.com/kubefleet-dev/kubefleet/pkg/controllers/membercluster/v1alpha1"
 	mcv1beta1 "github.com/kubefleet-dev/kubefleet/pkg/controllers/membercluster/v1beta1"
-	fleetmetrics "github.com/kubefleet-dev/kubefleet/pkg/metrics"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook"
 	// +kubebuilder:scaffold:imports
 )
@@ -74,8 +69,6 @@ const (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(fleetv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(workv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(placementv1beta1.AddToScheme(scheme))
 	utilruntime.Must(clusterv1beta1.AddToScheme(scheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
@@ -84,17 +77,6 @@ func init() {
 	utilruntime.Must(clusterinventory.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 	klog.InitFlags(nil)
-
-	metrics.Registry.MustRegister(
-		fleetmetrics.JoinResultMetrics,
-		fleetmetrics.LeaveResultMetrics,
-		fleetmetrics.PlacementApplyFailedCount,
-		fleetmetrics.PlacementApplySucceedCount,
-		fleetmetrics.SchedulingCycleDurationMilliseconds,
-		fleetmetrics.SchedulerActiveWorkers,
-		fleetmetrics.FleetPlacementStatusLastTimeStampSeconds,
-		fleetmetrics.FleetEvictionStatus,
-	)
 }
 
 func main() {
@@ -124,7 +106,8 @@ func main() {
 	mgrOpts := ctrl.Options{
 		Scheme: scheme,
 		Cache: cache.Options{
-			SyncPeriod: &opts.ResyncPeriod.Duration,
+			SyncPeriod:       &opts.ResyncPeriod.Duration,
+			DefaultTransform: cache.TransformStripManagedFields(),
 		},
 		LeaderElection:             opts.LeaderElection.LeaderElect,
 		LeaderElectionID:           opts.LeaderElection.ResourceName,
@@ -149,16 +132,6 @@ func main() {
 	}
 
 	klog.V(2).InfoS("starting hubagent")
-	if opts.EnableV1Alpha1APIs {
-		klog.Info("Setting up memberCluster v1alpha1 controller")
-		if err = (&mcv1alpha1.Reconciler{
-			Client:                  mgr.GetClient(),
-			NetworkingAgentsEnabled: opts.NetworkingAgentsEnabled,
-		}).SetupWithManager(mgr, "memberclusterv1alpha1-controller"); err != nil {
-			klog.ErrorS(err, "unable to create v1alpha1 controller", "controller", "MemberCluster")
-			exitWithErrorFunc()
-		}
-	}
 	if opts.EnableV1Beta1APIs {
 		klog.Info("Setting up memberCluster v1beta1 controller")
 		if err = (&mcv1beta1.Reconciler{
@@ -226,7 +199,7 @@ func SetupWebhook(mgr manager.Manager, webhookClientConnectionType options.Webho
 		klog.ErrorS(err, "unable to add WebhookConfig")
 		return err
 	}
-	if err = webhook.AddToManager(mgr, whiteListedUsers, isFleetV1Beta1API, denyModifyMemberClusterLabels); err != nil {
+	if err = webhook.AddToManager(mgr, whiteListedUsers, denyModifyMemberClusterLabels); err != nil {
 		klog.ErrorS(err, "unable to register webhooks to the manager")
 		return err
 	}

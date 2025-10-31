@@ -30,19 +30,24 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	"github.com/kubefleet-dev/kubefleet/pkg/metrics"
+	hubmetrics "github.com/kubefleet-dev/kubefleet/pkg/metrics/hub"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/queue"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/annotations"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/defaulter"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/labels"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/resource"
 	fleettime "github.com/kubefleet-dev/kubefleet/pkg/utils/time"
@@ -56,6 +61,40 @@ var resourceSnapshotResourceSizeLimit = 800 * (1 << 10) // 800KB
 // We use a safety resync period to requeue all the finished request just in case there is a bug in the system.
 // TODO: unify all the controllers with this pattern and make this configurable in place of the controller runtime resync period.
 const controllerResyncPeriod = 30 * time.Minute
+
+// Reconciler reconciles a cluster resource placement object
+type Reconciler struct {
+	// the informer contains the cache for all the resources we need.
+	InformerManager informer.Manager
+
+	// RestMapper is used to convert between gvk and gvr on known resources.
+	RestMapper meta.RESTMapper
+
+	// Client is used to update objects which goes to the api server directly.
+	Client client.Client
+
+	// UncachedReader is the uncached read-only client for accessing Kubernetes API server; in most cases client should
+	// be used instead, unless consistency becomes a serious concern.
+	// It's only needed by v1beta1 APIs.
+	UncachedReader client.Reader
+
+	// ResourceConfig contains all the API resources that we won't select based on allowed or skipped propagating APIs option.
+	ResourceConfig *utils.ResourceConfig
+
+	// SkippedNamespaces contains the namespaces that we should not propagate.
+	SkippedNamespaces map[string]bool
+
+	Recorder record.EventRecorder
+
+	Scheme *runtime.Scheme
+
+	// ResourceSnapshotCreationMinimumInterval is the minimum interval to create a new resourcesnapshot
+	// to avoid too frequent updates.
+	ResourceSnapshotCreationMinimumInterval time.Duration
+
+	// ResourceChangesCollectionDuration is the duration for collecting resource changes into one snapshot.
+	ResourceChangesCollectionDuration time.Duration
+}
 
 func (r *Reconciler) Reconcile(ctx context.Context, key controller.QueueKey) (ctrl.Result, error) {
 	placementKey, ok := key.(string)
@@ -112,7 +151,7 @@ func (r *Reconciler) handleDelete(ctx context.Context, placementObj fleetv1beta1
 		return ctrl.Result{}, err
 	}
 	// change the metrics to add nameplace of namespace
-	metrics.FleetPlacementStatusLastTimeStampSeconds.DeletePartialMatch(prometheus.Labels{"namespace": placementObj.GetNamespace(), "name": placementObj.GetName()})
+	hubmetrics.FleetPlacementStatusLastTimeStampSeconds.DeletePartialMatch(prometheus.Labels{"namespace": placementObj.GetNamespace(), "name": placementObj.GetName()})
 	controllerutil.RemoveFinalizer(placementObj, fleetv1beta1.PlacementCleanupFinalizer)
 	if err := r.Client.Update(ctx, placementObj); err != nil {
 		klog.ErrorS(err, "Failed to remove placement finalizer", "placement", placementKObj)
@@ -142,6 +181,19 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 		}
 	}
 
+	// Validate namespace selector consistency for NamespaceAccessible CRPs.
+	if isNamespaceAccessibleCRP(placementObj) {
+		isValid, err := r.validateNamespaceSelectorConsistency(ctx, placementObj)
+		if err != nil {
+			klog.V(2).ErrorS(err, "Namespace resource selector validation failed for NamespaceAccessible CRP", "placement", placementKObj)
+			return ctrl.Result{}, err
+		}
+		if !isValid {
+			klog.V(2).InfoS("Invalid Namespace resource selector specified for NamespaceAccessible CRP, stopping reconciliation", "placement", placementKObj)
+			return ctrl.Result{}, nil
+		}
+	}
+
 	// validate the resource selectors first before creating any snapshot
 	envelopeObjCount, selectedResources, selectedResourceIDs, err := r.selectResourcesForPlacement(placementObj)
 	if err != nil {
@@ -160,15 +212,16 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 		}
 		placementObj.SetConditions(scheduleCondition)
 
-		// Sync ClusterResourcePlacementStatus object if StatusReportingScope is NamespaceAccessible
-		if syncErr := r.syncClusterResourcePlacementStatus(ctx, placementObj); syncErr != nil {
-			klog.ErrorS(syncErr, "Failed to sync ClusterResourcePlacementStatus", "placement", placementKObj)
-			return ctrl.Result{}, syncErr
-		}
-
 		if updateErr := r.Client.Status().Update(ctx, placementObj); updateErr != nil {
 			klog.ErrorS(updateErr, "Failed to update the status", "placement", placementKObj)
 			return ctrl.Result{}, controller.NewUpdateIgnoreConflictError(updateErr)
+		}
+		klog.V(2).InfoS("Updated the placement status with scheduled condition", "placement", placementKObj)
+
+		if isNamespaceAccessibleCRP(placementObj) {
+			if err := r.handleNamespaceAccessibleCRP(ctx, placementObj); err != nil {
+				return ctrl.Result{}, err
+			}
 		}
 
 		// no need to retry faster, the user needs to fix the resource selectors
@@ -212,17 +265,17 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 		return ctrl.Result{}, err
 	}
 
-	// Sync ClusterResourcePlacementStatus object if StatusReportingScope is NamespaceAccessible
-	if err := r.syncClusterResourcePlacementStatus(ctx, placementObj); err != nil {
-		klog.ErrorS(err, "Failed to sync ClusterResourcePlacementStatus", "placement", placementKObj)
-		return ctrl.Result{}, err
-	}
-
 	if err := r.Client.Status().Update(ctx, placementObj); err != nil {
 		klog.ErrorS(err, "Failed to update the status", "placement", placementKObj)
 		return ctrl.Result{}, err
 	}
 	klog.V(2).InfoS("Updated the placement status", "placement", placementKObj)
+
+	if isNamespaceAccessibleCRP(placementObj) {
+		if err := r.handleNamespaceAccessibleCRP(ctx, placementObj); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
 
 	// We skip checking the last resource condition (available) because it will be covered by checking isRolloutCompleted func.
 	for i := condition.RolloutStartedCondition; i < condition.TotalCondition-1; i++ {
@@ -1161,7 +1214,7 @@ func (r *Reconciler) determineRolloutStateForPlacementWithExternalRolloutStrateg
 			})
 			// As placement status will refresh even if the spec has not changed, we reset any unused conditions to avoid confusion.
 			for i := condition.RolloutStartedCondition + 1; i < condition.TotalCondition; i++ {
-				meta.RemoveStatusCondition(&placementStatus.Conditions, string(i.ClusterResourcePlacementConditionType()))
+				meta.RemoveStatusCondition(&placementStatus.Conditions, getPlacementConditionType(placementObj, i))
 			}
 			return true, nil
 		}
@@ -1252,7 +1305,7 @@ func emitPlacementStatusMetric(placementObj fleetv1beta1.PlacementObj) {
 			status = string(cond.Status)
 			reason = cond.Reason
 		}
-		metrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), scheduledConditionType, status, reason).SetToCurrentTime()
+		hubmetrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), scheduledConditionType, status, reason).SetToCurrentTime()
 		return
 	}
 
@@ -1266,12 +1319,12 @@ func emitPlacementStatusMetric(placementObj fleetv1beta1.PlacementObj) {
 				status = string(cond.Status)
 				reason = cond.Reason
 			}
-			metrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), conditionType, status, reason).SetToCurrentTime()
+			hubmetrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), conditionType, status, reason).SetToCurrentTime()
 			return
 		}
 	}
 
 	// Emit the "Completed" condition metric to indicate that the placement has completed.
 	// This condition is used solely for metric reporting purposes.
-	metrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), "Completed", string(metav1.ConditionTrue), "Completed").SetToCurrentTime()
+	hubmetrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), "Completed", string(metav1.ConditionTrue), "Completed").SetToCurrentTime()
 }
