@@ -1190,7 +1190,6 @@ spec:
             - placementName
             - resourceSnapshotIndex
             - stagedRolloutStrategyName
-            - state
             type: object
             x-kubernetes-validations:
             - message: The spec field is immutable
