@@ -32,6 +32,9 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Initialized")].status
       name: Initialized
       type: string
+    - jsonPath: .status.conditions[?(@.type=="Started")].status
+      name: Started
+      type: string
     - jsonPath: .status.conditions[?(@.type=="Succeeded")].status
       name: Succeeded
       type: string
@@ -91,6 +94,16 @@ spec:
                   in which the selected resources will be updated on the member clusters. The stages
                   are computed according to the referenced strategy when the update run starts
                   and recorded in the status field.
+                type: string
+              state:
+                default: Stop
+                description: |-
+                  State indicates the desired state of the update run.
+                  When "Stop", the update run will initialize but not execute.
+                  When "Start", the update run will begin or continue execution.
+                enum:
+                - Start
+                - Stop
                 type: string
             required:
             - placementName
@@ -335,7 +348,7 @@ spec:
               conditions:
                 description: |-
                   Conditions is an array of current observed conditions for StagedUpdateRun.
-                  Known conditions are "Initialized", "Progressing", "Succeeded".
+                  Known conditions are "Initialized", "Started", "Progressing", "Succeeded".
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.

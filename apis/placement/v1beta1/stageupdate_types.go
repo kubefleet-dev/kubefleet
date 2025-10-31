@@ -91,6 +91,7 @@ type UpdateRunObjList interface {
 // +kubebuilder:printcolumn:JSONPath=`.spec.resourceSnapshotIndex`,name="Resource-Snapshot-Index",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.policySnapshotIndexUsed`,name="Policy-Snapshot-Index",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Initialized")].status`,name="Initialized",type=string
+// +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Started")].status`,name="Started",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Succeeded")].status`,name="Succeeded",type=string
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 // +kubebuilder:printcolumn:JSONPath=`.spec.stagedRolloutStrategyName`,name="Strategy",priority=1,type=string
@@ -146,6 +147,18 @@ func (c *ClusterStagedUpdateRun) SetUpdateRunStatus(status UpdateRunStatus) {
 	c.Status = status
 }
 
+// State represents the desired state of an update run.
+// +enum
+type State string
+
+const (
+	// StateStart indicates the update run should be started and actively executing.
+	StateStart State = "Start"
+
+	// StateStop indicates the update run should be stopped and not executing.
+	StateStop State = "Stop"
+)
+
 // UpdateRunSpec defines the desired rollout strategy and the snapshot indices of the resources to be updated.
 // It specifies a stage-by-stage update process across selected clusters for the given ResourcePlacement object.
 type UpdateRunSpec struct {
@@ -167,6 +180,14 @@ type UpdateRunSpec struct {
 	// and recorded in the status field.
 	// +kubebuilder:validation:Required
 	StagedUpdateStrategyName string `json:"stagedRolloutStrategyName"`
+
+	// State indicates the desired state of the update run.
+	// When "Stop", the update run will initialize but not execute.
+	// When "Start", the update run will begin or continue execution.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Enum=Start;Stop
+	// +kubebuilder:default=Stop
+	State State `json:"state"`
 }
 
 // UpdateStrategySpecGetterSetter offers the functionality to work with UpdateStrategySpec.
@@ -346,7 +367,7 @@ type UpdateRunStatus struct {
 	// +listMapKey=type
 	//
 	// Conditions is an array of current observed conditions for StagedUpdateRun.
-	// Known conditions are "Initialized", "Progressing", "Succeeded".
+	// Known conditions are "Initialized", "Started", "Progressing", "Succeeded".
 	// +kubebuilder:validation:Optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
@@ -363,6 +384,12 @@ const (
 	// - "False": The staged update run encountered an error during initialization and aborted.
 	// - "Unknown": The staged update run initialization has started.
 	StagedUpdateRunConditionInitialized StagedUpdateRunConditionType = "Initialized"
+
+	// StagedUpdateRunConditionStarted indicates whether the staged update run has been started.
+	// Its condition status can be one of the following:
+	// - "True": The staged update run has been started and is ready to progress.
+	// - "False": The staged update run is stopped or not yet started.
+	StagedUpdateRunConditionStarted StagedUpdateRunConditionType = "Started"
 
 	// StagedUpdateRunConditionProgressing indicates whether the staged update run is making progress.
 	// Its condition status can be one of the following:
@@ -721,6 +748,7 @@ func (c *ClusterApprovalRequestList) GetApprovalRequestObjs() []ApprovalRequestO
 // +kubebuilder:printcolumn:JSONPath=`.spec.resourceSnapshotIndex`,name="Resource-Snapshot-Index",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.policySnapshotIndexUsed`,name="Policy-Snapshot-Index",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Initialized")].status`,name="Initialized",type=string
+// +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Started")].status`,name="Started",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Succeeded")].status`,name="Succeeded",type=string
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 // +kubebuilder:printcolumn:JSONPath=`.spec.stagedRolloutStrategyName`,name="Strategy",priority=1,type=string
