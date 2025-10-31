@@ -34,7 +34,6 @@ import (
 	"k8s.io/klog/v2"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	fleetv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
@@ -53,49 +52,6 @@ var (
 	supportedResourceCapacityTypesMap = map[string]bool{propertyprovider.AllocatableCapacityName: true, propertyprovider.AvailableCapacityName: true, propertyprovider.TotalCapacityName: true}
 	resourceCapacityTypes             = supportedResourceCapacityTypes()
 )
-
-// ValidateClusterResourcePlacementAlpha validates a ClusterResourcePlacement v1alpha1 object.
-func ValidateClusterResourcePlacementAlpha(clusterResourcePlacement *fleetv1alpha1.ClusterResourcePlacement) error {
-	allErr := make([]error, 0)
-
-	// we leverage the informer manager to do the resource scope validation
-	if ResourceInformer == nil {
-		allErr = append(allErr, fmt.Errorf("cannot perform resource scope check for now, please retry"))
-	}
-
-	for _, selector := range clusterResourcePlacement.Spec.ResourceSelectors {
-		if selector.LabelSelector != nil {
-			if len(selector.Name) != 0 {
-				allErr = append(allErr, fmt.Errorf("the labelSelector and name fields are mutually exclusive in selector %+v", selector))
-			}
-			if _, err := metav1.LabelSelectorAsSelector(selector.LabelSelector); err != nil {
-				allErr = append(allErr, fmt.Errorf("the labelSelector in resource selector %+v is invalid: %w", selector, err))
-			}
-		}
-		if ResourceInformer != nil {
-			gvk := schema.GroupVersionKind{
-				Group:   selector.Group,
-				Version: selector.Version,
-				Kind:    selector.Kind,
-			}
-			// TODO: Ensure gvk created from resource selector is valid.
-			if !ResourceInformer.IsClusterScopedResources(gvk) {
-				allErr = append(allErr, fmt.Errorf("the resource is not found in schema (please retry) or it is not a cluster scoped resource: %v", gvk))
-			}
-		}
-	}
-
-	if clusterResourcePlacement.Spec.Policy != nil && clusterResourcePlacement.Spec.Policy.Affinity != nil &&
-		clusterResourcePlacement.Spec.Policy.Affinity.ClusterAffinity != nil {
-		for _, selector := range clusterResourcePlacement.Spec.Policy.Affinity.ClusterAffinity.ClusterSelectorTerms {
-			if _, err := metav1.LabelSelectorAsSelector(&selector.LabelSelector); err != nil {
-				allErr = append(allErr, fmt.Errorf("the labelSelector in cluster selector %+v is invalid: %w", selector, err))
-			}
-		}
-	}
-
-	return apiErrors.NewAggregate(allErr)
-}
 
 // ValidateClusterResourcePlacement validates a ClusterResourcePlacement object.
 func ValidateClusterResourcePlacement(clusterResourcePlacement *placementv1beta1.ClusterResourcePlacement) error {
@@ -476,10 +432,44 @@ func validateName(name string) error {
 		if !supportedResourceCapacityTypesMap[segments[0]] {
 			return fmt.Errorf("invalid capacity type in resource property name %s, supported values are %+v", name, resourceCapacityTypes)
 		}
+
+		if errs := validation.IsQualifiedName(name); errs != nil {
+			return fmt.Errorf("property name %s is not valid: %s", name, strings.Join(errs, "; "))
+		}
+		return nil
 	}
 
-	if err := validation.IsQualifiedName(name); err != nil {
-		return fmt.Errorf("name is not a valid Kubernetes label name: %v", err)
+	// For other properties, they should have a name that is formatted as follows:
+	//
+	// It should be a string of one or more segments, separated by slashes (/) if applicable;
+	// each segment must be 63 characters or less, start and end with an alphanumeric character,
+	// and can include dashes (-), underscores (_), dots (.), and alphanumerics in between.
+	//
+	// Optionally, the property name can have a prefix, which must be a DNS subdomain up to 253 characters,
+	// followed by a slash (/).
+	segs := strings.Split(name, "/")
+	if len(segs) <= 1 {
+		// The property name does not have a slash; it has no prefix.
+		if errs := validation.IsQualifiedName(name); errs != nil {
+			return fmt.Errorf("property name %s is not valid: %s", name, strings.Join(errs, "; "))
+		}
+	} else {
+		// The property name might have a prefix.
+		possiblePrefix := segs[0]
+
+		subDomainErrs := validation.IsDNS1123Subdomain(possiblePrefix)
+		qualifiedNameErrs := validation.IsQualifiedName(possiblePrefix)
+		if len(subDomainErrs) != 0 && len(qualifiedNameErrs) != 0 {
+			return fmt.Errorf("property name first segment %s is not valid: it is neither a valid DNS subdomain (%s) nor a valid qualified name (%s)", possiblePrefix, strings.Join(subDomainErrs, "; "), strings.Join(qualifiedNameErrs, "; "))
+		}
+
+		segsLeft := segs[1:]
+		for idx := range segsLeft {
+			seg := segsLeft[idx]
+			if errs := validation.IsQualifiedName(seg); errs != nil {
+				return fmt.Errorf("property name segment %s is not valid: %s", seg, strings.Join(errs, "; "))
+			}
+		}
 	}
 	return nil
 }

@@ -25,6 +25,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,17 +34,17 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/utils/ptr"
-	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	"github.com/kubefleet-dev/kubefleet/pkg/metrics"
 )
 
 const (
 	workName = "work-1"
 
 	deployName      = "deploy-1"
+	jobName         = "job-1"
 	configMapName   = "configmap-1"
+	secretName      = "secret-1"
 	nsName          = "ns-1"
 	clusterRoleName = "clusterrole-1"
 )
@@ -96,6 +97,42 @@ var (
 	deployUnstructured *unstructured.Unstructured
 	deployJSON         []byte
 
+	job = &batchv1.Job{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Job",
+			APIVersion: "batch/v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      jobName,
+			Namespace: nsName,
+		},
+		Spec: batchv1.JobSpec{
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "busybox",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "busybox",
+							Image: "busybox",
+							Command: []string{
+								"sh",
+								"-c",
+								"sleep 60",
+							},
+						},
+					},
+					RestartPolicy: corev1.RestartPolicyNever,
+				},
+			},
+			Parallelism: ptr.To(int32(1)),
+			Completions: ptr.To(int32(2)),
+		},
+	}
+
 	ns = &corev1.Namespace{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Namespace",
@@ -119,6 +156,20 @@ var (
 		},
 		Data: map[string]string{
 			dummyLabelKey: dummyLabelValue1,
+		},
+	}
+
+	secret = &corev1.Secret{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Secret",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: nsName,
+			Name:      secretName,
+		},
+		Data: map[string][]byte{
+			dummyLabelKey: []byte(dummyLabelValue1),
 		},
 	}
 
@@ -207,12 +258,6 @@ func TestMain(m *testing.M) {
 
 	// Initialize the variables.
 	initializeVariables()
-
-	// Register the metrics.
-	ctrlmetrics.Registry.MustRegister(
-		metrics.FleetWorkProcessingRequestsTotal,
-		metrics.FleetManifestProcessingRequestsTotal,
-	)
 
 	os.Exit(m.Run())
 }

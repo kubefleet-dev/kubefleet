@@ -45,19 +45,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
-	workv1alpha1 "sigs.k8s.io/work-api/pkg/apis/v1alpha1"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	fleetv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/v1alpha1"
-	imcv1alpha1 "github.com/kubefleet-dev/kubefleet/pkg/controllers/internalmembercluster/v1alpha1"
 	imcv1beta1 "github.com/kubefleet-dev/kubefleet/pkg/controllers/internalmembercluster/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workapplier"
-	workv1alpha1controller "github.com/kubefleet-dev/kubefleet/pkg/controllers/workv1alpha1"
-	fleetmetrics "github.com/kubefleet-dev/kubefleet/pkg/metrics"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider/azure"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
@@ -81,9 +75,10 @@ var (
 	metricsAddr          = flag.String("metrics-bind-address", ":8090", "The address the metric endpoint binds to.")
 	enableLeaderElection = flag.Bool("leader-elect", false,
 		"Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
-	leaderElectionNamespace      = flag.String("leader-election-namespace", "kube-system", "The namespace in which the leader election resource will be created.")
-	enableV1Alpha1APIs           = flag.Bool("enable-v1alpha1-apis", true, "If set, the agents will watch for the v1alpha1 APIs.")
-	enableV1Beta1APIs            = flag.Bool("enable-v1beta1-apis", false, "If set, the agents will watch for the v1beta1 APIs.")
+	leaderElectionNamespace = flag.String("leader-election-namespace", "kube-system", "The namespace in which the leader election resource will be created.")
+	// TODO(weiweng): only keep enableV1Alpha1APIs for backward compatibility with helm charts. Remove soon.
+	enableV1Alpha1APIs           = flag.Bool("enable-v1alpha1-apis", false, "If set, the agents will watch for the v1alpha1 APIs. This is deprecated and will be removed soon.")
+	enableV1Beta1APIs            = flag.Bool("enable-v1beta1-apis", true, "If set, the agents will watch for the v1beta1 APIs.")
 	propertyProvider             = flag.String("property-provider", "none", "The property provider to use for the agent.")
 	region                       = flag.String("region", "", "The region where the member cluster resides.")
 	cloudConfigFile              = flag.String("cloud-config", "/etc/kubernetes/provider/config.json", "The path to the cloud cloudconfig file.")
@@ -93,6 +88,11 @@ var (
 	enablePprof                  = flag.Bool("enable-pprof", false, "enable pprof profiling")
 	pprofPort                    = flag.Int("pprof-port", 6065, "port for pprof profiling")
 	hubPprofPort                 = flag.Int("hub-pprof-port", 6066, "port for hub pprof profiling")
+	hubQPS                       = flag.Float64("hub-api-qps", 50, "QPS to use while talking with fleet-apiserver. Doesn't cover events and node heartbeat apis which rate limiting is controlled by a different set of flags.")
+	hubBurst                     = flag.Int("hub-api-burst", 500, "Burst to use while talking with fleet-apiserver. Doesn't cover events and node heartbeat apis which rate limiting is controlled by a different set of flags.")
+	memberQPS                    = flag.Float64("member-api-qps", 250, "QPS to use while talking with fleet-apiserver. Doesn't cover events and node heartbeat apis which rate limiting is controlled by a different set of flags.")
+	memberBurst                  = flag.Int("member-api-burst", 1000, "Burst to use while talking with fleet-apiserver. Doesn't cover events and node heartbeat apis which rate limiting is controlled by a different set of flags.")
+
 	// Work applier requeue rate limiter settings.
 	workApplierRequeueRateLimiterAttemptsWithFixedDelay                              = flag.Int("work-applier-requeue-rate-limiter-attempts-with-fixed-delay", 1, "If set, the work applier will requeue work objects with a fixed delay for the specified number of attempts before switching to exponential backoff.")
 	workApplierRequeueRateLimiterFixedDelaySeconds                                   = flag.Float64("work-applier-requeue-rate-limiter-fixed-delay-seconds", 5.0, "If set, the work applier will requeue work objects with this fixed delay in seconds for the specified number of attempts before switching to exponential backoff.")
@@ -111,18 +111,9 @@ func init() {
 	klog.InitFlags(nil)
 
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(fleetv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(workv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(clusterv1beta1.AddToScheme(scheme))
 	utilruntime.Must(placementv1beta1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
-
-	metrics.Registry.MustRegister(
-		fleetmetrics.JoinResultMetrics,
-		fleetmetrics.LeaveResultMetrics,
-		fleetmetrics.FleetWorkProcessingRequestsTotal,
-		fleetmetrics.FleetManifestProcessingRequestsTotal,
-	)
 }
 
 func main() {
@@ -150,6 +141,8 @@ func main() {
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	hubConfig, err := buildHubConfig(hubURL, *useCertificateAuth, *tlsClientInsecure)
+	hubConfig.QPS = float32(*hubQPS)
+	hubConfig.Burst = *hubBurst
 	if err != nil {
 		klog.ErrorS(err, "Failed to build Kubernetes client configuration for the hub cluster")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
@@ -164,6 +157,8 @@ func main() {
 	mcNamespace := fmt.Sprintf(utils.NamespaceNameFormat, mcName)
 
 	memberConfig := ctrl.GetConfigOrDie()
+	memberConfig.QPS = float32(*memberQPS)
+	memberConfig.Burst = *memberBurst
 	// we place the leader election lease on the member cluster to avoid adding load to the hub
 	hubOpts := ctrl.Options{
 		Scheme: scheme,
@@ -361,28 +356,9 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 	discoverClient := discovery.NewDiscoveryClientForConfigOrDie(memberConfig)
 
 	if *enableV1Alpha1APIs {
-		gvk := workv1alpha1.SchemeGroupVersion.WithKind(workv1alpha1.AppliedWorkKind)
-		if err = utils.CheckCRDInstalled(discoverClient, gvk); err != nil {
-			klog.ErrorS(err, "unable to find the required CRD", "GVK", gvk)
-			return err
-		}
-		// create the work controller, so we can pass it to the internal member cluster reconciler
-		workController := workv1alpha1controller.NewApplyWorkReconciler(
-			hubMgr.GetClient(),
-			spokeDynamicClient,
-			memberMgr.GetClient(),
-			restMapper, hubMgr.GetEventRecorderFor("work_controller"), 5, targetNS)
-
-		if err = workController.SetupWithManager(hubMgr); err != nil {
-			klog.ErrorS(err, "Failed to create v1alpha1 controller", "controller", "work")
-			return err
-		}
-
-		klog.Info("Setting up the internalMemberCluster v1alpha1 controller")
-		if err = imcv1alpha1.NewReconciler(hubMgr.GetClient(), memberMgr.GetClient(), workController).SetupWithManager(hubMgr, "internalmemberclusterv1alpha1-controller"); err != nil {
-			klog.ErrorS(err, "Failed to create v1alpha1 controller", "controller", "internalMemberCluster")
-			return fmt.Errorf("unable to create internalMemberCluster v1alpha1 controller: %w", err)
-		}
+		// TODO(weiweng): keeping v1alpha1 APIs for backward compatibility with helm charts. Remove soon.
+		klog.Error("v1alpha1 APIs are no longer supported. Please switch to v1beta1 APIs")
+		return errors.New("v1alpha1 APIs are no longer supported. Please switch to v1beta1 APIs")
 	}
 
 	if *enableV1Beta1APIs {

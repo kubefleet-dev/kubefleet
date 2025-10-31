@@ -1,5 +1,5 @@
 REGISTRY ?= ghcr.io
-KIND_IMAGE ?= kindest/node:v1.31.0
+KIND_IMAGE ?= kindest/node:v1.33.4
 ifndef TAG
 	TAG ?= $(shell git rev-parse --short=7 HEAD)
 endif
@@ -10,6 +10,30 @@ REFRESH_TOKEN_IMAGE_VERSION ?= $(TAG)
 HUB_AGENT_IMAGE_NAME ?= hub-agent
 MEMBER_AGENT_IMAGE_NAME ?= member-agent
 REFRESH_TOKEN_IMAGE_NAME := refresh-token
+
+TARGET_OS ?= linux
+TARGET_ARCH ?= amd64
+AUTO_DETECT_ARCH ?= TRUE
+
+# Auto-detect system architecture if it is allowed and the necessary commands are available on the system.
+ifeq ($(AUTO_DETECT_ARCH), TRUE)
+ARCH_CMD_INSTALLED := $(shell command -v arch 2>/dev/null)
+ifdef ARCH_CMD_INSTALLED
+TARGET_ARCH := $(shell arch)
+# The arch command may return arch strings that are aliases of expected TARGET_ARCH values;
+# do the mapping here.
+ifeq ($(TARGET_ARCH),$(filter $(TARGET_ARCH),x86_64))
+	TARGET_ARCH := amd64
+else ifeq ($(TARGET_ARCH),$(filter $(TARGET_ARCH),aarch64 arm))
+	TARGET_ARCH := arm64
+endif
+$(info Auto-detected system architecture: $(TARGET_ARCH))
+endif
+endif
+
+# Note (chenyu1): switch to the `plain` progress type to see the full outputs in the docker build
+# progress.
+BUILDKIT_PROGRESS_TYPE ?= auto
 
 KUBECONFIG ?= $(HOME)/.kube/config
 HUB_SERVER_URL ?= https://172.19.0.2:6443
@@ -22,7 +46,6 @@ MEMBER_CLUSTER_COUNT ?= 3
 ROOT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 TOOLS_DIR := hack/tools
 TOOLS_BIN_DIR := $(abspath $(TOOLS_DIR)/bin)
-CLUSTER_CONFIG := $(abspath test/e2e/v1alpha1/kind-config.yaml)
 
 # Binaries
 # Note: Need to use abspath so we can invoke these from subdirectories
@@ -109,24 +132,6 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 ## --------------------------------------
-## Kind
-## --------------------------------------
-
-# Note that these targets are only used for E2E tests of the v1alpha1 API.
-
-create-hub-kind-cluster:
-	kind create cluster --name $(HUB_KIND_CLUSTER_NAME) --image=$(KIND_IMAGE) --config=$(CLUSTER_CONFIG) --kubeconfig=$(KUBECONFIG)
-
-create-member-kind-cluster:
-	kind create cluster --name $(MEMBER_KIND_CLUSTER_NAME) --image=$(KIND_IMAGE) --config=$(CLUSTER_CONFIG) --kubeconfig=$(KUBECONFIG)
-
-load-hub-docker-image:
-	kind load docker-image  --name $(HUB_KIND_CLUSTER_NAME) $(REGISTRY)/$(HUB_AGENT_IMAGE_NAME):$(HUB_AGENT_IMAGE_VERSION)
-
-load-member-docker-image:
-	kind load docker-image  --name $(MEMBER_KIND_CLUSTER_NAME) $(REGISTRY)/$(REFRESH_TOKEN_IMAGE_NAME):$(REFRESH_TOKEN_IMAGE_VERSION) $(REGISTRY)/$(MEMBER_AGENT_IMAGE_NAME):$(MEMBER_AGENT_IMAGE_VERSION)
-
-## --------------------------------------
 ## test
 ## --------------------------------------
 
@@ -134,83 +139,22 @@ load-member-docker-image:
 test: manifests generate fmt vet local-unit-test integration-test## Run tests.
 
 ##
-## workaround to bypass the pkg/controllers/workv1alpha1 tests failure
-## rollout controller tests need a bit longer to complete, so we increase the timeout
-##
+# Set up the timeout parameters as some of the tests (rollout controller) lengths have exceeded the default 10 minute mark.
+# TO-DO (chenyu1): enable parallelization for single package integration tests.
 .PHONY: local-unit-test
 local-unit-test: $(ENVTEST) ## Run tests.
 	export CGO_ENABLED=1 && \
 	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" && \
-	go test ./pkg/controllers/workv1alpha1 -race -coverprofile=ut-coverage.xml -covermode=atomic -v && \
-	go test `go list ./pkg/... ./cmd/... | grep -v pkg/controllers/workv1alpha1` -race -coverpkg=./...  -coverprofile=ut-coverage.xml -covermode=atomic -v -timeout=20m
+	go test `go list ./pkg/... ./cmd/...` -race -coverpkg=./...  -coverprofile=ut-coverage.xml -covermode=atomic -v -timeout=20m
 
 .PHONY: integration-test
 integration-test: $(ENVTEST) ## Run tests.
 	export CGO_ENABLED=1 && \
 	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" && \
 	ginkgo -v -p --race --cover --coverpkg=./pkg/scheduler/... ./test/scheduler && \
-	ginkgo -v -p --race --cover --coverpkg=./... ./test/apis/... && \
-	go test ./test/integration/... -coverpkg=./...  -race -coverprofile=it-coverage.xml -v
+	ginkgo -v -p --race --cover --coverpkg=./... ./test/apis/...
 
 ## local tests & e2e tests
-
-install-hub-agent-helm:
-	kind export kubeconfig --name $(HUB_KIND_CLUSTER_NAME)
-	helm install hub-agent ./charts/hub-agent/ \
-    --set image.pullPolicy=Never \
-    --set image.repository=$(REGISTRY)/$(HUB_AGENT_IMAGE_NAME) \
-    --set image.tag=$(HUB_AGENT_IMAGE_VERSION) \
-    --set logVerbosity=5 \
-    --set namespace=fleet-system \
-    --set enableWebhook=true \
-    --set webhookServiceName=fleetwebhook \
-    --set webhookClientConnectionType=service \
-    --set enableV1Alpha1APIs=true \
-    --set enableV1Beta1APIs=false \
-    --set enableClusterInventoryAPI=true \
-    --set logFileMaxSize=1000000
-
-.PHONY: e2e-v1alpha1-hub-kubeconfig-secret
-e2e-v1alpha1-hub-kubeconfig-secret:
-	kind export kubeconfig --name $(HUB_KIND_CLUSTER_NAME)
-	kubectl apply -f test/e2e/v1alpha1/hub-agent-sa-secret.yaml
-	TOKEN=$$(kubectl get secret hub-kubeconfig-secret -n fleet-system -o jsonpath='{.data.token}' | base64 -d) ;\
-	kind export kubeconfig --name $(MEMBER_KIND_CLUSTER_NAME) ;\
-	kubectl delete secret hub-kubeconfig-secret --ignore-not-found ;\
-	kubectl create secret generic hub-kubeconfig-secret --from-literal=token=$$TOKEN
-
-install-member-agent-helm: install-hub-agent-helm e2e-v1alpha1-hub-kubeconfig-secret
-	kind export kubeconfig --name $(HUB_KIND_CLUSTER_NAME)
-	## Get kind cluster IP that docker uses internally so we can talk to the other cluster. the port is the default one.
-	HUB_SERVER_URL="https://$$(docker inspect $(HUB_KIND_CLUSTER_NAME)-control-plane --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'):6443" ;\
-	kind export kubeconfig --name $(MEMBER_KIND_CLUSTER_NAME) ;\
-	helm install member-agent ./charts/member-agent/ \
-	--set config.hubURL=$$HUB_SERVER_URL \
-	--set image.repository=$(REGISTRY)/$(MEMBER_AGENT_IMAGE_NAME) \
-	--set image.tag=$(MEMBER_AGENT_IMAGE_VERSION) \
-    --set refreshtoken.repository=$(REGISTRY)/$(REFRESH_TOKEN_IMAGE_NAME) \
-    --set refreshtoken.tag=$(REFRESH_TOKEN_IMAGE_VERSION) \
-    --set image.pullPolicy=Never --set refreshtoken.pullPolicy=Never \
-    --set config.memberClusterName="kind-$(MEMBER_KIND_CLUSTER_NAME)" \
-    --set logVerbosity=5 \
-    --set namespace=fleet-system
-	# to make sure member-agent reads the token file.
-	kubectl delete pod --all -n fleet-system
-
-build-e2e-v1alpha1:
-	go test -c ./test/e2e/v1alpha1
-
-run-e2e-v1alpha1: build-e2e-v1alpha1
-	KUBECONFIG=$(KUBECONFIG) HUB_SERVER_URL="https://$$(docker inspect $(HUB_KIND_CLUSTER_NAME)-control-plane --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'):6443" ./v1alpha1.test -test.v -ginkgo.v
-
-.PHONY: create-kind-cluster
-create-kind-cluster: create-hub-kind-cluster create-member-kind-cluster install-helm
-
-.PHONY: install-helm
-install-helm:  load-hub-docker-image load-member-docker-image install-member-agent-helm
-
-.PHONY: e2e-tests-v1alpha1
-e2e-tests-v1alpha1: create-kind-cluster run-e2e-v1alpha1
 
 # E2E test label filter (can be overridden)
 LABEL_FILTER ?= !custom
@@ -285,9 +229,22 @@ push:
 
 # By default, docker buildx create will pull image moby/buildkit:buildx-stable-1 and hit the too many requests error
 .PHONY: docker-buildx-builder
+# Note (chenyu1): the step below sets up emulation for building/running non-native binaries on the host. The original
+# setup assumes that the Makefile is always run on an x86_64 platform, and adds support for non-x86_64 hosts. Here
+# we keep the original setup if the build target is x86_64 platforms (default) for compatibility reasons, but will switch to
+# a more general setup for non-x86_64 hosts.
+#
+# On some systems the emulation setup might not work at all (e.g., macOS on Apple Silicon -> Rosetta 2 will be used 
+# by Docker Desktop as the default emulation option for AMD64 on ARM64 container compatibility).
 docker-buildx-builder:
 	@if ! docker buildx ls | grep $(BUILDX_BUILDER_NAME); then \
-		docker run --rm --privileged mcr.microsoft.com/mirror/docker/multiarch/qemu-user-static:$(QEMU_VERSION) --reset -p yes; \
+		if [ "$(TARGET_ARCH)" = "amd64" ] ; then \
+			echo "The target is an x86_64 platform; setting up emulation for other known architectures"; \
+			docker run --rm --privileged mcr.microsoft.com/mirror/docker/multiarch/qemu-user-static:$(QEMU_VERSION) --reset -p yes; \
+		else \
+			echo "Setting up emulation for known architectures"; \
+			docker run --rm --privileged tonistiigi/binfmt --install all; \
+		fi ;\
 		docker buildx create --driver-opt image=mcr.microsoft.com/oss/v2/moby/buildkit:$(BUILDKIT_VERSION) --name $(BUILDX_BUILDER_NAME) --use; \
 		docker buildx inspect $(BUILDX_BUILDER_NAME) --bootstrap; \
 	fi
@@ -297,27 +254,36 @@ docker-build-hub-agent: docker-buildx-builder
 	docker buildx build \
 		--file docker/$(HUB_AGENT_IMAGE_NAME).Dockerfile \
 		--output=$(OUTPUT_TYPE) \
-		--platform="linux/amd64" \
+		--platform=$(TARGET_OS)/$(TARGET_ARCH) \
 		--pull \
-		--tag $(REGISTRY)/$(HUB_AGENT_IMAGE_NAME):$(HUB_AGENT_IMAGE_VERSION) .
+		--tag $(REGISTRY)/$(HUB_AGENT_IMAGE_NAME):$(HUB_AGENT_IMAGE_VERSION) \
+		--progress=$(BUILDKIT_PROGRESS_TYPE) \
+		--build-arg GOARCH=$(TARGET_ARCH) \
+		--build-arg GOOS=$(TARGET_OS) .
 
 .PHONY: docker-build-member-agent
 docker-build-member-agent: docker-buildx-builder
 	docker buildx build \
 		--file docker/$(MEMBER_AGENT_IMAGE_NAME).Dockerfile \
 		--output=$(OUTPUT_TYPE) \
-		--platform="linux/amd64" \
+		--platform=$(TARGET_OS)/$(TARGET_ARCH) \
 		--pull \
-		--tag $(REGISTRY)/$(MEMBER_AGENT_IMAGE_NAME):$(MEMBER_AGENT_IMAGE_VERSION) .
+		--tag $(REGISTRY)/$(MEMBER_AGENT_IMAGE_NAME):$(MEMBER_AGENT_IMAGE_VERSION) \
+		--progress=$(BUILDKIT_PROGRESS_TYPE) \
+		--build-arg GOARCH=$(TARGET_ARCH) \
+		--build-arg GOOS=$(TARGET_OS) .
 
 .PHONY: docker-build-refresh-token
 docker-build-refresh-token: docker-buildx-builder
 	docker buildx build \
 		--file docker/$(REFRESH_TOKEN_IMAGE_NAME).Dockerfile \
 		--output=$(OUTPUT_TYPE) \
-		--platform="linux/amd64" \
+		--platform=$(TARGET_OS)/$(TARGET_ARCH) \
 		--pull \
-		--tag $(REGISTRY)/$(REFRESH_TOKEN_IMAGE_NAME):$(REFRESH_TOKEN_IMAGE_VERSION) .
+		--tag $(REGISTRY)/$(REFRESH_TOKEN_IMAGE_NAME):$(REFRESH_TOKEN_IMAGE_VERSION) \
+		--progress=$(BUILDKIT_PROGRESS_TYPE) \
+		--build-arg GOARCH=$(TARGET_ARCH) \
+		--build-arg GOOS=${TARGET_OS} .
 
 ## -----------------------------------
 ## Cleanup
@@ -327,30 +293,6 @@ docker-build-refresh-token: docker-buildx-builder
 clean-bin: ## Remove all generated binaries
 	rm -rf $(TOOLS_BIN_DIR)
 	rm -rf ./bin
-
-# Note that these targets are only used for E2E tests of the v1alpha1 API.
-
-.PHONY: uninstall-helm
-uninstall-helm: clean-testing-resources
-	kind export kubeconfig --name $(HUB_KIND_CLUSTER_NAME)
-	helm uninstall hub-agent
-
-	kind export kubeconfig --name $(MEMBER_KIND_CLUSTER_NAME)
-	helm uninstall member-agent
-
-.PHONY: clean-testing-resources
-clean-testing-resources:
-	kind export kubeconfig --name $(HUB_KIND_CLUSTER_NAME)
-	kubectl delete ns fleet-member-kind-member-testing --ignore-not-found
-	kubectl delete memberclusters.fleet.azure.com kind-$(MEMBER_KIND_CLUSTER_NAME) --ignore-not-found
-
-	kind export kubeconfig --name $(MEMBER_KIND_CLUSTER_NAME)
-	kubectl delete ns fleet-member-kind-member-testing --ignore-not-found
-
-.PHONY: clean-e2e-tests-v1alpha1
-clean-e2e-tests-v1alpha1:
-	kind delete cluster --name $(HUB_KIND_CLUSTER_NAME)
-	kind delete cluster --name $(MEMBER_KIND_CLUSTER_NAME)
 
 .PHONY: clean-e2e-tests
 clean-e2e-tests:
