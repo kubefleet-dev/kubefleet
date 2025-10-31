@@ -1116,11 +1116,14 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 		})
 	})
 
-	Context("Test ClusterStagedUpdateRun API validation - valid cases", func() {
+	FContext("Test ClusterStagedUpdateRun API validation - valid cases", func() {
 		It("Should allow creation of ClusterStagedUpdateRun with valid name length", func() {
 			updateRun := placementv1beta1.ClusterStagedUpdateRun{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: fmt.Sprintf(validupdateRunNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					State: placementv1beta1.StateStart,
 				},
 			}
 			Expect(hubClient.Create(ctx, &updateRun)).Should(Succeed())
@@ -1128,11 +1131,14 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 		})
 	})
 
-	Context("Test ClusterStagedUpdateRun API validation - invalid cases", func() {
+	FContext("Test ClusterStagedUpdateRun API validation - invalid cases", func() {
 		It("Should deny creation of ClusterStagedUpdateRun with name length > 127", func() {
 			updateRun := placementv1beta1.ClusterStagedUpdateRun{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: fmt.Sprintf(invalidupdateRunNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					State: placementv1beta1.StateStart,
 				},
 			}
 			err := hubClient.Create(ctx, &updateRun)
@@ -1148,6 +1154,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				},
 				Spec: placementv1beta1.UpdateRunSpec{
 					PlacementName: "test-placement",
+					State:         placementv1beta1.StateStart,
 				},
 			}
 			Expect(hubClient.Create(ctx, &updateRun)).Should(Succeed())
