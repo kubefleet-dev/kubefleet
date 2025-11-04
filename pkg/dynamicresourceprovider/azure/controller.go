@@ -34,9 +34,10 @@ const (
 const (
 	clusterWithOverridenWeight1 = "model-server-cluster-1"
 	clusterWithOverridenWeight2 = "model-server-cluster-2"
-	clusterWithOverridenWeight3 = "kind-cluster-1"
-	clusterWithOverridenWeight4 = "kind-cluster-2"
-	clusterWithOverridenWeight5 = "model-server-cluster-3"
+	clusterWithOverridenWeight3 = "model-server-cluster-3"
+	clusterWithOverridenWeight4 = "model-serving-cluster-1"
+	clusterWithOverridenWeight5 = "model-serving-cluster-2"
+	clusterWithOverridenWeight6 = "model-serving-cluster-3"
 )
 
 var (
@@ -47,8 +48,9 @@ var (
 		clusterWithOverridenWeight1: 80,
 		clusterWithOverridenWeight2: 60,
 		clusterWithOverridenWeight3: 40,
-		clusterWithOverridenWeight4: 20,
-		clusterWithOverridenWeight5: 10,
+		clusterWithOverridenWeight4: 80,
+		clusterWithOverridenWeight5: 60,
+		clusterWithOverridenWeight6: 40,
 	}
 )
 
