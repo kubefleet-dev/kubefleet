@@ -1116,7 +1116,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 		})
 	})
 
-	FContext("Test ClusterStagedUpdateRun API validation - valid cases", func() {
+	Context("Test ClusterStagedUpdateRun API validation - valid cases", func() {
 		It("Should allow creation of ClusterStagedUpdateRun with valid name length", func() {
 			updateRun := placementv1beta1.ClusterStagedUpdateRun{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1131,7 +1131,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 		})
 	})
 
-	FContext("Test ClusterStagedUpdateRun API validation - invalid cases", func() {
+	Context("Test ClusterStagedUpdateRun API validation - invalid cases", func() {
 		It("Should deny creation of ClusterStagedUpdateRun with name length > 127", func() {
 			updateRun := placementv1beta1.ClusterStagedUpdateRun{
 				ObjectMeta: metav1.ObjectMeta{
