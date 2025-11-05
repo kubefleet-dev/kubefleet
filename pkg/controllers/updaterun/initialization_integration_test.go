@@ -575,6 +575,22 @@ var _ = Describe("Updaterun initialization tests", func() {
 		})
 
 		Context("Test computeRunStageStatus", func() {
+			Context("Test validatBeforeStageTask", func() {
+				It("Should initialize if any before stage", func() {
+					By("Creating a clusterStagedUpdateStrategy with a before stage tasks")
+					updateStrategy.Spec.Stages[0].BeforeStageTasks = []placementv1beta1.StageTask{
+						{Type: placementv1beta1.StageTaskTypeApproval},
+					}
+					Expect(k8sClient.Create(ctx, updateStrategy)).To(Succeed())
+
+					By("Creating a new clusterStagedUpdateRun")
+					Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
+
+					By("Validating the initialization succeeded")
+					generateSucceededInitializationStatus(crp, updateRun, policySnapshot, updateStrategy, clusterResourceOverride)
+				})
+			})
+
 			Context("Test validateAfterStageTask", func() {
 				It("Should fail to initialize if any after stage task has 2 same tasks", func() {
 					By("Creating a clusterStagedUpdateStrategy with 2 same after stage tasks")
@@ -1010,15 +1026,25 @@ func generateSucceededInitializationStatus(
 		},
 	}
 	for i := range status.StagesStatus {
-		var tasks []placementv1beta1.StageTaskStatus
+		var afterTasks []placementv1beta1.StageTaskStatus
 		for _, task := range updateStrategy.Spec.Stages[i].AfterStageTasks {
 			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
 			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				taskStatus.ApprovalRequestName = updateRun.Name + "-" + status.StagesStatus[i].StageName
+				taskStatus.ApprovalRequestName = updateRun.Name + "-after-" + status.StagesStatus[i].StageName
 			}
-			tasks = append(tasks, taskStatus)
+			afterTasks = append(afterTasks, taskStatus)
 		}
-		status.StagesStatus[i].AfterStageTaskStatus = tasks
+		status.StagesStatus[i].AfterStageTaskStatus = afterTasks
+
+		var beforeTasks []placementv1beta1.StageTaskStatus
+		for _, task := range updateStrategy.Spec.Stages[i].BeforeStageTasks {
+			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
+			if task.Type == placementv1beta1.StageTaskTypeApproval {
+				taskStatus.ApprovalRequestName = updateRun.Name + "-before-" + status.StagesStatus[i].StageName
+			}
+			beforeTasks = append(beforeTasks, taskStatus)
+		}
+		status.StagesStatus[i].BeforeStageTaskStatus = beforeTasks
 	}
 	return status
 }
@@ -1056,15 +1082,25 @@ func generateSucceededInitializationStatusForSmallClusters(
 		},
 	}
 	for i := range status.StagesStatus {
-		var tasks []placementv1beta1.StageTaskStatus
+		var beforeTasks []placementv1beta1.StageTaskStatus
+		for _, task := range updateStrategy.Spec.Stages[i].BeforeStageTasks {
+			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
+			if task.Type == placementv1beta1.StageTaskTypeApproval {
+				taskStatus.ApprovalRequestName = fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.Name, status.StagesStatus[i].StageName)
+			}
+			beforeTasks = append(beforeTasks, taskStatus)
+		}
+		status.StagesStatus[i].BeforeStageTaskStatus = beforeTasks
+
+		var afterTasks []placementv1beta1.StageTaskStatus
 		for _, task := range updateStrategy.Spec.Stages[i].AfterStageTasks {
 			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
 			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				taskStatus.ApprovalRequestName = updateRun.Name + "-" + status.StagesStatus[i].StageName
+				taskStatus.ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.Name, status.StagesStatus[i].StageName)
 			}
-			tasks = append(tasks, taskStatus)
+			afterTasks = append(afterTasks, taskStatus)
 		}
-		status.StagesStatus[i].AfterStageTaskStatus = tasks
+		status.StagesStatus[i].AfterStageTaskStatus = afterTasks
 	}
 	return status
 }
@@ -1079,5 +1115,17 @@ func generateExecutionStartedStatus(
 	initialized.StagesStatus[0].Conditions = append(initialized.StagesStatus[0].Conditions, generateTrueCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
 	// Mark updateRun 1st cluster in the 1st stage has started.
 	initialized.StagesStatus[0].Clusters[0].Conditions = []metav1.Condition{generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted)}
+	return initialized
+}
+
+func generateExecutionNotStartedStatus(
+	updateRun *placementv1beta1.ClusterStagedUpdateRun,
+	initialized *placementv1beta1.UpdateRunStatus,
+) *placementv1beta1.UpdateRunStatus {
+	// Mark updateRun execution has not started.
+	initialized.Conditions = append(initialized.Conditions, generateFalseCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
+
+	// Mark updateRun 1st stage has not started.
+	initialized.StagesStatus[0].Conditions = append(initialized.StagesStatus[0].Conditions, generateFalseCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
 	return initialized
 }
