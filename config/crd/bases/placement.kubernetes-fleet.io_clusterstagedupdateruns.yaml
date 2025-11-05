@@ -1112,8 +1112,8 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Initialized")].status
       name: Initialized
       type: string
-    - jsonPath: .status.conditions[?(@.type=="Started")].status
-      name: Started
+    - jsonPath: .status.conditions[?(@.type=="Progressing")].status
+      name: Progressing
       type: string
     - jsonPath: .status.conditions[?(@.type=="Succeeded")].status
       name: Succeeded
@@ -1177,14 +1177,18 @@ spec:
                   and recorded in the status field.
                 type: string
               state:
-                default: Stop
+                default: NotStarted
                 description: |-
                   State indicates the desired state of the update run.
-                  When "Stop", the update run will initialize but not execute.
-                  When "Start", the update run will begin or continue execution.
+                  NotStarted: The update run is initialized but execution has not started (default).
+                  Start: The update run should execute or resume execution.
+                  Stop: The update run should pause execution.
+                  Abandon: The update run should be abandoned and terminated.
                 enum:
+                - NotStarted
                 - Start
                 - Stop
+                - Abandon
                 type: string
             required:
             - placementName
@@ -1429,7 +1433,7 @@ spec:
               conditions:
                 description: |-
                   Conditions is an array of current observed conditions for StagedUpdateRun.
-                  Known conditions are "Initialized", "Started", "Progressing", "Succeeded".
+                  Known conditions are "Initialized", "Progressing", "Succeeded", "Abandoned".
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.

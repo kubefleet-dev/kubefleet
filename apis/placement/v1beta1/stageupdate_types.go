@@ -92,7 +92,7 @@ type UpdateRunObjList interface {
 // +kubebuilder:printcolumn:JSONPath=`.spec.resourceSnapshotIndex`,name="Resource-Snapshot-Index",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.policySnapshotIndexUsed`,name="Policy-Snapshot-Index",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Initialized")].status`,name="Initialized",type=string
-// +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Started")].status`,name="Started",type=string
+// +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Progressing")].status`,name="Progressing",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Succeeded")].status`,name="Succeeded",type=string
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 // +kubebuilder:printcolumn:JSONPath=`.spec.stagedRolloutStrategyName`,name="Strategy",priority=1,type=string
@@ -153,11 +153,18 @@ func (c *ClusterStagedUpdateRun) SetUpdateRunStatus(status UpdateRunStatus) {
 type State string
 
 const (
-	// StateStart indicates the update run should be started and actively executing.
+	// StateNotStarted indicates the update run has been initialized but execution has not started.
+	// This is the default state after initialization completes.
+	StateNotStarted State = "NotStarted"
+
+	// StateStart indicates the update run should execute (or resume execution if paused).
 	StateStart State = "Start"
 
-	// StateStop indicates the update run should be stopped and not executing.
+	// StateStop indicates the update run should pause execution.
 	StateStop State = "Stop"
+
+	// StateAbandon indicates the update run should be abandoned and terminated.
+	StateAbandon State = "Abandon"
 )
 
 // UpdateRunSpec defines the desired rollout strategy and the snapshot indices of the resources to be updated.
@@ -183,11 +190,13 @@ type UpdateRunSpec struct {
 	StagedUpdateStrategyName string `json:"stagedRolloutStrategyName"`
 
 	// State indicates the desired state of the update run.
-	// When "Stop", the update run will initialize but not execute.
-	// When "Start", the update run will begin or continue execution.
+	// NotStarted: The update run is initialized but execution has not started (default).
+	// Start: The update run should execute or resume execution.
+	// Stop: The update run should pause execution.
+	// Abandon: The update run should be abandoned and terminated.
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:Enum=Start;Stop
-	// +kubebuilder:default=Stop
+	// +kubebuilder:validation:Enum=NotStarted;Start;Stop;Abandon
+	// +kubebuilder:default=NotStarted
 	State State `json:"state"`
 }
 
@@ -387,7 +396,7 @@ type UpdateRunStatus struct {
 	// +listMapKey=type
 	//
 	// Conditions is an array of current observed conditions for StagedUpdateRun.
-	// Known conditions are "Initialized", "Started", "Progressing", "Succeeded".
+	// Known conditions are "Initialized", "Progressing", "Succeeded", "Abandoned".
 	// +kubebuilder:validation:Optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
@@ -405,12 +414,6 @@ const (
 	// - "Unknown": The staged update run initialization has started.
 	StagedUpdateRunConditionInitialized StagedUpdateRunConditionType = "Initialized"
 
-	// StagedUpdateRunConditionStarted indicates whether the staged update run has been started.
-	// Its condition status can be one of the following:
-	// - "True": The staged update run has been started and is ready to progress.
-	// - "False": The staged update run is stopped or not yet started.
-	StagedUpdateRunConditionStarted StagedUpdateRunConditionType = "Started"
-
 	// StagedUpdateRunConditionProgressing indicates whether the staged update run is making progress.
 	// Its condition status can be one of the following:
 	// - "True": The staged update run is making progress.
@@ -423,6 +426,11 @@ const (
 	// - "True": The staged update run is completed successfully.
 	// - "False": The staged update run encountered an error and stopped.
 	StagedUpdateRunConditionSucceeded StagedUpdateRunConditionType = "Succeeded"
+
+	// StagedUpdateRunConditionAbandoned indicates whether the staged update run has been abandoned.
+	// Its condition status can be one of the following:
+	// - "True": The staged update run has been abandoned by user request.
+	StagedUpdateRunConditionAbandoned StagedUpdateRunConditionType = "Abandoned"
 )
 
 // StageUpdatingStatus defines the status of the update run in a stage.
@@ -773,7 +781,7 @@ func (c *ClusterApprovalRequestList) GetApprovalRequestObjs() []ApprovalRequestO
 // +kubebuilder:printcolumn:JSONPath=`.spec.resourceSnapshotIndex`,name="Resource-Snapshot-Index",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.policySnapshotIndexUsed`,name="Policy-Snapshot-Index",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Initialized")].status`,name="Initialized",type=string
-// +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Started")].status`,name="Started",type=string
+// +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Progressing")].status`,name="Progressing",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Succeeded")].status`,name="Succeeded",type=string
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 // +kubebuilder:printcolumn:JSONPath=`.spec.stagedRolloutStrategyName`,name="Strategy",priority=1,type=string
