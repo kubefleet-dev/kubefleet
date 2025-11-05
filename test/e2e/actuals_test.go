@@ -2179,7 +2179,7 @@ func buildStageUpdatingStatuses(
 		for j, task := range stage.AfterStageTasks {
 			stagesStatus[i].AfterStageTaskStatus[j].Type = task.Type
 			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				stagesStatus[i].AfterStageTaskStatus[j].ApprovalRequestName = fmt.Sprintf(placementv1beta1.ApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
+				stagesStatus[i].AfterStageTaskStatus[j].ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
 			}
 			stagesStatus[i].AfterStageTaskStatus[j].Conditions = updateRunAfterStageTaskSucceedConditions(updateRun.GetGeneration(), task.Type)
 		}

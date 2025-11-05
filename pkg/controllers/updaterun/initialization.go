@@ -418,12 +418,20 @@ func (r *Reconciler) computeRunStageStatus(
 			curStageUpdatingStatus.Clusters[i].ClusterName = cluster.Name
 		}
 
+		// Create the before stage tasks.
+		curStageUpdatingStatus.BeforeStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(stage.BeforeStageTasks))
+		for i, task := range stage.BeforeStageTasks {
+			curStageUpdatingStatus.BeforeStageTaskStatus[i].Type = task.Type
+			if task.Type == placementv1beta1.StageTaskTypeApproval {
+				curStageUpdatingStatus.BeforeStageTaskStatus[i].ApprovalRequestName = fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
+			}
+		}
 		// Create the after stage tasks.
 		curStageUpdatingStatus.AfterStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(stage.AfterStageTasks))
 		for i, task := range stage.AfterStageTasks {
 			curStageUpdatingStatus.AfterStageTaskStatus[i].Type = task.Type
 			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				curStageUpdatingStatus.AfterStageTaskStatus[i].ApprovalRequestName = fmt.Sprintf(placementv1beta1.ApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
+				curStageUpdatingStatus.AfterStageTaskStatus[i].ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
 			}
 		}
 		stagesStatus = append(stagesStatus, curStageUpdatingStatus)
@@ -448,7 +456,7 @@ func (r *Reconciler) computeRunStageStatus(
 	return nil
 }
 
-// validateAfterStageTask valides the afterStageTasks in the stage defined in the UpdateStrategy.
+// validateAfterStageTask validates the afterStageTasks in the stage defined in the UpdateStrategy.
 // The error returned from this function is not retryable.
 func validateAfterStageTask(tasks []placementv1beta1.StageTask) error {
 	if len(tasks) == 2 && tasks[0].Type == tasks[1].Type {

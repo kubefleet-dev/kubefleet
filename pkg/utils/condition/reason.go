@@ -194,6 +194,12 @@ const (
 	// ClusterUpdatingSucceededReason is the reason string of condition if the cluster updating succeeded.
 	ClusterUpdatingSucceededReason = "ClusterUpdatingSucceeded"
 
+	// BeforeStageTaskApprovalRequestApprovedReason is the reason string of condition if the approval request for before stage task has been approved.
+	BeforeStageTaskApprovalRequestApprovedReason = "BeforeStageTaskApprovalRequestApproved"
+
+	// BeforeStageTaskApprovalRequestCreatedReason is the reason string of condition if the approval request for before stage task has been created.
+	BeforeStageTaskApprovalRequestCreatedReason = "BeforeStageTaskApprovalRequestCreated"
+
 	// AfterStageTaskApprovalRequestApprovedReason is the reason string of condition if the approval request for after stage task has been approved.
 	AfterStageTaskApprovalRequestApprovedReason = "AfterStageTaskApprovalRequestApproved"
 
