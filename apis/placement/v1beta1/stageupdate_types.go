@@ -186,8 +186,8 @@ type UpdateRunSpec struct {
 
 	// The resource snapshot index of the selected resources to be updated across clusters.
 	// The index represents a group of resource snapshots that includes all the resources a ResourcePlacement selected.
-	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="resourceSnapshotIndex is immutable"
+	// +kubebuilder:validation:Optional
 	ResourceSnapshotIndex string `json:"resourceSnapshotIndex"`
 
 	// The name of the update strategy that specifies the stages and the sequence

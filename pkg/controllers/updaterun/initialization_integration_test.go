@@ -748,7 +748,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			Expect(k8sClient.Create(ctx, updateStrategy)).To(Succeed())
 		})
 
-		It("Should fail to initialize if the specified resource snapshot index is invalid - not integer", func() {
+		FIt("Should fail to initialize if the specified resource snapshot index is invalid - not integer", func() {
 			By("Creating a new clusterStagedUpdateRun with invalid resource snapshot index")
 			updateRun.Spec.ResourceSnapshotIndex = "invalid-index"
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
@@ -826,6 +826,29 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 			By("Checking update run status metrics are emitted")
 			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+		})
+
+		It("Should put related ClusterResourceOverrides in the status with no resource index defined", func() {
+			By("Creating a new resource snapshot")
+			Expect(k8sClient.Create(ctx, resourceSnapshot)).To(Succeed())
+
+			By("Creating a new cluster resource override")
+			Expect(k8sClient.Create(ctx, clusterResourceOverride)).To(Succeed())
+
+			By("Creating a new clusterStagedUpdateRun")
+			updateRun.Spec.ResourceSnapshotIndex = ""
+			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
+
+			By("Validating the clusterStagedUpdateRun stats")
+			initialized := generateSucceededInitializationStatus(crp, updateRun, policySnapshot, updateStrategy, clusterResourceOverride)
+			want := generateExecutionStartedStatus(updateRun, initialized)
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, want, "")
+
+			By("Validating the clusterStagedUpdateRun initialized consistently")
+			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, want, "")
+
+			By("Checking update run status metrics are emitted")
+			validateUpdateRunMetricsEmitted(generateProgressingMetric(updateRun))
 		})
 
 		It("Should put related ClusterResourceOverrides in the status", func() {
