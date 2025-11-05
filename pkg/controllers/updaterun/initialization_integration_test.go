@@ -748,7 +748,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			Expect(k8sClient.Create(ctx, updateStrategy)).To(Succeed())
 		})
 
-		FIt("Should fail to initialize if the specified resource snapshot index is invalid - not integer", func() {
+		It("Should fail to initialize if the specified resource snapshot index is invalid - not integer", func() {
 			By("Creating a new clusterStagedUpdateRun with invalid resource snapshot index")
 			updateRun.Spec.ResourceSnapshotIndex = "invalid-index"
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
