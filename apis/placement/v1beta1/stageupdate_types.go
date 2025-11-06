@@ -195,7 +195,7 @@ type UpdateRunSpec struct {
 	// Stopped: The update run should pause execution.
 	// Abandoned: The update run should be abandoned and terminated.
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:Enum=NotStarted;Start;Stop;Abandon
+	// +kubebuilder:validation:Enum=NotStarted;Started;Stopped;Abandoned
 	// +kubebuilder:default=NotStarted
 	State State `json:"state"`
 }
