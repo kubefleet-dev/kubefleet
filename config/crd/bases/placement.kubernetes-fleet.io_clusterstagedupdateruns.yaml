@@ -1181,9 +1181,9 @@ spec:
                 description: |-
                   State indicates the desired state of the update run.
                   NotStarted: The update run is initialized but execution has not started (default).
-                  Start: The update run should execute or resume execution.
-                  Stop: The update run should pause execution.
-                  Abandon: The update run should be abandoned and terminated.
+                  Started: The update run should execute or resume execution.
+                  Stopped: The update run should pause execution.
+                  Abandoned: The update run should be abandoned and terminated.
                 enum:
                 - NotStarted
                 - Start

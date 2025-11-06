@@ -1123,7 +1123,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 					Name: fmt.Sprintf(validupdateRunNameTemplate, GinkgoParallelProcess()),
 				},
 				Spec: placementv1beta1.UpdateRunSpec{
-					State: placementv1beta1.StateStart,
+					State: placementv1beta1.StateStarted,
 				},
 			}
 			Expect(hubClient.Create(ctx, &updateRun)).Should(Succeed())
@@ -1138,7 +1138,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 					Name: fmt.Sprintf(invalidupdateRunNameTemplate, GinkgoParallelProcess()),
 				},
 				Spec: placementv1beta1.UpdateRunSpec{
-					State: placementv1beta1.StateStart,
+					State: placementv1beta1.StateStarted,
 				},
 			}
 			err := hubClient.Create(ctx, &updateRun)
@@ -1154,7 +1154,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				},
 				Spec: placementv1beta1.UpdateRunSpec{
 					PlacementName: "test-placement",
-					State:         placementv1beta1.StateStart,
+					State:         placementv1beta1.StateStarted,
 				},
 			}
 			Expect(hubClient.Create(ctx, &updateRun)).Should(Succeed())

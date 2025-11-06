@@ -157,14 +157,14 @@ const (
 	// This is the default state after initialization completes.
 	StateNotStarted State = "NotStarted"
 
-	// StateStart indicates the update run should execute (or resume execution if paused).
-	StateStart State = "Start"
+	// StateStarted indicates the update run should execute (or resume execution if paused).
+	StateStarted State = "Started"
 
-	// StateStop indicates the update run should pause execution.
-	StateStop State = "Stop"
+	// StateStopped indicates the update run should pause execution.
+	StateStopped State = "Stopped"
 
-	// StateAbandon indicates the update run should be abandoned and terminated.
-	StateAbandon State = "Abandon"
+	// StateAbandoned indicates the update run should be abandoned and terminated.
+	StateAbandoned State = "Abandoned"
 )
 
 // UpdateRunSpec defines the desired rollout strategy and the snapshot indices of the resources to be updated.
@@ -191,9 +191,9 @@ type UpdateRunSpec struct {
 
 	// State indicates the desired state of the update run.
 	// NotStarted: The update run is initialized but execution has not started (default).
-	// Start: The update run should execute or resume execution.
-	// Stop: The update run should pause execution.
-	// Abandon: The update run should be abandoned and terminated.
+	// Started: The update run should execute or resume execution.
+	// Stopped: The update run should pause execution.
+	// Abandoned: The update run should be abandoned and terminated.
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Enum=NotStarted;Start;Stop;Abandon
 	// +kubebuilder:default=NotStarted
