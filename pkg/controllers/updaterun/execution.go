@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strconv"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -93,11 +92,8 @@ func (r *Reconciler) executeUpdatingStage(
 	toBeUpdatedBindings []placementv1beta1.BindingObj,
 ) (time.Duration, error) {
 	updateRunStatus := updateRun.GetUpdateRunStatus()
-	updateRunSpec := updateRun.GetUpdateRunSpec()
 	updatingStageStatus := &updateRunStatus.StagesStatus[updatingStageIndex]
-	// The parse error is ignored because the initialization should have caught it.
-	resourceIndex, _ := strconv.Atoi(updateRunSpec.ResourceSnapshotIndex)
-	resourceSnapshotName := fmt.Sprintf(placementv1beta1.ResourceSnapshotNameFmt, updateRunSpec.PlacementName, resourceIndex)
+	resourceSnapshotName := updateRunStatus.ResourceSnapshotName
 	updateRunRef := klog.KObj(updateRun)
 	// Create the map of the toBeUpdatedBindings.
 	toBeUpdatedBindingsMap := make(map[string]placementv1beta1.BindingObj, len(toBeUpdatedBindings))

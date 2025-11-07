@@ -120,7 +120,6 @@ spec:
                 type: string
             required:
             - placementName
-            - resourceSnapshotIndex
             - stagedRolloutStrategyName
             type: object
             x-kubernetes-validations:
@@ -814,6 +813,10 @@ spec:
                   The scheduler must identify all clusters that meet the current policy before the update run begins.
                   All clusters involved in the update run are selected from the list of clusters scheduled by the CRP according
                   to the current policy.
+                type: string
+              resourceSnapshotName:
+                description: ResourceSnapshotName records the name of the resource
+                  snapshot that the update run is based on.
                 type: string
               stagedUpdateStrategySnapshot:
                 description: |-

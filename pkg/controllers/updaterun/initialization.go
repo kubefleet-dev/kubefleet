@@ -469,42 +469,18 @@ func validateAfterStageTask(tasks []placementv1beta1.StageTask) error {
 
 // recordOverrideSnapshots finds all the override snapshots that are associated with each cluster and record them in the UpdateRun status.
 func (r *Reconciler) recordOverrideSnapshots(ctx context.Context, placementKey types.NamespacedName, updateRun placementv1beta1.UpdateRunObj) error {
-	var resourceSnapshotObjs []placementv1beta1.ResourceSnapshotObj
-	var snapshotIndex int
 	updateRunRef := klog.KObj(updateRun)
 	updateRunSpec := updateRun.GetUpdateRunSpec()
 	placementName := placementKey.Name
-	if updateRunSpec.ResourceSnapshotIndex != "" {
-		snapshotIndex, err := strconv.Atoi(updateRunSpec.ResourceSnapshotIndex)
-		if err != nil || snapshotIndex < 0 {
-			err := controller.NewUserError(fmt.Errorf("invalid resource snapshot index `%s` provided, expected an integer >= 0", updateRunSpec.ResourceSnapshotIndex))
-			klog.ErrorS(err, "Failed to parse the resource snapshot index", "updateRun", updateRunRef)
-			// no more retries here.
-			return fmt.Errorf("%w: %s", errInitializedFailed, err.Error())
-		}
 
-		resourceSnapshotList, err := controller.ListAllResourceSnapshotWithAnIndex(ctx, r.Client, updateRunSpec.ResourceSnapshotIndex, placementName, placementKey.Namespace)
-		if err != nil {
-			klog.ErrorS(err, "Failed to list the resourceSnapshots associated with the placement",
-				"placement", placementKey, "resourceSnapshotIndex", snapshotIndex, "updateRun", updateRunRef)
-			// err can be retried.
-			return controller.NewAPIServerError(true, err)
-		}
-		resourceSnapshotObjs = resourceSnapshotList.GetResourceSnapshotObjs()
-	} else {
-		latestResourceSnapshot, err := controller.ListLatestResourceSnapshots(ctx, r.Client, placementKey)
-		if err != nil {
-			klog.ErrorS(err, "Failed to list the latest resourceSnapshots associated with the placement",
-				"placement", placementKey, "updateRun", updateRunRef)
-			// err can be retried.
-			return controller.NewAPIServerError(true, err)
-		}
-		resourceSnapshotObjs = latestResourceSnapshot.GetResourceSnapshotObjs()
+	resourceSnapshotObjs, err := r.getResourceSnapshotObjs(ctx, updateRunSpec, placementName, placementKey, updateRunRef)
+	if err != nil {
+		return err
 	}
 
 	if len(resourceSnapshotObjs) == 0 {
-		err := controller.NewUserError(fmt.Errorf("no resourceSnapshots with index `%d` found for placement `%s`", snapshotIndex, placementKey))
-		klog.ErrorS(err, "No specified resourceSnapshots found", "updateRun", updateRunRef)
+		err := controller.NewUserError(fmt.Errorf("no resourceSnapshots found for placement `%s`", placementKey))
+		klog.ErrorS(err, "No resourceSnapshots found", "updateRun", updateRunRef)
 		// no more retries here.
 		return fmt.Errorf("%w: %s", errInitializedFailed, err.Error())
 	}
@@ -518,15 +494,23 @@ func (r *Reconciler) recordOverrideSnapshots(ctx context.Context, placementKey t
 			break
 		}
 	}
-
 	// No masterResourceSnapshot found.
 	if masterResourceSnapshot == nil {
-		err := controller.NewUnexpectedBehaviorError(fmt.Errorf("no master resourceSnapshot found for placement `%s` with index `%d`", placementKey, snapshotIndex))
+		err := controller.NewUnexpectedBehaviorError(fmt.Errorf("no master resourceSnapshot found for placement %s", placementKey))
 		klog.ErrorS(err, "Failed to find master resourceSnapshot", "updateRun", updateRunRef)
 		// no more retries here.
 		return fmt.Errorf("%w: %s", errInitializedFailed, err.Error())
 	}
-	klog.V(2).InfoS("Found master resourceSnapshot", "placement", placementKey, "index", snapshotIndex, "updateRun", updateRunRef)
+
+	klog.InfoS("Found master resourceSnapshot", "placement", placementKey, "index", updateRun.GetUpdateRunSpec().ResourceSnapshotIndex, "updateRun", updateRunRef)
+
+	// Update the resource snapshot name in the UpdateRun status.
+	updateRun.GetUpdateRunStatus().ResourceSnapshotName = masterResourceSnapshot.GetName()
+	if updateErr := r.Client.Status().Update(ctx, updateRun); updateErr != nil {
+		klog.ErrorS(updateErr, "Failed to update the UpdateRun status with resource snapshot name", "updateRun", klog.KObj(updateRun), "resourceSnapshot", klog.KObj(masterResourceSnapshot))
+		// updateErr can be retried.
+		return controller.NewUpdateIgnoreConflictError(updateErr)
+	}
 
 	resourceSnapshotRef := klog.KObj(masterResourceSnapshot)
 	// Fetch all the matching overrides.
@@ -553,6 +537,34 @@ func (r *Reconciler) recordOverrideSnapshots(ctx context.Context, placementKey t
 	}
 
 	return nil
+}
+
+// getResourceSnapshotObjs retrieves the resource snapshot objects either by index or latest snapshots.
+func (r *Reconciler) getResourceSnapshotObjs(ctx context.Context, updateRunSpec *placementv1beta1.UpdateRunSpec, placementName string, placementKey types.NamespacedName, updateRunRef klog.ObjectRef) ([]placementv1beta1.ResourceSnapshotObj, error) {
+	if updateRunSpec.ResourceSnapshotIndex != "" {
+		snapshotIndex, err := strconv.Atoi(updateRunSpec.ResourceSnapshotIndex)
+		if err != nil || snapshotIndex < 0 {
+			err := controller.NewUserError(fmt.Errorf("invalid resource snapshot index `%s` provided, expected an integer >= 0", updateRunSpec.ResourceSnapshotIndex))
+			klog.ErrorS(err, "Failed to parse the resource snapshot index", "updateRun", updateRunRef)
+			return nil, fmt.Errorf("%w: %s", errInitializedFailed, err.Error())
+		}
+
+		resourceSnapshotList, err := controller.ListAllResourceSnapshotWithAnIndex(ctx, r.Client, updateRunSpec.ResourceSnapshotIndex, placementName, placementKey.Namespace)
+		if err != nil {
+			klog.ErrorS(err, "Failed to list the resourceSnapshots associated with the placement",
+				"placement", placementKey, "resourceSnapshotIndex", snapshotIndex, "updateRun", updateRunRef)
+			return nil, controller.NewAPIServerError(true, err)
+		}
+		return resourceSnapshotList.GetResourceSnapshotObjs(), nil
+	}
+
+	latestResourceSnapshots, err := controller.ListLatestResourceSnapshots(ctx, r.Client, placementKey)
+	if err != nil {
+		klog.ErrorS(err, "Failed to list the latest resourceSnapshots associated with the placement",
+			"placement", placementKey, "updateRun", updateRunRef)
+		return nil, controller.NewAPIServerError(true, err)
+	}
+	return latestResourceSnapshots.GetResourceSnapshotObjs(), nil
 }
 
 // recordInitializationSucceeded records the successful initialization condition in the UpdateRun status.

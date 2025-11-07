@@ -374,6 +374,10 @@ type UpdateRunStatus struct {
 	// +kubebuilder:validation:Optional
 	PolicyObservedClusterCount int `json:"policyObservedClusterCount,omitempty"`
 
+	// ResourceSnapshotName records the name of the resource snapshot that the update run is based on.
+	// +kubebuilder:validation:Optional
+	ResourceSnapshotName string `json:"resourceSnapshotName,omitempty"`
+
 	// ApplyStrategy is the apply strategy that the stagedUpdateRun is using.
 	// It is the same as the apply strategy in the CRP when the staged update run starts.
 	// The apply strategy is not updated during the update run even if it changes in the CRP.
