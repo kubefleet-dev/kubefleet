@@ -399,7 +399,7 @@ type UpdateRunStatus struct {
 	// +listMapKey=type
 	//
 	// Conditions is an array of current observed conditions for StagedUpdateRun.
-	// Known conditions are "Initialized", "Progressing", "Succeeded", "Abandoned".
+	// Known conditions are "Initialized", "Progressing", "Succeeded".
 	// +kubebuilder:validation:Optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
