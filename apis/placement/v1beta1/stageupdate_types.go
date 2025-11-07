@@ -153,16 +153,19 @@ func (c *ClusterStagedUpdateRun) SetUpdateRunStatus(status UpdateRunStatus) {
 type State string
 
 const (
-	// StateNotStarted is the default state for an update run, where update run gets initialized but execution won't start until the state is marked as Started.
+	// StateNotStarted is the default state for an update run, it describes user intent to initialize but not execute the update run.
 	StateNotStarted State = "NotStarted"
 
-	// StateStarted indicates the update run should execute (or resume execution if paused).
+	// StateStarted describes user intent to execute (or resume execution if paused).
+	// This state can transition to Stopped or Abandoned.
 	StateStarted State = "Started"
 
-	// StateStopped indicates the update run should pause execution. The rollout can be resumed by marking the state as Started again.
+	// StateStopped describes user intent to pause the update run.
+	// This state can transition back to Started.
 	StateStopped State = "Stopped"
 
-	// StateAbandoned indicates the update run should be abandoned and terminated. An Abandoned rollout can not be Started again. It's a terminal state.
+	// StateAbandoned describes user intent to abandon the update run.
+	// This is a terminal state that cannot transition to any other state.
 	StateAbandoned State = "Abandoned"
 )
 
