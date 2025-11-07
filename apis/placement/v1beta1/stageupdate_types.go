@@ -153,19 +153,20 @@ func (c *ClusterStagedUpdateRun) SetUpdateRunStatus(status UpdateRunStatus) {
 type State string
 
 const (
-	// StateNotStarted is the default state for an update run, it describes user intent to initialize but not execute the update run.
+	// StateNotStarted describes user intent to initialize but not execute the update run.
+	// This is the default state when an update run is created.
 	StateNotStarted State = "NotStarted"
 
 	// StateStarted describes user intent to execute (or resume execution if paused).
-	// This state can transition to Stopped or Abandoned.
+	// Users can subsequently set the state to Stopped or Abandoned.
 	StateStarted State = "Started"
 
 	// StateStopped describes user intent to pause the update run.
-	// This state can transition back to Started.
+	// Users can subsequently set the state to Started or Abandoned.
 	StateStopped State = "Stopped"
 
 	// StateAbandoned describes user intent to abandon the update run.
-	// This is a terminal state that cannot transition to any other state.
+	// This is a terminal state; once set, it cannot be changed.
 	StateAbandoned State = "Abandoned"
 )
 
