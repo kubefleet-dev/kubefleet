@@ -231,12 +231,7 @@ func (r *Reconciler) executeUpdatingStage(
 	}
 
 	// After processing maxConcurrency number of cluster, check if we need to mark the update run as stuck or progressing.
-	if len(stuckClusterNames) > 0 {
-		markUpdateRunStuck(updateRun, updatingStageStatus.StageName, strings.Join(stuckClusterNames, ", "))
-	} else if finishedClusterCount > 0 {
-		// If there is no stuck cluster but some progress has been made, mark the update run as progressing.
-		markUpdateRunProgressing(updateRun)
-	}
+	aggregateUpdateRunStatus(updateRun, updatingStageStatus.StageName, stuckClusterNames, finishedClusterCount)
 
 	if finishedClusterCount == len(updatingStageStatus.Clusters) {
 		// All the clusters in the stage have been updated.
@@ -261,6 +256,15 @@ func (r *Reconciler) executeUpdatingStage(
 		return waitTime, nil
 	}
 	return clusterUpdatingWaitTime, nil
+}
+
+func aggregateUpdateRunStatus(updateRun placementv1beta1.UpdateRunObj, stageName string, stuckClusterNames []string, finishedClusterCount int) {
+	if len(stuckClusterNames) > 0 {
+		markUpdateRunStuck(updateRun, stageName, strings.Join(stuckClusterNames, ", "))
+	} else if finishedClusterCount > 0 {
+		// If there is no stuck cluster but some progress has been made, mark the update run as progressing.
+		markUpdateRunProgressing(updateRun)
+	}
 }
 
 // executeDeleteStage executes the delete stage by deleting the bindings.
