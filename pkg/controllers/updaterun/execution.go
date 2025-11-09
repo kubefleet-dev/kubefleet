@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -68,7 +69,7 @@ func (r *Reconciler) execute(
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	if updatingStageIndex < len(updateRunStatus.StagesStatus) {
 		updatingStage := &updateRunStatus.StagesStatus[updatingStageIndex]
-		waitTime, execErr := r.executeUpdatingStage(ctx, updateRun, updatingStageIndex, toBeUpdatedBindings)
+		waitTime, execErr := r.executeUpdatingStage(ctx, updateRun, updatingStageIndex, toBeUpdatedBindings, 1)
 		if errors.Is(execErr, errStagedUpdatedAborted) {
 			markStageUpdatingFailed(updatingStage, updateRun.GetGeneration(), execErr.Error())
 			return true, waitTime, execErr
@@ -91,6 +92,7 @@ func (r *Reconciler) executeUpdatingStage(
 	updateRun placementv1beta1.UpdateRunObj,
 	updatingStageIndex int,
 	toBeUpdatedBindings []placementv1beta1.BindingObj,
+	maxConcurrency int,
 ) (time.Duration, error) {
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	updateRunSpec := updateRun.GetUpdateRunSpec()
@@ -106,23 +108,40 @@ func (r *Reconciler) executeUpdatingStage(
 		toBeUpdatedBindingsMap[bindingSpec.TargetCluster] = binding
 	}
 	finishedClusterCount := 0
+	clusterUpdatingCount := 0
 
-	// Go through each cluster in the stage and check if it's updated.
-	for i := range updatingStageStatus.Clusters {
+	// List of clusters that need to be processed in parallel in this execution.
+	var clustersToProcess []placementv1beta1.ClusterUpdatingStatus
+
+	// Go through each cluster in the stage and check if it's updating/succeeded/failed.
+	for i := 0; i < len(updatingStageStatus.Clusters) && clusterUpdatingCount <= maxConcurrency; i++ {
 		clusterStatus := &updatingStageStatus.Clusters[i]
-		clusterStartedCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
+		//clusterStartedCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
 		clusterUpdateSucceededCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
-		if condition.IsConditionStatusFalse(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
-			// The cluster is marked as failed to update.
-			failedErr := fmt.Errorf("the cluster `%s` in the stage %s has failed", clusterStatus.ClusterName, updatingStageStatus.StageName)
-			klog.ErrorS(failedErr, "The cluster has failed to be updated", "updateRun", updateRunRef)
-			return 0, fmt.Errorf("%w: %s", errStagedUpdatedAborted, failedErr.Error())
+		if clusterUpdateSucceededCond == nil {
+			// The cluster is either updating or not started yet.
+			clustersToProcess = append(clustersToProcess, updatingStageStatus.Clusters[i])
+			clusterUpdatingCount++
+		} else {
+			if condition.IsConditionStatusFalse(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
+				// The cluster is marked as failed to update.
+				failedErr := fmt.Errorf("the cluster `%s` in the stage %s has failed", clusterStatus.ClusterName, updatingStageStatus.StageName)
+				klog.ErrorS(failedErr, "The cluster has failed to be updated", "updateRun", updateRunRef)
+				return 0, fmt.Errorf("%w: %s", errStagedUpdatedAborted, failedErr.Error())
+			}
+			if condition.IsConditionStatusTrue(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
+				// The cluster has been updated successfully.
+				finishedClusterCount++
+				continue
+			}
 		}
-		if condition.IsConditionStatusTrue(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
-			// The cluster has been updated successfully.
-			finishedClusterCount++
-			continue
-		}
+	}
+
+	var stuckClusterNames []string
+	// Now go through each cluster that needs to be processed.
+	for i := range clustersToProcess {
+		clusterStatus := &clustersToProcess[i]
+		clusterStartedCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
 		// The cluster is either updating or not started yet.
 		binding := toBeUpdatedBindingsMap[clusterStatus.ClusterName]
 		if !condition.IsConditionStatusTrue(clusterStartedCond, updateRun.GetGeneration()) {
@@ -172,8 +191,8 @@ func (r *Reconciler) executeUpdatingStage(
 			if finishedClusterCount == 0 {
 				markStageUpdatingStarted(updatingStageStatus, updateRun.GetGeneration())
 			}
-			// No need to continue as we only support one cluster updating at a time for now.
-			return clusterUpdatingWaitTime, nil
+			// Need to continue as we need to process at most maxConcurrency number of clusters in parallel.
+			continue
 		}
 
 		// Now the cluster has to be updating, the binding should point to the right resource snapshot and the binding should be bound.
@@ -194,20 +213,29 @@ func (r *Reconciler) executeUpdatingStage(
 		}
 
 		finished, updateErr := checkClusterUpdateResult(binding, clusterStatus, updatingStageStatus, updateRun)
+		if updateErr != nil {
+			return clusterUpdatingWaitTime, updateErr
+		}
 		if finished {
 			finishedClusterCount++
-			markUpdateRunProgressing(updateRun)
 			continue
 		} else {
 			// If cluster update has been running for more than "updateRunStuckThreshold", mark the update run as stuck.
 			timeElapsed := time.Since(clusterStartedCond.LastTransitionTime.Time)
 			if timeElapsed > updateRunStuckThreshold {
 				klog.V(2).InfoS("Time waiting for cluster update to finish passes threshold, mark the update run as stuck", "time elapsed", timeElapsed, "threshold", updateRunStuckThreshold, "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
-				markUpdateRunStuck(updateRun, updatingStageStatus.StageName, clusterStatus.ClusterName)
+				stuckClusterNames = append(stuckClusterNames, clusterStatus.ClusterName)
 			}
 		}
-		// No need to continue as we only support one cluster updating at a time for now.
-		return clusterUpdatingWaitTime, updateErr
+		// Need to continue as we need to process at most maxConcurrency number of clusters in parallel.
+	}
+
+	// After processing maxConcurrency number of cluster, check if we need to mark the update run as stuck or progressing.
+	if len(stuckClusterNames) > 0 {
+		markUpdateRunStuck(updateRun, updatingStageStatus.StageName, strings.Join(stuckClusterNames, ", "))
+	} else if finishedClusterCount > 0 {
+		// If there is no stuck cluster but some progress has been made, mark the update run as progressing.
+		markUpdateRunProgressing(updateRun)
 	}
 
 	if finishedClusterCount == len(updatingStageStatus.Clusters) {
