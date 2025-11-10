@@ -114,7 +114,7 @@ func (r *Reconciler) executeUpdatingStage(
 	var clustersToProcess []*placementv1beta1.ClusterUpdatingStatus
 
 	// Go through each cluster in the stage and check if it's updating/succeeded/failed.
-	for i := 0; i < len(updatingStageStatus.Clusters) && clusterUpdatingCount <= maxConcurrency; i++ {
+	for i := 0; i < len(updatingStageStatus.Clusters) && clusterUpdatingCount < maxConcurrency; i++ {
 		clusterStatus := &updatingStageStatus.Clusters[i]
 		clusterUpdateSucceededCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
 		if clusterUpdateSucceededCond == nil {
