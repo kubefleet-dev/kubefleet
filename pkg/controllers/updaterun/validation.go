@@ -244,13 +244,6 @@ func validateClusterUpdatingStatus(
 				updatingClusters = append(updatingClusters, stageStatus.Clusters[j].ClusterName)
 			}
 		}
-		// We don't allow more than one clusters to be updating at the same time.
-		// TODO(wantjian): support multiple clusters updating at the same time.
-		if len(updatingClusters) > 1 {
-			unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("more than one cluster is updating in the stage `%s`, clusters: %v", stageStatus.StageName, updatingClusters))
-			klog.ErrorS(unexpectedErr, "Detected more than one updating clusters in the stage", "updateRun", klog.KObj(updateRun))
-			return -1, -1, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
-		}
 	}
 	return updatingStageIndex, lastFinishedStageIndex, nil
 }
