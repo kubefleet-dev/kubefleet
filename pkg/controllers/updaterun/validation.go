@@ -234,16 +234,6 @@ func validateClusterUpdatingStatus(
 			return -1, -1, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
 		}
 		updatingStageIndex = curStage
-		// Collect the updating clusters.
-		var updatingClusters []string
-		for j := range stageStatus.Clusters {
-			clusterStartedCond := meta.FindStatusCondition(stageStatus.Clusters[j].Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
-			clusterFinishedCond := meta.FindStatusCondition(stageStatus.Clusters[j].Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
-			if condition.IsConditionStatusTrue(clusterStartedCond, updateRun.GetGeneration()) &&
-				!(condition.IsConditionStatusTrue(clusterFinishedCond, updateRun.GetGeneration()) || condition.IsConditionStatusFalse(clusterFinishedCond, updateRun.GetGeneration())) {
-				updatingClusters = append(updatingClusters, stageStatus.Clusters[j].ClusterName)
-			}
-		}
 	}
 	return updatingStageIndex, lastFinishedStageIndex, nil
 }
