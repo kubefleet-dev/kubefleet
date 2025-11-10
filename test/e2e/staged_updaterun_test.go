@@ -142,7 +142,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		})
 
 		It("Should rollout resources to all the members and complete the staged update run successfully", func() {
-			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[0], testNamespace, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[0], testNamespace, fmt.Sprintf(testResourceSnapshotNameTmpl, crpName, resourceSnapshotIndex1st), policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(surSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s/%s succeeded", testNamespace, updateRunNames[0])
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
 		})
@@ -207,7 +207,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		})
 
 		It("Should rollout resources to member-cluster-1 and member-cluster-3 too and complete the staged update run successfully", func() {
-			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[1], testNamespace, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[1], testNamespace, fmt.Sprintf(testResourceSnapshotNameTmpl, crpName, resourceSnapshotIndex1st), policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(surSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s/%s succeeded", testNamespace, updateRunNames[1])
 			By("Verify that new the configmap is updated on all member clusters")
 			for idx := range allMemberClusters {
@@ -245,7 +245,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		})
 
 		It("Should rollback resources to member-cluster-1 and member-cluster-3 too and complete the staged update run successfully", func() {
-			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[2], testNamespace, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[2], testNamespace, "", policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(surSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[1])
 			for idx := range allMemberClusters {
 				configMapActual := configMapPlacedOnClusterActual(allMemberClusters[idx], &oldConfigMap)
@@ -339,7 +339,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		})
 
 		It("Should rollout resources to member-cluster-1 too but not member-cluster-3 and complete the staged update run successfully", func() {
-			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[0], testNamespace, policySnapshotIndex1st, 2, defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0]}}, nil, nil, nil)
+			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[0], testNamespace, fmt.Sprintf(testResourceSnapshotNameTmpl, crpName, resourceSnapshotIndex1st), policySnapshotIndex1st, 2, defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0]}}, nil, nil, nil)
 			Eventually(surSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[0])
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[0], allMemberClusters[1]})
 			checkIfRemovedConfigMapFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[2]})
@@ -389,7 +389,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		})
 
 		It("Should rollout resources to member-cluster-3 too and complete the staged update run successfully", func() {
-			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[1], testNamespace, policySnapshotIndex2nd, 3, defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[1], testNamespace, "", policySnapshotIndex2nd, 3, defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(surSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s/%s succeeded", testNamespace, updateRunNames[1])
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
 		})
@@ -436,7 +436,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 
 		It("Should remove resources on member-cluster-1 and member-cluster-2 and complete the staged update run successfully", func() {
 			// need to go through two stages
-			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[2], testNamespace, policySnapshotIndex3rd, 1, defaultApplyStrategy, &strategy.Spec, [][]string{{}, {allMemberClusterNames[2]}}, []string{allMemberClusterNames[0], allMemberClusterNames[1]}, nil, nil)
+			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[2], testNamespace, "", policySnapshotIndex3rd, 1, defaultApplyStrategy, &strategy.Spec, [][]string{{}, {allMemberClusterNames[2]}}, []string{allMemberClusterNames[0], allMemberClusterNames[1]}, nil, nil)
 			Eventually(surSucceededActual, 2*updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s/%s succeeded", testNamespace, updateRunNames[2])
 			checkIfRemovedConfigMapFromMemberClusters([]*framework.Cluster{allMemberClusters[0], allMemberClusters[1]})
 			checkIfPlacedWorkResourcesOnMemberClustersConsistently([]*framework.Cluster{allMemberClusters[2]})
@@ -526,7 +526,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		})
 
 		It("Should rollout resources to member-cluster-3 and complete the staged update run successfully", func() {
-			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[0], testNamespace, policySnapshotIndex1st, 1, defaultApplyStrategy, &strategy.Spec, [][]string{{}, {allMemberClusterNames[2]}}, nil, nil, nil)
+			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[0], testNamespace, fmt.Sprintf(testResourceSnapshotNameTmpl, crpName, resourceSnapshotIndex1st), policySnapshotIndex1st, 1, defaultApplyStrategy, &strategy.Spec, [][]string{{}, {allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(surSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s/%s succeeded", testNamespace, updateRunNames[0])
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[2]})
 			checkIfRemovedConfigMapFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0], allMemberClusters[1]})
@@ -575,7 +575,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		})
 
 		It("Should rollout resources to member-cluster-1 too and complete the staged update run successfully", func() {
-			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[1], testNamespace, policySnapshotIndex1st, 3, defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[1], testNamespace, "", policySnapshotIndex1st, 3, defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(surSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s/%s succeeded", testNamespace, updateRunNames[1])
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
 		})
@@ -621,7 +621,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		})
 
 		It("Should remove resources on member-cluster-1 and complete the staged update run successfully", func() {
-			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[2], testNamespace, policySnapshotIndex1st, 2, defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[2]}}, []string{allMemberClusterNames[0]}, nil, nil)
+			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[2], testNamespace, "", policySnapshotIndex1st, 2, defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[2]}}, []string{allMemberClusterNames[0]}, nil, nil)
 			Eventually(surSucceededActual, 2*updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s/%s succeeded", testNamespace, updateRunNames[2])
 			checkIfRemovedConfigMapFromMemberClusters([]*framework.Cluster{allMemberClusters[0]})
 			checkIfPlacedWorkResourcesOnMemberClustersConsistently([]*framework.Cluster{allMemberClusters[1], allMemberClusters[2]})
@@ -766,7 +766,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		})
 
 		It("Should rollout resources to member-cluster-1 and member-cluster-3 too and complete the staged update run successfully", func() {
-			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunName, testNamespace, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, wantROs)
+			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunName, testNamespace, "", policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, wantROs)
 			Eventually(surSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s/%s succeeded", testNamespace, updateRunName)
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
 		})
@@ -860,7 +860,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		})
 
 		It("Should report diff for member-cluster-1 and member-cluster-3 too and complete the staged update run successfully", func() {
-			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunName, testNamespace, policySnapshotIndex1st, len(allMemberClusters), applyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunName, testNamespace, fmt.Sprintf(testResourceSnapshotNameTmpl, crpName, resourceSnapshotIndex1st), policySnapshotIndex1st, len(allMemberClusters), applyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(surSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s/%s succeeded", testNamespace, updateRunName)
 		})
 
@@ -969,7 +969,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			validateAndApproveNamespacedApprovalRequests(updateRunName, testNamespace, envCanary)
 
 			// Verify complete rollout.
-			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunName, testNamespace, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunName, testNamespace, fmt.Sprintf(testResourceSnapshotNameTmpl, crpName, resourceSnapshotIndex2nd), policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(surSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s/%s succeeded", testNamespace, updateRunName)
 
 			// Verify new configmap is on all member clusters.
@@ -1045,7 +1045,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 
 			validateAndApproveNamespacedApprovalRequests(updateRunName, testNamespace, envCanary)
 
-			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunName, testNamespace, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunName, testNamespace, fmt.Sprintf(testResourceSnapshotNameTmpl, crpName, resourceSnapshotIndex1st), policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(surSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s/%s succeeded", testNamespace, updateRunName)
 
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
