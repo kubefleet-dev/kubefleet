@@ -1485,7 +1485,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Label
 		})
 
 		It("Should complete the staged update run, complete CRP, and rollout updated resources to all member clusters", func() {
-			csurSucceededActual := clusterStagedUpdateRunStatusSucceededActual(updateRunNames[1], "", policySnapshotIndex1st, 3, defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[0], allMemberClusterNames[1], allMemberClusterNames[2]}}, nil, nil, nil)
+			csurSucceededActual := clusterStagedUpdateRunStatusSucceededActual(updateRunNames[1], fmt.Sprintf(testResourceSnapshotNameTmpl, crpName, resourceSnapshotIndex2nd), policySnapshotIndex1st, 3, defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[0], allMemberClusterNames[1], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(csurSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[1])
 
 			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex2nd, true, allMemberClusterNames,
@@ -1524,7 +1524,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Label
 		})
 
 		It("Should complete the staged update run, complete CRP, and re-place resources to all member clusters", func() {
-			csurSucceededActual := clusterStagedUpdateRunStatusSucceededActual(updateRunNames[1], "", policySnapshotIndex1st, 3, defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[0], allMemberClusterNames[1], allMemberClusterNames[2]}}, nil, nil, nil)
+			csurSucceededActual := clusterStagedUpdateRunStatusSucceededActual(updateRunNames[1], fmt.Sprintf(testResourceSnapshotNameTmpl, crpName, resourceSnapshotIndex1st), policySnapshotIndex1st, 3, defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[0], allMemberClusterNames[1], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(csurSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[1])
 
 			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
