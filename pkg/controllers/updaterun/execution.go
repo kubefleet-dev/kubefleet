@@ -111,16 +111,15 @@ func (r *Reconciler) executeUpdatingStage(
 	clusterUpdatingCount := 0
 
 	// List of clusters that need to be processed in parallel in this execution.
-	var clustersToProcess []placementv1beta1.ClusterUpdatingStatus
+	var clustersToProcess []*placementv1beta1.ClusterUpdatingStatus
 
 	// Go through each cluster in the stage and check if it's updating/succeeded/failed.
 	for i := 0; i < len(updatingStageStatus.Clusters) && clusterUpdatingCount <= maxConcurrency; i++ {
 		clusterStatus := &updatingStageStatus.Clusters[i]
-		//clusterStartedCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
 		clusterUpdateSucceededCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
 		if clusterUpdateSucceededCond == nil {
 			// The cluster is either updating or not started yet.
-			clustersToProcess = append(clustersToProcess, updatingStageStatus.Clusters[i])
+			clustersToProcess = append(clustersToProcess, &updatingStageStatus.Clusters[i])
 			clusterUpdatingCount++
 		} else {
 			if condition.IsConditionStatusFalse(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
@@ -140,7 +139,7 @@ func (r *Reconciler) executeUpdatingStage(
 	var stuckClusterNames []string
 	// Now go through each cluster that needs to be processed.
 	for i := range clustersToProcess {
-		clusterStatus := &clustersToProcess[i]
+		clusterStatus := clustersToProcess[i]
 		clusterStartedCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
 		// The cluster is either updating or not started yet.
 		binding := toBeUpdatedBindingsMap[clusterStatus.ClusterName]
