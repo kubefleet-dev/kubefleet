@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -137,6 +138,7 @@ func (r *Reconciler) executeUpdatingStage(
 	}
 
 	var stuckClusterNames []string
+	var clusterUpdateErrors []error
 	// Now go through each cluster that needs to be processed.
 	for i := range clustersToProcess {
 		clusterStatus := clustersToProcess[i]
@@ -156,11 +158,13 @@ func (r *Reconciler) executeUpdatingStage(
 				bindingSpec.ApplyStrategy = updateRunStatus.ApplyStrategy
 				if err := r.Client.Update(ctx, binding); err != nil {
 					klog.ErrorS(err, "Failed to update binding to be bound with the matching spec of the updateRun", "binding", klog.KObj(binding), "updateRun", updateRunRef)
-					return 0, controller.NewUpdateIgnoreConflictError(err)
+					clusterUpdateErrors = append(clusterUpdateErrors, controller.NewUpdateIgnoreConflictError(err))
+					continue
 				}
 				klog.V(2).InfoS("Updated the status of a binding to bound", "binding", klog.KObj(binding), "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
 				if err := r.updateBindingRolloutStarted(ctx, binding, updateRun); err != nil {
-					return 0, err
+					clusterUpdateErrors = append(clusterUpdateErrors, err)
+					continue
 				}
 			} else {
 				klog.V(2).InfoS("Found the first binding that is updating but the cluster status has not been updated", "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
@@ -169,20 +173,24 @@ func (r *Reconciler) executeUpdatingStage(
 					bindingSpec.State = placementv1beta1.BindingStateBound
 					if err := r.Client.Update(ctx, binding); err != nil {
 						klog.ErrorS(err, "Failed to update a binding to be bound", "binding", klog.KObj(binding), "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
-						return 0, controller.NewUpdateIgnoreConflictError(err)
+						clusterUpdateErrors = append(clusterUpdateErrors, controller.NewUpdateIgnoreConflictError(err))
+						continue
 					}
 					klog.V(2).InfoS("Updated the status of a binding to bound", "binding", klog.KObj(binding), "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
 					if err := r.updateBindingRolloutStarted(ctx, binding, updateRun); err != nil {
-						return 0, err
+						clusterUpdateErrors = append(clusterUpdateErrors, err)
+						continue
 					}
 				} else if !condition.IsConditionStatusTrue(meta.FindStatusCondition(binding.GetBindingStatus().Conditions, string(placementv1beta1.ResourceBindingRolloutStarted)), binding.GetGeneration()) {
 					klog.V(2).InfoS("The binding is bound and up-to-date but the generation is updated by the scheduler, update rolloutStarted status again", "binding", klog.KObj(binding), "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
 					if err := r.updateBindingRolloutStarted(ctx, binding, updateRun); err != nil {
-						return 0, err
+						clusterUpdateErrors = append(clusterUpdateErrors, err)
+						continue
 					}
 				} else {
 					if _, updateErr := checkClusterUpdateResult(binding, clusterStatus, updatingStageStatus, updateRun); updateErr != nil {
-						return clusterUpdatingWaitTime, updateErr
+						clusterUpdateErrors = append(clusterUpdateErrors, updateErr)
+						continue
 					}
 				}
 			}
@@ -208,12 +216,13 @@ func (r *Reconciler) executeUpdatingStage(
 				"bindingSpecInSync", inSync, "bindingState", bindingSpec.State,
 				"bindingRolloutStarted", rolloutStarted, "binding", klog.KObj(binding), "updateRun", updateRunRef)
 			markClusterUpdatingFailed(clusterStatus, updateRun.GetGeneration(), preemptedErr.Error())
-			return 0, fmt.Errorf("%w: %s", errStagedUpdatedAborted, preemptedErr.Error())
+			clusterUpdateErrors = append(clusterUpdateErrors, fmt.Errorf("%w: %s", errStagedUpdatedAborted, preemptedErr.Error()))
+			continue
 		}
 
 		finished, updateErr := checkClusterUpdateResult(binding, clusterStatus, updatingStageStatus, updateRun)
 		if updateErr != nil {
-			return clusterUpdatingWaitTime, updateErr
+			clusterUpdateErrors = append(clusterUpdateErrors, updateErr)
 		}
 		if finished {
 			finishedClusterCount++
@@ -231,6 +240,11 @@ func (r *Reconciler) executeUpdatingStage(
 
 	// After processing maxConcurrency number of cluster, check if we need to mark the update run as stuck or progressing.
 	aggregateUpdateRunStatus(updateRun, updatingStageStatus.StageName, stuckClusterNames, finishedClusterCount)
+
+	// After processing all clusters, aggregate and return errors
+	if len(clusterUpdateErrors) > 0 {
+		return 0, utilerrors.NewAggregate(clusterUpdateErrors)
+	}
 
 	if finishedClusterCount == len(updatingStageStatus.Clusters) {
 		// All the clusters in the stage have been updated.
