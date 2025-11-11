@@ -484,7 +484,6 @@ func (r *Reconciler) recordOverrideSnapshots(ctx context.Context, placementKey t
 		// only master has this annotation.
 		if len(resourceSnapshot.GetAnnotations()[placementv1beta1.ResourceGroupHashAnnotation]) != 0 {
 			masterResourceSnapshot = resourceSnapshot
-
 			break
 		}
 	}
