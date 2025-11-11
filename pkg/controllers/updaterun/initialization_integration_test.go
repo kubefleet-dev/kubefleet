@@ -774,7 +774,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
 		})
 
-		FIt("Should fail to initialize if the specified resource snapshot is not found - no resourceSnapshots at all", func() {
+		It("Should fail to initialize if the specified resource snapshot is not found - no resourceSnapshots at all", func() {
 			By("Creating a new clusterStagedUpdateRun")
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
@@ -785,7 +785,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
 		})
 
-		FIt("Should fail to initialize if the specified resource snapshot is not found - no CRP label found", func() {
+		It("Should fail to initialize if the specified resource snapshot is not found - no CRP label found", func() {
 			By("Creating a new resource snapshot associated with another CRP")
 			resourceSnapshot.Labels[placementv1beta1.PlacementTrackingLabel] = "not-exist-crp"
 			Expect(k8sClient.Create(ctx, resourceSnapshot)).To(Succeed())
@@ -800,7 +800,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
 		})
 
-		FIt("Should fail to initialize if the specified resource snapshot is not found - no resource index label found", func() {
+		It("Should fail to initialize if the specified resource snapshot is not found - no resource index label found", func() {
 			By("Creating a new resource snapshot with a different index label")
 			resourceSnapshot.Labels[placementv1beta1.ResourceIndexLabel] = testResourceSnapshotIndex + "1"
 			Expect(k8sClient.Create(ctx, resourceSnapshot)).To(Succeed())
