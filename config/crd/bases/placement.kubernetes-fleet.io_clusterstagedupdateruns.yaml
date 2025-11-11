@@ -1895,7 +1895,7 @@ spec:
                   to the current policy.
                 type: string
               resourceSnapshotName:
-                description: ResourceSnapshotName records the name of the resource
+                description: ResourceSnapshotName records the name of the master resource
                   snapshot that the update run is based on.
                 type: string
               stagedUpdateStrategySnapshot:

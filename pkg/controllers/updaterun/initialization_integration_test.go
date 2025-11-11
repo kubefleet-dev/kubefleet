@@ -877,6 +877,80 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateUpdateRunMetricsEmitted(generateProgressingMetric(updateRun))
 		})
 	})
+
+	Context("Test multiple resource snapshots", func() {
+		var resourceSnapshot2, resourceSnapshot3 *placementv1beta1.ClusterResourceSnapshot
+		BeforeEach(func() {
+			By("Creating a new clusterResourcePlacement")
+			Expect(k8sClient.Create(ctx, crp)).To(Succeed())
+
+			By("Creating scheduling policy snapshot")
+			Expect(k8sClient.Create(ctx, policySnapshot)).To(Succeed())
+
+			By("Setting the latest policy snapshot condition as fully scheduled")
+			meta.SetStatusCondition(&policySnapshot.Status.Conditions, metav1.Condition{
+				Type:               string(placementv1beta1.PolicySnapshotScheduled),
+				Status:             metav1.ConditionTrue,
+				ObservedGeneration: policySnapshot.Generation,
+				Reason:             "scheduled",
+			})
+			Expect(k8sClient.Status().Update(ctx, policySnapshot)).Should(Succeed(), "failed to update the policy snapshot condition")
+
+			By("Creating a new resource snapshot")
+			resourceSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] = "false"
+			Expect(k8sClient.Create(ctx, resourceSnapshot)).To(Succeed())
+
+			By("Creating a another new resource snapshot")
+			resourceSnapshot2 = generateTestClusterResourceSnapshot()
+			resourceSnapshot2.Name = testCRPName + "-1-snapshot"
+			resourceSnapshot2.Labels[placementv1beta1.IsLatestSnapshotLabel] = "false"
+			resourceSnapshot2.Labels[placementv1beta1.ResourceIndexLabel] = "1"
+			Expect(k8sClient.Create(ctx, resourceSnapshot2)).To(Succeed())
+
+			By("Creating a latest master resource snapshot")
+			resourceSnapshot3 = generateTestClusterResourceSnapshot()
+			resourceSnapshot3.Name = testCRPName + "-2-snapshot"
+			resourceSnapshot3.Labels[placementv1beta1.ResourceIndexLabel] = "2"
+			Expect(k8sClient.Create(ctx, resourceSnapshot3)).To(Succeed())
+
+			By("Creating the member clusters")
+			for _, cluster := range targetClusters {
+				Expect(k8sClient.Create(ctx, cluster)).To(Succeed())
+			}
+			for _, cluster := range unscheduledClusters {
+				Expect(k8sClient.Create(ctx, cluster)).To(Succeed())
+			}
+
+			By("Creating a bunch of ClusterResourceBindings")
+			for _, binding := range resourceBindings {
+				Expect(k8sClient.Create(ctx, binding)).To(Succeed())
+			}
+
+			By("Creating a clusterStagedUpdateStrategy")
+			Expect(k8sClient.Create(ctx, updateStrategy)).To(Succeed())
+		})
+
+		It("Should pick latest master resource snapshot", func() {
+			By("Creating a new cluster resource override")
+			Expect(k8sClient.Create(ctx, clusterResourceOverride)).To(Succeed())
+
+			By("Creating a new clusterStagedUpdateRun")
+			updateRun.Spec.ResourceSnapshotIndex = ""
+			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
+
+			By("Validating the clusterStagedUpdateRun stats")
+			initialized := generateSucceededInitializationStatus(crp, updateRun, policySnapshot, updateStrategy, clusterResourceOverride)
+			initialized.ResourceSnapshotName = resourceSnapshot3.Name
+			want := generateExecutionStartedStatus(updateRun, initialized)
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, want, "")
+
+			By("Validating the clusterStagedUpdateRun initialized consistently")
+			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, want, "")
+
+			By("Checking update run status metrics are emitted")
+			validateUpdateRunMetricsEmitted(generateProgressingMetric(updateRun))
+		})
+	})
 })
 
 func validateFailedInitCondition(ctx context.Context, updateRun *placementv1beta1.ClusterStagedUpdateRun, message string) {

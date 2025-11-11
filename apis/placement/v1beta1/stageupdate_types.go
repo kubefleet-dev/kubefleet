@@ -374,7 +374,7 @@ type UpdateRunStatus struct {
 	// +kubebuilder:validation:Optional
 	PolicyObservedClusterCount int `json:"policyObservedClusterCount,omitempty"`
 
-	// ResourceSnapshotName records the name of the resource snapshot that the update run is based on.
+	// ResourceSnapshotName records the name of the master resource snapshot that the update run is based on.
 	// +kubebuilder:validation:Optional
 	ResourceSnapshotName string `json:"resourceSnapshotName,omitempty"`
 
