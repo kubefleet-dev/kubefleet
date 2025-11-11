@@ -1668,7 +1668,6 @@ func createClusterStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapsho
 			PlacementName:            crpName,
 			ResourceSnapshotIndex:    resourceSnapshotIndex,
 			StagedUpdateStrategyName: strategyName,
-			State:                    placementv1beta1.StateStarted,
 		},
 	}
 	Expect(hubClient.Create(ctx, updateRun)).To(Succeed(), "Failed to create ClusterStagedUpdateRun %s", updateRunName)

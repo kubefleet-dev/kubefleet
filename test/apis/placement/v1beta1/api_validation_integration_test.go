@@ -1122,9 +1122,6 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name: fmt.Sprintf(validupdateRunNameTemplate, GinkgoParallelProcess()),
 				},
-				Spec: placementv1beta1.UpdateRunSpec{
-					State: placementv1beta1.StateStarted,
-				},
 			}
 			Expect(hubClient.Create(ctx, &updateRun)).Should(Succeed())
 			Expect(hubClient.Delete(ctx, &updateRun)).Should(Succeed())
@@ -1136,9 +1133,6 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			updateRun := placementv1beta1.ClusterStagedUpdateRun{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: fmt.Sprintf(invalidupdateRunNameTemplate, GinkgoParallelProcess()),
-				},
-				Spec: placementv1beta1.UpdateRunSpec{
-					State: placementv1beta1.StateStarted,
 				},
 			}
 			err := hubClient.Create(ctx, &updateRun)
@@ -1154,7 +1148,6 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				},
 				Spec: placementv1beta1.UpdateRunSpec{
 					PlacementName: "test-placement",
-					State:         placementv1beta1.StateStarted,
 				},
 			}
 			Expect(hubClient.Create(ctx, &updateRun)).Should(Succeed())

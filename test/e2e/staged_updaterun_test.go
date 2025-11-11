@@ -1201,7 +1201,6 @@ func createStagedUpdateRunSucceed(updateRunName, namespace, rpName, resourceSnap
 			PlacementName:            rpName,
 			ResourceSnapshotIndex:    resourceSnapshotIndex,
 			StagedUpdateStrategyName: strategyName,
-			State:                    placementv1beta1.StateStarted,
 		},
 	}
 	Expect(hubClient.Create(ctx, updateRun)).To(Succeed(), "Failed to create StagedUpdateRun %s", updateRunName)
