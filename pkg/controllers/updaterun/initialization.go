@@ -495,12 +495,11 @@ func (r *Reconciler) recordOverrideSnapshots(ctx context.Context, placementKey t
 		return fmt.Errorf("%w: %s", errInitializedFailed, err.Error())
 	}
 
-	klog.InfoS("Found master resourceSnapshot", "placement", placementKey, "masterResourceSnapshot", masterResourceSnapshot.GetName(), "updateRun", updateRunRef)
+	klog.V(2).InfoS("Found master resourceSnapshot", "placement", placementKey, "masterResourceSnapshot", masterResourceSnapshot.GetName(), "updateRun", updateRunRef)
 
 	// Update the resource snapshot name in the UpdateRun status.
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	updateRunStatus.ResourceSnapshotName = masterResourceSnapshot.GetName()
-	updateRun.SetUpdateRunStatus(*updateRunStatus)
 	if updateErr := r.Client.Status().Update(ctx, updateRun); updateErr != nil {
 		klog.ErrorS(updateErr, "Failed to update the UpdateRun status with resource snapshot name", "updateRun", klog.KObj(updateRun), "resourceSnapshot", klog.KObj(masterResourceSnapshot))
 		// updateErr can be retried.

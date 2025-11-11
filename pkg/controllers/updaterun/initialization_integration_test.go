@@ -930,6 +930,16 @@ var _ = Describe("Updaterun initialization tests", func() {
 			Expect(k8sClient.Create(ctx, updateStrategy)).To(Succeed())
 		})
 
+		AfterEach(func() {
+			By("Deleting the second clusterResourceSnapshot")
+			Expect(k8sClient.Delete(ctx, resourceSnapshot2)).To(Succeed())
+
+			By("Deleting the third clusterResourceSnapshot")
+			Expect(k8sClient.Delete(ctx, resourceSnapshot3)).To(Succeed())
+
+			// Everything else should be deleted by the outer AfterEach
+		})
+
 		It("Should pick latest master resource snapshot", func() {
 			By("Creating a new cluster resource override")
 			Expect(k8sClient.Create(ctx, clusterResourceOverride)).To(Succeed())

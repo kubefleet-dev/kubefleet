@@ -1,13 +1,22 @@
 package updaterun
 
 import (
+	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	v1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
 func TestValidateAfterStageTask(t *testing.T) {
@@ -81,6 +90,189 @@ func TestValidateAfterStageTask(t *testing.T) {
 				}
 			} else if err != nil {
 				t.Errorf("validateAfterStageTask() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestGetResourceSnapshotObjs(t *testing.T) {
+	ctx := context.Background()
+	placementName := "test-placement"
+	placementKey := types.NamespacedName{Name: placementName, Namespace: "test-namespace"}
+	updateRunRef := klog.ObjectRef{
+		Name:      "test-updaterun",
+		Namespace: "test-namespace",
+	}
+
+	// Create test resource snapshots
+	masterResourceSnapshot := &v1beta1.ClusterResourceSnapshot{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      placementName + "-1-snapshot",
+			Namespace: placementKey.Namespace,
+			Labels: map[string]string{
+				v1beta1.PlacementTrackingLabel:      placementName,
+				v1beta1.ResourceIndexLabel:          "1",
+				v1beta1.IsLatestSnapshotLabel:       "false",
+				v1beta1.ResourceGroupHashAnnotation: "hash123",
+			},
+			Annotations: map[string]string{
+				v1beta1.ResourceGroupHashAnnotation: "hash123",
+			},
+		},
+	}
+
+	tests := []struct {
+		name              string
+		updateRunSpec     *v1beta1.UpdateRunSpec
+		resourceSnapshots []runtime.Object
+		wantSnapshotCount int
+		wantErr           bool
+		wantErrMsg        string
+	}{
+		// negative cases only
+		{
+			name: "invalid resource snapshot index - non-numeric",
+			updateRunSpec: &v1beta1.UpdateRunSpec{
+				ResourceSnapshotIndex: "invalid",
+			},
+			resourceSnapshots: []runtime.Object{},
+			wantSnapshotCount: 0,
+			wantErr:           true,
+			wantErrMsg:        "invalid resource snapshot index `invalid` provided, expected an integer >= 0",
+		},
+		{
+			name: "invalid resource snapshot index - negative",
+			updateRunSpec: &v1beta1.UpdateRunSpec{
+				ResourceSnapshotIndex: "-1",
+			},
+			resourceSnapshots: []runtime.Object{},
+			wantSnapshotCount: 0,
+			wantErr:           true,
+			wantErrMsg:        "invalid resource snapshot index `-1` provided, expected an integer >= 0",
+		},
+		{
+			name: "no resource snapshots found for specific index",
+			updateRunSpec: &v1beta1.UpdateRunSpec{
+				ResourceSnapshotIndex: "999",
+			},
+			resourceSnapshots: []runtime.Object{
+				masterResourceSnapshot, // has index "1", not "999"
+			},
+			wantSnapshotCount: 0,
+			wantErr:           true,
+			wantErrMsg:        fmt.Sprintf("no resourceSnapshots with index `999` found for placement `%s`", placementKey),
+		},
+		{
+			name: "no latest resource snapshots found",
+			updateRunSpec: &v1beta1.UpdateRunSpec{
+				ResourceSnapshotIndex: "",
+			},
+			resourceSnapshots: []runtime.Object{}, // no snapshots
+			wantSnapshotCount: 0,
+			wantErr:           true,
+			wantErrMsg:        fmt.Sprintf("no resourceSnapshots found for placement `%s`", placementKey),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a fake client with the test objects
+			s := runtime.NewScheme()
+			_ = v1beta1.AddToScheme(s)
+			_ = scheme.AddToScheme(s)
+
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(s).
+				WithRuntimeObjects(tt.resourceSnapshots...).
+				Build()
+
+			// Create reconciler with fake client
+			r := &Reconciler{
+				Client: fakeClient,
+			}
+
+			// Call the function
+			result, err := r.getResourceSnapshotObjs(ctx, tt.updateRunSpec, placementName, placementKey, updateRunRef)
+
+			// Verify error expectations
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("getResourceSnapshotObjs() error = nil, wantErr %v", tt.wantErr)
+					return
+				}
+				// Check if the error message contains the expected substring
+				if !strings.Contains(err.Error(), tt.wantErrMsg) {
+					t.Errorf("getResourceSnapshotObjs() error = %v, want error containing %v", err, tt.wantErrMsg)
+				}
+				return
+			}
+
+			// Verify no error when not expected
+			if err != nil {
+				t.Errorf("getResourceSnapshotObjs() unexpected error = %v", err)
+				return
+			}
+
+			// Verify result count
+			if len(result) != tt.wantSnapshotCount {
+				t.Errorf("getResourceSnapshotObjs() returned %d snapshots, want %d", len(result), tt.wantSnapshotCount)
+				return
+			}
+		})
+	}
+}
+
+// fakeListErrorClient wraps a client and always returns an error on List.
+type fakeListErrorClient struct {
+	client.Client
+}
+
+func (f *fakeListErrorClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	return fmt.Errorf("simulated list error")
+}
+
+func TestGetResourceSnapshotObjs_ListError(t *testing.T) {
+	tests := []struct {
+		name       string
+		spec       *v1beta1.UpdateRunSpec
+		wantErrMsg string
+	}{
+		{
+			name: "list error simulation with resource index",
+			spec: &v1beta1.UpdateRunSpec{
+				ResourceSnapshotIndex: "1",
+			},
+			wantErrMsg: "Failed to list the resourceSnapshots associated with the placement for the given index",
+		},
+		{
+			name: "list error simulation without resource index",
+			spec: &v1beta1.UpdateRunSpec{
+				ResourceSnapshotIndex: "",
+			},
+			wantErrMsg: "Failed to list the resourceSnapshots associated with the placement",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			placementName := "test-placement"
+			placementKey := types.NamespacedName{Name: placementName, Namespace: "test-namespace"}
+			updateRunRef := klog.ObjectRef{
+				Name:      "test-updaterun",
+				Namespace: "test-namespace",
+			}
+
+			s := runtime.NewScheme()
+			_ = v1beta1.AddToScheme(s)
+			_ = scheme.AddToScheme(s)
+
+			fakeClient := &fakeListErrorClient{Client: fake.NewClientBuilder().WithScheme(s).Build()}
+			r := &Reconciler{Client: fakeClient}
+
+			_, err := r.getResourceSnapshotObjs(ctx, tt.spec, placementName, placementKey, updateRunRef)
+			if err == nil || !strings.Contains(err.Error(), "simulated list error") {
+				t.Errorf("expected simulated list error, got: %v", err)
 			}
 		})
 	}
