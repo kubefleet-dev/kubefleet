@@ -1154,8 +1154,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: The desired state of ClusterStagedUpdateRun. The spec is
-              immutable.
+            description: The desired state of ClusterStagedUpdateRun.
             properties:
               placementName:
                 description: |-
@@ -1164,11 +1163,17 @@ spec:
                   it's up to the DevOps team to ensure they don't conflict with each other.
                 maxLength: 255
                 type: string
+                x-kubernetes-validations:
+                - message: placementName is immutable
+                  rule: self == oldSelf
               resourceSnapshotIndex:
                 description: |-
                   The resource snapshot index of the selected resources to be updated across clusters.
                   The index represents a group of resource snapshots that includes all the resources a ResourcePlacement selected.
                 type: string
+                x-kubernetes-validations:
+                - message: resourceSnapshotIndex is immutable
+                  rule: self == oldSelf
               stagedRolloutStrategyName:
                 description: |-
                   The name of the update strategy that specifies the stages and the sequence
@@ -1176,6 +1181,9 @@ spec:
                   are computed according to the referenced strategy when the update run starts
                   and recorded in the status field.
                 type: string
+                x-kubernetes-validations:
+                - message: stagedRolloutStrategyName is immutable
+                  rule: self == oldSelf
               state:
                 default: NotStarted
                 description: |-
@@ -1196,8 +1204,22 @@ spec:
             - stagedRolloutStrategyName
             type: object
             x-kubernetes-validations:
-            - message: The spec field is immutable
-              rule: self == oldSelf
+            - message: 'invalid state transition: cannot transition from NotStarted
+                to Stopped'
+              rule: '!has(oldSelf.state) || oldSelf.state != ''NotStarted'' || self.state
+                != ''Stopped'''
+            - message: 'invalid state transition: cannot transition from Started to
+                NotStarted'
+              rule: '!has(oldSelf.state) || oldSelf.state != ''Started'' || self.state
+                != ''NotStarted'''
+            - message: 'invalid state transition: cannot transition from Stopped to
+                NotStarted'
+              rule: '!has(oldSelf.state) || oldSelf.state != ''Stopped'' || self.state
+                != ''NotStarted'''
+            - message: 'invalid state transition: Abandoned is a terminal state and
+                cannot transition to any other state'
+              rule: '!has(oldSelf.state) || oldSelf.state != ''Abandoned'' || self.state
+                == ''Abandoned'''
           status:
             description: The observed status of ClusterStagedUpdateRun.
             properties:

@@ -108,9 +108,8 @@ type ClusterStagedUpdateRun struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// The desired state of ClusterStagedUpdateRun. The spec is immutable.
+	// The desired state of ClusterStagedUpdateRun.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="The spec field is immutable"
 	Spec UpdateRunSpec `json:"spec"`
 
 	// The observed status of ClusterStagedUpdateRun.
@@ -172,17 +171,23 @@ const (
 
 // UpdateRunSpec defines the desired rollout strategy and the snapshot indices of the resources to be updated.
 // It specifies a stage-by-stage update process across selected clusters for the given ResourcePlacement object.
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.state) || oldSelf.state != 'NotStarted' || self.state != 'Stopped'",message="invalid state transition: cannot transition from NotStarted to Stopped"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.state) || oldSelf.state != 'Started' || self.state != 'NotStarted'",message="invalid state transition: cannot transition from Started to NotStarted"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.state) || oldSelf.state != 'Stopped' || self.state != 'NotStarted'",message="invalid state transition: cannot transition from Stopped to NotStarted"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.state) || oldSelf.state != 'Abandoned' || self.state == 'Abandoned'",message="invalid state transition: Abandoned is a terminal state and cannot transition to any other state"
 type UpdateRunSpec struct {
 	// PlacementName is the name of placement that this update run is applied to.
 	// There can be multiple active update runs for each placement, but
 	// it's up to the DevOps team to ensure they don't conflict with each other.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MaxLength=255
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="placementName is immutable"
 	PlacementName string `json:"placementName"`
 
 	// The resource snapshot index of the selected resources to be updated across clusters.
 	// The index represents a group of resource snapshots that includes all the resources a ResourcePlacement selected.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="resourceSnapshotIndex is immutable"
 	ResourceSnapshotIndex string `json:"resourceSnapshotIndex"`
 
 	// The name of the update strategy that specifies the stages and the sequence
@@ -190,6 +195,7 @@ type UpdateRunSpec struct {
 	// are computed according to the referenced strategy when the update run starts
 	// and recorded in the status field.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="stagedRolloutStrategyName is immutable"
 	StagedUpdateStrategyName string `json:"stagedRolloutStrategyName"`
 
 	// State indicates the desired state of the update run.
@@ -795,9 +801,8 @@ type StagedUpdateRun struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// The desired state of StagedUpdateRun. The spec is immutable.
+	// The desired state of StagedUpdateRun.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="The spec field is immutable"
 	Spec UpdateRunSpec `json:"spec"`
 
 	// The observed status of StagedUpdateRun.
