@@ -74,8 +74,8 @@ func (r *Reconciler) execute(
 			return false, 0, beforeStageTaskErr
 		}
 		if !approved {
-			markStageUpdatingWaiting(updatingStage, updateRun.GetGeneration(), "before")
-			markUpdateRunWaiting(updateRun, updatingStage.StageName, "before")
+			markStageUpdatingWaiting(updatingStage, updateRun.GetGeneration(), true)
+			markUpdateRunWaiting(updateRun, updatingStage.StageName, true)
 			return false, clusterUpdatingWaitTime, nil
 		}
 		waitTime, execErr := r.executeUpdatingStage(ctx, updateRun, updatingStageIndex, toBeUpdatedBindings)
@@ -303,8 +303,8 @@ func (r *Reconciler) executeUpdatingStage(
 
 	if finishedClusterCount == len(updatingStageStatus.Clusters) {
 		// All the clusters in the stage have been updated.
-		markUpdateRunWaiting(updateRun, updatingStageStatus.StageName, "after")
-		markStageUpdatingWaiting(updatingStageStatus, updateRun.GetGeneration(), "after")
+		markUpdateRunWaiting(updateRun, updatingStageStatus.StageName, false)
+		markStageUpdatingWaiting(updatingStageStatus, updateRun.GetGeneration(), false)
 		klog.V(2).InfoS("The stage has finished all cluster updating", "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
 		// Check if the after stage tasks are ready.
 		approved, waitTime, err := r.checkAfterStageTasksStatus(ctx, updatingStageIndex, updateRun)
@@ -647,9 +647,9 @@ func markUpdateRunStuck(updateRun placementv1beta1.UpdateRunObj, stageName, clus
 }
 
 // markUpdateRunWaiting marks the updateRun as waiting in memory.
-func markUpdateRunWaiting(updateRun placementv1beta1.UpdateRunObj, stageName string, task string) {
+func markUpdateRunWaiting(updateRun placementv1beta1.UpdateRunObj, stageName string, isBeforeStage bool) {
 	updateRunStatus := updateRun.GetUpdateRunStatus()
-	if task == "before" {
+	if isBeforeStage {
 		meta.SetStatusCondition(&updateRunStatus.Conditions, metav1.Condition{
 			Type:               string(placementv1beta1.StagedUpdateRunConditionProgressing),
 			Status:             metav1.ConditionFalse,
@@ -683,8 +683,8 @@ func markStageUpdatingStarted(stageUpdatingStatus *placementv1beta1.StageUpdatin
 }
 
 // markStageUpdatingWaiting marks the stage updating status as waiting in memory.
-func markStageUpdatingWaiting(stageUpdatingStatus *placementv1beta1.StageUpdatingStatus, generation int64, stageType string) {
-	if stageType == "before" {
+func markStageUpdatingWaiting(stageUpdatingStatus *placementv1beta1.StageUpdatingStatus, generation int64, isBeforeStage bool) {
+	if isBeforeStage {
 		meta.SetStatusCondition(&stageUpdatingStatus.Conditions, metav1.Condition{
 			Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
 			Status:             metav1.ConditionFalse,

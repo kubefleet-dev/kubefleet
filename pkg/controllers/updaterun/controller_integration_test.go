@@ -721,7 +721,7 @@ func generateTrueCondition(obj client.Object, condType any) metav1.Condition {
 		}
 		typeStr = string(cond)
 	case placementv1beta1.StageTaskConditionType:
-		return generateTrueStageTaskCondition(obj, cond, "after")
+		return generateTrueStageTaskCondition(obj, cond, false)
 	case placementv1beta1.ApprovalRequestConditionType:
 		switch cond {
 		case placementv1beta1.ApprovalRequestConditionApproved:
@@ -810,7 +810,7 @@ func generateFalseProgressingCondition(obj client.Object, condType any, succeede
 	return falseCond
 }
 
-func generateTrueStageTaskCondition(obj client.Object, condType any, stageType string) metav1.Condition {
+func generateTrueStageTaskCondition(obj client.Object, condType any, isBeforeStage bool) metav1.Condition {
 	reason, typeStr := "", ""
 	switch cond := condType.(type) {
 	case placementv1beta1.StageTaskConditionType:
@@ -818,13 +818,13 @@ func generateTrueStageTaskCondition(obj client.Object, condType any, stageType s
 		case placementv1beta1.StageTaskConditionWaitTimeElapsed:
 			reason = condition.AfterStageTaskWaitTimeElapsedReason
 		case placementv1beta1.StageTaskConditionApprovalRequestCreated:
-			if stageType == "before" {
+			if isBeforeStage {
 				reason = condition.BeforeStageTaskApprovalRequestCreatedReason
 			} else {
 				reason = condition.AfterStageTaskApprovalRequestCreatedReason
 			}
 		case placementv1beta1.StageTaskConditionApprovalRequestApproved:
-			if stageType == "before" {
+			if isBeforeStage {
 				reason = condition.BeforeStageTaskApprovalRequestApprovedReason
 			} else {
 				reason = condition.AfterStageTaskApprovalRequestApprovedReason
