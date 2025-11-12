@@ -108,19 +108,17 @@ func (r *Reconciler) executeUpdatingStage(
 		bindingSpec := binding.GetBindingSpec()
 		toBeUpdatedBindingsMap[bindingSpec.TargetCluster] = binding
 	}
+
 	finishedClusterCount := 0
 	clusterUpdatingCount := 0
-
-	// List of clusters that need to be processed in parallel in this execution.
-	var clustersToProcess []*placementv1beta1.ClusterUpdatingStatus
-
+	var stuckClusterNames []string
+	var clusterUpdateErrors []error
 	// Go through each cluster in the stage and check if it's updating/succeeded/failed.
 	for i := 0; i < len(updatingStageStatus.Clusters) && clusterUpdatingCount < maxConcurrency; i++ {
 		clusterStatus := &updatingStageStatus.Clusters[i]
 		clusterUpdateSucceededCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
 		if clusterUpdateSucceededCond == nil {
 			// The cluster is either updating or not started yet.
-			clustersToProcess = append(clustersToProcess, &updatingStageStatus.Clusters[i])
 			clusterUpdatingCount++
 		} else {
 			if condition.IsConditionStatusFalse(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
@@ -135,13 +133,7 @@ func (r *Reconciler) executeUpdatingStage(
 				continue
 			}
 		}
-	}
-
-	var stuckClusterNames []string
-	var clusterUpdateErrors []error
-	// Now go through each cluster that needs to be processed.
-	for i := range clustersToProcess {
-		clusterStatus := clustersToProcess[i]
+		// The cluster needs to be processed.
 		clusterStartedCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
 		// The cluster is either updating or not started yet.
 		binding := toBeUpdatedBindingsMap[clusterStatus.ClusterName]
@@ -226,6 +218,8 @@ func (r *Reconciler) executeUpdatingStage(
 		}
 		if finished {
 			finishedClusterCount++
+			// The cluster has finished successfully, we can process another cluster in this round.
+			clusterUpdatingCount--
 			continue
 		} else {
 			// If cluster update has been running for more than "updateRunStuckThreshold", mark the update run as stuck.
@@ -268,6 +262,7 @@ func (r *Reconciler) executeUpdatingStage(
 		}
 		return waitTime, nil
 	}
+	// Some clusters are still updating.
 	return clusterUpdatingWaitTime, nil
 }
 
