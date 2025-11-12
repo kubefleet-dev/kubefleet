@@ -2,6 +2,7 @@ package updaterun
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -10,30 +11,30 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	v1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
 func TestValidateAfterStageTask(t *testing.T) {
 	tests := []struct {
 		name    string
-		task    []v1beta1.StageTask
+		task    []placementv1beta1.StageTask
 		wantErr bool
 		errMsg  string
 	}{
 		{
 			name: "valid AfterTasks",
-			task: []v1beta1.StageTask{
+			task: []placementv1beta1.StageTask{
 				{
-					Type: v1beta1.StageTaskTypeApproval,
+					Type: placementv1beta1.StageTaskTypeApproval,
 				},
 				{
-					Type:     v1beta1.StageTaskTypeTimedWait,
+					Type:     placementv1beta1.StageTaskTypeTimedWait,
 					WaitTime: ptr.To(metav1.Duration{Duration: 5 * time.Minute}),
 				},
 			},
@@ -41,13 +42,13 @@ func TestValidateAfterStageTask(t *testing.T) {
 		},
 		{
 			name: "invalid AfterTasks, same type of tasks",
-			task: []v1beta1.StageTask{
+			task: []placementv1beta1.StageTask{
 				{
-					Type:     v1beta1.StageTaskTypeTimedWait,
+					Type:     placementv1beta1.StageTaskTypeTimedWait,
 					WaitTime: ptr.To(metav1.Duration{Duration: 1 * time.Minute}),
 				},
 				{
-					Type:     v1beta1.StageTaskTypeTimedWait,
+					Type:     placementv1beta1.StageTaskTypeTimedWait,
 					WaitTime: ptr.To(metav1.Duration{Duration: 5 * time.Minute}),
 				},
 			},
@@ -56,9 +57,9 @@ func TestValidateAfterStageTask(t *testing.T) {
 		},
 		{
 			name: "invalid AfterTasks, with nil duration for TimedWait",
-			task: []v1beta1.StageTask{
+			task: []placementv1beta1.StageTask{
 				{
-					Type: v1beta1.StageTaskTypeTimedWait,
+					Type: placementv1beta1.StageTaskTypeTimedWait,
 				},
 			},
 			wantErr: true,
@@ -66,9 +67,9 @@ func TestValidateAfterStageTask(t *testing.T) {
 		},
 		{
 			name: "invalid AfterTasks, with zero duration for TimedWait",
-			task: []v1beta1.StageTask{
+			task: []placementv1beta1.StageTask{
 				{
-					Type:     v1beta1.StageTaskTypeTimedWait,
+					Type:     placementv1beta1.StageTaskTypeTimedWait,
 					WaitTime: ptr.To(metav1.Duration{Duration: 0 * time.Minute}),
 				},
 			},
@@ -105,25 +106,25 @@ func TestGetResourceSnapshotObjs(t *testing.T) {
 	}
 
 	// Create test resource snapshots
-	masterResourceSnapshot := &v1beta1.ClusterResourceSnapshot{
+	masterResourceSnapshot := &placementv1beta1.ClusterResourceSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      placementName + "-1-snapshot",
 			Namespace: placementKey.Namespace,
 			Labels: map[string]string{
-				v1beta1.PlacementTrackingLabel:      placementName,
-				v1beta1.ResourceIndexLabel:          "1",
-				v1beta1.IsLatestSnapshotLabel:       "false",
-				v1beta1.ResourceGroupHashAnnotation: "hash123",
+				placementv1beta1.PlacementTrackingLabel:      placementName,
+				placementv1beta1.ResourceIndexLabel:          "1",
+				placementv1beta1.IsLatestSnapshotLabel:       "false",
+				placementv1beta1.ResourceGroupHashAnnotation: "hash123",
 			},
 			Annotations: map[string]string{
-				v1beta1.ResourceGroupHashAnnotation: "hash123",
+				placementv1beta1.ResourceGroupHashAnnotation: "hash123",
 			},
 		},
 	}
 
 	tests := []struct {
 		name              string
-		updateRunSpec     *v1beta1.UpdateRunSpec
+		updateRunSpec     *placementv1beta1.UpdateRunSpec
 		resourceSnapshots []runtime.Object
 		wantSnapshotCount int
 		wantErr           bool
@@ -132,7 +133,7 @@ func TestGetResourceSnapshotObjs(t *testing.T) {
 		// negative cases only
 		{
 			name: "invalid resource snapshot index - non-numeric",
-			updateRunSpec: &v1beta1.UpdateRunSpec{
+			updateRunSpec: &placementv1beta1.UpdateRunSpec{
 				ResourceSnapshotIndex: "invalid",
 			},
 			resourceSnapshots: []runtime.Object{},
@@ -142,7 +143,7 @@ func TestGetResourceSnapshotObjs(t *testing.T) {
 		},
 		{
 			name: "invalid resource snapshot index - negative",
-			updateRunSpec: &v1beta1.UpdateRunSpec{
+			updateRunSpec: &placementv1beta1.UpdateRunSpec{
 				ResourceSnapshotIndex: "-1",
 			},
 			resourceSnapshots: []runtime.Object{},
@@ -152,7 +153,7 @@ func TestGetResourceSnapshotObjs(t *testing.T) {
 		},
 		{
 			name: "no resource snapshots found for specific index",
-			updateRunSpec: &v1beta1.UpdateRunSpec{
+			updateRunSpec: &placementv1beta1.UpdateRunSpec{
 				ResourceSnapshotIndex: "999",
 			},
 			resourceSnapshots: []runtime.Object{
@@ -164,7 +165,7 @@ func TestGetResourceSnapshotObjs(t *testing.T) {
 		},
 		{
 			name: "no latest resource snapshots found",
-			updateRunSpec: &v1beta1.UpdateRunSpec{
+			updateRunSpec: &placementv1beta1.UpdateRunSpec{
 				ResourceSnapshotIndex: "",
 			},
 			resourceSnapshots: []runtime.Object{}, // no snapshots
@@ -177,12 +178,8 @@ func TestGetResourceSnapshotObjs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a fake client with the test objects
-			s := runtime.NewScheme()
-			_ = v1beta1.AddToScheme(s)
-			_ = scheme.AddToScheme(s)
-
 			fakeClient := fake.NewClientBuilder().
-				WithScheme(s).
+				WithScheme(serviceScheme(t)).
 				WithRuntimeObjects(tt.resourceSnapshots...).
 				Build()
 
@@ -222,31 +219,22 @@ func TestGetResourceSnapshotObjs(t *testing.T) {
 	}
 }
 
-// fakeListErrorClient wraps a client and always returns an error on List.
-type fakeListErrorClient struct {
-	client.Client
-}
-
-func (f *fakeListErrorClient) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
-	return fmt.Errorf("simulated list error")
-}
-
 func TestGetResourceSnapshotObjs_ListError(t *testing.T) {
 	tests := []struct {
 		name       string
-		spec       *v1beta1.UpdateRunSpec
+		spec       *placementv1beta1.UpdateRunSpec
 		wantErrMsg string
 	}{
 		{
 			name: "list error simulation with resource index",
-			spec: &v1beta1.UpdateRunSpec{
+			spec: &placementv1beta1.UpdateRunSpec{
 				ResourceSnapshotIndex: "1",
 			},
 			wantErrMsg: "Failed to list the resourceSnapshots associated with the placement for the given index",
 		},
 		{
 			name: "list error simulation without resource index",
-			spec: &v1beta1.UpdateRunSpec{
+			spec: &placementv1beta1.UpdateRunSpec{
 				ResourceSnapshotIndex: "",
 			},
 			wantErrMsg: "Failed to list the resourceSnapshots associated with the placement",
@@ -263,17 +251,29 @@ func TestGetResourceSnapshotObjs_ListError(t *testing.T) {
 				Namespace: "test-namespace",
 			}
 
-			s := runtime.NewScheme()
-			_ = v1beta1.AddToScheme(s)
-			_ = scheme.AddToScheme(s)
-
-			fakeClient := &fakeListErrorClient{Client: fake.NewClientBuilder().WithScheme(s).Build()}
+			// Use interceptor to make Get calls fail.
+			fakeClient := interceptor.NewClient(
+				fake.NewClientBuilder().WithScheme(serviceScheme(t)).Build(),
+				interceptor.Funcs{
+					List: func(ctx context.Context, client client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+						return errors.New(tt.wantErrMsg)
+					},
+				},
+			)
 			r := &Reconciler{Client: fakeClient}
 
 			_, err := r.getResourceSnapshotObjs(ctx, tt.spec, placementName, placementKey, updateRunRef)
-			if err == nil || !strings.Contains(err.Error(), "simulated list error") {
+			if err == nil || !strings.Contains(err.Error(), tt.wantErrMsg) {
 				t.Errorf("expected simulated list error, got: %v", err)
 			}
 		})
 	}
+}
+
+func serviceScheme(t *testing.T) *runtime.Scheme {
+	scheme := runtime.NewScheme()
+	if err := placementv1beta1.AddToScheme(scheme); err != nil {
+		t.Fatalf("Failed to add placement v1beta1 scheme: %v", err)
+	}
+	return scheme
 }
