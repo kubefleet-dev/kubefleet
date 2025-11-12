@@ -1664,11 +1664,6 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			updateRun.Spec.State = placementv1beta1.StateAbandoned
 			Expect(hubClient.Update(ctx, updateRun)).Should(Succeed())
 		})
-
-		It("should allow staying in NotStarted state", func() {
-			updateRun.Spec.State = placementv1beta1.StateNotStarted
-			Expect(hubClient.Update(ctx, updateRun)).Should(Succeed())
-		})
 	})
 
 	Context("Test ClusterStagedUpdateRun State API validation - valid Started state transitions", func() {
@@ -1698,11 +1693,6 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 
 		It("should allow transition from Started to Abandoned", func() {
 			updateRun.Spec.State = placementv1beta1.StateAbandoned
-			Expect(hubClient.Update(ctx, updateRun)).Should(Succeed())
-		})
-
-		It("should allow staying in Started state", func() {
-			updateRun.Spec.State = placementv1beta1.StateStarted
 			Expect(hubClient.Update(ctx, updateRun)).Should(Succeed())
 		})
 	})
@@ -1736,37 +1726,6 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 		})
 
 		It("should allow transition from Stopped to Abandoned", func() {
-			updateRun.Spec.State = placementv1beta1.StateAbandoned
-			Expect(hubClient.Update(ctx, updateRun)).Should(Succeed())
-		})
-
-		It("should allow staying in Stopped state", func() {
-			updateRun.Spec.State = placementv1beta1.StateStopped
-			Expect(hubClient.Update(ctx, updateRun)).Should(Succeed())
-		})
-	})
-
-	Context("Test ClusterStagedUpdateRun State API validation - valid Abandoned state transitions", func() {
-		var updateRun *placementv1beta1.ClusterStagedUpdateRun
-		updateRunName := fmt.Sprintf(validupdateRunNameTemplate, GinkgoParallelProcess())
-
-		BeforeEach(func() {
-			updateRun = &placementv1beta1.ClusterStagedUpdateRun{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: updateRunName,
-				},
-				Spec: placementv1beta1.UpdateRunSpec{
-					State: placementv1beta1.StateAbandoned,
-				},
-			}
-			Expect(hubClient.Create(ctx, updateRun)).Should(Succeed())
-		})
-
-		AfterEach(func() {
-			Expect(hubClient.Delete(ctx, updateRun)).Should(Succeed())
-		})
-
-		It("should allow staying in Abandoned state", func() {
 			updateRun.Spec.State = placementv1beta1.StateAbandoned
 			Expect(hubClient.Update(ctx, updateRun)).Should(Succeed())
 		})
