@@ -271,15 +271,6 @@ func (r *Reconciler) executeUpdatingStage(
 	return clusterUpdatingWaitTime, nil
 }
 
-func aggregateUpdateRunStatus(updateRun placementv1beta1.UpdateRunObj, stageName string, stuckClusterNames []string, finishedClusterCount int) {
-	if len(stuckClusterNames) > 0 {
-		markUpdateRunStuck(updateRun, stageName, strings.Join(stuckClusterNames, ", "))
-	} else if finishedClusterCount > 0 {
-		// If there is no stuck cluster but some progress has been made, mark the update run as progressing.
-		markUpdateRunProgressing(updateRun)
-	}
-}
-
 // executeDeleteStage executes the delete stage by deleting the bindings.
 func (r *Reconciler) executeDeleteStage(
 	ctx context.Context,
@@ -474,6 +465,15 @@ func (r *Reconciler) updateApprovalRequestAccepted(ctx context.Context, appReq p
 	}
 	klog.V(2).InfoS("Updated approval request as approval accepted", "approvalRequest", klog.KObj(appReq), "condition", cond)
 	return nil
+}
+
+func aggregateUpdateRunStatus(updateRun placementv1beta1.UpdateRunObj, stageName string, stuckClusterNames []string, finishedClusterCount int) {
+	if len(stuckClusterNames) > 0 {
+		markUpdateRunStuck(updateRun, stageName, strings.Join(stuckClusterNames, ", "))
+	} else if finishedClusterCount > 0 {
+		// If there is no stuck cluster but some progress has been made, mark the update run as progressing.
+		markUpdateRunProgressing(updateRun)
+	}
 }
 
 // isBindingSyncedWithClusterStatus checks if the binding is up-to-date with the cluster status.
