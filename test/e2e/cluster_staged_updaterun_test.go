@@ -27,6 +27,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -37,13 +38,13 @@ import (
 
 const (
 	// The current stage wait between clusters are 15 seconds
-	updateRunEventuallyDuration = time.Minute
-
-	resourceSnapshotIndex1st = "0"
-	resourceSnapshotIndex2nd = "1"
-	policySnapshotIndex1st   = "0"
-	policySnapshotIndex2nd   = "1"
-	policySnapshotIndex3rd   = "2"
+	updateRunEventuallyDuration         = time.Minute
+	updateRunParallelEventuallyDuration = 20 * time.Second
+	resourceSnapshotIndex1st            = "0"
+	resourceSnapshotIndex2nd            = "1"
+	policySnapshotIndex1st              = "0"
+	policySnapshotIndex2nd              = "1"
+	policySnapshotIndex3rd              = "2"
 
 	testConfigMapDataValue = "new"
 )
@@ -1268,6 +1269,95 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 				configMapActual := configMapPlacedOnClusterActual(cluster, &newConfigMap)
 				Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update to the new configmap %s on cluster %s", newConfigMap.Name, cluster.ClusterName)
 			}
+		})
+	})
+
+	Context("Test parallel cluster updates with maxConcurrency set to 3", Ordered, func() {
+		var strategy *placementv1beta1.ClusterStagedUpdateStrategy
+		updateRunName := fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), 0)
+
+		BeforeAll(func() {
+			// Create a test namespace and a configMap inside it on the hub cluster.
+			createWorkResources()
+
+			// Create the CRP with external rollout strategy.
+			crp := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+					// Add a custom finalizer; this would allow us to better observe
+					// the behavior of the controllers.
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: workResourceSelector(),
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.ExternalRolloutStrategyType,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
+
+			// Create a strategy with a single stage selecting all 3 clusters with maxConcurrency=3
+			strategy = &placementv1beta1.ClusterStagedUpdateStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: strategyName,
+				},
+				Spec: placementv1beta1.UpdateStrategySpec{
+					Stages: []placementv1beta1.StageConfig{
+						{
+							Name: "parallel",
+							// Pick all clusters in a single stage
+							LabelSelector:  &metav1.LabelSelector{},
+							MaxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 3},
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, strategy)).To(Succeed(), "Failed to create ClusterStagedUpdateStrategy with maxConcurrency=3")
+		})
+
+		AfterAll(func() {
+			// Remove the custom deletion blocker finalizer from the CRP.
+			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+
+			// Delete the clusterStagedUpdateRun.
+			ensureClusterStagedUpdateRunDeletion(updateRunName)
+
+			// Delete the clusterStagedUpdateStrategy.
+			ensureClusterUpdateRunStrategyDeletion(strategyName)
+		})
+
+		It("Should not rollout any resources to member clusters as there's no update run yet", checkIfRemovedWorkResourcesFromAllMemberClustersConsistently)
+
+		It("Should have the latest resource snapshot", func() {
+			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex1st)
+		})
+
+		It("Should successfully schedule the crp", func() {
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 3)
+		})
+
+		It("Should update crp status as pending rollout", func() {
+			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(nil, "", false, allMemberClusterNames, []string{"", "", ""}, []bool{false, false, false}, nil, nil)
+			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
+		})
+
+		It("Should create a cluster staged update run successfully", func() {
+			createClusterStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex1st, strategyName)
+		})
+
+		It("Should complete the cluster staged update run in 15s with all 3 clusters updated in parallel", func() {
+			// With maxConcurrency=3, all 3 clusters should be updated in parallel.
+			// Each cluster waits 15 seconds, so total time should be under 20s.
+			csurSucceededActual := clusterStagedUpdateRunStatusSucceededActual(updateRunName, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[0], allMemberClusterNames[1], allMemberClusterNames[2]}}, nil, nil, nil)
+			Eventually(csurSucceededActual, updateRunParallelEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded within 15s", updateRunName)
+			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
+		})
+
+		It("Should update crp status as completed", func() {
+			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
+				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil)
+			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
 		})
 	})
 })
