@@ -814,9 +814,10 @@ spec:
                   All clusters involved in the update run are selected from the list of clusters scheduled by the CRP according
                   to the current policy.
                 type: string
-              resourceSnapshotName:
-                description: ResourceSnapshotName records the name of the master resource
-                  snapshot that the update run is based on.
+              resourceSnapshotIndexUsed:
+                description: |-
+                  ResourceSnapshotIndexUsed records the resource snapshot index that the update run is based on.
+                  The index represents the same resource snapshots as specified in the spec field, or the latest.
                 type: string
               stagedUpdateStrategySnapshot:
                 description: |-

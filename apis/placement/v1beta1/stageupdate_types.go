@@ -374,9 +374,10 @@ type UpdateRunStatus struct {
 	// +kubebuilder:validation:Optional
 	PolicyObservedClusterCount int `json:"policyObservedClusterCount,omitempty"`
 
-	// ResourceSnapshotName records the name of the master resource snapshot that the update run is based on.
-	// +kubebuilder:validation:Optional
-	ResourceSnapshotName string `json:"resourceSnapshotName,omitempty"`
+	// ResourceSnapshotIndexUsed records the resource snapshot index that the update run is based on.
+	// The index represents the same resource snapshots as specified in the spec field, or the latest.
+	// +kubbebuilder:validation:Optional
+	ResourceSnapshotIndexUsed string `json:"resourceSnapshotIndexUsed,omitempty"`
 
 	// ApplyStrategy is the apply strategy that the stagedUpdateRun is using.
 	// It is the same as the apply strategy in the CRP when the staged update run starts.
