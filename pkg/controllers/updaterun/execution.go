@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -69,8 +70,13 @@ func (r *Reconciler) execute(
 
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	if updatingStageIndex < len(updateRunStatus.StagesStatus) {
+		// Round down the maxConcurrency to the number of clusters in the stage.
+		maxConcurrency, err := intstr.GetScaledValueFromIntOrPercent(updateRunStatus.UpdateStrategySnapshot.Stages[updatingStageIndex].MaxConcurrency, len(updateRunStatus.StagesStatus[updatingStageIndex].Clusters), false)
+		if err != nil {
+			return false, 0, err
+		}
 		updatingStage := &updateRunStatus.StagesStatus[updatingStageIndex]
-		waitTime, execErr := r.executeUpdatingStage(ctx, updateRun, updatingStageIndex, toBeUpdatedBindings, 1)
+		waitTime, execErr := r.executeUpdatingStage(ctx, updateRun, updatingStageIndex, toBeUpdatedBindings, maxConcurrency)
 		if errors.Is(execErr, errStagedUpdatedAborted) {
 			markStageUpdatingFailed(updatingStage, updateRun.GetGeneration(), execErr.Error())
 			return true, waitTime, execErr
