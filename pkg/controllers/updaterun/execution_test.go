@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -410,14 +411,13 @@ func TestBuildApprovalRequestObject(t *testing.T) {
 
 func TestExecuteUpdatingStage_Error(t *testing.T) {
 	tests := []struct {
-		name                     string
-		updateRun                *placementv1beta1.ClusterStagedUpdateRun
-		bindings                 []placementv1beta1.BindingObj
-		interceptorFunc          *interceptor.Funcs
-		expectError              bool
-		expectStagedAbortedError bool
-		expectWaitTime           time.Duration
-		verifyClusterFailed      bool
+		name                string
+		updateRun           *placementv1beta1.ClusterStagedUpdateRun
+		bindings            []placementv1beta1.BindingObj
+		interceptorFunc     *interceptor.Funcs
+		wantErr             error
+		expectWaitTime      time.Duration
+		verifyClusterFailed bool
 	}{
 		{
 			name: "cluster update failed",
@@ -460,12 +460,11 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 					},
 				},
 			},
-			bindings:                 nil,
-			interceptorFunc:          nil,
-			expectError:              true,
-			expectStagedAbortedError: true,
-			expectWaitTime:           0,
-			verifyClusterFailed:      false,
+			bindings:            nil,
+			interceptorFunc:     nil,
+			wantErr:             errors.New("the cluster `cluster-1` in the stage test-stage has failed"),
+			expectWaitTime:      0,
+			verifyClusterFailed: false,
 		},
 		{
 			name: "binding update failure",
@@ -516,10 +515,9 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 					return fmt.Errorf("simulated update error")
 				},
 			},
-			expectError:              true,
-			expectStagedAbortedError: false,
-			expectWaitTime:           0,
-			verifyClusterFailed:      false,
+			wantErr:             errors.New("simulated update error"),
+			expectWaitTime:      0,
+			verifyClusterFailed: false,
 		},
 		{
 			name: "binding preemption",
@@ -583,11 +581,10 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 					},
 				},
 			},
-			interceptorFunc:          nil,
-			expectError:              true,
-			expectStagedAbortedError: true,
-			expectWaitTime:           0,
-			verifyClusterFailed:      true,
+			interceptorFunc:     nil,
+			wantErr:             errors.New("the binding of the updating cluster `cluster-1` in the stage `test-stage` is not up-to-date with the desired status"),
+			expectWaitTime:      0,
+			verifyClusterFailed: true,
 		},
 	}
 
@@ -616,19 +613,21 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 			}
 
 			// Execute the stage.
-			waitTime, err := r.executeUpdatingStage(ctx, tt.updateRun, 0, tt.bindings, 1)
+			waitTime, gotErr := r.executeUpdatingStage(ctx, tt.updateRun, 0, tt.bindings, 1)
 
-			// Verify error expectation.
-			if tt.expectError && err == nil {
-				t.Fatal("executeUpdatingStage() expected error, got nil")
+			// Verify error expectation.x
+			if tt.wantErr != nil && gotErr == nil {
+				t.Fatalf("executeUpdatingStage() expected error containing %v, got nil", tt.wantErr)
 			}
-			if !tt.expectError && err != nil {
-				t.Fatalf("executeUpdatingStage() unexpected error: %v", err)
+			if tt.wantErr == nil && gotErr != nil {
+				t.Fatalf("executeUpdatingStage() unexpected error: %v", gotErr)
 			}
 
-			// Verify specific error type.
-			if tt.expectStagedAbortedError && !errors.Is(err, errStagedUpdatedAborted) {
-				t.Fatalf("executeUpdatingStage() expected errStagedUpdatedAborted, got: %v", err)
+			// Verify error message contains expected substring.
+			if tt.wantErr != nil && gotErr != nil {
+				if !strings.Contains(gotErr.Error(), tt.wantErr.Error()) {
+					t.Fatalf("executeUpdatingStage() expected error containing %v, got: %v", tt.wantErr, gotErr)
+				}
 			}
 
 			// Verify wait time.
