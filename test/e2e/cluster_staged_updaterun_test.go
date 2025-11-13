@@ -40,11 +40,12 @@ const (
 	// The current stage wait between clusters are 15 seconds
 	updateRunEventuallyDuration         = time.Minute
 	updateRunParallelEventuallyDuration = 20 * time.Second
-	resourceSnapshotIndex1st            = "0"
-	resourceSnapshotIndex2nd            = "1"
-	policySnapshotIndex1st              = "0"
-	policySnapshotIndex2nd              = "1"
-	policySnapshotIndex3rd              = "2"
+
+	resourceSnapshotIndex1st = "0"
+	resourceSnapshotIndex2nd = "1"
+	policySnapshotIndex1st   = "0"
+	policySnapshotIndex2nd   = "1"
+	policySnapshotIndex3rd   = "2"
 
 	testConfigMapDataValue = "new"
 )
@@ -1346,11 +1347,11 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			createClusterStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex1st, strategyName)
 		})
 
-		It("Should complete the cluster staged update run in 15s with all 3 clusters updated in parallel", func() {
+		It("Should complete the cluster staged update run with all 3 clusters updated in parallel", func() {
 			// With maxConcurrency=3, all 3 clusters should be updated in parallel.
 			// Each cluster waits 15 seconds, so total time should be under 20s.
 			csurSucceededActual := clusterStagedUpdateRunStatusSucceededActual(updateRunName, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[0], allMemberClusterNames[1], allMemberClusterNames[2]}}, nil, nil, nil)
-			Eventually(csurSucceededActual, updateRunParallelEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded within 15s", updateRunName)
+			Eventually(csurSucceededActual, updateRunParallelEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunName)
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
 		})
 
