@@ -543,7 +543,7 @@ func generateTestClusterStagedUpdateStrategy() *placementv1beta1.ClusterStagedUp
 	}
 }
 
-func generateTestClusterStagedUpdateStrategyWithSingleStage(afterStageTasks []placementv1beta1.StageTask) *placementv1beta1.ClusterStagedUpdateStrategy {
+func generateTestClusterStagedUpdateStrategyWithSingleStage(afterStageTasks, beforeStageTasks []placementv1beta1.StageTask) *placementv1beta1.ClusterStagedUpdateStrategy {
 	return &placementv1beta1.ClusterStagedUpdateStrategy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testUpdateStrategyName,
@@ -551,9 +551,10 @@ func generateTestClusterStagedUpdateStrategyWithSingleStage(afterStageTasks []pl
 		Spec: placementv1beta1.UpdateStrategySpec{
 			Stages: []placementv1beta1.StageConfig{
 				{
-					Name:            "stage1",
-					LabelSelector:   &metav1.LabelSelector{}, // Select all clusters.
-					AfterStageTasks: afterStageTasks,
+					Name:             "stage1",
+					LabelSelector:    &metav1.LabelSelector{}, // Select all clusters.
+					AfterStageTasks:  afterStageTasks,
+					BeforeStageTasks: beforeStageTasks,
 				},
 			},
 		},
@@ -720,15 +721,7 @@ func generateTrueCondition(obj client.Object, condType any) metav1.Condition {
 		}
 		typeStr = string(cond)
 	case placementv1beta1.StageTaskConditionType:
-		switch cond {
-		case placementv1beta1.StageTaskConditionWaitTimeElapsed:
-			reason = condition.AfterStageTaskWaitTimeElapsedReason
-		case placementv1beta1.StageTaskConditionApprovalRequestCreated:
-			reason = condition.AfterStageTaskApprovalRequestCreatedReason
-		case placementv1beta1.StageTaskConditionApprovalRequestApproved:
-			reason = condition.AfterStageTaskApprovalRequestApprovedReason
-		}
-		typeStr = string(cond)
+		return generateTrueStageTaskCondition(obj, cond, false)
 	case placementv1beta1.ApprovalRequestConditionType:
 		switch cond {
 		case placementv1beta1.ApprovalRequestConditionApproved:
@@ -815,4 +808,34 @@ func generateFalseProgressingCondition(obj client.Object, condType any, succeede
 	}
 	falseCond.Reason = reason
 	return falseCond
+}
+
+func generateTrueStageTaskCondition(obj client.Object, condType any, isBeforeStage bool) metav1.Condition {
+	reason, typeStr := "", ""
+	switch cond := condType.(type) {
+	case placementv1beta1.StageTaskConditionType:
+		switch cond {
+		case placementv1beta1.StageTaskConditionWaitTimeElapsed:
+			reason = condition.AfterStageTaskWaitTimeElapsedReason
+		case placementv1beta1.StageTaskConditionApprovalRequestCreated:
+			if isBeforeStage {
+				reason = condition.BeforeStageTaskApprovalRequestCreatedReason
+			} else {
+				reason = condition.AfterStageTaskApprovalRequestCreatedReason
+			}
+		case placementv1beta1.StageTaskConditionApprovalRequestApproved:
+			if isBeforeStage {
+				reason = condition.BeforeStageTaskApprovalRequestApprovedReason
+			} else {
+				reason = condition.AfterStageTaskApprovalRequestApprovedReason
+			}
+		}
+		typeStr = string(cond)
+	}
+	return metav1.Condition{
+		Status:             metav1.ConditionTrue,
+		Type:               typeStr,
+		ObservedGeneration: obj.GetGeneration(),
+		Reason:             reason,
+	}
 }
