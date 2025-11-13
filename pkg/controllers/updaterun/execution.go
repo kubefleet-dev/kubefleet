@@ -235,13 +235,12 @@ func (r *Reconciler) executeUpdatingStage(
 				stuckClusterNames = append(stuckClusterNames, clusterStatus.ClusterName)
 			}
 		}
-		// Need to continue as we need to process at most maxConcurrency number of clusters in parallel.
 	}
 
 	// After processing maxConcurrency number of cluster, check if we need to mark the update run as stuck or progressing.
 	aggregateUpdateRunStatus(updateRun, updatingStageStatus.StageName, stuckClusterNames, finishedClusterCount)
 
-	// After processing all clusters, aggregate and return errors
+	// After processing all clusters, aggregate and return errors.
 	if len(clusterUpdateErrors) > 0 {
 		return 0, utilerrors.NewAggregate(clusterUpdateErrors)
 	}

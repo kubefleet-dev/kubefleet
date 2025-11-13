@@ -1143,7 +1143,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 					},
 				},
 			}
-			Expect(hubClient.Create(ctx, strategy)).To(Succeed(), "Failed to create StagedUpdateStrategy with maxConcurrency=3")
+			Expect(hubClient.Create(ctx, strategy)).To(Succeed(), "Failed to create StagedUpdateStrategy")
 		})
 
 		AfterAll(func() {

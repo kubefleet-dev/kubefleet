@@ -1314,7 +1314,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 					},
 				},
 			}
-			Expect(hubClient.Create(ctx, strategy)).To(Succeed(), "Failed to create ClusterStagedUpdateStrategy with maxConcurrency=3")
+			Expect(hubClient.Create(ctx, strategy)).To(Succeed(), "Failed to create ClusterStagedUpdateStrategy")
 		})
 
 		AfterAll(func() {
