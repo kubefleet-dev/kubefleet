@@ -97,7 +97,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, nil
 	}
 
-	// Peform a sanity check; make sure that mirroring back to original resources can be done, i.e.,
+	// Perform a sanity check; make sure that mirroring back to original resources can be done, i.e.,
 	// the scheduling policy is set to the PickFixed type with exactly one target cluster, or the PickN
 	// type with the number of clusters set to 1.
 	//
