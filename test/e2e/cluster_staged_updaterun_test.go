@@ -1298,7 +1298,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			}
 			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 
-			// Create a strategy with a single stage selecting all 3 clusters with maxConcurrency=3
+			// Create a strategy with a single stage selecting all 3 clusters with maxConcurrency specified.
 			strategy = &placementv1beta1.ClusterStagedUpdateStrategy{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: strategyName,
@@ -1307,7 +1307,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 					Stages: []placementv1beta1.StageConfig{
 						{
 							Name: "parallel",
-							// Pick all clusters in a single stage
+							// Pick all clusters in a single stage.
 							LabelSelector:  &metav1.LabelSelector{},
 							MaxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 3},
 						},

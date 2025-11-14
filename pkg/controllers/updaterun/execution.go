@@ -140,7 +140,6 @@ func (r *Reconciler) executeUpdatingStage(
 		}
 		// The cluster needs to be processed.
 		clusterStartedCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
-		// The cluster is either updating or not started yet.
 		binding := toBeUpdatedBindingsMap[clusterStatus.ClusterName]
 		if !condition.IsConditionStatusTrue(clusterStartedCond, updateRun.GetGeneration()) {
 			// The cluster has not started updating yet.
@@ -239,7 +238,7 @@ func (r *Reconciler) executeUpdatingStage(
 	// After processing maxConcurrency number of cluster, check if we need to mark the update run as stuck or progressing.
 	aggregateUpdateRunStatus(updateRun, updatingStageStatus.StageName, stuckClusterNames, finishedClusterCount)
 
-	// After processing all clusters, aggregate and return errors.
+	// Aggregate and return errors.
 	if len(clusterUpdateErrors) > 0 {
 		return 0, utilerrors.NewAggregate(clusterUpdateErrors)
 	}

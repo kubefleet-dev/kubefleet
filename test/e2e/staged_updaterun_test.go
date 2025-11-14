@@ -1126,7 +1126,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			}
 			Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create RP")
 
-			// Create a strategy with a single stage selecting all 3 clusters with maxConcurrency=3
+			// Create a strategy with a single stage selecting all 3 clusters with maxConcurrency specified.
 			strategy = &placementv1beta1.StagedUpdateStrategy{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      strategyName,
@@ -1136,7 +1136,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 					Stages: []placementv1beta1.StageConfig{
 						{
 							Name: "parallel",
-							// Pick all clusters in a single stage
+							// Pick all clusters in a single stage.
 							LabelSelector:  &metav1.LabelSelector{},
 							MaxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 3},
 						},
