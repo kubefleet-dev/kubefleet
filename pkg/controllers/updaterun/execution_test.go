@@ -817,3 +817,108 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 		})
 	}
 }
+
+func TestCalculateMaxConcurrencyValue(t *testing.T) {
+	tests := []struct {
+		name           string
+		maxConcurrency *intstr.IntOrString
+		clusterCount   int
+		wantValue      int
+		wantErr        bool
+	}{
+		{
+			name:           "integer value - less than cluster count",
+			maxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 3},
+			clusterCount:   10,
+			wantValue:      3,
+			wantErr:        false,
+		},
+		{
+			name:           "integer value - equal to cluster count",
+			maxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 10},
+			clusterCount:   10,
+			wantValue:      10,
+			wantErr:        false,
+		},
+		{
+			name:           "integer value - greater than cluster count",
+			maxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 15},
+			clusterCount:   10,
+			wantValue:      15,
+			wantErr:        false,
+		},
+		{
+			name:           "percentage value - 50%",
+			maxConcurrency: &intstr.IntOrString{Type: intstr.String, StrVal: "50%"},
+			clusterCount:   10,
+			wantValue:      5,
+			wantErr:        false,
+		},
+		{
+			name:           "percentage value - 33% rounds down",
+			maxConcurrency: &intstr.IntOrString{Type: intstr.String, StrVal: "33%"},
+			clusterCount:   10,
+			wantValue:      3,
+			wantErr:        false,
+		},
+		{
+			name:           "percentage value - 100%",
+			maxConcurrency: &intstr.IntOrString{Type: intstr.String, StrVal: "100%"},
+			clusterCount:   10,
+			wantValue:      10,
+			wantErr:        false,
+		},
+		{
+			name:           "percentage value - 25% with 7 clusters",
+			maxConcurrency: &intstr.IntOrString{Type: intstr.String, StrVal: "25%"},
+			clusterCount:   7,
+			wantValue:      1,
+			wantErr:        false,
+		},
+		{
+			name:           "zero clusters",
+			maxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 3},
+			clusterCount:   0,
+			wantValue:      3,
+			wantErr:        false,
+		},
+		{
+			name:           "non-zero percentage with zero clusters",
+			maxConcurrency: &intstr.IntOrString{Type: intstr.String, StrVal: "50%"},
+			clusterCount:   0,
+			wantValue:      0,
+			wantErr:        false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status := &placementv1beta1.UpdateRunStatus{
+				StagesStatus: []placementv1beta1.StageUpdatingStatus{
+					{
+						StageName: "test-stage",
+						Clusters:  make([]placementv1beta1.ClusterUpdatingStatus, tt.clusterCount),
+					},
+				},
+				UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
+					Stages: []placementv1beta1.StageConfig{
+						{
+							Name:           "test-stage",
+							MaxConcurrency: tt.maxConcurrency,
+						},
+					},
+				},
+			}
+
+			gotValue, gotErr := calculateMaxConcurrencyValue(status, 0)
+
+			if (gotErr != nil) != tt.wantErr {
+				t.Fatalf("calculateMaxConcurrencyValue() error = %v, wantErr %v", gotErr, tt.wantErr)
+			}
+
+			if gotValue != tt.wantValue {
+				t.Fatalf("calculateMaxConcurrencyValue() = %v, want %v", gotValue, tt.wantValue)
+			}
+		})
+	}
+}

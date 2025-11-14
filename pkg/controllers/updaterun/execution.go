@@ -70,8 +70,7 @@ func (r *Reconciler) execute(
 
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	if updatingStageIndex < len(updateRunStatus.StagesStatus) {
-		// Round down the maxConcurrency to the number of clusters in the stage.
-		maxConcurrency, err := intstr.GetScaledValueFromIntOrPercent(updateRunStatus.UpdateStrategySnapshot.Stages[updatingStageIndex].MaxConcurrency, len(updateRunStatus.StagesStatus[updatingStageIndex].Clusters), false)
+		maxConcurrency, err := calculateMaxConcurrencyValue(updateRunStatus, updatingStageIndex)
 		if err != nil {
 			return false, 0, err
 		}
@@ -467,6 +466,22 @@ func (r *Reconciler) updateApprovalRequestAccepted(ctx context.Context, appReq p
 	return nil
 }
 
+// calculateMaxConcurrencyValue calculates the actual max concurrency value for a stage.
+// It converts the IntOrString maxConcurrency (which can be an integer or percentage) to an integer value
+// based on the total number of clusters in the stage. The value is rounded down.
+func calculateMaxConcurrencyValue(status *placementv1beta1.UpdateRunStatus, stageIndex int) (int, error) {
+	specifiedMaxConcurrency := status.UpdateStrategySnapshot.Stages[stageIndex].MaxConcurrency
+	clusterCount := len(status.StagesStatus[stageIndex].Clusters)
+	// Round down the maxConcurrency to the number of clusters in the stage.
+	maxConcurrencyValue, err := intstr.GetScaledValueFromIntOrPercent(specifiedMaxConcurrency, clusterCount, false)
+	if err != nil {
+		return 0, err
+	}
+	return maxConcurrencyValue, nil
+}
+
+// aggregateUpdateRunStatus aggregates the status of the update run based on the cluster update status.
+// It marks the update run as stuck if any clusters are stuck, or as progressing if some clusters have finished updating.
 func aggregateUpdateRunStatus(updateRun placementv1beta1.UpdateRunObj, stageName string, stuckClusterNames []string, finishedClusterCount int) {
 	if len(stuckClusterNames) > 0 {
 		markUpdateRunStuck(updateRun, stageName, strings.Join(stuckClusterNames, ", "))
