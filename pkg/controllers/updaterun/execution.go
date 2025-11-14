@@ -699,3 +699,27 @@ func markAfterStageWaitTimeElapsed(afterStageTaskStatus *placementv1beta1.StageT
 		Message:            "Wait time elapsed",
 	})
 }
+
+// markUpdateRunStopped marks the updateRun as stopped in memory.
+func markUpdateRunStopped(updateRun placementv1beta1.UpdateRunObj) {
+	updateRunStatus := updateRun.GetUpdateRunStatus()
+	meta.SetStatusCondition(&updateRunStatus.Conditions, metav1.Condition{
+		Type:               string(placementv1beta1.StagedUpdateRunConditionProgressing),
+		Status:             metav1.ConditionFalse,
+		ObservedGeneration: updateRun.GetGeneration(),
+		Reason:             condition.UpdateRunStoppedReason,
+		Message:            "The update run has been stopped by user request",
+	})
+}
+
+// markUpdateRunAbandoned marks the updateRun as abandoned in memory.
+func markUpdateRunAbandoned(updateRun placementv1beta1.UpdateRunObj) {
+	updateRunStatus := updateRun.GetUpdateRunStatus()
+	meta.SetStatusCondition(&updateRunStatus.Conditions, metav1.Condition{
+		Type:               string(placementv1beta1.StagedUpdateRunConditionProgressing),
+		Status:             metav1.ConditionFalse,
+		ObservedGeneration: updateRun.GetGeneration(),
+		Reason:             condition.UpdateRunAbandonedReason,
+		Message:            "The update run has been abandoned and cannot be resumed",
+	})
+}
