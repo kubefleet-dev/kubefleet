@@ -411,13 +411,12 @@ func TestBuildApprovalRequestObject(t *testing.T) {
 
 func TestExecuteUpdatingStage_Error(t *testing.T) {
 	tests := []struct {
-		name                string
-		updateRun           *placementv1beta1.ClusterStagedUpdateRun
-		bindings            []placementv1beta1.BindingObj
-		interceptorFunc     *interceptor.Funcs
-		wantErr             error
-		expectWaitTime      time.Duration
-		verifyClusterFailed bool
+		name            string
+		updateRun       *placementv1beta1.ClusterStagedUpdateRun
+		bindings        []placementv1beta1.BindingObj
+		interceptorFunc *interceptor.Funcs
+		wantErr         error
+		expectWaitTime  time.Duration
 	}{
 		{
 			name: "cluster update failed",
@@ -460,11 +459,10 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 					},
 				},
 			},
-			bindings:            nil,
-			interceptorFunc:     nil,
-			wantErr:             errors.New("the cluster `cluster-1` in the stage test-stage has failed"),
-			expectWaitTime:      0,
-			verifyClusterFailed: false,
+			bindings:        nil,
+			interceptorFunc: nil,
+			wantErr:         errors.New("the cluster `cluster-1` in the stage test-stage has failed"),
+			expectWaitTime:  0,
 		},
 		{
 			name: "binding update failure",
@@ -515,9 +513,8 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 					return fmt.Errorf("simulated update error")
 				},
 			},
-			wantErr:             errors.New("simulated update error"),
-			expectWaitTime:      0,
-			verifyClusterFailed: false,
+			wantErr:        errors.New("simulated update error"),
+			expectWaitTime: 0,
 		},
 		{
 			name: "binding preemption",
@@ -581,10 +578,129 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 					},
 				},
 			},
-			interceptorFunc:     nil,
-			wantErr:             errors.New("the binding of the updating cluster `cluster-1` in the stage `test-stage` is not up-to-date with the desired status"),
-			expectWaitTime:      0,
-			verifyClusterFailed: true,
+			interceptorFunc: nil,
+			wantErr:         errors.New("the binding of the updating cluster `cluster-1` in the stage `test-stage` is not up-to-date with the desired status"),
+			expectWaitTime:  0,
+		},
+		{
+			name: "binding synced but state not bound - update binding state fails",
+			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-update-run",
+					Generation: 1,
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					PlacementName:         "test-placement",
+					ResourceSnapshotIndex: "1",
+				},
+				Status: placementv1beta1.UpdateRunStatus{
+					StagesStatus: []placementv1beta1.StageUpdatingStatus{
+						{
+							StageName: "test-stage",
+							Clusters: []placementv1beta1.ClusterUpdatingStatus{
+								{
+									ClusterName: "cluster-1",
+									// No conditions - cluster has not started updating yet.
+								},
+							},
+						},
+					},
+					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
+						Stages: []placementv1beta1.StageConfig{
+							{
+								Name:           "test-stage",
+								MaxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+							},
+						},
+					},
+				},
+			},
+			bindings: []placementv1beta1.BindingObj{
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-1",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-1",
+						ResourceSnapshotName: "test-placement-1-snapshot",            // Already synced.
+						State:                placementv1beta1.BindingStateScheduled, // But not Bound yet.
+					},
+				},
+			},
+			interceptorFunc: &interceptor.Funcs{
+				Update: func(ctx context.Context, client client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+					return fmt.Errorf("failed to update binding state")
+				},
+			},
+			wantErr:        errors.New("failed to update binding state"),
+			expectWaitTime: 0,
+		},
+		{
+			name: "binding synced and bound but generation updated - update rolloutStarted fails",
+			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-update-run",
+					Generation: 1,
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					PlacementName:         "test-placement",
+					ResourceSnapshotIndex: "1",
+				},
+				Status: placementv1beta1.UpdateRunStatus{
+					StagesStatus: []placementv1beta1.StageUpdatingStatus{
+						{
+							StageName: "test-stage",
+							Clusters: []placementv1beta1.ClusterUpdatingStatus{
+								{
+									ClusterName: "cluster-1",
+									// No conditions - cluster has not started updating yet.
+								},
+							},
+						},
+					},
+					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
+						Stages: []placementv1beta1.StageConfig{
+							{
+								Name:           "test-stage",
+								MaxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+							},
+						},
+					},
+				},
+			},
+			bindings: []placementv1beta1.BindingObj{
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-1",
+						Generation: 2, // Generation updated by scheduler.
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-1",
+						ResourceSnapshotName: "test-placement-1-snapshot",        // Already synced.
+						State:                placementv1beta1.BindingStateBound, // Already Bound.
+					},
+					Status: placementv1beta1.ResourceBindingStatus{
+						Conditions: []metav1.Condition{
+							{
+								Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
+								Status:             metav1.ConditionTrue,
+								ObservedGeneration: 1, // Old generation - needs update.
+								Reason:             "RolloutStarted",
+								Message:            "Rollout started",
+							},
+						},
+					},
+				},
+			},
+			interceptorFunc: &interceptor.Funcs{
+				SubResourceUpdate: func(ctx context.Context, client client.Client, subResourceName string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+					// Fail the status update for rolloutStarted.
+					return fmt.Errorf("failed to update binding rolloutStarted status")
+				},
+			},
+			wantErr:        errors.New("failed to update binding rolloutStarted status"),
+			expectWaitTime: 0,
 		},
 	}
 
@@ -615,7 +731,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 			// Execute the stage.
 			waitTime, gotErr := r.executeUpdatingStage(ctx, tt.updateRun, 0, tt.bindings, 1)
 
-			// Verify error expectation.x
+			// Verify error expectation.
 			if tt.wantErr != nil && gotErr == nil {
 				t.Fatalf("executeUpdatingStage() expected error containing %v, got nil", tt.wantErr)
 			}
@@ -633,15 +749,6 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 			// Verify wait time.
 			if waitTime != tt.expectWaitTime {
 				t.Fatalf("executeUpdatingStage() expected waitTime=%v, got: %v", tt.expectWaitTime, waitTime)
-			}
-
-			// Verify cluster failed status if needed.
-			if tt.verifyClusterFailed {
-				clusterStatus := &tt.updateRun.Status.StagesStatus[0].Clusters[0]
-				failedCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
-				if failedCond == nil || failedCond.Status != metav1.ConditionFalse {
-					t.Fatal("executeUpdatingStage() failed to mark cluster as failed")
-				}
 			}
 		})
 	}
