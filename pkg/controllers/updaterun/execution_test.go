@@ -19,7 +19,6 @@ package updaterun
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -510,7 +509,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 			},
 			interceptorFunc: &interceptor.Funcs{
 				Update: func(ctx context.Context, client client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
-					return fmt.Errorf("simulated update error")
+					return errors.New("simulated update error")
 				},
 			},
 			wantErr:        errors.New("simulated update error"),
@@ -630,7 +629,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 			},
 			interceptorFunc: &interceptor.Funcs{
 				Update: func(ctx context.Context, client client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
-					return fmt.Errorf("failed to update binding state")
+					return errors.New("failed to update binding state")
 				},
 			},
 			wantErr:        errors.New("failed to update binding state"),
@@ -686,8 +685,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 								Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
 								Status:             metav1.ConditionTrue,
 								ObservedGeneration: 1, // Old generation - needs update.
-								Reason:             "RolloutStarted",
-								Message:            "Rollout started",
+								Reason:             condition.RolloutStartedReason,
 							},
 						},
 					},
@@ -696,11 +694,77 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 			interceptorFunc: &interceptor.Funcs{
 				SubResourceUpdate: func(ctx context.Context, client client.Client, subResourceName string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
 					// Fail the status update for rolloutStarted.
-					return fmt.Errorf("failed to update binding rolloutStarted status")
+					return errors.New("failed to update binding rolloutStarted status")
 				},
 			},
 			wantErr:        errors.New("failed to update binding rolloutStarted status"),
 			expectWaitTime: 0,
+		},
+		{
+			name: "binding synced, bound, rolloutStarted true, but binding has failed condition",
+			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-update-run",
+					Generation: 1,
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					PlacementName:         "test-placement",
+					ResourceSnapshotIndex: "1",
+				},
+				Status: placementv1beta1.UpdateRunStatus{
+					StagesStatus: []placementv1beta1.StageUpdatingStatus{
+						{
+							StageName: "test-stage",
+							Clusters: []placementv1beta1.ClusterUpdatingStatus{
+								{
+									ClusterName: "cluster-1",
+									// No conditions - cluster has not started updating yet.
+								},
+							},
+						},
+					},
+					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
+						Stages: []placementv1beta1.StageConfig{
+							{
+								Name:           "test-stage",
+								MaxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+							},
+						},
+					},
+				},
+			},
+			bindings: []placementv1beta1.BindingObj{
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-1",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-1",
+						ResourceSnapshotName: "test-placement-1-snapshot",        // Already synced.
+						State:                placementv1beta1.BindingStateBound, // Already Bound.
+					},
+					Status: placementv1beta1.ResourceBindingStatus{
+						Conditions: []metav1.Condition{
+							{
+								Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
+								Status:             metav1.ConditionTrue,
+								ObservedGeneration: 1,
+								Reason:             condition.RolloutStartedReason,
+							},
+							{
+								Type:               string(placementv1beta1.ResourceBindingApplied),
+								Status:             metav1.ConditionFalse,
+								ObservedGeneration: 1,
+								Reason:             condition.ApplyFailedReason,
+							},
+						},
+					},
+				},
+			},
+			interceptorFunc: nil,
+			wantErr:         errors.New("cluster updating encountered an error at stage"),
+			expectWaitTime:  0,
 		},
 	}
 
