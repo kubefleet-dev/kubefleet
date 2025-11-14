@@ -150,6 +150,37 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		return runtime.Result{}, r.recordUpdateRunSucceeded(ctx, updateRun)
 	}
 
+	// Handle updateRun state transitions
+	updateRunSpec := updateRun.GetUpdateRunSpec()
+	switch updateRunSpec.State {
+	case placementv1beta1.StateNotStarted:
+		// NotStarted state: only initialize, don't execute
+		klog.V(2).InfoS("UpdateRun is in NotStarted state, not executing", "updateRun", runObjRef)
+		// Just record the status showing initialization is complete but execution hasn't started
+		return runtime.Result{}, r.recordUpdateRunStatus(ctx, updateRun)
+
+	case placementv1beta1.StateStopped:
+		// Stopped state: mark as stopped and don't execute
+		klog.V(2).InfoS("UpdateRun is in Stopped state, stopping execution", "updateRun", runObjRef)
+		markUpdateRunStopped(updateRun)
+		return runtime.Result{}, r.recordUpdateRunStatus(ctx, updateRun)
+
+	case placementv1beta1.StateAbandoned:
+		// Abandoned state: mark as abandoned (terminal state)
+		klog.V(2).InfoS("UpdateRun is in Abandoned state, abandoning execution", "updateRun", runObjRef)
+		markUpdateRunAbandoned(updateRun)
+		return runtime.Result{}, r.recordUpdateRunFailed(ctx, updateRun, "The update run has been abandoned by user request")
+
+	case placementv1beta1.StateStarted:
+		// Started state: continue with normal execution (including resume from Stopped)
+		klog.V(2).InfoS("UpdateRun is in Started state, executing", "updateRun", runObjRef)
+		// Fall through to execute
+
+	default:
+		// Unknown state or empty, log warning but continue with execution for backward compatibility
+		klog.V(2).InfoS("UpdateRun has unknown or empty state, proceeding with execution", "state", updateRunSpec.State, "updateRun", runObjRef)
+	}
+
 	// Execute the updateRun.
 	klog.V(2).InfoS("Continue to execute the updateRun", "updatingStageIndex", updatingStageIndex, "updateRun", runObjRef)
 	finished, waitTime, execErr := r.execute(ctx, updateRun, updatingStageIndex, toBeUpdatedBindings, toBeDeletedBindings)
