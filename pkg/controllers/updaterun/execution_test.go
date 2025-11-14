@@ -848,10 +848,17 @@ func TestCalculateMaxConcurrencyValue(t *testing.T) {
 			wantErr:        false,
 		},
 		{
-			name:           "percentage value - 50%",
+			name:           "percentage value - 50% with cluster count > 1",
 			maxConcurrency: &intstr.IntOrString{Type: intstr.String, StrVal: "50%"},
 			clusterCount:   10,
 			wantValue:      5,
+			wantErr:        false,
+		},
+		{
+			name:           "percentage value - non zero percentage with cluster count equal to 1",
+			maxConcurrency: &intstr.IntOrString{Type: intstr.String, StrVal: "10%"},
+			clusterCount:   1,
+			wantValue:      1,
 			wantErr:        false,
 		},
 		{
@@ -886,7 +893,7 @@ func TestCalculateMaxConcurrencyValue(t *testing.T) {
 			name:           "non-zero percentage with zero clusters",
 			maxConcurrency: &intstr.IntOrString{Type: intstr.String, StrVal: "50%"},
 			clusterCount:   0,
-			wantValue:      0,
+			wantValue:      1,
 			wantErr:        false,
 		},
 	}

@@ -476,6 +476,10 @@ func calculateMaxConcurrencyValue(status *placementv1beta1.UpdateRunStatus, stag
 	if err != nil {
 		return 0, err
 	}
+	// Handle the case where maxConcurrency is specified as percentage but results in 0 after scaling down.
+	if maxConcurrencyValue == 0 {
+		maxConcurrencyValue = 1
+	}
 	return maxConcurrencyValue, nil
 }
 
@@ -610,7 +614,7 @@ func markUpdateRunStuck(updateRun placementv1beta1.UpdateRunObj, stageName, clus
 		Status:             metav1.ConditionFalse,
 		ObservedGeneration: updateRun.GetGeneration(),
 		Reason:             condition.UpdateRunStuckReason,
-		Message:            fmt.Sprintf("The updateRun is stuck waiting for cluster/clusters %s in stage %s to finish updating, please check placement status for potential errors", clusterNames, stageName),
+		Message:            fmt.Sprintf("The updateRun is stuck waiting for cluster(s) %s in stage %s to finish updating, please check placement status for potential errors", clusterNames, stageName),
 	})
 }
 
