@@ -234,6 +234,7 @@ func validateClusterUpdatingStatus(
 			return -1, -1, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
 		}
 		updatingStageIndex = curStage
+		// TODO(arvindth): add validation to ensure updating cluster count should not exceed maxConcurrency.
 	}
 	return updatingStageIndex, lastFinishedStageIndex, nil
 }
