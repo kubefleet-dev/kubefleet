@@ -415,7 +415,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 		bindings        []placementv1beta1.BindingObj
 		interceptorFunc *interceptor.Funcs
 		wantErr         error
-		expectWaitTime  time.Duration
+		wantWaitTime  time.Duration
 	}{
 		{
 			name: "cluster update failed",
@@ -461,7 +461,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 			bindings:        nil,
 			interceptorFunc: nil,
 			wantErr:         errors.New("the cluster `cluster-1` in the stage test-stage has failed"),
-			expectWaitTime:  0,
+			wantWaitTime:  0,
 		},
 		{
 			name: "binding update failure",
@@ -513,7 +513,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 				},
 			},
 			wantErr:        errors.New("simulated update error"),
-			expectWaitTime: 0,
+			wantWaitTime: 0,
 		},
 		{
 			name: "binding preemption",
@@ -579,7 +579,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 			},
 			interceptorFunc: nil,
 			wantErr:         errors.New("the binding of the updating cluster `cluster-1` in the stage `test-stage` is not up-to-date with the desired status"),
-			expectWaitTime:  0,
+			wantWaitTime:  0,
 		},
 		{
 			name: "binding synced but state not bound - update binding state fails",
@@ -633,7 +633,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 				},
 			},
 			wantErr:        errors.New("failed to update binding state"),
-			expectWaitTime: 0,
+			wantWaitTime: 0,
 		},
 		{
 			name: "binding synced and bound but generation updated - update rolloutStarted fails",
@@ -698,7 +698,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 				},
 			},
 			wantErr:        errors.New("failed to update binding rolloutStarted status"),
-			expectWaitTime: 0,
+			wantWaitTime: 0,
 		},
 		{
 			name: "binding synced, bound, rolloutStarted true, but binding has failed condition",
@@ -764,7 +764,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 			},
 			interceptorFunc: nil,
 			wantErr:         errors.New("cluster updating encountered an error at stage"),
-			expectWaitTime:  0,
+			wantWaitTime:  0,
 		},
 	}
 
@@ -796,23 +796,20 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 			waitTime, gotErr := r.executeUpdatingStage(ctx, tt.updateRun, 0, tt.bindings, 1)
 
 			// Verify error expectation.
-			if tt.wantErr != nil && gotErr == nil {
-				t.Fatalf("executeUpdatingStage() expected error containing %v, got nil", tt.wantErr)
-			}
-			if tt.wantErr == nil && gotErr != nil {
-				t.Fatalf("executeUpdatingStage() unexpected error: %v", gotErr)
+			if (tt.wantErr != nil) != (gotErr != nil) {
+				t.Fatalf("executeUpdatingStage() want error: %v, got error: %v", tt.wantErr, gotErr)
 			}
 
 			// Verify error message contains expected substring.
 			if tt.wantErr != nil && gotErr != nil {
 				if !strings.Contains(gotErr.Error(), tt.wantErr.Error()) {
-					t.Fatalf("executeUpdatingStage() expected error containing %v, got: %v", tt.wantErr, gotErr)
+					t.Fatalf("executeUpdatingStage() want error: %v, got error: %v", tt.wantErr, gotErr)
 				}
 			}
 
 			// Verify wait time.
-			if waitTime != tt.expectWaitTime {
-				t.Fatalf("executeUpdatingStage() expected waitTime=%v, got: %v", tt.expectWaitTime, waitTime)
+			if waitTime != tt.wantWaitTime {
+				t.Fatalf("executeUpdatingStage() want waitTime: %v, got waitTime: %v", tt.wantWaitTime, waitTime)
 			}
 		})
 	}
