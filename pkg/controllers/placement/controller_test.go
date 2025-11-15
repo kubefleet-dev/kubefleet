@@ -2714,8 +2714,8 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to handle getOrCreateResourceSnapshot: %v", err)
 			}
-			if res.Requeue != tc.wantRequeue {
-				t.Fatalf("getOrCreateResourceSnapshot() got Requeue %v, want %v", res.Requeue, tc.wantRequeue)
+			if (res.RequeueAfter > 0) != tc.wantRequeue {
+				t.Fatalf("getOrCreateResourceSnapshot() got Requeue %v, want %v", (res.RequeueAfter > 0), tc.wantRequeue)
 			}
 
 			options := []cmp.Option{
@@ -3106,7 +3106,7 @@ func TestGetOrCreateClusterResourceSnapshot_failure(t *testing.T) {
 			if err == nil { // if error is nil
 				t.Fatal("getOrCreateClusterResourceSnapshot() = nil, want err")
 			}
-			if res.Requeue {
+			if res.RequeueAfter > 0 {
 				t.Fatal("getOrCreateClusterResourceSnapshot() requeue = true, want false")
 			}
 			if !errors.Is(err, controller.ErrUnexpectedBehavior) {

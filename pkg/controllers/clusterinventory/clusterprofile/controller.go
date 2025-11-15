@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	clientcmdv1 "k8s.io/client-go/tools/clientcmd/api/v1"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	clusterinventory "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
@@ -37,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 )
 
@@ -158,7 +160,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 	klog.V(2).InfoS("Cluster profile object is created or updated", "memberCluster", mcRef, "clusterProfile", klog.KObj(cp), "operation", createOrUpdateRes)
-	// sync the cluster profile condition from the member cluster condition
+
+	// sync the cluster profile status/condition from the member cluster condition
+	r.fillInClusterStatus(mc, cp)
 	r.syncClusterProfileCondition(mc, cp)
 	if err = r.Status().Update(ctx, cp); err != nil {
 		klog.ErrorS(err, "Failed to update cluster profile status", "memberCluster", mcRef, "clusterProfile", klog.KObj(cp))
@@ -167,10 +171,37 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	return ctrl.Result{}, nil
 }
 
+// fillInClusterStatus fills in the ClusterProfile status fields from the MemberCluster status.
+// Currently, it only fills in the Kubernetes version field.
+func (r *Reconciler) fillInClusterStatus(mc *clusterv1beta1.MemberCluster, cp *clusterinventory.ClusterProfile) {
+	k8sversion, exists := mc.Status.Properties[propertyprovider.K8sVersionProperty]
+	if exists {
+		klog.V(3).InfoS("Get Kubernetes version from member cluster status", "kubernetesVersion", k8sversion.Value, "clusterProfile", klog.KObj(cp))
+		cp.Status.Version = clusterinventory.ClusterVersion{
+			Kubernetes: k8sversion.Value,
+		}
+	}
+	clusterEntry, exists := mc.Status.Properties[propertyprovider.ClusterEntryPointProperty]
+	if exists {
+		klog.V(3).InfoS("Get Kubernetes cluster entry point from member cluster status", "clusterEntryPoint", clusterEntry.Value, "clusterProfile", klog.KObj(cp))
+		cp.Status.AccessProviders = []clusterinventory.AccessProvider{
+			{
+				Name: controller.ClusterManagerName,
+				Cluster: clientcmdv1.Cluster{
+					Server: clusterEntry.Value,
+				},
+			},
+		}
+	}
+	certificateAuthorityData, exists := mc.Status.Properties[propertyprovider.ClusterCertificateAuthorityProperty]
+	if exists {
+		klog.V(3).InfoS("Get Kubernetes cluster certificate authority data from member cluster status", "clusterProfile", klog.KObj(cp))
+		cp.Status.AccessProviders[0].Cluster.CertificateAuthorityData = []byte(certificateAuthorityData.Value)
+	}
+}
+
 // syncClusterProfileCondition syncs the ClusterProfile object's condition based on the MemberCluster object's condition.
 func (r *Reconciler) syncClusterProfileCondition(mc *clusterv1beta1.MemberCluster, cp *clusterinventory.ClusterProfile) {
-	// Update the cluster profile status.
-	//
 	// For simplicity reasons, for now only the health check condition is populated, using
 	// Fleet member agent's API server health check result.
 	var mcHealthCond *metav1.Condition
