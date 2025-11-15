@@ -122,22 +122,18 @@ func (r *Reconciler) executeUpdatingStage(
 	for i := 0; i < len(updatingStageStatus.Clusters) && clusterUpdatingCount < maxConcurrency; i++ {
 		clusterStatus := &updatingStageStatus.Clusters[i]
 		clusterUpdateSucceededCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
-		if clusterUpdateSucceededCond == nil {
-			// The cluster is either updating or not started yet.
-			clusterUpdatingCount++
-		} else {
-			if condition.IsConditionStatusFalse(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
-				// The cluster is marked as failed to update.
-				failedErr := fmt.Errorf("the cluster `%s` in the stage %s has failed", clusterStatus.ClusterName, updatingStageStatus.StageName)
-				klog.ErrorS(failedErr, "The cluster has failed to be updated", "updateRun", updateRunRef)
-				return 0, fmt.Errorf("%w: %s", errStagedUpdatedAborted, failedErr.Error())
-			}
-			if condition.IsConditionStatusTrue(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
-				// The cluster has been updated successfully.
-				finishedClusterCount++
-				continue
-			}
+		if condition.IsConditionStatusFalse(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
+			// The cluster is marked as failed to update.
+			failedErr := fmt.Errorf("the cluster `%s` in the stage %s has failed", clusterStatus.ClusterName, updatingStageStatus.StageName)
+			klog.ErrorS(failedErr, "The cluster has failed to be updated", "updateRun", updateRunRef)
+			return 0, fmt.Errorf("%w: %s", errStagedUpdatedAborted, failedErr.Error())
 		}
+		if condition.IsConditionStatusTrue(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
+			// The cluster has been updated successfully.
+			finishedClusterCount++
+			continue
+		}
+		clusterUpdatingCount++
 		// The cluster needs to be processed.
 		clusterStartedCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
 		binding := toBeUpdatedBindingsMap[clusterStatus.ClusterName]

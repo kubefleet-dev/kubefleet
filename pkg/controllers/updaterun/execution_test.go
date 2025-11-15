@@ -415,7 +415,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 		bindings        []placementv1beta1.BindingObj
 		interceptorFunc *interceptor.Funcs
 		wantErr         error
-		wantWaitTime  time.Duration
+		wantWaitTime    time.Duration
 	}{
 		{
 			name: "cluster update failed",
@@ -461,7 +461,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 			bindings:        nil,
 			interceptorFunc: nil,
 			wantErr:         errors.New("the cluster `cluster-1` in the stage test-stage has failed"),
-			wantWaitTime:  0,
+			wantWaitTime:    0,
 		},
 		{
 			name: "binding update failure",
@@ -512,7 +512,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 					return errors.New("simulated update error")
 				},
 			},
-			wantErr:        errors.New("simulated update error"),
+			wantErr:      errors.New("simulated update error"),
 			wantWaitTime: 0,
 		},
 		{
@@ -579,7 +579,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 			},
 			interceptorFunc: nil,
 			wantErr:         errors.New("the binding of the updating cluster `cluster-1` in the stage `test-stage` is not up-to-date with the desired status"),
-			wantWaitTime:  0,
+			wantWaitTime:    0,
 		},
 		{
 			name: "binding synced but state not bound - update binding state fails",
@@ -632,7 +632,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 					return errors.New("failed to update binding state")
 				},
 			},
-			wantErr:        errors.New("failed to update binding state"),
+			wantErr:      errors.New("failed to update binding state"),
 			wantWaitTime: 0,
 		},
 		{
@@ -697,7 +697,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 					return errors.New("failed to update binding rolloutStarted status")
 				},
 			},
-			wantErr:        errors.New("failed to update binding rolloutStarted status"),
+			wantErr:      errors.New("failed to update binding rolloutStarted status"),
 			wantWaitTime: 0,
 		},
 		{
@@ -764,7 +764,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 			},
 			interceptorFunc: nil,
 			wantErr:         errors.New("cluster updating encountered an error at stage"),
-			wantWaitTime:  0,
+			wantWaitTime:    0,
 		},
 	}
 
