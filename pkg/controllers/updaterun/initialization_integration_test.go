@@ -791,16 +791,22 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
 		})
 
-		It("Should fail to initialize if the specified resource snapshot is not found when no resource index specified - no resourceSnapshots at all", func() {
+		It("Should NOT fail to initialize if the specified resource snapshot is not found when no resource index specified - no resourceSnapshots at all", func() {
 			By("Creating a new clusterStagedUpdateRun without specifying resourceSnapshotIndex")
 			updateRun.Spec.ResourceSnapshotIndex = ""
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
-			By("Validating the initialization failed")
-			validateFailedInitCondition(ctx, updateRun, "no latest resourceSnapshots found for placement")
-
-			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			By("Validating the initialization did not fail due to resourceSnapshot not found (retryable error)")
+			Consistently(func() error {
+				if err := k8sClient.Get(ctx, updateRunNamespacedName, updateRun); err != nil {
+					return err
+				}
+				initCond := meta.FindStatusCondition(updateRun.Status.Conditions, string(placementv1beta1.StagedUpdateRunConditionInitialized))
+				if initCond != nil {
+					return fmt.Errorf("got initialization condition: %v, want nil", initCond)
+				}
+				return nil
+			}, duration, interval).Should(Succeed(), "the initialization should keep retrying, not failed")
 		})
 
 		It("Should fail to initialize if the specified resource snapshot is not found - no CRP label found", func() {
