@@ -58,7 +58,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 	})
 
-	FContext("Test resource rollout with staged update run with latest resource snapshot when not specified", Ordered, func() {
+	Context("Test resource rollout with staged update run with latest resource snapshot when not specified", Ordered, func() {
 		updateRunNames := []string{}
 		var strategy *placementv1beta1.StagedUpdateStrategy
 		var oldConfigMap, newConfigMap corev1.ConfigMap

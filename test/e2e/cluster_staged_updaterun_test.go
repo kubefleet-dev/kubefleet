@@ -63,7 +63,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	strategyName := fmt.Sprintf(clusterStagedUpdateRunStrategyNameTemplate, GinkgoParallelProcess())
 
-	FContext("Test resource rollout with staged update run with latest resource snapshot when not specified", Ordered, func() {
+	Context("Test resource rollout with staged update run with latest resource snapshot when not specified", Ordered, func() {
 		updateRunNames := []string{}
 		var strategy *placementv1beta1.ClusterStagedUpdateStrategy
 		var oldConfigMap, newConfigMap corev1.ConfigMap
