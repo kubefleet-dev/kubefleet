@@ -575,7 +575,7 @@ func (r *Reconciler) getResourceSnapshotObjs(ctx context.Context, placementKey t
 		err := fmt.Errorf("no latest resourceSnapshots found for placement `%s`. This might be a transient state, need retry", placementKey)
 		klog.ErrorS(err, "No latest resourceSnapshots found for placement. This might be transient, need retry", "placement", placementKey, "updateRun", updateRunRef)
 		// retryable error.
-		return resourceSnapshotObjs, fmt.Errorf("%w: %s", errInitializedFailed, err.Error())
+		return resourceSnapshotObjs, err
 	}
 	return resourceSnapshotObjs, nil
 }

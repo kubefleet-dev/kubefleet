@@ -63,6 +63,175 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	strategyName := fmt.Sprintf(clusterStagedUpdateRunStrategyNameTemplate, GinkgoParallelProcess())
 
+	FContext("Test resource rollout with staged update run with latest resource snapshot when not specified", Ordered, func() {
+		updateRunNames := []string{}
+		var strategy *placementv1beta1.ClusterStagedUpdateStrategy
+		var oldConfigMap, newConfigMap corev1.ConfigMap
+
+		BeforeAll(func() {
+			// Create a test namespace and a configMap inside it on the hub cluster.
+			createWorkResources()
+
+			// Create the CRP with external rollout strategy.
+			crp := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+					// Add a custom finalizer; this would allow us to better observe
+					// the behavior of the controllers.
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: workResourceSelector(),
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.ExternalRolloutStrategyType,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
+
+			// Create the clusterStagedUpdateStrategy.
+			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
+
+			for i := 0; i < 2; i++ {
+				updateRunNames = append(updateRunNames, fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
+			}
+
+			oldConfigMap = appConfigMap()
+			newConfigMap = appConfigMap()
+			newConfigMap.Data["data"] = testConfigMapDataValue
+		})
+
+		AfterAll(func() {
+			// Remove the custom deletion blocker finalizer from the CRP.
+			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+
+			// Remove all the clusterStagedUpdateRuns.
+			for _, name := range updateRunNames {
+				ensureClusterStagedUpdateRunDeletion(name)
+			}
+
+			// Delete the clusterStagedUpdateStrategy.
+			ensureClusterUpdateRunStrategyDeletion(strategyName)
+		})
+
+		It("Should not rollout any resources to member clusters as there's no update run yet", checkIfRemovedWorkResourcesFromAllMemberClustersConsistently)
+
+		It("Should have the latest resource snapshot", func() {
+			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex1st)
+		})
+
+		It("Should successfully schedule the crp", func() {
+			validateLatestClusterSchedulingPolicySnapshot(crpName, policySnapshotIndex1st, 3)
+		})
+
+		It("Should update crp status as pending rollout", func() {
+			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(nil, "", false, allMemberClusterNames, []string{"", "", ""}, []bool{false, false, false}, nil, nil)
+			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
+		})
+
+		It("Should create a cluster staged update run successfully", func() {
+			By("Create a cluster staged update run without specifying resource snapshot index")
+			createClusterStagedUpdateRunSucceedWithNoResourceSnapshotIndex(updateRunNames[0], crpName, strategyName)
+		})
+
+		It("Should rollout resources to member-cluster-2 only and complete stage canary", func() {
+			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[1]})
+			checkIfRemovedWorkResourcesFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0], allMemberClusters[2]})
+
+			By("Validating crp status as member-cluster-2 updated")
+			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(nil, "", false, allMemberClusterNames, []string{"", resourceSnapshotIndex1st, ""}, []bool{false, true, false}, nil, nil)
+			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
+
+			validateAndApproveClusterApprovalRequests(updateRunNames[0], envCanary)
+		})
+
+		It("Should rollout resources to member-cluster-1 first because of its name", func() {
+			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[0]})
+		})
+
+		It("Should rollout resources to all the members and complete the cluster staged update run successfully", func() {
+			csurSucceededActual := clusterStagedUpdateRunStatusSucceededActual(updateRunNames[0], resourceSnapshotIndex1st, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+			Eventually(csurSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[0])
+			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
+		})
+
+		It("Should update crp status as completed", func() {
+			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
+				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil)
+			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
+		})
+
+		It("Should update the configmap successfully on hub but not change member clusters", func() {
+			updateConfigMapSucceed(&newConfigMap)
+
+			for _, cluster := range allMemberClusters {
+				configMapActual := configMapPlacedOnClusterActual(cluster, &oldConfigMap)
+				Consistently(configMapActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep configmap %s data as expected", oldConfigMap.Name)
+			}
+		})
+
+		It("Should not update crp status, should still be completed", func() {
+			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
+				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil)
+			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep CRP %s status as expected", crpName)
+		})
+
+		It("Should create a new latest resource snapshot", func() {
+			crsList := &placementv1beta1.ClusterResourceSnapshotList{}
+			Eventually(func() error {
+				if err := hubClient.List(ctx, crsList, client.MatchingLabels{placementv1beta1.PlacementTrackingLabel: crpName, placementv1beta1.IsLatestSnapshotLabel: "true"}); err != nil {
+					return fmt.Errorf("failed to list the resourcesnapshot: %w", err)
+				}
+				if len(crsList.Items) != 1 {
+					return fmt.Errorf("got %d latest resourcesnapshots, want 1", len(crsList.Items))
+				}
+				if crsList.Items[0].Labels[placementv1beta1.ResourceIndexLabel] != resourceSnapshotIndex2nd {
+					return fmt.Errorf("got resource snapshot index %s, want %s", crsList.Items[0].Labels[placementv1beta1.ResourceIndexLabel], resourceSnapshotIndex2nd)
+				}
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed get the new latest resourcensnapshot")
+		})
+
+		It("Should create a new cluster staged update run successfully", func() {
+			By("Create a new cluster staged update run without specifying resource snapshot index")
+			createClusterStagedUpdateRunSucceedWithNoResourceSnapshotIndex(updateRunNames[1], crpName, strategyName)
+		})
+
+		It("Should rollout resources to member-cluster-2 only and complete stage canary", func() {
+			By("Verify that the new configmap is updated on member-cluster-2")
+			configMapActual := configMapPlacedOnClusterActual(allMemberClusters[1], &newConfigMap)
+			Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update to the new configmap %s on cluster %s", newConfigMap.Name, allMemberClusterNames[1])
+			By("Verify that the configmap is not updated on member-cluster-1 and member-cluster-3")
+			for _, cluster := range []*framework.Cluster{allMemberClusters[0], allMemberClusters[2]} {
+				configMapActual := configMapPlacedOnClusterActual(cluster, &oldConfigMap)
+				Consistently(configMapActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep configmap %s data as expected", newConfigMap.Name)
+			}
+
+			By("Validating crp status as member-cluster-2 updated")
+			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(nil, "", false, allMemberClusterNames,
+				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex2nd, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil)
+			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
+
+			validateAndApproveClusterApprovalRequests(updateRunNames[1], envCanary)
+		})
+
+		It("Should rollout resources to member-cluster-1 and member-cluster-3 too and complete the cluster staged update run successfully", func() {
+			csurSucceededActual := clusterStagedUpdateRunStatusSucceededActual(updateRunNames[1], resourceSnapshotIndex2nd, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+			Eventually(csurSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[1])
+			By("Verify that new the configmap is updated on all member clusters")
+			for idx := range allMemberClusters {
+				configMapActual := configMapPlacedOnClusterActual(allMemberClusters[idx], &newConfigMap)
+				Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update to the new configmap %s on cluster %s as expected", newConfigMap.Name, allMemberClusterNames[idx])
+			}
+		})
+
+		It("Should update crp status as completed", func() {
+			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex2nd, true, allMemberClusterNames,
+				[]string{resourceSnapshotIndex2nd, resourceSnapshotIndex2nd, resourceSnapshotIndex2nd}, []bool{true, true, true}, nil, nil)
+			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
+		})
+	})
+
 	Context("Test resource rollout and rollback with staged update run", Ordered, func() {
 		updateRunNames := []string{}
 		var strategy *placementv1beta1.ClusterStagedUpdateStrategy
@@ -1667,6 +1836,19 @@ func createClusterStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapsho
 		Spec: placementv1beta1.UpdateRunSpec{
 			PlacementName:            crpName,
 			ResourceSnapshotIndex:    resourceSnapshotIndex,
+			StagedUpdateStrategyName: strategyName,
+		},
+	}
+	Expect(hubClient.Create(ctx, updateRun)).To(Succeed(), "Failed to create ClusterStagedUpdateRun %s", updateRunName)
+}
+
+func createClusterStagedUpdateRunSucceedWithNoResourceSnapshotIndex(updateRunName, crpName, strategyName string) {
+	updateRun := &placementv1beta1.ClusterStagedUpdateRun{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: updateRunName,
+		},
+		Spec: placementv1beta1.UpdateRunSpec{
+			PlacementName:            crpName,
 			StagedUpdateStrategyName: strategyName,
 		},
 	}
