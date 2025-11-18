@@ -60,8 +60,6 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceplacementeviction"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/fleetresourcehandler"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/membercluster"
-	"github.com/kubefleet-dev/kubefleet/pkg/webhook/pod"
-	"github.com/kubefleet-dev/kubefleet/pkg/webhook/replicaset"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/resourceoverride"
 
 	fleetnetworkingv1alpha1 "go.goms.io/fleet-networking/api/v1alpha1"
@@ -304,22 +302,6 @@ func (w *Config) createValidatingWebhookConfiguration(ctx context.Context, webho
 func (w *Config) buildFleetValidatingWebhooks() []admv1.ValidatingWebhook {
 	webHooks := []admv1.ValidatingWebhook{
 		{
-			Name:                    "fleet.pod.validating",
-			ClientConfig:            w.createClientConfig(pod.ValidationPath),
-			FailurePolicy:           &failFailurePolicy,
-			SideEffects:             &sideEffortsNone,
-			AdmissionReviewVersions: admissionReviewVersions,
-			Rules: []admv1.RuleWithOperations{
-				{
-					Operations: []admv1.OperationType{
-						admv1.Create,
-					},
-					Rule: createRule([]string{corev1.SchemeGroupVersion.Group}, []string{corev1.SchemeGroupVersion.Version}, []string{podResourceName}, &namespacedScope),
-				},
-			},
-			TimeoutSeconds: longWebhookTimeout,
-		},
-		{
 			Name:                    "fleet.clusterresourceplacementv1beta1.validating",
 			ClientConfig:            w.createClientConfig(clusterresourceplacement.ValidationPath),
 			FailurePolicy:           &failFailurePolicy,
@@ -337,23 +319,7 @@ func (w *Config) buildFleetValidatingWebhooks() []admv1.ValidatingWebhook {
 			TimeoutSeconds: longWebhookTimeout,
 		},
 		{
-			Name:                    "fleet.replicaset.validating",
-			ClientConfig:            w.createClientConfig(replicaset.ValidationPath),
-			FailurePolicy:           &failFailurePolicy,
-			SideEffects:             &sideEffortsNone,
-			AdmissionReviewVersions: admissionReviewVersions,
-			Rules: []admv1.RuleWithOperations{
-				{
-					Operations: []admv1.OperationType{
-						admv1.Create,
-					},
-					Rule: createRule([]string{appsv1.SchemeGroupVersion.Group}, []string{appsv1.SchemeGroupVersion.Version}, []string{replicaSetResourceName}, &namespacedScope),
-				},
-			},
-			TimeoutSeconds: longWebhookTimeout,
-		},
-		{
-			Name:                    "fleet.membercluster.validating",
+			Name:                    "fleet.memberclusterv1beta1.validating",
 			ClientConfig:            w.createClientConfig(membercluster.ValidationPath),
 			FailurePolicy:           &failFailurePolicy,
 			SideEffects:             &sideEffortsNone,
@@ -487,18 +453,17 @@ func (w *Config) buildFleetGuardRailValidatingWebhooks() []admv1.ValidatingWebho
 			Operations: []admv1.OperationType{admv1.Delete},
 			Rule:       createRule([]string{"*"}, []string{"*"}, []string{"*/*"}, &namespacedScope),
 		},
-		// TODO(ArvindThiru): not handling pods, replicasets as part of the fleet guard rail since they have validating webhooks, need to remove validating webhooks before adding these resources to fleet guard rail.
 		{
 			Operations: cuOperations,
 			Rule: createRule([]string{corev1.SchemeGroupVersion.Group}, []string{corev1.SchemeGroupVersion.Version}, []string{bindingResourceName, configMapResourceName, endPointResourceName,
-				limitRangeResourceName, persistentVolumeClaimsName, persistentVolumeClaimsName + "/status", podTemplateResourceName,
+				limitRangeResourceName, persistentVolumeClaimsName, persistentVolumeClaimsName + "/status", podResourceName, podResourceName + "/status", podTemplateResourceName,
 				replicationControllerResourceName, replicationControllerResourceName + "/status", resourceQuotaResourceName, resourceQuotaResourceName + "/status", secretResourceName,
 				serviceAccountResourceName, servicesResourceName, servicesResourceName + "/status"}, &namespacedScope),
 		},
 		{
 			Operations: cuOperations,
 			Rule: createRule([]string{appsv1.SchemeGroupVersion.Group}, []string{appsv1.SchemeGroupVersion.Version}, []string{controllerRevisionResourceName, daemonSetResourceName, daemonSetResourceName + "/status",
-				deploymentResourceName, deploymentResourceName + "/status", statefulSetResourceName, statefulSetResourceName + "/status"}, &namespacedScope),
+				deploymentResourceName, deploymentResourceName + "/status", replicaSetResourceName, replicaSetResourceName + "/status", statefulSetResourceName, statefulSetResourceName + "/status"}, &namespacedScope),
 		},
 		{
 			Operations: cuOperations,
