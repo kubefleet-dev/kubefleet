@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample-metric-app
+  labels:
+    app: sample-metric-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sample-metric-app
+  template:
+    metadata:
+      labels:
+        app: sample-metric-app
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: metric-app
+        image: ghcr.io/metric-app:6d6cd69
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        env:
+        - name: CLUSTER_NAME
+          value: "cluster-1"
+        - name: WORKLOAD_NAME
+          value: "sample-metric-app"
