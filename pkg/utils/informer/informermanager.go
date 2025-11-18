@@ -22,12 +22,12 @@ import (
 	"sync"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
+	ctrlcache "sigs.k8s.io/controller-runtime/pkg/cache"
 )
 
 // InformerManager manages dynamic shared informer for all resources, include Kubernetes resource and
@@ -132,29 +132,11 @@ func (s *informerManagerImpl) AddDynamicResources(dynResources []APIResourceMeta
 			// TODO (rzhang): remember the ResourceEventHandlerRegistration and remove it when the resource is deleted
 			// TODO: handle error which only happens if the informer is stopped
 			informer := s.informerFactory.ForResource(newRes.GroupVersionResource).Informer()
-			err := informer.SetTransform(func(objI interface{}) (interface{}, error) {
-				obj, hasObjMetadata := objI.(metav1.Object)
-				if !hasObjMetadata {
-					// No need to transform; return the object as it is.
-					return objI, nil
-				}
-
-				// Drop the following metadata fields as Fleet never reads them (or more specifically,
-				// they will be stripped off before placement anyway).
-				//
-				// TO-DO (chenyu1): cross-reference the logic here with the stripping-off process to make
-				// sure that the same fields are dropped in both places.
-				obj.SetManagedFields(nil)
-				obj.SetSelfLink("")
-
-				// Note (chenyu1): the v1alpha1 API implementations read the following fields.
-				//obj.SetOwnerReferences(nil)
-				//obj.SetUID("")
-				//obj.SetResourceVersion("")
-
-				return obj, nil
-			})
-			if err != nil {
+			// Strip away the ManagedFields info from objects to save memory.
+			//
+			// TO-DO (chenyu1): evaluate if there are other fields, e.g., owner refs, status, that can also be stripped
+			// away to save memory.
+			if err := informer.SetTransform(ctrlcache.TransformStripManagedFields()); err != nil {
 				// The SetTransform func would only fail if the informer has already started. In this case,
 				// no further action is needed.
 				klog.ErrorS(err, "Failed to set transform func for informer", "gvr", newRes.GroupVersionResource)
