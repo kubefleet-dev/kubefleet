@@ -30,21 +30,29 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 )
 
-var _ = Describe("placing a Deployment using a RP with PickAll policy", Label("resourceplacement"), Ordered, func() {
+var _ = Describe("placing workloads using a RP with PickAll policy", Label("resourceplacement"), Ordered, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 	var testDeployment appsv1.Deployment
+	var testDaemonSet appsv1.DaemonSet
+	var testStatefulSet appsv1.StatefulSet
 
 	BeforeAll(func() {
-		// Read the test deployment manifest
+		// Read the test manifests
 		readDeploymentTestManifest(&testDeployment)
+		readDaemonSetTestManifest(&testDaemonSet)
+		readStatefulSetTestManifest(&testStatefulSet, false)
 		workNamespace := appNamespace()
 
-		// Create namespace and deployment
-		By("creating namespace and deployment")
+		// Create namespace and workloads
+		By("creating namespace and workloads")
 		Expect(hubClient.Create(ctx, &workNamespace)).To(Succeed(), "Failed to create namespace %s", workNamespace.Name)
 		testDeployment.Namespace = workNamespace.Name
+		testDaemonSet.Namespace = workNamespace.Name
+		testStatefulSet.Namespace = workNamespace.Name
 		Expect(hubClient.Create(ctx, &testDeployment)).To(Succeed(), "Failed to create test deployment %s", testDeployment.Name)
+		Expect(hubClient.Create(ctx, &testDaemonSet)).To(Succeed(), "Failed to create test daemonset %s", testDaemonSet.Name)
+		Expect(hubClient.Create(ctx, &testStatefulSet)).To(Succeed(), "Failed to create test statefulset %s", testStatefulSet.Name)
 
 		// Create the CRP with namespace-only selector
 		By("creating CRP with namespace selector")
@@ -75,13 +83,13 @@ var _ = Describe("placing a Deployment using a RP with PickAll policy", Label("r
 
 	AfterAll(func() {
 		By("cleaning up resources")
-		ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: testDeployment.Namespace}, allMemberClusters, &testDeployment)
+		ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: testDeployment.Namespace}, allMemberClusters, &testDeployment, &testDaemonSet, &testStatefulSet)
 		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 	})
 
 	Context("with PickAll placement type", Ordered, func() {
 		It("creating the RP should succeed", func() {
-			By("creating RP that selects the deployment")
+			By("creating RP that selects all workloads")
 			rp := &placementv1beta1.ResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       rpName,
@@ -95,6 +103,18 @@ var _ = Describe("placing a Deployment using a RP with PickAll policy", Label("r
 							Version: appsv1.SchemeGroupVersion.Version,
 							Kind:    utils.DeploymentKind,
 							Name:    testDeployment.Name,
+						},
+						{
+							Group:   appsv1.SchemeGroupVersion.Group,
+							Version: appsv1.SchemeGroupVersion.Version,
+							Kind:    utils.DaemonSetKind,
+							Name:    testDaemonSet.Name,
+						},
+						{
+							Group:   appsv1.SchemeGroupVersion.Group,
+							Version: appsv1.SchemeGroupVersion.Version,
+							Kind:    utils.StatefulSetKind,
+							Name:    testStatefulSet.Name,
 						},
 					},
 					Policy: &placementv1beta1.PlacementPolicy{
@@ -121,6 +141,20 @@ var _ = Describe("placing a Deployment using a RP with PickAll policy", Label("r
 					Name:      testDeployment.Name,
 					Namespace: testDeployment.Namespace,
 				},
+				{
+					Group:     appsv1.SchemeGroupVersion.Group,
+					Version:   appsv1.SchemeGroupVersion.Version,
+					Kind:      utils.DaemonSetKind,
+					Name:      testDaemonSet.Name,
+					Namespace: testDaemonSet.Namespace,
+				},
+				{
+					Group:     appsv1.SchemeGroupVersion.Group,
+					Version:   appsv1.SchemeGroupVersion.Version,
+					Kind:      utils.StatefulSetKind,
+					Name:      testStatefulSet.Name,
+					Namespace: testStatefulSet.Namespace,
+				},
 			}
 			rpStatusUpdatedActual := rpStatusUpdatedActual(wantSelectedResources, allMemberClusterNames, nil, "0")
 			Eventually(rpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
@@ -132,6 +166,24 @@ var _ = Describe("placing a Deployment using a RP with PickAll policy", Label("r
 				memberCluster := allMemberClusters[idx]
 				deploymentPlacedActual := waitForDeploymentPlacementToReady(memberCluster, &testDeployment)
 				Eventually(deploymentPlacedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place deployment on member cluster %s", memberCluster.ClusterName)
+			}
+		})
+
+		It("should place the daemonset on all member clusters", func() {
+			By("verifying daemonset is placed and ready on all member clusters")
+			for idx := range allMemberClusters {
+				memberCluster := allMemberClusters[idx]
+				daemonsetPlacedActual := waitForDaemonSetPlacementToReady(memberCluster, &testDaemonSet)
+				Eventually(daemonsetPlacedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place daemonset on member cluster %s", memberCluster.ClusterName)
+			}
+		})
+
+		It("should place the statefulset on all member clusters", func() {
+			By("verifying statefulset is placed and ready on all member clusters")
+			for idx := range allMemberClusters {
+				memberCluster := allMemberClusters[idx]
+				statefulsetPlacedActual := waitForStatefulSetPlacementToReady(memberCluster, &testStatefulSet)
+				Eventually(statefulsetPlacedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place statefulset on member cluster %s", memberCluster.ClusterName)
 			}
 		})
 
@@ -157,6 +209,72 @@ var _ = Describe("placing a Deployment using a RP with PickAll policy", Label("r
 				}, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(),
 					"Deployment should be ready on cluster %s", cluster.ClusterName)
 			}
+		})
+
+		It("should verify deployment pods are created on hub cluster", func() {
+			By("checking that deployment pods exist on hub cluster")
+			Eventually(func() error {
+				var deployed appsv1.Deployment
+				if err := hubClient.Get(ctx, types.NamespacedName{
+					Name:      testDeployment.Name,
+					Namespace: testDeployment.Namespace,
+				}, &deployed); err != nil {
+					return err
+				}
+				// Verify deployment is ready on hub
+				if deployed.Status.ReadyReplicas != *deployed.Spec.Replicas {
+					return fmt.Errorf("hub deployment not ready: %d/%d replicas ready", deployed.Status.ReadyReplicas, *deployed.Spec.Replicas)
+				}
+				if deployed.Status.UpdatedReplicas != *deployed.Spec.Replicas {
+					return fmt.Errorf("hub deployment not updated: %d/%d replicas updated", deployed.Status.UpdatedReplicas, *deployed.Spec.Replicas)
+				}
+				return nil
+			}, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(),
+				"Deployment should be ready on hub cluster")
+		})
+
+		It("should verify daemonset pods are created on hub cluster", func() {
+			By("checking that daemonset pods exist on hub cluster")
+			Eventually(func() error {
+				var deployed appsv1.DaemonSet
+				if err := hubClient.Get(ctx, types.NamespacedName{
+					Name:      testDaemonSet.Name,
+					Namespace: testDaemonSet.Namespace,
+				}, &deployed); err != nil {
+					return err
+				}
+				// Verify daemonset is ready on hub
+				if deployed.Status.NumberAvailable != deployed.Status.DesiredNumberScheduled {
+					return fmt.Errorf("hub daemonset not ready: %d/%d pods available", deployed.Status.NumberAvailable, deployed.Status.DesiredNumberScheduled)
+				}
+				if deployed.Status.CurrentNumberScheduled != deployed.Status.UpdatedNumberScheduled {
+					return fmt.Errorf("hub daemonset not updated: %d/%d pods updated", deployed.Status.UpdatedNumberScheduled, deployed.Status.CurrentNumberScheduled)
+				}
+				return nil
+			}, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(),
+				"DaemonSet should be ready on hub cluster")
+		})
+
+		It("should verify statefulset pods are created on hub cluster", func() {
+			By("checking that statefulset pods exist on hub cluster")
+			Eventually(func() error {
+				var deployed appsv1.StatefulSet
+				if err := hubClient.Get(ctx, types.NamespacedName{
+					Name:      testStatefulSet.Name,
+					Namespace: testStatefulSet.Namespace,
+				}, &deployed); err != nil {
+					return err
+				}
+				// Verify statefulset is ready on hub
+				if deployed.Status.ReadyReplicas != *deployed.Spec.Replicas {
+					return fmt.Errorf("hub statefulset not ready: %d/%d replicas ready", deployed.Status.ReadyReplicas, *deployed.Spec.Replicas)
+				}
+				if deployed.Status.CurrentReplicas != deployed.Status.UpdatedReplicas {
+					return fmt.Errorf("hub statefulset not updated: %d/%d replicas updated", deployed.Status.UpdatedReplicas, deployed.Status.CurrentReplicas)
+				}
+				return nil
+			}, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(),
+				"StatefulSet should be ready on hub cluster")
 		})
 	})
 })
