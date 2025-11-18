@@ -791,7 +791,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
 		})
 
-		FIt("Should NOT fail to initialize if the specified resource snapshot is not found when no resource index specified - no resourceSnapshots at all", func() {
+		It("Should NOT fail to initialize if the specified resource snapshot is not found when no resource index specified - no resourceSnapshots at all", func() {
 			By("Creating a new clusterStagedUpdateRun without specifying resourceSnapshotIndex")
 			updateRun.Spec.ResourceSnapshotIndex = ""
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
