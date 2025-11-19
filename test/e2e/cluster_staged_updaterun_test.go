@@ -147,11 +147,16 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			validateAndApproveClusterApprovalRequests(updateRunNames[0], envCanary)
 		})
 
-		It("Should rollout resources to member-cluster-1 first because of its name", func() {
-			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[0]})
+		It("Should not rollout resources to prod stage until approved", func() {
+			checkIfRemovedWorkResourcesFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0], allMemberClusters[2]})
 		})
 
-		It("Should rollout resources to all the members and complete the cluster staged update run successfully", func() {
+		It("Should rollout resources to all the members after approval and complete the cluster staged update run successfully", func() {
+			validateAndApproveClusterApprovalRequests(updateRunNames[0], envProd)
+
+			By("Should rollout resources to member-cluster-1 first because of its name")
+			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[0]})
+
 			csurSucceededActual := clusterStagedUpdateRunStatusSucceededActual(updateRunNames[0], resourceSnapshotIndex1st, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(csurSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[0])
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
@@ -218,7 +223,11 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should not rollout resources to prod stage until approved", func() {
-			checkIfRemovedWorkResourcesFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0], allMemberClusters[2]})
+			By("Verify that the configmap is not updated on member-cluster-1 and member-cluster-3")
+			for _, cluster := range []*framework.Cluster{allMemberClusters[0], allMemberClusters[2]} {
+				configMapActual := configMapPlacedOnClusterActual(cluster, &oldConfigMap)
+				Consistently(configMapActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep configmap %s data as expected", newConfigMap.Name)
+			}
 		})
 
 		It("Should rollout resources to all the members after approval and complete the cluster staged update run successfully", func() {
@@ -399,9 +408,6 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should not rollout resources to prod stage until approved", func() {
-			By("Verify that the new configmap is updated on member-cluster-2")
-			configMapActual := configMapPlacedOnClusterActual(allMemberClusters[1], &newConfigMap)
-			Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update to the new configmap %s on cluster %s", newConfigMap.Name, allMemberClusterNames[1])
 			By("Verify that the configmap is not updated on member-cluster-1 and member-cluster-3")
 			for _, cluster := range []*framework.Cluster{allMemberClusters[0], allMemberClusters[2]} {
 				configMapActual := configMapPlacedOnClusterActual(cluster, &oldConfigMap)
@@ -450,9 +456,6 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should not rollback resources to prod stage until approved", func() {
-			By("Verify that the configmap is rolled back on member-cluster-2")
-			configMapActual := configMapPlacedOnClusterActual(allMemberClusters[1], &oldConfigMap)
-			Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to rollback the configmap change on cluster %s", allMemberClusterNames[1])
 			By("Verify that the configmap is not rolled back on member-cluster-1 and member-cluster-3")
 			for _, cluster := range []*framework.Cluster{allMemberClusters[0], allMemberClusters[2]} {
 				configMapActual := configMapPlacedOnClusterActual(cluster, &newConfigMap)

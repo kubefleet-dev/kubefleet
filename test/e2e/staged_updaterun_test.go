@@ -211,8 +211,19 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 
 			validateAndApproveNamespacedApprovalRequests(updateRunNames[1], testNamespace, envCanary)
 		})
+		It("Should not rollout resources to prod stage until approved", func() {
+			By("Verify that the configmap is not updated on member-cluster-1 and member-cluster-3")
+			for _, cluster := range []*framework.Cluster{allMemberClusters[0], allMemberClusters[2]} {
+				configMapActual := configMapPlacedOnClusterActual(cluster, &oldConfigMap)
+				Consistently(configMapActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep configmap %s data as expected", newConfigMap.Name)
+			}
+		})
 
-		It("Should rollout resources to member-cluster-1 and member-cluster-3 too and complete the staged update run successfully", func() {
+		It("Should rollout resources to all the members after approval and complete the staged update run successfully", func() {
+			validateAndApproveNamespacedApprovalRequests(updateRunNames[0], testNamespace, envProd)
+
+			By("Should rollout resources to member-cluster-1 first because of its name")
+			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[0]})
 			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[1], testNamespace, resourceSnapshotIndex2nd, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(surSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s/%s succeeded", testNamespace, updateRunNames[1])
 			By("Verify that new the configmap is updated on all member clusters")
@@ -383,9 +394,6 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		})
 
 		It("Should not rollout resources to prod stage until approved", func() {
-			By("Verify that the new configmap is updated on member-cluster-2")
-			configMapActual := configMapPlacedOnClusterActual(allMemberClusters[1], &newConfigMap)
-			Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update to the new configmap %s on cluster %s", newConfigMap.Name, allMemberClusterNames[1])
 			By("Verify that the configmap is not updated on member-cluster-1 and member-cluster-3")
 			for _, cluster := range []*framework.Cluster{allMemberClusters[0], allMemberClusters[2]} {
 				configMapActual := configMapPlacedOnClusterActual(cluster, &oldConfigMap)
@@ -434,9 +442,6 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		})
 
 		It("Should not rollback resources to prod stage until approved", func() {
-			By("Verify that the configmap is rolled back on member-cluster-2")
-			configMapActual := configMapPlacedOnClusterActual(allMemberClusters[1], &oldConfigMap)
-			Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to rollback the configmap change on cluster %s", allMemberClusterNames[1])
 			By("Verify that the configmap is not rolled back on member-cluster-1 and member-cluster-3")
 			for _, cluster := range []*framework.Cluster{allMemberClusters[0], allMemberClusters[2]} {
 				configMapActual := configMapPlacedOnClusterActual(cluster, &newConfigMap)
