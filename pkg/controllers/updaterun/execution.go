@@ -122,21 +122,19 @@ func (r *Reconciler) executeUpdatingStage(
 	for i := 0; i < len(updatingStageStatus.Clusters) && clusterUpdatingCount < maxConcurrency; i++ {
 		clusterStatus := &updatingStageStatus.Clusters[i]
 		clusterUpdateSucceededCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
-		if condition.IsConditionStatusFalse(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
-			// The cluster is marked as failed to update.
-			failedErr := fmt.Errorf("the cluster `%s` in the stage %s has failed", clusterStatus.ClusterName, updatingStageStatus.StageName)
-			klog.ErrorS(failedErr, "The cluster has failed to be updated", "updateRun", updateRunRef)
-			clusterUpdateErrors = append(clusterUpdateErrors, fmt.Errorf("%w: %s", errStagedUpdatedAborted, failedErr.Error()))
-			// Count it as updating cluster since it's not finished to avoid processing more clusters than maxConcurrency in this round.
-			clusterUpdatingCount++
-			continue
-		}
 		if condition.IsConditionStatusTrue(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
 			// The cluster has been updated successfully.
 			finishedClusterCount++
 			continue
 		}
 		clusterUpdatingCount++
+		if condition.IsConditionStatusFalse(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
+			// The cluster is marked as failed to update, this cluster is counted as updating cluster since it's not finished to avoid processing more clusters than maxConcurrency in this round.
+			failedErr := fmt.Errorf("the cluster `%s` in the stage %s has failed", clusterStatus.ClusterName, updatingStageStatus.StageName)
+			klog.ErrorS(failedErr, "The cluster has failed to be updated", "updateRun", updateRunRef)
+			clusterUpdateErrors = append(clusterUpdateErrors, fmt.Errorf("%w: %s", errStagedUpdatedAborted, failedErr.Error()))
+			continue
+		}
 		// The cluster needs to be processed.
 		clusterStartedCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
 		binding := toBeUpdatedBindingsMap[clusterStatus.ClusterName]
