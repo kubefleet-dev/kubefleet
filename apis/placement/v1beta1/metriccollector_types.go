@@ -52,132 +52,14 @@ type MetricCollector struct {
 
 // MetricCollectorSpec defines the desired state of MetricCollector.
 type MetricCollectorSpec struct {
-	// WorkloadSelector defines which workloads to monitor.
+	// PrometheusURL is the URL of the Prometheus server.
+	// Example: http://prometheus.test-ns.svc.cluster.local:9090
 	// +required
-	WorkloadSelector WorkloadSelectorSpec `json:"workloadSelector"`
-
-	// MetricsEndpoint defines how to access the metrics endpoint.
-	// +required
-	MetricsEndpoint MetricsEndpointSpec `json:"metricsEndpoint"`
-
-	// CollectionInterval specifies how often to scrape metrics.
-	// Default is 30s. Minimum is 10s.
-	// +kubebuilder:default="30s"
-	// +kubebuilder:validation:Pattern="^([0-9]+(\\.[0-9]+)?(s|m|h))+$"
-	// +optional
-	CollectionInterval string `json:"collectionInterval,omitempty"`
-
-	// MetricsToCollect specifies which metrics to collect from the endpoint.
-	// If empty, specific metrics like workload_health will be collected.
-	// +optional
-	// +kubebuilder:validation:MaxItems=50
-	MetricsToCollect []string `json:"metricsToCollect,omitempty"`
-}
-
-// WorkloadSelectorSpec defines how to select workloads for monitoring.
-type WorkloadSelectorSpec struct {
-	// LabelSelector to match workloads.
-	// +required
-	LabelSelector *metav1.LabelSelector `json:"labelSelector"`
-
-	// Namespaces to monitor. If empty, all namespaces are monitored.
-	// +optional
-	// +kubebuilder:validation:MaxItems=100
-	Namespaces []string `json:"namespaces,omitempty"`
-
-	// WorkloadTypes specifies which types of workloads to monitor.
-	// Supported: Deployment, StatefulSet, DaemonSet, Pod.
-	// If empty, only Pods are monitored.
-	// +optional
-	// +kubebuilder:validation:MaxItems=10
-	WorkloadTypes []string `json:"workloadTypes,omitempty"`
-}
-
-// MetricsEndpointSpec defines how to access the metrics endpoint.
-type MetricsEndpointSpec struct {
-	// SourceType defines the type of metrics source.
-	// "prometheus" - Query a centralized Prometheus server (recommended for production)
-	// "direct" - Directly scrape each pod's metrics endpoint
-	// Default is "prometheus".
-	// +kubebuilder:validation:Enum=prometheus;direct
-	// +kubebuilder:default="prometheus"
-	// +optional
-	SourceType string `json:"sourceType,omitempty"`
-
-	// PrometheusEndpoint specifies the Prometheus server to query.
-	// Required when SourceType is "prometheus".
-	// +optional
-	PrometheusEndpoint *PrometheusEndpointSpec `json:"prometheusEndpoint,omitempty"`
-
-	// DirectEndpoint specifies how to scrape pods directly.
-	// Required when SourceType is "direct".
-	// +optional
-	DirectEndpoint *DirectEndpointSpec `json:"directEndpoint,omitempty"`
-}
-
-// PrometheusEndpointSpec defines how to connect to a Prometheus server.
-type PrometheusEndpointSpec struct {
-	// URL of the Prometheus server.
-	// Example: http://prometheus-server.monitoring:9090
-	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern=`^https?://.*$`
-	URL string `json:"url"`
-
-	// Auth specifies authentication configuration for Prometheus.
-	// +optional
-	Auth *PrometheusAuthConfig `json:"auth,omitempty"`
+	PrometheusURL string `json:"prometheusUrl"`
 }
 
-// PrometheusAuthConfig specifies authentication for Prometheus.
-type PrometheusAuthConfig struct {
-	// Type of authentication (bearer or basic).
-	// +kubebuilder:validation:Enum=bearer;basic
-	// +optional
-	Type string `json:"type,omitempty"`
-
-	// SecretRef references a secret containing authentication credentials.
-	// For bearer: key "token"
-	// For basic: keys "username" and "password"
-	// +optional
-	SecretRef *SecretReference `json:"secretRef,omitempty"`
-}
-
-// SecretReference identifies a secret.
-type SecretReference struct {
-	// Name of the secret.
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MaxLength=253
-	Name string `json:"name"`
-
-	// Namespace of the secret.
-	// If not specified, the namespace of the MetricCollector will be used.
-	// +optional
-	Namespace string `json:"namespace,omitempty"`
-}
-
-// DirectEndpointSpec defines how to scrape pods directly.
-type DirectEndpointSpec struct {
-	// Port where metrics are exposed on pods.
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=65535
-	// +required
-	Port int32 `json:"port"`
-
-	// Path to the metrics endpoint.
-	// Default is "/metrics".
-	// +kubebuilder:default="/metrics"
-	// +optional
-	Path string `json:"path,omitempty"`
-
-	// Scheme for the metrics endpoint (http or https).
-	// Default is "http".
-	// +kubebuilder:default="http"
-	// +kubebuilder:validation:Enum=http;https
-	// +optional
-	Scheme string `json:"scheme,omitempty"`
-}
-
-// MetricCollectorStatus defines the observed state of MetricCollector.
+// MetricsEndpointSpec defines how to access the metrics endpoint.ctor.
 type MetricCollectorStatus struct {
 	// Conditions is an array of current observed conditions.
 	// +optional
@@ -200,40 +82,23 @@ type MetricCollectorStatus struct {
 	CollectedMetrics []WorkloadMetrics `json:"collectedMetrics,omitempty"`
 }
 
-// WorkloadMetrics represents metrics collected from a single workload.
+// WorkloadMetrics represents metrics collected from a single workload pod.
 type WorkloadMetrics struct {
-	// WorkloadName is the name of the workload.
-	// +required
-	Name string `json:"name"`
-
-	// WorkloadNamespace is the namespace of the workload.
+	// Namespace is the namespace of the pod.
 	// +required
 	Namespace string `json:"namespace"`
 
-	// WorkloadKind is the kind of workload (Pod, Deployment, etc.).
+	// ClusterName from the workload_health metric label.
 	// +required
-	Kind string `json:"kind"`
+	ClusterName string `json:"clusterName"`
 
-	// Metrics contains the collected metric values.
-	// Key is metric name, value is the metric value.
-	// +optional
-	Metrics map[string]string `json:"metrics,omitempty"`
+	// WorkloadName from the workload_health metric label (typically the deployment name).
+	// +required
+	WorkloadName string `json:"workloadName"`
 
-	// Labels from the metric (like cluster_name, workload_name from the app).
-	// +optional
-	Labels map[string]string `json:"labels,omitempty"`
-
-	// LastScrapedTime is when metrics were last scraped from this workload.
-	// +optional
-	LastScrapedTime *metav1.Time `json:"lastScrapedTime,omitempty"`
-
-	// Healthy indicates if the workload is healthy based on metrics.
-	// +optional
-	Healthy *bool `json:"healthy,omitempty"`
-
-	// ErrorMessage if scraping failed.
-	// +optional
-	ErrorMessage string `json:"errorMessage,omitempty"`
+	// Health is the value of workload_health metric (1=healthy, 0=unhealthy).
+	// +required
+	Health float64 `json:"health"`
 }
 
 const (

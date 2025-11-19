@@ -35,11 +35,8 @@ import (
 )
 
 const (
-	// defaultCollectionInterval is the default interval for collecting metrics
+	// defaultCollectionInterval is the interval for collecting metrics (30 seconds)
 	defaultCollectionInterval = 30 * time.Second
-
-	// minCollectionInterval is the minimum allowed interval for collecting metrics
-	minCollectionInterval = 10 * time.Second
 )
 
 // Reconciler reconciles a MetricCollector object
@@ -52,9 +49,6 @@ type Reconciler struct {
 
 	// prometheusClient is the client to query Prometheus
 	prometheusClient PrometheusClient
-
-	// metricsCollector collects metrics from pods
-	metricsCollector MetricsCollector
 }
 
 // Reconcile reconciles a MetricCollector object
@@ -77,86 +71,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	// Parse collection interval
-	collectionInterval, err := parseCollectionInterval(mc.Spec.CollectionInterval)
-	if err != nil {
-		klog.ErrorS(err, "Invalid collection interval", "metricCollector", req.NamespacedName, "interval", mc.Spec.CollectionInterval)
-		meta.SetStatusCondition(&mc.Status.Conditions, metav1.Condition{
-			Type:               placementv1beta1.MetricCollectorConditionTypeReady,
-			Status:             metav1.ConditionFalse,
-			ObservedGeneration: mc.Generation,
-			Reason:             "InvalidConfiguration",
-			Message:            fmt.Sprintf("Invalid collection interval: %v", err),
-		})
-		if updateErr := r.Status().Update(ctx, mc); updateErr != nil {
-			klog.ErrorS(updateErr, "Failed to update MetricCollector status", "metricCollector", req.NamespacedName)
-			return ctrl.Result{}, updateErr
-		}
-		return ctrl.Result{RequeueAfter: defaultCollectionInterval}, nil
-	}
-
-	// Collect metrics based on source type
-	var collectedMetrics []placementv1beta1.WorkloadMetrics
-	var collectErr error
-
-	sourceType := mc.Spec.MetricsEndpoint.SourceType
-	if sourceType == "" {
-		sourceType = "prometheus" // default
-	}
-
-	switch sourceType {
-	case "prometheus":
-		if mc.Spec.MetricsEndpoint.PrometheusEndpoint == nil {
-			err := fmt.Errorf("prometheusEndpoint is required when sourceType is prometheus")
-			klog.ErrorS(err, "Invalid MetricCollector configuration", "metricCollector", req.NamespacedName)
-			meta.SetStatusCondition(&mc.Status.Conditions, metav1.Condition{
-				Type:               placementv1beta1.MetricCollectorConditionTypeReady,
-				Status:             metav1.ConditionFalse,
-				ObservedGeneration: mc.Generation,
-				Reason:             "InvalidConfiguration",
-				Message:            err.Error(),
-			})
-			if updateErr := r.Status().Update(ctx, mc); updateErr != nil {
-				klog.ErrorS(updateErr, "Failed to update MetricCollector status", "metricCollector", req.NamespacedName)
-				return ctrl.Result{}, updateErr
-			}
-			return ctrl.Result{RequeueAfter: defaultCollectionInterval}, nil
-		}
-		collectedMetrics, collectErr = r.collectFromPrometheus(ctx, mc)
-	case "direct":
-		if mc.Spec.MetricsEndpoint.DirectEndpoint == nil {
-			err := fmt.Errorf("directEndpoint is required when sourceType is direct")
-			klog.ErrorS(err, "Invalid MetricCollector configuration", "metricCollector", req.NamespacedName)
-			meta.SetStatusCondition(&mc.Status.Conditions, metav1.Condition{
-				Type:               placementv1beta1.MetricCollectorConditionTypeReady,
-				Status:             metav1.ConditionFalse,
-				ObservedGeneration: mc.Generation,
-				Reason:             "InvalidConfiguration",
-				Message:            err.Error(),
-			})
-			if updateErr := r.Status().Update(ctx, mc); updateErr != nil {
-				klog.ErrorS(updateErr, "Failed to update MetricCollector status", "metricCollector", req.NamespacedName)
-				return ctrl.Result{}, updateErr
-			}
-			return ctrl.Result{RequeueAfter: defaultCollectionInterval}, nil
-		}
-		collectedMetrics, collectErr = r.collectDirect(ctx, mc)
-	default:
-		err := fmt.Errorf("unsupported source type: %s", sourceType)
-		klog.ErrorS(err, "Invalid MetricCollector configuration", "metricCollector", req.NamespacedName)
-		meta.SetStatusCondition(&mc.Status.Conditions, metav1.Condition{
-			Type:               placementv1beta1.MetricCollectorConditionTypeReady,
-			Status:             metav1.ConditionFalse,
-			ObservedGeneration: mc.Generation,
-			Reason:             "InvalidConfiguration",
-			Message:            err.Error(),
-		})
-		if updateErr := r.Status().Update(ctx, mc); updateErr != nil {
-			klog.ErrorS(updateErr, "Failed to update MetricCollector status", "metricCollector", req.NamespacedName)
-			return ctrl.Result{}, updateErr
-		}
-		return ctrl.Result{RequeueAfter: defaultCollectionInterval}, nil
-	}
+	// Collect metrics from Prometheus
+	collectedMetrics, collectErr := r.collectFromPrometheus(ctx, mc)
 
 	// Update status with collected metrics
 	now := metav1.Now()
@@ -166,7 +82,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	mc.Status.ObservedGeneration = mc.Generation
 
 	if collectErr != nil {
-		klog.ErrorS(collectErr, "Failed to collect metrics", "metricCollector", req.NamespacedName, "sourceType", sourceType)
+		klog.ErrorS(collectErr, "Failed to collect metrics", "metricCollector", req.NamespacedName)
 		meta.SetStatusCondition(&mc.Status.Conditions, metav1.Condition{
 			Type:               placementv1beta1.MetricCollectorConditionTypeReady,
 			Status:             metav1.ConditionTrue,
@@ -204,8 +120,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	// Requeue after collection interval
-	return ctrl.Result{RequeueAfter: collectionInterval}, nil
+	// Requeue after 30 seconds
+	return ctrl.Result{RequeueAfter: defaultCollectionInterval}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -215,22 +131,4 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Named("metriccollector-controller").
 		For(&placementv1beta1.MetricCollector{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
-}
-
-// parseCollectionInterval parses the collection interval string
-func parseCollectionInterval(interval string) (time.Duration, error) {
-	if interval == "" {
-		return defaultCollectionInterval, nil
-	}
-
-	duration, err := time.ParseDuration(interval)
-	if err != nil {
-		return 0, fmt.Errorf("invalid duration format: %w", err)
-	}
-
-	if duration < minCollectionInterval {
-		return 0, fmt.Errorf("collection interval %s is less than minimum %s", duration, minCollectionInterval)
-	}
-
-	return duration, nil
 }
