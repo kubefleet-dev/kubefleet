@@ -1,0 +1,72 @@
+# MetricCollector - Runs on Member Cluster
+# This collects metrics from the sample-metric-app running on the member cluster
+
+---
+# Example 1: Using Prometheus (Recommended for Production)
+apiVersion: placement.kubernetes-fleet.io/v1beta1
+kind: MetricCollector
+metadata:
+  name: sample-app-collector-prometheus
+  namespace: fleet-system
+spec:
+  # Select workloads with the app=sample-metric-app label
+  workloadSelector:
+    labelSelector:
+      matchLabels:
+        app: sample-metric-app
+    # Monitor in test-ns namespace
+    namespaces:
+      - test-ns
+  
+  # Query Prometheus server for metrics (centralized approach)
+  metricsEndpoint:
+    sourceType: prometheus
+    prometheusEndpoint:
+      # URL of Prometheus server in the cluster
+      url: http://prometheus-server.monitoring:9090
+      # Optional: add auth if Prometheus is secured
+      # auth:
+      #   type: bearer
+      #   secretRef:
+      #     name: prometheus-token
+  
+  # Scrape every 30 seconds
+  collectionInterval: 30s
+  
+  # Collect the workload_health metric (others can be added)
+  metricsToCollect:
+    - workload_health
+
+---
+# Example 2: Direct Pod Scraping (Simple, no Prometheus required)
+apiVersion: placement.kubernetes-fleet.io/v1beta1
+kind: MetricCollector
+metadata:
+  name: sample-app-collector-direct
+  namespace: fleet-system
+spec:
+  # Select workloads with the app=sample-metric-app label
+  workloadSelector:
+    labelSelector:
+      matchLabels:
+        app: sample-metric-app
+    namespaces:
+      - test-ns
+    # When using direct scraping, specify Pod to scrape pod IPs
+    workloadTypes:
+      - Pod
+  
+  # Directly scrape each pod's metrics endpoint
+  metricsEndpoint:
+    sourceType: direct
+    directEndpoint:
+      port: 8080
+      path: /metrics
+      scheme: http
+  
+  # Scrape every 30 seconds
+  collectionInterval: 30s
+  
+  # Collect the workload_health metric
+  metricsToCollect:
+    - workload_health

@@ -8,6 +8,14 @@ spec:
       version: v1
       kind: Namespace
       name: test-ns
+    - group: "rbac.authorization.k8s.io"
+      version: v1
+      kind: ClusterRole
+      name: prometheus
+    - group: "rbac.authorization.k8s.io"
+      version: v1
+      kind: ClusterRoleBinding
+      name: prometheus
   policy:
     placementType: PickAll
   strategy:
