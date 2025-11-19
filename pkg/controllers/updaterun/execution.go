@@ -127,6 +127,8 @@ func (r *Reconciler) executeUpdatingStage(
 			failedErr := fmt.Errorf("the cluster `%s` in the stage %s has failed", clusterStatus.ClusterName, updatingStageStatus.StageName)
 			klog.ErrorS(failedErr, "The cluster has failed to be updated", "updateRun", updateRunRef)
 			clusterUpdateErrors = append(clusterUpdateErrors, fmt.Errorf("%w: %s", errStagedUpdatedAborted, failedErr.Error()))
+			// Count it as updating cluster since it's not finished to avoid processing more clusters than maxConcurrency in this round.
+			clusterUpdatingCount++
 			continue
 		}
 		if condition.IsConditionStatusTrue(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
