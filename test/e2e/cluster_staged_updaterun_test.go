@@ -217,7 +217,16 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			validateAndApproveClusterApprovalRequests(updateRunNames[1], envCanary)
 		})
 
-		It("Should rollout resources to member-cluster-1 and member-cluster-3 too and complete the cluster staged update run successfully", func() {
+		It("Should not rollout resources to prod stage until approved", func() {
+			checkIfRemovedWorkResourcesFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0], allMemberClusters[2]})
+		})
+
+		It("Should rollout resources to all the members after approval and complete the cluster staged update run successfully", func() {
+			validateAndApproveClusterApprovalRequests(updateRunNames[0], envProd)
+
+			By("Should rollout resources to member-cluster-1 first because of its name")
+			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[0]})
+
 			csurSucceededActual := clusterStagedUpdateRunStatusSucceededActual(updateRunNames[1], resourceSnapshotIndex2nd, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(csurSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[1])
 			By("Verify that new the configmap is updated on all member clusters")

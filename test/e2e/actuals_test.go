@@ -2040,35 +2040,19 @@ func updateRunStageRolloutSucceedConditions(generation int64) []metav1.Condition
 	}
 }
 
-func updateRunStageTaskSucceedConditions(generation int64, taskType placementv1beta1.StageTaskType, isBeforeStage bool) []metav1.Condition {
+func updateRunStageTaskSucceedConditions(generation int64, taskType placementv1beta1.StageTaskType) []metav1.Condition {
 	if taskType == placementv1beta1.StageTaskTypeApproval {
-		if isBeforeStage {
-			return []metav1.Condition{
-				{
-					Type:               string(placementv1beta1.StageTaskConditionApprovalRequestCreated),
-					Status:             metav1.ConditionTrue,
-					Reason:             condition.BeforeStageTaskApprovalRequestCreatedReason,
-					ObservedGeneration: generation,
-				},
-				{
-					Type:               string(placementv1beta1.StageTaskConditionApprovalRequestApproved),
-					Status:             metav1.ConditionTrue,
-					Reason:             condition.BeforeStageTaskApprovalRequestApprovedReason,
-					ObservedGeneration: generation,
-				},
-			}
-		}
 		return []metav1.Condition{
 			{
 				Type:               string(placementv1beta1.StageTaskConditionApprovalRequestCreated),
 				Status:             metav1.ConditionTrue,
-				Reason:             condition.AfterStageTaskApprovalRequestCreatedReason,
+				Reason:             condition.StageTaskApprovalRequestCreatedReason,
 				ObservedGeneration: generation,
 			},
 			{
 				Type:               string(placementv1beta1.StageTaskConditionApprovalRequestApproved),
 				Status:             metav1.ConditionTrue,
-				Reason:             condition.AfterStageTaskApprovalRequestApprovedReason,
+				Reason:             condition.StageTaskApprovalRequestApprovedReason,
 				ObservedGeneration: generation,
 			},
 		}
@@ -2200,7 +2184,7 @@ func buildStageUpdatingStatuses(
 			if task.Type == placementv1beta1.StageTaskTypeApproval {
 				stagesStatus[i].AfterStageTaskStatus[j].ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
 			}
-			stagesStatus[i].AfterStageTaskStatus[j].Conditions = updateRunStageTaskSucceedConditions(updateRun.GetGeneration(), task.Type, false)
+			stagesStatus[i].AfterStageTaskStatus[j].Conditions = updateRunStageTaskSucceedConditions(updateRun.GetGeneration(), task.Type)
 		}
 		stagesStatus[i].BeforeStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(stage.BeforeStageTasks))
 		for j, task := range stage.BeforeStageTasks {
@@ -2208,7 +2192,7 @@ func buildStageUpdatingStatuses(
 			if task.Type == placementv1beta1.StageTaskTypeApproval {
 				stagesStatus[i].BeforeStageTaskStatus[j].ApprovalRequestName = fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
 			}
-			stagesStatus[i].BeforeStageTaskStatus[j].Conditions = updateRunStageTaskSucceedConditions(updateRun.GetGeneration(), task.Type, true)
+			stagesStatus[i].BeforeStageTaskStatus[j].Conditions = updateRunStageTaskSucceedConditions(updateRun.GetGeneration(), task.Type)
 		}
 		stagesStatus[i].Conditions = updateRunStageRolloutSucceedConditions(updateRun.GetGeneration())
 	}

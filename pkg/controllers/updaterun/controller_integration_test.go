@@ -812,26 +812,17 @@ func generateFalseProgressingCondition(obj client.Object, condType any, succeede
 
 func generateTrueStageTaskCondition(obj client.Object, condType any, isBeforeStage bool) metav1.Condition {
 	reason, typeStr := "", ""
-	switch cond := condType.(type) {
-	case placementv1beta1.StageTaskConditionType:
-		switch cond {
-		case placementv1beta1.StageTaskConditionWaitTimeElapsed:
-			reason = condition.AfterStageTaskWaitTimeElapsedReason
-		case placementv1beta1.StageTaskConditionApprovalRequestCreated:
-			if isBeforeStage {
-				reason = condition.BeforeStageTaskApprovalRequestCreatedReason
-			} else {
-				reason = condition.AfterStageTaskApprovalRequestCreatedReason
-			}
-		case placementv1beta1.StageTaskConditionApprovalRequestApproved:
-			if isBeforeStage {
-				reason = condition.BeforeStageTaskApprovalRequestApprovedReason
-			} else {
-				reason = condition.AfterStageTaskApprovalRequestApprovedReason
-			}
-		}
-		typeStr = string(cond)
+	cond := condType.(placementv1beta1.StageTaskConditionType)
+	switch cond {
+	case placementv1beta1.StageTaskConditionWaitTimeElapsed:
+		reason = condition.AfterStageTaskWaitTimeElapsedReason
+	case placementv1beta1.StageTaskConditionApprovalRequestCreated:
+		reason = condition.StageTaskApprovalRequestCreatedReason
+	case placementv1beta1.StageTaskConditionApprovalRequestApproved:
+		reason = condition.StageTaskApprovalRequestApprovedReason
 	}
+	typeStr = string(cond)
+
 	return metav1.Condition{
 		Status:             metav1.ConditionTrue,
 		Type:               typeStr,

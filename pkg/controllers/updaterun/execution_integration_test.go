@@ -167,9 +167,6 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 	Context("Cluster staged update run should update clusters one by one", Ordered, func() {
 		var wantApprovalRequest *placementv1beta1.ClusterApprovalRequest
 		BeforeAll(func() {
-			By("Update the strategy with an approval before stage task and after stage tasks")
-			Expect(k8sClient.Update(ctx, updateStrategy)).To(Succeed())
-
 			By("Creating a new clusterStagedUpdateRun")
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
@@ -180,7 +177,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			wantStatus = generateExecutionNotStartedStatus(updateRun, initialized)
 			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
 
-			By("Validating the first approvalRequest has been created")
+			By("Validating the first beforeStage approvalRequest has been created")
 			wantApprovalRequest = &placementv1beta1.ClusterApprovalRequest{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: updateRun.Status.StagesStatus[0].BeforeStageTaskStatus[0].ApprovalRequestName,
@@ -319,7 +316,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			meta.SetStatusCondition(&binding.Status.Conditions, generateTrueCondition(binding, placementv1beta1.ResourceBindingAvailable))
 			Expect(k8sClient.Status().Update(ctx, binding)).Should(Succeed(), "failed to update the binding status")
 
-			By("Validating the 5th cluster has succeeded and 1st has completed and is waiting for next after stage tasks")
+			By("Validating the 5th cluster has succeeded and 1st stage has completed and is waiting for AfterStageTasks")
 			// 5th cluster succeeded.
 			wantStatus.StagesStatus[0].Clusters[4].Conditions = append(wantStatus.StagesStatus[0].Clusters[4].Conditions, generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionSucceeded))
 			// Now waiting for after stage tasks of 1st stage.
@@ -355,9 +352,6 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
 
 			By("Validating both after stage tasks have completed and 2nd stage has started")
-			// Timedwait afterStageTask completed.
-			wantStatus.StagesStatus[0].AfterStageTaskStatus[0].Conditions = append(wantStatus.StagesStatus[0].AfterStageTaskStatus[0].Conditions,
-				generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionWaitTimeElapsed))
 			// Approval afterStageTask completed.
 			wantStatus.StagesStatus[0].AfterStageTaskStatus[1].Conditions = append(wantStatus.StagesStatus[0].AfterStageTaskStatus[1].Conditions,
 				generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestApproved))
@@ -926,7 +920,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 			wantStatus = generateExecutionNotStartedStatus(updateRun, initialized)
 			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
 
-			By("Validating the approvalRequest has been created")
+			By("Validating the first beforeStage approvalRequest has been created")
 			wantApprovalRequest = &placementv1beta1.ClusterApprovalRequest{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: updateRun.Status.StagesStatus[0].BeforeStageTaskStatus[0].ApprovalRequestName,
@@ -1617,7 +1611,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 			By("Validating the initialization succeeded and the execution started")
-			initialized := generateSucceededInitializationStatusForSmallClusters(crp, updateRun, policySnapshot, updateStrategy)
+			initialized := generateSucceededInitializationStatusForSmallClusters(crp, updateRun, testResourceSnapshotIndex, policySnapshot, updateStrategy)
 			initialized.StagesStatus[0].BeforeStageTaskStatus[0].Conditions = append(initialized.StagesStatus[0].BeforeStageTaskStatus[0].Conditions,
 				generateTrueStageTaskCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestCreated, true))
 			wantStatus = generateExecutionNotStartedStatus(updateRun, initialized)

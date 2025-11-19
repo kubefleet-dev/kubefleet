@@ -194,23 +194,20 @@ const (
 	// ClusterUpdatingSucceededReason is the reason string of condition if the cluster updating succeeded.
 	ClusterUpdatingSucceededReason = "ClusterUpdatingSucceeded"
 
-	// BeforeStageTaskApprovalRequestApprovedReason is the reason string of condition if the approval request for before stage task has been approved.
-	BeforeStageTaskApprovalRequestApprovedReason = "BeforeStageTaskApprovalRequestApproved"
+	// StageTaskApprovalRequestApprovedReason is the reason string of condition if the approval request for before or after stage task has been approved.
+	StageTaskApprovalRequestApprovedReason = "StageTaskApprovalRequestApproved"
 
-	// BeforeStageTaskApprovalRequestCreatedReason is the reason string of condition if the approval request for before stage task has been created.
-	BeforeStageTaskApprovalRequestCreatedReason = "BeforeStageTaskApprovalRequestCreated"
-
-	// AfterStageTaskApprovalRequestApprovedReason is the reason string of condition if the approval request for after stage task has been approved.
-	AfterStageTaskApprovalRequestApprovedReason = "AfterStageTaskApprovalRequestApproved"
-
-	// AfterStageTaskApprovalRequestCreatedReason is the reason string of condition if the approval request for after stage task has been created.
-	AfterStageTaskApprovalRequestCreatedReason = "AfterStageTaskApprovalRequestCreated"
+	// StageTaskApprovalRequestCreatedReason is the reason string of condition if the approval request for beofre or after stage task has been created.
+	StageTaskApprovalRequestCreatedReason = "StageTaskApprovalRequestCreated"
 
 	// AfterStageTaskWaitTimeElapsedReason is the reason string of condition if the wait time for after stage task has elapsed.
 	AfterStageTaskWaitTimeElapsedReason = "AfterStageTaskWaitTimeElapsed"
 
 	// ApprovalRequestApprovalAcceptedReason is the reason string of condition if the approval of the approval request has been accepted.
 	ApprovalRequestApprovalAcceptedReason = "ApprovalRequestApprovalAccepted"
+
+	// UpdateRunWaitingMessageFmt is the message format string of condition if the staged update run is waiting for stage tasks in a stage to complete.
+	UpdateRunWaitingMessageFmt = "The updateRun is waiting for %s tasks in stage %s to complete"
 )
 
 // A group of condition reason & message string which is used to populate the ClusterResourcePlacementEviction condition.

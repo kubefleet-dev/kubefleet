@@ -943,3 +943,63 @@ func TestCalculateMaxConcurrencyValue(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
+	tests := []struct {
+		name       string
+		stageIndex int
+		updateRun  *placementv1beta1.ClusterStagedUpdateRun
+	}{
+		// Negative test cases only
+		{
+			name:       "should return err if before stage task is TimedWait",
+			stageIndex: 0,
+			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				Status: placementv1beta1.UpdateRunStatus{
+					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
+						Stages: []placementv1beta1.StageConfig{
+							{
+								Name: "stage-0",
+								BeforeStageTasks: []placementv1beta1.StageTask{
+									{
+										Type: placementv1beta1.StageTaskTypeTimedWait,
+									},
+								},
+							},
+						},
+					},
+					StagesStatus: []placementv1beta1.StageUpdatingStatus{
+						{
+							StageName: "stage-0",
+							BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{
+								{
+									Type: placementv1beta1.StageTaskTypeTimedWait,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			objects := []client.Object{tt.updateRun}
+			scheme := runtime.NewScheme()
+			_ = placementv1beta1.AddToScheme(scheme)
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(objects...).
+				WithStatusSubresource(objects...).
+				Build()
+			r := Reconciler{
+				Client: fakeClient,
+			}
+			ctx := context.Background()
+			_, err := r.checkBeforeStageTasksStatus(ctx, tt.stageIndex, tt.updateRun)
+			if err == nil {
+				t.Fatalf("checkBeforeStageTasksStatus() expected error but got nil")
+			}
+		})
+	}
+}

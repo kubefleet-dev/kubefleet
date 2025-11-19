@@ -587,7 +587,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 					Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 					By("Validating the initialization succeeded")
-					generateSucceededInitializationStatus(crp, updateRun, policySnapshot, updateStrategy, clusterResourceOverride)
+					generateSucceededInitializationStatus(crp, updateRun, testResourceSnapshotIndex, policySnapshot, updateStrategy, clusterResourceOverride)
 				})
 			})
 

@@ -138,11 +138,16 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			validateAndApproveNamespacedApprovalRequests(updateRunNames[0], testNamespace, envCanary)
 		})
 
-		It("Should rollout resources to member-cluster-1 first because of its name", func() {
-			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[0]})
+		It("Should not rollout resources to prod stage until approved", func() {
+			checkIfRemovedConfigMapFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0], allMemberClusters[2]})
 		})
 
-		It("Should rollout resources to all the members and complete the staged update run successfully", func() {
+		It("Should rollout resources to all the members after approval and complete the staged update run successfully", func() {
+			validateAndApproveNamespacedApprovalRequests(updateRunNames[0], testNamespace, envProd)
+
+			By("Should rollout resources to member-cluster-1 first because of its name")
+			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[0]})
+
 			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[0], testNamespace, resourceSnapshotIndex1st, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(surSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s/%s succeeded", testNamespace, updateRunNames[0])
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
@@ -309,6 +314,9 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 
 		It("Should rollout resources to all the members after approval and complete the staged update run successfully", func() {
 			validateAndApproveNamespacedApprovalRequests(updateRunNames[0], testNamespace, envProd)
+
+			By("Should rollout resources to member-cluster-1 first because of its name")
+			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[0]})
 
 			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunNames[0], testNamespace, resourceSnapshotIndex1st, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(surSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s/%s succeeded", testNamespace, updateRunNames[0])
