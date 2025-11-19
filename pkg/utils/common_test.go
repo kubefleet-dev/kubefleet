@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/utils/ptr"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -1185,6 +1186,87 @@ func TestIsDiffedResourcePlacementEqual(t *testing.T) {
 			got := IsDiffedResourcePlacementsEqual(tc.oldDRP, tc.newDRP)
 			if got != tc.want {
 				t.Errorf("IsDiffedResourcePlacementsEqual() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestShouldPropagateObj_OwnerReferences(t *testing.T) {
+	tests := []struct {
+		name            string
+		obj             map[string]interface{}
+		ownerReferences []metav1.OwnerReference
+		want            bool
+	}{
+		{
+			name: "object without ownerReferences should propagate",
+			obj: map[string]interface{}{
+				"apiVersion": "apps/v1",
+				"kind":       "Deployment",
+				"metadata": map[string]interface{}{
+					"name":      "test-deploy",
+					"namespace": "default",
+				},
+			},
+			ownerReferences: nil,
+			want:            true,
+		},
+		{
+			name: "object with ownerReferences should NOT propagate",
+			obj: map[string]interface{}{
+				"apiVersion": "apps/v1",
+				"kind":       "ReplicaSet",
+				"metadata": map[string]interface{}{
+					"name":      "test-deploy-abc123",
+					"namespace": "default",
+				},
+			},
+			ownerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "apps/v1",
+					Kind:       "Deployment",
+					Name:       "test-deploy",
+					UID:        "12345",
+				},
+			},
+			want: false,
+		},
+		{
+			name: "pod owned by replicaset should NOT propagate",
+			obj: map[string]interface{}{
+				"apiVersion": "v1",
+				"kind":       "Pod",
+				"metadata": map[string]interface{}{
+					"name":      "test-deploy-abc123-xyz",
+					"namespace": "default",
+				},
+			},
+			ownerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "apps/v1",
+					Kind:       "ReplicaSet",
+					Name:       "test-deploy-abc123",
+					UID:        "67890",
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			uObj := &unstructured.Unstructured{Object: tt.obj}
+			if tt.ownerReferences != nil {
+				uObj.SetOwnerReferences(tt.ownerReferences)
+			}
+
+			got, err := ShouldPropagateObj(nil, uObj)
+			if err != nil {
+				t.Errorf("ShouldPropagateObj() error = %v", err)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("ShouldPropagateObj() = %v, want %v", got, tt.want)
 			}
 		})
 	}

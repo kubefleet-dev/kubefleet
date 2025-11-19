@@ -504,6 +504,12 @@ func CheckCRDInstalled(discoveryClient discovery.DiscoveryInterface, gvk schema.
 
 // ShouldPropagateObj decides if one should propagate the object
 func ShouldPropagateObj(informerManager informer.Manager, uObj *unstructured.Unstructured) (bool, error) {
+	// Skip resources that have ownerReferences - they are managed by their owner resources
+	// For example, ReplicaSets owned by Deployments, Pods owned by ReplicaSets, etc.
+	if len(uObj.GetOwnerReferences()) > 0 {
+		return false, nil
+	}
+
 	// TODO:  add more special handling for different resource kind
 	switch uObj.GroupVersionKind() {
 	case corev1.SchemeGroupVersion.WithKind(ConfigMapKind):
