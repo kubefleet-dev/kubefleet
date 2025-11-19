@@ -231,7 +231,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should rollout resources to all the members after approval and complete the cluster staged update run successfully", func() {
-			validateAndApproveClusterApprovalRequests(updateRunNames[0], envProd)
+			validateAndApproveClusterApprovalRequests(updateRunNames[1], envProd)
 
 			By("Should rollout resources to member-cluster-1 first because of its name")
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[0]})
