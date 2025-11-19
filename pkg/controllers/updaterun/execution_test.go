@@ -597,6 +597,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 					ResourceSnapshotIndex: "1",
 				},
 				Status: placementv1beta1.UpdateRunStatus{
+					ResourceSnapshotIndexUsed: "1",
 					StagesStatus: []placementv1beta1.StageUpdatingStatus{
 						{
 							StageName: "test-stage",
@@ -651,6 +652,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 					ResourceSnapshotIndex: "1",
 				},
 				Status: placementv1beta1.UpdateRunStatus{
+					ResourceSnapshotIndexUsed: "1",
 					StagesStatus: []placementv1beta1.StageUpdatingStatus{
 						{
 							StageName: "test-stage",
@@ -716,6 +718,7 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 					ResourceSnapshotIndex: "1",
 				},
 				Status: placementv1beta1.UpdateRunStatus{
+					ResourceSnapshotIndexUsed: "1",
 					StagesStatus: []placementv1beta1.StageUpdatingStatus{
 						{
 							StageName: "test-stage",
