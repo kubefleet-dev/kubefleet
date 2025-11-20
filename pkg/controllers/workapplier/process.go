@@ -36,7 +36,7 @@ func (r *Reconciler) processManifests(
 	bundles []*manifestProcessingBundle,
 	work *fleetv1beta1.Work,
 	expectedAppliedWorkOwnerRef *metav1.OwnerReference,
-) {
+) error {
 	// Process all manifests in parallel.
 	//
 	// There are cases where certain groups of manifests should not be processed in parallel with
@@ -58,7 +58,15 @@ func (r *Reconciler) processManifests(
 		}
 
 		r.parallelizer.ParallelizeUntil(ctx, len(bundles), doWork, "processingManifestsInReportDiffMode")
-		return
+
+		// The workqueue.ParallelizeUntil utility does not return errors even if its context has been
+		// cancelled (and some manifest might not be fully processed yet); to catch such
+		// premature termination, the work applier checks for context cancellation directly.
+		if err := ctx.Err(); err != nil {
+			klog.V(2).InfoS("manifest processing has been interrupted as the main context has been cancelled")
+			return fmt.Errorf("manifest processing has been interrupted: %w", err)
+		}
+		return nil
 	}
 
 	// Organize the bundles into different waves of bundles for parallel processing based on their
@@ -83,7 +91,16 @@ func (r *Reconciler) processManifests(
 		}
 
 		r.parallelizer.ParallelizeUntil(ctx, len(bundlesInWave), doWork, fmt.Sprintf("processingManifestsInWave%d", idx))
+
+		// The workqueue.ParallelizeUntil utility does not return errors even if its context has been
+		// cancelled (and some manifest might not be fully processed yet); to catch such
+		// premature termination, the work applier checks for context cancellation directly.
+		if err := ctx.Err(); err != nil {
+			klog.V(2).InfoS("manifest processing has been interrupted as the main context has been cancelled")
+			return fmt.Errorf("manifest processing has been interrupted: %w", err)
+		}
 	}
+	return nil
 }
 
 // processOneManifest processes a manifest (in the JSON format) embedded in the Work object.
