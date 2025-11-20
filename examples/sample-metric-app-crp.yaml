@@ -16,11 +16,6 @@ spec:
       version: v1
       kind: ClusterRoleBinding
       name: prometheus
-    - group: "placement.kubernetes-fleet.io"
-      version: v1beta1
-      kind: MetricCollector
-      name: sample-app-collector
-      namespace: test-ns
   policy:
     placementType: PickAll
   strategy:
