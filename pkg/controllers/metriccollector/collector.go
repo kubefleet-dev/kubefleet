@@ -193,7 +193,7 @@ func (r *Reconciler) collectFromPrometheus(ctx context.Context, mc *placementv1b
 			Namespace:    namespace,
 			ClusterName:  clusterName,
 			WorkloadName: workloadName,
-			Health:       health,
+			Health:       health == 1.0, // Convert to boolean: 1.0 = true, 0.0 = false
 		}
 		workloadMetrics = append(workloadMetrics, wm)
 	}

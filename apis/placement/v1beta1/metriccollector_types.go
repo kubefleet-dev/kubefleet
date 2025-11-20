@@ -96,9 +96,9 @@ type WorkloadMetrics struct {
 	// +required
 	WorkloadName string `json:"workloadName"`
 
-	// Health is the value of workload_health metric (1=healthy, 0=unhealthy).
+	// Health indicates if the workload is healthy (true=healthy, false=unhealthy).
 	// +required
-	Health float64 `json:"health"`
+	Health bool `json:"health"`
 }
 
 const (
