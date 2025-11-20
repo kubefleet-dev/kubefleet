@@ -469,65 +469,82 @@ func (w *Config) buildFleetGuardRailValidatingWebhooks() []admv1.ValidatingWebho
 			Operations: []admv1.OperationType{admv1.Delete},
 			Rule:       createRule([]string{"*"}, []string{"*"}, []string{"*/*"}, &namespacedScope),
 		},
-		// TODO(ArvindThiru): not handling pods, replicasets as part of the fleet guard rail since they have validating webhooks, need to remove validating webhooks before adding these resources to fleet guard rail.
-		{
-			Operations: cuOperations,
-			Rule: createRule([]string{corev1.SchemeGroupVersion.Group}, []string{corev1.SchemeGroupVersion.Version}, []string{bindingResourceName, configMapResourceName, endPointResourceName,
-				limitRangeResourceName, persistentVolumeClaimsName, persistentVolumeClaimsName + "/status", podTemplateResourceName,
-				replicationControllerResourceName, replicationControllerResourceName + "/status", resourceQuotaResourceName, resourceQuotaResourceName + "/status", secretResourceName,
-				serviceAccountResourceName, servicesResourceName, servicesResourceName + "/status"}, &namespacedScope),
-		},
-		{
-			Operations: cuOperations,
-			Rule: createRule([]string{appsv1.SchemeGroupVersion.Group}, []string{appsv1.SchemeGroupVersion.Version}, []string{controllerRevisionResourceName, daemonSetResourceName, daemonSetResourceName + "/status",
-				deploymentResourceName, deploymentResourceName + "/status", statefulSetResourceName, statefulSetResourceName + "/status"}, &namespacedScope),
-		},
-		{
+	}
+
+	// Build core v1 resources list, conditionally including pods if pod validating webhook is disabled
+	coreV1Resources := []string{bindingResourceName, configMapResourceName, endPointResourceName,
+		limitRangeResourceName, persistentVolumeClaimsName, persistentVolumeClaimsName + "/status", podTemplateResourceName,
+		replicationControllerResourceName, replicationControllerResourceName + "/status", resourceQuotaResourceName, resourceQuotaResourceName + "/status", secretResourceName,
+		serviceAccountResourceName, servicesResourceName, servicesResourceName + "/status"}
+	if w.disablePodValidatingWebhook {
+		coreV1Resources = append(coreV1Resources, podResourceName, podResourceName+"/status")
+	}
+
+	namespacedResourcesRules = append(namespacedResourcesRules, admv1.RuleWithOperations{
+		Operations: cuOperations,
+		Rule:       createRule([]string{corev1.SchemeGroupVersion.Group}, []string{corev1.SchemeGroupVersion.Version}, coreV1Resources, &namespacedScope),
+	})
+
+	// Build apps/v1 resources list, conditionally including replicasets if replicaset validating webhook is disabled
+	appsV1Resources := []string{controllerRevisionResourceName, daemonSetResourceName, daemonSetResourceName + "/status",
+		deploymentResourceName, deploymentResourceName + "/status", statefulSetResourceName, statefulSetResourceName + "/status"}
+	if w.disableReplicaSetValidatingWebhook {
+		appsV1Resources = append(appsV1Resources, replicaSetResourceName, replicaSetResourceName+"/status")
+	}
+
+	namespacedResourcesRules = append(namespacedResourcesRules, admv1.RuleWithOperations{
+		Operations: cuOperations,
+		Rule:       createRule([]string{appsv1.SchemeGroupVersion.Group}, []string{appsv1.SchemeGroupVersion.Version}, appsV1Resources, &namespacedScope),
+	})
+
+	namespacedResourcesRules = append(namespacedResourcesRules,
+		admv1.RuleWithOperations{
 			Operations: cuOperations,
 			Rule:       createRule([]string{authorizationv1.SchemeGroupVersion.Group}, []string{authorizationv1.SchemeGroupVersion.Version}, []string{localSubjectAccessReviewResourceName, localSubjectAccessReviewResourceName + "/status"}, &namespacedScope),
 		},
-		{
+		admv1.RuleWithOperations{
 			Operations: cuOperations,
 			Rule:       createRule([]string{autoscalingv1.SchemeGroupVersion.Group}, []string{autoscalingv1.SchemeGroupVersion.Version}, []string{horizontalPodAutoScalerResourceName, horizontalPodAutoScalerResourceName + "/status"}, &namespacedScope),
 		},
-		{
+		admv1.RuleWithOperations{
 			Operations: cuOperations,
 			Rule:       createRule([]string{batchv1.SchemeGroupVersion.Group}, []string{batchv1.SchemeGroupVersion.Version}, []string{cronJobResourceName, cronJobResourceName + "/status", jobResourceName, jobResourceName + "/status"}, &namespacedScope),
 		},
-		{
+		admv1.RuleWithOperations{
 			Operations: cuOperations,
 			Rule:       createRule([]string{discoveryv1.SchemeGroupVersion.Group}, []string{discoveryv1.SchemeGroupVersion.Version}, []string{endPointSlicesResourceName}, &namespacedScope),
 		},
-		{
+		admv1.RuleWithOperations{
 			Operations: cuOperations,
 			Rule:       createRule([]string{networkingv1.SchemeGroupVersion.Group}, []string{networkingv1.SchemeGroupVersion.Version}, []string{ingressResourceName, ingressResourceName + "/status", networkPolicyResourceName, networkPolicyResourceName + "/status"}, &namespacedScope),
 		},
-		{
+		admv1.RuleWithOperations{
 			Operations: cuOperations,
 			Rule:       createRule([]string{policyv1.SchemeGroupVersion.Group}, []string{policyv1.SchemeGroupVersion.Version}, []string{podDisruptionBudgetsResourceName, podDisruptionBudgetsResourceName + "/status"}, &namespacedScope),
 		},
-		{
+		admv1.RuleWithOperations{
 			Operations: cuOperations,
 			Rule:       createRule([]string{rbacv1.SchemeGroupVersion.Group}, []string{rbacv1.SchemeGroupVersion.Version}, []string{roleResourceName, roleBindingResourceName}, &namespacedScope),
 		},
 		// rules for fleet namespaced resources.
-		{
+		admv1.RuleWithOperations{
 			Operations: cuOperations,
 			Rule:       createRule([]string{storagev1.SchemeGroupVersion.Group}, []string{storagev1.SchemeGroupVersion.Version}, []string{csiStorageCapacityResourceName}, &namespacedScope),
 		},
-		{
+		admv1.RuleWithOperations{
 			Operations: cuOperations,
 			Rule:       createRule([]string{clusterv1beta1.GroupVersion.Group}, []string{clusterv1beta1.GroupVersion.Version}, []string{internalMemberClusterResourceName, internalMemberClusterResourceName + "/status"}, &namespacedScope),
 		},
-		{
+		admv1.RuleWithOperations{
 			Operations: cuOperations,
 			Rule:       createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{workResourceName, workResourceName + "/status"}, &namespacedScope),
 		},
-		{
+		admv1.RuleWithOperations{
 			Operations: cuOperations,
 			Rule:       createRule([]string{fleetnetworkingv1alpha1.GroupVersion.Group}, []string{fleetnetworkingv1alpha1.GroupVersion.Version}, []string{endpointSliceExportResourceName, endpointSliceImportResourceName, internalServiceExportResourceName, internalServiceExportResourceName + "/status", internalServiceImportResourceName, internalServiceImportResourceName + "/status"}, &namespacedScope),
 		},
-	}
+	)
+
 	guardRailWebhookConfigurations := []admv1.ValidatingWebhook{
 		{
 			Name:                    "fleet.customresourcedefinition.guardrail.validating",
