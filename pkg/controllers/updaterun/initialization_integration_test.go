@@ -575,7 +575,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 		})
 
 		Context("Test computeRunStageStatus", func() {
-			Context("Test validatBeforeStageTask", func() {
+			Context("Test validateBeforeStageTask", func() {
 				It("Should initialize if any before stage", func() {
 					By("Creating a clusterStagedUpdateStrategy with a before stage tasks")
 					updateStrategy.Spec.Stages[0].BeforeStageTasks = []placementv1beta1.StageTask{
@@ -1127,5 +1127,9 @@ func generateExecutionNotStartedStatus(
 
 	// Mark updateRun 1st stage has not started.
 	initialized.StagesStatus[0].Conditions = append(initialized.StagesStatus[0].Conditions, generateFalseCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
+
+	// Mark updateRun 1st stage BeforeStageTasks has created approval request.
+	initialized.StagesStatus[0].BeforeStageTaskStatus[0].Conditions = append(initialized.StagesStatus[0].BeforeStageTaskStatus[0].Conditions,
+		generateTrueStageTaskCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestCreated))
 	return initialized
 }

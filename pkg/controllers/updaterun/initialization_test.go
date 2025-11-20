@@ -1,30 +1,118 @@
+/*
+Copyright 2025 The KubeFleet Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package updaterun
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
-	"github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
+
+func TestValidateBeforeStageTask(t *testing.T) {
+	tests := []struct {
+		name    string
+		task    []placementv1beta1.StageTask
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid BeforeTasks",
+			task: []placementv1beta1.StageTask{
+				{
+					Type: placementv1beta1.StageTaskTypeApproval,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid AfterTasks, greater than 1 task",
+			task: []placementv1beta1.StageTask{
+				{
+					Type: placementv1beta1.StageTaskTypeApproval,
+				},
+				{
+					Type: placementv1beta1.StageTaskTypeApproval,
+				},
+			},
+			wantErr: true,
+			errMsg:  "beforeStageTasks can have at most one task",
+		},
+		{
+			name: "invalid BeforeTasks, with invalid task type",
+			task: []placementv1beta1.StageTask{
+				{
+					Type:     placementv1beta1.StageTaskTypeTimedWait,
+					WaitTime: ptr.To(metav1.Duration{Duration: 5 * time.Minute}),
+				},
+			},
+			wantErr: true,
+			errMsg:  fmt.Sprintf("task %d of type TimedWait is not allowed in beforeStageTasks", 0),
+		},
+		{
+			name: "invalid BeforeTasks, with duration for Approval",
+			task: []placementv1beta1.StageTask{
+				{
+					Type:     placementv1beta1.StageTaskTypeApproval,
+					WaitTime: ptr.To(metav1.Duration{Duration: 1 * time.Minute}),
+				},
+			},
+			wantErr: true,
+			errMsg:  fmt.Sprintf("task %d of type Approval cannot have wait duration set", 0),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateBeforeStageTask(tt.task)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("validateBeforeStageTask() error = nil, wantErr %v", tt.wantErr)
+					return
+				}
+				if err.Error() != tt.errMsg {
+					t.Errorf("validateBeforeStageTask() error = %v, wantErr %v", err, tt.errMsg)
+				}
+			} else if err != nil {
+				t.Errorf("validateBeforeStageTask() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
 
 func TestValidateAfterStageTask(t *testing.T) {
 	tests := []struct {
 		name    string
-		task    []v1beta1.StageTask
+		task    []placementv1beta1.StageTask
 		wantErr bool
 		errMsg  string
 	}{
 		{
 			name: "valid AfterTasks",
-			task: []v1beta1.StageTask{
+			task: []placementv1beta1.StageTask{
 				{
-					Type: v1beta1.StageTaskTypeApproval,
+					Type: placementv1beta1.StageTaskTypeApproval,
 				},
 				{
-					Type:     v1beta1.StageTaskTypeTimedWait,
+					Type:     placementv1beta1.StageTaskTypeTimedWait,
 					WaitTime: ptr.To(metav1.Duration{Duration: 5 * time.Minute}),
 				},
 			},
@@ -32,13 +120,13 @@ func TestValidateAfterStageTask(t *testing.T) {
 		},
 		{
 			name: "invalid AfterTasks, same type of tasks",
-			task: []v1beta1.StageTask{
+			task: []placementv1beta1.StageTask{
 				{
-					Type:     v1beta1.StageTaskTypeTimedWait,
+					Type:     placementv1beta1.StageTaskTypeTimedWait,
 					WaitTime: ptr.To(metav1.Duration{Duration: 1 * time.Minute}),
 				},
 				{
-					Type:     v1beta1.StageTaskTypeTimedWait,
+					Type:     placementv1beta1.StageTaskTypeTimedWait,
 					WaitTime: ptr.To(metav1.Duration{Duration: 5 * time.Minute}),
 				},
 			},
@@ -47,9 +135,9 @@ func TestValidateAfterStageTask(t *testing.T) {
 		},
 		{
 			name: "invalid AfterTasks, with nil duration for TimedWait",
-			task: []v1beta1.StageTask{
+			task: []placementv1beta1.StageTask{
 				{
-					Type: v1beta1.StageTaskTypeTimedWait,
+					Type: placementv1beta1.StageTaskTypeTimedWait,
 				},
 			},
 			wantErr: true,
@@ -57,9 +145,9 @@ func TestValidateAfterStageTask(t *testing.T) {
 		},
 		{
 			name: "invalid AfterTasks, with zero duration for TimedWait",
-			task: []v1beta1.StageTask{
+			task: []placementv1beta1.StageTask{
 				{
-					Type:     v1beta1.StageTaskTypeTimedWait,
+					Type:     placementv1beta1.StageTaskTypeTimedWait,
 					WaitTime: ptr.To(metav1.Duration{Duration: 0 * time.Minute}),
 				},
 			},

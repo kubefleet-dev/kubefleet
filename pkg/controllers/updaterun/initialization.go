@@ -344,6 +344,12 @@ func (r *Reconciler) computeRunStageStatus(
 
 	// Apply the label selectors from the UpdateStrategy to filter the clusters.
 	for _, stage := range updateRunStatus.UpdateStrategySnapshot.Stages {
+		if err := validateBeforeStageTask(stage.BeforeStageTasks); err != nil {
+			klog.ErrorS(err, "Failed to validate the before stage tasks", "updateStrategy", strategyKey, "stageName", stage.Name, "updateRun", updateRunRef)
+			// no more retries here.
+			invalidBeforeStageErr := controller.NewUserError(fmt.Errorf("the before stage tasks are invalid, updateStrategy: `%s`, stage: %s, err: %s", strategyKey, stage.Name, err.Error()))
+			return fmt.Errorf("%w: %s", errInitializedFailed, invalidBeforeStageErr.Error())
+		}
 		if err := validateAfterStageTask(stage.AfterStageTasks); err != nil {
 			klog.ErrorS(err, "Failed to validate the after stage tasks", "updateStrategy", strategyKey, "stageName", stage.Name, "updateRun", updateRunRef)
 			// no more retries here.
@@ -452,6 +458,23 @@ func (r *Reconciler) computeRunStageStatus(
 		klog.ErrorS(missingErr, "Clusters are missing in any stage", "clusters", strings.Join(missingClusters, ", "), "updateStrategy", strategyKey, "updateRun", updateRunRef)
 		// no more retries here, only show the first 10 missing clusters in the placement status.
 		return fmt.Errorf("%w: %s, total %d, showing up to 10: %s", errInitializedFailed, missingErr.Error(), len(missingClusters), strings.Join(missingClusters[:min(10, len(missingClusters))], ", "))
+	}
+	return nil
+}
+
+// validateBeforeStageTask validates the beforeStageTasks in the stage defined in the UpdateStrategy.
+// The error returned from this function is not retryable.
+func validateBeforeStageTask(tasks []placementv1beta1.StageTask) error {
+	if len(tasks) > 1 {
+		return fmt.Errorf("beforeStageTasks can have at most one task")
+	}
+	for i, task := range tasks {
+		if task.Type == placementv1beta1.StageTaskTypeTimedWait {
+			return fmt.Errorf("task %d of type TimedWait is not allowed in beforeStageTasks", i)
+		}
+		if task.Type == placementv1beta1.StageTaskTypeApproval && task.WaitTime != nil {
+			return fmt.Errorf("task %d of type Approval cannot have wait duration set", i)
+		}
 	}
 	return nil
 }

@@ -82,7 +82,7 @@ func (r *Reconciler) execute(
 		if !approved {
 			markStageUpdatingWaiting(updatingStage, updateRun.GetGeneration(), "All before-stage tasks are not completed, waiting for approval")
 			markUpdateRunWaiting(updateRun, fmt.Sprintf(condition.UpdateRunWaitingMessageFmt, "before-stage", updatingStage.StageName))
-			return false, clusterUpdatingWaitTime, nil
+			return false, stageUpdatingWaitTime, nil
 		}
 		waitTime, execErr := r.executeUpdatingStage(ctx, updateRun, updatingStageIndex, toBeUpdatedBindings, maxConcurrency)
 		if errors.Is(execErr, errStagedUpdatedAborted) {
@@ -103,7 +103,6 @@ func (r *Reconciler) execute(
 
 // checkBeforeStageTasksStatus checks if the before stage tasks have finished.
 // It returns if the before stage tasks have finished or error if the before stage tasks failed.
-// It also returns the time to wait before rechecking the wait type of task. It turns -1 if the task is not a wait type.
 func (r *Reconciler) checkBeforeStageTasksStatus(ctx context.Context, updatingStageIndex int, updateRun placementv1beta1.UpdateRunObj) (bool, error) {
 	updateRunRef := klog.KObj(updateRun)
 	updateRunStatus := updateRun.GetUpdateRunStatus()
@@ -117,7 +116,7 @@ func (r *Reconciler) checkBeforeStageTasksStatus(ctx context.Context, updatingSt
 	for i, task := range updatingStage.BeforeStageTasks {
 		switch task.Type {
 		case placementv1beta1.StageTaskTypeApproval:
-			approved, err := r.handleStageApprovalTask(ctx, &updatingStageStatus.BeforeStageTaskStatus[i], updatingStage, updateRun, true)
+			approved, err := r.handleStageApprovalTask(ctx, &updatingStageStatus.BeforeStageTaskStatus[i], updatingStage, updateRun)
 			if err != nil {
 				return false, err
 			}
@@ -402,7 +401,7 @@ func (r *Reconciler) checkAfterStageTasksStatus(ctx context.Context, updatingSta
 				klog.V(2).InfoS("The after stage wait task has completed", "stage", updatingStage.Name, "updateRun", updateRunRef)
 			}
 		case placementv1beta1.StageTaskTypeApproval:
-			approved, err := r.handleStageApprovalTask(ctx, &updatingStageStatus.AfterStageTaskStatus[i], updatingStage, updateRun, false)
+			approved, err := r.handleStageApprovalTask(ctx, &updatingStageStatus.AfterStageTaskStatus[i], updatingStage, updateRun)
 			if err != nil {
 				return false, -1, err
 			}
@@ -417,20 +416,19 @@ func (r *Reconciler) checkAfterStageTasksStatus(ctx context.Context, updatingSta
 	return passed, afterStageWaitTime, nil
 }
 
-// handleStageApprovalTask handles the approval task logic for after or before stage tasks.
+// handleStageApprovalTask handles the approval task logic for before or after stage tasks.
 // It returns true if the task is approved, false otherwise, and any error encountered.
 func (r *Reconciler) handleStageApprovalTask(
 	ctx context.Context,
 	stageTaskStatus *placementv1beta1.StageTaskStatus,
 	updatingStage *placementv1beta1.StageConfig,
 	updateRun placementv1beta1.UpdateRunObj,
-	isBeforeStageTask bool,
 ) (bool, error) {
 	updateRunRef := klog.KObj(updateRun)
 
-	afterStageTaskApproved := condition.IsConditionStatusTrue(meta.FindStatusCondition(stageTaskStatus.Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestApproved)), updateRun.GetGeneration())
-	if afterStageTaskApproved {
-		// The afterStageTask has been approved.
+	stageTaskApproved := condition.IsConditionStatusTrue(meta.FindStatusCondition(stageTaskStatus.Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestApproved)), updateRun.GetGeneration())
+	if stageTaskApproved {
+		// The stageTask has been approved.
 		return true, nil
 	}
 
@@ -790,7 +788,7 @@ func markClusterUpdatingFailed(clusterUpdatingStatus *placementv1beta1.ClusterUp
 	})
 }
 
-// markStageTaskRequestCreated marks the Approval after stage or before task as ApprovalRequestCreated in memory.
+// markStageTaskRequestCreated marks the Approval for the before or after stage task as ApprovalRequestCreated in memory.
 func markStageTaskRequestCreated(stageTaskStatus *placementv1beta1.StageTaskStatus, generation int64) {
 	meta.SetStatusCondition(&stageTaskStatus.Conditions, metav1.Condition{
 		Type:               string(placementv1beta1.StageTaskConditionApprovalRequestCreated),
@@ -801,7 +799,7 @@ func markStageTaskRequestCreated(stageTaskStatus *placementv1beta1.StageTaskStat
 	})
 }
 
-// markStageTaskRequestApproved marks the Approval after stage or before stage task as Approved in memory.
+// markStageTaskRequestApproved marks the Approval for the before or after stage task as Approved in memory.
 func markStageTaskRequestApproved(stageTaskStatus *placementv1beta1.StageTaskStatus, generation int64) {
 	meta.SetStatusCondition(&stageTaskStatus.Conditions, metav1.Condition{
 		Type:               string(placementv1beta1.StageTaskConditionApprovalRequestApproved),

@@ -721,7 +721,7 @@ func generateTrueCondition(obj client.Object, condType any) metav1.Condition {
 		}
 		typeStr = string(cond)
 	case placementv1beta1.StageTaskConditionType:
-		return generateTrueStageTaskCondition(obj, cond, false)
+		return generateTrueStageTaskCondition(obj, cond)
 	case placementv1beta1.ApprovalRequestConditionType:
 		switch cond {
 		case placementv1beta1.ApprovalRequestConditionApproved:
@@ -810,7 +810,7 @@ func generateFalseProgressingCondition(obj client.Object, condType any, succeede
 	return falseCond
 }
 
-func generateTrueStageTaskCondition(obj client.Object, condType any, isBeforeStage bool) metav1.Condition {
+func generateTrueStageTaskCondition(obj client.Object, condType any) metav1.Condition {
 	reason, typeStr := "", ""
 	cond := condType.(placementv1beta1.StageTaskConditionType)
 	switch cond {
