@@ -529,6 +529,13 @@ type RolloutStrategy struct {
 	// +kubebuilder:validation:Enum=RollingUpdate;External
 	Type RolloutStrategyType `json:"type,omitempty"`
 
+	// ResourceSnapshotIndex indicates the specific resource snapshot index to be rolled out to the target clusters.
+	// If not specified, the latest resource snapshot will be used.
+	// When the specified index does not exist, the rollout will fail with reason ResourceSnapshotNotFound.
+	// This field is only valid when RolloutStrategyType = RollingUpdate.
+	// +kubebuilder:validation:Optional
+	ResourceSnapshotIndex *string `json:"resourceSnapshotIndex,omitempty"`
+
 	// Rolling update config params. Present only if RolloutStrategyType = RollingUpdate.
 	// +kubebuilder:validation:Optional
 	RollingUpdate *RollingUpdateConfig `json:"rollingUpdate,omitempty"`
