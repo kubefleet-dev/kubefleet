@@ -68,7 +68,7 @@ func main() {
 		for k, v := range res.Metric {
 			fmt.Printf("    %s: %s\n", k, v)
 		}
-		
+
 		if len(res.Value) >= 2 {
 			timestamp := res.Value[0]
 			value := res.Value[1]
@@ -83,45 +83,45 @@ func main() {
 func queryPrometheus(ctx context.Context, prometheusURL, query string) (*PrometheusQueryResult, error) {
 	// Build the query URL
 	apiURL := fmt.Sprintf("%s/api/v1/query", prometheusURL)
-	
+
 	// Add query parameters
 	params := url.Values{}
 	params.Add("query", query)
-	
+
 	fullURL := fmt.Sprintf("%s?%s", apiURL, params.Encode())
-	
+
 	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, "GET", fullURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	
+
 	// Execute request
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// Check status code
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(body))
 	}
-	
+
 	// Parse response
 	var result PrometheusQueryResult
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
-	
+
 	if result.Status != "success" {
 		return nil, fmt.Errorf("prometheus query failed with status: %s", result.Status)
 	}
-	
+
 	return &result, nil
 }

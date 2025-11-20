@@ -4,43 +4,50 @@ This directory contains examples for the Fleet metric collection system.
 
 ## Architecture
 
-## Architecture
-
 ```
-Hub Cluster                                Member Cluster
-┌─────────────────────┐                   ┌─────────────────────┐
-│ MetricsAggregator   │                   │ MetricCollector CR  │
-│   (cluster-scoped)  │                   │  (fleet-system ns)  │
-└──────────┬──────────┘                   └─────────┬───────────┘
-           │                                        │
-           ↓                                        ↓
-┌─────────────────────┐                   ┌─────────────────────┐
-│ MA Controller       │                   │ MC Controller       │
-│ (in hub-agent)      │                   │ (in member-agent)   │
-│                     │                   │                     │
-│ 1. Read IMC status  │                   │ Choose approach:    │
-│ 2. Aggregate metrics│                   │                     │
-│ 3. Determine health │◄──reports via IMC─┤ Prometheus Mode:    │
-│ 4. Update MA status │                   │ └─> Query Prometheus│
-└─────────────────────┘                   │     (1 API call)    │
-                                          │                     │
-                                          │ Direct Mode:        │
-                                          │ └─> Scrape each pod │
-                                          │     (N API calls)   │
-                                          └─────────┬───────────┘
-                                                    │
-                       ┌────────────────────────────┼─────────────┐
-                       │                            │             │
-                       ↓                            ↓             ↓
-           ┌─────────────────────┐    ┌─────────────────────┐  ...
-           │ Prometheus Server   │    │ sample-metric-app   │
-           │  :9090/api/v1/query │    │ Pod :8080/metrics   │
-           │                     │    │ workload_health=1   │
-           │ Scrapes pods ───────┼───>│                     │
-           └─────────────────────┘    └─────────────────────┘
-                   ↑
-                   │
-           (Prometheus scrapes)
+Member Cluster                                    Hub Cluster
+┌─────────────────────────────────────┐          ┌──────────────────────────────────┐
+│                                     │          │                                  │
+│  ┌────────────────────────────┐    │          │  ┌────────────────────────────┐  │
+│  │ Workload Pods              │    │          │  │ MetricCollectorReport      │  │
+│  │ (sample-metric-app)        │    │          │  │ (cluster-1-...)            │  │
+│  │ - Expose /metrics endpoint │    │          │  │                            │  │
+│  └────────────┬───────────────┘    │          │  │ Status:                    │  │
+│               │                     │          │  │ - collectedMetrics[]       │  │
+│               │ scrape              │          │  │ - workloadsMonitored       │  │
+│               ▼                     │          │  │ - lastCollectionTime       │  │
+│  ┌────────────────────────────┐    │          │  └────────────────────────────┘  │
+│  │ Prometheus                 │    │          │               ▲                  │
+│  │ (test-ns namespace)        │    │          │               │                  │
+│  └────────────┬───────────────┘    │          │               │ copy status      │
+│               │                     │          │               │                  │
+│               │ query               │          │  ┌────────────────────────────┐  │
+│               ▼                     │          │  │ Member Agent               │  │
+│  ┌────────────────────────────┐    │          │  │ (MC Status Reporter)       │  │
+│  │ MetricCollector            │    │          │  │ - Watches MetricCollector  │  │
+│  │ (test-ns namespace)        │────┼──────────┼──┤ - Creates/Updates MCR      │  │
+│  │                            │    │          │  └────────────────────────────┘  │
+│  │ Spec:                      │    │          │                                  │
+│  │ - prometheusUrl            │    │          └──────────────────────────────────┘
+│  │                            │    │
+│  │ Status:                    │    │
+│  │ - collectedMetrics[]       │    │
+│  │   - namespace              │    │
+│  │   - clusterName            │    │
+│  │   - workloadName           │    │
+│  │   - health (bool)          │    │
+│  │ - workloadsMonitored       │    │
+│  │ - lastCollectionTime       │    │
+│  └────────────────────────────┘    │
+│         ▲                           │
+│         │ reconcile (every 30s)    │
+│         │                           │
+│  ┌────────────────────────────┐    │
+│  │ Member Agent               │    │
+│  │ (MC Controller)            │    │
+│  └────────────────────────────┘    │
+│                                     │
+└─────────────────────────────────────┘
 ```
 
 ## Components

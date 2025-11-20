@@ -467,7 +467,8 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 
 		// Set up the MetricCollector controller.
 		mcReconciler := &metriccollector.Reconciler{
-			Client: memberMgr.GetClient(),
+			MemberClient: memberMgr.GetClient(),
+			HubClient:    hubMgr.GetClient(),
 		}
 		if err := mcReconciler.SetupWithManager(memberMgr); err != nil {
 			klog.ErrorS(err, "Failed to set up MetricCollector controller with the controller manager")

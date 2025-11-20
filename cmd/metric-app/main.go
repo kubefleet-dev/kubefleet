@@ -14,7 +14,7 @@ func main() {
 	if clusterName == "" {
 		clusterName = "unknown"
 	}
-	
+
 	workloadName := os.Getenv("WORKLOAD_NAME")
 	if workloadName == "" {
 		workloadName = "unknown"
