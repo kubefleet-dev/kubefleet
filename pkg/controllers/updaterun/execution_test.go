@@ -19,6 +19,7 @@ package updaterun
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -945,10 +946,14 @@ func TestCalculateMaxConcurrencyValue(t *testing.T) {
 }
 
 func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
+	stageName := "stage-0"
+	testUpdateRunName = "test-update-run"
 	tests := []struct {
-		name       string
-		stageIndex int
-		updateRun  *placementv1beta1.ClusterStagedUpdateRun
+		name            string
+		stageIndex      int
+		updateRun       *placementv1beta1.ClusterStagedUpdateRun
+		approvalRequest *placementv1beta1.ClusterApprovalRequest
+		wantError       bool
 	}{
 		// Negative test cases only
 		{
@@ -959,7 +964,7 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
 						Stages: []placementv1beta1.StageConfig{
 							{
-								Name: "stage-0",
+								Name: stageName,
 								BeforeStageTasks: []placementv1beta1.StageTask{
 									{
 										Type: placementv1beta1.StageTaskTypeTimedWait,
@@ -970,7 +975,7 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					},
 					StagesStatus: []placementv1beta1.StageUpdatingStatus{
 						{
-							StageName: "stage-0",
+							StageName: stageName,
 							BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{
 								{
 									Type: placementv1beta1.StageTaskTypeTimedWait,
@@ -980,17 +985,205 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					},
 				},
 			},
+			approvalRequest: &placementv1beta1.ClusterApprovalRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, testUpdateRunName, stageName),
+					Labels: map[string]string{
+						placementv1beta1.TargetUpdatingStageNameLabel:   stageName,
+						placementv1beta1.TargetUpdateRunLabel:           testUpdateRunName,
+						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
+					},
+				},
+				Spec: placementv1beta1.ApprovalRequestSpec{
+					TargetUpdateRun: testUpdateRunName,
+					TargetStage:     stageName,
+				},
+			},
+		},
+		{
+			name:       "should return err if Approval request has wrong target stage in spec",
+			stageIndex: 0,
+			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testUpdateRunName,
+				},
+				Status: placementv1beta1.UpdateRunStatus{
+					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
+						Stages: []placementv1beta1.StageConfig{
+							{
+								Name: stageName,
+								BeforeStageTasks: []placementv1beta1.StageTask{
+									{
+										Type: placementv1beta1.StageTaskTypeApproval,
+									},
+								},
+							},
+						},
+					},
+					StagesStatus: []placementv1beta1.StageUpdatingStatus{
+						{
+							StageName: stageName,
+							BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{
+								{
+									Type:                placementv1beta1.StageTaskTypeApproval,
+									ApprovalRequestName: fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, testUpdateRunName, stageName),
+									Conditions: []metav1.Condition{
+										{
+											Type:   string(placementv1beta1.StageTaskConditionApprovalRequestCreated),
+											Status: metav1.ConditionTrue,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			approvalRequest: &placementv1beta1.ClusterApprovalRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, testUpdateRunName, stageName),
+					Labels: map[string]string{
+						placementv1beta1.TargetUpdatingStageNameLabel:   stageName,
+						placementv1beta1.TargetUpdateRunLabel:           testUpdateRunName,
+						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
+					},
+				},
+				Spec: placementv1beta1.ApprovalRequestSpec{
+					TargetUpdateRun: testUpdateRunName,
+					TargetStage:     "stage-1",
+				},
+			},
+			wantError: true,
+		},
+		{
+			name:       "should return err if Approval request has wrong target update run in spec",
+			stageIndex: 0,
+			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testUpdateRunName,
+				},
+				Status: placementv1beta1.UpdateRunStatus{
+					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
+						Stages: []placementv1beta1.StageConfig{
+							{
+								Name: stageName,
+								BeforeStageTasks: []placementv1beta1.StageTask{
+									{
+										Type: placementv1beta1.StageTaskTypeApproval,
+									},
+								},
+							},
+						},
+					},
+					StagesStatus: []placementv1beta1.StageUpdatingStatus{
+						{
+							StageName: stageName,
+							BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{
+								{
+									Type:                placementv1beta1.StageTaskTypeApproval,
+									ApprovalRequestName: fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, testUpdateRunName, stageName),
+									Conditions: []metav1.Condition{
+										{
+											Type:   string(placementv1beta1.StageTaskConditionApprovalRequestCreated),
+											Status: metav1.ConditionTrue,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			approvalRequest: &placementv1beta1.ClusterApprovalRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, testUpdateRunName, stageName),
+					Labels: map[string]string{
+						placementv1beta1.TargetUpdatingStageNameLabel:   stageName,
+						placementv1beta1.TargetUpdateRunLabel:           testUpdateRunName,
+						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
+					},
+				},
+				Spec: placementv1beta1.ApprovalRequestSpec{
+					TargetUpdateRun: "wrong-update-run",
+					TargetStage:     stageName,
+				},
+			},
+			wantError: true,
+		},
+		{
+			name:       "should return err if cannot update Approval request that is approved as accepted",
+			stageIndex: 0,
+			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: testUpdateRunName,
+				},
+				Status: placementv1beta1.UpdateRunStatus{
+					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
+						Stages: []placementv1beta1.StageConfig{
+							{
+								Name: stageName,
+								BeforeStageTasks: []placementv1beta1.StageTask{
+									{
+										Type: placementv1beta1.StageTaskTypeApproval,
+									},
+								},
+							},
+						},
+					},
+					StagesStatus: []placementv1beta1.StageUpdatingStatus{
+						{
+							StageName: stageName,
+							BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{
+								{
+									Type:                placementv1beta1.StageTaskTypeApproval,
+									ApprovalRequestName: fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, testUpdateRunName, stageName),
+									Conditions: []metav1.Condition{
+										{
+											Type:   string(placementv1beta1.StageTaskConditionApprovalRequestCreated),
+											Status: metav1.ConditionTrue,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			approvalRequest: &placementv1beta1.ClusterApprovalRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, testUpdateRunName, stageName),
+					Labels: map[string]string{
+						placementv1beta1.TargetUpdatingStageNameLabel:   stageName,
+						placementv1beta1.TargetUpdateRunLabel:           testUpdateRunName,
+						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
+					},
+				},
+				Spec: placementv1beta1.ApprovalRequestSpec{
+					TargetUpdateRun: testUpdateRunName,
+					TargetStage:     stageName,
+				},
+				Status: placementv1beta1.ApprovalRequestStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   string(placementv1beta1.ApprovalRequestConditionApproved),
+							Status: metav1.ConditionTrue,
+						},
+					},
+				},
+			},
+			wantError: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			objects := []client.Object{tt.updateRun}
+			objects := []client.Object{tt.updateRun, tt.approvalRequest}
+			objectsWithStatus := []client.Object{tt.updateRun}
 			scheme := runtime.NewScheme()
 			_ = placementv1beta1.AddToScheme(scheme)
 			fakeClient := fake.NewClientBuilder().
 				WithScheme(scheme).
 				WithObjects(objects...).
-				WithStatusSubresource(objects...).
+				WithStatusSubresource(objectsWithStatus...).
 				Build()
 			r := Reconciler{
 				Client: fakeClient,
