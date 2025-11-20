@@ -127,7 +127,27 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// Sync MetricCollectorReport to hub cluster
 	if err := r.syncReportToHub(ctx, mc); err != nil {
 		klog.ErrorS(err, "Failed to sync MetricCollectorReport to hub", "metricCollector", req.NamespacedName)
-		// Don't fail the reconcile loop, just log the error
+		meta.SetStatusCondition(&mc.Status.Conditions, metav1.Condition{
+			Type:               placementv1beta1.MetricCollectorConditionTypeReported,
+			Status:             metav1.ConditionFalse,
+			ObservedGeneration: mc.Generation,
+			Reason:             "ReportSyncFailed",
+			Message:            fmt.Sprintf("Failed to sync report to hub: %v", err),
+		})
+	} else {
+		meta.SetStatusCondition(&mc.Status.Conditions, metav1.Condition{
+			Type:               placementv1beta1.MetricCollectorConditionTypeReported,
+			Status:             metav1.ConditionTrue,
+			ObservedGeneration: mc.Generation,
+			Reason:             "ReportSyncSucceeded",
+			Message:            "Successfully synced metrics to hub cluster",
+		})
+	}
+
+	// Update status with reporting condition
+	if err := r.MemberClient.Status().Update(ctx, mc); err != nil {
+		klog.ErrorS(err, "Failed to update MetricCollector status with reporting condition", "metricCollector", req.NamespacedName)
+		return ctrl.Result{}, err
 	}
 
 	// Requeue after 30 seconds

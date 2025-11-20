@@ -107,6 +107,9 @@ const (
 
 	// MetricCollectorConditionTypeCollecting indicates metrics are being collected.
 	MetricCollectorConditionTypeCollecting string = "MetricsCollecting"
+
+	// MetricCollectorConditionTypeReported indicates metrics were successfully reported to hub.
+	MetricCollectorConditionTypeReported string = "MetricsReported"
 )
 
 // +kubebuilder:object:root=true
