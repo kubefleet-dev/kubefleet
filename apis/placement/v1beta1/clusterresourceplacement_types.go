@@ -549,7 +549,8 @@ type RolloutStrategy struct {
 	// If not specified, the latest resource snapshot will be used.
 	// When the specified index does not exist, the behavior depends on the ResourceSnapshotCreationPolicy:
 	// - For the "Automatic" policy, the rollout will fail with reason ResourceSnapshotNotFound.
-	// - For the "OnDemand" policy, a new resource snapshot will be created using the current index.
+	// - For the "OnDemand" policy, a new resource snapshot will be created using the current index if
+	// it is greater than the latest resourceSnapshot index.
 	// This field is only valid when RolloutStrategyType = RollingUpdate.
 	// +kubebuilder:validation:Optional
 	ResourceSnapshotIndex *string `json:"resourceSnapshotIndex,omitempty"`
