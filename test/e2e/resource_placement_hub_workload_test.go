@@ -210,6 +210,5 @@ var _ = Describe("placing workloads using a RP with PickAll policy", Label("reso
 					"Deployment should be ready on cluster %s", cluster.ClusterName)
 			}
 		})
-
 	})
 })
