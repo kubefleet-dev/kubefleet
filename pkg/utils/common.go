@@ -78,6 +78,8 @@ const (
 	ServiceKind     = "Service"
 	NamespaceKind   = "Namespace"
 	JobKind         = "Job"
+	ReplicaSetKind  = "ReplicaSet"
+	PodKind         = "Pod"
 )
 
 const (
@@ -504,14 +506,20 @@ func CheckCRDInstalled(discoveryClient discovery.DiscoveryInterface, gvk schema.
 
 // ShouldPropagateObj decides if one should propagate the object
 func ShouldPropagateObj(informerManager informer.Manager, uObj *unstructured.Unstructured) (bool, error) {
-	// Skip resources that have ownerReferences - they are managed by their owner resources
-	// For example, ReplicaSets owned by Deployments, Pods owned by ReplicaSets, etc.
-	if len(uObj.GetOwnerReferences()) > 0 {
-		return false, nil
-	}
-
 	// TODO:  add more special handling for different resource kind
 	switch uObj.GroupVersionKind() {
+	case corev1.SchemeGroupVersion.WithKind(PodKind):
+		// Skip Pods if they are managed by workload controllers (have owner references)
+		// Standalone Pods (without owners) can be propagated
+		if len(uObj.GetOwnerReferences()) > 0 {
+			return false, nil
+		}
+	case appv1.SchemeGroupVersion.WithKind(ReplicaSetKind):
+		// Skip ReplicaSets if they are managed by Deployments (have owner references)
+		// Standalone ReplicaSets (without owners) can be propagated
+		if len(uObj.GetOwnerReferences()) > 0 {
+			return false, nil
+		}
 	case corev1.SchemeGroupVersion.WithKind(ConfigMapKind):
 		// Skip the built-in custom CA certificate created in the namespace
 		if uObj.GetName() == "kube-root-ca.crt" {
@@ -551,6 +559,13 @@ func ShouldPropagateObj(informerManager informer.Manager, uObj *unstructured.Uns
 			return false, nil
 		}
 	}
+
+	// For all other resources, skip if they have ownerReferences
+	// This handles resources managed by controllers (e.g., Jobs created by CronJobs, etc.)
+	if len(uObj.GetOwnerReferences()) > 0 {
+		return false, nil
+	}
+
 	return true, nil
 }
 

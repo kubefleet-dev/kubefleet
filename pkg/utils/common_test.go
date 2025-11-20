@@ -1191,7 +1191,7 @@ func TestIsDiffedResourcePlacementEqual(t *testing.T) {
 	}
 }
 
-func TestShouldPropagateObj_OwnerReferences(t *testing.T) {
+func TestShouldPropagateObj_PodAndReplicaSet(t *testing.T) {
 	tests := []struct {
 		name            string
 		obj             map[string]interface{}
@@ -1199,12 +1199,12 @@ func TestShouldPropagateObj_OwnerReferences(t *testing.T) {
 		want            bool
 	}{
 		{
-			name: "object without ownerReferences should propagate",
+			name: "standalone replicaset without ownerReferences should propagate",
 			obj: map[string]interface{}{
 				"apiVersion": "apps/v1",
-				"kind":       "Deployment",
+				"kind":       "ReplicaSet",
 				"metadata": map[string]interface{}{
-					"name":      "test-deploy",
+					"name":      "standalone-rs",
 					"namespace": "default",
 				},
 			},
@@ -1212,7 +1212,20 @@ func TestShouldPropagateObj_OwnerReferences(t *testing.T) {
 			want:            true,
 		},
 		{
-			name: "object with ownerReferences should NOT propagate",
+			name: "standalone pod without ownerReferences should propagate",
+			obj: map[string]interface{}{
+				"apiVersion": "v1",
+				"kind":       "Pod",
+				"metadata": map[string]interface{}{
+					"name":      "standalone-pod",
+					"namespace": "default",
+				},
+			},
+			ownerReferences: nil,
+			want:            true,
+		},
+		{
+			name: "replicaset with deployment owner should NOT propagate",
 			obj: map[string]interface{}{
 				"apiVersion": "apps/v1",
 				"kind":       "ReplicaSet",
