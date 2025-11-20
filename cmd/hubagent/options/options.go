@@ -107,6 +107,10 @@ type Options struct {
 	PprofPort int
 	// DenyModifyMemberClusterLabels indicates if the member cluster labels cannot be modified by groups (excluding system:masters)
 	DenyModifyMemberClusterLabels bool
+	// DisablePodValidatingWebhook disables the pod validating webhook when set.
+	DisablePodValidatingWebhook bool
+	// DisableReplicaSetValidatingWebhook disables the replicaset validating webhook when set.
+	DisableReplicaSetValidatingWebhook bool
 	// ResourceSnapshotCreationMinimumInterval is the minimum interval at which resource snapshots could be created.
 	// Whether the resource snapshot is created or not depends on the both ResourceSnapshotCreationMinimumInterval and ResourceChangesCollectionDuration.
 	ResourceSnapshotCreationMinimumInterval time.Duration
@@ -181,6 +185,8 @@ func (o *Options) AddFlags(flags *flag.FlagSet) {
 	flags.BoolVar(&o.EnablePprof, "enable-pprof", false, "If set, the pprof profiling is enabled.")
 	flags.IntVar(&o.PprofPort, "pprof-port", 6065, "The port for pprof profiling.")
 	flags.BoolVar(&o.DenyModifyMemberClusterLabels, "deny-modify-member-cluster-labels", false, "If set, users not in the system:masters cannot modify member cluster labels.")
+	flags.BoolVar(&o.DisablePodValidatingWebhook, "disable-pod-validating-webhook", false, "If set, the pod validating webhook will NOT be registered.")
+	flags.BoolVar(&o.DisableReplicaSetValidatingWebhook, "disable-replicaset-validating-webhook", false, "If set, the replicaset validating webhook will NOT be registered.")
 	flags.DurationVar(&o.ResourceSnapshotCreationMinimumInterval, "resource-snapshot-creation-minimum-interval", 30*time.Second, "The minimum interval at which resource snapshots could be created.")
 	flags.DurationVar(&o.ResourceChangesCollectionDuration, "resource-changes-collection-duration", 15*time.Second,
 		"The duration for collecting resource changes into one snapshot. The default is 15 seconds, which means that the controller will collect resource changes for 15 seconds before creating a resource snapshot.")

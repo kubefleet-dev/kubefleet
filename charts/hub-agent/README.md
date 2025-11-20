@@ -41,3 +41,5 @@ _See [helm install](https://helm.sh/docs/helm/helm_install/) for command documen
 | `MaxFleetSizeSupported`                   | Max number of member clusters supported                                                    | `100`                                            |
 | `resourceSnapshotCreationMinimumInterval` | The minimum interval at which resource snapshots could be created.                         | `30s`                                            |
 | `resourceChangesCollectionDuration`       | The duration for collecting resource changes into one snapshot.                            | `15s`                                            |
+| `disablePodValidatingWebhook`             | Disable Pod validating webhook (allows standalone pods to be propagated)                   | `false`                                          |
+| `disableReplicaSetValidatingWebhook`      | Disable ReplicaSet validating webhook (allows standalone replicasets to be propagated)     | `false`                                          |

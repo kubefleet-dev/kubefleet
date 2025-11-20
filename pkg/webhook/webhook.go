@@ -158,24 +158,28 @@ type Config struct {
 
 	enableGuardRail bool
 
-	denyModifyMemberClusterLabels bool
+	denyModifyMemberClusterLabels      bool
+	disablePodValidatingWebhook        bool
+	disableReplicaSetValidatingWebhook bool
 }
 
-func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32, clientConnectionType *options.WebhookClientConnectionType, certDir string, enableGuardRail bool, denyModifyMemberClusterLabels bool) (*Config, error) {
+func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32, clientConnectionType *options.WebhookClientConnectionType, certDir string, enableGuardRail bool, denyModifyMemberClusterLabels bool, disablePodValidatingWebhook bool, disableReplicaSetValidatingWebhook bool) (*Config, error) {
 	// We assume the Pod namespace should be passed to env through downward API in the Pod spec.
 	namespace := os.Getenv("POD_NAMESPACE")
 	if namespace == "" {
 		return nil, errors.New("fail to obtain Pod namespace from POD_NAMESPACE")
 	}
 	w := Config{
-		mgr:                           mgr,
-		servicePort:                   port,
-		serviceNamespace:              namespace,
-		serviceName:                   webhookServiceName,
-		serviceURL:                    fmt.Sprintf("https://%s.%s.svc.cluster.local:%d", webhookServiceName, namespace, port),
-		clientConnectionType:          clientConnectionType,
-		enableGuardRail:               enableGuardRail,
-		denyModifyMemberClusterLabels: denyModifyMemberClusterLabels,
+		mgr:                                mgr,
+		servicePort:                        port,
+		serviceNamespace:                   namespace,
+		serviceName:                        webhookServiceName,
+		serviceURL:                         fmt.Sprintf("https://%s.%s.svc.cluster.local:%d", webhookServiceName, namespace, port),
+		clientConnectionType:               clientConnectionType,
+		enableGuardRail:                    enableGuardRail,
+		denyModifyMemberClusterLabels:      denyModifyMemberClusterLabels,
+		disablePodValidatingWebhook:        disablePodValidatingWebhook,
+		disableReplicaSetValidatingWebhook: disableReplicaSetValidatingWebhook,
 	}
 	caPEM, err := w.genCertificate(certDir)
 	if err != nil {
@@ -302,8 +306,10 @@ func (w *Config) createValidatingWebhookConfiguration(ctx context.Context, webho
 
 // buildValidatingWebHooks returns a slice of fleet validating webhook objects.
 func (w *Config) buildFleetValidatingWebhooks() []admv1.ValidatingWebhook {
-	webHooks := []admv1.ValidatingWebhook{
-		{
+	var webHooks []admv1.ValidatingWebhook
+
+	if !w.disablePodValidatingWebhook {
+		webHooks = append(webHooks, admv1.ValidatingWebhook{
 			Name:                    "fleet.pod.validating",
 			ClientConfig:            w.createClientConfig(pod.ValidationPath),
 			FailurePolicy:           &failFailurePolicy,
@@ -311,32 +317,31 @@ func (w *Config) buildFleetValidatingWebhooks() []admv1.ValidatingWebhook {
 			AdmissionReviewVersions: admissionReviewVersions,
 			Rules: []admv1.RuleWithOperations{
 				{
-					Operations: []admv1.OperationType{
-						admv1.Create,
-					},
-					Rule: createRule([]string{corev1.SchemeGroupVersion.Group}, []string{corev1.SchemeGroupVersion.Version}, []string{podResourceName}, &namespacedScope),
+					Operations: []admv1.OperationType{admv1.Create},
+					Rule:       createRule([]string{corev1.SchemeGroupVersion.Group}, []string{corev1.SchemeGroupVersion.Version}, []string{podResourceName}, &namespacedScope),
 				},
 			},
 			TimeoutSeconds: longWebhookTimeout,
-		},
-		{
-			Name:                    "fleet.clusterresourceplacementv1beta1.validating",
-			ClientConfig:            w.createClientConfig(clusterresourceplacement.ValidationPath),
-			FailurePolicy:           &failFailurePolicy,
-			SideEffects:             &sideEffortsNone,
-			AdmissionReviewVersions: admissionReviewVersions,
-			Rules: []admv1.RuleWithOperations{
-				{
-					Operations: []admv1.OperationType{
-						admv1.Create,
-						admv1.Update,
-					},
-					Rule: createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{placementv1beta1.ClusterResourcePlacementResource}, &clusterScope),
-				},
+		})
+	}
+
+	webHooks = append(webHooks, admv1.ValidatingWebhook{
+		Name:                    "fleet.clusterresourceplacementv1beta1.validating",
+		ClientConfig:            w.createClientConfig(clusterresourceplacement.ValidationPath),
+		FailurePolicy:           &failFailurePolicy,
+		SideEffects:             &sideEffortsNone,
+		AdmissionReviewVersions: admissionReviewVersions,
+		Rules: []admv1.RuleWithOperations{
+			{
+				Operations: []admv1.OperationType{admv1.Create, admv1.Update},
+				Rule:       createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{placementv1beta1.ClusterResourcePlacementResource}, &clusterScope),
 			},
-			TimeoutSeconds: longWebhookTimeout,
 		},
-		{
+		TimeoutSeconds: longWebhookTimeout,
+	})
+
+	if !w.disableReplicaSetValidatingWebhook {
+		webHooks = append(webHooks, admv1.ValidatingWebhook{
 			Name:                    "fleet.replicaset.validating",
 			ClientConfig:            w.createClientConfig(replicaset.ValidationPath),
 			FailurePolicy:           &failFailurePolicy,
@@ -344,99 +349,76 @@ func (w *Config) buildFleetValidatingWebhooks() []admv1.ValidatingWebhook {
 			AdmissionReviewVersions: admissionReviewVersions,
 			Rules: []admv1.RuleWithOperations{
 				{
-					Operations: []admv1.OperationType{
-						admv1.Create,
-					},
-					Rule: createRule([]string{appsv1.SchemeGroupVersion.Group}, []string{appsv1.SchemeGroupVersion.Version}, []string{replicaSetResourceName}, &namespacedScope),
+					Operations: []admv1.OperationType{admv1.Create},
+					Rule:       createRule([]string{appsv1.SchemeGroupVersion.Group}, []string{appsv1.SchemeGroupVersion.Version}, []string{replicaSetResourceName}, &namespacedScope),
 				},
 			},
 			TimeoutSeconds: longWebhookTimeout,
-		},
-		{
+		})
+	}
+
+	webHooks = append(webHooks,
+		admv1.ValidatingWebhook{
 			Name:                    "fleet.membercluster.validating",
 			ClientConfig:            w.createClientConfig(membercluster.ValidationPath),
 			FailurePolicy:           &failFailurePolicy,
 			SideEffects:             &sideEffortsNone,
 			AdmissionReviewVersions: admissionReviewVersions,
-			Rules: []admv1.RuleWithOperations{
-				{
-					Operations: []admv1.OperationType{
-						admv1.Create,
-						admv1.Update,
-						admv1.Delete,
-					},
-					Rule: createRule([]string{clusterv1beta1.GroupVersion.Group}, []string{clusterv1beta1.GroupVersion.Version}, []string{memberClusterResourceName}, &clusterScope),
-				},
-			},
+			Rules: []admv1.RuleWithOperations{{
+				Operations: []admv1.OperationType{admv1.Create, admv1.Update, admv1.Delete},
+				Rule:       createRule([]string{clusterv1beta1.GroupVersion.Group}, []string{clusterv1beta1.GroupVersion.Version}, []string{memberClusterResourceName}, &clusterScope),
+			}},
 			TimeoutSeconds: longWebhookTimeout,
 		},
-		{
+		admv1.ValidatingWebhook{
 			Name:                    "fleet.clusterresourceoverride.validating",
 			ClientConfig:            w.createClientConfig(clusterresourceoverride.ValidationPath),
 			FailurePolicy:           &failFailurePolicy,
 			SideEffects:             &sideEffortsNone,
 			AdmissionReviewVersions: admissionReviewVersions,
-			Rules: []admv1.RuleWithOperations{
-				{
-					Operations: []admv1.OperationType{
-						admv1.Create,
-						admv1.Update,
-					},
-					Rule: createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{clusterResourceOverrideName}, &clusterScope),
-				},
-			},
+			Rules: []admv1.RuleWithOperations{{
+				Operations: []admv1.OperationType{admv1.Create, admv1.Update},
+				Rule:       createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{clusterResourceOverrideName}, &clusterScope),
+			}},
 			TimeoutSeconds: longWebhookTimeout,
 		},
-		{
+		admv1.ValidatingWebhook{
 			Name:                    "fleet.resourceoverride.validating",
 			ClientConfig:            w.createClientConfig(resourceoverride.ValidationPath),
 			FailurePolicy:           &failFailurePolicy,
 			SideEffects:             &sideEffortsNone,
 			AdmissionReviewVersions: admissionReviewVersions,
-			Rules: []admv1.RuleWithOperations{
-				{
-					Operations: []admv1.OperationType{
-						admv1.Create,
-						admv1.Update,
-					},
-					Rule: createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{resourceOverrideName}, &namespacedScope),
-				},
-			},
+			Rules: []admv1.RuleWithOperations{{
+				Operations: []admv1.OperationType{admv1.Create, admv1.Update},
+				Rule:       createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{resourceOverrideName}, &namespacedScope),
+			}},
 			TimeoutSeconds: longWebhookTimeout,
 		},
-		{
+		admv1.ValidatingWebhook{
 			Name:                    "fleet.clusterresourceplacementeviction.validating",
 			ClientConfig:            w.createClientConfig(clusterresourceplacementeviction.ValidationPath),
 			FailurePolicy:           &failFailurePolicy,
 			SideEffects:             &sideEffortsNone,
 			AdmissionReviewVersions: admissionReviewVersions,
-			Rules: []admv1.RuleWithOperations{
-				{
-					Operations: []admv1.OperationType{
-						admv1.Create,
-					},
-					Rule: createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{evictionName}, &clusterScope),
-				},
-			},
+			Rules: []admv1.RuleWithOperations{{
+				Operations: []admv1.OperationType{admv1.Create},
+				Rule:       createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{evictionName}, &clusterScope),
+			}},
 			TimeoutSeconds: longWebhookTimeout,
 		},
-		{
+		admv1.ValidatingWebhook{
 			Name:                    "fleet.clusterresourceplacementdisruptionbudget.validating",
 			ClientConfig:            w.createClientConfig(clusterresourceplacementdisruptionbudget.ValidationPath),
 			FailurePolicy:           &failFailurePolicy,
 			SideEffects:             &sideEffortsNone,
 			AdmissionReviewVersions: admissionReviewVersions,
-			Rules: []admv1.RuleWithOperations{
-				{
-					Operations: []admv1.OperationType{
-						admv1.Create, admv1.Update,
-					},
-					Rule: createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{disruptionBudgetName}, &clusterScope),
-				},
-			},
+			Rules: []admv1.RuleWithOperations{{
+				Operations: []admv1.OperationType{admv1.Create, admv1.Update},
+				Rule:       createRule([]string{placementv1beta1.GroupVersion.Group}, []string{placementv1beta1.GroupVersion.Version}, []string{disruptionBudgetName}, &clusterScope),
+			}},
 			TimeoutSeconds: longWebhookTimeout,
 		},
-	}
+	)
 
 	return webHooks
 }
