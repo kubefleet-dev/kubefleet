@@ -152,6 +152,12 @@ type PlacementSpec struct {
 	// +kubebuilder:validation:Optional
 	RevisionHistoryLimit *int32 `json:"revisionHistoryLimit,omitempty"`
 
+	// ResourceSnapshotCreationPolicy controls when resource snapshots are created.
+	// +kubebuilder:validation:Enum=Automatic;OnDemand
+	// +kubebuilder:default=Automatic
+	// +kubebuilder:validation:Optional
+	ResourceSnapshotCreationPolicy ResourceSnapshotCreationPolicyType `json:"resourceSnapshotCreationPolicy,omitempty"`
+
 	// StatusReportingScope controls where ClusterResourcePlacement status information is made available.
 	// When set to "ClusterScopeOnly", status is accessible only through the cluster-scoped ClusterResourcePlacement object.
 	// When set to "NamespaceAccessible", a ClusterResourcePlacementStatus object is created in the target namespace,
@@ -163,6 +169,16 @@ type PlacementSpec struct {
 	// +kubebuilder:validation:Optional
 	StatusReportingScope StatusReportingScope `json:"statusReportingScope,omitempty"`
 }
+
+type ResourceSnapshotCreationPolicyType string
+
+const (
+	// AutomaticSnapshotCreation creates snapshots automatically when resources change.
+	AutomaticSnapshotCreation ResourceSnapshotCreationPolicyType = "Automatic"
+
+	// OnDemandSnapshotCreation creates snapshots on both resource changes and on demand requests.
+	OnDemandSnapshotCreation ResourceSnapshotCreationPolicyType = "OnDemand"
+)
 
 // Tolerations returns tolerations for PlacementSpec to handle nil policy case.
 func (p *PlacementSpec) Tolerations() []Toleration {
@@ -528,6 +544,15 @@ type RolloutStrategy struct {
 	// +kubebuilder:default=RollingUpdate
 	// +kubebuilder:validation:Enum=RollingUpdate;External
 	Type RolloutStrategyType `json:"type,omitempty"`
+
+	// ResourceSnapshotIndex indicates the specific resource snapshot index to be rolled out to the target clusters.
+	// If not specified, the latest resource snapshot will be used.
+	// When the specified index does not exist, the behavior depends on the ResourceSnapshotCreationPolicy:
+	// - For the "Automatic" policy, the rollout will fail with reason ResourceSnapshotNotFound.
+	// - For the "OnDemand" policy, a new resource snapshot will be created using the current index.
+	// This field is only valid when RolloutStrategyType = RollingUpdate.
+	// +kubebuilder:validation:Optional
+	ResourceSnapshotIndex *string `json:"resourceSnapshotIndex,omitempty"`
 
 	// Rolling update config params. Present only if RolloutStrategyType = RollingUpdate.
 	// +kubebuilder:validation:Optional
