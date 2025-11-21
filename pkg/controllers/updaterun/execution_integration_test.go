@@ -625,7 +625,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 		})
 	})
 
-	FContext("Cluster staged update run should abort the execution within a failed updating stage", Ordered, func() {
+	Context("Cluster staged update run should abort the execution within a failed updating stage", Ordered, func() {
 		var oldUpdateRunStuckThreshold time.Duration
 		BeforeAll(func() {
 			// Set the updateRunStuckThreshold to 1 second for this test.

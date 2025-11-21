@@ -112,7 +112,7 @@ func (r *Reconciler) checkBeforeStageTasksStatus(ctx context.Context, updatingSt
 		klog.V(2).InfoS("There is no before stage task for this stage", "stage", updatingStage.Name, "updateRun", updateRunRef)
 		return true, nil
 	}
-	passed := true
+
 	for i, task := range updatingStage.BeforeStageTasks {
 		switch task.Type {
 		case placementv1beta1.StageTaskTypeApproval:
@@ -121,7 +121,7 @@ func (r *Reconciler) checkBeforeStageTasksStatus(ctx context.Context, updatingSt
 				return false, err
 			}
 			if !approved {
-				passed = false
+				return approved, nil
 			}
 		case placementv1beta1.StageTaskTypeTimedWait:
 			// Timed wait is not supported in before stage task.
@@ -130,7 +130,7 @@ func (r *Reconciler) checkBeforeStageTasksStatus(ctx context.Context, updatingSt
 			return false, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
 		}
 	}
-	return passed, nil
+	return true, nil
 }
 
 // executeUpdatingStage executes a single updating stage by updating the bindings.
