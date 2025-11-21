@@ -54,34 +54,13 @@ func TestBuildFleetValidatingWebhooks(t *testing.T) {
 			},
 			wantLength: 8,
 		},
-		"disable pod": {
+		"enable custom workload": {
 			config: Config{
-				serviceNamespace:            "test-namespace",
-				servicePort:                 8080,
-				serviceURL:                  "test-url",
-				clientConnectionType:        &url,
-				disablePodValidatingWebhook: true,
-			},
-			wantLength: 7,
-		},
-		"disable replicaset": {
-			config: Config{
-				serviceNamespace:                   "test-namespace",
-				servicePort:                        8080,
-				serviceURL:                         "test-url",
-				clientConnectionType:               &url,
-				disableReplicaSetValidatingWebhook: true,
-			},
-			wantLength: 7,
-		},
-		"disable both": {
-			config: Config{
-				serviceNamespace:                   "test-namespace",
-				servicePort:                        8080,
-				serviceURL:                         "test-url",
-				clientConnectionType:               &url,
-				disablePodValidatingWebhook:        true,
-				disableReplicaSetValidatingWebhook: true,
+				serviceNamespace:     "test-namespace",
+				servicePort:          8080,
+				serviceURL:           "test-url",
+				clientConnectionType: &url,
+				enableCustomWorkload: true,
 			},
 			wantLength: 6,
 		},
@@ -143,14 +122,13 @@ func TestNewWebhookConfig(t *testing.T) {
 			enableGuardRail:               true,
 			denyModifyMemberClusterLabels: true,
 			want: &Config{
-				serviceNamespace:                   "test-namespace",
-				serviceName:                        "test-webhook",
-				servicePort:                        8080,
-				clientConnectionType:               nil,
-				enableGuardRail:                    true,
-				denyModifyMemberClusterLabels:      true,
-				disablePodValidatingWebhook:        false,
-				disableReplicaSetValidatingWebhook: false,
+				serviceNamespace:              "test-namespace",
+				serviceName:                   "test-webhook",
+				servicePort:                   8080,
+				clientConnectionType:          nil,
+				enableGuardRail:               true,
+				denyModifyMemberClusterLabels: true,
+				enableCustomWorkload:          false,
 			},
 			wantErr: false,
 		},
@@ -159,7 +137,7 @@ func TestNewWebhookConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("POD_NAMESPACE", "test-namespace")
 			defer t.Setenv("POD_NAMESPACE", "")
-			got, err := NewWebhookConfig(tt.mgr, tt.webhookServiceName, tt.port, tt.clientConnectionType, tt.certDir, tt.enableGuardRail, tt.denyModifyMemberClusterLabels, false, false)
+			got, err := NewWebhookConfig(tt.mgr, tt.webhookServiceName, tt.port, tt.clientConnectionType, tt.certDir, tt.enableGuardRail, tt.denyModifyMemberClusterLabels, false)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewWebhookConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return

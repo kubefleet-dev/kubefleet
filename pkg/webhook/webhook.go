@@ -158,28 +158,26 @@ type Config struct {
 
 	enableGuardRail bool
 
-	denyModifyMemberClusterLabels      bool
-	disablePodValidatingWebhook        bool
-	disableReplicaSetValidatingWebhook bool
+	denyModifyMemberClusterLabels bool
+	enableCustomWorkload          bool
 }
 
-func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32, clientConnectionType *options.WebhookClientConnectionType, certDir string, enableGuardRail bool, denyModifyMemberClusterLabels bool, disablePodValidatingWebhook bool, disableReplicaSetValidatingWebhook bool) (*Config, error) {
+func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32, clientConnectionType *options.WebhookClientConnectionType, certDir string, enableGuardRail bool, denyModifyMemberClusterLabels bool, enableCustomWorkload bool) (*Config, error) {
 	// We assume the Pod namespace should be passed to env through downward API in the Pod spec.
 	namespace := os.Getenv("POD_NAMESPACE")
 	if namespace == "" {
 		return nil, errors.New("fail to obtain Pod namespace from POD_NAMESPACE")
 	}
 	w := Config{
-		mgr:                                mgr,
-		servicePort:                        port,
-		serviceNamespace:                   namespace,
-		serviceName:                        webhookServiceName,
-		serviceURL:                         fmt.Sprintf("https://%s.%s.svc.cluster.local:%d", webhookServiceName, namespace, port),
-		clientConnectionType:               clientConnectionType,
-		enableGuardRail:                    enableGuardRail,
-		denyModifyMemberClusterLabels:      denyModifyMemberClusterLabels,
-		disablePodValidatingWebhook:        disablePodValidatingWebhook,
-		disableReplicaSetValidatingWebhook: disableReplicaSetValidatingWebhook,
+		mgr:                           mgr,
+		servicePort:                   port,
+		serviceNamespace:              namespace,
+		serviceName:                   webhookServiceName,
+		serviceURL:                    fmt.Sprintf("https://%s.%s.svc.cluster.local:%d", webhookServiceName, namespace, port),
+		clientConnectionType:          clientConnectionType,
+		enableGuardRail:               enableGuardRail,
+		denyModifyMemberClusterLabels: denyModifyMemberClusterLabels,
+		enableCustomWorkload:          enableCustomWorkload,
 	}
 	caPEM, err := w.genCertificate(certDir)
 	if err != nil {
@@ -308,7 +306,8 @@ func (w *Config) createValidatingWebhookConfiguration(ctx context.Context, webho
 func (w *Config) buildFleetValidatingWebhooks() []admv1.ValidatingWebhook {
 	var webHooks []admv1.ValidatingWebhook
 
-	if !w.disablePodValidatingWebhook {
+	// When enableCustomWorkload is true, skip pod and replicaset validating webhooks to allow custom workloads
+	if !w.enableCustomWorkload {
 		webHooks = append(webHooks, admv1.ValidatingWebhook{
 			Name:                    "fleet.pod.validating",
 			ClientConfig:            w.createClientConfig(pod.ValidationPath),
@@ -319,6 +318,21 @@ func (w *Config) buildFleetValidatingWebhooks() []admv1.ValidatingWebhook {
 				{
 					Operations: []admv1.OperationType{admv1.Create},
 					Rule:       createRule([]string{corev1.SchemeGroupVersion.Group}, []string{corev1.SchemeGroupVersion.Version}, []string{podResourceName}, &namespacedScope),
+				},
+			},
+			TimeoutSeconds: longWebhookTimeout,
+		})
+
+		webHooks = append(webHooks, admv1.ValidatingWebhook{
+			Name:                    "fleet.replicaset.validating",
+			ClientConfig:            w.createClientConfig(replicaset.ValidationPath),
+			FailurePolicy:           &failFailurePolicy,
+			SideEffects:             &sideEffortsNone,
+			AdmissionReviewVersions: admissionReviewVersions,
+			Rules: []admv1.RuleWithOperations{
+				{
+					Operations: []admv1.OperationType{admv1.Create},
+					Rule:       createRule([]string{appsv1.SchemeGroupVersion.Group}, []string{appsv1.SchemeGroupVersion.Version}, []string{replicaSetResourceName}, &namespacedScope),
 				},
 			},
 			TimeoutSeconds: longWebhookTimeout,
@@ -339,23 +353,6 @@ func (w *Config) buildFleetValidatingWebhooks() []admv1.ValidatingWebhook {
 		},
 		TimeoutSeconds: longWebhookTimeout,
 	})
-
-	if !w.disableReplicaSetValidatingWebhook {
-		webHooks = append(webHooks, admv1.ValidatingWebhook{
-			Name:                    "fleet.replicaset.validating",
-			ClientConfig:            w.createClientConfig(replicaset.ValidationPath),
-			FailurePolicy:           &failFailurePolicy,
-			SideEffects:             &sideEffortsNone,
-			AdmissionReviewVersions: admissionReviewVersions,
-			Rules: []admv1.RuleWithOperations{
-				{
-					Operations: []admv1.OperationType{admv1.Create},
-					Rule:       createRule([]string{appsv1.SchemeGroupVersion.Group}, []string{appsv1.SchemeGroupVersion.Version}, []string{replicaSetResourceName}, &namespacedScope),
-				},
-			},
-			TimeoutSeconds: longWebhookTimeout,
-		})
-	}
 
 	webHooks = append(webHooks,
 		admv1.ValidatingWebhook{
@@ -471,12 +468,12 @@ func (w *Config) buildFleetGuardRailValidatingWebhooks() []admv1.ValidatingWebho
 		},
 	}
 
-	// Build core v1 resources list, conditionally including pods if pod validating webhook is disabled
+	// Build core v1 resources list, conditionally including pods if custom workload is enabled
 	coreV1Resources := []string{bindingResourceName, configMapResourceName, endPointResourceName,
 		limitRangeResourceName, persistentVolumeClaimsName, persistentVolumeClaimsName + "/status", podTemplateResourceName,
 		replicationControllerResourceName, replicationControllerResourceName + "/status", resourceQuotaResourceName, resourceQuotaResourceName + "/status", secretResourceName,
 		serviceAccountResourceName, servicesResourceName, servicesResourceName + "/status"}
-	if w.disablePodValidatingWebhook {
+	if w.enableCustomWorkload {
 		coreV1Resources = append(coreV1Resources, podResourceName, podResourceName+"/status")
 	}
 
@@ -485,10 +482,10 @@ func (w *Config) buildFleetGuardRailValidatingWebhooks() []admv1.ValidatingWebho
 		Rule:       createRule([]string{corev1.SchemeGroupVersion.Group}, []string{corev1.SchemeGroupVersion.Version}, coreV1Resources, &namespacedScope),
 	})
 
-	// Build apps/v1 resources list, conditionally including replicasets if replicaset validating webhook is disabled
+	// Build apps/v1 resources list, conditionally including replicasets if custom workload is enabled
 	appsV1Resources := []string{controllerRevisionResourceName, daemonSetResourceName, daemonSetResourceName + "/status",
 		deploymentResourceName, deploymentResourceName + "/status", statefulSetResourceName, statefulSetResourceName + "/status"}
-	if w.disableReplicaSetValidatingWebhook {
+	if w.enableCustomWorkload {
 		appsV1Resources = append(appsV1Resources, replicaSetResourceName, replicaSetResourceName+"/status")
 	}
 
