@@ -317,7 +317,6 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			wantStatus.StagesStatus[0].Clusters[4].Conditions = append(wantStatus.StagesStatus[0].Clusters[4].Conditions, generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionSucceeded))
 			// Now waiting for after stage tasks of 1st stage.
 			meta.SetStatusCondition(&wantStatus.StagesStatus[0].Conditions, generateFalseCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
-			wantStatus.StagesStatus[0].AfterStageTaskStatus[0].Conditions = append(wantStatus.StagesStatus[0].AfterStageTaskStatus[0].Conditions, generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionWaitTimeElapsed))
 			wantStatus.StagesStatus[0].AfterStageTaskStatus[1].Conditions = append(wantStatus.StagesStatus[0].AfterStageTaskStatus[1].Conditions, generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestCreated))
 			meta.SetStatusCondition(&wantStatus.Conditions, generateFalseCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
 			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
@@ -348,6 +347,9 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
 
 			By("Validating both after stage tasks have completed and 2nd stage has started")
+			// Timedwait afterStageTask completed.
+			wantStatus.StagesStatus[0].AfterStageTaskStatus[0].Conditions = append(wantStatus.StagesStatus[0].AfterStageTaskStatus[0].Conditions,
+				generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionWaitTimeElapsed))
 			// Approval afterStageTask completed.
 			wantStatus.StagesStatus[0].AfterStageTaskStatus[1].Conditions = append(wantStatus.StagesStatus[0].AfterStageTaskStatus[1].Conditions,
 				generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestApproved))

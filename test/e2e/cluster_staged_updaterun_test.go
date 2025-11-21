@@ -1266,8 +1266,10 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			configMapActual := configMapPlacedOnClusterActual(allMemberClusters[1], &newConfigMap)
 			Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update to the new configmap %s on cluster %s", newConfigMap.Name, allMemberClusterNames[1])
 
+			// Approval for AfterStageTasks of canary stage
 			validateAndApproveClusterApprovalRequests(updateRunName, envCanary)
 
+			// Approval for BeforeStageTasks of prod stage
 			validateAndApproveClusterApprovalRequests(updateRunName, envProd)
 
 			// Verify complete rollout
@@ -1350,7 +1352,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			}, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to find cluster approval request")
 		})
 
-		It("Should approve cluster approval request using kubectl-fleet approve plugin for canary stage", func() {
+		It("Should approve after-stage cluster approval request using kubectl-fleet approve plugin for canary stage", func() {
 			var approvalRequestName string
 
 			// Get the cluster approval request name.
@@ -1396,7 +1398,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to verify approval request is approved")
 		})
 
-		It("Should approve cluster approval request using kubectl-fleet approve plugin for prod stage", func() {
+		It("Should approve before-stage cluster approval request using kubectl-fleet approve plugin for prod stage", func() {
 			var approvalRequestName string
 
 			// Get the cluster approval request name.
@@ -1514,8 +1516,10 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		It("Create updateRun and verify resources are rolled out", func() {
 			createClusterStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex1st, strategyName)
 
+			// Approval for AfterStageTasks of canary stage
 			validateAndApproveClusterApprovalRequests(updateRunName, envCanary)
 
+			// Approval for BeforeStageTasks of prod stage
 			validateAndApproveClusterApprovalRequests(updateRunName, envProd)
 
 			csurSucceededActual := clusterStagedUpdateRunStatusSucceededActual(updateRunName, resourceSnapshotIndex1st, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)

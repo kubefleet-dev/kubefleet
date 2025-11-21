@@ -1214,8 +1214,10 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			configMapActual := configMapPlacedOnClusterActual(allMemberClusters[1], &newConfigMap)
 			Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update to the new configmap %s on cluster %s", newConfigMap.Name, allMemberClusterNames[1])
 
+			// Approval for AfterStageTask of canary stage
 			validateAndApproveNamespacedApprovalRequests(updateRunName, testNamespace, envCanary)
 
+			// Approval for BeforeStageTask of prod stage
 			validateAndApproveNamespacedApprovalRequests(updateRunName, testNamespace, envProd)
 
 			// Verify complete rollout.
@@ -1293,8 +1295,10 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		It("Create updateRun and verify resources are rolled out", func() {
 			createStagedUpdateRunSucceed(updateRunName, testNamespace, rpName, resourceSnapshotIndex1st, strategyName)
 
+			// Approval for AfterStageTask of canary stage
 			validateAndApproveNamespacedApprovalRequests(updateRunName, testNamespace, envCanary)
 
+			// Approval for BeforeStageTask of prod stage
 			validateAndApproveNamespacedApprovalRequests(updateRunName, testNamespace, envProd)
 
 			surSucceededActual := stagedUpdateRunStatusSucceededActual(updateRunName, testNamespace, resourceSnapshotIndex1st, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)

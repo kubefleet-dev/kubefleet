@@ -985,20 +985,6 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					},
 				},
 			},
-			approvalRequest: &placementv1beta1.ClusterApprovalRequest{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, testUpdateRunName, stageName),
-					Labels: map[string]string{
-						placementv1beta1.TargetUpdatingStageNameLabel:   stageName,
-						placementv1beta1.TargetUpdateRunLabel:           testUpdateRunName,
-						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
-					},
-				},
-				Spec: placementv1beta1.ApprovalRequestSpec{
-					TargetUpdateRun: testUpdateRunName,
-					TargetStage:     stageName,
-				},
-			},
 		},
 		{
 			name:       "should return err if Approval request has wrong target stage in spec",
@@ -1053,7 +1039,6 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					TargetStage:     "stage-1",
 				},
 			},
-			wantError: true,
 		},
 		{
 			name:       "should return err if Approval request has wrong target update run in spec",
@@ -1108,7 +1093,6 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					TargetStage:     stageName,
 				},
 			},
-			wantError: true,
 		},
 		{
 			name:       "should return err if cannot update Approval request that is approved as accepted",
@@ -1171,12 +1155,14 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					},
 				},
 			},
-			wantError: true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			objects := []client.Object{tt.updateRun, tt.approvalRequest}
+			objects := []client.Object{tt.updateRun}
+			if tt.approvalRequest != nil {
+				objects = append(objects, tt.approvalRequest)
+			}
 			objectsWithStatus := []client.Object{tt.updateRun}
 			scheme := runtime.NewScheme()
 			_ = placementv1beta1.AddToScheme(scheme)

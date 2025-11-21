@@ -1030,7 +1030,7 @@ func generateSucceededInitializationStatus(
 		for _, task := range updateStrategy.Spec.Stages[i].AfterStageTasks {
 			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
 			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				taskStatus.ApprovalRequestName = updateRun.Name + "-after-" + status.StagesStatus[i].StageName
+				taskStatus.ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.Name, status.StagesStatus[i].StageName)
 			}
 			afterTasks = append(afterTasks, taskStatus)
 		}
@@ -1040,7 +1040,7 @@ func generateSucceededInitializationStatus(
 		for _, task := range updateStrategy.Spec.Stages[i].BeforeStageTasks {
 			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
 			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				taskStatus.ApprovalRequestName = updateRun.Name + "-before-" + status.StagesStatus[i].StageName
+				taskStatus.ApprovalRequestName = fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.Name, status.StagesStatus[i].StageName)
 			}
 			beforeTasks = append(beforeTasks, taskStatus)
 		}
@@ -1110,17 +1110,11 @@ func generateExecutionStartedStatus(
 	status *placementv1beta1.UpdateRunStatus,
 ) *placementv1beta1.UpdateRunStatus {
 	// Mark updateRun execution has started.
-	if meta.FindStatusCondition(status.Conditions, string(placementv1beta1.StagedUpdateRunConditionProgressing)) != nil {
-		meta.SetStatusCondition(&status.Conditions, generateTrueCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
-	} else {
-		status.Conditions = append(status.Conditions, generateTrueCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
-	}
+	meta.SetStatusCondition(&status.Conditions, generateTrueCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
+
 	// Mark updateRun 1st stage has started.
-	if meta.FindStatusCondition(status.StagesStatus[0].Conditions, string(placementv1beta1.StageUpdatingConditionProgressing)) != nil {
-		meta.SetStatusCondition(&status.StagesStatus[0].Conditions, generateTrueCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
-	} else {
-		status.StagesStatus[0].Conditions = append(status.StagesStatus[0].Conditions, generateTrueCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
-	}
+	meta.SetStatusCondition(&status.StagesStatus[0].Conditions, generateTrueCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
+
 	// Mark updateRun 1st cluster in the 1st stage has started.
 	status.StagesStatus[0].Clusters[0].Conditions = []metav1.Condition{generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted)}
 	return status

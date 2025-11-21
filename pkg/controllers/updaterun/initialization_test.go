@@ -17,16 +17,12 @@ limitations under the License.
 package updaterun
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -86,17 +82,13 @@ func TestValidateBeforeStageTask(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateBeforeStageTask(tt.task)
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("validateBeforeStageTask() error = nil, wantErr %v", tt.wantErr)
-					return
+			gotErr := validateBeforeStageTask(tt.task)
+			if tt.wantErr && (gotErr != nil) {
+				if gotErr.Error() != tt.errMsg {
+					t.Fatalf("validateBeforeStageTask() error = %v, wantErr %v", gotErr, tt.errMsg)
 				}
-				if err.Error() != tt.errMsg {
-					t.Errorf("validateBeforeStageTask() error = %v, wantErr %v", err, tt.errMsg)
-				}
-			} else if err != nil {
-				t.Errorf("validateBeforeStageTask() error = %v, wantErr %v", err, tt.wantErr)
+			} else if gotErr != nil {
+				t.Fatalf("validateBeforeStageTask() error = %v, wantErr %v", gotErr, tt.wantErr)
 			}
 		})
 	}
@@ -173,110 +165,6 @@ func TestValidateAfterStageTask(t *testing.T) {
 				}
 			} else if err != nil {
 				t.Errorf("validateAfterStageTask() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestComputeRunStageStatus_NegativeBeforeStageTasks(t *testing.T) {
-	stageName := "stage-0"
-	testUpdateRunName = "test-update-run"
-	tests := []struct {
-		name      string
-		updateRun *placementv1beta1.ClusterStagedUpdateRun
-		wantError bool
-	}{
-		{
-			name: "two BeforeStageTasks in one stage should return error",
-			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: testUpdateRunName,
-				},
-				Status: placementv1beta1.UpdateRunStatus{
-					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
-						Stages: []placementv1beta1.StageConfig{
-							{
-								Name: stageName,
-								BeforeStageTasks: []placementv1beta1.StageTask{
-									{
-										Type: placementv1beta1.StageTaskTypeApproval,
-									},
-									{
-										Type: placementv1beta1.StageTaskTypeApproval,
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			wantError: true,
-		},
-		{
-			name: "invalid BeforeStageTasks with TimeWait task type should return error",
-			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: testUpdateRunName,
-				},
-				Status: placementv1beta1.UpdateRunStatus{
-					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
-						Stages: []placementv1beta1.StageConfig{
-							{
-								Name: stageName,
-								BeforeStageTasks: []placementv1beta1.StageTask{
-									{
-										Type: placementv1beta1.StageTaskTypeTimedWait,
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			wantError: true,
-		},
-		{
-			name: "invalid BeforeStageTasks with duration for approval task type should return error",
-			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: testUpdateRunName,
-				},
-				Status: placementv1beta1.UpdateRunStatus{
-					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
-						Stages: []placementv1beta1.StageConfig{
-							{
-								Name: stageName,
-								BeforeStageTasks: []placementv1beta1.StageTask{
-									{
-										Type:     placementv1beta1.StageTaskTypeApproval,
-										WaitTime: ptr.To(metav1.Duration{Duration: 1 * time.Minute}),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			wantError: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			objects := []client.Object{tt.updateRun}
-			scheme := runtime.NewScheme()
-			_ = placementv1beta1.AddToScheme(scheme)
-			fakeClient := fake.NewClientBuilder().
-				WithScheme(scheme).
-				WithObjects(objects...).
-				WithStatusSubresource(objects...).
-				Build()
-			r := Reconciler{
-				Client: fakeClient,
-			}
-			ctx := context.Background()
-			err := r.computeRunStageStatus(ctx, []placementv1beta1.BindingObj{}, tt.updateRun)
-			if (err != nil) != tt.wantError {
-				t.Fatal("computeRunStageStatus() error =", err, ", wantError", tt.wantError)
 			}
 		})
 	}

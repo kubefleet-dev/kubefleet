@@ -120,9 +120,7 @@ func (r *Reconciler) checkBeforeStageTasksStatus(ctx context.Context, updatingSt
 			if err != nil {
 				return false, err
 			}
-			if !approved {
-				return approved, nil
-			}
+			return approved, nil // Ideally there should be only one approval task in before stage tasks.
 		case placementv1beta1.StageTaskTypeTimedWait:
 			// Timed wait is not supported in before stage task.
 			unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("found unsupported timed wait task in before stage tasks"))
