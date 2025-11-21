@@ -1264,6 +1264,59 @@ func TestShouldPropagateObj_PodAndReplicaSet(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			name: "controllerrevision owned by daemonset should NOT propagate",
+			obj: map[string]interface{}{
+				"apiVersion": "apps/v1",
+				"kind":       "ControllerRevision",
+				"metadata": map[string]interface{}{
+					"name":      "test-ds-7b9848797f",
+					"namespace": "default",
+				},
+			},
+			ownerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "apps/v1",
+					Kind:       "DaemonSet",
+					Name:       "test-ds",
+					UID:        "abcdef",
+				},
+			},
+			want: false,
+		},
+		{
+			name: "controllerrevision owned by statefulset should NOT propagate",
+			obj: map[string]interface{}{
+				"apiVersion": "apps/v1",
+				"kind":       "ControllerRevision",
+				"metadata": map[string]interface{}{
+					"name":      "test-ss-7878b4b446",
+					"namespace": "default",
+				},
+			},
+			ownerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "apps/v1",
+					Kind:       "StatefulSet",
+					Name:       "test-ss",
+					UID:        "fedcba",
+				},
+			},
+			want: false,
+		},
+		{
+			name: "standalone controllerrevision without owner should propagate",
+			obj: map[string]interface{}{
+				"apiVersion": "apps/v1",
+				"kind":       "ControllerRevision",
+				"metadata": map[string]interface{}{
+					"name":      "custom-revision",
+					"namespace": "default",
+				},
+			},
+			ownerReferences: nil,
+			want:            true,
+		},
 	}
 
 	for _, tt := range tests {

@@ -22,7 +22,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
@@ -76,15 +75,7 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 		Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 
 		By("waiting for CRP status to update")
-		wantSelectedResources := []placementv1beta1.ResourceIdentifier{
-			{
-				Kind:      "Namespace",
-				Name:      workNamespace.Name,
-				Version:   corev1.SchemeGroupVersion.Version,
-				Namespace: workNamespace.Name,
-			},
-		}
-		crpStatusUpdatedActual := crpStatusUpdatedActual(wantSelectedResources, allMemberClusterNames, nil, "0")
+		crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0")
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 	})
 

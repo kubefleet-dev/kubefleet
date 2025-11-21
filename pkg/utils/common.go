@@ -520,6 +520,12 @@ func ShouldPropagateObj(informerManager informer.Manager, uObj *unstructured.Uns
 		if len(uObj.GetOwnerReferences()) > 0 {
 			return false, nil
 		}
+	case appv1.SchemeGroupVersion.WithKind("ControllerRevision"):
+		// Skip ControllerRevisions if they are managed by DaemonSets/StatefulSets (have owner references)
+		// These are automatically created by controllers and will be recreated on member clusters
+		if len(uObj.GetOwnerReferences()) > 0 {
+			return false, nil
+		}
 	case corev1.SchemeGroupVersion.WithKind(ConfigMapKind):
 		// Skip the built-in custom CA certificate created in the namespace
 		if uObj.GetName() == "kube-root-ca.crt" {
