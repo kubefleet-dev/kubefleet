@@ -75,8 +75,36 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 		Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 
 		By("waiting for CRP status to update")
-		crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0")
-		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		wantSelectedResources := []placementv1beta1.ResourceIdentifier{
+			{
+				Kind:    "Namespace",
+				Name:    workNamespace.Name,
+				Version: "v1",
+			},
+			{
+				Group:     "apps",
+				Version:   "v1",
+				Kind:      "Deployment",
+				Name:      testDeployment.Name,
+				Namespace: workNamespace.Name,
+			},
+			{
+				Group:     "apps",
+				Version:   "v1",
+				Kind:      "DaemonSet",
+				Name:      testDaemonSet.Name,
+				Namespace: workNamespace.Name,
+			},
+			{
+				Group:     "apps",
+				Version:   "v1",
+				Kind:      "StatefulSet",
+				Name:      testStatefulSet.Name,
+				Namespace: workNamespace.Name,
+			},
+		}
+		crpStatusUpdatedActual := crpStatusUpdatedActual(wantSelectedResources, allMemberClusterNames, nil, "0")
+		Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 	})
 
 	AfterAll(func() {
