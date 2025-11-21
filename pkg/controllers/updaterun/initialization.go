@@ -463,7 +463,7 @@ func (r *Reconciler) computeRunStageStatus(
 }
 
 // validateBeforeStageTask validates the beforeStageTasks in the stage defined in the UpdateStrategy.
-// The error returned from this function is not retryable.
+// The error returned from this function is not retriable.
 func validateBeforeStageTask(tasks []placementv1beta1.StageTask) error {
 	if len(tasks) > 1 {
 		return fmt.Errorf("beforeStageTasks can have at most one task")
@@ -480,7 +480,7 @@ func validateBeforeStageTask(tasks []placementv1beta1.StageTask) error {
 }
 
 // validateAfterStageTask validates the afterStageTasks in the stage defined in the UpdateStrategy.
-// The error returned from this function is not retryable.
+// The error returned from this function is not retriable.
 func validateAfterStageTask(tasks []placementv1beta1.StageTask) error {
 	if len(tasks) == 2 && tasks[0].Type == tasks[1].Type {
 		return fmt.Errorf("afterStageTasks cannot have two tasks of the same type: %s", tasks[0].Type)

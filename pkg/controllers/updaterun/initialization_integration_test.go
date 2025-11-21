@@ -1107,29 +1107,37 @@ func generateSucceededInitializationStatusForSmallClusters(
 
 func generateExecutionStartedStatus(
 	updateRun *placementv1beta1.ClusterStagedUpdateRun,
-	initialized *placementv1beta1.UpdateRunStatus,
+	status *placementv1beta1.UpdateRunStatus,
 ) *placementv1beta1.UpdateRunStatus {
 	// Mark updateRun execution has started.
-	initialized.Conditions = append(initialized.Conditions, generateTrueCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
+	if meta.FindStatusCondition(status.Conditions, string(placementv1beta1.StagedUpdateRunConditionProgressing)) != nil {
+		meta.SetStatusCondition(&status.Conditions, generateTrueCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
+	} else {
+		status.Conditions = append(status.Conditions, generateTrueCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
+	}
 	// Mark updateRun 1st stage has started.
-	initialized.StagesStatus[0].Conditions = append(initialized.StagesStatus[0].Conditions, generateTrueCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
+	if meta.FindStatusCondition(status.StagesStatus[0].Conditions, string(placementv1beta1.StageUpdatingConditionProgressing)) != nil {
+		meta.SetStatusCondition(&status.StagesStatus[0].Conditions, generateTrueCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
+	} else {
+		status.StagesStatus[0].Conditions = append(status.StagesStatus[0].Conditions, generateTrueCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
+	}
 	// Mark updateRun 1st cluster in the 1st stage has started.
-	initialized.StagesStatus[0].Clusters[0].Conditions = []metav1.Condition{generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted)}
-	return initialized
+	status.StagesStatus[0].Clusters[0].Conditions = []metav1.Condition{generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted)}
+	return status
 }
 
 func generateExecutionNotStartedStatus(
 	updateRun *placementv1beta1.ClusterStagedUpdateRun,
-	initialized *placementv1beta1.UpdateRunStatus,
+	status *placementv1beta1.UpdateRunStatus,
 ) *placementv1beta1.UpdateRunStatus {
 	// Mark updateRun execution has not started.
-	initialized.Conditions = append(initialized.Conditions, generateFalseCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
+	status.Conditions = append(status.Conditions, generateFalseCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
 
 	// Mark updateRun 1st stage has not started.
-	initialized.StagesStatus[0].Conditions = append(initialized.StagesStatus[0].Conditions, generateFalseCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
+	status.StagesStatus[0].Conditions = append(status.StagesStatus[0].Conditions, generateFalseCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
 
 	// Mark updateRun 1st stage BeforeStageTasks has created approval request.
-	initialized.StagesStatus[0].BeforeStageTaskStatus[0].Conditions = append(initialized.StagesStatus[0].BeforeStageTaskStatus[0].Conditions,
-		generateTrueStageTaskCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestCreated))
-	return initialized
+	status.StagesStatus[0].BeforeStageTaskStatus[0].Conditions = append(status.StagesStatus[0].BeforeStageTaskStatus[0].Conditions,
+		generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestCreated))
+	return status
 }

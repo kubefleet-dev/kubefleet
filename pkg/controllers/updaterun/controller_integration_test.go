@@ -721,7 +721,15 @@ func generateTrueCondition(obj client.Object, condType any) metav1.Condition {
 		}
 		typeStr = string(cond)
 	case placementv1beta1.StageTaskConditionType:
-		return generateTrueStageTaskCondition(obj, cond)
+		switch cond {
+		case placementv1beta1.StageTaskConditionWaitTimeElapsed:
+			reason = condition.AfterStageTaskWaitTimeElapsedReason
+		case placementv1beta1.StageTaskConditionApprovalRequestCreated:
+			reason = condition.StageTaskApprovalRequestCreatedReason
+		case placementv1beta1.StageTaskConditionApprovalRequestApproved:
+			reason = condition.StageTaskApprovalRequestApprovedReason
+		}
+		typeStr = string(cond)
 	case placementv1beta1.ApprovalRequestConditionType:
 		switch cond {
 		case placementv1beta1.ApprovalRequestConditionApproved:
@@ -808,25 +816,4 @@ func generateFalseProgressingCondition(obj client.Object, condType any, succeede
 	}
 	falseCond.Reason = reason
 	return falseCond
-}
-
-func generateTrueStageTaskCondition(obj client.Object, condType any) metav1.Condition {
-	reason, typeStr := "", ""
-	cond := condType.(placementv1beta1.StageTaskConditionType)
-	switch cond {
-	case placementv1beta1.StageTaskConditionWaitTimeElapsed:
-		reason = condition.AfterStageTaskWaitTimeElapsedReason
-	case placementv1beta1.StageTaskConditionApprovalRequestCreated:
-		reason = condition.StageTaskApprovalRequestCreatedReason
-	case placementv1beta1.StageTaskConditionApprovalRequestApproved:
-		reason = condition.StageTaskApprovalRequestApprovedReason
-	}
-	typeStr = string(cond)
-
-	return metav1.Condition{
-		Status:             metav1.ConditionTrue,
-		Type:               typeStr,
-		ObservedGeneration: obj.GetGeneration(),
-		Reason:             reason,
-	}
 }
