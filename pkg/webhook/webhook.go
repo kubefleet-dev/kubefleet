@@ -159,10 +159,10 @@ type Config struct {
 	enableGuardRail bool
 
 	denyModifyMemberClusterLabels bool
-	enableCustomWorkload          bool
+	enableWorkload                bool
 }
 
-func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32, clientConnectionType *options.WebhookClientConnectionType, certDir string, enableGuardRail bool, denyModifyMemberClusterLabels bool, enableCustomWorkload bool) (*Config, error) {
+func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32, clientConnectionType *options.WebhookClientConnectionType, certDir string, enableGuardRail bool, denyModifyMemberClusterLabels bool, enableWorkload bool) (*Config, error) {
 	// We assume the Pod namespace should be passed to env through downward API in the Pod spec.
 	namespace := os.Getenv("POD_NAMESPACE")
 	if namespace == "" {
@@ -177,7 +177,7 @@ func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32
 		clientConnectionType:          clientConnectionType,
 		enableGuardRail:               enableGuardRail,
 		denyModifyMemberClusterLabels: denyModifyMemberClusterLabels,
-		enableCustomWorkload:          enableCustomWorkload,
+		enableWorkload:                enableWorkload,
 	}
 	caPEM, err := w.genCertificate(certDir)
 	if err != nil {
@@ -306,8 +306,8 @@ func (w *Config) createValidatingWebhookConfiguration(ctx context.Context, webho
 func (w *Config) buildFleetValidatingWebhooks() []admv1.ValidatingWebhook {
 	var webHooks []admv1.ValidatingWebhook
 
-	// When enableCustomWorkload is true, skip pod and replicaset validating webhooks to allow custom workloads
-	if !w.enableCustomWorkload {
+	// When enableWorkload is true, skip pod and replicaset validating webhooks to allow workloads
+	if !w.enableWorkload {
 		webHooks = append(webHooks, admv1.ValidatingWebhook{
 			Name:                    "fleet.pod.validating",
 			ClientConfig:            w.createClientConfig(pod.ValidationPath),
@@ -468,12 +468,12 @@ func (w *Config) buildFleetGuardRailValidatingWebhooks() []admv1.ValidatingWebho
 		},
 	}
 
-	// Build core v1 resources list, conditionally including pods if custom workload is enabled
+	// Build core v1 resources list, conditionally including pods if workload is enabled
 	coreV1Resources := []string{bindingResourceName, configMapResourceName, endPointResourceName,
 		limitRangeResourceName, persistentVolumeClaimsName, persistentVolumeClaimsName + "/status", podTemplateResourceName,
 		replicationControllerResourceName, replicationControllerResourceName + "/status", resourceQuotaResourceName, resourceQuotaResourceName + "/status", secretResourceName,
 		serviceAccountResourceName, servicesResourceName, servicesResourceName + "/status"}
-	if w.enableCustomWorkload {
+	if w.enableWorkload {
 		coreV1Resources = append(coreV1Resources, podResourceName, podResourceName+"/status")
 	}
 
@@ -482,10 +482,10 @@ func (w *Config) buildFleetGuardRailValidatingWebhooks() []admv1.ValidatingWebho
 		Rule:       createRule([]string{corev1.SchemeGroupVersion.Group}, []string{corev1.SchemeGroupVersion.Version}, coreV1Resources, &namespacedScope),
 	})
 
-	// Build apps/v1 resources list, conditionally including replicasets if custom workload is enabled
+	// Build apps/v1 resources list, conditionally including replicasets if workload is enabled
 	appsV1Resources := []string{controllerRevisionResourceName, daemonSetResourceName, daemonSetResourceName + "/status",
 		deploymentResourceName, deploymentResourceName + "/status", statefulSetResourceName, statefulSetResourceName + "/status"}
-	if w.enableCustomWorkload {
+	if w.enableWorkload {
 		appsV1Resources = append(appsV1Resources, replicaSetResourceName, replicaSetResourceName+"/status")
 	}
 

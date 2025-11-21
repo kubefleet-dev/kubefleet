@@ -54,13 +54,13 @@ func TestBuildFleetValidatingWebhooks(t *testing.T) {
 			},
 			wantLength: 8,
 		},
-		"enable custom workload": {
+		"enable workload": {
 			config: Config{
 				serviceNamespace:     "test-namespace",
 				servicePort:          8080,
 				serviceURL:           "test-url",
 				clientConnectionType: &url,
-				enableCustomWorkload: true,
+				enableWorkload:       true,
 			},
 			wantLength: 6,
 		},
@@ -128,7 +128,7 @@ func TestNewWebhookConfig(t *testing.T) {
 				clientConnectionType:          nil,
 				enableGuardRail:               true,
 				denyModifyMemberClusterLabels: true,
-				enableCustomWorkload:          false,
+				enableWorkload:                false,
 			},
 			wantErr: false,
 		},
