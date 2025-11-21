@@ -559,13 +559,6 @@ func ShouldPropagateObj(informerManager informer.Manager, uObj *unstructured.Uns
 			return false, nil
 		}
 	}
-
-	// For all other resources, skip if they have ownerReferences
-	// This handles resources managed by controllers (e.g., Jobs created by CronJobs, etc.)
-	if len(uObj.GetOwnerReferences()) > 0 {
-		return false, nil
-	}
-
 	return true, nil
 }
 
