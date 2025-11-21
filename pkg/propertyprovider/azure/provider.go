@@ -265,7 +265,6 @@ func (p *PropertyProvider) Start(ctx context.Context, config *rest.Config) error
 	} else {
 		err := fmt.Errorf("rest.Config CAFile empty: %s", config.CAFile)
 		klog.ErrorS(err, "No certificate authority data available in rest.Config")
-		return err
 	}
 
 	// Set up the node reconciler.
