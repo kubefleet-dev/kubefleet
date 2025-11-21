@@ -88,6 +88,72 @@ var _ = Describe("placing workloads using a RP with PickAll policy", Label("reso
 	})
 
 	Context("with PickAll placement type", Ordered, func() {
+		It("should verify hub deployment is ready", func() {
+			By("checking hub deployment status")
+			Eventually(func() error {
+				var hubDeployment appsv1.Deployment
+				if err := hubClient.Get(ctx, types.NamespacedName{
+					Name:      testDeployment.Name,
+					Namespace: testDeployment.Namespace,
+				}, &hubDeployment); err != nil {
+					return err
+				}
+				// Verify deployment is ready in hub cluster
+				if hubDeployment.Status.ReadyReplicas != *hubDeployment.Spec.Replicas {
+					return fmt.Errorf("hub deployment not ready: %d/%d replicas ready", hubDeployment.Status.ReadyReplicas, *hubDeployment.Spec.Replicas)
+				}
+				if hubDeployment.Status.UpdatedReplicas != *hubDeployment.Spec.Replicas {
+					return fmt.Errorf("hub deployment not updated: %d/%d replicas updated", hubDeployment.Status.UpdatedReplicas, *hubDeployment.Spec.Replicas)
+				}
+				return nil
+			}, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(),
+				"Hub deployment should be ready before placement")
+		})
+
+		It("should verify hub daemonset is ready", func() {
+			By("checking hub daemonset status")
+			Eventually(func() error {
+				var hubDaemonSet appsv1.DaemonSet
+				if err := hubClient.Get(ctx, types.NamespacedName{
+					Name:      testDaemonSet.Name,
+					Namespace: testDaemonSet.Namespace,
+				}, &hubDaemonSet); err != nil {
+					return err
+				}
+				// Verify daemonset is ready in hub cluster
+				if hubDaemonSet.Status.NumberReady == 0 {
+					return fmt.Errorf("hub daemonset has no ready pods")
+				}
+				if hubDaemonSet.Status.NumberReady != hubDaemonSet.Status.DesiredNumberScheduled {
+					return fmt.Errorf("hub daemonset not ready: %d/%d pods ready", hubDaemonSet.Status.NumberReady, hubDaemonSet.Status.DesiredNumberScheduled)
+				}
+				return nil
+			}, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(),
+				"Hub daemonset should be ready before placement")
+		})
+
+		It("should verify hub statefulset is ready", func() {
+			By("checking hub statefulset status")
+			Eventually(func() error {
+				var hubStatefulSet appsv1.StatefulSet
+				if err := hubClient.Get(ctx, types.NamespacedName{
+					Name:      testStatefulSet.Name,
+					Namespace: testStatefulSet.Namespace,
+				}, &hubStatefulSet); err != nil {
+					return err
+				}
+				// Verify statefulset is ready in hub cluster
+				if hubStatefulSet.Status.ReadyReplicas != *hubStatefulSet.Spec.Replicas {
+					return fmt.Errorf("hub statefulset not ready: %d/%d replicas ready", hubStatefulSet.Status.ReadyReplicas, *hubStatefulSet.Spec.Replicas)
+				}
+				if hubStatefulSet.Status.UpdatedReplicas != *hubStatefulSet.Spec.Replicas {
+					return fmt.Errorf("hub statefulset not updated: %d/%d replicas updated", hubStatefulSet.Status.UpdatedReplicas, *hubStatefulSet.Spec.Replicas)
+				}
+				return nil
+			}, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(),
+				"Hub statefulset should be ready before placement")
+		})
+
 		It("creating the RP should succeed", func() {
 			By("creating RP that selects all workloads")
 			rp := &placementv1beta1.ResourcePlacement{
