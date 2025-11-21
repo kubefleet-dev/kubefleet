@@ -22,17 +22,16 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 )
 
-var _ = Describe("placing workloads using a RP with PickAll policy", Label("resourceplacement"), Ordered, func() {
+var _ = Describe("placing workloads using a CRP with PickAll policy", Label("resourceplacement"), Ordered, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
-	rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 	var testDeployment appsv1.Deployment
 	var testDaemonSet appsv1.DaemonSet
 	var testStatefulSet appsv1.StatefulSet
@@ -54,15 +53,15 @@ var _ = Describe("placing workloads using a RP with PickAll policy", Label("reso
 		Expect(hubClient.Create(ctx, &testDaemonSet)).To(Succeed(), "Failed to create test daemonset %s", testDaemonSet.Name)
 		Expect(hubClient.Create(ctx, &testStatefulSet)).To(Succeed(), "Failed to create test statefulset %s", testStatefulSet.Name)
 
-		// Create the CRP with namespace-only selector
-		By("creating CRP with namespace selector")
+		// Create the CRP that selects the namespace
+		By("creating CRP that selects the namespace")
 		crp := &placementv1beta1.ClusterResourcePlacement{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:       crpName,
 				Finalizers: []string{customDeletionBlockerFinalizer},
 			},
 			Spec: placementv1beta1.PlacementSpec{
-				ResourceSelectors: namespaceOnlySelector(),
+				ResourceSelectors: workResourceSelector(),
 				Policy: &placementv1beta1.PlacementPolicy{
 					PlacementType: placementv1beta1.PickAllPlacementType,
 				},
@@ -77,13 +76,20 @@ var _ = Describe("placing workloads using a RP with PickAll policy", Label("reso
 		Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 
 		By("waiting for CRP status to update")
-		crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "0")
+		wantSelectedResources := []placementv1beta1.ResourceIdentifier{
+			{
+				Kind:      "Namespace",
+				Name:      workNamespace.Name,
+				Version:   corev1.SchemeGroupVersion.Version,
+				Namespace: workNamespace.Name,
+			},
+		}
+		crpStatusUpdatedActual := crpStatusUpdatedActual(wantSelectedResources, allMemberClusterNames, nil, "0")
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 	})
 
 	AfterAll(func() {
 		By("cleaning up resources")
-		ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: testDeployment.Namespace}, allMemberClusters, &testDeployment, &testDaemonSet, &testStatefulSet)
 		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 	})
 
@@ -152,78 +158,6 @@ var _ = Describe("placing workloads using a RP with PickAll policy", Label("reso
 				return nil
 			}, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(),
 				"Hub statefulset should be ready before placement")
-		})
-
-		It("creating the RP should succeed", func() {
-			By("creating RP that selects all workloads")
-			rp := &placementv1beta1.ResourcePlacement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       rpName,
-					Namespace:  testDeployment.Namespace,
-					Finalizers: []string{customDeletionBlockerFinalizer},
-				},
-				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
-						{
-							Group:   appsv1.SchemeGroupVersion.Group,
-							Version: appsv1.SchemeGroupVersion.Version,
-							Kind:    utils.DeploymentKind,
-							Name:    testDeployment.Name,
-						},
-						{
-							Group:   appsv1.SchemeGroupVersion.Group,
-							Version: appsv1.SchemeGroupVersion.Version,
-							Kind:    utils.DaemonSetKind,
-							Name:    testDaemonSet.Name,
-						},
-						{
-							Group:   appsv1.SchemeGroupVersion.Group,
-							Version: appsv1.SchemeGroupVersion.Version,
-							Kind:    utils.StatefulSetKind,
-							Name:    testStatefulSet.Name,
-						},
-					},
-					Policy: &placementv1beta1.PlacementPolicy{
-						PlacementType: placementv1beta1.PickAllPlacementType,
-					},
-					Strategy: placementv1beta1.RolloutStrategy{
-						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
-						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
-						},
-					},
-				},
-			}
-			Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create RP")
-		})
-
-		It("should update RP status as expected", func() {
-			By("verifying RP status update")
-			wantSelectedResources := []placementv1beta1.ResourceIdentifier{
-				{
-					Group:     appsv1.SchemeGroupVersion.Group,
-					Version:   appsv1.SchemeGroupVersion.Version,
-					Kind:      utils.DeploymentKind,
-					Name:      testDeployment.Name,
-					Namespace: testDeployment.Namespace,
-				},
-				{
-					Group:     appsv1.SchemeGroupVersion.Group,
-					Version:   appsv1.SchemeGroupVersion.Version,
-					Kind:      utils.DaemonSetKind,
-					Name:      testDaemonSet.Name,
-					Namespace: testDaemonSet.Namespace,
-				},
-				{
-					Group:     appsv1.SchemeGroupVersion.Group,
-					Version:   appsv1.SchemeGroupVersion.Version,
-					Kind:      utils.StatefulSetKind,
-					Name:      testStatefulSet.Name,
-					Namespace: testStatefulSet.Namespace,
-				},
-			}
-			rpStatusUpdatedActual := rpStatusUpdatedActual(wantSelectedResources, allMemberClusterNames, nil, "0")
-			Eventually(rpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
 		It("should place the deployment on all member clusters", func() {

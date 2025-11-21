@@ -109,6 +109,7 @@ func TestNewWebhookConfig(t *testing.T) {
 		certDir                       string
 		enableGuardRail               bool
 		denyModifyMemberClusterLabels bool
+		enableWorkload                bool
 		want                          *Config
 		wantErr                       bool
 	}{
@@ -121,6 +122,7 @@ func TestNewWebhookConfig(t *testing.T) {
 			certDir:                       "/tmp/cert",
 			enableGuardRail:               true,
 			denyModifyMemberClusterLabels: true,
+			enableWorkload:                false,
 			want: &Config{
 				serviceNamespace:              "test-namespace",
 				serviceName:                   "test-webhook",
@@ -137,7 +139,7 @@ func TestNewWebhookConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("POD_NAMESPACE", "test-namespace")
 			defer t.Setenv("POD_NAMESPACE", "")
-			got, err := NewWebhookConfig(tt.mgr, tt.webhookServiceName, tt.port, tt.clientConnectionType, tt.certDir, tt.enableGuardRail, tt.denyModifyMemberClusterLabels, false)
+			got, err := NewWebhookConfig(tt.mgr, tt.webhookServiceName, tt.port, tt.clientConnectionType, tt.certDir, tt.enableGuardRail, tt.denyModifyMemberClusterLabels, tt.enableWorkload)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewWebhookConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
