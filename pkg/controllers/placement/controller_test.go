@@ -4476,7 +4476,7 @@ func TestShouldCreateNewResourceSnapshotNow(t *testing.T) {
 			collectionDuration: 30 * time.Second,
 			annotationValue:    now.Add(-10 * time.Second).Format(time.RFC3339),
 			wantAnnoation:      true,
-			wantRequeue:        ctrl.Result{Requeue: true, RequeueAfter: 20 * time.Second},
+			wantRequeue:        ctrl.Result{RequeueAfter: 20 * time.Second},
 		},
 		{
 			name:               "ResourceChangesCollectionDuration is 0",
@@ -4486,7 +4486,7 @@ func TestShouldCreateNewResourceSnapshotNow(t *testing.T) {
 			// no annotation → sets it and requeues
 			annotationValue: "",
 			wantAnnoation:   true,
-			wantRequeue:     ctrl.Result{Requeue: true, RequeueAfter: 295 * time.Second},
+			wantRequeue:     ctrl.Result{RequeueAfter: 295 * time.Second},
 		},
 		{
 			name:               "next detection time (now) + collection duration < latest resource snapshot creation time + creation interval",
@@ -4496,7 +4496,7 @@ func TestShouldCreateNewResourceSnapshotNow(t *testing.T) {
 			// no annotation → sets it and requeues
 			annotationValue: "",
 			wantAnnoation:   true,
-			wantRequeue:     ctrl.Result{Requeue: true, RequeueAfter: 295 * time.Second},
+			wantRequeue:     ctrl.Result{RequeueAfter: 295 * time.Second},
 		},
 		{
 			name:               "next detection time (annotation) + collection duration < latest resource snapshot creation time + creation interval",
@@ -4505,7 +4505,7 @@ func TestShouldCreateNewResourceSnapshotNow(t *testing.T) {
 			creationTime:       now.Add(-10 * time.Second),
 			annotationValue:    now.Add(-5 * time.Second).Format(time.RFC3339),
 			wantAnnoation:      true,
-			wantRequeue:        ctrl.Result{Requeue: true, RequeueAfter: 290 * time.Second},
+			wantRequeue:        ctrl.Result{RequeueAfter: 290 * time.Second},
 		},
 		{
 			name:               "last resource snapshot created long time before",
@@ -4513,7 +4513,7 @@ func TestShouldCreateNewResourceSnapshotNow(t *testing.T) {
 			collectionDuration: 30 * time.Second,
 			creationTime:       now.Add(-1 * time.Hour),
 			wantAnnoation:      true,
-			wantRequeue:        ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second},
+			wantRequeue:        ctrl.Result{RequeueAfter: 30 * time.Second},
 		},
 		{
 			name:               "next detection time (now) + collection duration >= latest resource snapshot creation time + creation interval",
@@ -4521,7 +4521,7 @@ func TestShouldCreateNewResourceSnapshotNow(t *testing.T) {
 			collectionDuration: 60 * time.Second,
 			creationTime:       now.Add(-40 * time.Second),
 			wantAnnoation:      true,
-			wantRequeue:        ctrl.Result{Requeue: true, RequeueAfter: 60 * time.Second},
+			wantRequeue:        ctrl.Result{RequeueAfter: 60 * time.Second},
 		},
 	}
 

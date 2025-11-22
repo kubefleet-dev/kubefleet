@@ -516,9 +516,7 @@ var _ = Describe("Test member cluster join and leave with clusterProfile", Label
 		})
 
 		It("Delete member cluster CR associated to the member cluster to simulate member left", func() {
-			var mc clusterv1beta1.MemberCluster
-			Expect(hubClient.Get(ctx, types.NamespacedName{Name: memberCluster3WestProdName}, &mc)).To(Succeed(), "Failed to get member cluster")
-			Expect(hubClient.Delete(ctx, &mc)).Should(Succeed())
+			markMemberClusterAsLeft(memberCluster3WestProdName)
 		})
 
 		It("Make sure we delete the corresponding cluster profiles", func() {
