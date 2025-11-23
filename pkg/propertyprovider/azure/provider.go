@@ -106,7 +106,7 @@ type PropertyProvider struct {
 	podControllerName  string
 
 	// Cache for Kubernetes version information with TTL.
-	k8sVersionMutex              sync.RWMutex
+	k8sVersionMutex              sync.Mutex
 	cachedK8sVersion             string
 	cachedK8sVersionObservedTime time.Time
 
@@ -487,9 +487,9 @@ func (p *PropertyProvider) collectK8sVersion(_ context.Context, properties map[c
 	now := time.Now()
 
 	// Check if we have a cached version that is still valid.
-	p.k8sVersionMutex.RLock()
+	p.k8sVersionMutex.Lock()
+	defer p.k8sVersionMutex.Unlock()
 	if p.cachedK8sVersion != "" && now.Sub(p.cachedK8sVersionObservedTime) < k8sVersionCacheTTL {
-		defer p.k8sVersionMutex.RUnlock()
 		// Cache is still valid, use the cached version.
 		properties[propertyprovider.K8sVersionProperty] = clusterv1beta1.PropertyValue{
 			Value:           p.cachedK8sVersion,
@@ -498,7 +498,6 @@ func (p *PropertyProvider) collectK8sVersion(_ context.Context, properties map[c
 		klog.V(2).InfoS("Using cached Kubernetes version", "version", p.cachedK8sVersion, "cacheAge", now.Sub(p.cachedK8sVersionObservedTime))
 		return
 	}
-	p.k8sVersionMutex.RUnlock()
 
 	// Cache is expired or empty, fetch the version from the discovery client.
 	klog.V(2).Info("Fetching Kubernetes version from discovery client")
@@ -509,11 +508,8 @@ func (p *PropertyProvider) collectK8sVersion(_ context.Context, properties map[c
 	}
 
 	// Update the cache with the new version.
-	p.k8sVersionMutex.Lock()
 	p.cachedK8sVersion = serverVersion.GitVersion
 	p.cachedK8sVersionObservedTime = now
-	p.k8sVersionMutex.Unlock()
-
 	properties[propertyprovider.K8sVersionProperty] = clusterv1beta1.PropertyValue{
 		Value:           p.cachedK8sVersion,
 		ObservationTime: metav1.NewTime(now),
