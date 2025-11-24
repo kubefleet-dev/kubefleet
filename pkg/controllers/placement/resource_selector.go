@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	pvutil "k8s.io/component-helpers/storage/volume"
 	"k8s.io/klog/v2"
 	"k8s.io/kubectl/pkg/util/deployment"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -444,6 +445,15 @@ func generateRawContent(object *unstructured.Unstructured) ([]byte, error) {
 		delete(annots, corev1.LastAppliedConfigAnnotation)
 		// Remove the revision annotation set by deployment controller.
 		delete(annots, deployment.RevisionAnnotation)
+		// Remove node-specific annotations from PVCs that would break when propagated to member clusters
+		// These annotations reference specific nodes from the hub cluster which don't exist on member clusters
+		// The member cluster's storage provisioner will set appropriate values for its own nodes
+		// All annotations below are listed in well-known labels, annotations and taints document:
+		// https://kubernetes.io/docs/reference/labels-annotations-taints/
+		delete(annots, pvutil.AnnSelectedNode)           // Node selected for volume binding
+		delete(annots, pvutil.AnnBindCompleted)          // Binding completion status
+		delete(annots, pvutil.AnnBoundByController)      // Controller binding status
+		delete(annots, pvutil.AnnBetaStorageProvisioner) // Beta storage provisioner annotation
 		if len(annots) == 0 {
 			object.SetAnnotations(nil)
 		} else {
