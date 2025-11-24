@@ -166,13 +166,13 @@ func (r *Reconciler) executeUpdatingStage(
 	for i := 0; i < len(updatingStageStatus.Clusters) && clusterUpdatingCount < maxConcurrency; i++ {
 		clusterStatus := &updatingStageStatus.Clusters[i]
 		clusterUpdateSucceededCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
-		if condition.IsConditionStatusTrue(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
+		if clusterUpdateSucceededCond != nil && clusterUpdateSucceededCond.Status == metav1.ConditionTrue {
 			// The cluster has been updated successfully.
 			finishedClusterCount++
 			continue
 		}
 		clusterUpdatingCount++
-		if condition.IsConditionStatusFalse(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
+		if clusterUpdateSucceededCond != nil && clusterUpdateSucceededCond.Status == metav1.ConditionFalse {
 			// The cluster is marked as failed to update, this cluster is counted as updating cluster since it's not finished to avoid processing more clusters than maxConcurrency in this round.
 			failedErr := fmt.Errorf("the cluster `%s` in the stage %s has failed", clusterStatus.ClusterName, updatingStageStatus.StageName)
 			klog.ErrorS(failedErr, "The cluster has failed to be updated", "updateRun", updateRunRef)
@@ -182,7 +182,7 @@ func (r *Reconciler) executeUpdatingStage(
 		// The cluster needs to be processed.
 		clusterStartedCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
 		binding := toBeUpdatedBindingsMap[clusterStatus.ClusterName]
-		if !condition.IsConditionStatusTrue(clusterStartedCond, updateRun.GetGeneration()) {
+		if clusterStartedCond == nil || clusterStartedCond.Status != metav1.ConditionTrue {
 			// The cluster has not started updating yet.
 			if !isBindingSyncedWithClusterStatus(resourceSnapshotName, updateRun, binding, clusterStatus) {
 				klog.V(2).InfoS("Found the first cluster that needs to be updated", "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
@@ -285,29 +285,43 @@ func (r *Reconciler) executeUpdatingStage(
 	}
 
 	if finishedClusterCount == len(updatingStageStatus.Clusters) {
-		// All the clusters in the stage have been updated.
-		markUpdateRunWaiting(updateRun, fmt.Sprintf(condition.UpdateRunWaitingMessageFmt, "after-stage", updatingStageStatus.StageName))
-		markStageUpdatingWaiting(updatingStageStatus, updateRun.GetGeneration(), "All clusters in the stage are updated, waiting for after-stage tasks to complete")
-		klog.V(2).InfoS("The stage has finished all cluster updating", "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
-		// Check if the after stage tasks are ready.
-		approved, waitTime, err := r.checkAfterStageTasksStatus(ctx, updatingStageIndex, updateRun)
-		if err != nil {
-			return 0, err
-		}
-		if approved {
-			markUpdateRunProgressing(updateRun)
-			markStageUpdatingSucceeded(updatingStageStatus, updateRun.GetGeneration())
-			// No need to wait to get to the next stage.
-			return 0, nil
-		}
-		// The after stage tasks are not ready yet.
-		if waitTime < 0 {
-			waitTime = stageUpdatingWaitTime
-		}
-		return waitTime, nil
+		return r.handleStageCompletion(ctx, updatingStageIndex, updateRun, updatingStageStatus)
 	}
+
 	// Some clusters are still updating.
 	return clusterUpdatingWaitTime, nil
+}
+
+// handleStageCompletion handles the completion logic when all clusters in a stage are finished.
+// Returns the wait time and any error encountered.
+func (r *Reconciler) handleStageCompletion(
+	ctx context.Context,
+	updatingStageIndex int,
+	updateRun placementv1beta1.UpdateRunObj,
+	updatingStageStatus *placementv1beta1.StageUpdatingStatus,
+) (time.Duration, error) {
+	updateRunRef := klog.KObj(updateRun)
+
+	// All the clusters in the stage have been updated.
+	markUpdateRunWaiting(updateRun, fmt.Sprintf(condition.UpdateRunWaitingMessageFmt, "after-stage", updatingStageStatus.StageName))
+	markStageUpdatingWaiting(updatingStageStatus, updateRun.GetGeneration(), "All clusters in the stage are updated, waiting for after-stage tasks to complete")
+	klog.V(2).InfoS("The stage has finished all cluster updating", "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
+	// Check if the after stage tasks are ready.
+	approved, waitTime, err := r.checkAfterStageTasksStatus(ctx, updatingStageIndex, updateRun)
+	if err != nil {
+		return 0, err
+	}
+	if approved {
+		markUpdateRunProgressing(updateRun)
+		markStageUpdatingSucceeded(updatingStageStatus, updateRun.GetGeneration())
+		// No need to wait to get to the next stage.
+		return 0, nil
+	}
+	// The after stage tasks are not ready yet.
+	if waitTime < 0 {
+		waitTime = stageUpdatingWaitTime
+	}
+	return waitTime, nil
 }
 
 // executeDeleteStage executes the delete stage by deleting the bindings.
@@ -337,7 +351,8 @@ func (r *Reconciler) executeDeleteStage(
 		// In validation, we already check the binding must exist in the status.
 		delete(existingDeleteStageClusterMap, bindingSpec.TargetCluster)
 		// Make sure the cluster is not marked as deleted as the binding is still there.
-		if condition.IsConditionStatusTrue(meta.FindStatusCondition(curCluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded)), updateRun.GetGeneration()) {
+		clusterDeleteSucceededCond := meta.FindStatusCondition(curCluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
+		if clusterDeleteSucceededCond != nil && clusterDeleteSucceededCond.Status == metav1.ConditionTrue {
 			unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the deleted cluster `%s` in the deleting stage still has a binding", bindingSpec.TargetCluster))
 			klog.ErrorS(unexpectedErr, "The cluster in the deleting stage is not removed yet but marked as deleted", "cluster", curCluster.ClusterName, "updateRun", updateRunRef)
 			return false, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())

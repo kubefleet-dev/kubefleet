@@ -272,6 +272,16 @@ func generateMetricsLabels(
 	}
 }
 
+func generateInitializationSucceededMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+	return &prometheusclientmodel.Metric{
+		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionInitialized),
+			string(metav1.ConditionTrue), condition.UpdateRunInitializeSucceededReason),
+		Gauge: &prometheusclientmodel.Gauge{
+			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+		},
+	}
+}
+
 func generateInitializationFailedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
 		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionInitialized),
@@ -312,6 +322,26 @@ func generateStuckMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *pr
 	}
 }
 
+func generatePausedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+	return &prometheusclientmodel.Metric{
+		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionProgressing),
+			string(metav1.ConditionFalse), condition.UpdateRunPausedReason),
+		Gauge: &prometheusclientmodel.Gauge{
+			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+		},
+	}
+}
+
+func generateAbandonedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+	return &prometheusclientmodel.Metric{
+		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionSucceeded),
+			string(metav1.ConditionFalse), condition.UpdateRunAbandonedReason),
+		Gauge: &prometheusclientmodel.Gauge{
+			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+		},
+	}
+}
+
 func generateFailedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
 		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionSucceeded),
@@ -341,6 +371,7 @@ func generateTestClusterStagedUpdateRun() *placementv1beta1.ClusterStagedUpdateR
 			PlacementName:            testCRPName,
 			ResourceSnapshotIndex:    testResourceSnapshotIndex,
 			StagedUpdateStrategyName: testUpdateStrategyName,
+			State:                    placementv1beta1.StateStarted,
 		},
 	}
 }
@@ -807,23 +838,14 @@ func generateFalseCondition(obj client.Object, condType any) metav1.Condition {
 	}
 }
 
-func generateFalseProgressingCondition(obj client.Object, condType any, succeeded bool) metav1.Condition {
+func generateFalseProgressingCondition(obj client.Object, condType any, reason string) metav1.Condition {
 	falseCond := generateFalseCondition(obj, condType)
-	reason := ""
-	switch condType {
-	case placementv1beta1.StagedUpdateRunConditionProgressing:
-		if succeeded {
-			reason = condition.UpdateRunSucceededReason
-		} else {
-			reason = condition.UpdateRunFailedReason
-		}
-	case placementv1beta1.StageUpdatingConditionProgressing:
-		if succeeded {
-			reason = condition.StageUpdatingSucceededReason
-		} else {
-			reason = condition.StageUpdatingFailedReason
-		}
-	}
+	falseCond.Reason = reason
+	return falseCond
+}
+
+func generateFalseSucceededCondition(obj client.Object, condType any, reason string) metav1.Condition {
+	falseCond := generateFalseCondition(obj, condType)
 	falseCond.Reason = reason
 	return falseCond
 }
