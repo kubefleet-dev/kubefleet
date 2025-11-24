@@ -501,6 +501,10 @@ func generateRawContent(object *unstructured.Unstructured) ([]byte, error) {
 			unstructured.RemoveNestedField(object.Object, "spec", "template", "metadata", "labels", "controller-uid")
 			unstructured.RemoveNestedField(object.Object, "spec", "template", "metadata", "labels", "batch.kubernetes.io/controller-uid")
 		}
+	} else if object.GetKind() == "PersistentVolumeClaim" && object.GetAPIVersion() == "v1" {
+		// Remove volumeName which references a specific PV from the hub cluster that won't exist on member clusters.
+		// The member cluster's storage provisioner will create and bind a new PV.
+		unstructured.RemoveNestedField(object.Object, "spec", "volumeName")
 	}
 
 	rawContent, err := object.MarshalJSON()

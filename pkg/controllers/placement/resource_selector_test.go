@@ -272,6 +272,7 @@ func TestGenerateResourceContent(t *testing.T) {
 						},
 					},
 					StorageClassName: ptr.To("standard"),
+					VolumeName:       "pvc-12345-from-hub-cluster",
 				},
 			},
 			wantResource: corev1.PersistentVolumeClaim{
@@ -296,6 +297,7 @@ func TestGenerateResourceContent(t *testing.T) {
 						},
 					},
 					StorageClassName: ptr.To("standard"),
+					// VolumeName should be removed
 				},
 			},
 		},
