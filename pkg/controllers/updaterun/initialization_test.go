@@ -83,8 +83,8 @@ func TestValidateBeforeStageTask(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			gotErr := validateBeforeStageTask(tt.task)
-			if tt.wantErr && (gotErr != nil) {
-				if gotErr.Error() != tt.errMsg {
+			if tt.wantErr {
+				if (gotErr != nil) && gotErr.Error() != tt.errMsg {
 					t.Fatalf("validateBeforeStageTask() error = %v, wantErr %v", gotErr, tt.errMsg)
 				}
 			} else if gotErr != nil {

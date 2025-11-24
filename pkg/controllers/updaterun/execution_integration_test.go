@@ -1787,7 +1787,7 @@ func validateBindingState(ctx context.Context, binding *placementv1beta1.Cluster
 }
 
 func validateNotBoundBindingState(ctx context.Context, binding *placementv1beta1.ClusterResourceBinding, resourceSnapshotName string, updateRun *placementv1beta1.ClusterStagedUpdateRun, stage int) {
-	Eventually(func() error {
+	Consistently(func() error {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding); err != nil {
 			return err
 		}

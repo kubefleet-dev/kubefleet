@@ -121,10 +121,10 @@ func (r *Reconciler) checkBeforeStageTasksStatus(ctx context.Context, updatingSt
 				return false, err
 			}
 			return approved, nil // Ideally there should be only one approval task in before stage tasks.
-		case placementv1beta1.StageTaskTypeTimedWait:
-			// Timed wait is not supported in before stage task.
-			unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("found unsupported timed wait task in before stage tasks"))
-			klog.ErrorS(unexpectedErr, "Timed wait task is not supported in before stage tasks", "stage", updatingStage.Name, "updateRun", updateRunRef)
+		default:
+			// Approval is the only supported before stage task.
+			unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("found unsupported task type in before stage tasks: %s", task.Type))
+			klog.ErrorS(unexpectedErr, "Task type is not supported in before stage tasks", "stage", updatingStage.Name, "updateRun", updateRunRef, "taskType", task.Type)
 			return false, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
 		}
 	}

@@ -948,12 +948,13 @@ func TestCalculateMaxConcurrencyValue(t *testing.T) {
 func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 	stageName := "stage-0"
 	testUpdateRunName = "test-update-run"
+	approvalRequestName := fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, testUpdateRunName, stageName)
 	tests := []struct {
 		name            string
 		stageIndex      int
 		updateRun       *placementv1beta1.ClusterStagedUpdateRun
 		approvalRequest *placementv1beta1.ClusterApprovalRequest
-		wantError       bool
+		errMsg          string
 	}{
 		// Negative test cases only
 		{
@@ -985,6 +986,7 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					},
 				},
 			},
+			errMsg: fmt.Sprintf("found unsupported task type in before stage tasks: %s", placementv1beta1.StageTaskTypeTimedWait),
 		},
 		{
 			name:       "should return err if Approval request has wrong target stage in spec",
@@ -1027,7 +1029,7 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 			},
 			approvalRequest: &placementv1beta1.ClusterApprovalRequest{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, testUpdateRunName, stageName),
+					Name: approvalRequestName,
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   stageName,
 						placementv1beta1.TargetUpdateRunLabel:           testUpdateRunName,
@@ -1039,6 +1041,7 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					TargetStage:     "stage-1",
 				},
 			},
+			errMsg: fmt.Sprintf("the approval request task `/%s` is targeting update run `/%s` and stage `stage-1`", approvalRequestName, testUpdateRunName),
 		},
 		{
 			name:       "should return err if Approval request has wrong target update run in spec",
@@ -1093,6 +1096,7 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					TargetStage:     stageName,
 				},
 			},
+			errMsg: fmt.Sprintf("the approval request task `/%s` is targeting update run `/wrong-update-run` and stage `%s`", approvalRequestName, stageName),
 		},
 		{
 			name:       "should return err if cannot update Approval request that is approved as accepted",
@@ -1155,6 +1159,7 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					},
 				},
 			},
+			errMsg: fmt.Sprintf("error returned by the API server: clusterapprovalrequests.placement.kubernetes-fleet.io \"%s\" not found", approvalRequestName),
 		},
 	}
 	for _, tt := range tests {
@@ -1175,9 +1180,12 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 				Client: fakeClient,
 			}
 			ctx := context.Background()
-			_, err := r.checkBeforeStageTasksStatus(ctx, tt.stageIndex, tt.updateRun)
-			if err == nil {
-				t.Fatalf("checkBeforeStageTasksStatus() expected error but got nil")
+			_, gotErr := r.checkBeforeStageTasksStatus(ctx, tt.stageIndex, tt.updateRun)
+			if gotErr == nil {
+				t.Fatalf("checkBeforeStageTasksStatus() want error but got nil")
+			}
+			if !strings.Contains(gotErr.Error(), tt.errMsg) {
+				t.Fatalf("checkBeforeStageTasksStatus() error = %v, wantErr %v", gotErr, tt.errMsg)
 			}
 		})
 	}
