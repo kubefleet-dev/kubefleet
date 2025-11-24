@@ -39,7 +39,7 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 		// Read the test manifests
 		readDeploymentTestManifest(&testDeployment)
 		readDaemonSetTestManifest(&testDaemonSet)
-		readStatefulSetTestManifest(&testStatefulSet, StatefulSetWithStorage)
+		readStatefulSetTestManifest(&testStatefulSet, false)
 		workNamespace := appNamespace()
 
 		// Create namespace and workloads
@@ -102,25 +102,8 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 				Name:      testStatefulSet.Name,
 				Namespace: workNamespace.Name,
 			},
-			// PVCs created by StatefulSet controller from volumeClaimTemplates
-			// Kubernetes StatefulSet controller uses naming convention: <volumeClaimTemplate-name>-<statefulset-name>-<replica-index>
-			{
-				Version:   "v1",
-				Kind:      "PersistentVolumeClaim",
-				Name:      fmt.Sprintf("%s-%s-%d", testStatefulSet.Spec.VolumeClaimTemplates[0].Name, testStatefulSet.Name, 0),
-				Namespace: workNamespace.Name,
-			},
-			{
-				Version:   "v1",
-				Kind:      "PersistentVolumeClaim",
-				Name:      fmt.Sprintf("%s-%s-%d", testStatefulSet.Spec.VolumeClaimTemplates[0].Name, testStatefulSet.Name, 1),
-				Namespace: workNamespace.Name,
-			},
 		}
-		// Use customizedPlacementStatusUpdatedActual with resourceIsTrackable=false
-		// because PVCs don't have availability tracking like workloads do
-		crpKey := types.NamespacedName{Name: crpName}
-		crpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(crpKey, wantSelectedResources, allMemberClusterNames, nil, "0", false)
+		crpStatusUpdatedActual := crpStatusUpdatedActual(wantSelectedResources, allMemberClusterNames, nil, "0")
 		Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 	})
 

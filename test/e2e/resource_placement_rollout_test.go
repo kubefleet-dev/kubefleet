@@ -69,7 +69,7 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 		testDaemonSet = appv1.DaemonSet{}
 		readDaemonSetTestManifest(&testDaemonSet)
 		testStatefulSet = appv1.StatefulSet{}
-		readStatefulSetTestManifest(&testStatefulSet, StatefulSetBasic)
+		readStatefulSetTestManifest(&testStatefulSet, false)
 		testService = corev1.Service{}
 		readServiceTestManifest(&testService)
 		testJob = batchv1.Job{}

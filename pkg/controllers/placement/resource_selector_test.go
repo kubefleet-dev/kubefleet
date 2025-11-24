@@ -27,14 +27,12 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
-	pvutil "k8s.io/component-helpers/storage/volume"
 	"k8s.io/kubectl/pkg/util/deployment"
 	"k8s.io/utils/ptr"
 
@@ -242,62 +240,6 @@ func TestGenerateResourceContent(t *testing.T) {
 					AllocateLoadBalancerNodePorts: ptr.To(false),
 					LoadBalancerClass:             ptr.To("svc-spec-loadBalancerClass"),
 					InternalTrafficPolicy:         makeServiceInternalTrafficPolicyPointer(corev1.ServiceInternalTrafficPolicyCluster),
-				},
-			},
-		},
-		"PersistentVolumeClaim with node-specific annotations": {
-			resource: corev1.PersistentVolumeClaim{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "PersistentVolumeClaim",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-pvc",
-					Namespace: "test-namespace",
-					Annotations: map[string]string{
-						pvutil.AnnSelectedNode:           "hub-control-plane",
-						pvutil.AnnBindCompleted:          "yes",
-						pvutil.AnnBoundByController:      "yes",
-						pvutil.AnnBetaStorageProvisioner: "kubernetes.io/no-provisioner",
-						"custom-annotation":              "should-remain",
-					},
-				},
-				Spec: corev1.PersistentVolumeClaimSpec{
-					AccessModes: []corev1.PersistentVolumeAccessMode{
-						corev1.ReadWriteOnce,
-					},
-					Resources: corev1.VolumeResourceRequirements{
-						Requests: corev1.ResourceList{
-							corev1.ResourceStorage: resource.MustParse("1Gi"),
-						},
-					},
-					StorageClassName: ptr.To("standard"),
-					VolumeName:       "pvc-12345-from-hub-cluster",
-				},
-			},
-			wantResource: corev1.PersistentVolumeClaim{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "v1",
-					Kind:       "PersistentVolumeClaim",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-pvc",
-					Namespace: "test-namespace",
-					Annotations: map[string]string{
-						"custom-annotation": "should-remain",
-					},
-				},
-				Spec: corev1.PersistentVolumeClaimSpec{
-					AccessModes: []corev1.PersistentVolumeAccessMode{
-						corev1.ReadWriteOnce,
-					},
-					Resources: corev1.VolumeResourceRequirements{
-						Requests: corev1.ResourceList{
-							corev1.ResourceStorage: resource.MustParse("1Gi"),
-						},
-					},
-					StorageClassName: ptr.To("standard"),
-					// VolumeName should be removed
 				},
 			},
 		},

@@ -57,18 +57,6 @@ import (
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
 )
 
-// StatefulSetVariant represents different StatefulSet configurations for testing
-type StatefulSetVariant int
-
-const (
-	// StatefulSetBasic is a StatefulSet without any persistent volume claims
-	StatefulSetBasic StatefulSetVariant = iota
-	// StatefulSetInvalidStorage is a StatefulSet with a non-existent storage class
-	StatefulSetInvalidStorage
-	// StatefulSetWithStorage is a StatefulSet with a valid standard storage class
-	StatefulSetWithStorage
-)
-
 var (
 	croTestAnnotationKey    = "cro-test-annotation"
 	croTestAnnotationValue  = "cro-test-annotation-val"
@@ -1544,18 +1532,13 @@ func readDaemonSetTestManifest(testDaemonSet *appsv1.DaemonSet) {
 	Expect(err).Should(Succeed())
 }
 
-func readStatefulSetTestManifest(testStatefulSet *appsv1.StatefulSet, variant StatefulSetVariant) {
+func readStatefulSetTestManifest(testStatefulSet *appsv1.StatefulSet, withVolume bool) {
 	By("Read the statefulSet resource")
-	var manifestPath string
-	switch variant {
-	case StatefulSetBasic:
-		manifestPath = "resources/statefulset-basic.yaml"
-	case StatefulSetInvalidStorage:
-		manifestPath = "resources/statefulset-invalid-storage.yaml"
-	case StatefulSetWithStorage:
-		manifestPath = "resources/statefulset-with-storage.yaml"
+	if withVolume {
+		Expect(utils.GetObjectFromManifest("resources/statefulset-with-volume.yaml", testStatefulSet)).Should(Succeed())
+	} else {
+		Expect(utils.GetObjectFromManifest("resources/test-statefulset.yaml", testStatefulSet)).Should(Succeed())
 	}
-	Expect(utils.GetObjectFromManifest(manifestPath, testStatefulSet)).Should(Succeed())
 }
 
 func readServiceTestManifest(testService *corev1.Service) {
