@@ -39,7 +39,7 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 		// Read the test manifests
 		readDeploymentTestManifest(&testDeployment)
 		readDaemonSetTestManifest(&testDaemonSet)
-		readStatefulSetTestManifest(&testStatefulSet, false)
+		readStatefulSetTestManifest(&testStatefulSet, StatefulSetWithStorage)
 		workNamespace := appNamespace()
 
 		// Create namespace and workloads
