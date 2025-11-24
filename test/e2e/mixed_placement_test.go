@@ -412,7 +412,7 @@ var _ = Describe("mixed ClusterResourcePlacement and ResourcePlacement positive 
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove labels from member clusters")
 		})
 
-		It("picking N clusters with no affinities/topology spread constraints (pick by cluster names in alphanumeric order)", func() {
+		It("picking fixed cluster", func() {
 			crp := &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: crpName,
