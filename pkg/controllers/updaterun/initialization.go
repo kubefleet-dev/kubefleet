@@ -292,7 +292,7 @@ func (r *Reconciler) generateStagesByStrategy(
 	updateStrategySpec := updateStrategy.GetUpdateStrategySpec()
 	updateRunStatus.UpdateStrategySnapshot = updateStrategySpec
 
-	// Remove waitTime from the updateRun status for AfterStageTask for type Approval.
+	// Remove waitTime from the updateRun status for BeforeStageTask and AfterStageTask for type Approval.
 	removeWaitTimeFromUpdateRunStatus(updateRun)
 
 	// Compute the update stages.
