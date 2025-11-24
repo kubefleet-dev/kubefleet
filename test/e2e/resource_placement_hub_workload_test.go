@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
@@ -33,13 +34,13 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	var testDeployment appsv1.Deployment
 	var testDaemonSet appsv1.DaemonSet
-	var testStatefulSet appsv1.StatefulSet
+	var testJob batchv1.Job
 
 	BeforeAll(func() {
 		// Read the test manifests
 		readDeploymentTestManifest(&testDeployment)
 		readDaemonSetTestManifest(&testDaemonSet)
-		readStatefulSetTestManifest(&testStatefulSet, false)
+		readJobTestManifest(&testJob)
 		workNamespace := appNamespace()
 
 		// Create namespace and workloads
@@ -47,10 +48,10 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 		Expect(hubClient.Create(ctx, &workNamespace)).To(Succeed(), "Failed to create namespace %s", workNamespace.Name)
 		testDeployment.Namespace = workNamespace.Name
 		testDaemonSet.Namespace = workNamespace.Name
-		testStatefulSet.Namespace = workNamespace.Name
+		testJob.Namespace = workNamespace.Name
 		Expect(hubClient.Create(ctx, &testDeployment)).To(Succeed(), "Failed to create test deployment %s", testDeployment.Name)
 		Expect(hubClient.Create(ctx, &testDaemonSet)).To(Succeed(), "Failed to create test daemonset %s", testDaemonSet.Name)
-		Expect(hubClient.Create(ctx, &testStatefulSet)).To(Succeed(), "Failed to create test statefulset %s", testStatefulSet.Name)
+		Expect(hubClient.Create(ctx, &testJob)).To(Succeed(), "Failed to create test job %s", testJob.Name)
 
 		// Create the CRP that selects the namespace
 		By("creating CRP that selects the namespace")
@@ -96,14 +97,17 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 				Namespace: workNamespace.Name,
 			},
 			{
-				Group:     "apps",
+				Group:     "batch",
 				Version:   "v1",
-				Kind:      "StatefulSet",
-				Name:      testStatefulSet.Name,
+				Kind:      "Job",
+				Name:      testJob.Name,
 				Namespace: workNamespace.Name,
 			},
 		}
-		crpStatusUpdatedActual := crpStatusUpdatedActual(wantSelectedResources, allMemberClusterNames, nil, "0")
+		// Use customizedPlacementStatusUpdatedActual with resourceIsTrackable=false
+		// because Jobs don't have availability tracking like Deployments/DaemonSets do
+		crpKey := types.NamespacedName{Name: crpName}
+		crpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(crpKey, wantSelectedResources, allMemberClusterNames, nil, "0", false)
 		Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 	})
 
@@ -157,26 +161,23 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 				"Hub daemonset should be ready before placement")
 		})
 
-		It("should verify hub statefulset is ready", func() {
-			By("checking hub statefulset status")
+		It("should verify hub job exists", func() {
+			By("checking hub job status")
 			Eventually(func() error {
-				var hubStatefulSet appsv1.StatefulSet
+				var hubJob batchv1.Job
 				if err := hubClient.Get(ctx, types.NamespacedName{
-					Name:      testStatefulSet.Name,
-					Namespace: testStatefulSet.Namespace,
-				}, &hubStatefulSet); err != nil {
+					Name:      testJob.Name,
+					Namespace: testJob.Namespace,
+				}, &hubJob); err != nil {
 					return err
 				}
-				// Verify statefulset is ready in hub cluster
-				if hubStatefulSet.Status.ReadyReplicas != *hubStatefulSet.Spec.Replicas {
-					return fmt.Errorf("hub statefulset not ready: %d/%d replicas ready", hubStatefulSet.Status.ReadyReplicas, *hubStatefulSet.Spec.Replicas)
-				}
-				if hubStatefulSet.Status.UpdatedReplicas != *hubStatefulSet.Spec.Replicas {
-					return fmt.Errorf("hub statefulset not updated: %d/%d replicas updated", hubStatefulSet.Status.UpdatedReplicas, *hubStatefulSet.Spec.Replicas)
+				// Check if job has completed successfully
+				if hubJob.Status.Succeeded == 0 {
+					return fmt.Errorf("hub job not completed: %d succeeded", hubJob.Status.Succeeded)
 				}
 				return nil
 			}, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(),
-				"Hub statefulset should be ready before placement")
+				"Hub job should complete successfully")
 		})
 
 		It("should place the deployment on all member clusters", func() {
@@ -197,12 +198,33 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 			}
 		})
 
-		It("should place the statefulset on all member clusters", func() {
-			By("verifying statefulset is placed and ready on all member clusters")
+		It("should place the job on all member clusters", func() {
+			By("verifying job is placed on all member clusters")
 			for idx := range allMemberClusters {
 				memberCluster := allMemberClusters[idx]
-				statefulsetPlacedActual := waitForStatefulSetPlacementToReady(memberCluster, &testStatefulSet)
-				Eventually(statefulsetPlacedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place statefulset on member cluster %s", memberCluster.ClusterName)
+				jobPlacedActual := waitForJobToBePlaced(memberCluster, &testJob)
+				Eventually(jobPlacedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place job on member cluster %s", memberCluster.ClusterName)
+			}
+		})
+
+		It("should verify job completes successfully on all clusters", func() {
+			By("checking job completion status on each cluster")
+			for _, cluster := range allMemberClusters {
+				Eventually(func() error {
+					var placedJob batchv1.Job
+					if err := cluster.KubeClient.Get(ctx, types.NamespacedName{
+						Name:      testJob.Name,
+						Namespace: testJob.Namespace,
+					}, &placedJob); err != nil {
+						return err
+					}
+					// Check if job has completed successfully
+					if placedJob.Status.Succeeded == 0 {
+						return fmt.Errorf("job not completed: %d/%d succeeded", placedJob.Status.Succeeded, *placedJob.Spec.Completions)
+					}
+					return nil
+				}, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(),
+					"Job should complete successfully on cluster %s", cluster.ClusterName)
 			}
 		})
 
