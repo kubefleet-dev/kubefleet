@@ -423,8 +423,8 @@ var _ = Describe("mixed ClusterResourcePlacement and ResourcePlacement positive 
 				Spec: placementv1beta1.PlacementSpec{
 					ResourceSelectors: namespaceOnlySelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
-						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(1)),
+						PlacementType: placementv1beta1.PickFixedPlacementType,
+						ClusterNames:  wantSelectedClusters,
 					},
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
