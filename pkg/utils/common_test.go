@@ -1245,7 +1245,7 @@ func TestShouldPropagateObj_PodAndReplicaSet(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "pod owned by replicaset should NOT propagate",
+			name: "pod owned by replicaset - passes ShouldPropagateObj but filtered by resource config",
 			obj: map[string]interface{}{
 				"apiVersion": "v1",
 				"kind":       "Pod",
@@ -1262,7 +1262,7 @@ func TestShouldPropagateObj_PodAndReplicaSet(t *testing.T) {
 					UID:        "67890",
 				},
 			},
-			want: false,
+			want: true, // ShouldPropagateObj doesn't filter Pods - they're filtered by NewResourceConfig
 		},
 		{
 			name: "controllerrevision owned by daemonset should NOT propagate",
