@@ -111,6 +111,7 @@ type ResourceSnapshotPolicyConditionType string
 
 const (
 	// ResourceSnapshotPolicyConditionTypeValid indicates whether the policy configuration is valid.
+	// This condition will be set when the strategy type is onDemand.
 	ResourceSnapshotPolicyConditionTypeValid ResourceSnapshotPolicyConditionType = "Valid"
 
 	// ResourceSnapshotPolicyConditionTypeSnapshotReady indicates whether the target snapshot is ready.
