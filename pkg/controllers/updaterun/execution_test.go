@@ -954,7 +954,8 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 		stageIndex      int
 		updateRun       *placementv1beta1.ClusterStagedUpdateRun
 		approvalRequest *placementv1beta1.ClusterApprovalRequest
-		errMsg          string
+		wantErrMsg      string
+		wantErrAborted  bool
 	}{
 		// Negative test cases only
 		{
@@ -986,7 +987,8 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					},
 				},
 			},
-			errMsg: fmt.Sprintf("found unsupported task type in before stage tasks: %s", placementv1beta1.StageTaskTypeTimedWait),
+			wantErrMsg:     fmt.Sprintf("found unsupported task type in before stage tasks: %s", placementv1beta1.StageTaskTypeTimedWait),
+			wantErrAborted: true,
 		},
 		{
 			name:       "should return err if Approval request has wrong target stage in spec",
@@ -1041,7 +1043,8 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					TargetStage:     "stage-1",
 				},
 			},
-			errMsg: fmt.Sprintf("the approval request task `/%s` is targeting update run `/%s` and stage `stage-1`", approvalRequestName, testUpdateRunName),
+			wantErrMsg:     fmt.Sprintf("the approval request task `/%s` is targeting update run `/%s` and stage `stage-1`", approvalRequestName, testUpdateRunName),
+			wantErrAborted: true,
 		},
 		{
 			name:       "should return err if Approval request has wrong target update run in spec",
@@ -1096,7 +1099,8 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					TargetStage:     stageName,
 				},
 			},
-			errMsg: fmt.Sprintf("the approval request task `/%s` is targeting update run `/wrong-update-run` and stage `%s`", approvalRequestName, stageName),
+			wantErrMsg:     fmt.Sprintf("the approval request task `/%s` is targeting update run `/wrong-update-run` and stage `%s`", approvalRequestName, stageName),
+			wantErrAborted: true,
 		},
 		{
 			name:       "should return err if cannot update Approval request that is approved as accepted",
@@ -1159,7 +1163,7 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					},
 				},
 			},
-			errMsg: fmt.Sprintf("error returned by the API server: clusterapprovalrequests.placement.kubernetes-fleet.io \"%s\" not found", approvalRequestName),
+			wantErrMsg: fmt.Sprintf("error returned by the API server: clusterapprovalrequests.placement.kubernetes-fleet.io \"%s\" not found", approvalRequestName),
 		},
 	}
 	for _, tt := range tests {
@@ -1184,8 +1188,11 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 			if gotErr == nil {
 				t.Fatalf("checkBeforeStageTasksStatus() want error but got nil")
 			}
-			if !strings.Contains(gotErr.Error(), tt.errMsg) {
-				t.Fatalf("checkBeforeStageTasksStatus() error = %v, wantErr %v", gotErr, tt.errMsg)
+			if !strings.Contains(gotErr.Error(), tt.wantErrMsg) {
+				t.Fatalf("checkBeforeStageTasksStatus() error = %v, wantErr %v", gotErr, tt.wantErrMsg)
+			}
+			if tt.wantErrAborted && !errors.Is(gotErr, errStagedUpdatedAborted) {
+				t.Fatalf("checkBeforeStageTasksStatus() want aborted error but got different error: %v", gotErr)
 			}
 		})
 	}

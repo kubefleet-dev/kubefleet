@@ -469,10 +469,10 @@ func validateBeforeStageTask(tasks []placementv1beta1.StageTask) error {
 		return fmt.Errorf("beforeStageTasks can have at most one task")
 	}
 	for i, task := range tasks {
-		if task.Type == placementv1beta1.StageTaskTypeTimedWait {
-			return fmt.Errorf("task %d of type TimedWait is not allowed in beforeStageTasks", i)
+		if task.Type != placementv1beta1.StageTaskTypeApproval {
+			return fmt.Errorf("task %d of type %s is not allowed in beforeStageTasks, allowed type: Approval", i, task.Type)
 		}
-		if task.Type == placementv1beta1.StageTaskTypeApproval && task.WaitTime != nil {
+		if task.WaitTime != nil {
 			return fmt.Errorf("task %d of type Approval cannot have wait duration set", i)
 		}
 	}

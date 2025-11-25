@@ -29,10 +29,10 @@ import (
 
 func TestValidateBeforeStageTask(t *testing.T) {
 	tests := []struct {
-		name    string
-		task    []placementv1beta1.StageTask
-		wantErr bool
-		errMsg  string
+		name       string
+		task       []placementv1beta1.StageTask
+		wantErr    bool
+		wantErrMsg string
 	}{
 		{
 			name: "valid BeforeTasks",
@@ -44,7 +44,7 @@ func TestValidateBeforeStageTask(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "invalid AfterTasks, greater than 1 task",
+			name: "invalid BeforeTasks, greater than 1 task",
 			task: []placementv1beta1.StageTask{
 				{
 					Type: placementv1beta1.StageTaskTypeApproval,
@@ -53,8 +53,8 @@ func TestValidateBeforeStageTask(t *testing.T) {
 					Type: placementv1beta1.StageTaskTypeApproval,
 				},
 			},
-			wantErr: true,
-			errMsg:  "beforeStageTasks can have at most one task",
+			wantErr:    true,
+			wantErrMsg: "beforeStageTasks can have at most one task",
 		},
 		{
 			name: "invalid BeforeTasks, with invalid task type",
@@ -64,8 +64,8 @@ func TestValidateBeforeStageTask(t *testing.T) {
 					WaitTime: ptr.To(metav1.Duration{Duration: 5 * time.Minute}),
 				},
 			},
-			wantErr: true,
-			errMsg:  fmt.Sprintf("task %d of type TimedWait is not allowed in beforeStageTasks", 0),
+			wantErr:    true,
+			wantErrMsg: fmt.Sprintf("task %d of type %s is not allowed in beforeStageTasks, allowed type: Approval", 0, placementv1beta1.StageTaskTypeTimedWait),
 		},
 		{
 			name: "invalid BeforeTasks, with duration for Approval",
@@ -75,8 +75,8 @@ func TestValidateBeforeStageTask(t *testing.T) {
 					WaitTime: ptr.To(metav1.Duration{Duration: 1 * time.Minute}),
 				},
 			},
-			wantErr: true,
-			errMsg:  fmt.Sprintf("task %d of type Approval cannot have wait duration set", 0),
+			wantErr:    true,
+			wantErrMsg: fmt.Sprintf("task %d of type Approval cannot have wait duration set", 0),
 		},
 	}
 
@@ -84,8 +84,8 @@ func TestValidateBeforeStageTask(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			gotErr := validateBeforeStageTask(tt.task)
 			if tt.wantErr {
-				if (gotErr != nil) && gotErr.Error() != tt.errMsg {
-					t.Fatalf("validateBeforeStageTask() error = %v, wantErr %v", gotErr, tt.errMsg)
+				if gotErr == nil || gotErr.Error() != tt.wantErrMsg {
+					t.Fatalf("validateBeforeStageTask() error = %v, wantErr %v", gotErr, tt.wantErrMsg)
 				}
 			} else if gotErr != nil {
 				t.Fatalf("validateBeforeStageTask() error = %v, wantErr %v", gotErr, tt.wantErr)

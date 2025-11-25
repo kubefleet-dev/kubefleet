@@ -62,43 +62,50 @@ func (r *Reconciler) execute(
 	updateRun placementv1beta1.UpdateRunObj,
 	updatingStageIndex int,
 	toBeUpdatedBindings, toBeDeletedBindings []placementv1beta1.BindingObj,
-) (bool, time.Duration, error) {
+) (finished bool, waitTime time.Duration, err error) {
+	updateRunStatus := updateRun.GetUpdateRunStatus()
+	var updatingStage *placementv1beta1.StageUpdatingStatus
+
+	// Set up defer function to handle errStagedUpdatedAborted
+	defer func() {
+		if errors.Is(err, errStagedUpdatedAborted) {
+			if updatingStage != nil {
+				markStageUpdatingFailed(updatingStage, updateRun.GetGeneration(), err.Error())
+			} else {
+				// Handle deletion stage case
+				markStageUpdatingFailed(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration(), err.Error())
+				waitTime = 0 // For deletion stage errors, no wait time needed
+			}
+			finished = true
+		}
+	}()
+
 	// Mark updateRun as progressing if it's not already marked as waiting or stuck.
 	// This avoids triggering an unnecessary in-memory transition from stuck (waiting) -> progressing -> stuck (waiting),
 	// which would update the lastTransitionTime even though the status hasn't effectively changed.
 	markUpdateRunProgressingIfNotWaitingOrStuck(updateRun)
-
-	updateRunStatus := updateRun.GetUpdateRunStatus()
 	if updatingStageIndex < len(updateRunStatus.StagesStatus) {
 		maxConcurrency, err := calculateMaxConcurrencyValue(updateRunStatus, updatingStageIndex)
 		if err != nil {
 			return false, 0, err
 		}
-		updatingStage := &updateRunStatus.StagesStatus[updatingStageIndex]
-		approved, beforeStageTaskErr := r.checkBeforeStageTasksStatus(ctx, updatingStageIndex, updateRun)
-		if beforeStageTaskErr != nil {
-			return false, 0, beforeStageTaskErr
+		updatingStage = &updateRunStatus.StagesStatus[updatingStageIndex]
+		approved, err := r.checkBeforeStageTasksStatus(ctx, updatingStageIndex, updateRun)
+		if err != nil {
+			return false, 0, err
 		}
 		if !approved {
-			markStageUpdatingWaiting(updatingStage, updateRun.GetGeneration(), "All before-stage tasks are not completed, waiting for approval")
+			markStageUpdatingWaiting(updatingStage, updateRun.GetGeneration(), "Not all before-stage tasks are completed, waiting for approval")
 			markUpdateRunWaiting(updateRun, fmt.Sprintf(condition.UpdateRunWaitingMessageFmt, "before-stage", updatingStage.StageName))
 			return false, stageUpdatingWaitTime, nil
 		}
-		waitTime, execErr := r.executeUpdatingStage(ctx, updateRun, updatingStageIndex, toBeUpdatedBindings, maxConcurrency)
-		if errors.Is(execErr, errStagedUpdatedAborted) {
-			markStageUpdatingFailed(updatingStage, updateRun.GetGeneration(), execErr.Error())
-			return true, waitTime, execErr
-		}
+		waitTime, err = r.executeUpdatingStage(ctx, updateRun, updatingStageIndex, toBeUpdatedBindings, maxConcurrency)
 		// The execution has not finished yet.
-		return false, waitTime, execErr
+		return false, waitTime, err
 	}
 	// All the stages have finished, now start the delete stage.
-	finished, execErr := r.executeDeleteStage(ctx, updateRun, toBeDeletedBindings)
-	if errors.Is(execErr, errStagedUpdatedAborted) {
-		markStageUpdatingFailed(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration(), execErr.Error())
-		return true, 0, execErr
-	}
-	return finished, clusterUpdatingWaitTime, execErr
+	finished, err = r.executeDeleteStage(ctx, updateRun, toBeDeletedBindings)
+	return finished, clusterUpdatingWaitTime, err
 }
 
 // checkBeforeStageTasksStatus checks if the before stage tasks have finished.
@@ -443,7 +450,7 @@ func (r *Reconciler) handleStageApprovalTask(
 			}
 			approvalRequestSpec := approvalRequest.GetApprovalRequestSpec()
 			if approvalRequestSpec.TargetStage != updatingStage.Name || approvalRequestSpec.TargetUpdateRun != updateRun.GetName() {
-				unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the approval request task `%s/%s` is targeting update run `%s/%s` and stage `%s`", approvalRequest.GetNamespace(), approvalRequest.GetName(), approvalRequest.GetNamespace(), approvalRequestSpec.TargetUpdateRun, approvalRequestSpec.TargetStage))
+				unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the approval request task `%s/%s` is targeting update run `%s/%s` and stage `%s`, want target update run `%s/%s and stage `%s`", approvalRequest.GetNamespace(), approvalRequest.GetName(), approvalRequest.GetNamespace(), approvalRequestSpec.TargetUpdateRun, approvalRequestSpec.TargetStage, approvalRequest.GetNamespace(), updateRun.GetName(), updatingStage.Name))
 				klog.ErrorS(unexpectedErr, "Found an approval request targeting wrong stage", "approvalRequestTask", requestRef, "stage", updatingStage.Name, "updateRun", updateRunRef)
 				return false, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
 			}
