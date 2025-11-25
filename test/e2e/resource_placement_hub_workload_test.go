@@ -23,9 +23,11 @@ import (
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -161,22 +163,10 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 				"Hub daemonset should be ready before placement")
 		})
 
-		It("should verify hub job exists", func() {
-			By("checking hub job status")
-			Eventually(func() error {
-				var hubJob batchv1.Job
-				if err := hubClient.Get(ctx, types.NamespacedName{
-					Name:      testJob.Name,
-					Namespace: testJob.Namespace,
-				}, &hubJob); err != nil {
-					return err
-				}
-				// Check if job has completed successfully
-				if hubJob.Status.Succeeded == 0 {
-					return fmt.Errorf("hub job not completed: %d succeeded", hubJob.Status.Succeeded)
-				}
-				return nil
-			}, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(),
+		It("should verify hub job completes successfully", func() {
+			By("checking hub job completion status")
+			jobCompletedActual := waitForJobToComplete(hubClient, &testJob)
+			Eventually(jobCompletedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(),
 				"Hub job should complete successfully")
 		})
 
@@ -210,20 +200,8 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 		It("should verify job completes successfully on all clusters", func() {
 			By("checking job completion status on each cluster")
 			for _, cluster := range allMemberClusters {
-				Eventually(func() error {
-					var placedJob batchv1.Job
-					if err := cluster.KubeClient.Get(ctx, types.NamespacedName{
-						Name:      testJob.Name,
-						Namespace: testJob.Namespace,
-					}, &placedJob); err != nil {
-						return err
-					}
-					// Check if job has completed successfully
-					if placedJob.Status.Succeeded == 0 {
-						return fmt.Errorf("job not completed: %d/%d succeeded", placedJob.Status.Succeeded, *placedJob.Spec.Completions)
-					}
-					return nil
-				}, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(),
+				jobCompletedActual := waitForJobToComplete(cluster.KubeClient, &testJob)
+				Eventually(jobCompletedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(),
 					"Job should complete successfully on cluster %s", cluster.ClusterName)
 			}
 		})
@@ -253,3 +231,39 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 		})
 	})
 })
+
+func waitForJobToComplete(kubeClient client.Client, testJob *batchv1.Job) func() error {
+	return func() error {
+		var job batchv1.Job
+		if err := kubeClient.Get(ctx, types.NamespacedName{
+			Name:      testJob.Name,
+			Namespace: testJob.Namespace,
+		}, &job); err != nil {
+			return err
+		}
+
+		// Check if job has completed successfully
+		if job.Status.Succeeded == 0 {
+			return fmt.Errorf("job not completed: %d succeeded", job.Status.Succeeded)
+		}
+
+		// Verify all job pods completed successfully
+		podList := &corev1.PodList{}
+		if err := kubeClient.List(ctx, podList, client.InNamespace(testJob.Namespace),
+			client.MatchingLabels{"job-name": testJob.Name}); err != nil {
+			return fmt.Errorf("failed to list job pods: %w", err)
+		}
+
+		if len(podList.Items) == 0 {
+			return fmt.Errorf("no pods found for job %s", testJob.Name)
+		}
+
+		for _, pod := range podList.Items {
+			if pod.Status.Phase != corev1.PodSucceeded {
+				return fmt.Errorf("pod %s not succeeded: phase=%s", pod.Name, pod.Status.Phase)
+			}
+		}
+
+		return nil
+	}
+}
