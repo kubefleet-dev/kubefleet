@@ -105,6 +105,18 @@ type ResourceSnapshotPolicyStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
+// ResourceSnapshotPolicyConditionType defines a specific condition of a resource snapshot policy object.
+// +enum
+type ResourceSnapshotPolicyConditionType string
+
+const (
+	// ResourceSnapshotPolicyConditionTypeValid indicates whether the policy configuration is valid.
+	ResourceSnapshotPolicyConditionTypeValid ResourceSnapshotPolicyConditionType = "Valid"
+
+	// ResourceSnapshotPolicyConditionTypeSnapshotReady indicates whether the target snapshot is ready.
+	ResourceSnapshotPolicyConditionTypeSnapshotReady ResourceSnapshotPolicyConditionType = "SnapshotReady"
+)
+
 // SnapshotGroup contains metadata about a group of snapshots using the same index.
 type SnapshotGroup struct {
 	// Index is the snapshot index.
