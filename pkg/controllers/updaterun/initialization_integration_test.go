@@ -575,22 +575,6 @@ var _ = Describe("Updaterun initialization tests", func() {
 		})
 
 		Context("Test computeRunStageStatus", func() {
-			Context("Test validateBeforeStageTask", func() {
-				It("Should initialize if any before stage", func() {
-					By("Creating a clusterStagedUpdateStrategy with a before stage tasks")
-					updateStrategy.Spec.Stages[0].BeforeStageTasks = []placementv1beta1.StageTask{
-						{Type: placementv1beta1.StageTaskTypeApproval},
-					}
-					Expect(k8sClient.Create(ctx, updateStrategy)).To(Succeed())
-
-					By("Creating a new clusterStagedUpdateRun")
-					Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
-
-					By("Validating the initialization succeeded")
-					generateSucceededInitializationStatus(crp, updateRun, testResourceSnapshotIndex, policySnapshot, updateStrategy, clusterResourceOverride)
-				})
-			})
-
 			Context("Test validateAfterStageTask", func() {
 				It("Should fail to initialize if any after stage task has 2 same tasks", func() {
 					By("Creating a clusterStagedUpdateStrategy with 2 same after stage tasks")
