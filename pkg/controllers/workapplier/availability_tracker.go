@@ -84,9 +84,11 @@ func (r *Reconciler) trackInMemberClusterObjAvailability(ctx context.Context, bu
 	// Run the availability check in parallel.
 	r.parallelizer.ParallelizeUntil(childCtx, len(bundles), doWork, "trackInMemberClusterObjAvailability")
 
-	// The workqueue.ParallelizeUntil utility does not return errors even if its context has been
-	// cancelled (and some availability checks might not be completed yet); to catch such
-	// premature termination, the work applier checks for context cancellation directly.
+	// Unlike some other steps in the reconciliation loop, the availability checking step does not end
+	// with a contextual API call; consequently, if the context has been cancelled during this step,
+	// some checks might not run at all, and passing such bundles to the next step may trigger
+	// unexpected behaviors. To address this, at the end of this step the work applier checks for context
+	// cancellation directly.
 	if err := ctx.Err(); err != nil {
 		klog.V(2).InfoS("availability checking has been interrupted as the main context has been cancelled")
 		return fmt.Errorf("availability checking has been interrupted: %w", err)

@@ -59,9 +59,11 @@ func (r *Reconciler) processManifests(
 
 		r.parallelizer.ParallelizeUntil(ctx, len(bundles), doWork, "processingManifestsInReportDiffMode")
 
-		// The workqueue.ParallelizeUntil utility does not return errors even if its context has been
-		// cancelled (and some manifest might not be fully processed yet); to catch such
-		// premature termination, the work applier checks for context cancellation directly.
+		// Unlike some other steps in the reconciliation loop, the manifest processing step does not end
+		// with a contextual API call; consequently, if the context has been cancelled during this step,
+		// some manifest might not get processed at all, and passing such bundles to the next step may trigger
+		// unexpected behaviors. To address this, at the end of this step the work applier checks for context
+		// cancellation directly.
 		if err := ctx.Err(); err != nil {
 			klog.V(2).InfoS("manifest processing has been interrupted as the main context has been cancelled")
 			return fmt.Errorf("manifest processing has been interrupted: %w", err)
@@ -92,9 +94,11 @@ func (r *Reconciler) processManifests(
 
 		r.parallelizer.ParallelizeUntil(ctx, len(bundlesInWave), doWork, fmt.Sprintf("processingManifestsInWave%d", idx))
 
-		// The workqueue.ParallelizeUntil utility does not return errors even if its context has been
-		// cancelled (and some manifest might not be fully processed yet); to catch such
-		// premature termination, the work applier checks for context cancellation directly.
+		// Unlike some other steps in the reconciliation loop, the manifest processing step does not end
+		// with a contextual API call; consequently, if the context has been cancelled during this step,
+		// some manifest might not get processed at all, and passing such bundles to the next step may trigger
+		// unexpected behaviors. To address this, at the end of this step the work applier checks for context
+		// cancellation directly.
 		if err := ctx.Err(); err != nil {
 			klog.V(2).InfoS("manifest processing has been interrupted as the main context has been cancelled")
 			return fmt.Errorf("manifest processing has been interrupted: %w", err)
