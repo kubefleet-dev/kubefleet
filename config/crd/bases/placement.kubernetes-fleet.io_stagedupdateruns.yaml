@@ -125,16 +125,16 @@ spec:
             x-kubernetes-validations:
             - message: 'invalid state transition: cannot transition from Initialize
                 to Pause'
-              rule: '!has(oldSelf.state) || oldSelf.state != ''Initialize'' || self.state
-                != ''Pause'''
+              rule: '!(has(oldSelf.state) && oldSelf.state == ''Initialize'' && self.state
+                == ''Pause'')'
             - message: 'invalid state transition: cannot transition from Execute to
                 Initialize'
-              rule: '!has(oldSelf.state) || oldSelf.state != ''Execute'' || self.state
-                != ''Initialize'''
+              rule: '!(has(oldSelf.state) && oldSelf.state == ''Execute'' && self.state
+                == ''Initialize'')'
             - message: 'invalid state transition: cannot transition from Pause to
                 Initialize'
-              rule: '!has(oldSelf.state) || oldSelf.state != ''Pause'' || self.state
-                != ''Initialize'''
+              rule: '!(has(oldSelf.state) && oldSelf.state == ''Pause'' && self.state
+                == ''Initialize'')'
             - message: 'invalid state transition: Abandon is a terminal state and
                 cannot transition to any other state'
               rule: '!has(oldSelf.state) || oldSelf.state != ''Abandon'' || self.state

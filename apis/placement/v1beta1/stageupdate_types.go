@@ -171,9 +171,9 @@ const (
 
 // UpdateRunSpec defines the desired rollout strategy and the snapshot indices of the resources to be updated.
 // It specifies a stage-by-stage update process across selected clusters for the given ResourcePlacement object.
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.state) || oldSelf.state != 'Initialize' || self.state != 'Pause'",message="invalid state transition: cannot transition from Initialize to Pause"
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.state) || oldSelf.state != 'Execute' || self.state != 'Initialize'",message="invalid state transition: cannot transition from Execute to Initialize"
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.state) || oldSelf.state != 'Pause' || self.state != 'Initialize'",message="invalid state transition: cannot transition from Pause to Initialize"
+// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.state) && oldSelf.state == 'Initialize' && self.state == 'Pause')",message="invalid state transition: cannot transition from Initialize to Pause"
+// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.state) && oldSelf.state == 'Execute' && self.state == 'Initialize')",message="invalid state transition: cannot transition from Execute to Initialize"
+// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.state) && oldSelf.state == 'Pause' && self.state == 'Initialize')",message="invalid state transition: cannot transition from Pause to Initialize"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.state) || oldSelf.state != 'Abandon' || self.state == 'Abandon'",message="invalid state transition: Abandon is a terminal state and cannot transition to any other state"
 type UpdateRunSpec struct {
 	// PlacementName is the name of placement that this update run is applied to.
