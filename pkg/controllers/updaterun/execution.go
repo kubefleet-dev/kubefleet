@@ -166,13 +166,13 @@ func (r *Reconciler) executeUpdatingStage(
 	for i := 0; i < len(updatingStageStatus.Clusters) && clusterUpdatingCount < maxConcurrency; i++ {
 		clusterStatus := &updatingStageStatus.Clusters[i]
 		clusterUpdateSucceededCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
-		if clusterUpdateSucceededCond != nil && clusterUpdateSucceededCond.Status == metav1.ConditionTrue {
+		if condition.IsConditionStatusTrue(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
 			// The cluster has been updated successfully.
 			finishedClusterCount++
 			continue
 		}
 		clusterUpdatingCount++
-		if clusterUpdateSucceededCond != nil && clusterUpdateSucceededCond.Status == metav1.ConditionFalse {
+		if condition.IsConditionStatusFalse(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
 			// The cluster is marked as failed to update, this cluster is counted as updating cluster since it's not finished to avoid processing more clusters than maxConcurrency in this round.
 			failedErr := fmt.Errorf("the cluster `%s` in the stage %s has failed", clusterStatus.ClusterName, updatingStageStatus.StageName)
 			klog.ErrorS(failedErr, "The cluster has failed to be updated", "updateRun", updateRunRef)
@@ -182,7 +182,7 @@ func (r *Reconciler) executeUpdatingStage(
 		// The cluster needs to be processed.
 		clusterStartedCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
 		binding := toBeUpdatedBindingsMap[clusterStatus.ClusterName]
-		if clusterStartedCond == nil || clusterStartedCond.Status != metav1.ConditionTrue {
+		if !condition.IsConditionStatusTrue(clusterStartedCond, updateRun.GetGeneration()) {
 			// The cluster has not started updating yet.
 			if !isBindingSyncedWithClusterStatus(resourceSnapshotName, updateRun, binding, clusterStatus) {
 				klog.V(2).InfoS("Found the first cluster that needs to be updated", "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
@@ -351,8 +351,7 @@ func (r *Reconciler) executeDeleteStage(
 		// In validation, we already check the binding must exist in the status.
 		delete(existingDeleteStageClusterMap, bindingSpec.TargetCluster)
 		// Make sure the cluster is not marked as deleted as the binding is still there.
-		clusterDeleteSucceededCond := meta.FindStatusCondition(curCluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
-		if clusterDeleteSucceededCond != nil && clusterDeleteSucceededCond.Status == metav1.ConditionTrue {
+		if condition.IsConditionStatusTrue(meta.FindStatusCondition(curCluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded)), updateRun.GetGeneration()) {
 			unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the deleted cluster `%s` in the deleting stage still has a binding", bindingSpec.TargetCluster))
 			klog.ErrorS(unexpectedErr, "The cluster in the deleting stage is not removed yet but marked as deleted", "cluster", curCluster.ClusterName, "updateRun", updateRunRef)
 			return false, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())

@@ -941,56 +941,6 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateUpdateRunMetricsEmitted(generateWaitingMetric(updateRun))
 		})
 	})
-
-	It("Should not initialize if updateRun is created with state Abandoned", func() {
-		By("Creating a new clusterStagedUpdateRun in Abandoned state")
-		updateRun.Spec.State = placementv1beta1.StateAbandoned
-		Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
-
-		By("Validating the updateRun is not initialized")
-		// Populate the cache first.
-		Eventually(func() error {
-			if err := k8sClient.Get(ctx, updateRunNamespacedName, updateRun); err != nil {
-				return err
-			}
-			return nil
-		}, timeout, interval).Should(Succeed(), "failed to get the updateRun")
-		Consistently(func() error {
-			if err := k8sClient.Get(ctx, updateRunNamespacedName, updateRun); err != nil {
-				return err
-			}
-			initCond := meta.FindStatusCondition(updateRun.Status.Conditions, string(placementv1beta1.StagedUpdateRunConditionInitialized))
-			if initCond != nil {
-				return fmt.Errorf("got initialization condition: %v, want nil", initCond)
-			}
-			return nil
-		}, duration, interval).Should(Succeed(), "the abandoned updateRun should not be initialized")
-	})
-
-	It("Should not initialize if updateRun is created with state Stopped ", func() {
-		By("Creating a new clusterStagedUpdateRun in Stopped state")
-		updateRun.Spec.State = placementv1beta1.StateStopped
-		Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
-
-		By("Validating the updateRun is not initialized")
-		// Populate the cache first.
-		Eventually(func() error {
-			if err := k8sClient.Get(ctx, updateRunNamespacedName, updateRun); err != nil {
-				return err
-			}
-			return nil
-		}, timeout, interval).Should(Succeed(), "failed to get the updateRun")
-		Consistently(func() error {
-			if err := k8sClient.Get(ctx, updateRunNamespacedName, updateRun); err != nil {
-				return err
-			}
-			initCond := meta.FindStatusCondition(updateRun.Status.Conditions, string(placementv1beta1.StagedUpdateRunConditionInitialized))
-			if initCond != nil {
-				return fmt.Errorf("got initialization condition: %v, want nil", initCond)
-			}
-			return nil
-		}, duration, interval).Should(Succeed(), "the stopped updateRun should not be initialized")
-	})
 })
 
 func validateFailedInitCondition(ctx context.Context, updateRun *placementv1beta1.ClusterStagedUpdateRun, message string) {

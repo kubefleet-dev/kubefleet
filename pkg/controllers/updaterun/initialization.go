@@ -619,10 +619,29 @@ func (r *Reconciler) recordInitializationSucceeded(ctx context.Context, updateRu
 		Status:             metav1.ConditionTrue,
 		ObservedGeneration: updateRun.GetGeneration(),
 		Reason:             condition.UpdateRunInitializeSucceededReason,
-		Message:            "ClusterStagedUpdateRun initialized successfully",
+		Message:            "The UpdateRun initialized successfully",
 	})
 	if updateErr := r.Client.Status().Update(ctx, updateRun); updateErr != nil {
 		klog.ErrorS(updateErr, "Failed to update the UpdateRun status as initialized", "updateRun", klog.KObj(updateRun))
+		// updateErr can be retried.
+		return controller.NewUpdateIgnoreConflictError(updateErr)
+	}
+	return nil
+}
+
+// recordUpdateRunInitializing records the unknown initialization condition in the UpdateRun status.
+// The UpdateRun is currently initializing.
+func (r *Reconciler) recordUpdateRunInitializing(ctx context.Context, updateRun placementv1beta1.UpdateRunObj) error {
+	updateRunStatus := updateRun.GetUpdateRunStatus()
+	meta.SetStatusCondition(&updateRunStatus.Conditions, metav1.Condition{
+		Type:               string(placementv1beta1.StagedUpdateRunConditionInitialized),
+		Status:             metav1.ConditionUnknown,
+		ObservedGeneration: updateRun.GetGeneration(),
+		Reason:             condition.UpdateRunInitializingReason,
+		Message:            "the UpdateRun is in the process of initializing",
+	})
+	if updateErr := r.Client.Status().Update(ctx, updateRun); updateErr != nil {
+		klog.ErrorS(updateErr, "Failed to update the UpdateRun status as initializing", "updateRun", klog.KObj(updateRun))
 		// updateErr can be retried.
 		return controller.NewUpdateIgnoreConflictError(updateErr)
 	}

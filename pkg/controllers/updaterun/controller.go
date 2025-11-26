@@ -105,14 +105,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	defer emitUpdateRunStatusMetric(updateRun)
 
 	state := updateRun.GetUpdateRunSpec().State
-	switch state { // Early check for abandoned state - this is a terminal state, no initialization needed.
-	case placementv1beta1.StateAbandoned:
-		klog.V(2).InfoS("The updateRun is abandoned, terminating", "state", state, "updateRun", runObjRef)
-		return runtime.Result{}, r.recordUpdateRunAbandoned(ctx, updateRun)
-	case placementv1beta1.StateStopped: // Early check for stopped state - pause the update run if needed.
-		klog.V(2).InfoS("The updateRun is paused, waiting to resume", "state", state, "updateRun", runObjRef)
-		return runtime.Result{}, r.recordUpdateRunPaused(ctx, updateRun)
-	}
 
 	var updatingStageIndex int
 	var toBeUpdatedBindings, toBeDeletedBindings []placementv1beta1.BindingObj
@@ -121,13 +113,20 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	// Check if initialized regardless of generation.
 	// The updateRun spec fields are immutable except for the state field. When the state changes,
 	// the update run generation increments, but we don't need to reinitialize since initialization is a one-time setup.
-	isInitialized := initCond != nil && initCond.Status == metav1.ConditionTrue
-	if !isInitialized {
+	if !(initCond != nil && initCond.Status == metav1.ConditionTrue) {
 		// Check if initialization failed for the current generation.
 		if condition.IsConditionStatusFalse(initCond, updateRun.GetGeneration()) {
 			klog.V(2).InfoS("The updateRun has failed to initialize", "errorMsg", initCond.Message, "updateRun", runObjRef)
 			return runtime.Result{}, nil
 		}
+
+		if initCond == nil {
+			// Update the status to indicate that the updateRun is initializing.
+			// Requeue immediately to continue with initialization.
+			klog.V(2).InfoS("The updateRun is initializing", "state", state, "updateRun", runObjRef)
+			return runtime.Result{RequeueAfter: 1}, r.recordUpdateRunInitializing(ctx, updateRun)
+		}
+
 		var initErr error
 		if toBeUpdatedBindings, toBeDeletedBindings, initErr = r.initialize(ctx, updateRun); initErr != nil {
 			klog.ErrorS(initErr, "Failed to initialize the updateRun", "updateRun", runObjRef)
@@ -137,10 +136,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 			}
 			return runtime.Result{}, initErr
 		}
-		updatingStageIndex = 0 // start from the first stage (typically for NotStarted or Started states).
-		klog.V(2).InfoS("Initialized the updateRun", "updateRun", runObjRef)
+		updatingStageIndex = 0 // start from the first stage (typically for Initialize or Execute states).
+		klog.V(2).InfoS("Initialized the updateRun", "state", state, "updateRun", runObjRef)
 	} else {
-		klog.V(2).InfoS("The updateRun is initialized", "updateRun", runObjRef)
+		klog.V(2).InfoS("The updateRun is initialized", "state", state, "updateRun", runObjRef)
 		// Check if the updateRun is finished.
 		finishedCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionSucceeded))
 		if condition.IsConditionStatusTrue(finishedCond, updateRun.GetGeneration()) || condition.IsConditionStatusFalse(finishedCond, updateRun.GetGeneration()) {
@@ -149,7 +148,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		}
 		var validateErr error
 		// Validate the updateRun status to ensure the update can be continued and get the updating stage index and cluster indices.
-		// For Stopped → Started transition, this will resume from where it left off.
 		if updatingStageIndex, toBeUpdatedBindings, toBeDeletedBindings, validateErr = r.validate(ctx, updateRun); validateErr != nil {
 			// errStagedUpdatedAborted cannot be retried.
 			if errors.Is(validateErr, errStagedUpdatedAborted) {
@@ -168,7 +166,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 
 	// Execute the updateRun.
 	if state == placementv1beta1.StateStarted {
-		klog.V(2).InfoS("Continue to execute the updateRun", "updatingStageIndex", updatingStageIndex, "updateRun", runObjRef)
+		klog.V(2).InfoS("Continue to execute the updateRun", "state", state, "updatingStageIndex", updatingStageIndex, "updateRun", runObjRef)
 		finished, waitTime, execErr := r.execute(ctx, updateRun, updatingStageIndex, toBeUpdatedBindings, toBeDeletedBindings)
 		if errors.Is(execErr, errStagedUpdatedAborted) {
 			// errStagedUpdatedAborted cannot be retried.
@@ -188,6 +186,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		klog.V(2).InfoS("The updateRun is not finished yet", "requeueWaitTime", waitTime, "execErr", execErr, "updateRun", runObjRef)
 		if execErr != nil {
 			return runtime.Result{}, execErr
+		}
+		if waitTime == 0 {
+			// If update run is not finished and waitTime is zero, the waitTime needs to be update to a non-zero value
+			// as we are using RequeueAfter only since Requeue is deprecated.
+			return runtime.Result{RequeueAfter: 1}, nil
 		}
 		return runtime.Result{RequeueAfter: waitTime}, nil
 	}
@@ -277,50 +280,6 @@ func (r *Reconciler) recordUpdateRunFailed(ctx context.Context, updateRun placem
 		Reason:             condition.UpdateRunFailedReason,
 		Message:            message,
 	})
-	if updateErr := r.Client.Status().Update(ctx, updateRun); updateErr != nil {
-		klog.ErrorS(updateErr, "Failed to update the updateRun status as failed", "updateRun", klog.KObj(updateRun))
-		// updateErr can be retried.
-		return controller.NewUpdateIgnoreConflictError(updateErr)
-	}
-	return nil
-}
-
-// recordUpdateRunPaused records the progressing condition as paused in the updateRun status.
-func (r *Reconciler) recordUpdateRunPaused(ctx context.Context, updateRun placementv1beta1.UpdateRunObj) error {
-	updateRunStatus := updateRun.GetUpdateRunStatus()
-	meta.SetStatusCondition(&updateRunStatus.Conditions, metav1.Condition{
-		Type:               string(placementv1beta1.StagedUpdateRunConditionProgressing),
-		Status:             metav1.ConditionFalse,
-		ObservedGeneration: updateRun.GetGeneration(),
-		Reason:             condition.UpdateRunPausedReason,
-		Message:            "The update run is paused",
-	})
-	if updateErr := r.Client.Status().Update(ctx, updateRun); updateErr != nil {
-		klog.ErrorS(updateErr, "Failed to update the updateRun status as paused", "updateRun", klog.KObj(updateRun))
-		// updateErr can be retried.
-		return controller.NewUpdateIgnoreConflictError(updateErr)
-	}
-	return nil
-}
-
-// recordUpdateRunAbandoned records the succeeded and progressing condition as abandoned in the updateRun status.
-func (r *Reconciler) recordUpdateRunAbandoned(ctx context.Context, updateRun placementv1beta1.UpdateRunObj) error {
-	updateRunStatus := updateRun.GetUpdateRunStatus()
-	meta.SetStatusCondition(&updateRunStatus.Conditions, metav1.Condition{
-		Type:               string(placementv1beta1.StagedUpdateRunConditionProgressing),
-		Status:             metav1.ConditionFalse,
-		ObservedGeneration: updateRun.GetGeneration(),
-		Reason:             condition.UpdateRunAbandonedReason,
-		Message:            "The stages are aborted due to abandonment",
-	})
-	meta.SetStatusCondition(&updateRunStatus.Conditions, metav1.Condition{
-		Type:               string(placementv1beta1.StagedUpdateRunConditionSucceeded),
-		Status:             metav1.ConditionFalse,
-		ObservedGeneration: updateRun.GetGeneration(),
-		Reason:             condition.UpdateRunAbandonedReason,
-		Message:            "The update run has been abandoned",
-	})
-
 	if updateErr := r.Client.Status().Update(ctx, updateRun); updateErr != nil {
 		klog.ErrorS(updateErr, "Failed to update the updateRun status as failed", "updateRun", klog.KObj(updateRun))
 		// updateErr can be retried.

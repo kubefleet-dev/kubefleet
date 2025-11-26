@@ -152,6 +152,9 @@ const (
 
 // A group of condition reason string which is used to populate the ClusterStagedUpdateRun condition.
 const (
+	// UpdateRunInitializingReason is the reason string of condition if the update run is currently initializing.
+	UpdateRunInitializingReason = "UpdateRunInitializing"
+
 	// UpdateRunInitializeSucceededReason is the reason string of condition if the update run is initialized successfully.
 	UpdateRunInitializeSucceededReason = "UpdateRunInitializedSuccessfully"
 
@@ -161,14 +164,8 @@ const (
 	// UpdateRunProgressingReason is the reason string of condition if the staged update run is progressing.
 	UpdateRunProgressingReason = "UpdateRunProgressing"
 
-	// UpdateRunPausedReason is the reason string of condition if the staged update run is paused.
-	UpdateRunPausedReason = "UpdateRunPaused"
-
 	// UpdateRunFailedReason is the reason string of condition if the staged update run failed.
 	UpdateRunFailedReason = "UpdateRunFailed"
-
-	// UpdateRunAbandonedReason is the reason string of condition if the staged update run is abandoned.
-	UpdateRunAbandonedReason = "UpdateRunAbandoned"
 
 	// UpdateRunStuckReason is the reason string of condition if the staged update run is stuck waiting for a cluster to be updated.
 	UpdateRunStuckReason = "UpdateRunStuck"

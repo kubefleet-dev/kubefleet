@@ -2079,12 +2079,16 @@ func updateRunStageTaskSucceedConditions(generation int64, taskType placementv1b
 }
 
 func updateRunSucceedConditions(generation int64) []metav1.Condition {
+	initializeCondGeneration := generation
+	if generation > 1 {
+		initializeCondGeneration = 1
+	}
 	return []metav1.Condition{
 		{
 			Type:               string(placementv1beta1.StagedUpdateRunConditionInitialized),
 			Status:             metav1.ConditionTrue,
 			Reason:             condition.UpdateRunInitializeSucceededReason,
-			ObservedGeneration: generation,
+			ObservedGeneration: initializeCondGeneration,
 		},
 		{
 			Type:               string(placementv1beta1.StagedUpdateRunConditionProgressing),
@@ -2096,46 +2100,6 @@ func updateRunSucceedConditions(generation int64) []metav1.Condition {
 			Type:               string(placementv1beta1.StagedUpdateRunConditionSucceeded),
 			Status:             metav1.ConditionTrue,
 			Reason:             condition.UpdateRunSucceededReason,
-			ObservedGeneration: generation,
-		},
-	}
-}
-
-func updateRunStoppedConditions(generation int64) []metav1.Condition {
-	return []metav1.Condition{
-		{
-			Type:               string(placementv1beta1.StagedUpdateRunConditionInitialized),
-			Status:             metav1.ConditionTrue,
-			Reason:             condition.UpdateRunInitializeSucceededReason,
-			ObservedGeneration: 1,
-		},
-		{
-			Type:               string(placementv1beta1.StagedUpdateRunConditionProgressing),
-			Status:             metav1.ConditionFalse,
-			Reason:             condition.UpdateRunPausedReason,
-			ObservedGeneration: generation,
-		},
-	}
-}
-
-func updateRunAbandonedConditions(generation int64) []metav1.Condition {
-	return []metav1.Condition{
-		{
-			Type:               string(placementv1beta1.StagedUpdateRunConditionInitialized),
-			Status:             metav1.ConditionTrue,
-			Reason:             condition.UpdateRunInitializeSucceededReason,
-			ObservedGeneration: 1,
-		},
-		{
-			Type:               string(placementv1beta1.StagedUpdateRunConditionProgressing),
-			Status:             metav1.ConditionFalse,
-			Reason:             condition.UpdateRunAbandonedReason,
-			ObservedGeneration: generation,
-		},
-		{
-			Type:               string(placementv1beta1.StagedUpdateRunConditionSucceeded),
-			Status:             metav1.ConditionFalse,
-			Reason:             condition.UpdateRunAbandonedReason,
 			ObservedGeneration: generation,
 		},
 	}
@@ -2188,79 +2152,7 @@ func clusterStagedUpdateRunStatusSucceededActual(
 	}
 }
 
-func clusterStagedUpdateRunStatusAbandonedActual(
-	updateRunName string,
-	wantResourceIndex string,
-	wantPolicyIndex string,
-	wantClusterCount int,
-	wantApplyStrategy *placementv1beta1.ApplyStrategy,
-	wantStrategySpec *placementv1beta1.UpdateStrategySpec,
-	wantSelectedClusters [][]string,
-	wantUnscheduledClusters []string,
-	wantCROs map[string][]string,
-	wantROs map[string][]placementv1beta1.NamespacedName,
-) func() error {
-	return func() error {
-		updateRun := &placementv1beta1.ClusterStagedUpdateRun{}
-		if err := hubClient.Get(ctx, types.NamespacedName{Name: updateRunName}, updateRun); err != nil {
-			return err
-		}
-
-		wantStatus := placementv1beta1.UpdateRunStatus{
-			PolicySnapshotIndexUsed:    wantPolicyIndex,
-			ResourceSnapshotIndexUsed:  wantResourceIndex,
-			PolicyObservedClusterCount: wantClusterCount,
-			ApplyStrategy:              wantApplyStrategy.DeepCopy(),
-			UpdateStrategySnapshot:     wantStrategySpec,
-		}
-
-		wantStatus.StagesStatus = buildStageUpdatingStatusesWithGeneration(wantStrategySpec, wantSelectedClusters, wantCROs, wantROs, updateRun, updateRun.GetGeneration()-2)
-		wantStatus.DeletionStageStatus = buildDeletionStatusWithoutConditions(wantUnscheduledClusters, updateRun)
-		wantStatus.Conditions = updateRunAbandonedConditions(updateRun.Generation)
-		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusCmpOption...); diff != "" {
-			return fmt.Errorf("UpdateRun status diff (-got, +want): %s", diff)
-		}
-		return nil
-	}
-}
-
-func clusterStagedUpdateRunStatusStoppedActual(
-	updateRunName string,
-	wantResourceIndex string,
-	wantPolicyIndex string,
-	wantClusterCount int,
-	wantApplyStrategy *placementv1beta1.ApplyStrategy,
-	wantStrategySpec *placementv1beta1.UpdateStrategySpec,
-	wantSelectedClusters [][]string,
-	wantUnscheduledClusters []string,
-	wantCROs map[string][]string,
-	wantROs map[string][]placementv1beta1.NamespacedName,
-) func() error {
-	return func() error {
-		updateRun := &placementv1beta1.ClusterStagedUpdateRun{}
-		if err := hubClient.Get(ctx, types.NamespacedName{Name: updateRunName}, updateRun); err != nil {
-			return err
-		}
-
-		wantStatus := placementv1beta1.UpdateRunStatus{
-			PolicySnapshotIndexUsed:    wantPolicyIndex,
-			ResourceSnapshotIndexUsed:  wantResourceIndex,
-			PolicyObservedClusterCount: wantClusterCount,
-			ApplyStrategy:              wantApplyStrategy.DeepCopy(),
-			UpdateStrategySnapshot:     wantStrategySpec,
-		}
-
-		wantStatus.StagesStatus = buildStageUpdatingStatusesWithGeneration(wantStrategySpec, wantSelectedClusters, wantCROs, wantROs, updateRun, updateRun.GetGeneration()-1)
-		wantStatus.DeletionStageStatus = buildDeletionStatusWithoutConditions(wantUnscheduledClusters, updateRun)
-		wantStatus.Conditions = updateRunStoppedConditions(updateRun.Generation)
-		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusCmpOption...); diff != "" {
-			return fmt.Errorf("UpdateRun status diff (-got, +want): %s", diff)
-		}
-		return nil
-	}
-}
-
-func clusterStagedUpdateRunStatusNotStartedActual(
+func clusterStagedUpdateRunStatusInitializedActual(
 	updateRunName string,
 	wantResourceIndex string,
 	wantPolicyIndex string,
@@ -2313,43 +2205,7 @@ func clusterStagedUpdateRunStatusNotStartedActual(
 	}
 }
 
-func stagedUpdateRunStatusAbandonedActual(
-	updateRunName, namespace string,
-	wantResourceIndex string,
-	wantPolicyIndex string,
-	wantClusterCount int,
-	wantApplyStrategy *placementv1beta1.ApplyStrategy,
-	wantStrategySpec *placementv1beta1.UpdateStrategySpec,
-	wantSelectedClusters [][]string,
-	wantUnscheduledClusters []string,
-	wantCROs map[string][]string,
-	wantROs map[string][]placementv1beta1.NamespacedName,
-) func() error {
-	return func() error {
-		updateRun := &placementv1beta1.StagedUpdateRun{}
-		if err := hubClient.Get(ctx, types.NamespacedName{Name: updateRunName, Namespace: namespace}, updateRun); err != nil {
-			return err
-		}
-
-		wantStatus := placementv1beta1.UpdateRunStatus{
-			PolicySnapshotIndexUsed:    wantPolicyIndex,
-			ResourceSnapshotIndexUsed:  wantResourceIndex,
-			PolicyObservedClusterCount: wantClusterCount,
-			ApplyStrategy:              wantApplyStrategy.DeepCopy(),
-			UpdateStrategySnapshot:     wantStrategySpec,
-		}
-
-		wantStatus.StagesStatus = buildStageUpdatingStatusesWithGeneration(wantStrategySpec, wantSelectedClusters, wantCROs, wantROs, updateRun, updateRun.GetGeneration()-2)
-		wantStatus.DeletionStageStatus = buildDeletionStatusWithoutConditions(wantUnscheduledClusters, updateRun)
-		wantStatus.Conditions = updateRunAbandonedConditions(updateRun.Generation)
-		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusCmpOption...); diff != "" {
-			return fmt.Errorf("UpdateRun status diff (-got, +want): %s", diff)
-		}
-		return nil
-	}
-}
-
-func stagedUpdateRunStatusNotStartedActual(
+func stagedUpdateRunStatusInitializedActual(
 	updateRunName, namespace string,
 	wantResourceIndex string,
 	wantPolicyIndex string,
@@ -2395,42 +2251,6 @@ func stagedUpdateRunStatusNotStartedActual(
 		wantStatus.StagesStatus = stagesStatus
 		wantStatus.DeletionStageStatus = buildDeletionStatusWithoutConditions(wantUnscheduledClusters, updateRun)
 		wantStatus.Conditions = updateRunInitializedConditions(updateRun.Generation)
-		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusCmpOption...); diff != "" {
-			return fmt.Errorf("UpdateRun status diff (-got, +want): %s", diff)
-		}
-		return nil
-	}
-}
-
-func stagedUpdateRunStatusStoppedActual(
-	updateRunName, namespace string,
-	wantResourceIndex string,
-	wantPolicyIndex string,
-	wantClusterCount int,
-	wantApplyStrategy *placementv1beta1.ApplyStrategy,
-	wantStrategySpec *placementv1beta1.UpdateStrategySpec,
-	wantSelectedClusters [][]string,
-	wantUnscheduledClusters []string,
-	wantCROs map[string][]string,
-	wantROs map[string][]placementv1beta1.NamespacedName,
-) func() error {
-	return func() error {
-		updateRun := &placementv1beta1.StagedUpdateRun{}
-		if err := hubClient.Get(ctx, types.NamespacedName{Name: updateRunName, Namespace: namespace}, updateRun); err != nil {
-			return err
-		}
-
-		wantStatus := placementv1beta1.UpdateRunStatus{
-			PolicySnapshotIndexUsed:    wantPolicyIndex,
-			ResourceSnapshotIndexUsed:  wantResourceIndex,
-			PolicyObservedClusterCount: wantClusterCount,
-			ApplyStrategy:              wantApplyStrategy.DeepCopy(),
-			UpdateStrategySnapshot:     wantStrategySpec,
-		}
-
-		wantStatus.StagesStatus = buildStageUpdatingStatusesWithGeneration(wantStrategySpec, wantSelectedClusters, wantCROs, wantROs, updateRun, updateRun.GetGeneration()-1)
-		wantStatus.DeletionStageStatus = buildDeletionStatusWithoutConditions(wantUnscheduledClusters, updateRun)
-		wantStatus.Conditions = updateRunStoppedConditions(updateRun.Generation)
 		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusCmpOption...); diff != "" {
 			return fmt.Errorf("UpdateRun status diff (-got, +want): %s", diff)
 		}
@@ -2471,58 +2291,6 @@ func stagedUpdateRunStatusSucceededActual(
 		}
 		return nil
 	}
-}
-
-func buildStageUpdatingStatusesWithGeneration(
-	wantStrategySpec *placementv1beta1.UpdateStrategySpec,
-	wantSelectedClusters [][]string,
-	wantCROs map[string][]string,
-	wantROs map[string][]placementv1beta1.NamespacedName,
-	updateRun placementv1beta1.UpdateRunObj,
-	generation int64,
-) []placementv1beta1.StageUpdatingStatus {
-	stagesStatus := make([]placementv1beta1.StageUpdatingStatus, len(wantStrategySpec.Stages))
-	for i, stage := range wantStrategySpec.Stages {
-		stagesStatus[i].StageName = stage.Name
-		stagesStatus[i].Clusters = make([]placementv1beta1.ClusterUpdatingStatus, len(wantSelectedClusters[i]))
-		for j := range stagesStatus[i].Clusters {
-			stagesStatus[i].Clusters[j].ClusterName = wantSelectedClusters[i][j]
-			stagesStatus[i].Clusters[j].ClusterResourceOverrideSnapshots = wantCROs[wantSelectedClusters[i][j]]
-			stagesStatus[i].Clusters[j].ResourceOverrideSnapshots = wantROs[wantSelectedClusters[i][j]]
-			if i == 0 {
-				stagesStatus[i].Clusters[j].Conditions = updateRunClusterRolloutSucceedConditions(generation)
-			}
-		}
-		stagesStatus[i].AfterStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(stage.AfterStageTasks))
-		for j, task := range stage.AfterStageTasks {
-			stagesStatus[i].AfterStageTaskStatus[j].Type = task.Type
-			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				stagesStatus[i].AfterStageTaskStatus[j].ApprovalRequestName = fmt.Sprintf(placementv1beta1.ApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
-			}
-			if i == 0 {
-				if task.Type == placementv1beta1.StageTaskTypeApproval {
-					stagesStatus[i].AfterStageTaskStatus[j].Conditions = append(stagesStatus[i].AfterStageTaskStatus[j].Conditions, metav1.Condition{
-						Type:               string(placementv1beta1.StageTaskConditionApprovalRequestCreated),
-						Status:             metav1.ConditionTrue,
-						Reason:             condition.AfterStageTaskApprovalRequestCreatedReason,
-						ObservedGeneration: generation,
-					})
-				}
-				if task.Type == placementv1beta1.StageTaskTypeTimedWait {
-					stagesStatus[i].AfterStageTaskStatus[j].Conditions = append(stagesStatus[i].AfterStageTaskStatus[j].Conditions, metav1.Condition{
-						Type:               string(placementv1beta1.StageTaskConditionWaitTimeElapsed),
-						Status:             metav1.ConditionTrue,
-						Reason:             condition.AfterStageTaskWaitTimeElapsedReason,
-						ObservedGeneration: generation,
-					})
-				}
-			}
-		}
-		if i == 0 {
-			stagesStatus[i].Conditions = updateRunStageRolloutWaitingConditions(generation)
-		}
-	}
-	return stagesStatus
 }
 
 func buildStageUpdatingStatuses(

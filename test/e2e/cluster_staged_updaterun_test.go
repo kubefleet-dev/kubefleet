@@ -1667,7 +1667,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 	})
 
-	Context("Test resource rollout with staged update run by update run states - (NotStarted -> Started -> Stopped -> Abandoned)", Ordered, func() {
+	Context("Test resource rollout with staged update run by update run states - (Initialize -> Execute)", Ordered, func() {
 		updateRunNames := []string{}
 		var strategy *placementv1beta1.ClusterStagedUpdateStrategy
 
@@ -1729,21 +1729,22 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should create a cluster staged update run successfully", func() {
+			By("Creating Cluster Staged Update Run in state Initialize")
 			createClusterStagedUpdateRunSucceed(updateRunNames[0], crpName, resourceSnapshotIndex1st, strategyName, placementv1beta1.StateNotStarted)
 		})
 
-		It("Should not start rollout as the update run is in NotStarted state", func() {
+		It("Should not start rollout as the update run is in Initialize state", func() {
 			By("Member clusters should not have work resources placed")
 			checkIfRemovedWorkResourcesFromAllMemberClustersConsistently()
 
-			By("Validating the csur status remains in NotStarted state")
-			csurNotStartedActual := clusterStagedUpdateRunStatusNotStartedActual(updateRunNames[0], resourceSnapshotIndex1st, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
-			Consistently(csurNotStartedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep updateRun %s in NotStarted state", updateRunNames[0])
+			By("Validating the csur status remains in Initialize state")
+			csurNotStartedActual := clusterStagedUpdateRunStatusInitializedActual(updateRunNames[0], resourceSnapshotIndex1st, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+			Consistently(csurNotStartedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to Initialize updateRun %s", updateRunNames[0])
 		})
 
-		It("Should rollout resources to member-cluster-2 only after update run is in Started state", func() {
-			// Update the update run state to Started.
-			By("Updating the update run state to Started")
+		It("Should rollout resources to member-cluster-2 only after update run is in Execute state", func() {
+			// Update the update run state to Execute
+			By("Updating the update run state to Execute")
 			updateClusterStagedUpdateRunState(updateRunNames[0], placementv1beta1.StateStarted)
 
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[1]})
@@ -1752,44 +1753,22 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			By("Validating crp status as member-cluster-2 updated")
 			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(nil, "", false, allMemberClusterNames, []string{"", resourceSnapshotIndex1st, ""}, []bool{false, true, false}, nil, nil)
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
+
+			validateAndApproveClusterApprovalRequests(updateRunNames[0], envCanary)
 		})
 
-		It("Should stop update run when updated to Stopped state", func() {
-			// Update the update run state to Stopped.
-			By("Updating the update run state to Stopped")
-			updateClusterStagedUpdateRunState(updateRunNames[0], placementv1beta1.StateStopped)
-
-			By("Validating no further rollouts happen after stopping")
-			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[1]})
-			checkIfRemovedWorkResourcesFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0], allMemberClusters[2]})
-
-			By("Validating crp status as member-cluster-2 updated only")
-			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(nil, "", false, allMemberClusterNames, []string{"", resourceSnapshotIndex1st, ""}, []bool{false, true, false}, nil, nil)
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
-
-			csurSucceededActual := clusterStagedUpdateRunStatusStoppedActual(updateRunNames[0], resourceSnapshotIndex1st, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
+		It("Should rollout resources to all the members and complete the cluster staged update run successfully", func() {
+			csurSucceededActual := clusterStagedUpdateRunStatusSucceededActual(updateRunNames[0], resourceSnapshotIndex1st, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(csurSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[0])
+			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
 		})
 
-		It("Should abandon update run when updated to Abandoned state", func() {
-			// Update the update run state to Abandoned.
-			By("Updating the update run state to Abandoned")
-			updateClusterStagedUpdateRunState(updateRunNames[0], placementv1beta1.StateAbandoned)
-
-			By("Validating no further rollouts happen after abandonment")
-			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[1]})
-			checkIfRemovedWorkResourcesFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0], allMemberClusters[2]})
-
-			By("Validating crp status as member-cluster-2 updated only")
-			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(nil, "", false, allMemberClusterNames, []string{"", resourceSnapshotIndex1st, ""}, []bool{false, true, false}, nil, nil)
+		It("Should update crp status as completed", func() {
+			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(workResourceIdentifiers(), resourceSnapshotIndex1st, true, allMemberClusterNames,
+				[]string{resourceSnapshotIndex1st, resourceSnapshotIndex1st, resourceSnapshotIndex1st}, []bool{true, true, true}, nil, nil)
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
-
-			csurSucceededActual := clusterStagedUpdateRunStatusAbandonedActual(updateRunNames[0], resourceSnapshotIndex1st, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
-			Eventually(csurSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[0])
 		})
 	})
-
-	//TODO(britaniar): Add more e2e tests for updateRun Start/Stop Implementation
 })
 
 // Note that this container cannot run in parallel with other containers.

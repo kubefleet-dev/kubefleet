@@ -22,7 +22,6 @@ import (
 	"reflect"
 
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -186,7 +185,7 @@ func validateClusterUpdatingStatus(
 ) (int, int, error) {
 	stageSucceedCond := meta.FindStatusCondition(stageStatus.Conditions, string(placementv1beta1.StageUpdatingConditionSucceeded))
 	stageStartedCond := meta.FindStatusCondition(stageStatus.Conditions, string(placementv1beta1.StageUpdatingConditionProgressing))
-	if stageSucceedCond != nil && stageSucceedCond.Status == metav1.ConditionTrue {
+	if condition.IsConditionStatusTrue(stageSucceedCond, updateRun.GetGeneration()) {
 		// The stage has finished.
 		if updatingStageIndex != -1 && curStage > updatingStageIndex {
 			// The finished stage is after the updating stage.
@@ -197,8 +196,10 @@ func validateClusterUpdatingStatus(
 		// Make sure that all the clusters are updated.
 		for curCluster := range stageStatus.Clusters {
 			// Check if the cluster is still updating.
-			clusterSucceededCond := meta.FindStatusCondition(stageStatus.Clusters[curCluster].Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
-			if clusterSucceededCond == nil || clusterSucceededCond.Status == metav1.ConditionFalse {
+			if !condition.IsConditionStatusTrue(meta.FindStatusCondition(
+				stageStatus.Clusters[curCluster].Conditions,
+				string(placementv1beta1.ClusterUpdatingConditionSucceeded)),
+				updateRun.GetGeneration()) {
 				// The clusters in the finished stage should all have finished too.
 				unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("cluster `%s` in the finished stage `%s` has not succeeded", stageStatus.Clusters[curCluster].ClusterName, stageStatus.StageName))
 				klog.ErrorS(unexpectedErr, "The cluster in a finished stage is still updating", "updateRun", klog.KObj(updateRun))
@@ -213,7 +214,7 @@ func validateClusterUpdatingStatus(
 		}
 		// Record the last finished stage so we can continue from the next stage if no stage is updating.
 		lastFinishedStageIndex = curStage
-	} else if stageSucceedCond != nil && stageSucceedCond.Status == metav1.ConditionFalse {
+	} else if condition.IsConditionStatusFalse(stageSucceedCond, updateRun.GetGeneration()) {
 		// The stage has failed.
 		failedErr := fmt.Errorf("the stage `%s` has failed, err: %s", stageStatus.StageName, stageSucceedCond.Message)
 		klog.ErrorS(failedErr, "The stage has failed", "stageCond", stageSucceedCond, "updateRun", klog.KObj(updateRun))
