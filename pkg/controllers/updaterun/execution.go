@@ -443,8 +443,8 @@ func (r *Reconciler) handleStageApprovalTask(
 ) (bool, error) {
 	updateRunRef := klog.KObj(updateRun)
 
-	stageTaskApproved := condition.IsConditionStatusTrue(meta.FindStatusCondition(stageTaskStatus.Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestApproved)), updateRun.GetGeneration())
-	if stageTaskApproved {
+	approvedRequestCond := meta.FindStatusCondition(stageTaskStatus.Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestApproved))
+	if approvedRequestCond != nil && approvedRequestCond.Status == metav1.ConditionTrue {
 		// The stageTask has been approved.
 		return true, nil
 	}
@@ -564,8 +564,14 @@ func aggregateUpdateRunStatus(updateRun placementv1beta1.UpdateRunObj, stageName
 	if len(stuckClusterNames) > 0 {
 		markUpdateRunStuck(updateRun, stageName, strings.Join(stuckClusterNames, ", "))
 	} else {
-		// If there is no stuck cluster but some progress has been made, mark the update run as progressing.
-		markUpdateRunProgressing(updateRun)
+		switch updateRun.GetUpdateRunSpec().State {
+		case placementv1beta1.StateAbandon:
+			// If the update run is being abandoned, mark it as abandoning.
+			markUpdateRunAbandoning(updateRun)
+		default:
+			// If there is no stuck cluster but some progress has been made, mark the update run as progressing.
+			markUpdateRunProgressing(updateRun)
+		}
 	}
 }
 
@@ -669,7 +675,7 @@ func markUpdateRunProgressing(updateRun placementv1beta1.UpdateRunObj) {
 	})
 }
 
-// markUpdateRunProgressingIfNotWaitingOrStuck marks the update run as proegressing in memory if it's not marked as waiting or stuck already.
+// markUpdateRunProgressingIfNotWaitingOrStuck marks the update run as progressing in memory if it's not marked as waiting or stuck already.
 func markUpdateRunProgressingIfNotWaitingOrStuck(updateRun placementv1beta1.UpdateRunObj) {
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	progressingCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionProgressing))

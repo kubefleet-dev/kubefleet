@@ -173,6 +173,12 @@ const (
 	// UpdateRunSucceededReason is the reason string of condition if the staged update run succeeded.
 	UpdateRunSucceededReason = "UpdateRunSucceeded"
 
+	// UpdateRunAbandoningReason is the reason string of condition if the staged update run is the process of being abandoned.
+	UpdateRunAbandoningReason = "UpdateRunAbandoning"
+
+	// UpdateRunAbandonedReason is the reason string of condition if the staged update run is abandoned.
+	UpdateRunAbandonedReason = "UpdateRunAbandoned"
+
 	// StageUpdatingStartedReason is the reason string of condition if the stage updating has started.
 	StageUpdatingStartedReason = "StageUpdatingStarted"
 
@@ -181,6 +187,12 @@ const (
 
 	// StageUpdatingFailedReason is the reason string of condition if the stage updating failed.
 	StageUpdatingFailedReason = "StageUpdatingFailed"
+
+	// StageUpdatingAbandoningReason is the reason string of condition if the stage updating is abandoning.
+	StageUpdatingAbandoningReason = "StageUpdatingAbandoning"
+
+	// StageUpdatingAbandonedReason is the reason string of condition if the stage updating is abandoned.
+	StageUpdatingAbandonedReason = "StageUpdatingAbandoned"
 
 	// StageUpdatingSucceededReason is the reason string of condition if the stage updating succeeded.
 	StageUpdatingSucceededReason = "StageUpdatingSucceeded"

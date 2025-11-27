@@ -312,6 +312,26 @@ func generateWaitingMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *
 	}
 }
 
+func generateAbandoningMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+	return &prometheusclientmodel.Metric{
+		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionProgressing),
+			string(metav1.ConditionFalse), condition.UpdateRunAbandoningReason),
+		Gauge: &prometheusclientmodel.Gauge{
+			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+		},
+	}
+}
+
+func generateAbandonedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+	return &prometheusclientmodel.Metric{
+		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionSucceeded),
+			string(metav1.ConditionFalse), condition.UpdateRunAbandonedReason),
+		Gauge: &prometheusclientmodel.Gauge{
+			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+		},
+	}
+}
+
 func generateStuckMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
 		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionProgressing),
@@ -759,6 +779,8 @@ func generateTrueCondition(obj client.Object, condType any) metav1.Condition {
 		typeStr = string(cond)
 	case placementv1beta1.ResourceBindingConditionType:
 		switch cond {
+		case placementv1beta1.ResourceBindingRolloutStarted:
+			reason = condition.RolloutStartedReason
 		case placementv1beta1.ResourceBindingAvailable:
 			reason = condition.AvailableReason
 		case placementv1beta1.ResourceBindingDiffReported:
@@ -819,6 +841,12 @@ func generateFalseCondition(obj client.Object, condType any) metav1.Condition {
 }
 
 func generateFalseProgressingCondition(obj client.Object, condType any, reason string) metav1.Condition {
+	falseCond := generateFalseCondition(obj, condType)
+	falseCond.Reason = reason
+	return falseCond
+}
+
+func generateFalseSucceededCondition(obj client.Object, condType any, reason string) metav1.Condition {
 	falseCond := generateFalseCondition(obj, condType)
 	falseCond.Reason = reason
 	return falseCond
