@@ -1017,6 +1017,14 @@ func TestRemoveWaitTimeFromUpdateRunStatus(t *testing.T) {
 									},
 								},
 							},
+							{
+								BeforeStageTasks: []placementv1beta1.StageTask{
+									{
+										Type:     placementv1beta1.StageTaskTypeApproval,
+										WaitTime: &waitTime,
+									},
+								},
+							},
 						},
 					},
 				},
@@ -1043,6 +1051,13 @@ func TestRemoveWaitTimeFromUpdateRunStatus(t *testing.T) {
 										Type:     placementv1beta1.StageTaskTypeTimedWait,
 										WaitTime: &waitTime,
 									},
+									{
+										Type: placementv1beta1.StageTaskTypeApproval,
+									},
+								},
+							},
+							{
+								BeforeStageTasks: []placementv1beta1.StageTask{
 									{
 										Type: placementv1beta1.StageTaskTypeApproval,
 									},
