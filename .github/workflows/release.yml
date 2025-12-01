@@ -35,7 +35,7 @@ jobs:
       - id: export
         run: |
           # registry must be in lowercase
-          echo "registry=$(echo "${{ env.REGISTRY }}/${{ github.repository }}" | tr [:upper:] [:lower:])" >> $GITHUB_OUTPUT
+          echo "registry=$(echo "${{ env.REGISTRY }}/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
           
           # Extract tag from github ref or workflow input
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -66,19 +66,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6.0.0
 
-      - name: Login to ${{ env.REGISTRY }}
+      - name: Login to ghcr.io
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push images with tag ${{ env.TAG }}
         run: |
           make push
-        env:
-          REGISTRY: ${{ env.REGISTRY }}
-          TAG: ${{ env.TAG }}
 
       - name: Verify images
         run: |
