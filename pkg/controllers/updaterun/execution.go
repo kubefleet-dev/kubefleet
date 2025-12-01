@@ -75,8 +75,6 @@ func (r *Reconciler) execute(
 				// Handle deletion stage case.
 				markStageUpdatingFailed(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration(), err.Error())
 			}
-			waitTime = 0
-			finished = true
 		}
 	}()
 

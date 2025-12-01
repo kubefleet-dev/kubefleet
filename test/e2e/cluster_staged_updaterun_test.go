@@ -1344,95 +1344,11 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should approve after-stage cluster approval request using kubectl-fleet approve plugin for canary stage", func() {
-			var approvalRequestName string
-
-			// Get the cluster approval request name.
-			Eventually(func() error {
-				appReqList := &placementv1beta1.ClusterApprovalRequestList{}
-				if err := hubClient.List(ctx, appReqList, client.MatchingLabels{
-					placementv1beta1.TargetUpdatingStageNameLabel: envCanary,
-					placementv1beta1.TargetUpdateRunLabel:         updateRunName,
-				}); err != nil {
-					return fmt.Errorf("failed to list approval requests: %w", err)
-				}
-
-				if len(appReqList.Items) != 1 {
-					return fmt.Errorf("want 1 approval request, got %d", len(appReqList.Items))
-				}
-
-				approvalRequestName = appReqList.Items[0].Name
-				return nil
-			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to get approval request name")
-
-			// Use kubectl-fleet approve plugin to approve the request
-			cmd := exec.Command(fleetBinaryPath, "approve", "clusterapprovalrequest",
-				"--hubClusterContext", "kind-hub",
-				"--name", approvalRequestName)
-			output, err := cmd.CombinedOutput()
-			Expect(err).ToNot(HaveOccurred(), "kubectl-fleet approve failed: %s", string(output))
-
-			// Verify the approval request is approved
-			Eventually(func() error {
-				var appReq placementv1beta1.ClusterApprovalRequest
-				if err := hubClient.Get(ctx, client.ObjectKey{Name: approvalRequestName}, &appReq); err != nil {
-					return fmt.Errorf("failed to get approval request: %w", err)
-				}
-
-				approvedCondition := meta.FindStatusCondition(appReq.Status.Conditions, string(placementv1beta1.ApprovalRequestConditionApproved))
-				if approvedCondition == nil {
-					return fmt.Errorf("approved condition not found")
-				}
-				if approvedCondition.Status != metav1.ConditionTrue {
-					return fmt.Errorf("approved condition status is %s, want True", approvedCondition.Status)
-				}
-				return nil
-			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to verify approval request is approved")
+			approveClusterApprovalRequest(envCanary, updateRunName)
 		})
 
 		It("Should approve before-stage cluster approval request using kubectl-fleet approve plugin for prod stage", func() {
-			var approvalRequestName string
-
-			// Get the cluster approval request name.
-			Eventually(func() error {
-				appReqList := &placementv1beta1.ClusterApprovalRequestList{}
-				if err := hubClient.List(ctx, appReqList, client.MatchingLabels{
-					placementv1beta1.TargetUpdatingStageNameLabel: envProd,
-					placementv1beta1.TargetUpdateRunLabel:         updateRunName,
-				}); err != nil {
-					return fmt.Errorf("failed to list approval requests: %w", err)
-				}
-
-				if len(appReqList.Items) != 1 {
-					return fmt.Errorf("want 1 approval request, got %d", len(appReqList.Items))
-				}
-
-				approvalRequestName = appReqList.Items[0].Name
-				return nil
-			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to get approval request name")
-
-			// Use kubectl-fleet approve plugin to approve the request
-			cmd := exec.Command(fleetBinaryPath, "approve", "clusterapprovalrequest",
-				"--hubClusterContext", "kind-hub",
-				"--name", approvalRequestName)
-			output, err := cmd.CombinedOutput()
-			Expect(err).ToNot(HaveOccurred(), "kubectl-fleet approve failed: %s", string(output))
-
-			// Verify the approval request is approved
-			Eventually(func() error {
-				var appReq placementv1beta1.ClusterApprovalRequest
-				if err := hubClient.Get(ctx, client.ObjectKey{Name: approvalRequestName}, &appReq); err != nil {
-					return fmt.Errorf("failed to get approval request: %w", err)
-				}
-
-				approvedCondition := meta.FindStatusCondition(appReq.Status.Conditions, string(placementv1beta1.ApprovalRequestConditionApproved))
-				if approvedCondition == nil {
-					return fmt.Errorf("approved condition not found")
-				}
-				if approvedCondition.Status != metav1.ConditionTrue {
-					return fmt.Errorf("approved condition status is %s, want True", approvedCondition.Status)
-				}
-				return nil
-			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to verify approval request is approved")
+			approveClusterApprovalRequest(envProd, updateRunName)
 		})
 
 		It("Should complete the staged update run after approval", func() {
@@ -2204,4 +2120,50 @@ func updateConfigMapSucceed(newConfigMap *corev1.ConfigMap) {
 	Expect(hubClient.Get(ctx, key, cm)).To(Succeed(), "Failed to get configmap %s in namespace %s", newConfigMap.Name, newConfigMap.Namespace)
 	cm.Data = newConfigMap.Data
 	Expect(hubClient.Update(ctx, cm)).To(Succeed(), "Failed to update configmap %s in namespace %s", newConfigMap.Name, newConfigMap.Namespace)
+}
+
+func approveClusterApprovalRequest(stageName, updateRunName string) {
+	var approvalRequestName string
+
+	// Get the cluster approval request name.
+	Eventually(func() error {
+		appReqList := &placementv1beta1.ClusterApprovalRequestList{}
+		if err := hubClient.List(ctx, appReqList, client.MatchingLabels{
+			placementv1beta1.TargetUpdatingStageNameLabel: stageName,
+			placementv1beta1.TargetUpdateRunLabel:         updateRunName,
+		}); err != nil {
+			return fmt.Errorf("failed to list approval requests: %w", err)
+		}
+
+		if len(appReqList.Items) != 1 {
+			return fmt.Errorf("want 1 approval request, got %d", len(appReqList.Items))
+		}
+
+		approvalRequestName = appReqList.Items[0].Name
+		return nil
+	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to get approval request name")
+
+	// Use kubectl-fleet approve plugin to approve the request
+	cmd := exec.Command(fleetBinaryPath, "approve", "clusterapprovalrequest",
+		"--hubClusterContext", "kind-hub",
+		"--name", approvalRequestName)
+	output, err := cmd.CombinedOutput()
+	Expect(err).ToNot(HaveOccurred(), "kubectl-fleet approve failed: %s", string(output))
+
+	// Verify the approval request is approved
+	Eventually(func() error {
+		var appReq placementv1beta1.ClusterApprovalRequest
+		if err := hubClient.Get(ctx, client.ObjectKey{Name: approvalRequestName}, &appReq); err != nil {
+			return fmt.Errorf("failed to get approval request: %w", err)
+		}
+
+		approvedCondition := meta.FindStatusCondition(appReq.Status.Conditions, string(placementv1beta1.ApprovalRequestConditionApproved))
+		if approvedCondition == nil {
+			return fmt.Errorf("approved condition not found")
+		}
+		if approvedCondition.Status != metav1.ConditionTrue {
+			return fmt.Errorf("approved condition status is %s, want True", approvedCondition.Status)
+		}
+		return nil
+	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to verify approval request is approved")
 }
