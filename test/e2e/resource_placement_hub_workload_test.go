@@ -117,23 +117,9 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 				Name:      testStatefulSet.Name,
 				Namespace: workNamespace.Name,
 			},
-			// PVCs created by StatefulSet controller from volumeClaimTemplates
-			// Kubernetes StatefulSet controller uses naming convention: <volumeClaimTemplate-name>-<statefulset-name>-<replica-index>
-			{
-				Version:   "v1",
-				Kind:      "PersistentVolumeClaim",
-				Name:      fmt.Sprintf("%s-%s-%d", testStatefulSet.Spec.VolumeClaimTemplates[0].Name, testStatefulSet.Name, 0),
-				Namespace: workNamespace.Name,
-			},
-			{
-				Version:   "v1",
-				Kind:      "PersistentVolumeClaim",
-				Name:      fmt.Sprintf("%s-%s-%d", testStatefulSet.Spec.VolumeClaimTemplates[0].Name, testStatefulSet.Name, 1),
-				Namespace: workNamespace.Name,
-			},
 		}
 		// Use customizedPlacementStatusUpdatedActual with resourceIsTrackable=false
-		// because Jobs don't have availability tracking like Deployments/DaemonSets/StatefulSets/PVCs do
+		// because Jobs don't have availability tracking like Deployments/DaemonSets/StatefulSets do
 		crpKey := types.NamespacedName{Name: crpName}
 		crpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(crpKey, wantSelectedResources, allMemberClusterNames, nil, "0", false)
 		Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")

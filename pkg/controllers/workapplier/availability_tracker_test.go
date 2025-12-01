@@ -802,100 +802,6 @@ func TestTrackPDBAvailability(t *testing.T) {
 	}
 }
 
-// TestTrackPVCAvailability tests the trackPVCAvailability function.
-func TestTrackPVCAvailability(t *testing.T) {
-	boundPVC := &corev1.PersistentVolumeClaim{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "PersistentVolumeClaim",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pvc-bound",
-			Namespace: nsName,
-		},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes: []corev1.PersistentVolumeAccessMode{
-				corev1.ReadWriteOnce,
-			},
-		},
-		Status: corev1.PersistentVolumeClaimStatus{
-			Phase: corev1.ClaimBound,
-		},
-	}
-
-	pendingPVC := &corev1.PersistentVolumeClaim{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "PersistentVolumeClaim",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pvc-pending",
-			Namespace: nsName,
-		},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes: []corev1.PersistentVolumeAccessMode{
-				corev1.ReadWriteOnce,
-			},
-		},
-		Status: corev1.PersistentVolumeClaimStatus{
-			Phase: corev1.ClaimPending,
-		},
-	}
-
-	lostPVC := &corev1.PersistentVolumeClaim{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "PersistentVolumeClaim",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pvc-lost",
-			Namespace: nsName,
-		},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes: []corev1.PersistentVolumeAccessMode{
-				corev1.ReadWriteOnce,
-			},
-		},
-		Status: corev1.PersistentVolumeClaimStatus{
-			Phase: corev1.ClaimLost,
-		},
-	}
-
-	testCases := []struct {
-		name                       string
-		pvc                        *corev1.PersistentVolumeClaim
-		wantAvailabilityResultType ManifestProcessingAvailabilityResultType
-	}{
-		{
-			name:                       "available PVC (bound)",
-			pvc:                        boundPVC,
-			wantAvailabilityResultType: AvailabilityResultTypeAvailable,
-		},
-		{
-			name:                       "unavailable PVC (pending)",
-			pvc:                        pendingPVC,
-			wantAvailabilityResultType: AvailabilityResultTypeNotYetAvailable,
-		},
-		{
-			name:                       "unavailable PVC (lost)",
-			pvc:                        lostPVC,
-			wantAvailabilityResultType: AvailabilityResultTypeNotYetAvailable,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			gotResTyp, err := trackPVCAvailability(toUnstructured(t, tc.pvc))
-			if err != nil {
-				t.Fatalf("trackPVCAvailability() = %v, want no error", err)
-			}
-			if gotResTyp != tc.wantAvailabilityResultType {
-				t.Errorf("manifestProcessingAvailabilityResultType = %v, want %v", gotResTyp, tc.wantAvailabilityResultType)
-			}
-		})
-	}
-}
-
 // TestTrackInMemberClusterObjAvailabilityByGVR tests the trackInMemberClusterObjAvailabilityByGVR function.
 func TestTrackInMemberClusterObjAvailabilityByGVR(t *testing.T) {
 	availableDeploy := deploy.DeepCopy()
@@ -966,34 +872,6 @@ func TestTrackInMemberClusterObjAvailabilityByGVR(t *testing.T) {
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "batch/v1",
 			Kind:       "Job",
-		},
-	}
-
-	availablePVC := &corev1.PersistentVolumeClaim{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "PersistentVolumeClaim",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pvc",
-			Namespace: nsName,
-		},
-		Status: corev1.PersistentVolumeClaimStatus{
-			Phase: corev1.ClaimBound,
-		},
-	}
-
-	unavailablePVC := &corev1.PersistentVolumeClaim{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "PersistentVolumeClaim",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pvc-pending",
-			Namespace: nsName,
-		},
-		Status: corev1.PersistentVolumeClaimStatus{
-			Phase: corev1.ClaimPending,
 		},
 	}
 
@@ -1116,18 +994,6 @@ func TestTrackInMemberClusterObjAvailabilityByGVR(t *testing.T) {
 			gvr:                        utils.PriorityClassGVR,
 			inMemberClusterObj:         toUnstructured(t, &schedulingv1.PriorityClass{}),
 			wantAvailabilityResultType: AvailabilityResultTypeAvailable,
-		},
-		{
-			name:                       "available persistent volume claim (bound)",
-			gvr:                        utils.PersistentVolumeClaimGVR,
-			inMemberClusterObj:         toUnstructured(t, availablePVC),
-			wantAvailabilityResultType: AvailabilityResultTypeAvailable,
-		},
-		{
-			name:                       "unavailable persistent volume claim (pending)",
-			gvr:                        utils.PersistentVolumeClaimGVR,
-			inMemberClusterObj:         toUnstructured(t, unavailablePVC),
-			wantAvailabilityResultType: AvailabilityResultTypeNotYetAvailable,
 		},
 	}
 

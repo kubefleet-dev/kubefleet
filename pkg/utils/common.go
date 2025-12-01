@@ -438,12 +438,6 @@ var (
 		Resource: "clusterrolebindings",
 	}
 
-	PersistentVolumeClaimGVR = schema.GroupVersionResource{
-		Group:    corev1.GroupName,
-		Version:  corev1.SchemeGroupVersion.Version,
-		Resource: "persistentvolumeclaims",
-	}
-
 	PersistentVolumeClaimGVK = schema.GroupVersionKind{
 		Group:   corev1.GroupName,
 		Version: corev1.SchemeGroupVersion.Version,
@@ -547,6 +541,9 @@ func ShouldPropagateObj(informerManager informer.Manager, uObj *unstructured.Uns
 		if secret.Type == corev1.SecretTypeServiceAccountToken {
 			return false, nil
 		}
+	case corev1.SchemeGroupVersion.WithKind("PersistentVolumeClaim"):
+		// Skip PersistentVolumeClaims to avoid conflicts with the PVCs created by statefulset controller
+		return false, nil
 	case corev1.SchemeGroupVersion.WithKind("Endpoints"):
 		// we assume that all endpoints with the same name of a service is created by the service controller
 		if _, err := informerManager.Lister(ServiceGVR).ByNamespace(uObj.GetNamespace()).Get(uObj.GetName()); err != nil {
