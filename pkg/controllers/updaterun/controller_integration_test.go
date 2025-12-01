@@ -563,8 +563,8 @@ func generateTestClusterStagedUpdateStrategyWithSingleStage(beforeStageTasks, af
 				{
 					Name:             "stage1",
 					LabelSelector:    &metav1.LabelSelector{}, // Select all clusters.
-					AfterStageTasks:  afterStageTasks,
 					BeforeStageTasks: beforeStageTasks,
+					AfterStageTasks:  afterStageTasks,
 				},
 			},
 		},

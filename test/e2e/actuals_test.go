@@ -2178,14 +2178,6 @@ func buildStageUpdatingStatuses(
 			stagesStatus[i].Clusters[j].ResourceOverrideSnapshots = wantROs[wantSelectedClusters[i][j]]
 			stagesStatus[i].Clusters[j].Conditions = updateRunClusterRolloutSucceedConditions(updateRun.GetGeneration())
 		}
-		stagesStatus[i].AfterStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(stage.AfterStageTasks))
-		for j, task := range stage.AfterStageTasks {
-			stagesStatus[i].AfterStageTaskStatus[j].Type = task.Type
-			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				stagesStatus[i].AfterStageTaskStatus[j].ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
-			}
-			stagesStatus[i].AfterStageTaskStatus[j].Conditions = updateRunStageTaskSucceedConditions(updateRun.GetGeneration(), task.Type)
-		}
 		stagesStatus[i].BeforeStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(stage.BeforeStageTasks))
 		for j, task := range stage.BeforeStageTasks {
 			stagesStatus[i].BeforeStageTaskStatus[j].Type = task.Type
@@ -2193,6 +2185,14 @@ func buildStageUpdatingStatuses(
 				stagesStatus[i].BeforeStageTaskStatus[j].ApprovalRequestName = fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
 			}
 			stagesStatus[i].BeforeStageTaskStatus[j].Conditions = updateRunStageTaskSucceedConditions(updateRun.GetGeneration(), task.Type)
+		}
+		stagesStatus[i].AfterStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(stage.AfterStageTasks))
+		for j, task := range stage.AfterStageTasks {
+			stagesStatus[i].AfterStageTaskStatus[j].Type = task.Type
+			if task.Type == placementv1beta1.StageTaskTypeApproval {
+				stagesStatus[i].AfterStageTaskStatus[j].ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
+			}
+			stagesStatus[i].AfterStageTaskStatus[j].Conditions = updateRunStageTaskSucceedConditions(updateRun.GetGeneration(), task.Type)
 		}
 		stagesStatus[i].Conditions = updateRunStageRolloutSucceedConditions(updateRun.GetGeneration())
 	}

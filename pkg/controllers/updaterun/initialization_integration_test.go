@@ -1010,16 +1010,6 @@ func generateSucceededInitializationStatus(
 		},
 	}
 	for i := range status.StagesStatus {
-		var afterTasks []placementv1beta1.StageTaskStatus
-		for _, task := range updateStrategy.Spec.Stages[i].AfterStageTasks {
-			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
-			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				taskStatus.ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.Name, status.StagesStatus[i].StageName)
-			}
-			afterTasks = append(afterTasks, taskStatus)
-		}
-		status.StagesStatus[i].AfterStageTaskStatus = afterTasks
-
 		var beforeTasks []placementv1beta1.StageTaskStatus
 		for _, task := range updateStrategy.Spec.Stages[i].BeforeStageTasks {
 			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
@@ -1029,6 +1019,16 @@ func generateSucceededInitializationStatus(
 			beforeTasks = append(beforeTasks, taskStatus)
 		}
 		status.StagesStatus[i].BeforeStageTaskStatus = beforeTasks
+
+		var afterTasks []placementv1beta1.StageTaskStatus
+		for _, task := range updateStrategy.Spec.Stages[i].AfterStageTasks {
+			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
+			if task.Type == placementv1beta1.StageTaskTypeApproval {
+				taskStatus.ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.Name, status.StagesStatus[i].StageName)
+			}
+			afterTasks = append(afterTasks, taskStatus)
+		}
+		status.StagesStatus[i].AfterStageTaskStatus = afterTasks
 	}
 	return status
 }
