@@ -40,14 +40,14 @@ var (
 )
 
 type resourceOverrideValidator struct {
-	client  client.Client
+	client  client.Reader
 	decoder webhook.AdmissionDecoder
 }
 
 // Add registers the webhook for K8s bulit-in object types.
 func Add(mgr manager.Manager) error {
 	hookServer := mgr.GetWebhookServer()
-	hookServer.Register(ValidationPath, &webhook.Admission{Handler: &resourceOverrideValidator{mgr.GetClient(), admission.NewDecoder(mgr.GetScheme())}})
+	hookServer.Register(ValidationPath, &webhook.Admission{Handler: &resourceOverrideValidator{mgr.GetAPIReader(), admission.NewDecoder(mgr.GetScheme())}})
 	return nil
 }
 

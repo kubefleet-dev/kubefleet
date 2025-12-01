@@ -40,14 +40,14 @@ var (
 )
 
 type clusterResourceOverrideValidator struct {
-	client  client.Client
+	client  client.Reader
 	decoder webhook.AdmissionDecoder
 }
 
 // Add registers the webhook for K8s bulit-in object types.
 func Add(mgr manager.Manager) error {
 	hookServer := mgr.GetWebhookServer()
-	hookServer.Register(ValidationPath, &webhook.Admission{Handler: &clusterResourceOverrideValidator{mgr.GetClient(), admission.NewDecoder(mgr.GetScheme())}})
+	hookServer.Register(ValidationPath, &webhook.Admission{Handler: &clusterResourceOverrideValidator{mgr.GetAPIReader(), admission.NewDecoder(mgr.GetScheme())}})
 	return nil
 }
 
@@ -80,7 +80,7 @@ func (v *clusterResourceOverrideValidator) Handle(ctx context.Context, req admis
 }
 
 // listClusterResourceOverride returns a list of cluster resource overrides.
-func listClusterResourceOverride(ctx context.Context, client client.Client) (*placementv1beta1.ClusterResourceOverrideList, error) {
+func listClusterResourceOverride(ctx context.Context, client client.Reader) (*placementv1beta1.ClusterResourceOverrideList, error) {
 	croList := &placementv1beta1.ClusterResourceOverrideList{}
 	if err := client.List(ctx, croList); err != nil {
 		klog.ErrorS(err, "Failed to list clusterResourceOverrides when validating")
