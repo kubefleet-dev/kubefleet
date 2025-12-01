@@ -250,6 +250,7 @@ docker-buildx-builder:
 	fi
 
 .PHONY: docker-build-hub-agent
+# Disable provenance attestations to prevent unknown/unknown architecture in GHCR
 docker-build-hub-agent: docker-buildx-builder
 	docker buildx build \
 		--file docker/$(HUB_AGENT_IMAGE_NAME).Dockerfile \
@@ -263,6 +264,7 @@ docker-build-hub-agent: docker-buildx-builder
 		--build-arg GOOS=$(TARGET_OS) .
 
 .PHONY: docker-build-member-agent
+# Disable provenance attestations to prevent unknown/unknown architecture in GHCR
 docker-build-member-agent: docker-buildx-builder
 	docker buildx build \
 		--file docker/$(MEMBER_AGENT_IMAGE_NAME).Dockerfile \
@@ -276,6 +278,7 @@ docker-build-member-agent: docker-buildx-builder
 		--build-arg GOOS=$(TARGET_OS) .
 
 .PHONY: docker-build-refresh-token
+# Disable provenance attestations to prevent unknown/unknown architecture in GHCR
 docker-build-refresh-token: docker-buildx-builder
 	docker buildx build \
 		--file docker/$(REFRESH_TOKEN_IMAGE_NAME).Dockerfile \
