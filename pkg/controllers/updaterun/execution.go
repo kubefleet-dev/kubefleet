@@ -64,15 +64,15 @@ func (r *Reconciler) execute(
 	toBeUpdatedBindings, toBeDeletedBindings []placementv1beta1.BindingObj,
 ) (finished bool, waitTime time.Duration, err error) {
 	updateRunStatus := updateRun.GetUpdateRunStatus()
-	var updatingStage *placementv1beta1.StageUpdatingStatus
+	var updatingStageStatus *placementv1beta1.StageUpdatingStatus
 
-	// Set up defer function to handle errStagedUpdatedAborted
+	// Set up defer function to handle errStagedUpdatedAborted.
 	defer func() {
 		if errors.Is(err, errStagedUpdatedAborted) {
-			if updatingStage != nil {
-				markStageUpdatingFailed(updatingStage, updateRun.GetGeneration(), err.Error())
+			if updatingStageStatus != nil {
+				markStageUpdatingFailed(updatingStageStatus, updateRun.GetGeneration(), err.Error())
 			} else {
-				// Handle deletion stage case
+				// Handle deletion stage case.
 				markStageUpdatingFailed(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration(), err.Error())
 			}
 			waitTime = 0
@@ -89,14 +89,14 @@ func (r *Reconciler) execute(
 		if err != nil {
 			return false, 0, err
 		}
-		updatingStage = &updateRunStatus.StagesStatus[updatingStageIndex]
+		updatingStageStatus = &updateRunStatus.StagesStatus[updatingStageIndex]
 		approved, err := r.checkBeforeStageTasksStatus(ctx, updatingStageIndex, updateRun)
 		if err != nil {
 			return false, 0, err
 		}
 		if !approved {
-			markStageUpdatingWaiting(updatingStage, updateRun.GetGeneration(), "Not all before-stage tasks are completed, waiting for approval")
-			markUpdateRunWaiting(updateRun, fmt.Sprintf(condition.UpdateRunWaitingMessageFmt, "before-stage", updatingStage.StageName))
+			markStageUpdatingWaiting(updatingStageStatus, updateRun.GetGeneration(), "Not all before-stage tasks are completed, waiting for approval")
+			markUpdateRunWaiting(updateRun, fmt.Sprintf(condition.UpdateRunWaitingMessageFmt, "before-stage", updatingStageStatus.StageName))
 			return false, stageUpdatingWaitTime, nil
 		}
 		waitTime, err = r.executeUpdatingStage(ctx, updateRun, updatingStageIndex, toBeUpdatedBindings, maxConcurrency)
