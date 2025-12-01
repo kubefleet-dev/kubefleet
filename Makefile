@@ -255,6 +255,7 @@ docker-build-hub-agent: docker-buildx-builder
 		--file docker/$(HUB_AGENT_IMAGE_NAME).Dockerfile \
 		--output=$(OUTPUT_TYPE) \
 		--platform=$(TARGET_OS)/$(TARGET_ARCH) \
+		--provenance=false \
 		--pull \
 		--tag $(REGISTRY)/$(HUB_AGENT_IMAGE_NAME):$(HUB_AGENT_IMAGE_VERSION) \
 		--progress=$(BUILDKIT_PROGRESS_TYPE) \
@@ -267,6 +268,7 @@ docker-build-member-agent: docker-buildx-builder
 		--file docker/$(MEMBER_AGENT_IMAGE_NAME).Dockerfile \
 		--output=$(OUTPUT_TYPE) \
 		--platform=$(TARGET_OS)/$(TARGET_ARCH) \
+		--provenance=false \
 		--pull \
 		--tag $(REGISTRY)/$(MEMBER_AGENT_IMAGE_NAME):$(MEMBER_AGENT_IMAGE_VERSION) \
 		--progress=$(BUILDKIT_PROGRESS_TYPE) \
@@ -279,6 +281,7 @@ docker-build-refresh-token: docker-buildx-builder
 		--file docker/$(REFRESH_TOKEN_IMAGE_NAME).Dockerfile \
 		--output=$(OUTPUT_TYPE) \
 		--platform=$(TARGET_OS)/$(TARGET_ARCH) \
+		--provenance=false \
 		--pull \
 		--tag $(REGISTRY)/$(REFRESH_TOKEN_IMAGE_NAME):$(REFRESH_TOKEN_IMAGE_VERSION) \
 		--progress=$(BUILDKIT_PROGRESS_TYPE) \
