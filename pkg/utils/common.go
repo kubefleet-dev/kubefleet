@@ -55,6 +55,15 @@ import (
 )
 
 const (
+	// DefaultRequeueAfterDuration is the default duration after which to requeue a reconcile request.
+	// This is used when a controller wants to requeue immediately. A small duration is used to mimic immediate requeue
+	// that Controller-Runtimes deprecated Requeue=true previously provided.
+	// For more details, see: https://github.com/kubernetes-sigs/controller-runtime/pull/3107
+	// The value needs to be small enough to avoid noticeable delay, but greater than 0 as RequeueAfter=0 is treated as no requeue.
+	DefaultRequeueAfterDuration = time.Microsecond * 1
+)
+
+const (
 	kubePrefix                 = "kube-"
 	fleetPrefix                = "fleet-"
 	fleetMemberNamespacePrefix = fleetPrefix + "member-"

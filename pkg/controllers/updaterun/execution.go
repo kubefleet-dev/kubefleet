@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	bindingutils "github.com/kubefleet-dev/kubefleet/pkg/utils/binding"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
@@ -428,7 +429,7 @@ func (r *Reconciler) checkAfterStageTasksStatus(ctx context.Context, updatingSta
 		}
 	}
 	if passed {
-		afterStageWaitTime = 0
+		afterStageWaitTime = utils.DefaultRequeueAfterDuration
 	}
 	return passed, afterStageWaitTime, nil
 }

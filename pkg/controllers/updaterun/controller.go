@@ -124,7 +124,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 			// Update the status to indicate that the updateRun is initializing.
 			// Requeue immediately to continue with initialization.
 			klog.V(2).InfoS("The updateRun is initializing", "state", state, "updateRun", runObjRef)
-			return runtime.Result{RequeueAfter: 1}, r.recordUpdateRunInitializing(ctx, updateRun)
+			return runtime.Result{RequeueAfter: utils.DefaultRequeueAfterDuration}, r.recordUpdateRunInitializing(ctx, updateRun)
 		}
 
 		var initErr error
@@ -188,9 +188,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 			return runtime.Result{}, execErr
 		}
 		if waitTime == 0 {
-			// If update run is not finished and waitTime is zero, the waitTime needs to be update to a non-zero value
+			// If update run is not finished and the waitTime needs to be update to a non-zero value or default requeue duration,
 			// as we are using RequeueAfter only since Requeue is deprecated.
-			return runtime.Result{RequeueAfter: 1}, nil
+			return runtime.Result{RequeueAfter: utils.DefaultRequeueAfterDuration}, nil
 		}
 		return runtime.Result{RequeueAfter: waitTime}, nil
 	}
