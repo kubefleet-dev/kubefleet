@@ -60,16 +60,6 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 		updateRun = generateTestClusterStagedUpdateRun()
 		crp = generateTestClusterResourcePlacement()
 		updateStrategy = generateTestClusterStagedUpdateStrategy()
-		updateStrategy.Spec.Stages[0].BeforeStageTasks = []placementv1beta1.StageTask{
-			{
-				Type: placementv1beta1.StageTaskTypeApproval,
-			},
-		}
-		updateStrategy.Spec.Stages[1].BeforeStageTasks = []placementv1beta1.StageTask{
-			{
-				Type: placementv1beta1.StageTaskTypeApproval,
-			},
-		}
 		clusterResourceOverride = generateTestClusterResourceOverride()
 		resourceBindings, targetClusters, unscheduledClusters = generateTestClusterResourceBindingsAndClusters(1)
 		policySnapshot = generateTestClusterSchedulingPolicySnapshot(1, len(targetClusters))

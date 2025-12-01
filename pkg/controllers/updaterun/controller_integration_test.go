@@ -505,6 +505,11 @@ func generateTestClusterStagedUpdateStrategy() *placementv1beta1.ClusterStagedUp
 						},
 					},
 					SortingLabelKey: &sortingKey,
+					BeforeStageTasks: []placementv1beta1.StageTask{
+						{
+							Type: placementv1beta1.StageTaskTypeApproval,
+						},
+					},
 					AfterStageTasks: []placementv1beta1.StageTask{
 						{
 							Type: placementv1beta1.StageTaskTypeTimedWait,
@@ -526,6 +531,11 @@ func generateTestClusterStagedUpdateStrategy() *placementv1beta1.ClusterStagedUp
 						},
 					},
 					// no sortingLabelKey, should sort by cluster name
+					BeforeStageTasks: []placementv1beta1.StageTask{
+						{
+							Type: placementv1beta1.StageTaskTypeApproval,
+						},
+					},
 					AfterStageTasks: []placementv1beta1.StageTask{
 						{
 							Type: placementv1beta1.StageTaskTypeApproval,
