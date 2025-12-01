@@ -37,7 +37,7 @@ require (
 	sigs.k8s.io/cloud-provider-azure v1.32.4
 	sigs.k8s.io/cloud-provider-azure/pkg/azclient v0.5.20
 	sigs.k8s.io/cluster-inventory-api v0.0.0-20251028164203-2e3fabb46733
-	sigs.k8s.io/controller-runtime v0.21.0
+	sigs.k8s.io/controller-runtime v0.22.4
 )
 
 require (
