@@ -120,13 +120,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 			return runtime.Result{}, nil
 		}
 
-		if initCond == nil {
-			// Update the status to indicate that the updateRun is initializing.
-			// Requeue immediately to continue with initialization.
-			klog.V(2).InfoS("The updateRun is initializing", "state", state, "updateRun", runObjRef)
-			return runtime.Result{RequeueAfter: utils.DefaultRequeueAfterDuration}, r.recordUpdateRunInitializing(ctx, updateRun)
-		}
-
+		// Initialize the updateRun.
 		var initErr error
 		if toBeUpdatedBindings, toBeDeletedBindings, initErr = r.initialize(ctx, updateRun); initErr != nil {
 			klog.ErrorS(initErr, "Failed to initialize the updateRun", "updateRun", runObjRef)
@@ -165,7 +159,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	}
 
 	// Execute the updateRun.
-	if state == placementv1beta1.StateStarted {
+	if state == placementv1beta1.StateExecute {
 		klog.V(2).InfoS("Continue to execute the updateRun", "state", state, "updatingStageIndex", updatingStageIndex, "updateRun", runObjRef)
 		finished, waitTime, execErr := r.execute(ctx, updateRun, updatingStageIndex, toBeUpdatedBindings, toBeDeletedBindings)
 		if errors.Is(execErr, errStagedUpdatedAborted) {
@@ -188,7 +182,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 			return runtime.Result{}, execErr
 		}
 		if waitTime == 0 {
-			// If update run is not finished and the waitTime needs to be update to a non-zero value or default requeue duration,
+			// If update run is not finished and the waitTime needs to be updated to a non-zero value or default requeue duration,
 			// as we are using RequeueAfter only since Requeue is deprecated.
 			return runtime.Result{RequeueAfter: utils.DefaultRequeueAfterDuration}, nil
 		}

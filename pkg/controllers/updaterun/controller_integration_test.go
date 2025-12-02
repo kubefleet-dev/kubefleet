@@ -292,16 +292,6 @@ func generateInitializationFailedMetric(updateRun *placementv1beta1.ClusterStage
 	}
 }
 
-func generateInitializationUnknownMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
-	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionInitialized),
-			string(metav1.ConditionUnknown), condition.UpdateRunInitializingReason),
-		Gauge: &prometheusclientmodel.Gauge{
-			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
-		},
-	}
-}
-
 func generateProgressingMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
 		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionProgressing),
@@ -361,7 +351,7 @@ func generateTestClusterStagedUpdateRun() *placementv1beta1.ClusterStagedUpdateR
 			PlacementName:            testCRPName,
 			ResourceSnapshotIndex:    testResourceSnapshotIndex,
 			StagedUpdateStrategyName: testUpdateStrategyName,
-			State:                    placementv1beta1.StateStarted,
+			State:                    placementv1beta1.StateExecute,
 		},
 	}
 }

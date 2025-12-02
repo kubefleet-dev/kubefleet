@@ -24,7 +24,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	io_prometheus_client "github.com/prometheus/client_model/go"
+	promclient "github.com/prometheus/client_model/go"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -1519,10 +1519,10 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 	})
 
 	Context("Cluster staged update run should update clusters one by one - different states (Initialized -> Execute)", Ordered, func() {
-		var wantMetrics []*io_prometheus_client.Metric
+		var wantMetrics []*promclient.Metric
 		BeforeAll(func() {
 			By("Creating a new clusterStagedUpdateRun")
-			updateRun.Spec.State = placementv1beta1.StateNotStarted
+			updateRun.Spec.State = placementv1beta1.StateInitialize
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 			By("Validating the initialization succeeded and but not execution started")
@@ -1552,7 +1552,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 
 		It("Should start execution after changing the state to Execute", func() {
 			By("Updating the updateRun state to Execute")
-			updateRun.Spec.State = placementv1beta1.StateStarted
+			updateRun.Spec.State = placementv1beta1.StateExecute
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
 
 			By("Validating the execution has started")

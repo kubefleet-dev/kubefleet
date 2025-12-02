@@ -629,25 +629,6 @@ func (r *Reconciler) recordInitializationSucceeded(ctx context.Context, updateRu
 	return nil
 }
 
-// recordUpdateRunInitializing records the unknown initialization condition in the UpdateRun status.
-// The UpdateRun is currently initializing.
-func (r *Reconciler) recordUpdateRunInitializing(ctx context.Context, updateRun placementv1beta1.UpdateRunObj) error {
-	updateRunStatus := updateRun.GetUpdateRunStatus()
-	meta.SetStatusCondition(&updateRunStatus.Conditions, metav1.Condition{
-		Type:               string(placementv1beta1.StagedUpdateRunConditionInitialized),
-		Status:             metav1.ConditionUnknown,
-		ObservedGeneration: updateRun.GetGeneration(),
-		Reason:             condition.UpdateRunInitializingReason,
-		Message:            "the UpdateRun is in the process of initializing",
-	})
-	if updateErr := r.Client.Status().Update(ctx, updateRun); updateErr != nil {
-		klog.ErrorS(updateErr, "Failed to update the UpdateRun status as initializing", "updateRun", klog.KObj(updateRun))
-		// updateErr can be retried.
-		return controller.NewUpdateIgnoreConflictError(updateErr)
-	}
-	return nil
-}
-
 // recordInitializationFailed records the failed initialization condition in the updateRun status.
 func (r *Reconciler) recordInitializationFailed(ctx context.Context, updateRun placementv1beta1.UpdateRunObj, message string) error {
 	updateRunStatus := updateRun.GetUpdateRunStatus()
