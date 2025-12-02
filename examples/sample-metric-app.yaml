@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
       - name: metric-app
-        image: ghcr.io/metric-app:6d6cd69
+        image: metric-app:latest
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080

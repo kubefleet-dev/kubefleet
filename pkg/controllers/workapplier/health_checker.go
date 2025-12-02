@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 )
 
@@ -69,6 +70,13 @@ func (d *DeploymentHealthChecker) IsWorkloadHealthy(ctx context.Context, gvr sch
 		klog.V(2).InfoS("Failed to collect health metrics, assuming healthy",
 			"deployment", klog.KObj(&deploy), "error", err)
 		return true, "failed to query prometheus, assuming healthy", nil
+	}
+
+	if len(workloadMetrics) > 0 {
+		klog.V(2).InfoS("Collected workload health metrics", "deployment",
+			types.NamespacedName{Namespace: deploy.Namespace, Name: deploy.Name}, "metricsCount",
+			len(workloadMetrics), "workload", types.NamespacedName{Namespace: workloadMetrics[0].Namespace, Name: workloadMetrics[0].WorkloadName},
+			"health", workloadMetrics[0].Health)
 	}
 
 	// 3. Find this deployment's health
