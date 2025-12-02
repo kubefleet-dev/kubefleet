@@ -181,12 +181,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		if execErr != nil {
 			return runtime.Result{}, execErr
 		}
-		if waitTime == 0 {
-			// If update run is not finished and the waitTime needs to be updated to a non-zero value or default requeue duration,
-			// as we are using RequeueAfter only since Requeue is deprecated.
-			return runtime.Result{RequeueAfter: utils.DefaultRequeueAfterDuration}, nil
-		}
-		return runtime.Result{RequeueAfter: waitTime}, nil
+		return runtime.Result{Requeue: true, RequeueAfter: waitTime}, nil
 	}
 	klog.V(2).InfoS("The updateRun is not started, waiting to be started", "state", state, "updateRun", runObjRef)
 	return runtime.Result{}, nil
