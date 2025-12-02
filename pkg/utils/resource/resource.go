@@ -51,9 +51,8 @@ func IsObjOversized(obj runtime.Object, sizeLimitBytes int) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("cannot determine object size: %w", err)
 	}
-
-	if len(jsonBytes) > sizeLimitBytes {
-		return len(jsonBytes) - sizeLimitBytes, nil
+	if sizeLimitBytes < 0 {
+		return 0, fmt.Errorf("size limit must be non-negative")
 	}
-	return sizeLimitBytes - len(jsonBytes), nil
+	return len(jsonBytes) - sizeLimitBytes, nil
 }

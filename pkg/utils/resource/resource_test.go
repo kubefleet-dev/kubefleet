@@ -19,7 +19,10 @@ package resource
 import (
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestHashOf(t *testing.T) {
@@ -47,6 +50,63 @@ func TestHashOf(t *testing.T) {
 			}
 			if len(got) == 0 {
 				t.Errorf("HashOf() got empty, want not empty")
+			}
+		})
+	}
+}
+
+// TestIsObjOversized tests the IsObjOversized function.
+func TestIsObjOversized(t *testing.T) {
+	cm := &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "ConfigMap",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "app",
+			Namespace: "default",
+		},
+		Data: map[string]string{
+			"key": "value",
+		},
+	}
+
+	testCases := []struct {
+		name               string
+		sizeLimitBytes     int
+		wantErred          bool
+		wantSizeDeltaBytes int
+	}{
+		{
+			name:               "positize size delta",
+			sizeLimitBytes:     10000,
+			wantSizeDeltaBytes: -9866,
+		},
+		{
+			name:               "negative size delta",
+			sizeLimitBytes:     1,
+			wantSizeDeltaBytes: 133,
+		},
+		{
+			name: "negative size limit",
+			// Invalid size limit.
+			sizeLimitBytes: -1,
+			wantErred:      true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			sizeDeltaBytes, err := IsObjOversized(cm, tc.sizeLimitBytes)
+
+			if tc.wantErred {
+				if err == nil {
+					t.Fatalf("IsObjOversized() error = nil, want erred")
+				}
+				return
+			}
+			if !cmp.Equal(sizeDeltaBytes, tc.wantSizeDeltaBytes) {
+				t.Errorf("IsObjOversized() = %d, want %d", sizeDeltaBytes, tc.wantSizeDeltaBytes)
 			}
 		})
 	}
