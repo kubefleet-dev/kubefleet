@@ -40,6 +40,8 @@ var (
 )
 
 type resourceOverrideValidator struct {
+	// Note: we have to use the uncached client here to avoid getting stale data
+	// since we need to guarantee that a resource cannot be selected by multiple overrides.
 	client  client.Reader
 	decoder webhook.AdmissionDecoder
 }
