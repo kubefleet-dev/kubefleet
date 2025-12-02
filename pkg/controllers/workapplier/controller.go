@@ -229,6 +229,11 @@ type Reconciler struct {
 	joined                       *atomic.Bool
 	parallelizer                 parallelizerutil.Parallelizer
 	requeueRateLimiter           *RequeueMultiStageWithExponentialBackoffRateLimiter
+	// Prometheus health checking fields
+	prometheusClient     PrometheusClient
+	prometheusURL        string
+	prometheusDiscovered *atomic.Bool
+	prometheusAvailable  *atomic.Bool
 }
 
 // NewReconciler returns a new Work object reconciler for the work applier.
@@ -266,6 +271,11 @@ func NewReconciler(
 		joined:                       atomic.NewBool(false),
 		deletionWaitTime:             deletionWaitTime,
 		requeueRateLimiter:           requeueRateLimiter,
+		// Initialize Prometheus health checking fields
+		prometheusClient:     nil,
+		prometheusURL:        "",
+		prometheusDiscovered: atomic.NewBool(false),
+		prometheusAvailable:  atomic.NewBool(false),
 	}
 }
 

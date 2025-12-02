@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package metriccollector
+package workapplier
 
 import (
 	"context"
@@ -28,14 +28,12 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/klog/v2"
-
-	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
 // PrometheusClient is the interface for querying Prometheus
 type PrometheusClient interface {
 	Query(ctx context.Context, query string) (interface{}, error)
+	CollectWorkloadHealthMetrics(ctx context.Context, namespace string) ([]WorkloadMetrics, error)
 }
 
 // prometheusClient implements PrometheusClient for querying Prometheus API
@@ -127,8 +125,55 @@ func (c *prometheusClient) addAuth(req *http.Request) error {
 		auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", username, password)))
 		req.Header.Set("Authorization", fmt.Sprintf("Basic %s", auth))
 	}
-
 	return nil
+}
+
+// CollectWorkloadHealthMetrics queries Prometheus for all workload_health metrics in a namespace.
+func (c *prometheusClient) CollectWorkloadHealthMetrics(ctx context.Context, namespace string) ([]WorkloadMetrics, error) {
+	// Build PromQL query
+	query := fmt.Sprintf(`workload_health{namespace="%s"}`, namespace)
+
+	// Execute query
+	result, err := c.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query Prometheus: %w", err)
+	}
+
+	// Parse response
+	data, ok := result.(PrometheusData)
+	if !ok {
+		return nil, fmt.Errorf("invalid Prometheus response type")
+	}
+
+	// Extract metrics for each workload
+	workloadMetrics := make([]WorkloadMetrics, 0, len(data.Result))
+	for _, res := range data.Result {
+		namespace := res.Metric["namespace"]
+		clusterName := res.Metric["cluster_name"]
+		workloadName := res.Metric["workload_name"]
+
+		if namespace == "" || workloadName == "" {
+			continue
+		}
+
+		// Extract health value
+		var health float64
+		if len(res.Value) >= 2 {
+			if valueStr, ok := res.Value[1].(string); ok {
+				fmt.Sscanf(valueStr, "%f", &health)
+			}
+		}
+
+		wm := WorkloadMetrics{
+			Namespace:    namespace,
+			ClusterName:  clusterName,
+			WorkloadName: workloadName,
+			Health:       health == 1.0, // Convert to boolean: 1.0 = true, 0.0 = false
+		}
+		workloadMetrics = append(workloadMetrics, wm)
+	}
+
+	return workloadMetrics, nil
 }
 
 // PrometheusResponse represents the Prometheus API response
@@ -148,62 +193,4 @@ type PrometheusData struct {
 type PrometheusResult struct {
 	Metric map[string]string `json:"metric"`
 	Value  []interface{}     `json:"value"` // [timestamp, value]
-}
-
-// collectFromPrometheus collects metrics from a Prometheus endpoint
-func (r *Reconciler) collectFromPrometheus(ctx context.Context, mc *placementv1beta1.MetricCollector) ([]placementv1beta1.WorkloadMetrics, error) {
-	// Create Prometheus client without auth (simplified)
-	promClient := NewPrometheusClient(mc.Spec.PrometheusURL, "", nil)
-
-	// Build PromQL query for workload_health metric with label selector
-	query := buildPromQLQuery(mc)
-	klog.V(4).InfoS("Executing PromQL query", "query", query)
-
-	result, err := promClient.Query(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query Prometheus: %w", err)
-	}
-
-	// Parse Prometheus response
-	data, ok := result.(PrometheusData)
-	if !ok {
-		return nil, fmt.Errorf("invalid Prometheus response type")
-	}
-
-	// Extract metrics for each workload
-	workloadMetrics := make([]placementv1beta1.WorkloadMetrics, 0, len(data.Result))
-	for _, res := range data.Result {
-		namespace := res.Metric["namespace"]
-		clusterName := res.Metric["cluster_name"]
-		workloadName := res.Metric["workload_name"]
-
-		if namespace == "" || clusterName == "" || workloadName == "" {
-			continue
-		}
-
-		// Extract health value
-		var health float64
-		if len(res.Value) >= 2 {
-			if valueStr, ok := res.Value[1].(string); ok {
-				fmt.Sscanf(valueStr, "%f", &health)
-			}
-		}
-
-		wm := placementv1beta1.WorkloadMetrics{
-			Namespace:    namespace,
-			ClusterName:  clusterName,
-			WorkloadName: workloadName,
-			Health:       health == 1.0, // Convert to boolean: 1.0 = true, 0.0 = false
-		}
-		workloadMetrics = append(workloadMetrics, wm)
-	}
-
-	klog.V(2).InfoS("Collected metrics from Prometheus", "workloads", len(workloadMetrics))
-	return workloadMetrics, nil
-}
-
-// buildPromQLQuery builds a PromQL query for workload_health metric
-func buildPromQLQuery(mc *placementv1beta1.MetricCollector) string {
-	// Query all workload_health metrics in the MetricCollector's namespace
-	return fmt.Sprintf(`workload_health{namespace="%s"}`, mc.Namespace)
 }

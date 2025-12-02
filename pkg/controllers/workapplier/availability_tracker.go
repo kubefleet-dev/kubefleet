@@ -65,7 +65,7 @@ func (r *Reconciler) trackInMemberClusterObjAvailability(ctx context.Context, bu
 			return
 		}
 
-		availabilityResTyp, err := trackInMemberClusterObjAvailabilityByGVR(bundle.gvr, bundle.inMemberClusterObj)
+		availabilityResTyp, err := r.trackInMemberClusterObjAvailabilityByGVR(childCtx, bundle.gvr, bundle.inMemberClusterObj)
 		if err != nil {
 			// An unexpected error has occurred during the availability check.
 			bundle.availabilityErr = err
@@ -87,13 +87,14 @@ func (r *Reconciler) trackInMemberClusterObjAvailability(ctx context.Context, bu
 
 // trackInMemberClusterObjAvailabilityByGVR tracks the availability of an object in the member cluster based
 // on its GVR.
-func trackInMemberClusterObjAvailabilityByGVR(
+func (r *Reconciler) trackInMemberClusterObjAvailabilityByGVR(
+	ctx context.Context,
 	gvr *schema.GroupVersionResource,
 	inMemberClusterObj *unstructured.Unstructured,
 ) (ManifestProcessingAvailabilityResultType, error) {
 	switch *gvr {
 	case utils.DeploymentGVR:
-		return trackDeploymentAvailability(inMemberClusterObj)
+		return r.trackDeploymentAvailability(ctx, inMemberClusterObj)
 	case utils.StatefulSetGVR:
 		return trackStatefulSetAvailability(inMemberClusterObj)
 	case utils.DaemonSetGVR:
@@ -117,7 +118,7 @@ func trackInMemberClusterObjAvailabilityByGVR(
 }
 
 // trackDeploymentAvailability tracks the availability of a deployment in the member cluster.
-func trackDeploymentAvailability(inMemberClusterObj *unstructured.Unstructured) (ManifestProcessingAvailabilityResultType, error) {
+func (r *Reconciler) trackDeploymentAvailability(ctx context.Context, inMemberClusterObj *unstructured.Unstructured) (ManifestProcessingAvailabilityResultType, error) {
 	var deploy appv1.Deployment
 	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(inMemberClusterObj.Object, &deploy); err != nil {
 		// Normally this branch should never run.
@@ -135,6 +136,36 @@ func trackDeploymentAvailability(inMemberClusterObj *unstructured.Unstructured) 
 		requiredReplicas == deploy.Status.AvailableReplicas &&
 		requiredReplicas == deploy.Status.UpdatedReplicas &&
 		deploy.Status.UnavailableReplicas == 0 {
+
+		// Deployment is available, now check health from Prometheus
+
+		// Discover Prometheus if not already done
+		if !r.prometheusDiscovered.Load() {
+			if err := r.discoverPrometheus(ctx, deploy.Namespace); err != nil {
+				klog.V(2).InfoS("Failed to discover Prometheus, skipping health check",
+					"deployment", klog.KObj(&deploy), "error", err)
+			}
+		}
+
+		// If Prometheus available, check health
+		if r.prometheusAvailable.Load() && r.prometheusClient != nil {
+			// Create health checker with the Reconciler's prometheusClient
+			healthChecker := NewDeploymentHealthChecker(r.prometheusClient)
+
+			healthy, reason, err := healthChecker.IsWorkloadHealthy(ctx, utils.DeploymentGVR, inMemberClusterObj)
+			if err != nil {
+				klog.V(2).InfoS("Health check failed, assuming healthy",
+					"deployment", klog.KObj(&deploy), "error", err)
+			} else if !healthy {
+				klog.V(2).InfoS("Deployment is available but unhealthy",
+					"deployment", klog.KObj(&deploy), "reason", reason)
+				return AvailabilityResultTypeNotYetAvailable, nil
+			} else {
+				klog.V(2).InfoS("Deployment is available and healthy",
+					"deployment", klog.KObj(&deploy), "reason", reason)
+			}
+		}
+
 		klog.V(2).InfoS("Deployment is available", "deployment", klog.KObj(inMemberClusterObj))
 		return AvailabilityResultTypeAvailable, nil
 	}
