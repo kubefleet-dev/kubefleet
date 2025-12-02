@@ -690,7 +690,7 @@ func prepareRebuiltManifestCondQIdx(bundles []*manifestProcessingBundle) map[str
 	return rebuiltManifestCondQIdx
 }
 
-// trimWorkStatusDataWhenOverSized trims some data from the Work object status when the object
+// trimWorkStatusDataWhenOversized trims some data from the Work object status when the object
 // reaches its size limit.
 func trimWorkStatusDataWhenOversized(work *fleetv1beta1.Work) {
 	// Trim drift/diff details + back-reported status from the Work object status.
