@@ -1588,7 +1588,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 
 		It("Should create a staged update run successfully", func() {
 			By("Creating staged update run in Initialize state")
-			createStagedUpdateRunSucceed(updateRunNames[0], testNamespace, rpName, resourceSnapshotIndex1st, strategyName, placementv1beta1.StateExecute)
+			createStagedUpdateRunSucceed(updateRunNames[0], testNamespace, rpName, resourceSnapshotIndex1st, strategyName, placementv1beta1.StateInitialize)
 		})
 
 		It("Should not start rollout as the update run is in Initialize state", func() {
