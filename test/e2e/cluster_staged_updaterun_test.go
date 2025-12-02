@@ -1754,10 +1754,12 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			crpStatusUpdatedActual := crpStatusWithExternalStrategyActual(nil, "", false, allMemberClusterNames, []string{"", resourceSnapshotIndex1st, ""}, []bool{false, true, false}, nil, nil)
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
 
-			validateAndApproveClusterApprovalRequests(updateRunNames[0], envCanary)
+			validateAndApproveClusterApprovalRequests(updateRunNames[0], envCanary, placementv1beta1.AfterStageApprovalTaskNameFmt)
 		})
 
 		It("Should rollout resources to all the members and complete the cluster staged update run successfully", func() {
+			validateAndApproveClusterApprovalRequests(updateRunNames[0], envProd, placementv1beta1.BeforeStageApprovalTaskNameFmt)
+
 			csurSucceededActual := clusterStagedUpdateRunStatusSucceededActual(updateRunNames[0], resourceSnapshotIndex1st, policySnapshotIndex1st, len(allMemberClusters), defaultApplyStrategy, &strategy.Spec, [][]string{{allMemberClusterNames[1]}, {allMemberClusterNames[0], allMemberClusterNames[2]}}, nil, nil, nil)
 			Eventually(csurSucceededActual, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s succeeded", updateRunNames[0])
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
