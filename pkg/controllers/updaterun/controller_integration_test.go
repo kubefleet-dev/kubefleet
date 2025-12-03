@@ -779,8 +779,6 @@ func generateTrueCondition(obj client.Object, condType any) metav1.Condition {
 		typeStr = string(cond)
 	case placementv1beta1.ResourceBindingConditionType:
 		switch cond {
-		case placementv1beta1.ResourceBindingRolloutStarted:
-			reason = condition.RolloutStartedReason
 		case placementv1beta1.ResourceBindingAvailable:
 			reason = condition.AvailableReason
 		case placementv1beta1.ResourceBindingDiffReported:

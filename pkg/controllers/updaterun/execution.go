@@ -443,8 +443,8 @@ func (r *Reconciler) handleStageApprovalTask(
 ) (bool, error) {
 	updateRunRef := klog.KObj(updateRun)
 
-	approvedRequestCond := meta.FindStatusCondition(stageTaskStatus.Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestApproved))
-	if approvedRequestCond != nil && approvedRequestCond.Status == metav1.ConditionTrue {
+	stageTaskApproved := condition.IsConditionStatusTrue(meta.FindStatusCondition(stageTaskStatus.Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestApproved)), updateRun.GetGeneration())
+	if stageTaskApproved {
 		// The stageTask has been approved.
 		return true, nil
 	}
