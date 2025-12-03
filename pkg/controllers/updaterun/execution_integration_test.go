@@ -782,7 +782,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 
 		It("Should start abandoning the update run when state is Abandon", func() {
 			By("Updating updateRun state to Abandon")
-			updateRun.Spec.State = placementv1beta1.StateAbandon
+			updateRun.Spec.State = placementv1beta1.StateAbandoned
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
 
 			By("Validating update run is abandoning")

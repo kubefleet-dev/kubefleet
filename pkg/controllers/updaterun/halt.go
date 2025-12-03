@@ -37,7 +37,7 @@ func (r *Reconciler) haltUpdateRun(
 	updatingStageIndex int,
 	toBeUpdatedBindings, toBeDeletedBindings []placementv1beta1.BindingObj,
 ) (bool, time.Duration, error) {
-	if updateRun.GetUpdateRunSpec().State == placementv1beta1.StateAbandon {
+	if updateRun.GetUpdateRunSpec().State == placementv1beta1.StateAbandoned {
 		markUpdateRunAbandoning(updateRun)
 	}
 
@@ -133,7 +133,7 @@ func (r *Reconciler) haltUpdatingStage(
 	state := updateRun.GetUpdateRunSpec().State
 	if clusterUpdatingCount == 0 && clusterUpdated {
 		// All the clusters in the stage have finished updating or not started.
-		if state == placementv1beta1.StateAbandon {
+		if state == placementv1beta1.StateAbandoned {
 			markStageUpdatingAbandoned(updatingStageStatus, updateRun.GetGeneration())
 		}
 		klog.V(2).InfoS("The stage has finished all clusters updating", "state", state, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)

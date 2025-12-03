@@ -565,7 +565,7 @@ func aggregateUpdateRunStatus(updateRun placementv1beta1.UpdateRunObj, stageName
 		markUpdateRunStuck(updateRun, stageName, strings.Join(stuckClusterNames, ", "))
 	} else {
 		switch updateRun.GetUpdateRunSpec().State {
-		case placementv1beta1.StateAbandon:
+		case placementv1beta1.StateAbandoned:
 			// If the update run is being abandoned, mark it as abandoning.
 			markUpdateRunAbandoning(updateRun)
 		default:

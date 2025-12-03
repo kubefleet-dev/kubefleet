@@ -106,7 +106,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 
 	state := updateRun.GetUpdateRunSpec().State
 	updateRunStatus := updateRun.GetUpdateRunStatus()
-	if state == placementv1beta1.StateAbandon {
+	if state == placementv1beta1.StateAbandoned {
 		succeedCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionSucceeded))
 		if succeedCond != nil && succeedCond.Reason == condition.UpdateRunAbandonedReason {
 			// Terminal state reached as updateRun cannot be restarted after being abandoned.
@@ -183,7 +183,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 			return runtime.Result{}, r.recordUpdateRunSucceeded(ctx, updateRun)
 		}
 		return r.handleIncompleteUpdateRun(ctx, updateRun, waitTime, execErr, state, runObjRef)
-	case placementv1beta1.StateAbandon:
+	case placementv1beta1.StateAbandoned:
 		// Abandon the updateRun.
 		klog.V(2).InfoS("Abandoning the updateRun", "state", state, "updatingStageIndex", updatingStageIndex, "updateRun", runObjRef)
 		finished, waitTime, execErr := r.abandon(updateRun, updatingStageIndex, toBeUpdatedBindings, toBeDeletedBindings)
@@ -210,7 +210,7 @@ func (r *Reconciler) handleIncompleteUpdateRun(ctx context.Context, updateRun pl
 	switch state {
 	case placementv1beta1.StateExecuted:
 		klog.V(2).InfoS("The updateRun is not finished yet", "state", state, "requeueWaitTime", waitTime, "execErr", execErr, "updateRun", runObjRef)
-	case placementv1beta1.StateAbandon:
+	case placementv1beta1.StateAbandoned:
 		klog.V(2).InfoS("The updateRun is not finished abandoning yet", "state", state, "requeueWaitTime", waitTime, "execErr", execErr, "updateRun", runObjRef)
 	}
 

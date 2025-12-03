@@ -165,9 +165,9 @@ const (
 	// Users can subsequently set the state to Execute or Abandon.
 	StateStopped State = "Pause"
 
-	// StateAbandon describes user intent to abandon the update run.
+	// StateAbandoned describes user intent to abandon the update run.
 	// This is a terminal state; once set, it cannot be changed.
-	StateAbandon State = "Abandon"
+	StateAbandoned State = "Abandon"
 )
 
 // UpdateRunSpec defines the desired rollout strategy and the snapshot indices of the resources to be updated.
