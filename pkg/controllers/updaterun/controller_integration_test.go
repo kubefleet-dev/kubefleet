@@ -351,7 +351,7 @@ func generateTestClusterStagedUpdateRun() *placementv1beta1.ClusterStagedUpdateR
 			PlacementName:            testCRPName,
 			ResourceSnapshotIndex:    testResourceSnapshotIndex,
 			StagedUpdateStrategyName: testUpdateStrategyName,
-			State:                    placementv1beta1.StateExecute,
+			State:                    placementv1beta1.StateExecuted,
 		},
 	}
 }
