@@ -55,8 +55,8 @@ func TestHashOf(t *testing.T) {
 	}
 }
 
-// TestIsObjOversized tests the IsObjOversized function.
-func TestIsObjOversized(t *testing.T) {
+// TestCalculateSizeDeltaOverLimitFor tests the CalculateSizeDeltaOverLimitFor function.
+func TestCalculateSizeDeltaOverLimitFor(t *testing.T) {
 	cm := &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -78,17 +78,17 @@ func TestIsObjOversized(t *testing.T) {
 		wantSizeDeltaBytes int
 	}{
 		{
-			name:               "positize size delta",
+			name:               "under size limit (negative delta)",
 			sizeLimitBytes:     10000,
 			wantSizeDeltaBytes: -9866,
 		},
 		{
-			name:               "negative size delta",
+			name:               "over size limit (positive delta)",
 			sizeLimitBytes:     1,
 			wantSizeDeltaBytes: 133,
 		},
 		{
-			name: "negative size limit",
+			name: "invalid size limit (negative size limit)",
 			// Invalid size limit.
 			sizeLimitBytes: -1,
 			wantErred:      true,
@@ -97,16 +97,16 @@ func TestIsObjOversized(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			sizeDeltaBytes, err := IsObjOversized(cm, tc.sizeLimitBytes)
+			sizeDeltaBytes, err := CalculateSizeDeltaOverLimitFor(cm, tc.sizeLimitBytes)
 
 			if tc.wantErred {
 				if err == nil {
-					t.Fatalf("IsObjOversized() error = nil, want erred")
+					t.Fatalf("CalculateSizeDeltaOverLimitFor() error = nil, want erred")
 				}
 				return
 			}
 			if !cmp.Equal(sizeDeltaBytes, tc.wantSizeDeltaBytes) {
-				t.Errorf("IsObjOversized() = %d, want %d", sizeDeltaBytes, tc.wantSizeDeltaBytes)
+				t.Errorf("CalculateSizeDeltaOverLimitFor() = %d, want %d", sizeDeltaBytes, tc.wantSizeDeltaBytes)
 			}
 		})
 	}

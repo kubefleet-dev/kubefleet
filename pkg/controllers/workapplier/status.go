@@ -200,14 +200,14 @@ func (r *Reconciler) refreshWorkStatus(
 	// and drop all back-reported status data. More sophisticated trimming logic does obviously exist; here
 	// the controller prefers the simple version primarily for two reasons:
 	//
-	// a) in most of the time, it is difficult to reach the size limit: KubeFleet's snapshotting mechanism
-	//    guarantees that the total manifest size in a Work object will not exceed 800KB, which leaves ~600KB
+	// a) in most of the time, it is rare to reach the size limit: KubeFleet's snapshotting mechanism
+	//    tries to keep the total manifest size in a Work object below 800KB (exceptions do exist), which leaves ~600KB
 	//    space for the status data. The work applier reports for each manifest two conditions at most in the
 	//    status (which are all quite small in size), plus the drift/diff details and the back-reported status
 	//    (if applicable); considering the observation that drifts/diffs are not common and their details are usually small
 	//    (just a JSON path plus the before/after values), and the observation that most Kubernetes objects
-	//    only have a few KBs of status data and not all API types need status back-reporting, it is relatively
-	//    difficult to reach the size limit in practice.
+	//    only have a few KBs of status data and not all API types need status back-reporting, most of the time
+	//    the Work object should have enough space for status data without trimming;
 	// b) performing more fine-grained, selective trimming can be a very CPU and memory intensive (e.g.
 	//    various serialization calls) and complex process, and it is difficult to yield optimal results
 	//    even with best efforts.
@@ -215,7 +215,10 @@ func (r *Reconciler) refreshWorkStatus(
 	// TO-DO (chenyu1): re-visit this part of the code and evaluate the need for more fine-grained sharding
 	// if we have users that do use placements of a large collection of manifests and/or very large objects
 	// with drift/diff detection and status back-reporting on.
-	sizeDeltaBytes, err := resource.IsObjOversized(work, resource.DefaultObjSizeLimitWithPaddingBytes)
+	//
+	// TO-DO (chenyu1): evaluate if we need to impose more strict size limits on the manifests to ensure that
+	// Work objects (almost) always have enough space for status data.
+	sizeDeltaBytes, err := resource.CalculateSizeDeltaOverLimitFor(work, resource.DefaultObjSizeLimitWithPaddingBytes)
 	if err != nil {
 		// Normally this should never occur.
 		klog.ErrorS(err, "Failed to check Work object size before status update", "work", klog.KObj(work))

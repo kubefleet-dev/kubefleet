@@ -40,13 +40,13 @@ func HashOf(resource any) (string, error) {
 	return fmt.Sprintf("%x", sha256.Sum256(jsonBytes)), nil
 }
 
-// IsObjOversized checks if the given object exceeds the specified size limit in bytes.
-// It returns the number of bytes the object is over the limit (positive value) or
-// the number of bytes remaining before reaching the limit (negative value).
+// CalculateSizeDeltaOverLimitFor calculates the size delta in bytes of a given object
+// over a specified size limit. It returns a positive value if the object size exceeds
+// the limit or a negative value if the object size is below the limit.
 //
 // This utility is useful in cases where KubeFleet needs to check if it can create/update
 // an object with additional information.
-func IsObjOversized(obj runtime.Object, sizeLimitBytes int) (int, error) {
+func CalculateSizeDeltaOverLimitFor(obj runtime.Object, sizeLimitBytes int) (int, error) {
 	jsonBytes, err := json.Marshal(obj)
 	if err != nil {
 		return 0, fmt.Errorf("cannot determine object size: %w", err)
