@@ -21,12 +21,7 @@ spec:
     spec:
       containers:
       - name: metric-app
-        image: ghcr.io/metric-app:6d6cd69
+        image: metric-app:local
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
-        env:
-        - name: CLUSTER_NAME
-          value: "cluster-1"
-        - name: WORKLOAD_NAME
-          value: "sample-metric-app"

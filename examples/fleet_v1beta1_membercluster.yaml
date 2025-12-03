@@ -1,10 +1,10 @@
 apiVersion: cluster.kubernetes-fleet.io/v1beta1
 kind: MemberCluster
 metadata:
-  name: kind-cluster-1
+  name: kind-cluster-3
 spec:
   identity:
-    name: fleet-member-agent-cluster-1
+    name: fleet-member-agent-cluster-3
     kind: ServiceAccount
     namespace: fleet-system
     apiGroup: ""
