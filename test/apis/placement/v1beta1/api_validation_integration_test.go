@@ -1913,13 +1913,10 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 					Name: updateRunName,
 				},
 				Spec: placementv1beta1.UpdateRunSpec{
-					State: placementv1beta1.StateExecute,
+					State: placementv1beta1.StateStopped,
 				},
 			}
 			Expect(hubClient.Create(ctx, updateRun)).Should(Succeed())
-			// Transition to Pause state first
-			updateRun.Spec.State = placementv1beta1.StateStopped
-			Expect(hubClient.Update(ctx, updateRun)).Should(Succeed())
 		})
 
 		AfterEach(func() {
@@ -1989,14 +1986,10 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 					Name: updateRunName,
 				},
 				Spec: placementv1beta1.UpdateRunSpec{
-					State: placementv1beta1.StateExecute,
+					State: placementv1beta1.StateStopped,
 				},
 			}
 			Expect(hubClient.Create(ctx, updateRun)).Should(Succeed())
-
-			// Transition to Pause first
-			updateRun.Spec.State = placementv1beta1.StateStopped
-			Expect(hubClient.Update(ctx, updateRun)).Should(Succeed())
 
 			// Try to transition back to Initialize
 			updateRun.Spec.State = placementv1beta1.StateInitialize

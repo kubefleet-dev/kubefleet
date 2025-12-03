@@ -115,7 +115,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	// the update run generation increments, but we don't need to reinitialize since initialization is a one-time setup.
 	if !(initCond != nil && initCond.Status == metav1.ConditionTrue) {
 		// Check if initialization failed for the current generation.
-		if condition.IsConditionStatusFalse(initCond, updateRun.GetGeneration()) {
+		if initCond != nil && initCond.Status == metav1.ConditionFalse {
 			klog.V(2).InfoS("The updateRun has failed to initialize", "errorMsg", initCond.Message, "updateRun", runObjRef)
 			return runtime.Result{}, nil
 		}
@@ -183,7 +183,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		}
 		return runtime.Result{Requeue: true, RequeueAfter: waitTime}, nil
 	}
-	klog.V(2).InfoS("The updateRun is not started, waiting to be started", "state", state, "updateRun", runObjRef)
+	klog.V(2).InfoS("The updateRun is initialized but not executed, waiting to execute", "state", state, "updateRun", runObjRef)
 	return runtime.Result{}, nil
 }
 
