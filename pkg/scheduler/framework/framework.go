@@ -455,6 +455,14 @@ func (f *framework) runSchedulingCycleForPickAllPlacementType(
 	// their names to achieve deterministic behaviors.
 	sort.Sort(scored)
 
+	// Sort all filtered clusters.
+	//
+	// This step is needed to produce deterministic decision outputs. If there are enough slots,
+	// the scheduler will explain why some clusters are filtered out in the decision list; to ensure
+	// that the list will not change across scheduling cycles without actual scheduling policy
+	// refreshes, the filtered clusters need to be sorted.
+	sort.Sort(filteredClusterWithStatusList(filtered))
+
 	// Cross-reference the newly picked clusters with obsolete bindings; find out
 	//
 	// * bindings that should be created, i.e., create a binding for every cluster that is newly picked
@@ -607,7 +615,7 @@ type filteredClusterWithStatus struct {
 	status  *Status
 }
 
-// helper type to pretty print a list of filteredClusterWithStatus
+// filteredClusterWithStatusList is a list of filteredClusterWithStatus.
 type filteredClusterWithStatusList []*filteredClusterWithStatus
 
 func (cs filteredClusterWithStatusList) String() string {
@@ -619,6 +627,15 @@ func (cs filteredClusterWithStatusList) String() string {
 		filteredClusters = append(filteredClusters, fmt.Sprintf("{cluster: %s, status: %s}", fc.cluster.Name, fc.status))
 	}
 	return fmt.Sprintf("filteredClusters[%s]", strings.Join(filteredClusters, ", "))
+}
+
+// Implement sort.Interface for filteredClusterWithStatusList.
+func (f filteredClusterWithStatusList) Len() int { return len(f) }
+func (f filteredClusterWithStatusList) Less(i, j int) bool {
+	return f[i].cluster.Name < f[j].cluster.Name
+}
+func (f filteredClusterWithStatusList) Swap(i, j int) {
+	f[i], f[j] = f[j], f[i]
 }
 
 // runFilterPlugins runs filter plugins on clusters in parallel.
@@ -943,6 +960,16 @@ func (f *framework) runSchedulingCycleForPickNPlacementType(
 	// Note that at this point of the scheduling cycle, any cluster associated with a currently
 	// bound or scheduled binding should be filtered out already.
 	picked, notPicked := pickTopNScoredClusters(scored, numOfClustersToPick)
+
+	// Sort all filtered clusters.
+	//
+	// This step is needed to produce deterministic decision outputs. If there are enough slots,
+	// the scheduler will explain why some clusters are filtered out in the decision list; to ensure
+	// that the list will not change across scheduling cycles without actual scheduling policy
+	// refreshes, the filtered clusters need to be sorted.
+	//
+	// Note (chenyu1): the list of scored clusters (picked and notPicked) is already sorted.
+	sort.Sort(filteredClusterWithStatusList(filtered))
 
 	// Cross-reference the newly picked clusters with obsolete bindings; find out
 	//
