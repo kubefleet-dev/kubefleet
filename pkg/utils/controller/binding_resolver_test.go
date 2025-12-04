@@ -23,7 +23,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	crossplanetest "github.com/crossplane/crossplane-runtime/pkg/test"
+	crossplanetest "github.com/crossplane/crossplane-runtime/v2/pkg/test"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"k8s.io/apimachinery/pkg/api/meta"
