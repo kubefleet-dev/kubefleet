@@ -156,10 +156,10 @@ const (
 	UpdateRunFinalizer = FleetPrefix + "stagedupdaterun-finalizer"
 
 	// TargetUpdateRunLabel indicates the target update run on a staged run related object.
-	TargetUpdateRunLabel = FleetPrefix + "targetupdaterun"
+	TargetUpdateRunLabel = FleetPrefix + "targetUpdateRun"
 
-	// TargetTaskTypeLabel indicates the target task type (before-stage or after-stage) on a staged run related object.
-	TargetTaskTypeLabel = FleetPrefix + "targetTaskType"
+	// TaskTypeLabel indicates the task type (before-stage or after-stage) on a staged run related object.
+	TaskTypeLabel = FleetPrefix + "taskType"
 
 	// UpdateRunDeleteStageName is the name of delete stage in the staged update run.
 	UpdateRunDeleteStageName = FleetPrefix + "deleteStage"

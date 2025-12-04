@@ -1776,7 +1776,7 @@ func validateAndApproveNamespacedApprovalRequests(updateRunName, namespace, stag
 		if err := hubClient.List(ctx, appReqList, client.InNamespace(namespace), client.MatchingLabels{
 			placementv1beta1.TargetUpdatingStageNameLabel: stageName,
 			placementv1beta1.TargetUpdateRunLabel:         updateRunName,
-			placementv1beta1.TargetTaskTypeLabel:          stageTaskType,
+			placementv1beta1.TaskTypeLabel:                stageTaskType,
 		}); err != nil {
 			return fmt.Errorf("failed to list approval requests: %w", err)
 		}
