@@ -6,12 +6,12 @@ spec:
   resourceSelectors:
     - group: ""
       kind: Namespace
-      name: test-namespace
+      name: test-ns
       version: v1
   policy:
     placementType: PickAll
-    tolerations:
-      - key: gpu-workload
-        operator: Exists
+    # tolerations:
+    #   - key: gpu-workload
+    #     operator: Exists
   strategy:
     type: External
