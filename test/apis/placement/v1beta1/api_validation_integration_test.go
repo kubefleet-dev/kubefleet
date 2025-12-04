@@ -2001,7 +2001,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			err := hubClient.Create(ctx, updateRun)
 			var statusErr *k8sErrors.StatusError
 			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create ClusterStagedUpdateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("supported values: \"Initialize\", \"Run\", \"Stop\", \"Abandon\""))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("supported values: \"Initialize\", \"Run\", \"Stop\""))
 		})
 	})
 
