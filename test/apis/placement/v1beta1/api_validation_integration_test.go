@@ -1839,7 +1839,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 					Name: "unspecfied-state-update-run-" + fmt.Sprintf("%d", GinkgoParallelProcess()),
 				},
 				Spec: placementv1beta1.UpdateRunSpec{
-					// State not specified - should default to Initialize
+					// State not specified - should default to Initialize.
 				},
 			}
 			Expect(hubClient.Create(ctx, updateRunWithDefaultState)).Should(Succeed())
@@ -1914,7 +1914,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 		})
 
 		It("should allow transition from Stop to Run", func() {
-			updateRun.Spec.State = placementv1beta1.StateStop
+			updateRun.Spec.State = placementv1beta1.StateRun
 			Expect(hubClient.Update(ctx, updateRun)).Should(Succeed())
 		})
 	})
@@ -1976,7 +1976,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			Expect(hubClient.Create(ctx, updateRun)).Should(Succeed())
 
-			// Try to transition back to Initialize
+			// Try to transition back to Initialize.
 			updateRun.Spec.State = placementv1beta1.StateInitialize
 			err := hubClient.Update(ctx, updateRun)
 			var statusErr *k8sErrors.StatusError
