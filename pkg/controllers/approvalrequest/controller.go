@@ -95,8 +95,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	// Check if the approval request is approved
 	approvedCond := meta.FindStatusCondition(approvalReq.Status.Conditions, string(placementv1beta1.ApprovalRequestConditionApproved))
-	if approvedCond == nil || approvedCond.Status != metav1.ConditionTrue {
-		klog.V(2).InfoS("ApprovalRequest not yet approved, skipping", "approvalRequest", approvalReqRef)
+	if approvedCond != nil && approvedCond.Status == metav1.ConditionTrue {
+		klog.V(2).InfoS("ApprovalRequest has been approved, skipping", "approvalRequest", approvalReqRef)
 		return ctrl.Result{}, nil
 	}
 
@@ -217,46 +217,6 @@ func (r *Reconciler) ensureMetricCollectorResources(
 		}
 	}
 
-	// Create ClusterResourcePlacement with PickFixed policy
-	crp := &placementv1beta1.ClusterResourcePlacement{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: crpName,
-			Labels: map[string]string{
-				"approval-request": approvalReq.Name,
-				"update-run":       updateRunName,
-				"stage":            stageName,
-			},
-		},
-		Spec: placementv1beta1.PlacementSpec{
-			ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
-				{
-					Group:   "placement.kubernetes-fleet.io",
-					Version: "v1beta1",
-					Kind:    "MetricCollector",
-					Name:    metricCollectorName,
-				},
-			},
-			Policy: &placementv1beta1.PlacementPolicy{
-				PlacementType: placementv1beta1.PickFixedPlacementType,
-				ClusterNames:  clusterNames,
-			},
-		},
-	}
-
-	// Create or update CRP
-	existingCRP := &placementv1beta1.ClusterResourcePlacement{}
-	err = r.Client.Get(ctx, types.NamespacedName{Name: crpName}, existingCRP)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			if err := r.Client.Create(ctx, crp); err != nil {
-				return fmt.Errorf("failed to create ClusterResourcePlacement: %w", err)
-			}
-			klog.V(2).InfoS("Created ClusterResourcePlacement", "crp", crpName)
-		} else {
-			return fmt.Errorf("failed to get ClusterResourcePlacement: %w", err)
-		}
-	}
-
 	// Create ResourceOverride with rules for each cluster
 	overrideRules := make([]placementv1beta1.OverrideRule, 0, len(clusterNames))
 	for _, clusterName := range clusterNames {
@@ -319,6 +279,47 @@ func (r *Reconciler) ensureMetricCollectorResources(
 			klog.V(2).InfoS("Created ResourceOverride", "resourceOverride", roName)
 		} else {
 			return fmt.Errorf("failed to get ResourceOverride: %w", err)
+		}
+	}
+
+	// Create ClusterResourcePlacement with PickFixed policy
+	// CRP resource selector selects the namespace containing the MetricCollector
+	crp := &placementv1beta1.ClusterResourcePlacement{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: crpName,
+			Labels: map[string]string{
+				"approval-request": approvalReq.Name,
+				"update-run":       updateRunName,
+				"stage":            stageName,
+			},
+		},
+		Spec: placementv1beta1.PlacementSpec{
+			ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+				{
+					Group:   "",
+					Version: "v1",
+					Kind:    "Namespace",
+					Name:    namespaceName,
+				},
+			},
+			Policy: &placementv1beta1.PlacementPolicy{
+				PlacementType: placementv1beta1.PickFixedPlacementType,
+				ClusterNames:  clusterNames,
+			},
+		},
+	}
+
+	// Create or update CRP
+	existingCRP := &placementv1beta1.ClusterResourcePlacement{}
+	err = r.Client.Get(ctx, types.NamespacedName{Name: crpName}, existingCRP)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			if err := r.Client.Create(ctx, crp); err != nil {
+				return fmt.Errorf("failed to create ClusterResourcePlacement: %w", err)
+			}
+			klog.V(2).InfoS("Created ClusterResourcePlacement", "crp", crpName)
+		} else {
+			return fmt.Errorf("failed to get ClusterResourcePlacement: %w", err)
 		}
 	}
 
