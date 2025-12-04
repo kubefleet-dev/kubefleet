@@ -277,9 +277,9 @@ var _ = BeforeSuite(func() {
 		maxConcurrentReconciles,
 		parallelizer.NewParallelizer(workerCount),
 		30*time.Second,
-		true,
-		60,
-		nil, // Use the default backoff rate limiter.
+		nil,   // Use the default backoff rate limiter.
+		false, // Disable priority queueing.
+		0,
 	)
 	Expect(workApplier1.SetupWithManager(hubMgr1)).To(Succeed())
 
@@ -326,9 +326,9 @@ var _ = BeforeSuite(func() {
 		maxConcurrentReconciles,
 		parallelizer.NewParallelizer(workerCount),
 		30*time.Second,
-		true,
-		60,
 		superLongExponentialBackoffRateLimiter,
+		false, // Disable priority queueing.
+		0,
 	)
 	// Due to name conflicts, the second work applier must be set up manually.
 	err = ctrl.NewControllerManagedBy(hubMgr2).Named("work-applier-controller-duplicate").
@@ -370,9 +370,9 @@ var _ = BeforeSuite(func() {
 		maxConcurrentReconciles,
 		pWithDelay,
 		30*time.Second,
-		true,
-		60,
-		nil, // Use the default backoff rate limiter.
+		nil,   // Use the default backoff rate limiter.
+		false, // Disable priority queueing.
+		0,
 	)
 	// Due to name conflicts, the third work applier must be set up manually.
 	err = ctrl.NewControllerManagedBy(hubMgr3).Named("work-applier-controller-waved-parallel-processing").

@@ -373,7 +373,7 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 			klog.ErrorS(err, "unable to find the required CRD", "GVK", gvk)
 			return err
 		}
-		// create the work controller, so we can pass it to the internal member cluster reconciler
+		// Set up the work applier. Note that it is referenced by the InternalMemberCluster controller.
 
 		// Set up the requeue rate limiter for the work applier.
 		//
@@ -413,7 +413,8 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 			*workApplierRequeueRateLimiterSkipToFastBackoffForAvailableOrDiffReportedWorkObjs,
 		)
 
-		workController := workapplier.NewReconciler(
+		workObjAgeForPrioritizedProcessing := time.Minute * time.Duration(*watchWorkReconcileAgeMinutes)
+		workApplier := workapplier.NewReconciler(
 			hubMgr.GetClient(),
 			targetNS,
 			spokeDynamicClient,
@@ -426,12 +427,12 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 			// Use the default worker count (4) for parallelized manifest processing.
 			parallelizer.NewParallelizer(parallelizer.DefaultNumOfWorkers),
 			time.Minute*time.Duration(*deletionWaitTime),
-			*watchWorkWithPriorityQueue,
-			*watchWorkReconcileAgeMinutes,
 			requeueRateLimiter,
+			*watchWorkWithPriorityQueue,
+			workObjAgeForPrioritizedProcessing,
 		)
 
-		if err = workController.SetupWithManager(hubMgr); err != nil {
+		if err = workApplier.SetupWithManager(hubMgr); err != nil {
 			klog.ErrorS(err, "Failed to create v1beta1 controller", "controller", "work")
 			return err
 		}
@@ -459,7 +460,7 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 			ctx,
 			hubMgr.GetClient(),
 			memberMgr.GetConfig(), memberMgr.GetClient(),
-			workController,
+			workApplier,
 			pp)
 		if err != nil {
 			klog.ErrorS(err, "Failed to create InternalMemberCluster v1beta1 reconciler")
