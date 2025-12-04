@@ -32,8 +32,8 @@ import (
 )
 
 const (
-	WorkStatusTrimmedDueToOversizedStatusReason  = "StatusOversized"
-	WorkStatusTrimmedDueToOversizedStatusMsgTmpl = "The status data in the Work object has been trimmed due to size constraints (%d bytes over limit %d)"
+	WorkStatusTrimmedDueToOversizedStatusReason  = "Oversized"
+	WorkStatusTrimmedDueToOversizedStatusMsgTmpl = "The status data (drift/diff details and back-reported status) has been trimmed due to size constraints (%d bytes over limit %d)"
 )
 
 // refreshWorkStatus refreshes the status of a Work object based on the processing results of its manifests.

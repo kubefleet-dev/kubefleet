@@ -17,6 +17,7 @@ limitations under the License.
 package resource
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -70,22 +71,24 @@ func TestCalculateSizeDeltaOverLimitFor(t *testing.T) {
 			"key": "value",
 		},
 	}
+	cmBytes, err := json.Marshal(cm)
+	if err != nil {
+		t.Fatalf("Failed to marshal configMap")
+	}
+	cmSizeBytes := len(cmBytes)
 
 	testCases := []struct {
-		name               string
-		sizeLimitBytes     int
-		wantErred          bool
-		wantSizeDeltaBytes int
+		name           string
+		sizeLimitBytes int
+		wantErred      bool
 	}{
 		{
-			name:               "under size limit (negative delta)",
-			sizeLimitBytes:     10000,
-			wantSizeDeltaBytes: -9866,
+			name:           "under size limit (negative delta)",
+			sizeLimitBytes: 10000,
 		},
 		{
-			name:               "over size limit (positive delta)",
-			sizeLimitBytes:     1,
-			wantSizeDeltaBytes: 133,
+			name:           "over size limit (positive delta)",
+			sizeLimitBytes: 1,
 		},
 		{
 			name: "invalid size limit (negative size limit)",
@@ -105,8 +108,11 @@ func TestCalculateSizeDeltaOverLimitFor(t *testing.T) {
 				}
 				return
 			}
-			if !cmp.Equal(sizeDeltaBytes, tc.wantSizeDeltaBytes) {
-				t.Errorf("CalculateSizeDeltaOverLimitFor() = %d, want %d", sizeDeltaBytes, tc.wantSizeDeltaBytes)
+			// Note: this test spec uses runtime calculation rather than static values for expected
+			// size delta comparison as different platforms have slight differences in the serialization process,
+			// which may produce different sizing results.
+			if !cmp.Equal(sizeDeltaBytes, cmSizeBytes-tc.sizeLimitBytes) {
+				t.Errorf("CalculateSizeDeltaOverLimitFor() = %d, want %d", sizeDeltaBytes, cmSizeBytes-tc.sizeLimitBytes)
 			}
 		})
 	}
