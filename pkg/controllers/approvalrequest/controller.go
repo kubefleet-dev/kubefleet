@@ -45,7 +45,7 @@ const (
 	metricCollectorFinalizer = "kubernetes-fleet.io/metric-collector-cleanup"
 
 	// prometheusURL is the default Prometheus URL to use
-	prometheusURL = "http://prometheus.fleet-system.svc.cluster.local:9090"
+	prometheusURL = "http://prometheus.test-ns.svc.cluster.local:9090"
 )
 
 // Reconciler reconciles an ApprovalRequest object and creates MetricCollector resources
