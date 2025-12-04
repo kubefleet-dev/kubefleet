@@ -57,6 +57,12 @@ type MetricCollectorSpec struct {
 	// +required
 	// +kubebuilder:validation:Pattern=`^https?://.*$`
 	PrometheusURL string `json:"prometheusUrl"`
+
+	// ReportNamespace is the namespace in the hub cluster where the MetricCollectorReport will be created.
+	// This should be the fleet-member-{clusterName} namespace.
+	// Example: fleet-member-cluster-1
+	// +required
+	ReportNamespace string `json:"reportNamespace"`
 }
 
 // MetricsEndpointSpec defines how to access the metrics endpoint.ctor.

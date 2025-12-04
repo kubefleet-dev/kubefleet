@@ -32,7 +32,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 )
 
 const (
@@ -156,20 +155,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 // syncReportToHub syncs the MetricCollectorReport to the hub cluster
 func (r *Reconciler) syncReportToHub(ctx context.Context, mc *placementv1beta1.MetricCollector) error {
-	// Extract cluster name from collected metrics
-	// All metrics are guaranteed to have the same ClusterName
-	if len(mc.Status.CollectedMetrics) == 0 {
-		klog.V(4).InfoS("No metrics collected, skipping report sync", "metricCollector", klog.KObj(mc))
-		return nil
+	// Use the reportNamespace from the MetricCollector spec
+	reportNamespace := mc.Spec.ReportNamespace
+	if reportNamespace == "" {
+		return fmt.Errorf("reportNamespace is not set in MetricCollector spec")
 	}
-
-	clusterName := mc.Status.CollectedMetrics[0].ClusterName
-	if clusterName == "" {
-		return fmt.Errorf("clusterName is empty in collected metrics")
-	}
-
-	// Calculate the namespace using the same pattern as Work objects
-	reportNamespace := fmt.Sprintf(utils.NamespaceNameFormat, clusterName)
 
 	// Create or update MetricCollectorReport on hub
 	report := &placementv1beta1.MetricCollectorReport{
@@ -202,7 +192,7 @@ func (r *Reconciler) syncReportToHub(ctx context.Context, mc *placementv1beta1.M
 				klog.ErrorS(err, "Failed to create MetricCollectorReport", "report", klog.KObj(report))
 				return err
 			}
-			klog.V(2).InfoS("Created MetricCollectorReport on hub", "report", klog.KObj(report), "clusterName", clusterName)
+			klog.V(2).InfoS("Created MetricCollectorReport on hub", "report", klog.KObj(report), "reportNamespace", reportNamespace)
 			return nil
 		}
 		return err
@@ -221,7 +211,7 @@ func (r *Reconciler) syncReportToHub(ctx context.Context, mc *placementv1beta1.M
 		klog.ErrorS(err, "Failed to update MetricCollectorReport", "report", klog.KObj(existingReport))
 		return err
 	}
-	klog.V(2).InfoS("Updated MetricCollectorReport on hub", "report", klog.KObj(existingReport), "clusterName", clusterName)
+	klog.V(2).InfoS("Updated MetricCollectorReport on hub", "report", klog.KObj(existingReport), "reportNamespace", reportNamespace)
 	return nil
 }
 
