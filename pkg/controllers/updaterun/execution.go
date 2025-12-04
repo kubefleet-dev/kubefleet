@@ -166,13 +166,13 @@ func (r *Reconciler) executeUpdatingStage(
 	for i := 0; i < len(updatingStageStatus.Clusters) && clusterUpdatingCount < maxConcurrency; i++ {
 		clusterStatus := &updatingStageStatus.Clusters[i]
 		clusterUpdateSucceededCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
-		if condition.IsConditionStatusTrue(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
+		if clusterUpdateSucceededCond != nil && clusterUpdateSucceededCond.Status == metav1.ConditionTrue {
 			// The cluster has been updated successfully.
 			finishedClusterCount++
 			continue
 		}
 		clusterUpdatingCount++
-		if condition.IsConditionStatusFalse(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
+		if clusterUpdateSucceededCond != nil && clusterUpdateSucceededCond.Status == metav1.ConditionFalse {
 			// The cluster is marked as failed to update, this cluster is counted as updating cluster since it's not finished to avoid processing more clusters than maxConcurrency in this round.
 			failedErr := fmt.Errorf("the cluster `%s` in the stage %s has failed", clusterStatus.ClusterName, updatingStageStatus.StageName)
 			klog.ErrorS(failedErr, "The cluster has failed to be updated", "updateRun", updateRunRef)
@@ -232,7 +232,8 @@ func (r *Reconciler) executeUpdatingStage(
 				}
 			}
 			markClusterUpdatingStarted(clusterStatus, updateRun.GetGeneration())
-			if finishedClusterCount == 0 {
+			stageUpdatingProgressCond := meta.FindStatusCondition(updatingStageStatus.Conditions, string(placementv1beta1.StageUpdatingConditionProgressing))
+			if finishedClusterCount == 0 && (stageUpdatingProgressCond != nil && stageUpdatingProgressCond.Status != metav1.ConditionTrue) {
 				markStageUpdatingStarted(updatingStageStatus, updateRun.GetGeneration())
 			}
 			// Need to continue as we need to process at most maxConcurrency number of clusters in parallel.
@@ -443,8 +444,8 @@ func (r *Reconciler) handleStageApprovalTask(
 ) (bool, error) {
 	updateRunRef := klog.KObj(updateRun)
 
-	stageTaskApproved := condition.IsConditionStatusTrue(meta.FindStatusCondition(stageTaskStatus.Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestApproved)), updateRun.GetGeneration())
-	if stageTaskApproved {
+	stageTaskApprovedCond := meta.FindStatusCondition(stageTaskStatus.Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestApproved))
+	if stageTaskApprovedCond != nil && stageTaskApprovedCond.Status == metav1.ConditionTrue {
 		// The stageTask has been approved.
 		return true, nil
 	}
@@ -467,8 +468,10 @@ func (r *Reconciler) handleStageApprovalTask(
 				return false, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
 			}
 			approvalRequestStatus := approvalRequest.GetApprovalRequestStatus()
-			approvalAccepted := condition.IsConditionStatusTrue(meta.FindStatusCondition(approvalRequestStatus.Conditions, string(placementv1beta1.ApprovalRequestConditionApprovalAccepted)), approvalRequest.GetGeneration())
-			approved := condition.IsConditionStatusTrue(meta.FindStatusCondition(approvalRequestStatus.Conditions, string(placementv1beta1.ApprovalRequestConditionApproved)), approvalRequest.GetGeneration())
+			approvalAcceptedCond := meta.FindStatusCondition(approvalRequestStatus.Conditions, string(placementv1beta1.ApprovalRequestConditionApprovalAccepted))
+			approvalAccepted := approvalAcceptedCond != nil && approvalAcceptedCond.Status == metav1.ConditionTrue
+			approvedCond := meta.FindStatusCondition(approvalRequestStatus.Conditions, string(placementv1beta1.ApprovalRequestConditionApproved))
+			approved := approvedCond != nil && approvedCond.Status == metav1.ConditionTrue
 			if !approvalAccepted && !approved {
 				klog.V(2).InfoS("The approval request has not been approved yet", "approvalRequestTask", requestRef, "stage", updatingStage.Name, "updateRun", updateRunRef)
 				return false, nil
@@ -669,7 +672,7 @@ func markUpdateRunProgressing(updateRun placementv1beta1.UpdateRunObj) {
 	})
 }
 
-// markUpdateRunProgressingIfNotWaitingOrStuck marks the update run as proegressing in memory if it's not marked as waiting or stuck already.
+// markUpdateRunProgressingIfNotWaitingOrStuck marks the update run as progressing in memory if it's not marked as waiting or stuck already.
 func markUpdateRunProgressingIfNotWaitingOrStuck(updateRun placementv1beta1.UpdateRunObj) {
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	progressingCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionProgressing))

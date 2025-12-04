@@ -2235,11 +2235,17 @@ func buildStageUpdatingStatuses(
 	for i, stage := range wantStrategySpec.Stages {
 		stagesStatus[i].StageName = stage.Name
 		stagesStatus[i].Clusters = make([]placementv1beta1.ClusterUpdatingStatus, len(wantSelectedClusters[i]))
+		generation := updateRun.GetGeneration()
+		if i == 0 && generation > 1 {
+			// When the update run state changes the generation increments. In our state test, the first stage runs normally
+			// so the conditions' observed generation should be set to 2 when we first change it state to Run.
+			generation = 2
+		}
 		for j := range stagesStatus[i].Clusters {
 			stagesStatus[i].Clusters[j].ClusterName = wantSelectedClusters[i][j]
 			stagesStatus[i].Clusters[j].ClusterResourceOverrideSnapshots = wantCROs[wantSelectedClusters[i][j]]
 			stagesStatus[i].Clusters[j].ResourceOverrideSnapshots = wantROs[wantSelectedClusters[i][j]]
-			stagesStatus[i].Clusters[j].Conditions = updateRunClusterRolloutSucceedConditions(updateRun.GetGeneration())
+			stagesStatus[i].Clusters[j].Conditions = updateRunClusterRolloutSucceedConditions(generation)
 		}
 		stagesStatus[i].BeforeStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(stage.BeforeStageTasks))
 		for j, task := range stage.BeforeStageTasks {
@@ -2247,7 +2253,7 @@ func buildStageUpdatingStatuses(
 			if task.Type == placementv1beta1.StageTaskTypeApproval {
 				stagesStatus[i].BeforeStageTaskStatus[j].ApprovalRequestName = fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
 			}
-			stagesStatus[i].BeforeStageTaskStatus[j].Conditions = updateRunStageTaskSucceedConditions(updateRun.GetGeneration(), task.Type)
+			stagesStatus[i].BeforeStageTaskStatus[j].Conditions = updateRunStageTaskSucceedConditions(generation, task.Type)
 		}
 		stagesStatus[i].AfterStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(stage.AfterStageTasks))
 		for j, task := range stage.AfterStageTasks {
@@ -2255,9 +2261,9 @@ func buildStageUpdatingStatuses(
 			if task.Type == placementv1beta1.StageTaskTypeApproval {
 				stagesStatus[i].AfterStageTaskStatus[j].ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
 			}
-			stagesStatus[i].AfterStageTaskStatus[j].Conditions = updateRunStageTaskSucceedConditions(updateRun.GetGeneration(), task.Type)
+			stagesStatus[i].AfterStageTaskStatus[j].Conditions = updateRunStageTaskSucceedConditions(generation, task.Type)
 		}
-		stagesStatus[i].Conditions = updateRunStageRolloutSucceedConditions(updateRun.GetGeneration())
+		stagesStatus[i].Conditions = updateRunStageRolloutSucceedConditions(generation)
 	}
 	return stagesStatus
 }
