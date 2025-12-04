@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -199,41 +198,15 @@ func (r *Reconciler) ensureMetricCollectorResources(
 	clusterNames []string,
 	updateRunName, stageName string,
 ) error {
-	// Generate names - namespace is derived from updateRun name
-	namespaceName := fmt.Sprintf("mc-%s", updateRunName)
-	metricCollectorName := fmt.Sprintf("mc-%s", stageName)
+	// Generate names
+	metricCollectorName := fmt.Sprintf("mc-%s-%s", updateRunName, stageName)
 	crpName := fmt.Sprintf("crp-mc-%s-%s", updateRunName, stageName)
 	roName := fmt.Sprintf("ro-mc-%s-%s", updateRunName, stageName)
 
-	// Create Namespace on hub
-	namespace := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: namespaceName,
-			Labels: map[string]string{
-				"app":        "metric-collector",
-				"update-run": updateRunName,
-			},
-		},
-	}
-
-	existingNS := &corev1.Namespace{}
-	err := r.Client.Get(ctx, types.NamespacedName{Name: namespaceName}, existingNS)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			if err := r.Client.Create(ctx, namespace); err != nil {
-				return fmt.Errorf("failed to create Namespace: %w", err)
-			}
-			klog.V(2).InfoS("Created Namespace", "namespace", namespaceName)
-		} else {
-			return fmt.Errorf("failed to get Namespace: %w", err)
-		}
-	}
-
-	// Create MetricCollector resource (template) in the namespace on hub
+	// Create MetricCollector resource (cluster-scoped) on hub
 	metricCollector := &placementv1beta1.MetricCollector{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      metricCollectorName,
-			Namespace: namespaceName,
+			Name: metricCollectorName,
 			Labels: map[string]string{
 				"app":              "metric-collector",
 				"approval-request": approvalReq.GetName(),
@@ -250,7 +223,7 @@ func (r *Reconciler) ensureMetricCollectorResources(
 
 	// Create or update MetricCollector
 	existingMC := &placementv1beta1.MetricCollector{}
-	err = r.Client.Get(ctx, types.NamespacedName{Name: metricCollectorName, Namespace: namespaceName}, existingMC)
+	err := r.Client.Get(ctx, types.NamespacedName{Name: metricCollectorName}, existingMC)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			if err := r.Client.Create(ctx, metricCollector); err != nil {
@@ -289,18 +262,18 @@ func (r *Reconciler) ensureMetricCollectorResources(
 		})
 	}
 
-	resourceOverride := &placementv1beta1.ResourceOverride{
+	// Create ClusterResourceOverride with rules for each cluster
+	clusterResourceOverride := &placementv1beta1.ClusterResourceOverride{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      roName,
-			Namespace: namespaceName,
+			Name: roName,
 			Labels: map[string]string{
 				"approval-request": approvalReq.GetName(),
 				"update-run":       updateRunName,
 				"stage":            stageName,
 			},
 		},
-		Spec: placementv1beta1.ResourceOverrideSpec{
-			ResourceSelectors: []placementv1beta1.ResourceSelector{
+		Spec: placementv1beta1.ClusterResourceOverrideSpec{
+			ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 				{
 					Group:   "placement.kubernetes-fleet.io",
 					Version: "v1beta1",
@@ -314,21 +287,22 @@ func (r *Reconciler) ensureMetricCollectorResources(
 		},
 	}
 
-	existingRO := &placementv1beta1.ResourceOverride{}
-	err = r.Client.Get(ctx, types.NamespacedName{Name: roName, Namespace: namespaceName}, existingRO)
+	// Create or update ClusterResourceOverride
+	existingCRO := &placementv1beta1.ClusterResourceOverride{}
+	err = r.Client.Get(ctx, types.NamespacedName{Name: roName}, existingCRO)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			if err := r.Client.Create(ctx, resourceOverride); err != nil {
-				return fmt.Errorf("failed to create ResourceOverride: %w", err)
+			if err := r.Client.Create(ctx, clusterResourceOverride); err != nil {
+				return fmt.Errorf("failed to create ClusterResourceOverride: %w", err)
 			}
-			klog.V(2).InfoS("Created ResourceOverride", "resourceOverride", roName)
+			klog.V(2).InfoS("Created ClusterResourceOverride", "clusterResourceOverride", roName)
 		} else {
-			return fmt.Errorf("failed to get ResourceOverride: %w", err)
+			return fmt.Errorf("failed to get ClusterResourceOverride: %w", err)
 		}
 	}
 
 	// Create ClusterResourcePlacement with PickFixed policy
-	// CRP resource selector selects the namespace containing the MetricCollector
+	// CRP resource selector selects the MetricCollector directly
 	crp := &placementv1beta1.ClusterResourcePlacement{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: crpName,
@@ -341,10 +315,10 @@ func (r *Reconciler) ensureMetricCollectorResources(
 		Spec: placementv1beta1.PlacementSpec{
 			ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 				{
-					Group:   "",
-					Version: "v1",
-					Kind:    "Namespace",
-					Name:    namespaceName,
+					Group:   "placement.kubernetes-fleet.io",
+					Version: "v1beta1",
+					Kind:    "MetricCollector",
+					Name:    metricCollectorName,
 				},
 			},
 			Policy: &placementv1beta1.PlacementPolicy{
@@ -386,6 +360,8 @@ func (r *Reconciler) handleDelete(ctx context.Context, approvalReqObj placementv
 	updateRunName := spec.TargetUpdateRun
 	stageName := spec.TargetStage
 	crpName := fmt.Sprintf("crp-mc-%s-%s", updateRunName, stageName)
+	metricCollectorName := fmt.Sprintf("mc-%s-%s", updateRunName, stageName)
+	croName := fmt.Sprintf("ro-mc-%s-%s", updateRunName, stageName)
 
 	crp := &placementv1beta1.ClusterResourcePlacement{}
 	if err := r.Client.Get(ctx, types.NamespacedName{Name: crpName}, crp); err == nil {
@@ -395,14 +371,22 @@ func (r *Reconciler) handleDelete(ctx context.Context, approvalReqObj placementv
 		klog.V(2).InfoS("Deleted ClusterResourcePlacement", "crp", crpName)
 	}
 
-	// Delete the namespace (this will delete MetricCollector and ResourceOverride)
-	namespaceName := fmt.Sprintf("mc-%s", updateRunName)
-	namespace := &corev1.Namespace{}
-	if err := r.Client.Get(ctx, types.NamespacedName{Name: namespaceName}, namespace); err == nil {
-		if err := r.Client.Delete(ctx, namespace); err != nil && !errors.IsNotFound(err) {
-			return ctrl.Result{}, fmt.Errorf("failed to delete Namespace: %w", err)
+	// Delete ClusterResourceOverride
+	cro := &placementv1beta1.ClusterResourceOverride{}
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: croName}, cro); err == nil {
+		if err := r.Client.Delete(ctx, cro); err != nil && !errors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("failed to delete ClusterResourceOverride: %w", err)
 		}
-		klog.V(2).InfoS("Deleted Namespace", "namespace", namespaceName)
+		klog.V(2).InfoS("Deleted ClusterResourceOverride", "clusterResourceOverride", croName)
+	}
+
+	// Delete MetricCollector
+	metricCollector := &placementv1beta1.MetricCollector{}
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: metricCollectorName}, metricCollector); err == nil {
+		if err := r.Client.Delete(ctx, metricCollector); err != nil && !errors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("failed to delete MetricCollector: %w", err)
+		}
+		klog.V(2).InfoS("Deleted MetricCollector", "metricCollector", metricCollectorName)
 	}
 
 	// Remove finalizer

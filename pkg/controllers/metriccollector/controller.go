@@ -57,20 +57,20 @@ type Reconciler struct {
 // Reconcile reconciles a MetricCollector object
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	startTime := time.Now()
-	klog.V(2).InfoS("MetricCollector reconciliation starts", "metricCollector", req.NamespacedName)
+	klog.V(2).InfoS("MetricCollector reconciliation starts", "metricCollector", req.Name)
 	defer func() {
 		latency := time.Since(startTime).Milliseconds()
-		klog.V(2).InfoS("MetricCollector reconciliation ends", "metricCollector", req.NamespacedName, "latency", latency)
+		klog.V(2).InfoS("MetricCollector reconciliation ends", "metricCollector", req.Name, "latency", latency)
 	}()
 
-	// Fetch the MetricCollector instance
+	// Fetch the MetricCollector instance (cluster-scoped)
 	mc := &placementv1beta1.MetricCollector{}
-	if err := r.MemberClient.Get(ctx, req.NamespacedName, mc); err != nil {
+	if err := r.MemberClient.Get(ctx, client.ObjectKey{Name: req.Name}, mc); err != nil {
 		if errors.IsNotFound(err) {
-			klog.V(2).InfoS("MetricCollector not found, ignoring", "metricCollector", req.NamespacedName)
+			klog.V(2).InfoS("MetricCollector not found, ignoring", "metricCollector", req.Name)
 			return ctrl.Result{}, nil
 		}
-		klog.ErrorS(err, "Failed to get MetricCollector", "metricCollector", req.NamespacedName)
+		klog.ErrorS(err, "Failed to get MetricCollector", "metricCollector", req.Name)
 		return ctrl.Result{}, err
 	}
 
@@ -85,7 +85,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	mc.Status.ObservedGeneration = mc.Generation
 
 	if collectErr != nil {
-		klog.ErrorS(collectErr, "Failed to collect metrics", "metricCollector", req.NamespacedName)
+		klog.ErrorS(collectErr, "Failed to collect metrics", "metricCollector", req.Name)
 		meta.SetStatusCondition(&mc.Status.Conditions, metav1.Condition{
 			Type:               placementv1beta1.MetricCollectorConditionTypeReady,
 			Status:             metav1.ConditionTrue,
@@ -101,7 +101,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			Message:            fmt.Sprintf("Failed to collect metrics: %v", collectErr),
 		})
 	} else {
-		klog.V(2).InfoS("Successfully collected metrics", "metricCollector", req.NamespacedName, "workloads", len(collectedMetrics))
+		klog.V(2).InfoS("Successfully collected metrics", "metricCollector", req.Name, "workloads", len(collectedMetrics))
 		meta.SetStatusCondition(&mc.Status.Conditions, metav1.Condition{
 			Type:               placementv1beta1.MetricCollectorConditionTypeReady,
 			Status:             metav1.ConditionTrue,
@@ -119,13 +119,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	if err := r.MemberClient.Status().Update(ctx, mc); err != nil {
-		klog.ErrorS(err, "Failed to update MetricCollector status", "metricCollector", req.NamespacedName)
+		klog.ErrorS(err, "Failed to update MetricCollector status", "metricCollector", req.Name)
 		return ctrl.Result{}, err
 	}
 
 	// Sync MetricCollectorReport to hub cluster
 	if err := r.syncReportToHub(ctx, mc); err != nil {
-		klog.ErrorS(err, "Failed to sync MetricCollectorReport to hub", "metricCollector", req.NamespacedName)
+		klog.ErrorS(err, "Failed to sync MetricCollectorReport to hub", "metricCollector", req.Name)
 		meta.SetStatusCondition(&mc.Status.Conditions, metav1.Condition{
 			Type:               placementv1beta1.MetricCollectorConditionTypeReported,
 			Status:             metav1.ConditionFalse,
@@ -145,7 +145,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	// Update status with reporting condition
 	if err := r.MemberClient.Status().Update(ctx, mc); err != nil {
-		klog.ErrorS(err, "Failed to update MetricCollector status with reporting condition", "metricCollector", req.NamespacedName)
+		klog.ErrorS(err, "Failed to update MetricCollector status with reporting condition", "metricCollector", req.Name)
 		return ctrl.Result{}, err
 	}
 
@@ -167,8 +167,7 @@ func (r *Reconciler) syncReportToHub(ctx context.Context, mc *placementv1beta1.M
 			Name:      mc.Name,
 			Namespace: reportNamespace,
 			Labels: map[string]string{
-				"metriccollector-name":      mc.Name,
-				"metriccollector-namespace": mc.Namespace,
+				"metriccollector-name": mc.Name,
 			},
 		},
 	}

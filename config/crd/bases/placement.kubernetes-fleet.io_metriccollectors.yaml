@@ -17,7 +17,7 @@ spec:
     shortNames:
     - mc
     singular: metriccollector
-  scope: Namespaced
+  scope: Cluster
   versions:
   - additionalPrinterColumns:
     - jsonPath: .metadata.generation
@@ -69,8 +69,15 @@ spec:
                   Example: http://prometheus.test-ns.svc.cluster.local:9090
                 pattern: ^https?://.*$
                 type: string
+              reportNamespace:
+                description: |-
+                  ReportNamespace is the namespace in the hub cluster where the MetricCollectorReport will be created.
+                  This should be the fleet-member-{clusterName} namespace.
+                  Example: fleet-member-cluster-1
+                type: string
             required:
             - prometheusUrl
+            - reportNamespace
             type: object
           status:
             description: The observed status of MetricCollector.

@@ -24,8 +24,9 @@ import (
 )
 
 // +genclient
+// +genclient:nonNamespaced
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:scope="Namespaced",shortName=mc,categories={fleet,fleet-metrics}
+// +kubebuilder:resource:scope="Cluster",shortName=mc,categories={fleet,fleet-metrics}
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
 // +kubebuilder:printcolumn:JSONPath=`.metadata.generation`,name="Gen",type=string
