@@ -174,10 +174,9 @@ func (r *Reconciler) collectFromPrometheus(ctx context.Context, mc *placementv1b
 	workloadMetrics := make([]placementv1beta1.WorkloadMetrics, 0, len(data.Result))
 	for _, res := range data.Result {
 		namespace := res.Metric["namespace"]
-		clusterName := res.Metric["cluster_name"]
-		workloadName := res.Metric["workload_name"]
+		workloadName := res.Metric["app"]
 
-		if namespace == "" || clusterName == "" || workloadName == "" {
+		if namespace == "" || workloadName == "" {
 			continue
 		}
 
@@ -191,7 +190,6 @@ func (r *Reconciler) collectFromPrometheus(ctx context.Context, mc *placementv1b
 
 		wm := placementv1beta1.WorkloadMetrics{
 			Namespace:    namespace,
-			ClusterName:  clusterName,
 			WorkloadName: workloadName,
 			Health:       health == 1.0, // Convert to boolean: 1.0 = true, 0.0 = false
 		}
