@@ -42,10 +42,10 @@ const (
 	//
 	// The work applier, when a priority queue is in use, will prioritize requests in the following
 	// order:
-	// * with highest priority (-2): all Create/Delete events, and all Update events
+	// * with highest priority (2): all Create/Delete events, and all Update events
 	//   that concern recently created Work objects or Work objects that are in a failed/undeterminted
 	//   state (apply op/availability check failure, or diff reporting failure).
-	// * with medium priority (-1): all other Update events.
+	// * with medium priority (1): all other Update events.
 	// * with default priority (0): all requeues (with or with errors), and all Generic events.
 	//
 	// Note that requests with the same priority level will be processed in the FIFO order.
