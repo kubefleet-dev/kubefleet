@@ -158,8 +158,8 @@ const (
 	// TargetUpdateRunLabel indicates the target update run on a staged run related object.
 	TargetUpdateRunLabel = FleetPrefix + "targetupdaterun"
 
-	// TargetStageTaskLabel indicates the target stage task on a staged run related object.
-	TargetStageTaskLabel = FleetPrefix + "targetstagetask"
+	// TargetTaskTypeLabel indicates the target task type (before-stage or after-stage) on a staged run related object.
+	TargetTaskTypeLabel = FleetPrefix + "targetTaskType"
 
 	// UpdateRunDeleteStageName is the name of delete stage in the staged update run.
 	UpdateRunDeleteStageName = FleetPrefix + "deleteStage"

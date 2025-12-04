@@ -364,7 +364,7 @@ func TestBuildApprovalRequestObject(t *testing.T) {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   "test-stage",
 						placementv1beta1.TargetUpdateRunLabel:           "test-update-run",
-						placementv1beta1.TargetStageTaskLabel:           placementv1beta1.BeforeStageTaskLabelValue,
+						placementv1beta1.TargetTaskTypeLabel:           placementv1beta1.BeforeStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -390,7 +390,7 @@ func TestBuildApprovalRequestObject(t *testing.T) {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   "test-stage",
 						placementv1beta1.TargetUpdateRunLabel:           "test-update-run",
-						placementv1beta1.TargetStageTaskLabel:           placementv1beta1.AfterStageTaskLabelValue,
+						placementv1beta1.TargetTaskTypeLabel:           placementv1beta1.AfterStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -1040,7 +1040,7 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   stageName,
 						placementv1beta1.TargetUpdateRunLabel:           testUpdateRunName,
-						placementv1beta1.TargetStageTaskLabel:           placementv1beta1.BeforeStageTaskLabelValue,
+						placementv1beta1.TargetTaskTypeLabel:           placementv1beta1.BeforeStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -1097,7 +1097,7 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   stageName,
 						placementv1beta1.TargetUpdateRunLabel:           testUpdateRunName,
-						placementv1beta1.TargetStageTaskLabel:           placementv1beta1.BeforeStageTaskLabelValue,
+						placementv1beta1.TargetTaskTypeLabel:           placementv1beta1.BeforeStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -1154,7 +1154,7 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   stageName,
 						placementv1beta1.TargetUpdateRunLabel:           testUpdateRunName,
-						placementv1beta1.TargetStageTaskLabel:           placementv1beta1.BeforeStageTaskLabelValue,
+						placementv1beta1.TargetTaskTypeLabel:           placementv1beta1.BeforeStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},

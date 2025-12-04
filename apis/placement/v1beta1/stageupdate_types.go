@@ -679,7 +679,7 @@ type ApprovalRequestObjList interface {
 //   - `TargetUpdateRun`: Points to the cluster staged update run that this approval request is for.
 //   - `TargetStage`: The name of the stage that this approval request is for.
 //   - `IsLatestUpdateRunApproval`: Indicates whether this approval request is the latest one related to this update run.
-//   - `TargetStageTask`: Indicates whether this approval request is for the before or after stage task.
+//   - `TargetTaskTypeLabel`: Indicates whether this approval request is for the before or after stage task.
 type ClusterApprovalRequest struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

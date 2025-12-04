@@ -173,7 +173,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[0].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
-						placementv1beta1.TargetStageTaskLabel:           placementv1beta1.BeforeStageTaskLabelValue,
+						placementv1beta1.TargetTaskTypeLabel:           placementv1beta1.BeforeStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -325,7 +325,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[0].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
-						placementv1beta1.TargetStageTaskLabel:           placementv1beta1.AfterStageTaskLabelValue,
+						placementv1beta1.TargetTaskTypeLabel:           placementv1beta1.AfterStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -381,7 +381,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[1].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
-						placementv1beta1.TargetStageTaskLabel:           placementv1beta1.BeforeStageTaskLabelValue,
+						placementv1beta1.TargetTaskTypeLabel:           placementv1beta1.BeforeStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -534,7 +534,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[1].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
-						placementv1beta1.TargetStageTaskLabel:           placementv1beta1.AfterStageTaskLabelValue,
+						placementv1beta1.TargetTaskTypeLabel:           placementv1beta1.AfterStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -1089,7 +1089,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[0].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
-						placementv1beta1.TargetStageTaskLabel:           placementv1beta1.AfterStageTaskLabelValue,
+						placementv1beta1.TargetTaskTypeLabel:           placementv1beta1.AfterStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -1311,7 +1311,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[0].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
-						placementv1beta1.TargetStageTaskLabel:           placementv1beta1.BeforeStageTaskLabelValue,
+						placementv1beta1.TargetTaskTypeLabel:           placementv1beta1.BeforeStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -1345,7 +1345,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[0].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
-						placementv1beta1.TargetStageTaskLabel:           placementv1beta1.BeforeStageTaskLabelValue,
+						placementv1beta1.TargetTaskTypeLabel:           placementv1beta1.BeforeStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -1448,7 +1448,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[0].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
-						placementv1beta1.TargetStageTaskLabel:           placementv1beta1.AfterStageTaskLabelValue,
+						placementv1beta1.TargetTaskTypeLabel:           placementv1beta1.AfterStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},

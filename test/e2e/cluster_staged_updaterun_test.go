@@ -1333,7 +1333,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 				if err := hubClient.List(ctx, appReqList, client.MatchingLabels{
 					placementv1beta1.TargetUpdatingStageNameLabel: envCanary,
 					placementv1beta1.TargetUpdateRunLabel:         updateRunName,
-					placementv1beta1.TargetStageTaskLabel:         placementv1beta1.AfterStageTaskLabelValue,
+					placementv1beta1.TargetTaskTypeLabel:         placementv1beta1.AfterStageTaskLabelValue,
 				}); err != nil {
 					return fmt.Errorf("failed to list approval requests: %w", err)
 				}
@@ -2216,7 +2216,7 @@ func validateAndApproveClusterApprovalRequests(updateRunName, stageName, approva
 		if err := hubClient.List(ctx, appReqList, client.MatchingLabels{
 			placementv1beta1.TargetUpdatingStageNameLabel: stageName,
 			placementv1beta1.TargetUpdateRunLabel:         updateRunName,
-			placementv1beta1.TargetStageTaskLabel:         stageTaskType,
+			placementv1beta1.TargetTaskTypeLabel:         stageTaskType,
 		}); err != nil {
 			return fmt.Errorf("failed to list approval requests: %w", err)
 		}
@@ -2256,7 +2256,7 @@ func approveClusterApprovalRequest(stageName, updateRunName, stageTask string) {
 		if err := hubClient.List(ctx, appReqList, client.MatchingLabels{
 			placementv1beta1.TargetUpdatingStageNameLabel: stageName,
 			placementv1beta1.TargetUpdateRunLabel:         updateRunName,
-			placementv1beta1.TargetStageTaskLabel:         stageTask,
+			placementv1beta1.TargetTaskTypeLabel:         stageTask,
 		}); err != nil {
 			return fmt.Errorf("failed to list approval requests: %w", err)
 		}
