@@ -41,7 +41,7 @@ spec:
             - `TargetUpdateRun`: Points to the staged update run that this approval request is for.
             - `TargetStage`: The name of the stage that this approval request is for.
             - `IsLatestUpdateRunApproval`: Indicates whether this approval request is the latest one related to this update run.
-            - `TaskTypeLabel`: Indicates whether this approval request is for the before or after stage task.
+            - `TaskType`: Indicates whether this approval request is for the before or after stage task.
         properties:
           apiVersion:
             description: |-
