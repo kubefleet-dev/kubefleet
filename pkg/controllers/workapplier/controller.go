@@ -19,10 +19,10 @@ package workapplier
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"go.uber.org/atomic"
-	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -41,12 +41,10 @@ import (
 	ctrloption "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/controller/priorityqueue"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/defaulter"
 	parallelizerutil "github.com/kubefleet-dev/kubefleet/pkg/utils/parallelizer"
@@ -54,136 +52,19 @@ import (
 
 const (
 	patchDetailPerObjLimit = 100
+
+	minWorkObjAgeForPrioritizedQueueing = time.Minute * 30
 )
 
 const (
 	workFieldManagerName = "work-api-agent"
 )
 
-var (
-	workAgeToReconcile = 1 * time.Hour
-)
-
-// Custom type to hold a reconcile.Request and a priority value
-type priorityQueueItem struct {
-	reconcile.Request
-	Priority int
-}
-
-// PriorityQueueEventHandler is a custom event handler for adding objects to the priority queue.
-type PriorityQueueEventHandler struct {
-	Queue  priorityqueue.PriorityQueue[priorityQueueItem] // The priority queue to manage events
-	Client client.Client                                  // store the client to make API calls
-}
-
-// Implement priorityqueue.Item interface for priorityQueueItem
-func (i priorityQueueItem) GetPriority() int {
-	return i.Priority
-}
-
-func (h *PriorityQueueEventHandler) WorkPendingApply(ctx context.Context, obj client.Object) bool {
-	var work fleetv1beta1.Work
-	ns := obj.GetNamespace()
-	name := obj.GetName()
-	err := h.Client.Get(ctx, client.ObjectKey{
-		Namespace: ns,
-		Name:      name,
-	}, &work)
-	if err != nil {
-		// Log and return
-		klog.ErrorS(err, "Failed to get the work", "name", name, "ns", ns)
-		return true
-	}
-	availCond := meta.FindStatusCondition(work.Status.Conditions, fleetv1beta1.WorkConditionTypeAvailable)
-	appliedCond := meta.FindStatusCondition(work.Status.Conditions, fleetv1beta1.WorkConditionTypeApplied)
-
-	if availCond != nil && appliedCond != nil {
-		// check if the object has been recently modified
-		availCondLastUpdatedTime := availCond.LastTransitionTime.Time
-		appliedCondLastUpdatedTime := appliedCond.LastTransitionTime.Time
-		if time.Since(availCondLastUpdatedTime) < workAgeToReconcile || time.Since(appliedCondLastUpdatedTime) < workAgeToReconcile {
-			return true
-		}
-	}
-
-	if condition.IsConditionStatusTrue(availCond, work.GetGeneration()) &&
-		condition.IsConditionStatusTrue(appliedCond, work.GetGeneration()) {
-		return false
-	}
-
-	// Work not yet applied
-	return true
-}
-
-func (h *PriorityQueueEventHandler) AddToPriorityQueue(ctx context.Context, obj client.Object, alwaysAdd bool) {
-	req := reconcile.Request{
-		NamespacedName: types.NamespacedName{
-			Namespace: obj.GetNamespace(),
-			Name:      obj.GetName(),
-		},
-	}
-
-	objAge := time.Since(obj.GetCreationTimestamp().Time)
-
-	var objPriority int
-	if alwaysAdd || objAge < workAgeToReconcile || h.WorkPendingApply(ctx, obj) {
-		// Newer or pending objects get higher priority
-		// Negate the Unix timestamp to give higher priority to newer timestamps
-		objPriority = -int(time.Now().Unix())
-	} else {
-		// skip adding older objects with no changes
-		klog.V(2).InfoS("adding old item to priorityQueueItem", "obj", req.Name, "age", objAge)
-		objPriority = int(obj.GetCreationTimestamp().Unix())
-	}
-
-	// Create the custom priorityQueueItem with the request and priority
-	item := priorityQueueItem{
-		Request:  req,
-		Priority: objPriority,
-	}
-
-	h.Queue.Add(item)
-	klog.V(2).InfoS("Created PriorityQueueItem", "priority", objPriority, "obj", req.Name, "queue size", h.Queue.Len())
-}
-
-func (h *PriorityQueueEventHandler) Create(ctx context.Context, evt event.TypedCreateEvent[client.Object], queue workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-	h.AddToPriorityQueue(ctx, evt.Object, false)
-}
-
-func (h *PriorityQueueEventHandler) Delete(ctx context.Context, evt event.TypedDeleteEvent[client.Object], queue workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-	h.AddToPriorityQueue(ctx, evt.Object, true)
-}
-
-func (h *PriorityQueueEventHandler) Update(ctx context.Context, evt event.TypedUpdateEvent[client.Object], queue workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-	// Ignore updates where only the status changed
-	oldObj := evt.ObjectOld.DeepCopyObject()
-	newObj := evt.ObjectNew.DeepCopyObject()
-
-	// Zero out the status
-	if oldWork, ok := oldObj.(*fleetv1beta1.Work); ok {
-		oldWork.Status = fleetv1beta1.WorkStatus{}
-	}
-	if newWork, ok := newObj.(*fleetv1beta1.Work); ok {
-		newWork.Status = fleetv1beta1.WorkStatus{}
-	}
-
-	if !equality.Semantic.DeepEqual(oldObj, newObj) {
-		// ignore status changes to prevent noise
-		h.AddToPriorityQueue(ctx, evt.ObjectNew, true)
-		return
-	}
-	klog.V(4).InfoS("ignoring update event with only status change", "work", evt.ObjectNew.GetName())
-}
-
-func (h *PriorityQueueEventHandler) Generic(ctx context.Context, evt event.TypedGenericEvent[client.Object], queue workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-	h.AddToPriorityQueue(ctx, evt.Object, false)
-}
-
 var defaultRequeueRateLimiter *RequeueMultiStageWithExponentialBackoffRateLimiter = NewRequeueMultiStageWithExponentialBackoffRateLimiter(
 	// Allow 1 attempt of fixed delay; this helps give objects a bit of headroom to get available (or have
 	// diffs reported).
 	1,
-	// Use a fixed delay of 5 seconds for the first two attempts.
+	// Use a fixed delay of 5 seconds for the first attempt.
 	//
 	// Important (chenyu1): before the introduction of the requeue rate limiter, the work
 	// applier uses static requeue intervals, specifically 5 seconds (if the work object is unavailable),
@@ -216,19 +97,24 @@ var defaultRequeueRateLimiter *RequeueMultiStageWithExponentialBackoffRateLimite
 
 // Reconciler reconciles a Work object.
 type Reconciler struct {
-	hubClient                    client.Client
-	workNameSpace                string
-	spokeDynamicClient           dynamic.Interface
-	spokeClient                  client.Client
-	restMapper                   meta.RESTMapper
-	recorder                     record.EventRecorder
-	concurrentReconciles         int
-	watchWorkWithPriorityQueue   bool
-	watchWorkReconcileAgeMinutes int
-	deletionWaitTime             time.Duration
-	joined                       *atomic.Bool
-	parallelizer                 parallelizerutil.Parallelizer
-	requeueRateLimiter           *RequeueMultiStageWithExponentialBackoffRateLimiter
+	hubClient                          client.Client
+	workNameSpace                      string
+	spokeDynamicClient                 dynamic.Interface
+	spokeClient                        client.Client
+	restMapper                         meta.RESTMapper
+	recorder                           record.EventRecorder
+	concurrentReconciles               int
+	deletionWaitTime                   time.Duration
+	joined                             *atomic.Bool
+	parallelizer                       parallelizerutil.Parallelizer
+	requeueRateLimiter                 *RequeueMultiStageWithExponentialBackoffRateLimiter
+	usePriorityQueue                   bool
+	workObjAgeForPrioritizedProcessing time.Duration
+	// The custom priority queue in use if the option watchWorkWithPriorityQueue is enabled.
+	//
+	// Note that this variable is set only after the controller starts.
+	pq          priorityqueue.PriorityQueue[reconcile.Request]
+	pqSetupOnce sync.Once
 }
 
 // NewReconciler returns a new Work object reconciler for the work applier.
@@ -239,9 +125,9 @@ func NewReconciler(
 	concurrentReconciles int,
 	parallelizer parallelizerutil.Parallelizer,
 	deletionWaitTime time.Duration,
-	watchWorkWithPriorityQueue bool,
-	watchWorkReconcileAgeMinutes int,
 	requeueRateLimiter *RequeueMultiStageWithExponentialBackoffRateLimiter,
+	usePriorityQueue bool,
+	workObjAgeForPrioritizedProcessing time.Duration,
 ) *Reconciler {
 	if requeueRateLimiter == nil {
 		klog.V(2).InfoS("requeue rate limiter is not set; using the default rate limiter")
@@ -252,21 +138,35 @@ func NewReconciler(
 		parallelizer = parallelizerutil.NewParallelizer(1)
 	}
 
-	return &Reconciler{
-		hubClient:                    hubClient,
-		spokeDynamicClient:           spokeDynamicClient,
-		spokeClient:                  spokeClient,
-		restMapper:                   restMapper,
-		recorder:                     recorder,
-		concurrentReconciles:         concurrentReconciles,
-		parallelizer:                 parallelizer,
-		watchWorkWithPriorityQueue:   watchWorkWithPriorityQueue,
-		watchWorkReconcileAgeMinutes: watchWorkReconcileAgeMinutes,
-		workNameSpace:                workNameSpace,
-		joined:                       atomic.NewBool(false),
-		deletionWaitTime:             deletionWaitTime,
-		requeueRateLimiter:           requeueRateLimiter,
+	woAgeForPrioritizedProcessing := workObjAgeForPrioritizedProcessing
+	if usePriorityQueue && woAgeForPrioritizedProcessing < minWorkObjAgeForPrioritizedQueueing {
+		klog.V(2).InfoS("Work object age for prioritized processing is too short; set to the longer default", "workObjAgeForPrioritizedProcessing", woAgeForPrioritizedProcessing)
+		woAgeForPrioritizedProcessing = minWorkObjAgeForPrioritizedQueueing
 	}
+
+	return &Reconciler{
+		hubClient:                          hubClient,
+		spokeDynamicClient:                 spokeDynamicClient,
+		spokeClient:                        spokeClient,
+		restMapper:                         restMapper,
+		recorder:                           recorder,
+		concurrentReconciles:               concurrentReconciles,
+		parallelizer:                       parallelizer,
+		workNameSpace:                      workNameSpace,
+		joined:                             atomic.NewBool(false),
+		deletionWaitTime:                   deletionWaitTime,
+		requeueRateLimiter:                 requeueRateLimiter,
+		usePriorityQueue:                   usePriorityQueue,
+		workObjAgeForPrioritizedProcessing: woAgeForPrioritizedProcessing,
+	}
+}
+
+// PriorityQueue returns the priority queue (if any) in use by the reconciler.
+//
+// Note that the priority queue is only set after the reconciler starts (i.e., the work applier
+// has been set up with the controller manager).
+func (r *Reconciler) PriorityQueue() priorityqueue.PriorityQueue[reconcile.Request] {
+	return r.pq
 }
 
 type ManifestProcessingApplyOrReportDiffResultType string
@@ -728,22 +628,29 @@ func (r *Reconciler) Leave(ctx context.Context) error {
 
 // SetupWithManager wires up the controller.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
-	// Create the priority queue using the rate limiter and a queue name
-	queue := priorityqueue.New[priorityQueueItem]("apply-work-queue")
+	if r.usePriorityQueue {
+		eventHandler := &priorityBasedWorkObjEventHandler{
+			qm:                                 r,
+			workObjAgeForPrioritizedProcessing: r.workObjAgeForPrioritizedProcessing,
+		}
 
-	// Create the event handler that uses the priority queue
-	eventHandler := &PriorityQueueEventHandler{
-		Queue:  queue, // Attach the priority queue to the event handler
-		Client: r.hubClient,
-	}
+		newPQ := func(controllerName string, rateLimiter workqueue.TypedRateLimiter[reconcile.Request]) workqueue.TypedRateLimitingInterface[reconcile.Request] {
+			withRateLimiterOpt := func(opts *priorityqueue.Opts[reconcile.Request]) {
+				opts.RateLimiter = rateLimiter
+			}
+			r.pqSetupOnce.Do(func() {
+				r.pq = priorityqueue.New(controllerName, withRateLimiterOpt)
+			})
+			return r.pq
+		}
 
-	if r.watchWorkWithPriorityQueue {
-		workAgeToReconcile = time.Duration(r.watchWorkReconcileAgeMinutes) * time.Minute
 		return ctrl.NewControllerManagedBy(mgr).Named("work-applier-controller").
 			WithOptions(ctrloption.Options{
 				MaxConcurrentReconciles: r.concurrentReconciles,
+				NewQueue:                newPQ,
 			}).
 			For(&fleetv1beta1.Work{}).
+			// Use custom event handler to allow access to the priority queue interface.
 			Watches(&fleetv1beta1.Work{}, eventHandler).
 			Complete(r)
 	}
