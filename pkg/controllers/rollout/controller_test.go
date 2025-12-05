@@ -19,6 +19,7 @@ package rollout
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -2569,7 +2570,14 @@ func TestPickBindingsToRoll(t *testing.T) {
 				t.Errorf("pickBindingsToRoll() = needRoll %v, want %v", gotNeedRoll, tt.wantNeedRoll)
 			}
 			if tt.wantNeedRoll == true {
-				if gotWaitTime.Round(time.Second) != tt.wantWaitTime {
+				waitTimeComparer := cmp.Comparer(func(d1, d2 time.Duration) bool {
+					// Allow 1-second tolerance when comparing the wait time as the binding
+					// condition is built during test initialization while readyTimeCutOff
+					// is based on the reconcile time.
+					// Using round func may have the flakiness, for example, waitTime 24.126941228s, want 25s.
+					return math.Abs(float64(d1-d2)) <= float64(time.Second)
+				})
+				if !cmp.Equal(gotWaitTime, tt.wantWaitTime, waitTimeComparer) {
 					t.Errorf("pickBindingsToRoll() = waitTime %v, want %v", gotWaitTime, tt.wantWaitTime)
 				}
 			}
