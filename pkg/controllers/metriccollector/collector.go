@@ -202,6 +202,6 @@ func (r *Reconciler) collectFromPrometheus(ctx context.Context, mc *placementv1b
 
 // buildPromQLQuery builds a PromQL query for workload_health metric
 func buildPromQLQuery(mc *placementv1beta1.MetricCollector) string {
-	// Query all workload_health metrics in the MetricCollector's namespace
-	return fmt.Sprintf(`workload_health{namespace="%s"}`, mc.Namespace)
+	// Query all workload_health metrics (MetricCollector is cluster-scoped)
+	return `workload_health`
 }
