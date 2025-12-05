@@ -4,8 +4,10 @@ The ApprovalRequest Controller is a standalone controller that runs on the **hub
 
 ## Overview
 
-This controller:
-- Watches `ApprovalRequest` and `ClusterApprovalRequest` resources
+This controller is designed to be a standalone component that can run independently from the main kubefleet repository. It:
+- Uses kubefleet v0.1.2 as an external dependency
+- Includes its own APIs for MetricCollectorReport and WorkloadTracker
+- Watches `ApprovalRequest` and `ClusterApprovalRequest` resources (from kubefleet)
 - Creates `MetricCollector` resources on member clusters via ClusterResourcePlacement
 - Monitors workload health via `MetricCollectorReport` objects
 - Automatically approves requests when all tracked workloads are healthy
@@ -23,16 +25,18 @@ The controller is designed to run on the hub cluster and:
 
 ### Prerequisites
 
-The following CRDs must be installed on the hub cluster:
+The following CRDs must be installed on the hub cluster (installed by kubefleet hub-agent):
 - `approvalrequests.placement.kubernetes-fleet.io`
 - `clusterapprovalrequests.placement.kubernetes-fleet.io`
-- `metriccollectors.placement.kubernetes-fleet.io`
-- `metriccollectorreports.placement.kubernetes-fleet.io` (installed by this chart)
-- `workloadtrackers.placement.kubernetes-fleet.io`
 - `clusterresourceplacements.placement.kubernetes-fleet.io`
 - `clusterresourceoverrides.placement.kubernetes-fleet.io`
 - `clusterstagedupdateruns.placement.kubernetes-fleet.io`
 - `stagedupdateruns.placement.kubernetes-fleet.io`
+
+The following CRDs are installed by this chart:
+- `metriccollectors.placement.kubernetes-fleet.io`
+- `metriccollectorreports.placement.kubernetes-fleet.io`
+- `workloadtrackers.placement.kubernetes-fleet.io`
 
 ### Install via Helm
 
@@ -51,13 +55,13 @@ helm install approval-request-controller ./charts/approval-request-controller \
 
 ## Configuration
 
-See `charts/approval-request-controller/values.yaml` for all configuration options.
-
 Key settings:
 - `controller.logLevel`: Log verbosity (default: 2)
 - `controller.resources`: Resource requests and limits
 - `rbac.create`: Create RBAC resources (default: true)
-- `crds.install`: Install MetricCollectorReport CRD (default: true)
+- `crds.install`: Install MetricCollector, MetricCollectorReport, and WorkloadTracker CRDs (default: true)
+- `rbac.create`: Create RBAC resources (default: true)
+- `crds.install`: Install MetricCollector and MetricCollectorReport CRDs (default: true)
 
 ## Development
 

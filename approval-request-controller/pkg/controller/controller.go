@@ -213,7 +213,7 @@ func (r *Reconciler) ensureMetricCollectorResources(
 	roName := fmt.Sprintf("ro-mc-%s-%s", updateRunName, stageName)
 
 	// Create MetricCollector resource (cluster-scoped) on hub
-	metricCollector := &placementv1beta1.MetricCollector{
+	metricCollector := &localv1beta1.MetricCollector{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: metricCollectorName,
 			Labels: map[string]string{
@@ -223,7 +223,7 @@ func (r *Reconciler) ensureMetricCollectorResources(
 				"stage":            stageName,
 			},
 		},
-		Spec: placementv1beta1.MetricCollectorSpec{
+		Spec: localv1beta1.MetricCollectorSpec{
 			PrometheusURL: prometheusURL,
 			// ReportNamespace will be overridden per cluster
 			ReportNamespace: "placeholder",
@@ -231,7 +231,7 @@ func (r *Reconciler) ensureMetricCollectorResources(
 	}
 
 	// Create or update MetricCollector
-	existingMC := &placementv1beta1.MetricCollector{}
+	existingMC := &localv1beta1.MetricCollector{}
 	err := r.Client.Get(ctx, types.NamespacedName{Name: metricCollectorName}, existingMC)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -368,7 +368,7 @@ func (r *Reconciler) checkWorkloadHealthAndApprove(
 	klog.V(2).InfoS("Starting workload health check", "approvalRequest", approvalReqRef, "clusters", clusterNames)
 
 	// Get the WorkloadTracker (there should be one cluster-scoped object)
-	workloadTrackerList := &placementv1beta1.WorkloadTrackerList{}
+	workloadTrackerList := &localv1beta1.WorkloadTrackerList{}
 	if err := r.Client.List(ctx, workloadTrackerList); err != nil {
 		klog.ErrorS(err, "Failed to list WorkloadTracker", "approvalRequest", approvalReqRef)
 		return fmt.Errorf("failed to list WorkloadTracker: %w", err)
@@ -558,7 +558,7 @@ func (r *Reconciler) handleDelete(ctx context.Context, approvalReqObj placementv
 	}
 
 	// Delete MetricCollector
-	metricCollector := &placementv1beta1.MetricCollector{}
+	metricCollector := &localv1beta1.MetricCollector{}
 	if err := r.Client.Get(ctx, types.NamespacedName{Name: metricCollectorName}, metricCollector); err == nil {
 		if err := r.Client.Delete(ctx, metricCollector); err != nil && !errors.IsNotFound(err) {
 			return ctrl.Result{}, fmt.Errorf("failed to delete MetricCollector: %w", err)

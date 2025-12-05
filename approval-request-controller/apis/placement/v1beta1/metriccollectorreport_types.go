@@ -72,25 +72,6 @@ type MetricCollectorReport struct {
 	LastReportTime *metav1.Time `json:"lastReportTime,omitempty"`
 }
 
-// WorkloadMetrics represents metrics collected from a single workload pod.
-type WorkloadMetrics struct {
-	// Namespace is the namespace of the pod.
-	// +required
-	Namespace string `json:"namespace"`
-
-	// ClusterName from the workload_health metric label.
-	// +required
-	ClusterName string `json:"clusterName"`
-
-	// WorkloadName from the workload_health metric label (typically the deployment name).
-	// +required
-	WorkloadName string `json:"workloadName"`
-
-	// Health indicates if the workload is healthy (true=healthy, false=unhealthy).
-	// +required
-	Health bool `json:"health"`
-}
-
 // +kubebuilder:object:root=true
 
 // MetricCollectorReportList contains a list of MetricCollectorReport.
