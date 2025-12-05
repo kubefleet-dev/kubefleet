@@ -1,0 +1,49 @@
+{{- if .Values.hubCluster.createRBAC }}
+# This template generates RBAC resources for the hub cluster
+# Apply this on the HUB cluster to grant the metric-collector permissions
+# to create/update MetricCollectorReport resources
+#
+# Usage:
+#   helm template metric-collector ./charts/metric-collector \
+#     --set hubCluster.createRBAC=true \
+#     --show-only templates/hub-rbac.yaml | kubectl apply -f - --context=hub-cluster
+#
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "metric-collector.fullname" . }}-hub-access
+  labels:
+    {{- include "metric-collector.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hub-rbac
+  annotations:
+    helm.sh/resource-policy: keep
+rules:
+  # MetricCollectorReport access
+  - apiGroups: ["placement.kubernetes-fleet.io"]
+    resources: ["metriccollectorreports"]
+    verbs: ["get", "list", "create", "update", "patch", "delete"]
+  # Namespace access for fleet-{cluster} namespaces
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "metric-collector.fullname" . }}-{{ .Values.memberCluster.name }}
+  labels:
+    {{- include "metric-collector.labels" . | nindent 4 }}
+    app.kubernetes.io/component: hub-rbac
+    fleet.kubernetes.io/member-cluster: {{ .Values.memberCluster.name }}
+  annotations:
+    helm.sh/resource-policy: keep
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "metric-collector.fullname" . }}-hub-access
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.hubCluster.auth.serviceAccountName | default (include "metric-collector.serviceAccountName" .) }}
+    namespace: {{ .Values.hubCluster.auth.serviceAccountNamespace | default .Release.Namespace }}
+{{- end }}

@@ -1,0 +1,44 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "metric-collector.fullname" . }}
+  labels:
+    {{- include "metric-collector.labels" . | nindent 4 }}
+rules:
+  # MetricCollector CRD access on member cluster
+  - apiGroups: ["placement.kubernetes-fleet.io"]
+    resources: ["metriccollectors"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["placement.kubernetes-fleet.io"]
+    resources: ["metriccollectors/status"]
+    verbs: ["update", "patch"]
+  - apiGroups: ["placement.kubernetes-fleet.io"]
+    resources: ["metriccollectors/finalizers"]
+    verbs: ["update"]
+  
+  # Events
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  
+  # Leader election
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "metric-collector.fullname" . }}
+  labels:
+    {{- include "metric-collector.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "metric-collector.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "metric-collector.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

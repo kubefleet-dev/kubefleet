@@ -1,0 +1,16 @@
+apiVersion: v2
+name: metric-collector
+description: MetricCollector for Kubernetes Fleet - Collects workload health metrics and reports to hub cluster
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords:
+  - kubernetes
+  - fleet
+  - metrics
+  - monitoring
+maintainers:
+  - name: KubeFleet Team
+home: https://github.com/kubefleet-dev/kubefleet
+sources:
+  - https://github.com/kubefleet-dev/kubefleet/tree/main/standalone-metric-collector
