@@ -2667,6 +2667,7 @@ func generateReadyClusterResourceBinding(state placementv1beta1.BindingState, re
 
 func generateNotTrackableClusterResourceBinding(state placementv1beta1.BindingState, resourceSnapshotName, targetCluster string, lastTransitionTime metav1.Time) *placementv1beta1.ClusterResourceBinding {
 	binding := generateClusterResourceBinding(state, resourceSnapshotName, targetCluster)
+	lastTransitionTime = metav1.NewTime(now.Add(-35 * time.Second))
 	binding.Status.Conditions = []metav1.Condition{
 		{
 			Type:   string(placementv1beta1.ResourceBindingApplied),
