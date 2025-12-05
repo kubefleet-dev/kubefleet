@@ -29,6 +29,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -37,6 +38,9 @@ import (
 const (
 	// defaultCollectionInterval is the interval for collecting metrics (30 seconds)
 	defaultCollectionInterval = 30 * time.Second
+
+	// metricCollectorFinalizer is the finalizer for cleaning up MetricCollectorReport
+	metricCollectorFinalizer = "kubernetes-fleet.io/metric-collector-report-cleanup"
 )
 
 // Reconciler reconciles a MetricCollector object
@@ -72,6 +76,38 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 		klog.ErrorS(err, "Failed to get MetricCollector", "metricCollector", req.Name)
 		return ctrl.Result{}, err
+	}
+
+	// Handle deletion - cleanup MetricCollectorReport on hub
+	if !mc.DeletionTimestamp.IsZero() {
+		if controllerutil.ContainsFinalizer(mc, metricCollectorFinalizer) {
+			klog.V(2).InfoS("Cleaning up MetricCollectorReport on hub", "metricCollector", req.Name)
+
+			// Delete MetricCollectorReport from hub cluster
+			if err := r.deleteReportFromHub(ctx, mc); err != nil {
+				klog.ErrorS(err, "Failed to delete MetricCollectorReport from hub", "metricCollector", req.Name)
+				return ctrl.Result{}, err
+			}
+
+			// Remove finalizer
+			controllerutil.RemoveFinalizer(mc, metricCollectorFinalizer)
+			if err := r.MemberClient.Update(ctx, mc); err != nil {
+				klog.ErrorS(err, "Failed to remove finalizer", "metricCollector", req.Name)
+				return ctrl.Result{}, err
+			}
+			klog.V(2).InfoS("Successfully cleaned up MetricCollectorReport", "metricCollector", req.Name)
+		}
+		return ctrl.Result{}, nil
+	}
+
+	// Add finalizer if not present
+	if !controllerutil.ContainsFinalizer(mc, metricCollectorFinalizer) {
+		controllerutil.AddFinalizer(mc, metricCollectorFinalizer)
+		if err := r.MemberClient.Update(ctx, mc); err != nil {
+			klog.ErrorS(err, "Failed to add finalizer", "metricCollector", req.Name)
+			return ctrl.Result{}, err
+		}
+		klog.V(2).InfoS("Added finalizer to MetricCollector", "metricCollector", req.Name)
 	}
 
 	// Collect metrics from Prometheus
@@ -211,6 +247,34 @@ func (r *Reconciler) syncReportToHub(ctx context.Context, mc *placementv1beta1.M
 		return err
 	}
 	klog.V(2).InfoS("Updated MetricCollectorReport on hub", "report", klog.KObj(existingReport), "reportNamespace", reportNamespace)
+	return nil
+}
+
+// deleteReportFromHub deletes the MetricCollectorReport from the hub cluster
+func (r *Reconciler) deleteReportFromHub(ctx context.Context, mc *placementv1beta1.MetricCollector) error {
+	// Use the reportNamespace from the MetricCollector spec
+	reportNamespace := mc.Spec.ReportNamespace
+	if reportNamespace == "" {
+		klog.V(2).InfoS("reportNamespace is not set, skipping deletion", "metricCollector", mc.Name)
+		return nil
+	}
+
+	// Try to delete MetricCollectorReport on hub
+	report := &placementv1beta1.MetricCollectorReport{}
+	err := r.HubClient.Get(ctx, client.ObjectKey{Name: mc.Name, Namespace: reportNamespace}, report)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			klog.V(2).InfoS("MetricCollectorReport not found on hub, already deleted", "report", mc.Name, "namespace", reportNamespace)
+			return nil
+		}
+		return fmt.Errorf("failed to get MetricCollectorReport: %w", err)
+	}
+
+	if err := r.HubClient.Delete(ctx, report); err != nil && !errors.IsNotFound(err) {
+		return fmt.Errorf("failed to delete MetricCollectorReport: %w", err)
+	}
+
+	klog.InfoS("Deleted MetricCollectorReport from hub", "report", mc.Name, "namespace", reportNamespace)
 	return nil
 }
 
