@@ -1231,6 +1231,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 		wantNeedRoll                bool
 		wantWaitTime                time.Duration
 		wantErr                     error
+		bindingsFunc                func() []*placementv1beta1.ClusterResourceBinding // alternative to allBindings, called at test time with fresh 'now'
 	}{
 		// TODO: add more tests
 		"test scheduled binding to bound, outdated resources and nil overrides - rollout allowed": {
@@ -1870,10 +1871,13 @@ func TestPickBindingsToRoll(t *testing.T) {
 		},
 		"test bound bindings with different waitTimes and check the wait time should be the min of them all": {
 			// want the min wait time of bound bindings that are not ready
-			allBindings: []*placementv1beta1.ClusterResourceBinding{
-				generateNotTrackableClusterResourceBinding(placementv1beta1.BindingStateBound, "snapshot-1", cluster3, metav1.Time{Time: now.Add(-35 * time.Second)}), // notReady, waitTime = t - 35s
-				generateCanBeReadyClusterResourceBinding(placementv1beta1.BindingStateBound, "snapshot-1", cluster1),                                                  // notReady, no wait time because it does not have available condition yet,
-				generateReadyClusterResourceBinding(placementv1beta1.BindingStateBound, "snapshot-2", cluster2),                                                       // Ready
+			bindingsFunc: func() []*placementv1beta1.ClusterResourceBinding {
+				now := time.Now() // Fresh timestamp for accurate timing
+				return []*placementv1beta1.ClusterResourceBinding{
+					generateNotTrackableClusterResourceBinding(placementv1beta1.BindingStateBound, "snapshot-1", cluster3, metav1.Time{Time: now.Add(-35 * time.Second)}), // notReady, waitTime = t - 35s
+					generateCanBeReadyClusterResourceBinding(placementv1beta1.BindingStateBound, "snapshot-1", cluster1),                                                  // notReady, no wait time because it does not have available condition yet,
+					generateReadyClusterResourceBinding(placementv1beta1.BindingStateBound, "snapshot-2", cluster2),                                                       // Ready
+				}
 			},
 			latestResourceSnapshotName: "snapshot-2",
 			crp: clusterResourcePlacementForTest("test",
@@ -1909,9 +1913,12 @@ func TestPickBindingsToRoll(t *testing.T) {
 		},
 		"test unscheduled bindings with different waitTimes and check the wait time is correct": {
 			// want the min wait time of unscheduled bindings that are not ready
-			allBindings: []*placementv1beta1.ClusterResourceBinding{
-				generateNotTrackableClusterResourceBinding(placementv1beta1.BindingStateUnscheduled, "snapshot-1", cluster2, metav1.Time{Time: now.Add(-1 * time.Minute)}),  // NotReady, waitTime = t - 60s
-				generateNotTrackableClusterResourceBinding(placementv1beta1.BindingStateUnscheduled, "snapshot-1", cluster3, metav1.Time{Time: now.Add(-35 * time.Second)}), // NotReady,  waitTime = t - 35s
+			bindingsFunc: func() []*placementv1beta1.ClusterResourceBinding {
+				now := time.Now() // Fresh timestamp for accurate timing
+				return []*placementv1beta1.ClusterResourceBinding{
+					generateNotTrackableClusterResourceBinding(placementv1beta1.BindingStateUnscheduled, "snapshot-1", cluster2, metav1.Time{Time: now.Add(-1 * time.Minute)}),  // NotReady, waitTime = t - 60s
+					generateNotTrackableClusterResourceBinding(placementv1beta1.BindingStateUnscheduled, "snapshot-1", cluster3, metav1.Time{Time: now.Add(-35 * time.Second)}), // NotReady,  waitTime = t - 35s
+				}
 			},
 			latestResourceSnapshotName: "snapshot-2",
 			crp: clusterResourcePlacementForTest("test",
@@ -2501,6 +2508,15 @@ func TestPickBindingsToRoll(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
+			now := time.Now() // Capture fresh timestamp for this specific test case
+			_ = now           // Suppress unused variable warning for tests that don't use it
+
+			// Use bindingsFunc if provided (for timing-sensitive tests), otherwise use allBindings
+			allBindings := tt.allBindings
+			if tt.bindingsFunc != nil {
+				allBindings = tt.bindingsFunc()
+			}
+
 			scheme := serviceScheme(t)
 			var objects []client.Object
 			for i := range tt.clusters {
@@ -2519,7 +2535,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 					Name: tt.latestResourceSnapshotName,
 				},
 			}
-			gotUpdatedBindings, gotStaleUnselectedBindings, gotUpToDateBoundBindings, gotNeedRoll, gotWaitTime, err := r.pickBindingsToRoll(context.Background(), controller.ConvertCRBArrayToBindingObjs(tt.allBindings), resourceSnapshot, tt.crp, tt.matchedCROs, tt.matchedROs)
+			gotUpdatedBindings, gotStaleUnselectedBindings, gotUpToDateBoundBindings, gotNeedRoll, gotWaitTime, err := r.pickBindingsToRoll(context.Background(), controller.ConvertCRBArrayToBindingObjs(allBindings), resourceSnapshot, tt.crp, tt.matchedCROs, tt.matchedROs)
 			if (err != nil) != (tt.wantErr != nil) || err != nil && !errors.Is(err, tt.wantErr) {
 				t.Fatalf("pickBindingsToRoll() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -2530,30 +2546,30 @@ func TestPickBindingsToRoll(t *testing.T) {
 			wantTobeUpdatedBindings := make([]toBeUpdatedBinding, len(tt.wantTobeUpdatedBindings))
 			for i, index := range tt.wantTobeUpdatedBindings {
 				// Unscheduled bindings are only removed in a single rollout cycle.
-				bindingSpec := tt.allBindings[index].GetBindingSpec()
+				bindingSpec := allBindings[index].GetBindingSpec()
 				if bindingSpec.State != placementv1beta1.BindingStateUnscheduled {
-					wantTobeUpdatedBindings[i].currentBinding = tt.allBindings[index]
-					wantTobeUpdatedBindings[i].desiredBinding = tt.allBindings[index].DeepCopy()
+					wantTobeUpdatedBindings[i].currentBinding = allBindings[index]
+					wantTobeUpdatedBindings[i].desiredBinding = allBindings[index].DeepCopy()
 					wantTobeUpdatedBindings[i].desiredBinding.SetBindingSpec(tt.wantDesiredBindingsSpec[index])
 				} else {
-					wantTobeUpdatedBindings[i].currentBinding = tt.allBindings[index]
+					wantTobeUpdatedBindings[i].currentBinding = allBindings[index]
 				}
 			}
 			wantStaleUnselectedBindings := make([]toBeUpdatedBinding, len(tt.wantStaleUnselectedBindings))
 			for i, index := range tt.wantStaleUnselectedBindings {
 				// Unscheduled bindings are only removed in a single rollout cycle.
-				bindingSpec := tt.allBindings[index].GetBindingSpec()
+				bindingSpec := allBindings[index].GetBindingSpec()
 				if bindingSpec.State != placementv1beta1.BindingStateUnscheduled {
-					wantStaleUnselectedBindings[i].currentBinding = tt.allBindings[index]
-					wantStaleUnselectedBindings[i].desiredBinding = tt.allBindings[index].DeepCopy()
+					wantStaleUnselectedBindings[i].currentBinding = allBindings[index]
+					wantStaleUnselectedBindings[i].desiredBinding = allBindings[index].DeepCopy()
 					wantStaleUnselectedBindings[i].desiredBinding.SetBindingSpec(tt.wantDesiredBindingsSpec[index])
 				} else {
-					wantStaleUnselectedBindings[i].currentBinding = tt.allBindings[index]
+					wantStaleUnselectedBindings[i].currentBinding = allBindings[index]
 				}
 			}
 			wantUpToDateBoundBindings := make([]toBeUpdatedBinding, len(tt.wantUpToDateBoundBindings))
 			for i, index := range tt.wantUpToDateBoundBindings {
-				wantUpToDateBoundBindings[i].currentBinding = tt.allBindings[index]
+				wantUpToDateBoundBindings[i].currentBinding = allBindings[index]
 			}
 
 			if diff := cmp.Diff(wantTobeUpdatedBindings, gotUpdatedBindings, cmpOptions...); diff != "" {
