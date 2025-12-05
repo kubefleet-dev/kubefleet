@@ -506,7 +506,7 @@ func CheckCRDInstalled(discoveryClient discovery.DiscoveryInterface, gvk schema.
 }
 
 // ShouldPropagateObj decides if one should propagate the object.
-// If enableWorkload is true, PVCs are allowed to be propagated.
+// PVCs are only propagated when enableWorkload is false (workloads not allowed on hub).
 func ShouldPropagateObj(informerManager informer.Manager, uObj *unstructured.Unstructured, enableWorkload bool) (bool, error) {
 	// TODO:  add more special handling for different resource kind
 	switch uObj.GroupVersionKind() {

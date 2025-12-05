@@ -2519,6 +2519,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 					Name: tt.latestResourceSnapshotName,
 				},
 			}
+			now = time.Now() //refresh the now value
 			gotUpdatedBindings, gotStaleUnselectedBindings, gotUpToDateBoundBindings, gotNeedRoll, gotWaitTime, err := r.pickBindingsToRoll(context.Background(), controller.ConvertCRBArrayToBindingObjs(tt.allBindings), resourceSnapshot, tt.crp, tt.matchedCROs, tt.matchedROs)
 			if (err != nil) != (tt.wantErr != nil) || err != nil && !errors.Is(err, tt.wantErr) {
 				t.Fatalf("pickBindingsToRoll() error = %v, wantErr %v", err, tt.wantErr)
