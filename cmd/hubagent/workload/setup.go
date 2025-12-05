@@ -33,7 +33,6 @@ import (
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
-	"github.com/kubefleet-dev/kubefleet/pkg/controllers/approvalrequest"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/bindingwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterinventory/clusterprofile"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacementeviction"
@@ -330,25 +329,25 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 				}
 			}
 
-			// Set up the cluster approval request controller
-			klog.Info("Setting up clusterApprovalRequest controller")
-			if err = (&approvalrequest.Reconciler{
-				Client: mgr.GetClient(),
-			}).SetupWithManagerForClusterApprovalRequest(mgr); err != nil {
-				klog.ErrorS(err, "Unable to set up clusterApprovalRequest controller")
-				return err
-			}
+			// // Set up the cluster approval request controller
+			// klog.Info("Setting up clusterApprovalRequest controller")
+			// if err = (&approvalrequest.Reconciler{
+			// 	Client: mgr.GetClient(),
+			// }).SetupWithManagerForClusterApprovalRequest(mgr); err != nil {
+			// 	klog.ErrorS(err, "Unable to set up clusterApprovalRequest controller")
+			// 	return err
+			// }
 
-			// Set up the approval request controller for namespaced resources
-			if opts.EnableResourcePlacement {
-				klog.Info("Setting up approvalRequest controller")
-				if err = (&approvalrequest.Reconciler{
-					Client: mgr.GetClient(),
-				}).SetupWithManagerForApprovalRequest(mgr); err != nil {
-					klog.ErrorS(err, "Unable to set up approvalRequest controller")
-					return err
-				}
-			}
+			// // Set up the approval request controller for namespaced resources
+			// if opts.EnableResourcePlacement {
+			// 	klog.Info("Setting up approvalRequest controller")
+			// 	if err = (&approvalrequest.Reconciler{
+			// 		Client: mgr.GetClient(),
+			// 	}).SetupWithManagerForApprovalRequest(mgr); err != nil {
+			// 		klog.ErrorS(err, "Unable to set up approvalRequest controller")
+			// 		return err
+			// 	}
+			// }
 		}
 
 		// Set up the work generator
