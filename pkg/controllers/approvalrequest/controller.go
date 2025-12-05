@@ -109,6 +109,13 @@ func (r *Reconciler) reconcileApprovalRequestObj(ctx context.Context, approvalRe
 		return r.handleDelete(ctx, approvalReqObj, isClusterScoped)
 	}
 
+	// Check if the approval request is already approved or rejected - stop reconciliation if so
+	approvedCond := meta.FindStatusCondition(approvalReqObj.GetApprovalRequestStatus().Conditions, string(placementv1beta1.ApprovalRequestConditionApproved))
+	if approvedCond != nil && approvedCond.Status == metav1.ConditionTrue {
+		klog.V(2).InfoS("ApprovalRequest has been approved, stopping reconciliation", "approvalRequest", approvalReqRef)
+		return ctrl.Result{}, nil
+	}
+
 	// Add finalizer if not present
 	if !controllerutil.ContainsFinalizer(obj, metricCollectorFinalizer) {
 		controllerutil.AddFinalizer(obj, metricCollectorFinalizer)
@@ -117,13 +124,6 @@ func (r *Reconciler) reconcileApprovalRequestObj(ctx context.Context, approvalRe
 			return ctrl.Result{}, err
 		}
 		klog.V(2).InfoS("Added finalizer to ApprovalRequest", "approvalRequest", approvalReqRef)
-	}
-
-	// Check if the approval request is approved
-	approvedCond := meta.FindStatusCondition(approvalReqObj.GetApprovalRequestStatus().Conditions, string(placementv1beta1.ApprovalRequestConditionApproved))
-	if approvedCond != nil && approvedCond.Status == metav1.ConditionTrue {
-		klog.V(2).InfoS("ApprovalRequest has been approved, skipping", "approvalRequest", approvalReqRef)
-		return ctrl.Result{}, nil
 	}
 
 	// Get the UpdateRun (ClusterStagedUpdateRun or StagedUpdateRun)
@@ -190,13 +190,13 @@ func (r *Reconciler) reconcileApprovalRequestObj(ctx context.Context, approvalRe
 	klog.V(2).InfoS("Successfully ensured MetricCollector resources", "approvalRequest", approvalReqRef, "clusters", clusterNames)
 
 	// Check workload health and approve if all workloads are healthy
-	result, err := r.checkWorkloadHealthAndApprove(ctx, approvalReqObj, clusterNames, updateRunName, stageName)
-	if err != nil {
+	if err := r.checkWorkloadHealthAndApprove(ctx, approvalReqObj, clusterNames, updateRunName, stageName); err != nil {
 		klog.ErrorS(err, "Failed to check workload health", "approvalRequest", approvalReqRef)
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+		return ctrl.Result{RequeueAfter: 15 * time.Second}, err
 	}
 
-	return result, nil
+	// Requeue after 15 seconds to check again (will stop if approved in next reconciliation)
+	return ctrl.Result{RequeueAfter: 15 * time.Second}, nil
 }
 
 // ensureMetricCollectorResources creates the Namespace, MetricCollector, CRP, and ResourceOverrides
@@ -360,7 +360,7 @@ func (r *Reconciler) checkWorkloadHealthAndApprove(
 	approvalReqObj placementv1beta1.ApprovalRequestObj,
 	clusterNames []string,
 	updateRunName, stageName string,
-) (ctrl.Result, error) {
+) error {
 	obj := approvalReqObj.(client.Object)
 	approvalReqRef := klog.KObj(obj)
 
@@ -370,12 +370,12 @@ func (r *Reconciler) checkWorkloadHealthAndApprove(
 	workloadTrackerList := &placementv1beta1.WorkloadTrackerList{}
 	if err := r.Client.List(ctx, workloadTrackerList); err != nil {
 		klog.ErrorS(err, "Failed to list WorkloadTracker", "approvalRequest", approvalReqRef)
-		return ctrl.Result{}, fmt.Errorf("failed to list WorkloadTracker: %w", err)
+		return fmt.Errorf("failed to list WorkloadTracker: %w", err)
 	}
 
 	if len(workloadTrackerList.Items) == 0 {
 		klog.V(2).InfoS("No WorkloadTracker found, skipping health check", "approvalRequest", approvalReqRef)
-		return ctrl.Result{}, nil
+		return nil
 	}
 
 	// Use the first WorkloadTracker (assuming there's only one)
@@ -384,7 +384,7 @@ func (r *Reconciler) checkWorkloadHealthAndApprove(
 
 	if len(workloadTracker.Workloads) == 0 {
 		klog.V(2).InfoS("WorkloadTracker has no workloads defined, skipping health check", "approvalRequest", approvalReqRef)
-		return ctrl.Result{}, nil
+		return nil
 	}
 
 	// MetricCollectorReport name is same as MetricCollector name
@@ -426,7 +426,7 @@ func (r *Reconciler) checkWorkloadHealthAndApprove(
 				"cluster", clusterName,
 				"report", metricCollectorName,
 				"namespace", reportNamespace)
-			return ctrl.Result{}, fmt.Errorf("failed to get MetricCollectorReport for cluster %s: %w", clusterName, err)
+			return fmt.Errorf("failed to get MetricCollectorReport for cluster %s: %w", clusterName, err)
 		}
 
 		klog.V(2).InfoS("Found MetricCollectorReport",
@@ -500,7 +500,7 @@ func (r *Reconciler) checkWorkloadHealthAndApprove(
 			approvalReqObj.SetApprovalRequestStatus(*status)
 			if err := r.Client.Status().Update(ctx, obj); err != nil {
 				klog.ErrorS(err, "Failed to approve ApprovalRequest", "approvalRequest", approvalReqRef)
-				return ctrl.Result{}, fmt.Errorf("failed to approve ApprovalRequest: %w", err)
+				return fmt.Errorf("failed to approve ApprovalRequest: %w", err)
 			}
 
 			klog.InfoS("Successfully approved ApprovalRequest", "approvalRequest", approvalReqRef)
@@ -509,17 +509,16 @@ func (r *Reconciler) checkWorkloadHealthAndApprove(
 			klog.V(2).InfoS("ApprovalRequest already approved", "approvalRequest", approvalReqRef)
 		}
 
-		// Stop reconciliation since we're approved
-		return ctrl.Result{}, nil
+		// Approval successful or already approved
+		return nil
 	}
 
-	// Not all workloads are healthy yet, requeue
-	klog.V(2).InfoS("Not all workloads are healthy yet, will requeue",
+	// Not all workloads are healthy yet, log details and return nil (reconcile will requeue)
+	klog.V(2).InfoS("Not all workloads are healthy yet",
 		"approvalRequest", approvalReqRef,
 		"unhealthyDetails", unhealthyDetails)
 
-	// Requeue after 30 seconds to check again
-	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	return nil
 }
 
 // handleDelete handles the deletion of an ApprovalRequest or ClusterApprovalRequest

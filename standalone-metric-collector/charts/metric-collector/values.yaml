@@ -4,7 +4,7 @@
 
 # Controller image configuration
 image:
-  repository: ghcr.io/kubefleet-dev/metric-collector
+  repository: metric-collector
   pullPolicy: IfNotPresent
   tag: "latest"
 

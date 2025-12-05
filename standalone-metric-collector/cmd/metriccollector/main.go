@@ -85,11 +85,14 @@ func buildHubConfig() (*rest.Config, error) {
 	// Check for custom headers
 	customHeader := os.Getenv("HUB_KUBE_HEADER")
 
+	// Check TLS insecure flag
+	tlsInsecure := os.Getenv("TLS_INSECURE") == "true"
+
 	// Initialize hub config
 	hubConfig := &rest.Config{
 		Host: hubURL,
 		TLSClientConfig: rest.TLSClientConfig{
-			Insecure: false,
+			Insecure: tlsInsecure,
 		},
 		WrapTransport: func(rt http.RoundTripper) http.RoundTripper {
 			if customHeader != "" {

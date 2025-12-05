@@ -9,7 +9,7 @@ rules:
   # MetricCollector CRD access on member cluster
   - apiGroups: ["placement.kubernetes-fleet.io"]
     resources: ["metriccollectors"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "update", "patch"]
   - apiGroups: ["placement.kubernetes-fleet.io"]
     resources: ["metriccollectors/status"]
     verbs: ["update", "patch"]

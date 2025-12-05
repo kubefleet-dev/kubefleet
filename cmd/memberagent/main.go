@@ -51,7 +51,6 @@ import (
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	imcv1beta1 "github.com/kubefleet-dev/kubefleet/pkg/controllers/internalmembercluster/v1beta1"
-	"github.com/kubefleet-dev/kubefleet/pkg/controllers/metriccollector"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workapplier"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider/azure"
@@ -465,15 +464,15 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 			return fmt.Errorf("failed to set up InternalMemberCluster v1beta1 controller with the controller manager: %w", err)
 		}
 
-		// Set up the MetricCollector controller.
-		mcReconciler := &metriccollector.Reconciler{
-			MemberClient: memberMgr.GetClient(),
-			HubClient:    hubMgr.GetClient(),
-		}
-		if err := mcReconciler.SetupWithManager(memberMgr); err != nil {
-			klog.ErrorS(err, "Failed to set up MetricCollector controller with the controller manager")
-			return fmt.Errorf("failed to set up MetricCollector controller with the controller manager: %w", err)
-		}
+		// // Set up the MetricCollector controller.
+		// mcReconciler := &metriccollector.Reconciler{
+		// 	MemberClient: memberMgr.GetClient(),
+		// 	HubClient:    hubMgr.GetClient(),
+		// }
+		// if err := mcReconciler.SetupWithManager(memberMgr); err != nil {
+		// 	klog.ErrorS(err, "Failed to set up MetricCollector controller with the controller manager")
+		// 	return fmt.Errorf("failed to set up MetricCollector controller with the controller manager: %w", err)
+		// }
 	}
 
 	klog.InfoS("starting hub manager")
