@@ -1,0 +1,67 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "approval-request-controller.fullname" . }}
+  labels:
+    {{- include "approval-request-controller.labels" . | nindent 4 }}
+rules:
+  # ApprovalRequest and ClusterApprovalRequest
+  - apiGroups: ["placement.kubernetes-fleet.io"]
+    resources: ["approvalrequests", "clusterapprovalrequests"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["placement.kubernetes-fleet.io"]
+    resources: ["approvalrequests/status", "clusterapprovalrequests/status"]
+    verbs: ["update", "patch"]
+  - apiGroups: ["placement.kubernetes-fleet.io"]
+    resources: ["approvalrequests/finalizers", "clusterapprovalrequests/finalizers"]
+    verbs: ["update"]
+  
+  # MetricCollector and MetricCollectorReport
+  - apiGroups: ["placement.kubernetes-fleet.io"]
+    resources: ["metriccollectors", "metriccollectorreports"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["placement.kubernetes-fleet.io"]
+    resources: ["metriccollectors/status", "metriccollectorreports/status"]
+    verbs: ["update", "patch"]
+  
+  # ClusterResourcePlacement and ClusterResourceOverride
+  - apiGroups: ["placement.kubernetes-fleet.io"]
+    resources: ["clusterresourceplacements", "clusterresourceoverrides"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  
+  # UpdateRuns
+  - apiGroups: ["placement.kubernetes-fleet.io"]
+    resources: ["stagedupdateruns", "clusterstagedupdateruns"]
+    verbs: ["get", "list", "watch"]
+  
+  # WorkloadTracker
+  - apiGroups: ["placement.kubernetes-fleet.io"]
+    resources: ["workloadtrackers"]
+    verbs: ["get", "list", "watch"]
+  
+  # Events
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  
+  # Leader election
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "approval-request-controller.fullname" . }}
+  labels:
+    {{- include "approval-request-controller.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "approval-request-controller.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "approval-request-controller.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

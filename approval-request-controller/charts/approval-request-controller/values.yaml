@@ -1,0 +1,84 @@
+# Default values for approval-request-controller
+# This is a YAML-formatted file.
+
+# Controller image configuration
+image:
+  repository: approval-request-controller
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Controller configuration
+controller:
+  # Number of replicas
+  replicas: 1
+  
+  # Log verbosity level (0-10)
+  logLevel: 2
+  
+  # Resource requests and limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Node selector
+  nodeSelector: {}
+  
+  # Tolerations
+  tolerations: []
+  
+  # Affinity
+  affinity: {}
+
+# RBAC configuration
+rbac:
+  create: true
+
+# ServiceAccount configuration
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+
+# Metrics server configuration
+metrics:
+  enabled: true
+  port: 8080
+
+# Health probe configuration
+healthProbe:
+  enabled: true
+  port: 8081
+
+# CRD installation
+crds:
+  # Install MetricCollectorReport CRD
+  install: true
