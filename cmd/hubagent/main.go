@@ -46,6 +46,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/workload"
 	mcv1beta1 "github.com/kubefleet-dev/kubefleet/pkg/controllers/membercluster/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook"
 	// +kubebuilder:scaffold:imports
 )
@@ -164,8 +165,17 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 	if err := workload.SetupControllers(ctx, &wg, mgr, config, opts); err != nil {
-		klog.ErrorS(err, "unable to set up ready check")
+		klog.ErrorS(err, "unable to set up controllers")
 		exitWithErrorFunc()
+	}
+
+	// Add webhook readiness check AFTER controllers are set up (when ResourceInformer is initialized)
+	// This prevents webhook from accepting requests before discovery cache is populated
+	if opts.EnableWebhook {
+		if err := mgr.AddReadyzCheck("webhook-cache", webhook.ResourceInformerReadinessChecker(validator.ResourceInformer)); err != nil {
+			klog.ErrorS(err, "unable to set up webhook readiness check")
+			exitWithErrorFunc()
+		}
 	}
 
 	// +kubebuilder:scaffold:builder
