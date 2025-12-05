@@ -987,6 +987,7 @@ func TestUpdateBindings(t *testing.T) {
 }
 
 func TestIsBindingReady(t *testing.T) {
+	now := time.Now() // Shadow package-level 'now' for accurate timing in this test
 	tests := map[string]struct {
 		binding         *placementv1beta1.ClusterResourceBinding
 		readyTimeCutOff time.Time
@@ -1217,6 +1218,7 @@ func TestIsBindingReady(t *testing.T) {
 }
 
 func TestPickBindingsToRoll(t *testing.T) {
+	now := time.Now() // Shadow package-level 'now' for accurate timing in this test
 	tests := map[string]struct {
 		allBindings                 []*placementv1beta1.ClusterResourceBinding
 		latestResourceSnapshotName  string
