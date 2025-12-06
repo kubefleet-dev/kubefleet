@@ -158,9 +158,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		return runtime.Result{}, r.recordUpdateRunSucceeded(ctx, updateRun)
 	}
 
-	// Execute the updateRun.
-	if state == placementv1beta1.StateRun {
-		klog.V(2).InfoS("Continue to execute the updateRun", "state", state, "updatingStageIndex", updatingStageIndex, "updateRun", runObjRef)
+	switch state {
+	case placementv1beta1.StateInitialize:
+		klog.V(2).InfoS("The updateRun is initialized but not executed, waiting to execute", "state", state, "updateRun", runObjRef)
+	case placementv1beta1.StateRun:
+		// Execute the updateRun.
+		klog.InfoS("Continue to execute the updateRun", "updatingStageIndex", updatingStageIndex, "updateRun", runObjRef)
 		finished, waitTime, execErr := r.execute(ctx, updateRun, updatingStageIndex, toBeUpdatedBindings, toBeDeletedBindings)
 		if errors.Is(execErr, errStagedUpdatedAborted) {
 			// errStagedUpdatedAborted cannot be retried.
@@ -182,8 +185,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 			return runtime.Result{}, execErr
 		}
 		return runtime.Result{Requeue: true, RequeueAfter: waitTime}, nil
+	case placementv1beta1.StateStop:
+		// Stop the updateRun.
+		klog.InfoS("Stopping the updateRun", "state", state, "updatingStageIndex", updatingStageIndex, "updateRun", runObjRef)
+		// TODO(britaniar): Implement the stopping logic for in-progress stages.
+
+		klog.V(2).InfoS("The updateRun is stopped", "updateRun", runObjRef)
+		return runtime.Result{}, r.recordUpdateRunStopped(ctx, updateRun)
 	}
-	klog.V(2).InfoS("The updateRun is initialized but not executed, waiting to execute", "state", state, "updateRun", runObjRef)
 	return runtime.Result{}, nil
 }
 
@@ -271,6 +280,25 @@ func (r *Reconciler) recordUpdateRunFailed(ctx context.Context, updateRun placem
 	})
 	if updateErr := r.Client.Status().Update(ctx, updateRun); updateErr != nil {
 		klog.ErrorS(updateErr, "Failed to update the updateRun status as failed", "updateRun", klog.KObj(updateRun))
+		// updateErr can be retried.
+		return controller.NewUpdateIgnoreConflictError(updateErr)
+	}
+	return nil
+}
+
+// recordUpdateRunStopped records the progressing condition as stopped in the updateRun status.
+func (r *Reconciler) recordUpdateRunStopped(ctx context.Context, updateRun placementv1beta1.UpdateRunObj) error {
+	updateRunStatus := updateRun.GetUpdateRunStatus()
+	meta.SetStatusCondition(&updateRunStatus.Conditions, metav1.Condition{
+		Type:               string(placementv1beta1.StagedUpdateRunConditionProgressing),
+		Status:             metav1.ConditionFalse,
+		ObservedGeneration: updateRun.GetGeneration(),
+		Reason:             condition.UpdateRunStoppedReason,
+		Message:            "The update run has been stopped",
+	})
+
+	if updateErr := r.Client.Status().Update(ctx, updateRun); updateErr != nil {
+		klog.ErrorS(updateErr, "Failed to update the updateRun status as stopped", "updateRun", klog.KObj(updateRun))
 		// updateErr can be retried.
 		return controller.NewUpdateIgnoreConflictError(updateErr)
 	}
