@@ -1,0 +1,134 @@
+# Default values for metric-collector
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Controller image configuration
+image:
+  repository: metric-collector
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Member cluster configuration
+memberCluster:
+  # Name of the member cluster (required)
+  # This should match the cluster name in the fleet
+  name: ""
+
+# Hub cluster connection configuration
+hubCluster:
+  # Hub API server URL (required)
+  # Example: https://hub-cluster.example.com:6443
+  url: ""
+  
+  # Set to true to generate hub RBAC resources
+  # These resources must be applied on the hub cluster
+  createRBAC: false
+  
+  # Authentication configuration
+  auth:
+    # Token-based authentication (default)
+    useTokenAuth: true
+    tokenSecretName: "hub-token"
+    tokenSecretKey: "token"
+    
+    # Certificate-based authentication
+    useCertificateAuth: false
+    certSecretName: ""
+    certSecretKey: "tls.crt"
+    keySecretKey: "tls.key"
+    
+    # ServiceAccount details for RBAC binding on hub cluster
+    # Leave empty to use the default serviceAccount from this chart
+    serviceAccountName: ""
+    serviceAccountNamespace: ""
+  
+  # TLS configuration
+  tls:
+    # Skip TLS verification (not recommended for production)
+    insecure: false
+    # CA certificate for hub cluster
+    caSecretName: ""
+    caSecretKey: "ca.crt"
+  
+  # Custom header for hub requests (optional)
+  customHeader: ""
+
+# Prometheus configuration
+prometheus:
+  # Prometheus URL (required)
+  # Example: http://prometheus.monitoring.svc.cluster.local:9090
+  url: ""
+
+# Controller configuration
+controller:
+  # Number of replicas
+  replicas: 1
+  
+  # Collection interval (how often to scrape metrics)
+  collectionInterval: "30s"
+  
+  # Log verbosity level (0-10)
+  logLevel: 2
+  
+  # Resource requests and limits
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Node selector
+  nodeSelector: {}
+  
+  # Tolerations
+  tolerations: []
+  
+  # Affinity
+  affinity: {}
+
+# RBAC configuration
+rbac:
+  create: true
+
+# ServiceAccount configuration
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+
+# Metrics server configuration
+metrics:
+  enabled: true
+  port: 8080
+
+# Health probe configuration
+healthProbe:
+  enabled: true
+  port: 8081

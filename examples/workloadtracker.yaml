@@ -1,0 +1,7 @@
+apiVersion: placement.kubernetes-fleet.io/v1beta1
+kind: WorkloadTracker
+metadata:
+  name: sample-workload-tracker
+workloads:
+  - name: sample-metric-app
+    namespace: test-ns

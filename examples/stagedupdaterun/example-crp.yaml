@@ -6,12 +6,20 @@ spec:
   resourceSelectors:
     - group: ""
       kind: Namespace
-      name: test-namespace
+      name: test-ns
+      version: v1
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: prometheus
+      version: v1
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+      name: prometheus
       version: v1
   policy:
     placementType: PickAll
-    tolerations:
-      - key: gpu-workload
-        operator: Exists
+    # tolerations:
+    #   - key: gpu-workload
+    #     operator: Exists
   strategy:
     type: External

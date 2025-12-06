@@ -1,0 +1,22 @@
+apiVersion: placement.kubernetes-fleet.io/v1beta1
+kind: ClusterResourcePlacement
+metadata:
+  name: sample-metric-app
+spec:
+  resourceSelectors:
+    - group: ""
+      version: v1
+      kind: Namespace
+      name: test-ns
+    - group: "rbac.authorization.k8s.io"
+      version: v1
+      kind: ClusterRole
+      name: prometheus
+    - group: "rbac.authorization.k8s.io"
+      version: v1
+      kind: ClusterRoleBinding
+      name: prometheus
+  policy:
+    placementType: PickAll
+  strategy:
+    type: RollingUpdate
