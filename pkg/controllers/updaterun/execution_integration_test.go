@@ -703,7 +703,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 		})
 	})
 
-	Context("Cluster staged update run should have stopped when state Stop", Ordered, func() {
+	FContext("Cluster staged update run should have stopped when state Stop", Ordered, func() {
 		var wantApprovalRequest *placementv1beta1.ClusterApprovalRequest
 		var wantMetrics []*promclient.Metric
 		BeforeAll(func() {
@@ -780,12 +780,13 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
-		It("Should stop the update run when state is Stop", func() {
+		It("Should stop the in middle of cluster updating when update run state is Stop", func() {
 			By("Updating updateRun state to Stop")
 			updateRun.Spec.State = placementv1beta1.StateStop
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
 
 			By("Validating the update run is stopped")
+			// 2nd cluster has started condition but no succeeded condition.
 			meta.SetStatusCondition(&wantStatus.Conditions, generateFalseConditionWithReason(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, condition.UpdateRunStoppedReason))
 			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
 
@@ -810,14 +811,12 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
-		It("Should start executing the update run when state is Run", func() {
+		It("Should continue executing stage 1 of the update run when state is Run", func() {
 			By("Updating updateRun state to Run")
 			updateRun.Spec.State = placementv1beta1.StateRun
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
 
 			By("Validating update run is running")
-			// Mark 2nd cluster as started.
-			meta.SetStatusCondition(&wantStatus.StagesStatus[0].Clusters[1].Conditions, generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted))
 			// Mark updateRun progressing condition as true with progressing reason.
 			meta.SetStatusCondition(&wantStatus.Conditions, generateTrueCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
 			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
@@ -904,9 +903,9 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
-		It("Should complete the 1st stage after wait time passed and approval request approved and move on to the 2nd stage", func() {
+		It("Should have approval request created for 1st stage afterStageTask", func() {
 			By("Validating the approvalRequest has been created")
-			wantApprovalRequest := &placementv1beta1.ClusterApprovalRequest{
+			wantApprovalRequest = &placementv1beta1.ClusterApprovalRequest{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: updateRun.Status.StagesStatus[0].AfterStageTaskStatus[1].ApprovalRequestName,
 					Labels: map[string]string{
@@ -922,10 +921,67 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			}
 			validateApprovalRequestCreated(wantApprovalRequest)
 
+			By("Checking update run status metrics are emitted")
+			validateUpdateRunMetricsEmitted(wantMetrics...)
+		})
+
+		It("Should stop the update run in afterStageTasks for 1st stage when state is Stop", func() {
+			By("Updating updateRun state to Stop")
+			updateRun.Spec.State = placementv1beta1.StateStop
+			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
+
+			By("Validating the update run is stopped")
+			// Mark update run stopped.
+			meta.SetStatusCondition(&wantStatus.Conditions, generateFalseConditionWithReason(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, condition.UpdateRunStoppedReason))
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
+
+			By("Checking update run status metrics are emitted")
+			wantMetrics = append(wantMetrics, generateStoppedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(wantMetrics...)
+		})
+
+		It("Should not complete 1st stage when stopped", func() {
+			By("Validating the update run is still stopped")
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
+
+			By("Checking update run status metrics are emitted")
+			validateUpdateRunMetricsEmitted(wantMetrics...)
+		})
+
+		It("Should continue executing stage 1 of the update run when state is Run but wait for afterStage approval", func() {
+			By("Updating updateRun state to Run")
+			updateRun.Spec.State = placementv1beta1.StateRun
+			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
+
+			By("Validating update run is running")
+			// Mark approval request created for the 1st stage approval afterStageTask.
+			meta.SetStatusCondition(&wantStatus.StagesStatus[0].AfterStageTaskStatus[1].Conditions, generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestCreated))
+			// Mark 1st stage progressing condition as false with waiting reason.
+			meta.SetStatusCondition(&wantStatus.StagesStatus[0].Conditions, generateFalseCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
+			// Mark updateRun progressing condition as true with waiting reason.
+			meta.SetStatusCondition(&wantStatus.Conditions, generateFalseCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
+
+			By("Checking update run status metrics are emitted")
+			wantMetrics = append(wantMetrics, generateWaitingMetric(updateRun))
+			validateUpdateRunMetricsEmitted(wantMetrics...)
+		})
+
+		It("Should complete the 1st stage once it starts running again when wait time passed and approval request approved then move on to the 2nd stage", func() {
 			By("Approving the approvalRequest")
 			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
 
+			By("Validating the approvalRequest has ApprovalAccepted status")
+			Eventually(func() (bool, error) {
+				var approvalRequest placementv1beta1.ClusterApprovalRequest
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, &approvalRequest); err != nil {
+					return false, err
+				}
+				return condition.IsConditionStatusTrue(meta.FindStatusCondition(approvalRequest.Status.Conditions, string(placementv1beta1.ApprovalRequestConditionApprovalAccepted)), approvalRequest.Generation), nil
+			}, timeout, interval).Should(BeTrue(), "failed to validate the approvalRequest approval accepted")
+
 			By("Validating both after stage tasks have completed and 2nd stage has started")
+			meta.SetStatusCondition(&wantStatus.StagesStatus[0].AfterStageTaskStatus[1].Conditions, generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestCreated))
 			// Timedwait afterStageTask completed.
 			wantStatus.StagesStatus[0].AfterStageTaskStatus[0].Conditions = append(wantStatus.StagesStatus[0].AfterStageTaskStatus[0].Conditions,
 				generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionWaitTimeElapsed))
@@ -956,6 +1012,12 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			Expect(approvalCreateTime.Before(waitEndTime)).Should(BeTrue())
 
 			By("Checking update run status metrics are emitted")
+			// Remove any existing progressing and waiting of the same generation metric and add to the end.
+			progressingMetric := generateProgressingMetric(updateRun)
+			wantMetrics = removeMetricFromMetricList(wantMetrics, progressingMetric)
+			waitingMetric := generateWaitingMetric(updateRun)
+			wantMetrics = removeMetricFromMetricList(wantMetrics, waitingMetric)
+			wantMetrics = append(wantMetrics, progressingMetric, waitingMetric)
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
@@ -981,7 +1043,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
-		It("Should not start rolling out 2nd stage", func() {
+		It("Should not start rolling out 2nd stage while waiting for approval for beforeStageTask", func() {
 			By("Validating the 1st clusterResourceBinding is not updated to Bound")
 			binding := resourceBindings[0] // cluster-0
 			validateNotBoundBindingState(ctx, binding)
@@ -990,6 +1052,52 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			Expect(updateRun.Status.StagesStatus[1].StartTime).Should(BeNil())
 
 			By("Checking update run status metrics are emitted")
+			validateUpdateRunMetricsEmitted(wantMetrics...)
+		})
+
+		It("Should stop the update run when state is Stop while waiting for 2nd stage beforeStageTask approval", func() {
+			By("Updating updateRun state to Stop")
+			updateRun.Spec.State = placementv1beta1.StateStop
+			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
+
+			By("Validating the update run is stopped")
+			// Mark update run stopped.
+			meta.SetStatusCondition(&wantStatus.Conditions, generateFalseConditionWithReason(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, condition.UpdateRunStoppedReason))
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
+
+			By("Checking update run status metrics are emitted")
+			wantMetrics = append(wantMetrics, generateStoppedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(wantMetrics...)
+		})
+
+		It("Should not start rolling out 2nd stage while in stopped state", func() {
+			By("Validating the 1st clusterResourceBinding is not updated to Bound")
+			binding := resourceBindings[0] // cluster-0
+			validateNotBoundBindingState(ctx, binding)
+
+			By("Validating the 1st stage does not have startTime set")
+			Expect(updateRun.Status.StagesStatus[1].StartTime).Should(BeNil())
+
+			By("Checking update run status metrics are emitted")
+			validateUpdateRunMetricsEmitted(wantMetrics...)
+		})
+
+		It("Should start executing 2nd stage in the update run when state is Run", func() {
+			By("Updating updateRun state to Run")
+			updateRun.Spec.State = placementv1beta1.StateRun
+			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
+
+			By("Validating update run is running")
+			// Mark approval request created for the 2nd stage approval beforeStageTask.
+			meta.SetStatusCondition(&wantStatus.StagesStatus[1].BeforeStageTaskStatus[0].Conditions, generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestCreated))
+			// Mark 2nd stage progressing condition as false with waiting reason.
+			meta.SetStatusCondition(&wantStatus.StagesStatus[1].Conditions, generateFalseCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
+			// Mark updateRun progressing condition as false with waiting reason.
+			meta.SetStatusCondition(&wantStatus.Conditions, generateFalseCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
+
+			By("Checking update run status metrics are emitted")
+			wantMetrics = append(wantMetrics, generateWaitingMetric(updateRun))
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
@@ -1119,9 +1227,9 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
-		It("Should approve request for 2nd stage after", func() {
+		It("Should create approval request for 2nd stage afterStageTask", func() {
 			By("Validating the approvalRequest has been created")
-			wantApprovalRequest := &placementv1beta1.ClusterApprovalRequest{
+			wantApprovalRequest = &placementv1beta1.ClusterApprovalRequest{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: updateRun.Status.StagesStatus[1].AfterStageTaskStatus[0].ApprovalRequestName,
 					Labels: map[string]string{
@@ -1137,16 +1245,17 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			}
 			validateApprovalRequestCreated(wantApprovalRequest)
 
-			By("Approving the approvalRequest")
-			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
+			By("Checking update run status metrics are emitted")
+			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
-		It("Should start pausing the update run when state is Stop", func() {
+		It("Should start stopping the update run when state is Stop", func() {
 			By("Updating updateRun state to Stop")
 			updateRun.Spec.State = placementv1beta1.StateStop
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
 
 			By("Validating the update run is stopped")
+			// Mark update run stopped.
 			meta.SetStatusCondition(&wantStatus.Conditions, generateFalseConditionWithReason(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, condition.UpdateRunStoppedReason))
 			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
 
@@ -1163,10 +1272,13 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
-		It("Should start executing the update run when state is Run", func() {
+		It("Should start executing 2nd stage afterStageTasks of the update run when state is Run", func() {
 			By("Updating updateRun state to Run")
 			updateRun.Spec.State = placementv1beta1.StateRun
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
+
+			By("Approving the approvalRequest")
+			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
 		})
 
 		It("Should complete the 2nd stage after wait time passed and approval request approved and move on to the delete stage", func() {

@@ -1615,9 +1615,17 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			validateAndApproveNamespacedApprovalRequests(updateRunNames[0], testNamespace, envCanary, placementv1beta1.AfterStageApprovalTaskNameFmt)
 		})
 
-		It("Should start rolling out after approval but stop when update run state is Stop", func() {
-			validateAndApproveNamespacedApprovalRequests(updateRunNames[0], testNamespace, envProd, placementv1beta1.BeforeStageApprovalTaskNameFmt)
+		It("Should not rollout to all member clusters while waiting for beforeStageTask approval for prod stage", func() {
+			By("Validating not rolled out to member-cluster-1 and member-cluster-3 yet")
+			checkIfRemovedConfigMapFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0], allMemberClusters[2]})
+			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[1]})
 
+			By("Validating rp status with member-cluster-2 updated only")
+			rpStatusUpdatedActual := rpStatusWithExternalStrategyActual(nil, "", false, allMemberClusterNames, []string{"", resourceSnapshotIndex1st, ""}, []bool{false, true, false}, nil, nil)
+			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP %s/%s status as expected", testNamespace, rpName)
+		})
+
+		It("Should not rollout to all member clusters after stopping update run", func() {
 			// Update the update run state to Stop.
 			By("Updating the update run state to Stop")
 			updateStagedUpdateRunState(updateRunNames[0], testNamespace, placementv1beta1.StateStop)
@@ -1631,13 +1639,15 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP %s/%s status as expected", testNamespace, rpName)
 		})
 
-		It("Should complete the rollout to all member clusters after update run is back to Run state", func() {
-			By("Validating not rolled out member-cluster-1 and member-cluster-3 yet")
+		It("Should complete rollout to all member after update run state is Run and beforeStageTask approval", func() {
+			By("Validating not rolled out to member-cluster-1 and member-cluster-3 yet")
 			checkIfRemovedConfigMapFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0], allMemberClusters[2]})
 
 			// Update the update run state back to Run.
 			By("Updating the update run state back to Run")
 			updateStagedUpdateRunState(updateRunNames[0], testNamespace, placementv1beta1.StateRun)
+
+			validateAndApproveNamespacedApprovalRequests(updateRunNames[0], testNamespace, envProd, placementv1beta1.BeforeStageApprovalTaskNameFmt)
 
 			By("All member clusters should have work resources placed")
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[0], allMemberClusters[1], allMemberClusters[2]})

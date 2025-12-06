@@ -166,13 +166,13 @@ func (r *Reconciler) executeUpdatingStage(
 	for i := 0; i < len(updatingStageStatus.Clusters) && clusterUpdatingCount < maxConcurrency; i++ {
 		clusterStatus := &updatingStageStatus.Clusters[i]
 		clusterUpdateSucceededCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
-		if clusterUpdateSucceededCond != nil && clusterUpdateSucceededCond.Status == metav1.ConditionTrue {
+		if condition.IsConditionStatusTrueIgnoreGeneration(clusterUpdateSucceededCond) {
 			// The cluster has been updated successfully.
 			finishedClusterCount++
 			continue
 		}
 		clusterUpdatingCount++
-		if clusterUpdateSucceededCond != nil && clusterUpdateSucceededCond.Status == metav1.ConditionFalse {
+		if condition.IsConditionStatusFalseIgnoreGeneration(clusterUpdateSucceededCond) {
 			// The cluster is marked as failed to update, this cluster is counted as updating cluster since it's not finished to avoid processing more clusters than maxConcurrency in this round.
 			failedErr := fmt.Errorf("the cluster `%s` in the stage %s has failed", clusterStatus.ClusterName, updatingStageStatus.StageName)
 			klog.ErrorS(failedErr, "The cluster has failed to be updated", "updateRun", updateRunRef)
@@ -182,7 +182,7 @@ func (r *Reconciler) executeUpdatingStage(
 		// The cluster needs to be processed.
 		clusterStartedCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
 		binding := toBeUpdatedBindingsMap[clusterStatus.ClusterName]
-		if !condition.IsConditionStatusTrue(clusterStartedCond, updateRun.GetGeneration()) {
+		if !condition.IsConditionStatusTrueIgnoreGeneration(clusterStartedCond) {
 			// The cluster has not started updating yet.
 			if !isBindingSyncedWithClusterStatus(resourceSnapshotName, updateRun, binding, clusterStatus) {
 				klog.V(2).InfoS("Found the first cluster that needs to be updated", "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
@@ -233,7 +233,7 @@ func (r *Reconciler) executeUpdatingStage(
 			}
 			markClusterUpdatingStarted(clusterStatus, updateRun.GetGeneration())
 			stageUpdatingProgressCond := meta.FindStatusCondition(updatingStageStatus.Conditions, string(placementv1beta1.StageUpdatingConditionProgressing))
-			if finishedClusterCount == 0 && (stageUpdatingProgressCond != nil && stageUpdatingProgressCond.Status != metav1.ConditionTrue) {
+			if finishedClusterCount == 0 && (!condition.IsConditionStatusTrueIgnoreGeneration(stageUpdatingProgressCond)) {
 				markStageUpdatingStarted(updatingStageStatus, updateRun.GetGeneration())
 			}
 			// Need to continue as we need to process at most maxConcurrency number of clusters in parallel.
@@ -352,12 +352,12 @@ func (r *Reconciler) executeDeleteStage(
 		// In validation, we already check the binding must exist in the status.
 		delete(existingDeleteStageClusterMap, bindingSpec.TargetCluster)
 		// Make sure the cluster is not marked as deleted as the binding is still there.
-		if condition.IsConditionStatusTrue(meta.FindStatusCondition(curCluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded)), updateRun.GetGeneration()) {
+		if condition.IsConditionStatusTrueIgnoreGeneration(meta.FindStatusCondition(curCluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))) {
 			unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the deleted cluster `%s` in the deleting stage still has a binding", bindingSpec.TargetCluster))
 			klog.ErrorS(unexpectedErr, "The cluster in the deleting stage is not removed yet but marked as deleted", "cluster", curCluster.ClusterName, "updateRun", updateRunRef)
 			return false, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
 		}
-		if condition.IsConditionStatusTrue(meta.FindStatusCondition(curCluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted)), updateRun.GetGeneration()) {
+		if condition.IsConditionStatusTrueIgnoreGeneration(meta.FindStatusCondition(curCluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))) {
 			// The cluster status is marked as being deleted.
 			if binding.GetDeletionTimestamp().IsZero() {
 				// The cluster is marked as deleting but the binding is not deleting.
@@ -378,7 +378,7 @@ func (r *Reconciler) executeDeleteStage(
 	// The rest of the clusters in the stage are not in the toBeDeletedBindings so it should be marked as delete succeeded.
 	for _, clusterStatus := range existingDeleteStageClusterMap {
 		// Make sure the cluster is marked as deleted.
-		if !condition.IsConditionStatusTrue(meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted)), updateRun.GetGeneration()) {
+		if !condition.IsConditionStatusTrueIgnoreGeneration(meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))) {
 			markClusterUpdatingStarted(clusterStatus, updateRun.GetGeneration())
 		}
 		markClusterUpdatingSucceeded(clusterStatus, updateRun.GetGeneration())
@@ -444,8 +444,8 @@ func (r *Reconciler) handleStageApprovalTask(
 ) (bool, error) {
 	updateRunRef := klog.KObj(updateRun)
 
-	stageTaskApprovedCond := meta.FindStatusCondition(stageTaskStatus.Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestApproved))
-	if stageTaskApprovedCond != nil && stageTaskApprovedCond.Status == metav1.ConditionTrue {
+	stageTaskApproved := condition.IsConditionStatusTrueIgnoreGeneration(meta.FindStatusCondition(stageTaskStatus.Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestApproved)))
+	if stageTaskApproved {
 		// The stageTask has been approved.
 		return true, nil
 	}
@@ -468,10 +468,8 @@ func (r *Reconciler) handleStageApprovalTask(
 				return false, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
 			}
 			approvalRequestStatus := approvalRequest.GetApprovalRequestStatus()
-			approvalAcceptedCond := meta.FindStatusCondition(approvalRequestStatus.Conditions, string(placementv1beta1.ApprovalRequestConditionApprovalAccepted))
-			approvalAccepted := approvalAcceptedCond != nil && approvalAcceptedCond.Status == metav1.ConditionTrue
-			approvedCond := meta.FindStatusCondition(approvalRequestStatus.Conditions, string(placementv1beta1.ApprovalRequestConditionApproved))
-			approved := approvedCond != nil && approvedCond.Status == metav1.ConditionTrue
+			approvalAccepted := condition.IsConditionStatusTrue(meta.FindStatusCondition(approvalRequestStatus.Conditions, string(placementv1beta1.ApprovalRequestConditionApprovalAccepted)), approvalRequest.GetGeneration())
+			approved := condition.IsConditionStatusTrue(meta.FindStatusCondition(approvalRequestStatus.Conditions, string(placementv1beta1.ApprovalRequestConditionApproved)), approvalRequest.GetGeneration())
 			if !approvalAccepted && !approved {
 				klog.V(2).InfoS("The approval request has not been approved yet", "approvalRequestTask", requestRef, "stage", updatingStage.Name, "updateRun", updateRunRef)
 				return false, nil
@@ -487,7 +485,7 @@ func (r *Reconciler) handleStageApprovalTask(
 				}
 			} else {
 				// Approved state should not change once the approval is accepted.
-				klog.V(2).InfoS("The approval request has been approval-accepted, ignoring changing back to unapproved", "approvalRequestTask", requestRef, "stage", updatingStage.Name, "updateRun", updateRunRef)
+				klog.InfoS("The approval request has been approval-accepted, ignoring changing back to unapproved", "approvalRequestTask", requestRef, "stage", updatingStage.Name, "updateRun", updateRunRef)
 			}
 			markStageTaskRequestApproved(stageTaskStatus, updateRun.GetGeneration())
 		} else {
@@ -498,6 +496,8 @@ func (r *Reconciler) handleStageApprovalTask(
 	} else {
 		// The approval request has been created for the first time.
 		klog.V(2).InfoS("The approval request has been created", "approvalRequestTask", requestRef, "stage", updatingStage.Name, "updateRun", updateRunRef)
+
+		klog.InfoS("Approval request object", "approvalRequestTask", requestRef, "stage", updatingStage.Name, "updateRun", updateRunRef, "spec", fmt.Sprintf("%v", approvalRequest.GetApprovalRequestSpec()))
 		markStageTaskRequestCreated(stageTaskStatus, updateRun.GetGeneration())
 		return false, nil
 	}

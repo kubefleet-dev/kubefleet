@@ -2133,7 +2133,7 @@ func clusterStagedUpdateRunStatusSucceededActual(
 		}
 
 		if execute {
-			wantStatus.StagesStatus = buildStageUpdatingStatuses(wantStrategySpec, wantSelectedClusters, wantCROs, wantROs, updateRun)
+			wantStatus.StagesStatus = buildStageUpdatingStatuses(wantStrategySpec, wantSelectedClusters, wantCROs, wantROs, 2, updateRun)
 			wantStatus.DeletionStageStatus = buildDeletionStageStatus(wantUnscheduledClusters, updateRun)
 			wantStatus.Conditions = updateRunSucceedConditions(updateRun.Generation)
 		} else {
@@ -2175,7 +2175,7 @@ func stagedUpdateRunStatusSucceededActual(
 		}
 
 		if execute {
-			wantStatus.StagesStatus = buildStageUpdatingStatuses(wantStrategySpec, wantSelectedClusters, wantCROs, wantROs, updateRun)
+			wantStatus.StagesStatus = buildStageUpdatingStatuses(wantStrategySpec, wantSelectedClusters, wantCROs, wantROs, 2, updateRun)
 			wantStatus.DeletionStageStatus = buildDeletionStageStatus(wantUnscheduledClusters, updateRun)
 			wantStatus.Conditions = updateRunSucceedConditions(updateRun.Generation)
 		} else {
@@ -2229,6 +2229,7 @@ func buildStageUpdatingStatuses(
 	wantSelectedClusters [][]string,
 	wantCROs map[string][]string,
 	wantROs map[string][]placementv1beta1.NamespacedName,
+	wantGeneration int64, // Specifically for update runs whose states have been updated.
 	updateRun placementv1beta1.UpdateRunObj,
 ) []placementv1beta1.StageUpdatingStatus {
 	stagesStatus := make([]placementv1beta1.StageUpdatingStatus, len(wantStrategySpec.Stages))
@@ -2237,9 +2238,8 @@ func buildStageUpdatingStatuses(
 		stagesStatus[i].Clusters = make([]placementv1beta1.ClusterUpdatingStatus, len(wantSelectedClusters[i]))
 		generation := updateRun.GetGeneration()
 		if i == 0 && generation > 1 {
-			// When the update run state changes the generation increments. In our state test, the first stage runs normally
-			// so the conditions' observed generation should be set to 2 when we first change it state to Run.
-			generation = 2
+			// When the update run state changes the generation increments between stages.
+			generation = wantGeneration
 		}
 		for j := range stagesStatus[i].Clusters {
 			stagesStatus[i].Clusters[j].ClusterName = wantSelectedClusters[i][j]
