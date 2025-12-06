@@ -19,13 +19,12 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
-	"time"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -74,7 +73,7 @@ func main() {
 	config := ctrl.GetConfigOrDie()
 
 	// Check required CRDs are installed before starting
-	if err := waitForRequiredCRDs(config); err != nil {
+	if err := checkRequiredCRDs(config); err != nil {
 		klog.ErrorS(err, "Required CRDs not found")
 		os.Exit(1)
 	}
@@ -126,8 +125,8 @@ func main() {
 	}
 }
 
-// waitForRequiredCRDs checks that all required CRDs are installed
-func waitForRequiredCRDs(config *rest.Config) error {
+// checkRequiredCRDs checks that all required CRDs are installed
+func checkRequiredCRDs(config *rest.Config) error {
 	requiredCRDs := []string{
 		"approvalrequests.placement.kubernetes-fleet.io",
 		"clusterapprovalrequests.placement.kubernetes-fleet.io",
@@ -148,18 +147,23 @@ func waitForRequiredCRDs(config *rest.Config) error {
 	}
 
 	ctx := context.Background()
+	missingCRDs := []string{}
 
-	return wait.PollImmediate(5*time.Second, 2*time.Minute, func() (bool, error) {
-		for _, crdName := range requiredCRDs {
-			crd := &apiextensionsv1.CustomResourceDefinition{}
-			err := c.Get(ctx, client.ObjectKey{Name: crdName}, crd)
-			if err != nil {
-				klog.V(2).InfoS("CRD not found yet, waiting...", "crd", crdName)
-				return false, nil
-			}
+	for _, crdName := range requiredCRDs {
+		crd := &apiextensionsv1.CustomResourceDefinition{}
+		err := c.Get(ctx, client.ObjectKey{Name: crdName}, crd)
+		if err != nil {
+			klog.ErrorS(err, "CRD not found", "crd", crdName)
+			missingCRDs = append(missingCRDs, crdName)
+		} else {
 			klog.V(3).InfoS("CRD found", "crd", crdName)
 		}
-		klog.InfoS("All required CRDs are installed")
-		return true, nil
-	})
+	}
+
+	if len(missingCRDs) > 0 {
+		return fmt.Errorf("missing required CRDs: %v", missingCRDs)
+	}
+
+	klog.InfoS("All required CRDs are installed")
+	return nil
 }

@@ -4,20 +4,19 @@ FROM golang:1.24 AS builder
 WORKDIR /workspace
 
 # Copy go mod files
-COPY go.mod go.sum* ./
+COPY approval-request-controller/go.mod approval-request-controller/go.sum* ./
 RUN go mod download
 
 # Copy source code
-COPY apis/ apis/
-COPY pkg/controllers/approvalrequest/ pkg/controllers/approvalrequest/
-COPY pkg/utils/ pkg/utils/
-COPY approval-request-controller/cmd/ approval-request-controller/cmd/
+COPY approval-request-controller/apis/ apis/
+COPY approval-request-controller/pkg/ pkg/
+COPY approval-request-controller/cmd/ cmd/
 
 # Build the controller
 ARG GOARCH=amd64
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${GOARCH} go build \
     -a -o approval-request-controller \
-    ./approval-request-controller/cmd/approvalrequestcontroller
+    ./cmd/approvalrequestcontroller
 
 # Runtime stage
 FROM gcr.io/distroless/static:nonroot
