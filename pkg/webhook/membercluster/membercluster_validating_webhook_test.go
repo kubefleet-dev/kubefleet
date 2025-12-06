@@ -22,29 +22,29 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
-func TestHandleDeleteServiceExportValidation(t *testing.T) {
+func TestHandleDelete(t *testing.T) {
 	t.Parallel()
 
 	testCases := map[string]struct {
-		networkingEnabled     bool
-		expectAllowed         bool
-		expectedMessageSubstr string
-		validationMode        clusterv1beta1.DeleteValidationMode
+		networkingEnabled bool
+		validationMode    clusterv1beta1.DeleteValidationMode
+		wantAllowed       bool
+		wantMessageSubstr string
 	}{
 		"networking-disabled-allows-delete": {
 			networkingEnabled: false,
-			expectAllowed:     true,
+			wantAllowed:       true,
 			validationMode:    clusterv1beta1.DeleteValidationModeStrict,
 		},
 		"networking-enabled-denies-delete": {
-			networkingEnabled:     true,
-			expectAllowed:         false,
-			validationMode:        clusterv1beta1.DeleteValidationModeStrict,
-			expectedMessageSubstr: "Please delete serviceExport",
+			networkingEnabled: true,
+			wantAllowed:       false,
+			validationMode:    clusterv1beta1.DeleteValidationModeStrict,
+			wantMessageSubstr: "Please delete serviceExport",
 		},
 		"delete-options-skip-bypasses-validation": {
 			networkingEnabled: true,
-			expectAllowed:     true,
+			wantAllowed:       true,
 			validationMode:    clusterv1beta1.DeleteValidationModeSkip,
 		},
 	}
@@ -64,12 +64,12 @@ func TestHandleDeleteServiceExportValidation(t *testing.T) {
 			req := buildDeleteRequestFromObject(t, mc)
 
 			resp := validator.Handle(context.Background(), req)
-			if resp.Allowed != tc.expectAllowed {
-				t.Fatalf("expected allowed=%t but got response: %+v", tc.expectAllowed, resp)
+			if resp.Allowed != tc.wantAllowed {
+				t.Fatalf("Handle() got response: %+v, want allowed %t", resp, tc.wantAllowed)
 			}
-			if tc.expectedMessageSubstr != "" {
-				if resp.Result == nil || !strings.Contains(resp.Result.Message, tc.expectedMessageSubstr) {
-					t.Fatalf("expected message to contain %q but got: %v", tc.expectedMessageSubstr, resp.Result)
+			if tc.wantMessageSubstr != "" {
+				if resp.Result == nil || !strings.Contains(resp.Result.Message, tc.wantMessageSubstr) {
+					t.Fatalf("Handle()  got response result: %v,  want contain: %q", resp.Result, tc.wantMessageSubstr)
 				}
 			}
 		})
