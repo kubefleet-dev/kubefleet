@@ -707,7 +707,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 		})
 	})
 
-	FContext("Cluster staged update run should have stopped when state Stop", Ordered, func() {
+	Context("Cluster staged update run should have stopped when state Stop", Ordered, func() {
 		var wantApprovalRequest *placementv1beta1.ClusterApprovalRequest
 		var wantMetrics []*promclient.Metric
 		BeforeAll(func() {
@@ -727,6 +727,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[0].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
+						placementv1beta1.TaskTypeLabel:                  placementv1beta1.BeforeStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -915,6 +916,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[0].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
+						placementv1beta1.TaskTypeLabel:                  placementv1beta1.AfterStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -1033,6 +1035,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[1].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
+						placementv1beta1.TaskTypeLabel:                  placementv1beta1.BeforeStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -1239,6 +1242,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[1].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
+						placementv1beta1.TaskTypeLabel:                  placementv1beta1.AfterStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
