@@ -17,13 +17,17 @@ webhookServiceName: fleetwebhook
 enableGuardRail: true
 webhookClientConnectionType: service
 enableWorkload: false
+# useCertManager enables cert-manager for webhook certificate management
+# When enabled, cert-manager will be installed as a dependency
+# and a Certificate resource will be created
+useCertManager: false
+
 forceDeleteWaitTime: 15m0s
 clusterUnhealthyThreshold: 3m0s
 resourceSnapshotCreationMinimumInterval: 30s
 resourceChangesCollectionDuration: 15s
 
-namespace:
-  fleet-system
+namespace: fleet-system
 
 resources:
   limits:

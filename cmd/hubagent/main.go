@@ -46,6 +46,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/workload"
 	mcv1beta1 "github.com/kubefleet-dev/kubefleet/pkg/controllers/membercluster/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook"
 	// +kubebuilder:scaffold:imports
 )
@@ -156,7 +157,7 @@ func main() {
 
 	if opts.EnableWebhook {
 		whiteListedUsers := strings.Split(opts.WhiteListedUsers, ",")
-		if err := SetupWebhook(mgr, options.WebhookClientConnectionType(opts.WebhookClientConnectionType), opts.WebhookServiceName, whiteListedUsers, opts.EnableGuardRail, opts.EnableV1Beta1APIs, opts.DenyModifyMemberClusterLabels, opts.EnableWorkload); err != nil {
+		if err := SetupWebhook(mgr, options.WebhookClientConnectionType(opts.WebhookClientConnectionType), opts.WebhookServiceName, whiteListedUsers, opts.EnableGuardRail, opts.EnableV1Beta1APIs, opts.DenyModifyMemberClusterLabels, opts.EnableWorkload, opts.UseCertManager); err != nil {
 			klog.ErrorS(err, "unable to set up webhook")
 			exitWithErrorFunc()
 		}
@@ -164,8 +165,19 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 	if err := workload.SetupControllers(ctx, &wg, mgr, config, opts); err != nil {
-		klog.ErrorS(err, "unable to set up ready check")
+		klog.ErrorS(err, "unable to set up controllers")
 		exitWithErrorFunc()
+	}
+
+	// Add webhook readiness check AFTER controllers are set up (when ResourceInformer is initialized)
+	// This prevents webhook from accepting requests before discovery cache is populated
+	if opts.EnableWebhook {
+		// AddReadyzCheck adds additional readiness check instead of replacing the one registered earlier provided the name is different.
+		// Both registered checks need to pass for the manager to be considered ready.
+		if err := mgr.AddReadyzCheck("webhook-cache", webhook.ResourceInformerReadinessChecker(validator.ResourceInformer)); err != nil {
+			klog.ErrorS(err, "unable to set up webhook readiness check")
+			exitWithErrorFunc()
+		}
 	}
 
 	// +kubebuilder:scaffold:builder
@@ -188,9 +200,9 @@ func main() {
 }
 
 // SetupWebhook generates the webhook cert and then set up the webhook configurator.
-func SetupWebhook(mgr manager.Manager, webhookClientConnectionType options.WebhookClientConnectionType, webhookServiceName string, whiteListedUsers []string, enableGuardRail, isFleetV1Beta1API bool, denyModifyMemberClusterLabels bool, enableWorkload bool) error {
+func SetupWebhook(mgr manager.Manager, webhookClientConnectionType options.WebhookClientConnectionType, webhookServiceName string, whiteListedUsers []string, enableGuardRail, isFleetV1Beta1API bool, denyModifyMemberClusterLabels bool, enableWorkload bool, useCertManager bool) error {
 	// Generate self-signed key and crt files in FleetWebhookCertDir for the webhook server to start.
-	w, err := webhook.NewWebhookConfig(mgr, webhookServiceName, FleetWebhookPort, &webhookClientConnectionType, FleetWebhookCertDir, enableGuardRail, denyModifyMemberClusterLabels, enableWorkload)
+	w, err := webhook.NewWebhookConfig(mgr, webhookServiceName, FleetWebhookPort, &webhookClientConnectionType, FleetWebhookCertDir, enableGuardRail, denyModifyMemberClusterLabels, enableWorkload, useCertManager)
 	if err != nil {
 		klog.ErrorS(err, "fail to generate WebhookConfig")
 		return err
