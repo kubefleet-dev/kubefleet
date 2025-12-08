@@ -34,155 +34,80 @@ echo -e "${GREEN}Starting log collection at ${TIMESTAMP}${NC}"
 echo "Logs will be saved to: ${LOG_DIR}"
 echo ""
 
-# Function to get pod UID for log file lookup
-get_pod_uid() {
-    local pod_name=$1
-    kubectl get pod "${pod_name}" -n "${NAMESPACE}" -o jsonpath='{.metadata.uid}' 2>/dev/null || echo ""
-}
 
-# Function to get Kind node name for cluster
-get_kind_node_name() {
+
+# Function to collect fleet agent logs from node filesystem using kubectl debug
+collect_node_agent_logs() {
     local cluster_name=$1
-    echo "${cluster_name}-control-plane"
+    local node_log_dir=$2
+    local agent_type=$3  # "hub-agent" or "member-agent"
+
+    echo -e "${YELLOW}Collecting ${agent_type} logs from cluster ${cluster_name} nodes${NC}"
+
+    # Get all nodes in the cluster
+    local nodes
+    nodes=$(kubectl get nodes -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo "")
+
+    if [ -z "$nodes" ]; then
+        echo -e "${RED}No nodes found in cluster ${cluster_name}${NC}"
+        return
+    fi
+
+    # Create node logs directory
+    mkdir -p "${node_log_dir}"
+
+    for node in $nodes; do
+        echo "  - Collecting ${agent_type} logs from node ${node}"
+        local node_specific_dir="${node_log_dir}/${node}"
+        mkdir -p "${node_specific_dir}"
+
+        # Collect specific agent logs from node filesystem
+        collect_agent_logs_from_node "${node}" "${cluster_name}" "${node_specific_dir}" "${agent_type}"
+    done
 }
 
-# Function to collect logs directly from Kind node filesystem (much faster and complete)
-collect_pod_logs_direct() {
-    local pod_name=$1
+# Function to collect specific agent logs from node filesystem
+collect_agent_logs_from_node() {
+    local node=$1
     local cluster_name=$2
-    local log_file_prefix=$3
+    local node_log_dir=$3
+    local agent_type=$4  # "hub-agent" or "member-agent"
 
-    echo -e "${YELLOW}Collecting logs from pod ${pod_name} in cluster ${cluster_name} (direct access)${NC}"
+    echo "    -> Collecting ${agent_type} logs from node filesystem"
 
-    # Get pod UID for log directory lookup
-    local pod_uid
-    pod_uid=$(get_pod_uid "${pod_name}")
-    if [ -z "$pod_uid" ]; then
-        echo -e "${RED}Could not get UID for pod ${pod_name}, falling back to kubectl logs${NC}"
-        collect_pod_logs_kubectl "$@"
-        return
-    fi
+    # Find and collect specific agent logs from /var/log/pods
+    local agent_logs_file="${node_log_dir}/${agent_type}-logs.log"
 
-    # Get all containers in the pod
-    local containers
-    containers=$(kubectl get pod "${pod_name}" -n "${NAMESPACE}" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null || echo "")
-    if [ -z "$containers" ]; then
-        echo -e "${RED}No containers found in pod ${pod_name}${NC}"
-        return
-    fi
+    # First check if any agent logs exist on this node
+    local log_files
+    log_files=$(docker exec "${node}" find /var/log/pods -path "*/fleet-system_*${agent_type}*/*.log" -type f 2>/dev/null || echo "")
 
-    # Get Kind node name
-    local node_name
-    node_name=$(get_kind_node_name "${cluster_name}")
+    if [ -n "$log_files" ]; then
+        # Agent logs found, create the log file
+        {
+            echo "# ${agent_type} logs from node filesystem"
+            echo "# Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo "# Node: ${node}"
+            echo "# Cluster: ${cluster_name}"
+            echo "# Method: Direct access to /var/log/pods via docker exec"
+            echo "# =================================="
+            echo ""
 
-    # Construct log directory path inside the Kind node
-    local log_dir="/var/log/pods/${NAMESPACE}_${pod_name}_${pod_uid}"
-
-    # Collect logs for each container
-    for container in $containers; do
-        echo "  - Container ${container}:"
-
-        # Get all log files for this container from the Kind node
-        local container_log_dir="${log_dir}/${container}"
-        local log_files
-        log_files=$(docker exec "${node_name}" find "${container_log_dir}" -name "*.log" 2>/dev/null | sort -V || echo "")
-
-        if [ -z "$log_files" ]; then
-            echo -e "    ${RED}No direct log files found, falling back to kubectl logs${NC}"
-            # Fallback to kubectl approach for this container
-            local log_file="${log_file_prefix}-${container}.log"
-            if kubectl logs "${pod_name}" -n "${NAMESPACE}" -c "${container}" > "${log_file}" 2>&1; then
-                echo "    -> ${log_file} (via kubectl)"
-            else
-                echo "    -> Failed to get logs via kubectl" > "${log_file}"
-            fi
-            continue
-        fi
-
-        # Copy individual log files for this container
-        local file_count=0
-        for log_file_path in $log_files; do
-            file_count=$((file_count + 1))
-            local base_name
-            base_name=$(basename "${log_file_path}")
-            local individual_log_file="${log_file_prefix}-${container}-${base_name}"
-
-            {
-                echo "# Log file metadata"
-                echo "# Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-                echo "# Source: ${log_file_path}"
-                echo "# Pod: ${pod_name}"
-                echo "# Container: ${container}"
-                echo "# Cluster: ${cluster_name}"
-                echo "# Namespace: ${NAMESPACE}"
-                echo "# Method: Direct file access from Kind node"
-                echo "# Node: ${node_name}"
-                echo "# Part: ${file_count} of $(echo "$log_files" | wc -l)"
-                echo "# =================================="
+            # Use docker exec to collect agent logs directly from Kind node container
+            echo "$log_files" | while read logfile; do
+                echo "--- Log file: $logfile ---"
+                docker exec "${node}" cat "$logfile" 2>/dev/null || echo "Failed to read $logfile"
                 echo ""
-                docker exec "${node_name}" cat "${log_file_path}" 2>/dev/null || echo "Failed to read ${log_file_path}"
-            } > "${individual_log_file}"
-
-            echo "    -> ${individual_log_file}"
-        done
-    done
-}
-
-# Function to collect logs using kubectl (fallback method)
-collect_pod_logs_kubectl() {
-    local pod_name=$1
-    local cluster_name=$2
-    local log_file_prefix=$3
-
-    echo -e "${YELLOW}Collecting logs from pod ${pod_name} in cluster ${cluster_name} (kubectl fallback)${NC}"
-
-    # Get all containers in the pod
-    containers=$(kubectl get pod "${pod_name}" -n "${NAMESPACE}" -o jsonpath='{.spec.containers[*].name}' 2>/dev/null || echo "")
-
-    if [ -z "$containers" ]; then
-        echo -e "${RED}No containers found in pod ${pod_name}${NC}"
-        return
+            done
+        } > "${agent_logs_file}"
+        echo "    -> ${agent_type}-logs.log"
+    else
+        # No agent logs found, don't create the file and remove directory if empty
+        echo "    -> No ${agent_type} logs found on node ${node}"
+        rmdir "${node_log_dir}" 2>/dev/null || true
     fi
-
-    # Collect logs for each container
-    for container in $containers; do
-        log_file="${log_file_prefix}-${container}.log"
-        echo "  - Container ${container} -> ${log_file}"
-
-        # Get current logs
-        kubectl logs "${pod_name}" -n "${NAMESPACE}" -c "${container}" > "${log_file}" 2>&1 || \
-            echo "Failed to get logs for container ${container}" > "${log_file}"
-
-        # Try to get previous logs if pod was restarted
-        previous_log_file="${log_file_prefix}-${container}-previous.log"
-        if kubectl logs "${pod_name}" -n "${NAMESPACE}" -c "${container}" --previous > "${previous_log_file}" 2>&1; then
-            echo "  - Previous logs for ${container} -> ${previous_log_file}"
-        else
-            rm -f "${previous_log_file}"
-        fi
-    done
 }
 
-# Function to collect logs from a pod (tries direct access first, falls back to kubectl)
-collect_pod_logs() {
-    local pod_name=$1
-    local cluster_name=$2
-    local log_file_prefix=$3
-
-    # Get pod info for debugging
-    local pod_info_file="${log_file_prefix}-pod-info.txt"
-    echo "  - Pod info -> ${pod_info_file}"
-    {
-        echo "=== Pod Description ==="
-        kubectl describe pod "${pod_name}" -n "${NAMESPACE}"
-        echo ""
-        echo "=== Pod YAML ==="
-        kubectl get pod "${pod_name}" -n "${NAMESPACE}" -o yaml
-    } > "${pod_info_file}" 2>&1
-
-    # Try direct access first (much better), fallback to kubectl if needed
-    collect_pod_logs_direct "$@"
-}
 
 # Collect hub cluster logs
 echo -e "${GREEN}=== Collecting Hub Cluster Logs ===${NC}"
@@ -195,42 +120,26 @@ kind export kubeconfig --name "${HUB_CLUSTER}" 2>/dev/null || {
 HUB_LOG_DIR="${LOG_DIR}/hub"
 mkdir -p "${HUB_LOG_DIR}"
 
-# Get all hub-agent pods
-hub_pods=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=hub-agent -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo "")
-
-if [ -z "$hub_pods" ]; then
-    echo -e "${RED}No hub-agent pods found${NC}"
-else
-    for pod in $hub_pods; do
-        collect_pod_logs "${pod}" "${HUB_CLUSTER}" "${HUB_LOG_DIR}/${pod}"
-    done
-fi
+# Collect hub-agent logs from hub cluster nodes
+collect_node_agent_logs "${HUB_CLUSTER}" "${HUB_LOG_DIR}/nodes" "hub-agent"
 
 # Collect member cluster logs
 for cluster in "${MEMBER_CLUSTERS[@]}"; do
     echo -e "${GREEN}=== Collecting Member Cluster Logs: ${cluster} ===${NC}"
-    
+
     # Export kubeconfig for the member cluster
     if ! kind export kubeconfig --name "${cluster}" 2>/dev/null; then
         echo -e "${RED}Failed to export kubeconfig for cluster ${cluster}, skipping...${NC}"
         continue
     fi
-    
+
     # Create member logs directory
     MEMBER_LOG_DIR="${LOG_DIR}/${cluster}"
     mkdir -p "${MEMBER_LOG_DIR}"
-    
-    # Get all member-agent pods
-    member_pods=$(kubectl get pods -n "${NAMESPACE}" -l app.kubernetes.io/name=member-agent -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo "")
-    
-    if [ -z "$member_pods" ]; then
-        echo -e "${RED}No member-agent pods found in cluster ${cluster}${NC}"
-    else
-        for pod in $member_pods; do
-            collect_pod_logs "${pod}" "${cluster}" "${MEMBER_LOG_DIR}/${pod}"
-        done
-    fi
-    
+
+    # Collect member-agent logs from member cluster nodes
+    collect_node_agent_logs "${cluster}" "${MEMBER_LOG_DIR}/nodes" "member-agent"
+
     echo ""
 done
 
