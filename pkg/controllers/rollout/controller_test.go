@@ -1907,9 +1907,9 @@ func TestPickBindingsToRoll(t *testing.T) {
 			// want the min wait time of bound bindings that are not ready
 			allBindingsFunc: func() []*placementv1beta1.ClusterResourceBinding {
 				return []*placementv1beta1.ClusterResourceBinding{
-					generateNotTrackableClusterResourceBinding(placementv1beta1.BindingStateBound, "snapshot-1", cluster3, metav1.Time{Time: now.Add(-35 * time.Second)}), // notReady, waitTime = t - 35s
-					generateCanBeReadyClusterResourceBinding(placementv1beta1.BindingStateBound, "snapshot-1", cluster1),                                                  // notReady, no wait time because it does not have available condition yet,
-					generateReadyClusterResourceBinding(placementv1beta1.BindingStateBound, "snapshot-2", cluster2),                                                       // Ready
+					generateNotTrackableClusterResourceBinding(placementv1beta1.BindingStateBound, "snapshot-1", cluster3, metav1.Time{Time: time.Now().Add(-35 * time.Second)}), // notReady, waitTime = t - 35s
+					generateCanBeReadyClusterResourceBinding(placementv1beta1.BindingStateBound, "snapshot-1", cluster1),                                                         // notReady, no wait time because it does not have available condition yet,
+					generateReadyClusterResourceBinding(placementv1beta1.BindingStateBound, "snapshot-2", cluster2),                                                              // Ready
 				}
 			},
 			latestResourceSnapshotName: "snapshot-2",
@@ -1948,8 +1948,8 @@ func TestPickBindingsToRoll(t *testing.T) {
 			// want the min wait time of unscheduled bindings that are not ready
 			allBindingsFunc: func() []*placementv1beta1.ClusterResourceBinding {
 				return []*placementv1beta1.ClusterResourceBinding{
-					generateNotTrackableClusterResourceBinding(placementv1beta1.BindingStateUnscheduled, "snapshot-1", cluster2, metav1.Time{Time: now.Add(-1 * time.Minute)}),  // NotReady, waitTime = t - 60s
-					generateNotTrackableClusterResourceBinding(placementv1beta1.BindingStateUnscheduled, "snapshot-1", cluster3, metav1.Time{Time: now.Add(-35 * time.Second)}), // NotReady,  waitTime = t - 35s
+					generateNotTrackableClusterResourceBinding(placementv1beta1.BindingStateUnscheduled, "snapshot-1", cluster2, metav1.Time{Time: time.Now().Add(-1 * time.Minute)}),  // NotReady, waitTime = t - 60s
+					generateNotTrackableClusterResourceBinding(placementv1beta1.BindingStateUnscheduled, "snapshot-1", cluster3, metav1.Time{Time: time.Now().Add(-35 * time.Second)}), // NotReady,  waitTime = t - 35s
 				}
 			},
 			latestResourceSnapshotName: "snapshot-2",

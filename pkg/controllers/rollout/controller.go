@@ -631,9 +631,6 @@ func isBindingReady(binding placementv1beta1.BindingObj, readyTimeCutOff time.Ti
 		if waitTime < 0 {
 			return 0, true
 		}
-		fmt.Printf("==========================readyTimeCutOff====%v\n", readyTimeCutOff)
-		fmt.Printf("==========================availableCondition===%v\n", availableCondition.LastTransitionTime.Time)
-		fmt.Printf("==========================waitTime===%v\n", waitTime)
 		// return the time we need to wait for it to be ready in this case
 		return waitTime, false
 	}
