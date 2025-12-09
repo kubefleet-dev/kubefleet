@@ -36,7 +36,9 @@ echo ""
 
 
 
-# Function to collect fleet agent logs from node filesystem using kubectl debug
+# Function to collect fleet agent logs directly from node filesystem using docker exec
+# This approach bypasses kubectl logs limitations and accesses the full log history
+# including rotated and compressed log files stored in /var/log/pods.
 collect_node_agent_logs() {
     local cluster_name=$1
     local node_log_dir=$2
@@ -67,6 +69,12 @@ collect_node_agent_logs() {
 }
 
 # Function to collect specific agent logs from node filesystem
+# Collects all log files including rotated (*.log.*) and compressed (*.gz) files
+# Args:
+#   node: The node name to collect logs from
+#   cluster_name: The cluster name for logging context
+#   node_log_dir: The directory to save the collected logs
+#   agent_type: The type of agent ("hub-agent" or "member-agent")
 collect_agent_logs_from_node() {
     local node=$1
     local cluster_name=$2
@@ -74,19 +82,17 @@ collect_agent_logs_from_node() {
     local agent_type=$4  # "hub-agent" or "member-agent"
 
     echo "    -> Collecting ${agent_type} logs from node filesystem"
-    echo `docker exec "${node}" find /var/log/pods -path "*/fleet-system_*${agent_type}*"`
+    echo "    -> Found log paths: $(docker exec "${node}" find /var/log/pods -path "*/fleet-system_*${agent_type}*")"
 
     # First check if any agent logs exist on this node (including .log, .log.*, and .gz files)
     local log_files
     log_files=$(docker exec "${node}" find /var/log/pods -path "*/fleet-system_*${agent_type}*" -type f \( -name "*.log" -o -name "*.log.*" -o -name "*.gz" \) 2>/dev/null || echo "")
 
     if [ -n "$log_files" ]; then
-        local files_processed=false
 
         # Process each log file separately
         echo "$log_files" | while read -r logfile; do
             if [ -n "$logfile" ]; then
-                files_processed=true
 
                 # Extract a meaningful filename from the log path
                 local base_path=$(basename "$(dirname "$logfile")")
@@ -96,7 +102,7 @@ collect_agent_logs_from_node() {
                 # Remove .gz extension for the output filename if present
                 local output_filename="${sanitized_filename%.gz}"
                 # Ensure output filename ends with .log
-                if [[ ! "$output_filename" =~ \.log$ ]]; then
+                if [[ ! "$output_filename" =~ "\.log$" ]]; then
                     output_filename="${output_filename}.log"
                 fi
 
