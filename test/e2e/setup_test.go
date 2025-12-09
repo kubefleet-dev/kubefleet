@@ -277,6 +277,13 @@ var (
 		cmpopts.IgnoreFields(placementv1beta1.StageUpdatingStatus{}, "StartTime", "EndTime"),
 		cmpopts.EquateEmpty(),
 	}
+	updateRunStatusNoGenerationCmpOption = cmp.Options{
+		cmpopts.SortSlices(lessFuncCondition),
+		utils.IgnoreConditionLTTAndMessageFields,
+		ignoreConditionObservedGenerationField,
+		cmpopts.IgnoreFields(placementv1beta1.StageUpdatingStatus{}, "StartTime", "EndTime"),
+		cmpopts.EquateEmpty(),
+	}
 )
 
 // TestMain sets up the E2E test environment.

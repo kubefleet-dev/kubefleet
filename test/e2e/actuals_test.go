@@ -2133,7 +2133,7 @@ func clusterStagedUpdateRunStatusSucceededActual(
 		}
 
 		if execute {
-			wantStatus.StagesStatus = buildStageUpdatingStatuses(wantStrategySpec, wantSelectedClusters, wantCROs, wantROs, 2, updateRun)
+			wantStatus.StagesStatus = buildStageUpdatingStatuses(wantStrategySpec, wantSelectedClusters, wantCROs, wantROs, updateRun)
 			wantStatus.DeletionStageStatus = buildDeletionStageStatus(wantUnscheduledClusters, updateRun)
 			wantStatus.Conditions = updateRunSucceedConditions(updateRun.Generation)
 		} else {
@@ -2141,9 +2141,15 @@ func clusterStagedUpdateRunStatusSucceededActual(
 			wantStatus.DeletionStageStatus = buildDeletionStatusWithoutConditions(wantUnscheduledClusters, updateRun)
 			wantStatus.Conditions = updateRunInitializedConditions(updateRun.Generation)
 		}
-		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusCmpOption...); diff != "" {
+		// Stages and DeletionStages can have different generation values, so we ignore them in this comparison.
+		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusNoGenerationCmpOption...); diff != "" {
 			return fmt.Errorf("UpdateRun status diff (-got, +want): %s", diff)
 		}
+		// Check final update run conditions separately to ensure the latest generation is compared and update correctly.
+		if diff := cmp.Diff(updateRun.Status.Conditions, wantStatus.Conditions, updateRunStatusCmpOption...); diff != "" {
+			return fmt.Errorf("UpdateRun status conditions diff (-got, +want): %s", diff)
+		}
+
 		return nil
 	}
 }
@@ -2175,7 +2181,7 @@ func stagedUpdateRunStatusSucceededActual(
 		}
 
 		if execute {
-			wantStatus.StagesStatus = buildStageUpdatingStatuses(wantStrategySpec, wantSelectedClusters, wantCROs, wantROs, 2, updateRun)
+			wantStatus.StagesStatus = buildStageUpdatingStatuses(wantStrategySpec, wantSelectedClusters, wantCROs, wantROs, updateRun)
 			wantStatus.DeletionStageStatus = buildDeletionStageStatus(wantUnscheduledClusters, updateRun)
 			wantStatus.Conditions = updateRunSucceedConditions(updateRun.Generation)
 		} else {
@@ -2183,8 +2189,13 @@ func stagedUpdateRunStatusSucceededActual(
 			wantStatus.DeletionStageStatus = buildDeletionStatusWithoutConditions(wantUnscheduledClusters, updateRun)
 			wantStatus.Conditions = updateRunInitializedConditions(updateRun.Generation)
 		}
-		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusCmpOption...); diff != "" {
+		// Stages and DeletionStages can have different generation values, so we ignore them in this comparison.
+		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusNoGenerationCmpOption...); diff != "" {
 			return fmt.Errorf("UpdateRun status diff (-got, +want): %s", diff)
+		}
+		// Check final update run conditions separately to ensure the latest generation is compared and update correctly.
+		if diff := cmp.Diff(updateRun.Status.Conditions, wantStatus.Conditions, updateRunStatusCmpOption...); diff != "" {
+			return fmt.Errorf("UpdateRun status conditions diff (-got, +want): %s", diff)
 		}
 		return nil
 	}
@@ -2229,23 +2240,17 @@ func buildStageUpdatingStatuses(
 	wantSelectedClusters [][]string,
 	wantCROs map[string][]string,
 	wantROs map[string][]placementv1beta1.NamespacedName,
-	wantGeneration int64, // Specifically for update runs whose states have been updated.
 	updateRun placementv1beta1.UpdateRunObj,
 ) []placementv1beta1.StageUpdatingStatus {
 	stagesStatus := make([]placementv1beta1.StageUpdatingStatus, len(wantStrategySpec.Stages))
 	for i, stage := range wantStrategySpec.Stages {
 		stagesStatus[i].StageName = stage.Name
 		stagesStatus[i].Clusters = make([]placementv1beta1.ClusterUpdatingStatus, len(wantSelectedClusters[i]))
-		generation := updateRun.GetGeneration()
-		if i == 0 && generation > 1 {
-			// When the update run state changes the generation increments between stages.
-			generation = wantGeneration
-		}
 		for j := range stagesStatus[i].Clusters {
 			stagesStatus[i].Clusters[j].ClusterName = wantSelectedClusters[i][j]
 			stagesStatus[i].Clusters[j].ClusterResourceOverrideSnapshots = wantCROs[wantSelectedClusters[i][j]]
 			stagesStatus[i].Clusters[j].ResourceOverrideSnapshots = wantROs[wantSelectedClusters[i][j]]
-			stagesStatus[i].Clusters[j].Conditions = updateRunClusterRolloutSucceedConditions(generation)
+			stagesStatus[i].Clusters[j].Conditions = updateRunClusterRolloutSucceedConditions(updateRun.GetGeneration())
 		}
 		stagesStatus[i].BeforeStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(stage.BeforeStageTasks))
 		for j, task := range stage.BeforeStageTasks {
@@ -2253,7 +2258,7 @@ func buildStageUpdatingStatuses(
 			if task.Type == placementv1beta1.StageTaskTypeApproval {
 				stagesStatus[i].BeforeStageTaskStatus[j].ApprovalRequestName = fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
 			}
-			stagesStatus[i].BeforeStageTaskStatus[j].Conditions = updateRunStageTaskSucceedConditions(generation, task.Type)
+			stagesStatus[i].BeforeStageTaskStatus[j].Conditions = updateRunStageTaskSucceedConditions(updateRun.GetGeneration(), task.Type)
 		}
 		stagesStatus[i].AfterStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(stage.AfterStageTasks))
 		for j, task := range stage.AfterStageTasks {
@@ -2261,9 +2266,9 @@ func buildStageUpdatingStatuses(
 			if task.Type == placementv1beta1.StageTaskTypeApproval {
 				stagesStatus[i].AfterStageTaskStatus[j].ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
 			}
-			stagesStatus[i].AfterStageTaskStatus[j].Conditions = updateRunStageTaskSucceedConditions(generation, task.Type)
+			stagesStatus[i].AfterStageTaskStatus[j].Conditions = updateRunStageTaskSucceedConditions(updateRun.GetGeneration(), task.Type)
 		}
-		stagesStatus[i].Conditions = updateRunStageRolloutSucceedConditions(generation)
+		stagesStatus[i].Conditions = updateRunStageRolloutSucceedConditions(updateRun.GetGeneration())
 	}
 	return stagesStatus
 }

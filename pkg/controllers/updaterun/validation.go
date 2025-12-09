@@ -185,7 +185,7 @@ func validateClusterUpdatingStatus(
 ) (int, int, error) {
 	stageSucceedCond := meta.FindStatusCondition(stageStatus.Conditions, string(placementv1beta1.StageUpdatingConditionSucceeded))
 	stageStartedCond := meta.FindStatusCondition(stageStatus.Conditions, string(placementv1beta1.StageUpdatingConditionProgressing))
-	if condition.IsConditionStatusTrueIgnoreGeneration(stageSucceedCond) {
+	if condition.IsConditionStatusTrueIgnoreGeneration(stageSucceedCond) { // Ignoring generation as the stage could have succeeded at a previous Run state.
 		// The stage has finished.
 		if updatingStageIndex != -1 && curStage > updatingStageIndex {
 			// The finished stage is after the updating stage.
@@ -195,7 +195,7 @@ func validateClusterUpdatingStatus(
 		}
 		// Make sure that all the clusters are updated.
 		for curCluster := range stageStatus.Clusters {
-			// Check if the cluster is still updating.
+			// Check if the cluster is still updating but ignore the generation as the cluster could have succeeded at a previous Run state.
 			if !condition.IsConditionStatusTrueIgnoreGeneration(meta.FindStatusCondition(stageStatus.Clusters[curCluster].Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))) {
 				// The clusters in the finished stage should all have finished too.
 				unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("cluster `%s` in the finished stage `%s` has not succeeded", stageStatus.Clusters[curCluster].ClusterName, stageStatus.StageName))
@@ -211,7 +211,7 @@ func validateClusterUpdatingStatus(
 		}
 		// Record the last finished stage so we can continue from the next stage if no stage is updating.
 		lastFinishedStageIndex = curStage
-	} else if condition.IsConditionStatusFalseIgnoreGeneration(stageSucceedCond) {
+	} else if condition.IsConditionStatusFalseIgnoreGeneration(stageSucceedCond) { // Ignoring generation as the stage could have failed at a previous Run state.
 		// The stage has failed.
 		failedErr := fmt.Errorf("the stage `%s` has failed, err: %s", stageStatus.StageName, stageSucceedCond.Message)
 		klog.ErrorS(failedErr, "The stage has failed", "stageCond", stageSucceedCond, "updateRun", klog.KObj(updateRun))
@@ -272,9 +272,10 @@ func validateDeleteStageStatus(
 	// Check if there is any active updating stage
 	if updatingStageIndex != -1 || lastFinishedStageIndex < totalStages-1 {
 		// There are still stages updating before the delete stage, make sure the delete stage is not active/finished.
-		if condition.IsConditionStatusTrue(deleteStageFinishedCond, updateRun.GetGeneration()) ||
-			condition.IsConditionStatusFalse(deleteStageFinishedCond, updateRun.GetGeneration()) ||
-			condition.IsConditionStatusTrue(deleteStageProgressingCond, updateRun.GetGeneration()) {
+		// Ignoring generation as the delete stage could have finished or started at a previous Run state.
+		if condition.IsConditionStatusTrueIgnoreGeneration(deleteStageFinishedCond) ||
+			condition.IsConditionStatusFalseIgnoreGeneration(deleteStageFinishedCond) ||
+			condition.IsConditionStatusTrueIgnoreGeneration(deleteStageProgressingCond) {
 			unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the delete stage is active, but there are still stages updating, updatingStageIndex: %d, lastFinishedStageIndex: %d", updatingStageIndex, lastFinishedStageIndex))
 			klog.ErrorS(unexpectedErr, "the delete stage is active, but there are still stages updating", "updateRun", updateRunRef)
 			return -1, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
@@ -289,12 +290,12 @@ func validateDeleteStageStatus(
 	}
 
 	klog.InfoS("All stages are finished, continue from the delete stage", "updateRun", updateRunRef)
-	// Check if the delete stage has finished successfully.
-	if condition.IsConditionStatusTrue(deleteStageFinishedCond, updateRun.GetGeneration()) {
+	// Check if the delete stage has finished successfully, but ignore generation as the delete stage could have finished at a previous Run state.
+	if condition.IsConditionStatusTrueIgnoreGeneration(deleteStageFinishedCond) {
 		klog.InfoS("The delete stage has finished successfully, no more stages to update", "updateRun", updateRunRef)
 		return -1, nil
 	}
-	// Check if the delete stage has failed.
+	// Check if the delete stage has failed. Check the
 	if condition.IsConditionStatusFalse(deleteStageFinishedCond, updateRun.GetGeneration()) {
 		failedErr := fmt.Errorf("the delete stage has failed, err: %s", deleteStageFinishedCond.Message)
 		klog.ErrorS(failedErr, "The delete stage has failed", "stageCond", deleteStageFinishedCond, "updateRun", updateRunRef)
