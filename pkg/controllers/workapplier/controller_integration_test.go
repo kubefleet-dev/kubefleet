@@ -9644,12 +9644,54 @@ var _ = Describe("negative cases", func() {
 })
 
 var _ = Describe("status back-reporting", func() {
+	deploymentKind := "Deployment"
+	deployStatusBackReportedActual := func(workName, nsName, deployName string, beforeTimestamp metav1.Time) func() error {
+		return func() error {
+			workObj := &fleetv1beta1.Work{}
+			if err := hubClient.Get(ctx, client.ObjectKey{Namespace: memberReservedNSName1, Name: workName}, workObj); err != nil {
+				return fmt.Errorf("failed to retrieve the Work object: %w", err)
+			}
+
+			var backReportedDeployStatusWrapper []byte
+			var backReportedDeployStatusObservedTime metav1.Time
+			for idx := range workObj.Status.ManifestConditions {
+				manifestCond := &workObj.Status.ManifestConditions[idx]
+
+				if manifestCond.Identifier.Kind == deploymentKind && manifestCond.Identifier.Name == deployName && manifestCond.Identifier.Namespace == nsName {
+					backReportedDeployStatusWrapper = manifestCond.BackReportedStatus.ObservedStatus.Raw
+					backReportedDeployStatusObservedTime = manifestCond.BackReportedStatus.ObservationTime
+					break
+				}
+			}
+
+			if len(backReportedDeployStatusWrapper) == 0 {
+				return fmt.Errorf("no status back-reported for deployment")
+			}
+			if backReportedDeployStatusObservedTime.Before(&beforeTimestamp) {
+				return fmt.Errorf("back-reported deployment status observation time, want after %v, got %v", beforeTimestamp, backReportedDeployStatusObservedTime)
+			}
+
+			deployWithBackReportedStatus := &appsv1.Deployment{}
+			if err := json.Unmarshal(backReportedDeployStatusWrapper, deployWithBackReportedStatus); err != nil {
+				return fmt.Errorf("failed to unmarshal wrapped back-reported deployment status: %w", err)
+			}
+			currentDeployWithStatus := &appsv1.Deployment{}
+			if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, currentDeployWithStatus); err != nil {
+				return fmt.Errorf("failed to retrieve Deployment object from member cluster side: %w", err)
+			}
+
+			if diff := cmp.Diff(deployWithBackReportedStatus.Status, currentDeployWithStatus.Status); diff != "" {
+				return fmt.Errorf("back-reported deployment status mismatch (-got, +want):\n%s", diff)
+			}
+			return nil
+		}
+	}
+
 	Context("can handle both object with status and object with no status", Ordered, func() {
 		workName := fmt.Sprintf(workNameTemplate, utils.RandStr())
 		// The environment prepared by the envtest package does not support namespace
 		// deletion; each test case would use a new namespace.
 		nsName := fmt.Sprintf(nsNameTemplate, utils.RandStr())
-		deploymentKind := "Deployment"
 
 		var appliedWorkOwnerRef *metav1.OwnerReference
 		// Note: namespaces and deployments have status subresources; config maps do not.
@@ -9816,45 +9858,7 @@ var _ = Describe("status back-reporting", func() {
 		})
 
 		It("should back-report deployment status to the Work object", func() {
-			Eventually(func() error {
-				workObj := &fleetv1beta1.Work{}
-				if err := hubClient.Get(ctx, client.ObjectKey{Namespace: memberReservedNSName1, Name: workName}, workObj); err != nil {
-					return fmt.Errorf("failed to retrieve the Work object: %w", err)
-				}
-
-				var backReportedDeployStatusWrapper []byte
-				var backReportedDeployStatusObservedTime metav1.Time
-				for idx := range workObj.Status.ManifestConditions {
-					manifestCond := &workObj.Status.ManifestConditions[idx]
-
-					if manifestCond.Identifier.Kind == deploymentKind && manifestCond.Identifier.Name == deployName && manifestCond.Identifier.Namespace == nsName {
-						backReportedDeployStatusWrapper = manifestCond.BackReportedStatus.ObservedStatus.Raw
-						backReportedDeployStatusObservedTime = manifestCond.BackReportedStatus.ObservationTime
-						break
-					}
-				}
-
-				if len(backReportedDeployStatusWrapper) == 0 {
-					return fmt.Errorf("no status back-reported for deployment")
-				}
-				if backReportedDeployStatusObservedTime.Before(&beforeTimestamp) {
-					return fmt.Errorf("back-reported deployment status observation time, want after %v, got %v", beforeTimestamp, backReportedDeployStatusObservedTime)
-				}
-
-				deployWithBackReportedStatus := &appsv1.Deployment{}
-				if err := json.Unmarshal(backReportedDeployStatusWrapper, deployWithBackReportedStatus); err != nil {
-					return fmt.Errorf("failed to unmarshal wrapped back-reported deployment status: %w", err)
-				}
-				currentDeployWithStatus := &appsv1.Deployment{}
-				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, currentDeployWithStatus); err != nil {
-					return fmt.Errorf("failed to retrieve Deployment object from member cluster side: %w", err)
-				}
-
-				if diff := cmp.Diff(deployWithBackReportedStatus.Status, currentDeployWithStatus.Status); diff != "" {
-					return fmt.Errorf("back-reported deployment status mismatch (-got, +want):\n%s", diff)
-				}
-				return nil
-			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to back-report deployment status to the Work object")
+			Eventually(deployStatusBackReportedActual(workName, nsName, deployName, beforeTimestamp), eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to back-report deployment status to the Work object")
 		})
 
 		It("should handle objects with no status gracefully", func() {
@@ -9939,45 +9943,7 @@ var _ = Describe("status back-reporting", func() {
 		})
 
 		It("should back-report refreshed deployment status to the Work object", func() {
-			Eventually(func() error {
-				workObj := &fleetv1beta1.Work{}
-				if err := hubClient.Get(ctx, client.ObjectKey{Namespace: memberReservedNSName1, Name: workName}, workObj); err != nil {
-					return fmt.Errorf("failed to retrieve the Work object: %w", err)
-				}
-
-				var backReportedDeployStatusWrapper []byte
-				var backReportedDeployStatusObservedTime metav1.Time
-				for idx := range workObj.Status.ManifestConditions {
-					manifestCond := &workObj.Status.ManifestConditions[idx]
-
-					if manifestCond.Identifier.Kind == deploymentKind && manifestCond.Identifier.Name == deployName && manifestCond.Identifier.Namespace == nsName {
-						backReportedDeployStatusWrapper = manifestCond.BackReportedStatus.ObservedStatus.Raw
-						backReportedDeployStatusObservedTime = manifestCond.BackReportedStatus.ObservationTime
-						break
-					}
-				}
-
-				if len(backReportedDeployStatusWrapper) == 0 {
-					return fmt.Errorf("no status back-reported for deployment")
-				}
-				if backReportedDeployStatusObservedTime.Before(&beforeTimestamp) {
-					return fmt.Errorf("back-reported deployment status observation time, want after %v, got %v", beforeTimestamp, backReportedDeployStatusObservedTime)
-				}
-
-				deployWithBackReportedStatus := &appsv1.Deployment{}
-				if err := json.Unmarshal(backReportedDeployStatusWrapper, deployWithBackReportedStatus); err != nil {
-					return fmt.Errorf("failed to unmarshal wrapped back-reported deployment status: %w", err)
-				}
-				currentDeployWithStatus := &appsv1.Deployment{}
-				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, currentDeployWithStatus); err != nil {
-					return fmt.Errorf("failed to retrieve Deployment object from member cluster side: %w", err)
-				}
-
-				if diff := cmp.Diff(deployWithBackReportedStatus.Status, currentDeployWithStatus.Status); diff != "" {
-					return fmt.Errorf("back-reported deployment status mismatch (-got, +want):\n%s", diff)
-				}
-				return nil
-			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to back-report deployment status to the Work object")
+			Eventually(deployStatusBackReportedActual(workName, nsName, deployName, beforeTimestamp), eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to back-report deployment status to the Work object")
 		})
 
 		It("should update the AppliedWork object status", func() {

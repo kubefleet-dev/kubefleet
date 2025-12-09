@@ -156,18 +156,18 @@ func (r *Reconciler) refreshWorkStatus(
 			}
 		}
 
-		// Back-report the status from the member cluster side, if applicable.
-		//
-		// Back-reporting is only performed when:
-		// a) the ReportBackStrategy is of the type Mirror; and
-		// b) the manifest object has been applied successfully.
-		if isStatusBackReportingOn && isManifestObjectApplied(bundle.applyOrReportDiffResTyp) {
-			backReportStatus(bundle.inMemberClusterObj, manifestCond, now, klog.KObj(work))
-		}
-
-		// Tally the stats.
+		// Tally the stats, and perform status back-reporting if applicable.
 		if isManifestObjectApplied(bundle.applyOrReportDiffResTyp) {
 			appliedManifestsCount++
+
+			if isStatusBackReportingOn {
+				// Back-report the status from the member cluster side, if applicable.
+				//
+				// Back-reporting is only performed when:
+				// a) the ReportBackStrategy is of the type Mirror; and
+				// b) the manifest object has been applied successfully.
+				backReportStatus(bundle.inMemberClusterObj, manifestCond, now, klog.KObj(work))
+			}
 		}
 		if isAppliedObjectAvailable(bundle.availabilityResTyp) {
 			availableAppliedObjectsCount++
