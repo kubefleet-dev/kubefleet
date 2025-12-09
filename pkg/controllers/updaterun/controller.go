@@ -189,7 +189,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		// Stop the updateRun.
 		klog.InfoS("Stopping the updateRun", "state", state, "updatingStageIndex", updatingStageIndex, "updateRun", runObjRef)
 		// TODO(britaniar): Implement the stopping logic for in-progress stages.
-		// TODO(britaniar): Handle before and after stage tasks condition.
 
 		klog.V(2).InfoS("The updateRun is stopped", "updateRun", runObjRef)
 		return runtime.Result{}, r.recordUpdateRunStopped(ctx, updateRun)
