@@ -2231,6 +2231,8 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 			By("Updating the updateRun state to Run")
 			updateRun.Spec.State = placementv1beta1.StateRun
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
+			// Update the test's want status to match the new generation.
+			updateAllStatusConditionsGeneration(wantStatus, updateRun.Generation)
 
 			By("Validating the execution has started")
 			wantStatus = generateExecutionStartedStatus(updateRun, wantStatus)
