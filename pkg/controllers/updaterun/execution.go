@@ -231,12 +231,10 @@ func (r *Reconciler) executeUpdatingStage(
 					}
 				}
 			}
-
 			markClusterUpdatingStarted(clusterStatus, updateRun.GetGeneration())
 			if finishedClusterCount == 0 {
 				markStageUpdatingStarted(updatingStageStatus, updateRun.GetGeneration())
 			}
-
 			// Need to continue as we need to process at most maxConcurrency number of clusters in parallel.
 			continue
 		}
@@ -374,7 +372,6 @@ func (r *Reconciler) executeDeleteStage(
 			return false, controller.NewAPIServerError(false, err)
 		}
 		klog.V(2).InfoS("Deleted a binding pointing to a to be deleted cluster", "binding", klog.KObj(binding), "cluster", curCluster.ClusterName, "updateRun", updateRunRef)
-		// Mark the cluster as deleting.
 		markClusterUpdatingStarted(curCluster, updateRun.GetGeneration())
 	}
 	// The rest of the clusters in the stage are not in the toBeDeletedBindings so it should be marked as delete succeeded.

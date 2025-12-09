@@ -2144,7 +2144,6 @@ func clusterStagedUpdateRunStatusSucceededActual(
 		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusCmpOption...); diff != "" {
 			return fmt.Errorf("UpdateRun status diff (-got, +want): %s", diff)
 		}
-
 		return nil
 	}
 }

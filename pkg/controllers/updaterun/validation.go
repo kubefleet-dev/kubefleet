@@ -195,7 +195,11 @@ func validateClusterUpdatingStatus(
 		}
 		// Make sure that all the clusters are updated.
 		for curCluster := range stageStatus.Clusters {
-			if !condition.IsConditionStatusTrue(meta.FindStatusCondition(stageStatus.Clusters[curCluster].Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded)), updateRun.GetGeneration()) {
+			// Check if the cluster is still updating.
+			if !condition.IsConditionStatusTrue(meta.FindStatusCondition(
+				stageStatus.Clusters[curCluster].Conditions,
+				string(placementv1beta1.ClusterUpdatingConditionSucceeded)),
+				updateRun.GetGeneration()) {
 				// The clusters in the finished stage should all have finished too.
 				unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("cluster `%s` in the finished stage `%s` has not succeeded", stageStatus.Clusters[curCluster].ClusterName, stageStatus.StageName))
 				klog.ErrorS(unexpectedErr, "The cluster in a finished stage is still updating", "updateRun", klog.KObj(updateRun))
