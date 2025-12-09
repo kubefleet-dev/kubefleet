@@ -34,6 +34,7 @@ import (
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 )
 
 var _ = Describe("UpdateRun validation tests", func() {
@@ -110,8 +111,8 @@ var _ = Describe("UpdateRun validation tests", func() {
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 			By("Validating the initialization succeeded")
-			initialized := generateSucceededInitializationStatus(crp, updateRun, policySnapshot, updateStrategy, clusterResourceOverride)
-			wantStatus = generateExecutionStartedStatus(updateRun, initialized)
+			initialized := generateSucceededInitializationStatus(crp, updateRun, testResourceSnapshotIndex, policySnapshot, updateStrategy, clusterResourceOverride)
+			wantStatus = generateExecutionNotStartedStatus(updateRun, initialized)
 			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
 		})
 
@@ -164,7 +165,7 @@ var _ = Describe("UpdateRun validation tests", func() {
 		Context("Test validateCRP", func() {
 			AfterEach(func() {
 				By("Checking update run status metrics are emitted")
-				validateUpdateRunMetricsEmitted(generateProgressingMetric(updateRun), generateFailedMetric(updateRun))
+				validateUpdateRunMetricsEmitted(generateWaitingMetric(updateRun), generateFailedMetric(updateRun))
 			})
 
 			It("Should fail to validate if the CRP is not found", func() {
@@ -208,7 +209,7 @@ var _ = Describe("UpdateRun validation tests", func() {
 				validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "no latest policy snapshot associated")
 
 				By("Checking update run status metrics are emitted")
-				validateUpdateRunMetricsEmitted(generateProgressingMetric(updateRun), generateFailedMetric(updateRun))
+				validateUpdateRunMetricsEmitted(generateWaitingMetric(updateRun), generateFailedMetric(updateRun))
 			})
 
 			It("Should fail to validate if the latest policySnapshot has changed", func() {
@@ -237,7 +238,7 @@ var _ = Describe("UpdateRun validation tests", func() {
 				Expect(k8sClient.Delete(ctx, newPolicySnapshot)).Should(Succeed())
 
 				By("Checking update run status metrics are emitted")
-				validateUpdateRunMetricsEmitted(generateProgressingMetric(updateRun), generateFailedMetric(updateRun))
+				validateUpdateRunMetricsEmitted(generateWaitingMetric(updateRun), generateFailedMetric(updateRun))
 			})
 
 			It("Should fail to validate if the cluster count has changed", func() {
@@ -251,14 +252,14 @@ var _ = Describe("UpdateRun validation tests", func() {
 					"the cluster count initialized in the updateRun is outdated")
 
 				By("Checking update run status metrics are emitted")
-				validateUpdateRunMetricsEmitted(generateProgressingMetric(updateRun), generateFailedMetric(updateRun))
+				validateUpdateRunMetricsEmitted(generateWaitingMetric(updateRun), generateFailedMetric(updateRun))
 			})
 		})
 
 		Context("Test validateStagesStatus", func() {
 			AfterEach(func() {
 				By("Checking update run status metrics are emitted")
-				validateUpdateRunMetricsEmitted(generateProgressingMetric(updateRun), generateFailedMetric(updateRun))
+				validateUpdateRunMetricsEmitted(generateWaitingMetric(updateRun), generateFailedMetric(updateRun))
 			})
 
 			It("Should fail to validate if the UpdateStrategySnapshot is nil", func() {
@@ -442,8 +443,8 @@ var _ = Describe("UpdateRun validation tests", func() {
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 			By("Validating the initialization succeeded")
-			initialized := generateSucceededInitializationStatus(crp, updateRun, policySnapshot, updateStrategy, clusterResourceOverride)
-			wantStatus = generateExecutionStartedStatus(updateRun, initialized)
+			initialized := generateSucceededInitializationStatus(crp, updateRun, testResourceSnapshotIndex, policySnapshot, updateStrategy, clusterResourceOverride)
+			wantStatus = generateExecutionNotStartedStatus(updateRun, initialized)
 			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
 		})
 
@@ -507,7 +508,7 @@ var _ = Describe("UpdateRun validation tests", func() {
 			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, wantStatus, "")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateProgressingMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateWaitingMetric(updateRun))
 		})
 	})
 })
@@ -564,7 +565,7 @@ func generateFailedValidationStatus(
 	updateRun *placementv1beta1.ClusterStagedUpdateRun,
 	started *placementv1beta1.UpdateRunStatus,
 ) *placementv1beta1.UpdateRunStatus {
-	started.Conditions[1] = generateFalseProgressingCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, false)
+	started.Conditions[1] = generateFalseProgressingCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, condition.UpdateRunFailedReason)
 	started.Conditions = append(started.Conditions, generateFalseCondition(updateRun, placementv1beta1.StagedUpdateRunConditionSucceeded))
 	return started
 }

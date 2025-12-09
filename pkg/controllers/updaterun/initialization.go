@@ -292,7 +292,7 @@ func (r *Reconciler) generateStagesByStrategy(
 	updateStrategySpec := updateStrategy.GetUpdateStrategySpec()
 	updateRunStatus.UpdateStrategySnapshot = updateStrategySpec
 
-	// Remove waitTime from the updateRun status for AfterStageTask for type Approval.
+	// Remove waitTime from the updateRun status for BeforeStageTask and AfterStageTask for type Approval.
 	removeWaitTimeFromUpdateRunStatus(updateRun)
 
 	// Compute the update stages.
@@ -344,6 +344,12 @@ func (r *Reconciler) computeRunStageStatus(
 
 	// Apply the label selectors from the UpdateStrategy to filter the clusters.
 	for _, stage := range updateRunStatus.UpdateStrategySnapshot.Stages {
+		if err := validateBeforeStageTask(stage.BeforeStageTasks); err != nil {
+			klog.ErrorS(err, "Failed to validate the before stage tasks", "updateStrategy", strategyKey, "stageName", stage.Name, "updateRun", updateRunRef)
+			// no more retries here.
+			invalidBeforeStageErr := controller.NewUserError(fmt.Errorf("the before stage tasks are invalid, updateStrategy: `%s`, stage: %s, err: %s", strategyKey, stage.Name, err.Error()))
+			return fmt.Errorf("%w: %s", errInitializedFailed, invalidBeforeStageErr.Error())
+		}
 		if err := validateAfterStageTask(stage.AfterStageTasks); err != nil {
 			klog.ErrorS(err, "Failed to validate the after stage tasks", "updateStrategy", strategyKey, "stageName", stage.Name, "updateRun", updateRunRef)
 			// no more retries here.
@@ -418,12 +424,20 @@ func (r *Reconciler) computeRunStageStatus(
 			curStageUpdatingStatus.Clusters[i].ClusterName = cluster.Name
 		}
 
+		// Create the before stage tasks.
+		curStageUpdatingStatus.BeforeStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(stage.BeforeStageTasks))
+		for i, task := range stage.BeforeStageTasks {
+			curStageUpdatingStatus.BeforeStageTaskStatus[i].Type = task.Type
+			if task.Type == placementv1beta1.StageTaskTypeApproval {
+				curStageUpdatingStatus.BeforeStageTaskStatus[i].ApprovalRequestName = fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
+			}
+		}
 		// Create the after stage tasks.
 		curStageUpdatingStatus.AfterStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(stage.AfterStageTasks))
 		for i, task := range stage.AfterStageTasks {
 			curStageUpdatingStatus.AfterStageTaskStatus[i].Type = task.Type
 			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				curStageUpdatingStatus.AfterStageTaskStatus[i].ApprovalRequestName = fmt.Sprintf(placementv1beta1.ApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
+				curStageUpdatingStatus.AfterStageTaskStatus[i].ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
 			}
 		}
 		stagesStatus = append(stagesStatus, curStageUpdatingStatus)
@@ -448,8 +462,25 @@ func (r *Reconciler) computeRunStageStatus(
 	return nil
 }
 
-// validateAfterStageTask valides the afterStageTasks in the stage defined in the UpdateStrategy.
-// The error returned from this function is not retryable.
+// validateBeforeStageTask validates the beforeStageTasks in the stage defined in the UpdateStrategy.
+// The error returned from this function is not retriable.
+func validateBeforeStageTask(tasks []placementv1beta1.StageTask) error {
+	if len(tasks) > 1 {
+		return fmt.Errorf("beforeStageTasks can have at most one task")
+	}
+	for i, task := range tasks {
+		if task.Type != placementv1beta1.StageTaskTypeApproval {
+			return fmt.Errorf("task %d of type %s is not allowed in beforeStageTasks, allowed type: Approval", i, task.Type)
+		}
+		if task.WaitTime != nil {
+			return fmt.Errorf("task %d of type Approval cannot have wait duration set", i)
+		}
+	}
+	return nil
+}
+
+// validateAfterStageTask validates the afterStageTasks in the stage defined in the UpdateStrategy.
+// The error returned from this function is not retriable.
 func validateAfterStageTask(tasks []placementv1beta1.StageTask) error {
 	if len(tasks) == 2 && tasks[0].Type == tasks[1].Type {
 		return fmt.Errorf("afterStageTasks cannot have two tasks of the same type: %s", tasks[0].Type)
@@ -471,30 +502,10 @@ func validateAfterStageTask(tasks []placementv1beta1.StageTask) error {
 func (r *Reconciler) recordOverrideSnapshots(ctx context.Context, placementKey types.NamespacedName, updateRun placementv1beta1.UpdateRunObj) error {
 	updateRunRef := klog.KObj(updateRun)
 	updateRunSpec := updateRun.GetUpdateRunSpec()
-	placementName := placementKey.Name
 
-	snapshotIndex, err := strconv.Atoi(updateRunSpec.ResourceSnapshotIndex)
-	if err != nil || snapshotIndex < 0 {
-		err := controller.NewUserError(fmt.Errorf("invalid resource snapshot index `%s` provided, expected an integer >= 0", updateRunSpec.ResourceSnapshotIndex))
-		klog.ErrorS(err, "Failed to parse the resource snapshot index", "updateRun", updateRunRef)
-		// no more retries here.
-		return fmt.Errorf("%w: %s", errInitializedFailed, err.Error())
-	}
-
-	resourceSnapshotList, err := controller.ListAllResourceSnapshotWithAnIndex(ctx, r.Client, updateRunSpec.ResourceSnapshotIndex, placementName, placementKey.Namespace)
+	resourceSnapshotObjs, err := r.getResourceSnapshotObjs(ctx, placementKey, updateRun)
 	if err != nil {
-		klog.ErrorS(err, "Failed to list the resourceSnapshots associated with the placement",
-			"placement", placementKey, "resourceSnapshotIndex", snapshotIndex, "updateRun", updateRunRef)
-		// err can be retried.
-		return controller.NewAPIServerError(true, err)
-	}
-
-	resourceSnapshotObjs := resourceSnapshotList.GetResourceSnapshotObjs()
-	if len(resourceSnapshotObjs) == 0 {
-		err := controller.NewUserError(fmt.Errorf("no resourceSnapshots with index `%d` found for placement `%s`", snapshotIndex, placementKey))
-		klog.ErrorS(err, "No specified resourceSnapshots found", "updateRun", updateRunRef)
-		// no more retries here.
-		return fmt.Errorf("%w: %s", errInitializedFailed, err.Error())
+		return err
 	}
 
 	// Look for the master resourceSnapshot.
@@ -509,12 +520,18 @@ func (r *Reconciler) recordOverrideSnapshots(ctx context.Context, placementKey t
 
 	// No masterResourceSnapshot found.
 	if masterResourceSnapshot == nil {
-		err := controller.NewUnexpectedBehaviorError(fmt.Errorf("no master resourceSnapshot found for placement `%s` with index `%d`", placementKey, snapshotIndex))
+		err := controller.NewUnexpectedBehaviorError(fmt.Errorf("no master resourceSnapshot found for placement %s", placementKey))
 		klog.ErrorS(err, "Failed to find master resourceSnapshot", "updateRun", updateRunRef)
 		// no more retries here.
 		return fmt.Errorf("%w: %s", errInitializedFailed, err.Error())
 	}
-	klog.V(2).InfoS("Found master resourceSnapshot", "placement", placementKey, "index", snapshotIndex, "updateRun", updateRunRef)
+
+	klog.V(2).InfoS("Found master resourceSnapshot", "placement", placementKey, "masterResourceSnapshot", masterResourceSnapshot.GetName(), "updateRun", updateRunRef)
+
+	// Record the resource snapshot index used.
+	updateRunStatus := updateRun.GetUpdateRunStatus()
+	updateRunStatus.ResourceSnapshotIndexUsed = masterResourceSnapshot.GetLabels()[placementv1beta1.ResourceIndexLabel]
+	updateRun.SetUpdateRunStatus(*updateRunStatus)
 
 	resourceSnapshotRef := klog.KObj(masterResourceSnapshot)
 	// Fetch all the matching overrides.
@@ -526,7 +543,6 @@ func (r *Reconciler) recordOverrideSnapshots(ctx context.Context, placementKey t
 	}
 
 	// Pick the overrides associated with each target cluster.
-	updateRunStatus := updateRun.GetUpdateRunStatus()
 	for _, stageStatus := range updateRunStatus.StagesStatus {
 		for i := range stageStatus.Clusters {
 			clusterStatus := &stageStatus.Clusters[i]
@@ -543,6 +559,58 @@ func (r *Reconciler) recordOverrideSnapshots(ctx context.Context, placementKey t
 	return nil
 }
 
+// getResourceSnapshotObjs retrieves the list of resource snapshot objects from the specified ResourceSnapshotIndex.
+// If ResourceSnapshotIndex is unspecified, it returns the list of latest resource snapshots.
+func (r *Reconciler) getResourceSnapshotObjs(ctx context.Context, placementKey types.NamespacedName, updateRun placementv1beta1.UpdateRunObj) ([]placementv1beta1.ResourceSnapshotObj, error) {
+	updateRunRef := klog.KObj(updateRun)
+	updateRunSpec := updateRun.GetUpdateRunSpec()
+	var resourceSnapshotObjs []placementv1beta1.ResourceSnapshotObj
+	if updateRunSpec.ResourceSnapshotIndex != "" {
+		snapshotIndex, err := strconv.Atoi(updateRunSpec.ResourceSnapshotIndex)
+		if err != nil || snapshotIndex < 0 {
+			err := controller.NewUserError(fmt.Errorf("invalid resource snapshot index `%s` provided, expected an integer >= 0", updateRunSpec.ResourceSnapshotIndex))
+			klog.ErrorS(err, "Failed to parse the resource snapshot index", "updateRun", updateRunRef)
+			// no more retries here.
+			return nil, fmt.Errorf("%w: %s", errInitializedFailed, err.Error())
+		}
+
+		resourceSnapshotList, err := controller.ListAllResourceSnapshotWithAnIndex(ctx, r.Client, updateRunSpec.ResourceSnapshotIndex, placementKey.Name, placementKey.Namespace)
+		if err != nil {
+			klog.ErrorS(err, "Failed to list the resourceSnapshots associated with the placement",
+				"placement", placementKey, "resourceSnapshotIndex", snapshotIndex, "updateRun", updateRunRef)
+			// list err can be retried.
+			return nil, controller.NewAPIServerError(true, err)
+		}
+
+		resourceSnapshotObjs = resourceSnapshotList.GetResourceSnapshotObjs()
+		if len(resourceSnapshotObjs) == 0 {
+			err := controller.NewUserError(fmt.Errorf("no resourceSnapshots with index `%d` found for placement `%s`", snapshotIndex, placementKey))
+			klog.ErrorS(err, "No specified resourceSnapshots found", "updateRun", updateRunRef)
+			// no more retries here.
+			return resourceSnapshotObjs, fmt.Errorf("%w: %s", errInitializedFailed, err.Error())
+		}
+		return resourceSnapshotObjs, nil
+	}
+
+	klog.V(2).InfoS("No resource snapshot index specified, fetching latest resource snapshots", "placement", placementKey, "updateRun", updateRunRef)
+	latestResourceSnapshots, err := controller.ListLatestResourceSnapshots(ctx, r.Client, placementKey)
+	if err != nil {
+		klog.ErrorS(err, "Failed to list the latest resourceSnapshots associated with the placement",
+			"placement", placementKey, "updateRun", updateRunRef)
+		// list err can be retried.
+		return nil, controller.NewAPIServerError(true, err)
+	}
+
+	resourceSnapshotObjs = latestResourceSnapshots.GetResourceSnapshotObjs()
+	if len(resourceSnapshotObjs) == 0 {
+		err := fmt.Errorf("no latest resourceSnapshots found for placement `%s`. This might be a transient state, need retry", placementKey)
+		klog.ErrorS(err, "No latest resourceSnapshots found for placement. This might be transient, need retry", "placement", placementKey, "updateRun", updateRunRef)
+		// retryable error.
+		return resourceSnapshotObjs, err
+	}
+	return resourceSnapshotObjs, nil
+}
+
 // recordInitializationSucceeded records the successful initialization condition in the UpdateRun status.
 func (r *Reconciler) recordInitializationSucceeded(ctx context.Context, updateRun placementv1beta1.UpdateRunObj) error {
 	updateRunStatus := updateRun.GetUpdateRunStatus()
@@ -551,7 +619,7 @@ func (r *Reconciler) recordInitializationSucceeded(ctx context.Context, updateRu
 		Status:             metav1.ConditionTrue,
 		ObservedGeneration: updateRun.GetGeneration(),
 		Reason:             condition.UpdateRunInitializeSucceededReason,
-		Message:            "ClusterStagedUpdateRun initialized successfully",
+		Message:            "The UpdateRun initialized successfully",
 	})
 	if updateErr := r.Client.Status().Update(ctx, updateRun); updateErr != nil {
 		klog.ErrorS(updateErr, "Failed to update the UpdateRun status as initialized", "updateRun", klog.KObj(updateRun))
