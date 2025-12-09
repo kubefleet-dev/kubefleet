@@ -455,14 +455,6 @@ func (f *framework) runSchedulingCycleForPickAllPlacementType(
 	// their names to achieve deterministic behaviors.
 	sort.Sort(scored)
 
-	// Sort all filtered clusters.
-	//
-	// This step is needed to produce deterministic decision outputs. If there are enough slots,
-	// the scheduler will explain why some clusters are filtered out in the decision list; to ensure
-	// that the list will not change across scheduling cycles without actual scheduling policy
-	// refreshes, the filtered clusters need to be sorted.
-	sort.Sort(filteredClusterWithStatusList(filtered))
-
 	// Cross-reference the newly picked clusters with obsolete bindings; find out
 	//
 	// * bindings that should be created, i.e., create a binding for every cluster that is newly picked
@@ -804,6 +796,14 @@ func (f *framework) updatePolicySnapshotStatusFromBindings(
 		return controller.NewUnexpectedBehaviorError(err)
 	}
 
+	// Sort all filtered clusters.
+	//
+	// This step is needed to produce deterministic decision outputs. If there are enough slots,
+	// the scheduler will try to explain why some clusters are filtered out in the decision list; to ensure
+	// that the list will not change across scheduling cycles without actual scheduling policy
+	// refreshes, the filtered clusters need to be sorted.
+	sort.Sort(filteredClusterWithStatusList(filtered))
+
 	// Prepare new scheduling decisions.
 	newDecisions := newSchedulingDecisionsFromBindings(f.maxUnselectedClusterDecisionCount, notPicked, filtered, existing...)
 	// Prepare new scheduling condition.
@@ -960,16 +960,6 @@ func (f *framework) runSchedulingCycleForPickNPlacementType(
 	// Note that at this point of the scheduling cycle, any cluster associated with a currently
 	// bound or scheduled binding should be filtered out already.
 	picked, notPicked := pickTopNScoredClusters(scored, numOfClustersToPick)
-
-	// Sort all filtered clusters.
-	//
-	// This step is needed to produce deterministic decision outputs. If there are enough slots,
-	// the scheduler will explain why some clusters are filtered out in the decision list; to ensure
-	// that the list will not change across scheduling cycles without actual scheduling policy
-	// refreshes, the filtered clusters need to be sorted.
-	//
-	// Note (chenyu1): the list of scored clusters (picked and notPicked) is already sorted.
-	sort.Sort(filteredClusterWithStatusList(filtered))
 
 	// Cross-reference the newly picked clusters with obsolete bindings; find out
 	//

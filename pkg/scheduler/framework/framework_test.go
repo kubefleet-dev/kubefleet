@@ -2736,7 +2736,7 @@ func TestUpdatePolicySnapshotStatusFromBindings(t *testing.T) {
 				{
 					cluster: &clusterv1beta1.MemberCluster{
 						ObjectMeta: metav1.ObjectMeta{
-							Name: altClusterName,
+							Name: anotherClusterName,
 						},
 					},
 					status: filteredStatus,
@@ -2744,7 +2744,7 @@ func TestUpdatePolicySnapshotStatusFromBindings(t *testing.T) {
 				{
 					cluster: &clusterv1beta1.MemberCluster{
 						ObjectMeta: metav1.ObjectMeta{
-							Name: anotherClusterName,
+							Name: altClusterName,
 						},
 					},
 					status: filteredStatus,
@@ -2762,7 +2762,7 @@ func TestUpdatePolicySnapshotStatusFromBindings(t *testing.T) {
 					Reason: fmt.Sprintf(resourceScheduleSucceededWithScoreMessageFormat, clusterName, affinityScore1, topologySpreadScore1),
 				},
 				{
-					ClusterName: altClusterName,
+					ClusterName: anotherClusterName,
 					Selected:    false,
 					Reason:      filteredStatus.String(),
 				},
