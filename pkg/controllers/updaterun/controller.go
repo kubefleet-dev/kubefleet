@@ -77,6 +77,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		klog.ErrorS(err, "Failed to get updateRun object", "updateRun", req.NamespacedName)
 		return runtime.Result{}, client.IgnoreNotFound(err)
 	}
+
+	// Update all existing conditions' ObservedGeneration to the current generation
+	updateAllStatusConditionsGeneration(updateRun.GetUpdateRunStatus(), updateRun.GetGeneration())
+
 	runObjRef := klog.KObj(updateRun)
 
 	// Remove waitTime from the updateRun status for BeforeStageTask and AfterStageTask for type Approval.
@@ -110,12 +114,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	var toBeUpdatedBindings, toBeDeletedBindings []placementv1beta1.BindingObj
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	initCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionInitialized))
-	// Check if initialized regardless of generation.
-	// The updateRun spec fields are immutable except for the state field. When the state changes,
-	// the update run generation increments, but we don't need to reinitialize since initialization is a one-time setup.
-	if !condition.IsConditionStatusTrueIgnoreGeneration(initCond) {
+	if !condition.IsConditionStatusTrue(initCond, updateRun.GetGeneration()) {
 		// Check if initialization failed for the current generation.
-		if initCond != nil && initCond.Status == metav1.ConditionFalse {
+		if condition.IsConditionStatusFalse(initCond, updateRun.GetGeneration()) {
 			klog.V(2).InfoS("The updateRun has failed to initialize", "errorMsg", initCond.Message, "updateRun", runObjRef)
 			return runtime.Result{}, nil
 		}
@@ -136,7 +137,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		klog.V(2).InfoS("The updateRun is initialized", "state", state, "updateRun", runObjRef)
 		// Check if the updateRun is finished.
 		finishedCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionSucceeded))
-		if condition.IsConditionStatusTrueIgnoreGeneration(finishedCond) || condition.IsConditionStatusFalseIgnoreGeneration(finishedCond) {
+		if condition.IsConditionStatusTrue(finishedCond, updateRun.GetGeneration()) || condition.IsConditionStatusFalse(finishedCond, updateRun.GetGeneration()) {
 			klog.V(2).InfoS("The updateRun is finished", "finishedSuccessfully", finishedCond.Status, "updateRun", runObjRef)
 			return runtime.Result{}, nil
 		}
@@ -509,6 +510,60 @@ func removeWaitTimeFromUpdateRunStatus(updateRun placementv1beta1.UpdateRunObj) 
 					updateRunStatus.UpdateStrategySnapshot.Stages[i].AfterStageTasks[j].WaitTime = nil
 				}
 			}
+		}
+	}
+}
+
+// updateAllStatusConditionsGeneration iterates through all existing conditions in the UpdateRun status
+// and updates their ObservedGeneration field to the current UpdateRun generation.
+func updateAllStatusConditionsGeneration(updateRunStatus *placementv1beta1.UpdateRunStatus, generation int64) {
+	// Update main UpdateRun conditions
+	for i := range updateRunStatus.Conditions {
+		updateRunStatus.Conditions[i].ObservedGeneration = generation
+	}
+
+	// Update stage-level conditions and nested task conditions if it exists
+	for i := range updateRunStatus.StagesStatus {
+		stageStatus := &updateRunStatus.StagesStatus[i]
+
+		// Update stage conditions
+		updateAllStageStatusConditionsGeneration(stageStatus, generation)
+	}
+
+	// Update deletion stage conditions and nested tasks if it exists
+	if updateRunStatus.DeletionStageStatus != nil {
+		deletionStageStatus := updateRunStatus.DeletionStageStatus
+
+		// Update deletion stage conditions
+		updateAllStageStatusConditionsGeneration(deletionStageStatus, generation)
+	}
+}
+
+// updateAllStageStatusConditionsGeneration updates all conditions' ObservedGeneration in the given stage status.
+func updateAllStageStatusConditionsGeneration(stageStatus *placementv1beta1.StageUpdatingStatus, generation int64) {
+	// Update stage conditions
+	for j := range stageStatus.Conditions {
+		stageStatus.Conditions[j].ObservedGeneration = generation
+	}
+
+	// Update before stage task conditions
+	for j := range stageStatus.BeforeStageTaskStatus {
+		for k := range stageStatus.BeforeStageTaskStatus[j].Conditions {
+			stageStatus.BeforeStageTaskStatus[j].Conditions[k].ObservedGeneration = generation
+		}
+	}
+
+	// Update after stage task conditions
+	for j := range stageStatus.AfterStageTaskStatus {
+		for k := range stageStatus.AfterStageTaskStatus[j].Conditions {
+			stageStatus.AfterStageTaskStatus[j].Conditions[k].ObservedGeneration = generation
+		}
+	}
+
+	// Update cluster-level conditions
+	for j := range stageStatus.Clusters {
+		for k := range stageStatus.Clusters[j].Conditions {
+			stageStatus.Clusters[j].Conditions[k].ObservedGeneration = generation
 		}
 	}
 }

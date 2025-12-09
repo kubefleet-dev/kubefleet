@@ -65,16 +65,6 @@ func IsConditionStatusFalse(cond *metav1.Condition, latestGeneration int64) bool
 	return cond != nil && cond.Status == metav1.ConditionFalse && cond.ObservedGeneration == latestGeneration
 }
 
-// IsConditionStatusTrueIgnoreGeneration returns true if the condition is true and ignores the observed generation.
-func IsConditionStatusTrueIgnoreGeneration(cond *metav1.Condition) bool {
-	return cond != nil && cond.Status == metav1.ConditionTrue
-}
-
-// IsConditionStatusFalseIgnoreGeneration returns true if the condition is false and ignores the observed generation.
-func IsConditionStatusFalseIgnoreGeneration(cond *metav1.Condition) bool {
-	return cond != nil && cond.Status == metav1.ConditionFalse
-}
-
 // ResourceCondition is all the resource related condition, for example, scheduled condition is not included.
 type ResourceCondition int
 

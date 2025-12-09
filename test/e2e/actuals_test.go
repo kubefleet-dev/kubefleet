@@ -2141,13 +2141,8 @@ func clusterStagedUpdateRunStatusSucceededActual(
 			wantStatus.DeletionStageStatus = buildDeletionStatusWithoutConditions(wantUnscheduledClusters, updateRun)
 			wantStatus.Conditions = updateRunInitializedConditions(updateRun.Generation)
 		}
-		// Stages and DeletionStages can have different generation values, so we ignore them in this comparison.
-		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusNoGenerationCmpOption...); diff != "" {
+		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusCmpOption...); diff != "" {
 			return fmt.Errorf("UpdateRun status diff (-got, +want): %s", diff)
-		}
-		// Check final update run conditions separately to ensure the latest generation is compared and update correctly.
-		if diff := cmp.Diff(updateRun.Status.Conditions, wantStatus.Conditions, updateRunStatusCmpOption...); diff != "" {
-			return fmt.Errorf("UpdateRun status conditions diff (-got, +want): %s", diff)
 		}
 
 		return nil
@@ -2189,13 +2184,8 @@ func stagedUpdateRunStatusSucceededActual(
 			wantStatus.DeletionStageStatus = buildDeletionStatusWithoutConditions(wantUnscheduledClusters, updateRun)
 			wantStatus.Conditions = updateRunInitializedConditions(updateRun.Generation)
 		}
-		// Stages and DeletionStages can have different generation values, so we ignore them in this comparison.
-		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusNoGenerationCmpOption...); diff != "" {
+		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusCmpOption...); diff != "" {
 			return fmt.Errorf("UpdateRun status diff (-got, +want): %s", diff)
-		}
-		// Check final update run conditions separately to ensure the latest generation is compared and update correctly.
-		if diff := cmp.Diff(updateRun.Status.Conditions, wantStatus.Conditions, updateRunStatusCmpOption...); diff != "" {
-			return fmt.Errorf("UpdateRun status conditions diff (-got, +want): %s", diff)
 		}
 		return nil
 	}

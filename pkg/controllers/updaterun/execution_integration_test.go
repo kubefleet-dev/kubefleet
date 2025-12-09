@@ -789,6 +789,8 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			By("Updating updateRun state to Stop")
 			updateRun.Spec.State = placementv1beta1.StateStop
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
+			// Update the test's want status to match the new generation.
+			updateAllStatusConditionsGeneration(wantStatus, updateRun.Generation)
 
 			By("Validating the update run is stopped")
 			// 2nd cluster has started condition but no succeeded condition.
@@ -820,6 +822,8 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			By("Updating updateRun state to Run")
 			updateRun.Spec.State = placementv1beta1.StateRun
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
+			// Update the test's want status to match the new generation.
+			updateAllStatusConditionsGeneration(wantStatus, updateRun.Generation)
 
 			By("Validating update run is running")
 			// Mark updateRun progressing condition as true with progressing reason.
@@ -938,6 +942,8 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			By("Updating updateRun state to Stop")
 			updateRun.Spec.State = placementv1beta1.StateStop
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
+			// Update the test's want status to match the new generation.
+			updateAllStatusConditionsGeneration(wantStatus, updateRun.Generation)
 
 			By("Validating the update run is stopped")
 			// Mark update run stopped.
@@ -972,6 +978,8 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			By("Updating updateRun state to Run")
 			updateRun.Spec.State = placementv1beta1.StateRun
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
+			// Update the test's want status to match the new generation.
+			updateAllStatusConditionsGeneration(wantStatus, updateRun.Generation)
 
 			By("Validating the approvalRequest has ApprovalAccepted status")
 			Eventually(func() (bool, error) {
@@ -1061,6 +1069,8 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			By("Updating updateRun state to Stop")
 			updateRun.Spec.State = placementv1beta1.StateStop
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
+			// Update the test's want status to match the new generation.
+			updateAllStatusConditionsGeneration(wantStatus, updateRun.Generation)
 
 			By("Validating the update run is stopped")
 			// Mark update run stopped.
@@ -1088,6 +1098,8 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			By("Updating updateRun state to Run")
 			updateRun.Spec.State = placementv1beta1.StateRun
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
+			// Update the test's want status to match the new generation.
+			updateAllStatusConditionsGeneration(wantStatus, updateRun.Generation)
 
 			By("Validating update run is running")
 			// Mark 2nd stage progressing condition as false with waiting reason.
@@ -1254,6 +1266,8 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			By("Updating updateRun state to Stop")
 			updateRun.Spec.State = placementv1beta1.StateStop
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
+			// Update the test's want status to match the new generation.
+			updateAllStatusConditionsGeneration(wantStatus, updateRun.Generation)
 
 			By("Validating the update run is stopped")
 			// Mark update run stopped.
@@ -1277,6 +1291,8 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			By("Updating updateRun state to Run")
 			updateRun.Spec.State = placementv1beta1.StateRun
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
+			// Update the test's want status to match the new generation.
+			updateAllStatusConditionsGeneration(wantStatus, updateRun.Generation)
 
 			By("Approving the approvalRequest")
 			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
