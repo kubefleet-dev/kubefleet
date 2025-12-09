@@ -113,7 +113,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	// Check if initialized regardless of generation.
 	// The updateRun spec fields are immutable except for the state field. When the state changes,
 	// the update run generation increments, but we don't need to reinitialize since initialization is a one-time setup.
-	if !(initCond != nil && initCond.Status == metav1.ConditionTrue) {
+	if !condition.IsConditionStatusTrueIgnoreGeneration(initCond) {
 		// Check if initialization failed for the current generation.
 		if initCond != nil && initCond.Status == metav1.ConditionFalse {
 			klog.V(2).InfoS("The updateRun has failed to initialize", "errorMsg", initCond.Message, "updateRun", runObjRef)
@@ -136,7 +136,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		klog.V(2).InfoS("The updateRun is initialized", "state", state, "updateRun", runObjRef)
 		// Check if the updateRun is finished.
 		finishedCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionSucceeded))
-		if condition.IsConditionStatusTrue(finishedCond, updateRun.GetGeneration()) || condition.IsConditionStatusFalse(finishedCond, updateRun.GetGeneration()) {
+		if condition.IsConditionStatusTrueIgnoreGeneration(finishedCond) || condition.IsConditionStatusFalseIgnoreGeneration(finishedCond) {
 			klog.V(2).InfoS("The updateRun is finished", "finishedSuccessfully", finishedCond.Status, "updateRun", runObjRef)
 			return runtime.Result{}, nil
 		}

@@ -295,8 +295,9 @@ func validateDeleteStageStatus(
 		klog.InfoS("The delete stage has finished successfully, no more stages to update", "updateRun", updateRunRef)
 		return -1, nil
 	}
-	// Check if the delete stage has failed. Check the
-	if condition.IsConditionStatusFalse(deleteStageFinishedCond, updateRun.GetGeneration()) {
+	// Check if the delete stage has failed.
+	// Ignoring generation here as it won't matter as the update run is aborted on failure.
+	if condition.IsConditionStatusFalseIgnoreGeneration(deleteStageFinishedCond) {
 		failedErr := fmt.Errorf("the delete stage has failed, err: %s", deleteStageFinishedCond.Message)
 		klog.ErrorS(failedErr, "The delete stage has failed", "stageCond", deleteStageFinishedCond, "updateRun", updateRunRef)
 		return -1, fmt.Errorf("%w: %s", errStagedUpdatedAborted, failedErr.Error())
