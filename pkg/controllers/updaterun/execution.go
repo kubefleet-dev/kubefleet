@@ -166,13 +166,15 @@ func (r *Reconciler) executeUpdatingStage(
 	for i := 0; i < len(updatingStageStatus.Clusters) && clusterUpdatingCount < maxConcurrency; i++ {
 		clusterStatus := &updatingStageStatus.Clusters[i]
 		clusterUpdateSucceededCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
-		if condition.IsConditionStatusTrueIgnoreGeneration(clusterUpdateSucceededCond) { // Ignoring generation here as once cluster succeeded in a previous Run state, generation may be different from current generation due state changing.
+		// Ignoring generation here as once cluster succeeded in a previous Run state, generation may be different from current generation due state changing.
+		if condition.IsConditionStatusTrueIgnoreGeneration(clusterUpdateSucceededCond) {
 			// The cluster has been updated successfully.
 			finishedClusterCount++
 			continue
 		}
 		clusterUpdatingCount++
-		if condition.IsConditionStatusFalseIgnoreGeneration(clusterUpdateSucceededCond) { // Ignoring generation here as once cluster failed, it won't change as the update run is aborted on failure.
+		// Ignoring generation here as once cluster failed, it won't change as the update run is aborted on failure.
+		if condition.IsConditionStatusFalseIgnoreGeneration(clusterUpdateSucceededCond) {
 			// The cluster is marked as failed to update, this cluster is counted as updating cluster since it's not finished to avoid processing more clusters than maxConcurrency in this round.
 			failedErr := fmt.Errorf("the cluster `%s` in the stage %s has failed", clusterStatus.ClusterName, updatingStageStatus.StageName)
 			klog.ErrorS(failedErr, "The cluster has failed to be updated", "updateRun", updateRunRef)
@@ -182,7 +184,8 @@ func (r *Reconciler) executeUpdatingStage(
 		// The cluster needs to be processed.
 		clusterStartedCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
 		binding := toBeUpdatedBindingsMap[clusterStatus.ClusterName]
-		if !condition.IsConditionStatusTrueIgnoreGeneration(clusterStartedCond) { // Ignoring generation here as once cluster started in a previous Run state, generation may be different from current generation due state changing
+		// Ignoring generation here as once cluster started in a previous Run state, generation may be different from current generation due state changing.
+		if !condition.IsConditionStatusTrueIgnoreGeneration(clusterStartedCond) {
 			// The cluster has not started updating yet.
 			if !isBindingSyncedWithClusterStatus(resourceSnapshotName, updateRun, binding, clusterStatus) {
 				klog.V(2).InfoS("Found the first cluster that needs to be updated", "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
@@ -344,7 +347,8 @@ func (r *Reconciler) executeDeleteStage(
 	for i := range existingDeleteStageStatus.Clusters {
 		existingDeleteStageClusterMap[existingDeleteStageStatus.Clusters[i].ClusterName] = &existingDeleteStageStatus.Clusters[i]
 	}
-	// Mark the stage as started if not already marked or previously false (resumed after update run has stopped). Ignoring generation here as stage progressing generation, generation may be different from current generation due state changing.
+	// Mark the stage as started if not already marked or previously false (resumed after update run has stopped).
+	// Ignoring generation here as stage progressing generation, generation may be different from current generation due state changing.
 	if !condition.IsConditionStatusTrueIgnoreGeneration(meta.FindStatusCondition(existingDeleteStageStatus.Conditions, string(placementv1beta1.StageUpdatingConditionProgressing))) {
 		markStageUpdatingStarted(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration())
 	}
