@@ -74,33 +74,70 @@ collect_agent_logs_from_node() {
     local agent_type=$4  # "hub-agent" or "member-agent"
 
     echo "    -> Collecting ${agent_type} logs from node filesystem"
+    echo `docker exec "${node}" find /var/log/pods -path "*/fleet-system_*${agent_type}*"`
 
-    # Find and collect specific agent logs from /var/log/pods
-    local agent_logs_file="${node_log_dir}/${agent_type}-logs.log"
-
-    # First check if any agent logs exist on this node
+    # First check if any agent logs exist on this node (including .log, .log.*, and .gz files)
     local log_files
-    log_files=$(docker exec "${node}" find /var/log/pods -path "*/fleet-system_*${agent_type}*/*.log" -type f 2>/dev/null || echo "")
+    log_files=$(docker exec "${node}" find /var/log/pods -path "*/fleet-system_*${agent_type}*" -type f \( -name "*.log" -o -name "*.log.*" -o -name "*.gz" \) 2>/dev/null || echo "")
 
     if [ -n "$log_files" ]; then
-        # Agent logs found, create the log file
-        {
-            echo "# ${agent_type} logs from node filesystem"
-            echo "# Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-            echo "# Node: ${node}"
-            echo "# Cluster: ${cluster_name}"
-            echo "# Method: Direct access to /var/log/pods via docker exec"
-            echo "# =================================="
-            echo ""
+        local files_processed=false
 
-            # Use docker exec to collect agent logs directly from Kind node container
-            echo "$log_files" | while read logfile; do
-                echo "--- Log file: $logfile ---"
-                docker exec "${node}" cat "$logfile" 2>/dev/null || echo "Failed to read $logfile"
-                echo ""
-            done
-        } > "${agent_logs_file}"
-        echo "    -> ${agent_type}-logs.log"
+        # Process each log file separately
+        echo "$log_files" | while read -r logfile; do
+            if [ -n "$logfile" ]; then
+                files_processed=true
+
+                # Extract a meaningful filename from the log path
+                local base_path=$(basename "$(dirname "$logfile")")
+                local original_filename=$(basename "$logfile")
+                local sanitized_filename="${base_path}_${original_filename}"
+
+                # Remove .gz extension for the output filename if present
+                local output_filename="${sanitized_filename%.gz}"
+                # Ensure output filename ends with .log
+                if [[ ! "$output_filename" =~ \.log$ ]]; then
+                    output_filename="${output_filename}.log"
+                fi
+
+                # Create individual log file for this specific log
+                local individual_log_file="${node_log_dir}/${agent_type}-${output_filename}"
+
+                {
+                    echo "# ${agent_type} logs from node filesystem"
+                    echo "# Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+                    echo "# Node: ${node}"
+                    echo "# Cluster: ${cluster_name}"
+                    echo "# Source log file: ${logfile}"
+                    echo "# Method: Direct access to /var/log/pods via docker exec"
+                    echo "# =================================="
+                    echo ""
+
+                    # Handle different file types
+                    if [[ "$logfile" == *.gz ]]; then
+                        echo "# Note: This is a compressed log file that has been decompressed"
+                        echo ""
+                        # Decompress and read the file
+                        docker exec "${node}" zcat "$logfile" 2>/dev/null || echo "Failed to decompress and read $logfile"
+                    else
+                        # Regular log file (including rotated .log.* files)
+                        docker exec "${node}" cat "$logfile" 2>/dev/null || echo "Failed to read $logfile"
+                    fi
+                } > "${individual_log_file}"
+
+                echo "    -> ${agent_type}-${output_filename}"
+            fi
+        done
+
+        # Check if any files were created in the directory
+        local created_files
+        created_files=$(find "${node_log_dir}" -name "${agent_type}-*.log" 2>/dev/null | wc -l)
+
+        # If no log files were actually created, clean up empty directory
+        if [ "$created_files" -eq 0 ]; then
+            echo "    -> No valid ${agent_type} logs processed on node ${node}"
+            rmdir "${node_log_dir}" 2>/dev/null || true
+        fi
     else
         # No agent logs found, don't create the file and remove directory if empty
         echo "    -> No ${agent_type} logs found on node ${node}"
