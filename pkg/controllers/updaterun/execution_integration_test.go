@@ -1021,12 +1021,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			Expect(approvalCreateTime.Before(waitEndTime)).Should(BeTrue())
 
 			By("Checking update run status metrics are emitted")
-			// Remove any existing progressing and waiting of the same generation metric and add to the end.
-			progressingMetric := generateProgressingMetric(updateRun)
-			wantMetrics = removeMetricFromMetricList(wantMetrics, progressingMetric)
-			waitingMetric := generateWaitingMetric(updateRun)
-			wantMetrics = removeMetricFromMetricList(wantMetrics, waitingMetric)
-			wantMetrics = append(wantMetrics, progressingMetric, waitingMetric)
+			wantMetrics = append(wantMetrics, generateProgressingMetric(updateRun), generateWaitingMetric(updateRun))
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
@@ -1153,10 +1148,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			Expect(updateRun.Status.StagesStatus[0].StartTime).ShouldNot(BeNil())
 
 			By("Checking update run status metrics are emitted")
-			// Remove any existing progressing of the same generation metric and add to the end.
-			progressingMetric := generateProgressingMetric(updateRun)
-			wantMetrics = removeMetricFromMetricList(wantMetrics, progressingMetric)
-			wantMetrics = append(wantMetrics, progressingMetric)
+			wantMetrics = append(wantMetrics, generateProgressingMetric(updateRun))
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
@@ -1225,14 +1217,15 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 
 			By("Validating the 5th cluster has succeeded and the stage waiting for AfterStageTask")
 			wantStatus.StagesStatus[1].Clusters[4].Conditions = append(wantStatus.StagesStatus[1].Clusters[4].Conditions, generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionSucceeded))
-			wantStatus.StagesStatus[1].Conditions[0] = generateFalseCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing) // The progressing condition now becomes false with waiting reason.
+			// The stage progressing condition now becomes false with waiting reason.
+			wantStatus.StagesStatus[1].Conditions[0] = generateFalseCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing)
 			wantStatus.StagesStatus[1].AfterStageTaskStatus[0].Conditions = append(wantStatus.StagesStatus[1].AfterStageTaskStatus[0].Conditions,
 				generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestCreated))
 			meta.SetStatusCondition(&wantStatus.Conditions, generateFalseCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
 			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
 
 			By("Checking update run status metrics are emitted")
-			// Remove any existing waiting of the same generation metric and add to the end.
+			// Remove any existing waiting metric of the same generation and add to the end.
 			waitingMetric := generateWaitingMetric(updateRun)
 			wantMetrics = removeMetricFromMetricList(wantMetrics, waitingMetric)
 			wantMetrics = append(wantMetrics, waitingMetric)
@@ -1337,7 +1330,6 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			}, timeout, interval).Should(BeTrue(), "failed to validate the approvalRequest approval accepted")
 
 			By("Checking update run status metrics are emitted")
-			// Remove any existing progressing of the same generation metric and add to the end.
 			wantMetrics = append(wantMetrics, generateWaitingMetric(updateRun), generateProgressingMetric(updateRun))
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})

@@ -78,7 +78,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		return runtime.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Update all existing conditions' ObservedGeneration to the current generation
+	// Update all existing conditions' ObservedGeneration to the current generation.
 	updateAllStatusConditionsGeneration(updateRun.GetUpdateRunStatus(), updateRun.GetGeneration())
 
 	runObjRef := klog.KObj(updateRun)
@@ -517,50 +517,50 @@ func removeWaitTimeFromUpdateRunStatus(updateRun placementv1beta1.UpdateRunObj) 
 // updateAllStatusConditionsGeneration iterates through all existing conditions in the UpdateRun status
 // and updates their ObservedGeneration field to the current UpdateRun generation.
 func updateAllStatusConditionsGeneration(updateRunStatus *placementv1beta1.UpdateRunStatus, generation int64) {
-	// Update main UpdateRun conditions
+	// Update main UpdateRun conditions.
 	for i := range updateRunStatus.Conditions {
 		updateRunStatus.Conditions[i].ObservedGeneration = generation
 	}
 
-	// Update stage-level conditions and nested task conditions if it exists
+	// Update stage-level conditions and nested task conditions if it exists.
 	for i := range updateRunStatus.StagesStatus {
 		stageStatus := &updateRunStatus.StagesStatus[i]
 
-		// Update stage conditions
+		// Update stage conditions.
 		updateAllStageStatusConditionsGeneration(stageStatus, generation)
 	}
 
-	// Update deletion stage conditions and nested tasks if it exists
+	// Update deletion stage conditions and nested tasks if it exists.
 	if updateRunStatus.DeletionStageStatus != nil {
 		deletionStageStatus := updateRunStatus.DeletionStageStatus
 
-		// Update deletion stage conditions
+		// Update deletion stage conditions.
 		updateAllStageStatusConditionsGeneration(deletionStageStatus, generation)
 	}
 }
 
 // updateAllStageStatusConditionsGeneration updates all conditions' ObservedGeneration in the given stage status.
 func updateAllStageStatusConditionsGeneration(stageStatus *placementv1beta1.StageUpdatingStatus, generation int64) {
-	// Update stage conditions
+	// Update stage conditions.
 	for j := range stageStatus.Conditions {
 		stageStatus.Conditions[j].ObservedGeneration = generation
 	}
 
-	// Update before stage task conditions
+	// Update before stage task conditions.
 	for j := range stageStatus.BeforeStageTaskStatus {
 		for k := range stageStatus.BeforeStageTaskStatus[j].Conditions {
 			stageStatus.BeforeStageTaskStatus[j].Conditions[k].ObservedGeneration = generation
 		}
 	}
 
-	// Update after stage task conditions
+	// Update after stage task conditions.
 	for j := range stageStatus.AfterStageTaskStatus {
 		for k := range stageStatus.AfterStageTaskStatus[j].Conditions {
 			stageStatus.AfterStageTaskStatus[j].Conditions[k].ObservedGeneration = generation
 		}
 	}
 
-	// Update cluster-level conditions
+	// Update cluster-level conditions.
 	for j := range stageStatus.Clusters {
 		for k := range stageStatus.Clusters[j].Conditions {
 			stageStatus.Clusters[j].Conditions[k].ObservedGeneration = generation
