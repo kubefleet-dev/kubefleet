@@ -1170,79 +1170,6 @@ func TestUpdateAllStatusConditionsGeneration(t *testing.T) {
 				},
 			},
 		},
-		"should update ObservedGeneration for before/after stage task conditions": {
-			status: &placementv1beta1.UpdateRunStatus{
-				StagesStatus: []placementv1beta1.StageUpdatingStatus{
-					{
-						BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{
-							{
-								Conditions: []metav1.Condition{
-									{
-										Type:               string(placementv1beta1.StageTaskConditionApprovalRequestCreated),
-										Status:             metav1.ConditionTrue,
-										ObservedGeneration: 3,
-									},
-								},
-							},
-						},
-						AfterStageTaskStatus: []placementv1beta1.StageTaskStatus{
-							{
-								Conditions: []metav1.Condition{
-									{
-										Type:               string(placementv1beta1.StageTaskConditionApprovalRequestCreated),
-										Status:             metav1.ConditionFalse,
-										ObservedGeneration: 3,
-									},
-								},
-							},
-						},
-						Conditions: []metav1.Condition{
-							{
-								Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
-								Status:             metav1.ConditionTrue,
-								ObservedGeneration: 3,
-							},
-						},
-					},
-				},
-			},
-			generation: 4,
-			wantStatus: &placementv1beta1.UpdateRunStatus{
-				StagesStatus: []placementv1beta1.StageUpdatingStatus{
-					{
-						BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{
-							{
-								Conditions: []metav1.Condition{
-									{
-										Type:               string(placementv1beta1.StageTaskConditionApprovalRequestCreated),
-										Status:             metav1.ConditionTrue,
-										ObservedGeneration: 4,
-									},
-								},
-							},
-						},
-						AfterStageTaskStatus: []placementv1beta1.StageTaskStatus{
-							{
-								Conditions: []metav1.Condition{
-									{
-										Type:               string(placementv1beta1.StageTaskConditionApprovalRequestCreated),
-										Status:             metav1.ConditionFalse,
-										ObservedGeneration: 4,
-									},
-								},
-							},
-						},
-						Conditions: []metav1.Condition{
-							{
-								Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
-								Status:             metav1.ConditionTrue,
-								ObservedGeneration: 4,
-							},
-						},
-					},
-				},
-			},
-		},
 		"should handle empty status": {
 			status:     &placementv1beta1.UpdateRunStatus{},
 			generation: 2,
@@ -1474,6 +1401,22 @@ func TestUpdateAllStageStatusConditionsGeneration(t *testing.T) {
 		},
 		"should update ObservedGeneration for before/after stage task conditions": {
 			status: &placementv1beta1.StageUpdatingStatus{
+				Clusters: []placementv1beta1.ClusterUpdatingStatus{
+					{
+						Conditions: []metav1.Condition{
+							{
+								Type:               string(placementv1beta1.ClusterUpdatingConditionStarted),
+								Status:             metav1.ConditionTrue,
+								ObservedGeneration: 3,
+							},
+							{
+								Type:               string(placementv1beta1.ClusterUpdatingConditionSucceeded),
+								Status:             metav1.ConditionTrue,
+								ObservedGeneration: 3,
+							},
+						},
+					},
+				},
 				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{
 					{
 						Conditions: []metav1.Condition{
@@ -1511,6 +1454,22 @@ func TestUpdateAllStageStatusConditionsGeneration(t *testing.T) {
 			},
 			generation: 4,
 			wantStatus: &placementv1beta1.StageUpdatingStatus{
+				Clusters: []placementv1beta1.ClusterUpdatingStatus{
+					{
+						Conditions: []metav1.Condition{
+							{
+								Type:               string(placementv1beta1.ClusterUpdatingConditionStarted),
+								Status:             metav1.ConditionTrue,
+								ObservedGeneration: 4,
+							},
+							{
+								Type:               string(placementv1beta1.ClusterUpdatingConditionSucceeded),
+								Status:             metav1.ConditionTrue,
+								ObservedGeneration: 4,
+							},
+						},
+					},
+				},
 				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{
 					{
 						Conditions: []metav1.Condition{
@@ -1565,6 +1524,22 @@ func TestUpdateAllStageStatusConditionsGeneration(t *testing.T) {
 					{
 						Conditions: []metav1.Condition{
 							{
+								Type:               string(placementv1beta1.StageTaskConditionApprovalRequestCreated),
+								Status:             metav1.ConditionTrue,
+								ObservedGeneration: 7,
+							},
+							{
+								Type:               string(placementv1beta1.StageTaskConditionApprovalRequestApproved),
+								Status:             metav1.ConditionTrue,
+								ObservedGeneration: 7,
+							},
+						},
+					},
+				},
+				AfterStageTaskStatus: []placementv1beta1.StageTaskStatus{
+					{
+						Conditions: []metav1.Condition{
+							{
 								Type:               string(placementv1beta1.StageTaskConditionWaitTimeElapsed),
 								Status:             metav1.ConditionTrue,
 								ObservedGeneration: 7,
@@ -1603,6 +1578,22 @@ func TestUpdateAllStageStatusConditionsGeneration(t *testing.T) {
 					},
 				},
 				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{
+					{
+						Conditions: []metav1.Condition{
+							{
+								Type:               string(placementv1beta1.StageTaskConditionApprovalRequestCreated),
+								Status:             metav1.ConditionTrue,
+								ObservedGeneration: 8,
+							},
+							{
+								Type:               string(placementv1beta1.StageTaskConditionApprovalRequestApproved),
+								Status:             metav1.ConditionTrue,
+								ObservedGeneration: 8,
+							},
+						},
+					},
+				},
+				AfterStageTaskStatus: []placementv1beta1.StageTaskStatus{
 					{
 						Conditions: []metav1.Condition{
 							{
