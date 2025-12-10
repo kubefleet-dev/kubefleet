@@ -1089,7 +1089,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
-		It("Should start executing 2nd stage in the update run when state is Run", func() {
+		It("Should start waiting for after Stage approval for 2nd stage in the update run when state is Run", func() {
 			By("Updating updateRun state to Run")
 			updateRun.Spec.State = placementv1beta1.StateRun
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
@@ -1272,7 +1272,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
-		It("Should not continue rolling 2nd stage when stopped", func() {
+		It("Should not execute 2nd stage afterStageTask when stopped", func() {
 			By("Validating update run is stopped")
 			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
 
@@ -1280,18 +1280,35 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
-		It("Should start executing 2nd stage afterStageTasks of the update run when state is Run", func() {
+		It("Should not continue to delete stage after approval when still stopped", func() {
+			By("Approving the approvalRequest")
+			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
+
+			By("Validating the to-be-deleted bindings are NOT deleted")
+			Eventually(func() error {
+				for i := numTargetClusters; i < numTargetClusters+numUnscheduledClusters; i++ {
+					binding := &placementv1beta1.ClusterResourceBinding{}
+					if err := k8sClient.Get(ctx, types.NamespacedName{Name: resourceBindings[i].Name}, binding); err != nil {
+						return fmt.Errorf("get binding %s returned a not-found error or another error: %w", binding.Name, err)
+					}
+				}
+				return nil
+			}, timeout, interval).Should(Succeed(), "failed to validate the to-be-deleted bindings still exist")
+
+			By("Validating update run is stopped")
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
+
+			By("Checking update run status metrics are emitted")
+			validateUpdateRunMetricsEmitted(wantMetrics...)
+		})
+
+		It("Should complete the 2nd stage when update run is in Run state and move on to the delete stage", func() {
 			By("Updating updateRun state to Run")
 			updateRun.Spec.State = placementv1beta1.StateRun
 			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
 			// Update the test's want status to match the new generation.
 			updateAllStatusConditionsGeneration(wantStatus, updateRun.Generation)
 
-			By("Approving the approvalRequest")
-			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
-		})
-
-		It("Should complete the 2nd stage after wait time passed and approval request approved and move on to the delete stage", func() {
 			By("Validating the 2nd stage has completed and the delete stage has started")
 			wantStatus.StagesStatus[1].AfterStageTaskStatus[0].Conditions = append(wantStatus.StagesStatus[1].AfterStageTaskStatus[0].Conditions,
 				generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestApproved))
