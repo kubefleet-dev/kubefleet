@@ -82,27 +82,27 @@ collect_agent_logs_from_node() {
     local agent_type=$4  # "hub-agent" or "member-agent"
 
     echo "    -> Collecting ${agent_type} logs from node filesystem"
-    echo "    -> Found log paths: $(docker exec "${node}" find /var/log/pods -path "*/fleet-system_*${agent_type}*")"
+    echo "    -> Found log paths: $(docker exec "${node}" find /var/log/pods -path "*/${NAMESPACE}_*${agent_type}*")"
 
     # First check if any agent logs exist on this node (including .log, .log.*, and .gz files)
     local log_files
-    log_files=$(docker exec "${node}" find /var/log/pods -path "*/fleet-system_*${agent_type}*" -type f \( -name "*.log" -o -name "*.log.*" -o -name "*.gz" \) 2>/dev/null || echo "")
+    log_files=$(docker exec "${node}" find /var/log/pods -path "*/${NAMESPACE}_*${agent_type}*" -type f \( -name "*.log" -o -name "*.log.*" -o -name "*.gz" \) 2>/dev/null || echo "")
 
     if [ -n "$log_files" ]; then
 
-        # Process each log file separately
-        echo "$log_files" | while read -r logfile; do
+        # Process each log file separately using process substitution to avoid subshell
+        while read -r logfile; do
             if [ -n "$logfile" ]; then
 
                 # Extract a meaningful filename from the log path
                 local base_path=$(basename "$(dirname "$logfile")")
-                local original_filename=$(basename "$logfile")
+                local original_filename="$(basename "$logfile")"
                 local sanitized_filename="${base_path}_${original_filename}"
 
                 # Remove .gz extension for the output filename if present
                 local output_filename="${sanitized_filename%.gz}"
                 # Ensure output filename ends with .log
-                if [[ ! "$output_filename" =~ "\.log$" ]]; then
+                if [[ ! "$output_filename" =~ \.log$ ]]; then
                     output_filename="${output_filename}.log"
                 fi
 
@@ -133,7 +133,7 @@ collect_agent_logs_from_node() {
 
                 echo "    -> ${agent_type}-${output_filename}"
             fi
-        done
+        done < <(echo "$log_files")
 
         # Check if any files were created in the directory
         local created_files
