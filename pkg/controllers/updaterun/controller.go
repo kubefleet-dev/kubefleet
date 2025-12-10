@@ -162,9 +162,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	switch state {
 	case placementv1beta1.StateInitialize:
 		klog.V(2).InfoS("The updateRun is initialized but not executed, waiting to execute", "state", state, "updateRun", runObjRef)
-		if updateErr := r.recordUpdateRunStatus(ctx, updateRun); updateErr != nil {
-			return runtime.Result{}, updateErr
-		}
 	case placementv1beta1.StateRun:
 		// Execute the updateRun.
 		klog.InfoS("Continue to execute the updateRun", "updatingStageIndex", updatingStageIndex, "updateRun", runObjRef)
