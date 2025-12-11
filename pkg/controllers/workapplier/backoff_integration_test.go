@@ -295,7 +295,7 @@ var _ = Describe("exponential backoff", func() {
 			deleteWorkObject(workName, memberReservedNSName2)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -512,7 +512,7 @@ var _ = Describe("exponential backoff", func() {
 			deleteWorkObject(workName, memberReservedNSName2)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
