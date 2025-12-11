@@ -1308,8 +1308,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 
 		It("Should complete the 2nd stage when update run is in Run state and move on to the delete stage", func() {
 			By("Updating updateRun state to Run")
-			updateRun.Spec.State = placementv1beta1.StateRun
-			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
+			updateRun = updateClusterStagedUpdateRunState(updateRun.Name, placementv1beta1.StateRun)
 			// Update the test's want status to match the new generation.
 			updateAllStatusConditionsGeneration(wantStatus, updateRun.Generation)
 
