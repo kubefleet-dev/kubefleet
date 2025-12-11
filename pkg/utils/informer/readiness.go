@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package webhook
+package informer
 
 import (
 	"fmt"
@@ -22,14 +22,12 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
-
-	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
 )
 
-// ResourceInformerReadinessChecker creates a readiness check function that verifies
+// ReadinessChecker creates a readiness check function that verifies
 // all resource informer caches are synced before marking the pod as ready.
-// This prevents the webhook from accepting requests before the discovery cache is populated.
-func ResourceInformerReadinessChecker(resourceInformer informer.Manager) func(*http.Request) error {
+// This prevents components from processing requests before the discovery cache is populated.
+func ReadinessChecker(resourceInformer Manager) func(*http.Request) error {
 	return func(_ *http.Request) error {
 		if resourceInformer == nil {
 			return fmt.Errorf("resource informer not initialized")
