@@ -196,7 +196,7 @@ var _ = Describe("parallel processing with waves", func() {
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the PriorityClass object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -325,11 +325,11 @@ var _ = Describe("parallel processing with waves", func() {
 			deleteWorkObject(workName, memberReservedNSName3)
 
 			// Remove the ConfigMap object if it still exists.
-			cmRemovedActual := regularConfigMapRemovedActual(nsName, configMapName)
+			cmRemovedActual := regularConfigMapRemovedActual(memberClient3, nsName, configMapName)
 			Eventually(cmRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the ConfigMap object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -488,7 +488,7 @@ var _ = Describe("parallel processing with waves", func() {
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Role object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -1257,7 +1257,7 @@ var _ = Describe("parallel processing with waves", func() {
 			}
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)

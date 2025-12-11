@@ -137,11 +137,11 @@ func marshalK8sObjJSON(obj runtime.Object) []byte {
 	return json
 }
 
-func workFinalizerAddedActual(workName string) func() error {
+func workFinalizerAddedActual(workNS, workName string) func() error {
 	return func() error {
 		// Retrieve the Work object.
 		work := &fleetv1beta1.Work{}
-		if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, work); err != nil {
+		if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: workNS}, work); err != nil {
 			return fmt.Errorf("failed to retrieve the Work object: %w", err)
 		}
 
@@ -153,11 +153,11 @@ func workFinalizerAddedActual(workName string) func() error {
 	}
 }
 
-func appliedWorkCreatedActual(workName string) func() error {
+func appliedWorkCreatedActual(memberClient client.Client, workNS, workName string) func() error {
 	return func() error {
 		// Retrieve the AppliedWork object.
 		appliedWork := &fleetv1beta1.AppliedWork{}
-		if err := memberClient1.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, appliedWork); err != nil {
+		if err := memberClient.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); err != nil {
 			return fmt.Errorf("failed to retrieve the AppliedWork object: %w", err)
 		}
 
@@ -167,7 +167,7 @@ func appliedWorkCreatedActual(workName string) func() error {
 			},
 			Spec: fleetv1beta1.AppliedWorkSpec{
 				WorkName:      workName,
-				WorkNamespace: memberReservedNSName1,
+				WorkNamespace: workNS,
 			},
 		}
 		if diff := cmp.Diff(
@@ -181,10 +181,10 @@ func appliedWorkCreatedActual(workName string) func() error {
 	}
 }
 
-func prepareAppliedWorkOwnerRef(workName string) *metav1.OwnerReference {
+func prepareAppliedWorkOwnerRef(memberClient client.Client, workNS, workName string) *metav1.OwnerReference {
 	// Retrieve the AppliedWork object.
 	appliedWork := &fleetv1beta1.AppliedWork{}
-	Expect(memberClient1.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, appliedWork)).To(Succeed(), "Failed to retrieve the AppliedWork object")
+	Expect(memberClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: workNS}, appliedWork)).To(Succeed(), "Failed to retrieve the AppliedWork object")
 
 	// Prepare the expected OwnerReference.
 	return &metav1.OwnerReference{
@@ -196,11 +196,11 @@ func prepareAppliedWorkOwnerRef(workName string) *metav1.OwnerReference {
 	}
 }
 
-func regularNSObjectAppliedActual(nsName string, appliedWorkOwnerRef *metav1.OwnerReference) func() error {
+func regularNSObjectAppliedActual(memberClient client.Client, nsName string, appliedWorkOwnerRef *metav1.OwnerReference) func() error {
 	return func() error {
 		// Retrieve the NS object.
 		gotNS := &corev1.Namespace{}
-		if err := memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, gotNS); err != nil {
+		if err := memberClient.Get(ctx, client.ObjectKey{Name: nsName}, gotNS); err != nil {
 			return fmt.Errorf("failed to retrieve the NS object: %w", err)
 		}
 
@@ -378,11 +378,11 @@ func regularClusterRoleObjectAppliedActual(clusterRoleName string, appliedWorkOw
 	}
 }
 
-func regularConfigMapObjectAppliedActual(nsName, configMapName string, appliedWorkOwnerRef *metav1.OwnerReference) func() error {
+func regularConfigMapObjectAppliedActual(memberClient client.Client, nsName, configMapName string, appliedWorkOwnerRef *metav1.OwnerReference) func() error {
 	return func() error {
 		// Retrieve the ConfigMap object.
 		gotConfigMap := &corev1.ConfigMap{}
-		if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, gotConfigMap); err != nil {
+		if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, gotConfigMap); err != nil {
 			return fmt.Errorf("failed to retrieve the ConfigMap object: %w", err)
 		}
 
@@ -557,11 +557,11 @@ func workStatusUpdated(
 	}
 }
 
-func appliedWorkStatusUpdated(workName string, appliedResourceMeta []fleetv1beta1.AppliedResourceMeta) func() error {
+func appliedWorkStatusUpdated(memberClient client.Client, workName string, appliedResourceMeta []fleetv1beta1.AppliedResourceMeta) func() error {
 	return func() error {
 		// Retrieve the AppliedWork object.
 		appliedWork := &fleetv1beta1.AppliedWork{}
-		if err := memberClient1.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, appliedWork); err != nil {
+		if err := memberClient.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); err != nil {
 			return fmt.Errorf("failed to retrieve the AppliedWork object: %w", err)
 		}
 
@@ -602,10 +602,10 @@ func deleteWorkObject(workName, memberClusterReservedNSName string) {
 	Expect(hubClient.Delete(ctx, work)).To(Succeed(), "Failed to delete the Work object")
 }
 
-func checkNSOwnerReferences(workName, nsName string) {
+func checkNSOwnerReferences(memberClient client.Client, workName, nsName string) {
 	// Retrieve the AppliedWork object.
 	appliedWork := &fleetv1beta1.AppliedWork{}
-	Expect(memberClient1.Get(ctx, client.ObjectKey{Name: workName}, appliedWork)).To(Succeed(), "Failed to retrieve the AppliedWork object")
+	Expect(memberClient.Get(ctx, client.ObjectKey{Name: workName}, appliedWork)).To(Succeed(), "Failed to retrieve the AppliedWork object")
 
 	// Check that the Namespace object has the AppliedWork as an owner reference.
 	ns := &corev1.Namespace{
@@ -613,7 +613,7 @@ func checkNSOwnerReferences(workName, nsName string) {
 			Name: nsName,
 		},
 	}
-	Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, ns)).To(Succeed(), "Failed to retrieve the Namespace object")
+	Expect(memberClient.Get(ctx, client.ObjectKey{Name: nsName}, ns)).To(Succeed(), "Failed to retrieve the Namespace object")
 	Expect(ns.OwnerReferences).To(ContainElement(metav1.OwnerReference{
 		APIVersion:         fleetv1beta1.GroupVersion.String(),
 		Kind:               "AppliedWork",
@@ -623,7 +623,7 @@ func checkNSOwnerReferences(workName, nsName string) {
 	}), " AppliedWork OwnerReference not found in Namespace object")
 }
 
-func appliedWorkRemovedActual(workName, nsName string) func() error {
+func appliedWorkRemovedActual(workName string) func() error {
 	return func() error {
 		// Retrieve the AppliedWork object.
 		appliedWork := &fleetv1beta1.AppliedWork{}
@@ -683,7 +683,7 @@ func regularClusterRoleRemovedActual(clusterRoleName string) func() error {
 	}
 }
 
-func regularConfigMapRemovedActual(nsName, configMapName string) func() error {
+func regularConfigMapRemovedActual(memberClient client.Client, nsName, configMapName string) func() error {
 	return func() error {
 		// Retrieve the ConfigMap object.
 		configMap := &corev1.ConfigMap{
@@ -692,12 +692,12 @@ func regularConfigMapRemovedActual(nsName, configMapName string) func() error {
 				Name:      configMapName,
 			},
 		}
-		if err := memberClient1.Delete(ctx, configMap); err != nil && !errors.IsNotFound(err) {
+		if err := memberClient.Delete(ctx, configMap); err != nil && !errors.IsNotFound(err) {
 			return fmt.Errorf("failed to delete the ConfigMap object: %w", err)
 		}
 
 		// Check that the ConfigMap object has been deleted.
-		if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, configMap); !errors.IsNotFound(err) {
+		if err := memberClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, configMap); !errors.IsNotFound(err) {
 			return fmt.Errorf("configMap object still exists or an unexpected error occurred: %w", err)
 		}
 		return nil
@@ -796,20 +796,20 @@ var _ = Describe("applying manifests", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply the manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -923,7 +923,7 @@ var _ = Describe("applying manifests", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -937,10 +937,10 @@ var _ = Describe("applying manifests", func() {
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -978,20 +978,20 @@ var _ = Describe("applying manifests", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply the manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -1105,7 +1105,7 @@ var _ = Describe("applying manifests", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -1186,7 +1186,7 @@ var _ = Describe("applying manifests", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -1196,10 +1196,10 @@ var _ = Describe("applying manifests", func() {
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -1244,15 +1244,15 @@ var _ = Describe("applying manifests", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply some of the manifests", func() {
@@ -1383,7 +1383,7 @@ var _ = Describe("applying manifests", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -1393,10 +1393,10 @@ var _ = Describe("applying manifests", func() {
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -1444,26 +1444,26 @@ var _ = Describe("applying manifests", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply the manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the ConfigMap object has been applied as expected.
-			regularConfigMapObjectAppliedActual := regularConfigMapObjectAppliedActual(nsName, configMapName, appliedWorkOwnerRef)
+			regularConfigMapObjectAppliedActual := regularConfigMapObjectAppliedActual(memberClient1, nsName, configMapName, appliedWorkOwnerRef)
 			Eventually(regularConfigMapObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the ConfigMap object")
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, regularConfigMap)).To(Succeed(), "Failed to retrieve the ConfigMap object")
 		})
@@ -1575,7 +1575,7 @@ var _ = Describe("applying manifests", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -1584,15 +1584,15 @@ var _ = Describe("applying manifests", func() {
 			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure applied manifest has been removed.
-			regularConfigMapRemovedActual := regularConfigMapRemovedActual(nsName, configMapName)
+			regularConfigMapRemovedActual := regularConfigMapRemovedActual(memberClient1, nsName, configMapName)
 			Eventually(regularConfigMapRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the ConfigMap object")
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -1632,15 +1632,15 @@ var _ = Describe("applying manifests", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should not apply malformed manifest", func() {
@@ -1656,7 +1656,7 @@ var _ = Describe("applying manifests", func() {
 
 		It("should apply the other manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -1738,7 +1738,7 @@ var _ = Describe("applying manifests", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -1747,7 +1747,7 @@ var _ = Describe("applying manifests", func() {
 			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -1793,20 +1793,20 @@ var _ = Describe("work applier garbage collection", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply the manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -1920,7 +1920,7 @@ var _ = Describe("work applier garbage collection", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -2004,10 +2004,10 @@ var _ = Describe("work applier garbage collection", func() {
 		AfterAll(func() {
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -2058,20 +2058,20 @@ var _ = Describe("work applier garbage collection", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply the manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -2226,7 +2226,7 @@ var _ = Describe("work applier garbage collection", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -2320,14 +2320,14 @@ var _ = Describe("work applier garbage collection", func() {
 		AfterAll(func() {
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure applied manifest has been removed.
 			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
 			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -2377,20 +2377,20 @@ var _ = Describe("work applier garbage collection", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply the manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -2545,7 +2545,7 @@ var _ = Describe("work applier garbage collection", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -2637,14 +2637,14 @@ var _ = Describe("work applier garbage collection", func() {
 		AfterAll(func() {
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure applied manifest has been removed.
 			regularClusterRoleRemovedActual := regularClusterRoleRemovedActual(clusterRoleName)
 			Eventually(regularClusterRoleRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the ClusterRole object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -2700,20 +2700,20 @@ var _ = Describe("drift detection and takeover", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply the manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -2825,7 +2825,7 @@ var _ = Describe("drift detection and takeover", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -2839,10 +2839,10 @@ var _ = Describe("drift detection and takeover", func() {
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -2900,15 +2900,15 @@ var _ = Describe("drift detection and takeover", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply some manifests (while preserving diffs in unmanaged fields)", func() {
@@ -3095,7 +3095,7 @@ var _ = Describe("drift detection and takeover", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -3108,7 +3108,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -3165,12 +3165,12 @@ var _ = Describe("drift detection and takeover", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 		})
 
@@ -3373,7 +3373,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 		It("should update the AppliedWork object status", func() {
 			// No object can be applied, hence no resource are bookkept in the AppliedWork object status.
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, nil)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, nil)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -3386,7 +3386,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -3428,20 +3428,20 @@ var _ = Describe("drift detection and takeover", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply the manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -3555,7 +3555,7 @@ var _ = Describe("drift detection and takeover", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -3787,7 +3787,7 @@ var _ = Describe("drift detection and takeover", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -3801,10 +3801,10 @@ var _ = Describe("drift detection and takeover", func() {
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -3855,15 +3855,15 @@ var _ = Describe("drift detection and takeover", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should update the Work object status", func() {
@@ -3938,7 +3938,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 		It("should apply all manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -3978,7 +3978,7 @@ var _ = Describe("drift detection and takeover", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -4188,7 +4188,7 @@ var _ = Describe("drift detection and takeover", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -4201,7 +4201,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Consistently(jobNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the job object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -4238,20 +4238,20 @@ var _ = Describe("drift detection and takeover", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply the manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -4318,7 +4318,7 @@ var _ = Describe("drift detection and takeover", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -4430,7 +4430,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 		It("should update the AppliedWork object status", func() {
 			// No object can be applied, hence no resource are bookkept in the AppliedWork object status.
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, nil)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, nil)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -4439,7 +4439,7 @@ var _ = Describe("drift detection and takeover", func() {
 			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -4478,20 +4478,20 @@ var _ = Describe("drift detection and takeover", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply the manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -4558,7 +4558,7 @@ var _ = Describe("drift detection and takeover", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -4684,7 +4684,7 @@ var _ = Describe("drift detection and takeover", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -4694,10 +4694,10 @@ var _ = Describe("drift detection and takeover", func() {
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -4735,20 +4735,20 @@ var _ = Describe("drift detection and takeover", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply the manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -4815,7 +4815,7 @@ var _ = Describe("drift detection and takeover", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -4928,7 +4928,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 		It("should update the AppliedWork object status", func() {
 			// No object can be applied, hence no resource are bookkept in the AppliedWork object status.
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, nil)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, nil)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -5045,7 +5045,7 @@ var _ = Describe("drift detection and takeover", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -5055,10 +5055,10 @@ var _ = Describe("drift detection and takeover", func() {
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -5096,20 +5096,20 @@ var _ = Describe("drift detection and takeover", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply the manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -5176,7 +5176,7 @@ var _ = Describe("drift detection and takeover", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -5333,10 +5333,10 @@ var _ = Describe("drift detection and takeover", func() {
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -5381,15 +5381,15 @@ var _ = Describe("drift detection and takeover", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply the manifests that haven not been created yet", func() {
@@ -5505,7 +5505,7 @@ var _ = Describe("drift detection and takeover", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -5518,7 +5518,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -5567,26 +5567,26 @@ var _ = Describe("drift detection and takeover", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply the manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the ConfigMap object has been applied as expected.
-			regularCMObjectAppliedActual := regularConfigMapObjectAppliedActual(nsName, configMapName, appliedWorkOwnerRef)
+			regularCMObjectAppliedActual := regularConfigMapObjectAppliedActual(memberClient1, nsName, configMapName, appliedWorkOwnerRef)
 			Eventually(regularCMObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the configMap object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, regularCM)).To(Succeed(), "Failed to retrieve the ConfigMap object")
@@ -5733,7 +5733,7 @@ var _ = Describe("drift detection and takeover", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -6093,7 +6093,7 @@ var _ = Describe("drift detection and takeover", func() {
 			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the ConfigMap object has been removed.
-			regularCMRemovedActual := regularConfigMapRemovedActual(nsName, configMapName)
+			regularCMRemovedActual := regularConfigMapRemovedActual(memberClient1, nsName, configMapName)
 			Eventually(regularCMRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the ConfigMap object")
 
 			// Ensure that the secret object has been removed.
@@ -6102,10 +6102,10 @@ var _ = Describe("drift detection and takeover", func() {
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -6141,15 +6141,15 @@ var _ = Describe("report diff", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should not apply the manifests", func() {
@@ -6202,7 +6202,7 @@ var _ = Describe("report diff", func() {
 
 		It("should update the AppliedWork object status", func() {
 			// Prepare the status information.
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, nil)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, nil)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -6211,7 +6211,7 @@ var _ = Describe("report diff", func() {
 			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -6260,15 +6260,15 @@ var _ = Describe("report diff", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should own the objects, but not apply any manifests", func() {
@@ -6436,7 +6436,7 @@ var _ = Describe("report diff", func() {
 			// Prepare the status information.
 			var appliedResourceMeta []fleetv1beta1.AppliedResourceMeta
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -6526,7 +6526,7 @@ var _ = Describe("report diff", func() {
 			// Prepare the status information.
 			var appliedResourceMeta []fleetv1beta1.AppliedResourceMeta
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -6539,7 +6539,7 @@ var _ = Describe("report diff", func() {
 			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -6588,12 +6588,12 @@ var _ = Describe("report diff", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 		})
 
@@ -6741,7 +6741,7 @@ var _ = Describe("report diff", func() {
 			// Prepare the status information.
 			var appliedResourceMeta []fleetv1beta1.AppliedResourceMeta
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -6754,7 +6754,7 @@ var _ = Describe("report diff", func() {
 			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -6797,15 +6797,15 @@ var _ = Describe("report diff", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should not apply any manifest", func() {
@@ -6885,7 +6885,7 @@ var _ = Describe("report diff", func() {
 
 		It("should update the AppliedWork object status", func() {
 			// Prepare the status information.
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, nil)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, nil)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -6894,7 +6894,7 @@ var _ = Describe("report diff", func() {
 			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -6950,15 +6950,15 @@ var _ = Describe("report diff", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should update the Work object status", func() {
@@ -7147,7 +7147,7 @@ var _ = Describe("report diff", func() {
 			// Prepare the status information.
 			var appliedResourceMeta []fleetv1beta1.AppliedResourceMeta
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -7160,7 +7160,7 @@ var _ = Describe("report diff", func() {
 			Consistently(jobNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the job object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -7216,12 +7216,12 @@ var _ = Describe("report diff", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 		})
 
@@ -7331,7 +7331,7 @@ var _ = Describe("report diff", func() {
 
 		It("should update the AppliedWork object status", func() {
 			// Prepare the status information.
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, nil)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, nil)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -7609,7 +7609,7 @@ var _ = Describe("report diff", func() {
 			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the ConfigMap object has been removed.
-			regularCMRemovedActual := regularConfigMapRemovedActual(nsName, configMapName)
+			regularCMRemovedActual := regularConfigMapRemovedActual(memberClient1, nsName, configMapName)
 			Eventually(regularCMRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the ConfigMap object")
 
 			// Ensure that the secret object has been removed.
@@ -7617,7 +7617,7 @@ var _ = Describe("report diff", func() {
 			Eventually(regularSecretRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Secret object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -7668,15 +7668,15 @@ var _ = Describe("handling different apply strategies", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should own the objects, but not apply any manifests", func() {
@@ -7844,7 +7844,7 @@ var _ = Describe("handling different apply strategies", func() {
 			// Prepare the status information.
 			var appliedResourceMeta []fleetv1beta1.AppliedResourceMeta
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -7966,7 +7966,7 @@ var _ = Describe("handling different apply strategies", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -7980,10 +7980,10 @@ var _ = Describe("handling different apply strategies", func() {
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -8025,20 +8025,20 @@ var _ = Describe("handling different apply strategies", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply the manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -8078,7 +8078,7 @@ var _ = Describe("handling different apply strategies", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -8227,7 +8227,7 @@ var _ = Describe("handling different apply strategies", func() {
 			// Prepare the status information.
 			var appliedResourceMeta []fleetv1beta1.AppliedResourceMeta
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -8241,10 +8241,10 @@ var _ = Describe("handling different apply strategies", func() {
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -8294,15 +8294,15 @@ var _ = Describe("handling different apply strategies", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should not take over some objects", func() {
@@ -8462,7 +8462,7 @@ var _ = Describe("handling different apply strategies", func() {
 
 		It("should take over some objects", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -8612,7 +8612,7 @@ var _ = Describe("handling different apply strategies", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -8626,10 +8626,10 @@ var _ = Describe("handling different apply strategies", func() {
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -8693,20 +8693,20 @@ var _ = Describe("handling different apply strategies", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply the manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -8837,7 +8837,7 @@ var _ = Describe("handling different apply strategies", func() {
 			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that all applied manifests have been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			Eventually(func() error {
@@ -8901,26 +8901,26 @@ var _ = Describe("negative cases", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply some manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the ConfigMap object has been applied as expected.
-			regularConfigMapAppliedActual := regularConfigMapObjectAppliedActual(nsName, configMapName, appliedWorkOwnerRef)
+			regularConfigMapAppliedActual := regularConfigMapObjectAppliedActual(memberClient1, nsName, configMapName, appliedWorkOwnerRef)
 			Eventually(regularConfigMapAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the ConfigMap object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, regularConfigMap)).To(Succeed(), "Failed to retrieve the ConfigMap object")
@@ -9037,7 +9037,7 @@ var _ = Describe("negative cases", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 			Consistently(appliedWorkStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "AppliedWork status changed unexpectedly")
 		})
@@ -9047,15 +9047,15 @@ var _ = Describe("negative cases", func() {
 			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure applied manifest has been removed.
-			regularConfigMapRemovedActual := regularConfigMapRemovedActual(nsName, configMapName)
+			regularConfigMapRemovedActual := regularConfigMapRemovedActual(memberClient1, nsName, configMapName)
 			Eventually(regularConfigMapRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the configMap object")
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -9094,20 +9094,20 @@ var _ = Describe("negative cases", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply some manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -9188,7 +9188,7 @@ var _ = Describe("negative cases", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 			Consistently(appliedWorkStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "AppliedWork status changed unexpectedly")
 		})
@@ -9199,10 +9199,10 @@ var _ = Describe("negative cases", func() {
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -9245,26 +9245,26 @@ var _ = Describe("negative cases", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply some manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the ConfigMap object has been applied as expected.
-			regularConfigMapAppliedActual := regularConfigMapObjectAppliedActual(nsName, configMapName, appliedWorkOwnerRef)
+			regularConfigMapAppliedActual := regularConfigMapObjectAppliedActual(memberClient1, nsName, configMapName, appliedWorkOwnerRef)
 			Eventually(regularConfigMapAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the ConfigMap object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, regularConfigMap)).To(Succeed(), "Failed to retrieve the ConfigMap object")
@@ -9382,7 +9382,7 @@ var _ = Describe("negative cases", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 			Consistently(appliedWorkStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "AppliedWork status changed unexpectedly")
 		})
@@ -9440,26 +9440,26 @@ var _ = Describe("negative cases", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("should apply some manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
 
 			// Ensure that the ConfigMap object has been applied as expected.
-			regularConfigMapAppliedActual := regularConfigMapObjectAppliedActual(nsName, configMapName, appliedWorkOwnerRef)
+			regularConfigMapAppliedActual := regularConfigMapObjectAppliedActual(memberClient1, nsName, configMapName, appliedWorkOwnerRef)
 			Eventually(regularConfigMapAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the ConfigMap object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, regularConfigMap)).To(Succeed(), "Failed to retrieve the ConfigMap object")
@@ -9613,7 +9613,7 @@ var _ = Describe("negative cases", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 			Consistently(appliedWorkStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "AppliedWork status changed unexpectedly")
 		})
@@ -9623,15 +9623,15 @@ var _ = Describe("negative cases", func() {
 			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure applied manifest has been removed.
-			regularConfigMapRemovedActual := regularConfigMapRemovedActual(nsName, configMapName)
+			regularConfigMapRemovedActual := regularConfigMapRemovedActual(memberClient1, nsName, configMapName)
 			Eventually(regularConfigMapRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the configMap object")
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
@@ -9727,15 +9727,15 @@ var _ = Describe("status back-reporting", func() {
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
-			finalizerAddedActual := workFinalizerAddedActual(workName)
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
 			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
 		})
 
 		It("should prepare an AppliedWork object", func() {
-			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
 			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
 
-			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
 		})
 
 		It("can mark the deployment as available", func() {
@@ -9839,7 +9839,7 @@ var _ = Describe("status back-reporting", func() {
 
 		It("should apply the manifests", func() {
 			// Ensure that the NS object has been applied as expected.
-			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
 			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
@@ -9851,7 +9851,7 @@ var _ = Describe("status back-reporting", func() {
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
 
 			// Ensure that the ConfigMap object has been applied as expected.
-			regularCMObjectAppliedActual := regularConfigMapObjectAppliedActual(nsName, configMapName, appliedWorkOwnerRef)
+			regularCMObjectAppliedActual := regularConfigMapObjectAppliedActual(memberClient1, nsName, configMapName, appliedWorkOwnerRef)
 			Eventually(regularCMObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the config map object")
 
 			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, regularCM)).To(Succeed(), "Failed to retrieve the ConfigMap object")
@@ -9986,7 +9986,7 @@ var _ = Describe("status back-reporting", func() {
 				},
 			}
 
-			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(memberClient1, workName, appliedResourceMeta)
 			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
 		})
 
@@ -9998,15 +9998,15 @@ var _ = Describe("status back-reporting", func() {
 			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
 			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
-			regularCMRemovedActual := regularConfigMapRemovedActual(nsName, configMapName)
+			regularCMRemovedActual := regularConfigMapRemovedActual(memberClient1, nsName, configMapName)
 			Eventually(regularCMRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the configMap object")
 
 			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
 			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
-			checkNSOwnerReferences(workName, nsName)
+			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := workRemovedActual(workName)
