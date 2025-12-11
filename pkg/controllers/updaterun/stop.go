@@ -51,7 +51,7 @@ func (r *Reconciler) stop(
 		return r.stopUpdatingStage(updateRun, updatingStageIndex, toBeUpdatedBindings)
 	}
 	// All the stages have finished, stop the delete stage.
-	finished, stopErr = r.pauseDeleteStage(updateRun, toBeDeletedBindings)
+	finished, stopErr = r.stopDeleteStage(updateRun, toBeDeletedBindings)
 	return finished, clusterUpdatingWaitTime, stopErr
 }
 
@@ -131,7 +131,7 @@ func (r *Reconciler) stopUpdatingStage(
 }
 
 // stopDeleteStage stops the delete stage by letting the deleting bindings finish.
-func (r *Reconciler) pauseDeleteStage(
+func (r *Reconciler) stopDeleteStage(
 	updateRun placementv1beta1.UpdateRunObj,
 	toBeDeletedBindings []placementv1beta1.BindingObj,
 ) (bool, error) {
