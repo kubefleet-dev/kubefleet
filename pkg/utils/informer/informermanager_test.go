@@ -19,7 +19,6 @@ package informer
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -175,7 +174,9 @@ func TestGetAllResources(t *testing.T) {
 
 			// Test GetAllResources
 			allResources := mgr.GetAllResources()
-			assert.Equal(t, tt.expectedResourceCount, len(allResources), "GetAllResources should return correct count")
+			if got := len(allResources); got != tt.expectedResourceCount {
+				t.Errorf("GetAllResources() returned %d resources, want %d", got, tt.expectedResourceCount)
+			}
 
 			// Verify all expected resources are present
 			resourceMap := make(map[schema.GroupVersionResource]bool)
@@ -184,20 +185,28 @@ func TestGetAllResources(t *testing.T) {
 			}
 
 			for _, res := range tt.namespaceScopedResources {
-				assert.True(t, resourceMap[res.GroupVersionResource], "namespace-scoped resource %v should be in GetAllResources", res.GroupVersionResource)
+				if !resourceMap[res.GroupVersionResource] {
+					t.Errorf("namespace-scoped resource %v should be in GetAllResources", res.GroupVersionResource)
+				}
 			}
 
 			for _, res := range tt.clusterScopedResources {
-				assert.True(t, resourceMap[res.GroupVersionResource], "cluster-scoped resource %v should be in GetAllResources", res.GroupVersionResource)
+				if !resourceMap[res.GroupVersionResource] {
+					t.Errorf("cluster-scoped resource %v should be in GetAllResources", res.GroupVersionResource)
+				}
 			}
 
 			for _, res := range tt.staticResources {
-				assert.True(t, resourceMap[res.GroupVersionResource], "static resource %v should be in GetAllResources", res.GroupVersionResource)
+				if !resourceMap[res.GroupVersionResource] {
+					t.Errorf("static resource %v should be in GetAllResources", res.GroupVersionResource)
+				}
 			}
 
 			// Test GetNameSpaceScopedResources
 			namespacedResources := mgr.GetNameSpaceScopedResources()
-			assert.Equal(t, tt.expectedNamespacedCount, len(namespacedResources), "GetNameSpaceScopedResources should return correct count")
+			if got := len(namespacedResources); got != tt.expectedNamespacedCount {
+				t.Errorf("GetNameSpaceScopedResources() returned %d resources, want %d", got, tt.expectedNamespacedCount)
+			}
 
 			// Verify only namespace-scoped, non-static resources are present
 			namespacedMap := make(map[schema.GroupVersionResource]bool)
@@ -206,16 +215,22 @@ func TestGetAllResources(t *testing.T) {
 			}
 
 			for _, res := range tt.namespaceScopedResources {
-				assert.True(t, namespacedMap[res.GroupVersionResource], "namespace-scoped resource %v should be in GetNameSpaceScopedResources", res.GroupVersionResource)
+				if !namespacedMap[res.GroupVersionResource] {
+					t.Errorf("namespace-scoped resource %v should be in GetNameSpaceScopedResources", res.GroupVersionResource)
+				}
 			}
 
 			// Verify cluster-scoped and static resources are NOT in namespace-scoped list
 			for _, res := range tt.clusterScopedResources {
-				assert.False(t, namespacedMap[res.GroupVersionResource], "cluster-scoped resource %v should NOT be in GetNameSpaceScopedResources", res.GroupVersionResource)
+				if namespacedMap[res.GroupVersionResource] {
+					t.Errorf("cluster-scoped resource %v should NOT be in GetNameSpaceScopedResources", res.GroupVersionResource)
+				}
 			}
 
 			for _, res := range tt.staticResources {
-				assert.False(t, namespacedMap[res.GroupVersionResource], "static resource %v should NOT be in GetNameSpaceScopedResources", res.GroupVersionResource)
+				if namespacedMap[res.GroupVersionResource] {
+					t.Errorf("static resource %v should NOT be in GetNameSpaceScopedResources", res.GroupVersionResource)
+				}
 			}
 		})
 	}
@@ -265,6 +280,10 @@ func TestGetAllResources_NotPresent(t *testing.T) {
 	implMgr.apiResources[notPresentRes.GroupVersionKind] = &notPresentRes
 
 	allResources := mgr.GetAllResources()
-	assert.Equal(t, 1, len(allResources), "should only return present resources")
-	assert.Equal(t, presentRes.GroupVersionResource, allResources[0], "should return the present resource")
+	if got := len(allResources); got != 1 {
+		t.Fatalf("GetAllResources() returned %d resources, want 1 (should only return present resources)", got)
+	}
+	if got := allResources[0]; got != presentRes.GroupVersionResource {
+		t.Errorf("GetAllResources()[0] = %v, want %v", got, presentRes.GroupVersionResource)
+	}
 }

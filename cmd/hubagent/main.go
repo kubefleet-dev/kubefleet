@@ -46,7 +46,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/workload"
 	mcv1beta1 "github.com/kubefleet-dev/kubefleet/pkg/controllers/membercluster/v1beta1"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
+	readiness "github.com/kubefleet-dev/kubefleet/pkg/utils/informer/readiness"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook"
 	// +kubebuilder:scaffold:imports
@@ -176,7 +176,7 @@ func main() {
 	// which is critical for all controllers that rely on dynamic resource discovery.
 	// AddReadyzCheck adds additional readiness check instead of replacing the one registered earlier provided the name is different.
 	// Both registered checks need to pass for the manager to be considered ready.
-	if err := mgr.AddReadyzCheck("informer-cache", informer.ReadinessChecker(validator.ResourceInformer)); err != nil {
+	if err := mgr.AddReadyzCheck("informer-cache", readiness.InformerReadinessChecker(validator.ResourceInformer)); err != nil {
 		klog.ErrorS(err, "unable to set up informer cache readiness check")
 		exitWithErrorFunc()
 	}
