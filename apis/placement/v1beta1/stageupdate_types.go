@@ -427,7 +427,7 @@ const (
 	// Its condition status can be one of the following:
 	// - "True": The staged update run is making progress.
 	// - "False": The staged update run is waiting/paused/abandoned.
-	// - "Unknown": The staged update run is in the process of stopping.
+	// - "Unknown": The staged update run is in a transitioning state.
 	StagedUpdateRunConditionProgressing StagedUpdateRunConditionType = "Progressing"
 
 	// StagedUpdateRunConditionSucceeded indicates whether the staged update run is completed successfully.
@@ -490,7 +490,7 @@ const (
 	// Its condition status can be one of the following:
 	// - "True": The stage updating is making progress.
 	// - "False": The stage updating is waiting.
-	// - "Unknown": The staged update run is in the process of stopping.
+	// - "Unknown": The staged updating is a transitioning state.
 	StageUpdatingConditionProgressing StageUpdatingConditionType = "Progressing"
 
 	// StageUpdatingConditionSucceeded indicates whether the stage updating is completed successfully.

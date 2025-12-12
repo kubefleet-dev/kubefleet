@@ -554,10 +554,7 @@ func calculateMaxConcurrencyValue(status *placementv1beta1.UpdateRunStatus, stag
 func aggregateUpdateRunStatus(updateRun placementv1beta1.UpdateRunObj, stageName string, stuckClusterNames []string) {
 	if len(stuckClusterNames) > 0 {
 		markUpdateRunStuck(updateRun, stageName, strings.Join(stuckClusterNames, ", "))
-	} else if updateRun.GetUpdateRunSpec().State == placementv1beta1.StateStop {
-		// If there is no stuck cluster and the update run state is stop, mark the update run as stopping.
-		markUpdateRunStopping(updateRun)
-	} else {
+	} else if updateRun.GetUpdateRunSpec().State == placementv1beta1.StateRun {
 		// If there is no stuck cluster but some progress has been made, mark the update run as progressing.
 		markUpdateRunProgressing(updateRun)
 	}

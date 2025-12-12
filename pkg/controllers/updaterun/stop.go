@@ -70,7 +70,8 @@ func (r *Reconciler) stopUpdatingStage(
 		bindingSpec := binding.GetBindingSpec()
 		toBeUpdatedBindingsMap[bindingSpec.TargetCluster] = binding
 	}
-
+	// Mark the stage as stopping in case it's not.
+	markStageUpdatingStopping(updatingStageStatus, updateRun.GetGeneration())
 	clusterUpdatingCount := 0
 	var stuckClusterNames []string
 	var clusterUpdateErrors []error
@@ -78,14 +79,14 @@ func (r *Reconciler) stopUpdatingStage(
 	for i := 0; i < len(updatingStageStatus.Clusters); i++ {
 		clusterStatus := &updatingStageStatus.Clusters[i]
 		clusterStartedCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
-		if clusterStartedCond == nil {
+		if clusterStartedCond == nil || condition.IsConditionStatusFalse(clusterStartedCond, updateRun.GetGeneration()) {
 			// Cluster has not started updating therefore no need to do anything.
 			continue
 		}
 
 		clusterUpdateSucceededCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
 		if condition.IsConditionStatusFalse(clusterUpdateSucceededCond, updateRun.GetGeneration()) || condition.IsConditionStatusTrue(clusterUpdateSucceededCond, updateRun.GetGeneration()) {
-			// The cluster has already been updated.
+			// The cluster has already been updated or failed to update.
 			continue
 		}
 
@@ -126,7 +127,6 @@ func (r *Reconciler) stopUpdatingStage(
 	}
 	// Some clusters are still updating.
 	klog.InfoS("The updating stage is waiting for updating clusters to finish before completely stopping", "numberOfUpdatingClusters", clusterUpdatingCount, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
-	markStageUpdatingStopping(updatingStageStatus, updateRun.GetGeneration())
 	return false, clusterUpdatingWaitTime, nil
 }
 
@@ -149,8 +149,10 @@ func (r *Reconciler) stopDeleteStage(
 		bindingSpec := binding.GetBindingSpec()
 		curCluster, exist := existingDeleteStageClusterMap[bindingSpec.TargetCluster]
 		if !exist {
-			// The cluster is not in the delete stage. This happens when the update run is pauseed as delete stage starts.
-			continue
+			// This is unexpected because we already checked in validation.
+			missingErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the to be deleted cluster `%s` is not in the deleting stage during stopping", bindingSpec.TargetCluster))
+			klog.ErrorS(missingErr, "The cluster in the deleting stage does not include all the to be deleted binding", "updateRun", updateRunRef)
+			return false, fmt.Errorf("%w: %s", errStagedUpdatedAborted, missingErr.Error())
 		}
 		// In validation, we already check the binding must exist in the status.
 		delete(existingDeleteStageClusterMap, bindingSpec.TargetCluster)
@@ -170,6 +172,15 @@ func (r *Reconciler) stopDeleteStage(
 		}
 	}
 
+	// The rest of the clusters in the stage are not in the toBeDeletedBindings so it should be marked as delete succeeded.
+	for _, clusterStatus := range existingDeleteStageClusterMap {
+		// Make sure the cluster is marked as deleted.
+		if !condition.IsConditionStatusTrue(meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted)), updateRun.GetGeneration()) {
+			markClusterUpdatingStarted(clusterStatus, updateRun.GetGeneration())
+		}
+		markClusterUpdatingSucceeded(clusterStatus, updateRun.GetGeneration())
+	}
+
 	klog.V(2).InfoS("The delete stage is stopping", "numberOfDeletingClusters", len(toBeDeletedBindings), "updateRun", updateRunRef)
 	if len(toBeDeletedBindings) == 0 {
 		markStageUpdatingStopped(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration())
@@ -186,7 +197,7 @@ func markUpdateRunStopping(updateRun placementv1beta1.UpdateRunObj) {
 		Status:             metav1.ConditionUnknown,
 		ObservedGeneration: updateRun.GetGeneration(),
 		Reason:             condition.UpdateRunStoppingReason,
-		Message:            "The update run is the process of stopping, waiting for all the updating clusters to finish updating before completing the stop process",
+		Message:            "The update run is the process of stopping, waiting for all the updating/deleting clusters to finish updating before completing the stop process",
 	})
 }
 
@@ -216,7 +227,7 @@ func checkIfErrorStagedUpdateAborted(err error, updateRun placementv1beta1.Updat
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	if errors.Is(err, errStagedUpdatedAborted) {
 		if updatingStageStatus != nil {
-			klog.InfoS("The update run is aborted due to unexpected behavior in updating stage, marking the stage as failed", "stage", updatingStageStatus.StageName, "updateRun", klog.KObj(updateRun))
+			klog.InfoS("The update run is aborted due to unrecoverable behavior in updating stage, marking the stage as failed", "stage", updatingStageStatus.StageName, "updateRun", klog.KObj(updateRun))
 			markStageUpdatingFailed(updatingStageStatus, updateRun.GetGeneration(), err.Error())
 		} else {
 			// Handle deletion stage case.

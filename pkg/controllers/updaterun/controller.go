@@ -176,7 +176,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 			return runtime.Result{}, r.recordUpdateRunSucceeded(ctx, updateRun)
 		}
 
-		return r.handleIncompleteUpdateRun(ctx, updateRun, waitTime, execErr, state, runObjRef)
+		return r.updateUpdateRunStatus(ctx, updateRun, waitTime, execErr, state, runObjRef)
 	case placementv1beta1.StateStop:
 		// Stop the updateRun.
 		klog.V(2).InfoS("Stopping the updateRun", "state", state, "updatingStageIndex", updatingStageIndex, "updateRun", runObjRef)
@@ -191,7 +191,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 			return runtime.Result{}, r.recordUpdateRunStopped(ctx, updateRun)
 		}
 
-		return r.handleIncompleteUpdateRun(ctx, updateRun, waitTime, stopErr, state, runObjRef)
+		return r.updateUpdateRunStatus(ctx, updateRun, waitTime, stopErr, state, runObjRef)
 
 	default:
 		// Initialize, Run, or Stop are the only supported states.
@@ -202,7 +202,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	return runtime.Result{}, nil
 }
 
-func (r *Reconciler) handleIncompleteUpdateRun(ctx context.Context, updateRun placementv1beta1.UpdateRunObj, waitTime time.Duration, err error, state placementv1beta1.State, runObjRef klog.ObjectRef) (runtime.Result, error) {
+func (r *Reconciler) updateUpdateRunStatus(ctx context.Context, updateRun placementv1beta1.UpdateRunObj, waitTime time.Duration, err error, state placementv1beta1.State, runObjRef klog.ObjectRef) (runtime.Result, error) {
 	// The execution or stopping is not finished yet or it encounters a retriable error.
 	// We need to record the status and requeue.
 	if updateErr := r.recordUpdateRunStatus(ctx, updateRun); updateErr != nil {
@@ -211,6 +211,7 @@ func (r *Reconciler) handleIncompleteUpdateRun(ctx context.Context, updateRun pl
 
 	klog.V(2).InfoS("The updateRun is not finished yet", "state", state, "requeueWaitTime", waitTime, "err", err, "updateRun", runObjRef)
 
+	// Return execution or stopping retriable error if any.
 	if err != nil {
 		return runtime.Result{}, err
 	}
