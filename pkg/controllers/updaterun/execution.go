@@ -18,7 +18,6 @@ package updaterun
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -68,14 +67,7 @@ func (r *Reconciler) execute(
 
 	// Set up defer function to handle errStagedUpdatedAborted.
 	defer func() {
-		if errors.Is(err, errStagedUpdatedAborted) {
-			if updatingStageStatus != nil {
-				markStageUpdatingFailed(updatingStageStatus, updateRun.GetGeneration(), err.Error())
-			} else {
-				// Handle deletion stage case.
-				markStageUpdatingFailed(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration(), err.Error())
-			}
-		}
+		checkIfErrorStagedUpdateAborted(err, updateRun, updatingStageStatus)
 	}()
 
 	// Mark updateRun as progressing if it's not already marked as waiting or stuck.
@@ -232,9 +224,7 @@ func (r *Reconciler) executeUpdatingStage(
 				}
 			}
 			markClusterUpdatingStarted(clusterStatus, updateRun.GetGeneration())
-			if finishedClusterCount == 0 {
-				markStageUpdatingStarted(updatingStageStatus, updateRun.GetGeneration())
-			}
+			markStageUpdatingStarted(updatingStageStatus, updateRun.GetGeneration())
 			// Need to continue as we need to process at most maxConcurrency number of clusters in parallel.
 			continue
 		}
@@ -564,7 +554,7 @@ func calculateMaxConcurrencyValue(status *placementv1beta1.UpdateRunStatus, stag
 func aggregateUpdateRunStatus(updateRun placementv1beta1.UpdateRunObj, stageName string, stuckClusterNames []string) {
 	if len(stuckClusterNames) > 0 {
 		markUpdateRunStuck(updateRun, stageName, strings.Join(stuckClusterNames, ", "))
-	} else {
+	} else if updateRun.GetUpdateRunSpec().State == placementv1beta1.StateRun {
 		// If there is no stuck cluster but some progress has been made, mark the update run as progressing.
 		markUpdateRunProgressing(updateRun)
 	}
