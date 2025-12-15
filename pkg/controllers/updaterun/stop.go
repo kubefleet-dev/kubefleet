@@ -79,7 +79,7 @@ func (r *Reconciler) stopUpdatingStage(
 	for i := 0; i < len(updatingStageStatus.Clusters); i++ {
 		clusterStatus := &updatingStageStatus.Clusters[i]
 		clusterStartedCond := meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
-		if clusterStartedCond == nil || condition.IsConditionStatusFalse(clusterStartedCond, updateRun.GetGeneration()) {
+		if !condition.IsConditionStatusTrue(clusterStartedCond, updateRun.GetGeneration()) {
 			// Cluster has not started updating therefore no need to do anything.
 			continue
 		}
@@ -168,7 +168,7 @@ func (r *Reconciler) stopDeleteStage(
 				klog.ErrorS(unexpectedErr, "The binding should be deleting before we mark a cluster deleting", "clusterStatus", curCluster, "updateRun", updateRunRef)
 				return false, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
 			}
-			return false, nil
+			continue
 		}
 	}
 

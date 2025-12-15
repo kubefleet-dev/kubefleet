@@ -224,7 +224,7 @@ func (r *Reconciler) executeUpdatingStage(
 				}
 			}
 			markClusterUpdatingStarted(clusterStatus, updateRun.GetGeneration())
-			markStageUpdatingStarted(updatingStageStatus, updateRun.GetGeneration())
+			markStageUpdatingProgressStarted(updatingStageStatus, updateRun.GetGeneration())
 			// Need to continue as we need to process at most maxConcurrency number of clusters in parallel.
 			continue
 		}
@@ -328,7 +328,7 @@ func (r *Reconciler) executeDeleteStage(
 		existingDeleteStageClusterMap[existingDeleteStageStatus.Clusters[i].ClusterName] = &existingDeleteStageStatus.Clusters[i]
 	}
 	// Mark the delete stage as started in case it's not.
-	markStageUpdatingStarted(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration())
+	markStageUpdatingProgressStarted(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration())
 	for _, binding := range toBeDeletedBindings {
 		bindingSpec := binding.GetBindingSpec()
 		curCluster, exist := existingDeleteStageClusterMap[bindingSpec.TargetCluster]
@@ -698,8 +698,8 @@ func markUpdateRunWaiting(updateRun placementv1beta1.UpdateRunObj, message strin
 	})
 }
 
-// markStageUpdatingStarted marks the stage updating status as started in memory.
-func markStageUpdatingStarted(stageUpdatingStatus *placementv1beta1.StageUpdatingStatus, generation int64) {
+// markStageUpdatingProgressStarted marks the stage updating status as started in memory.
+func markStageUpdatingProgressStarted(stageUpdatingStatus *placementv1beta1.StageUpdatingStatus, generation int64) {
 	if stageUpdatingStatus.StartTime == nil {
 		stageUpdatingStatus.StartTime = &metav1.Time{Time: time.Now()}
 	}
