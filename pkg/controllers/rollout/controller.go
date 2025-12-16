@@ -146,7 +146,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 
 	// find the master resourceSnapshot.
 	// Use the cached client so that rollout controller and work-generator have the same view of the
-	// resourceSnapshots.
+	// resourceSnapshots in order to reduce the possibility of missing resourceSnapshots in work-generator.
 	masterResourceSnapshot, err := controller.FetchLatestMasterResourceSnapshot(ctx, r.Client, placementKey)
 	if err != nil {
 		klog.ErrorS(err, "Failed to find the masterResourceSnapshot for the placement",
