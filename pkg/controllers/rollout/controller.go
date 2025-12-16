@@ -145,7 +145,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	}
 
 	// find the master resourceSnapshot.
-	// Use the cached client so that rollout controller and binding controller have the same view of the
+	// Use the cached client so that rollout controller and work-generator have the same view of the
 	// resourceSnapshots.
 	masterResourceSnapshot, err := controller.FetchLatestMasterResourceSnapshot(ctx, r.Client, placementKey)
 	if err != nil {
