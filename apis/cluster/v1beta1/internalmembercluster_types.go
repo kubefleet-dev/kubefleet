@@ -75,6 +75,11 @@ type InternalMemberClusterStatus struct {
 	// +optional
 	ResourceUsage ResourceUsage `json:"resourceUsage,omitempty"`
 
+	// Namespace is a group of kv pairs and the key is namespace and value is associated work
+	// name if it's applied by the placement.
+	// It will be added as memberCluster labels.
+	Namespaces map[string]string `json:"namespaces,omitempty"`
+
 	// AgentStatus is an array of current observed status, each corresponding to one member agent running in the member cluster.
 	// +optional
 	AgentStatus []AgentStatus `json:"agentStatus,omitempty"`

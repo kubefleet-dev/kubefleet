@@ -486,6 +486,14 @@ spec:
                   - type
                   type: object
                 type: array
+              namespaces:
+                additionalProperties:
+                  type: string
+                description: |-
+                  Namespace is a group of kv pairs and the key is namespace and value is associated work
+                  name if it's applied by the placement.
+                  It will be added as memberCluster labels.
+                type: object
               properties:
                 additionalProperties:
                   description: PropertyValue is the value of a cluster property.
