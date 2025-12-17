@@ -156,9 +156,12 @@ func (r *Reconciler) stopDeleteStage(
 		}
 		// In validation, we already check the binding must exist in the status.
 		delete(existingDeleteStageClusterMap, bindingSpec.TargetCluster)
+		// Make sure the cluster is not marked as deleted as the binding is still there.
 		if condition.IsConditionStatusTrue(meta.FindStatusCondition(curCluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded)), updateRun.GetGeneration()) {
 			// The cluster status is marked as deleted.
-			continue
+			unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the deleted cluster `%s` in the deleting stage still has a binding", bindingSpec.TargetCluster))
+			klog.ErrorS(unexpectedErr, "The cluster in the deleting stage is not removed yet but marked as deleted", "cluster", curCluster.ClusterName, "updateRun", updateRunRef)
+			return false, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
 		}
 		if condition.IsConditionStatusTrue(meta.FindStatusCondition(curCluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted)), updateRun.GetGeneration()) {
 			// The cluster status is marked as being deleted.
@@ -182,7 +185,19 @@ func (r *Reconciler) stopDeleteStage(
 	}
 
 	klog.V(2).InfoS("The delete stage is stopping", "numberOfDeletingClusters", len(toBeDeletedBindings), "updateRun", updateRunRef)
-	if len(toBeDeletedBindings) == 0 {
+	allDeletingClustersDeleted := true
+	for _, clusterStatus := range updateRunStatus.DeletionStageStatus.Clusters {
+		klog.InfoS("Checking deletion status of cluster in delete stage", "cluster", clusterStatus.ClusterName, "conditions", clusterStatus.Conditions, "updateRun", updateRunRef)
+		if condition.IsConditionStatusTrue(meta.FindStatusCondition(clusterStatus.Conditions,
+			string(placementv1beta1.ClusterUpdatingConditionStarted)), updateRun.GetGeneration()) && !condition.IsConditionStatusTrue(
+			meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded)),
+			updateRun.GetGeneration()) {
+			allDeletingClustersDeleted = false
+			break
+		}
+	}
+
+	if allDeletingClustersDeleted || len(toBeDeletedBindings) == 0 {
 		markStageUpdatingStopped(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration())
 	}
 	return len(toBeDeletedBindings) == 0, nil
@@ -224,13 +239,13 @@ func markStageUpdatingStopped(stageUpdatingStatus *placementv1beta1.StageUpdatin
 }
 
 func checkIfErrorStagedUpdateAborted(err error, updateRun placementv1beta1.UpdateRunObj, updatingStageStatus *placementv1beta1.StageUpdatingStatus) {
-	updateRunStatus := updateRun.GetUpdateRunStatus()
 	if errors.Is(err, errStagedUpdatedAborted) {
 		if updatingStageStatus != nil {
 			klog.InfoS("The update run is aborted due to unrecoverable behavior in updating stage, marking the stage as failed", "stage", updatingStageStatus.StageName, "updateRun", klog.KObj(updateRun))
 			markStageUpdatingFailed(updatingStageStatus, updateRun.GetGeneration(), err.Error())
 		} else {
 			// Handle deletion stage case.
+			updateRunStatus := updateRun.GetUpdateRunStatus()
 			markStageUpdatingFailed(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration(), err.Error())
 		}
 	}

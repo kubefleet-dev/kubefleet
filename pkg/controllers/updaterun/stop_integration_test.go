@@ -231,7 +231,7 @@ var _ = Describe("UpdateRun stop tests", func() {
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
-		It("Should be stopping the in middle of cluster updating when update run state is Stop", func() {
+		It("Should be stopping in the middle of cluster updating when update run state is Stop", func() {
 			By("Updating updateRun state to Stop")
 			updateRun = updateClusterStagedUpdateRunState(updateRun.Name, placementv1beta1.StateStop)
 			// Update the test's want status to match the new generation.
@@ -251,7 +251,7 @@ var _ = Describe("UpdateRun stop tests", func() {
 		})
 
 		It("Should wait for cluster to finish updating before update run is completely stopped", func() {
-			By("Validating the 2nd clusterResourceBinding is  updated to Bound")
+			By("Validating the 2nd clusterResourceBinding is updated to Bound")
 			binding := resourceBindings[numTargetClusters-3] // cluster-7
 			validateBindingState(ctx, binding, resourceSnapshot.Name, updateRun, 0)
 
@@ -811,6 +811,10 @@ var _ = Describe("UpdateRun stop tests", func() {
 					}
 					if !apierrors.IsNotFound(err) {
 						return fmt.Errorf("get binding %s does not return a not-found error: %w", binding.Name, err)
+					}
+
+					if !binding.DeletionTimestamp.IsZero() {
+						return fmt.Errorf("binding %s is not deleted yet", binding.Name)
 					}
 				}
 				return nil
