@@ -244,6 +244,17 @@ func (m *MemberCluster) GetAgentStatus(agentType AgentType) *AgentStatus {
 	return nil
 }
 
+// SetAgentStatus is used to set the agentStatus for a given agentType.
+func (m *MemberCluster) SetAgentStatus(agentType AgentType, status AgentStatus) {
+	for i, s := range m.Status.AgentStatus {
+		if s.Type == agentType {
+			m.Status.AgentStatus[i] = status
+			return
+		}
+	}
+	m.Status.AgentStatus = append(m.Status.AgentStatus, status)
+}
+
 // GetAgentCondition queries the conditions in an agent status for a specific condition type.
 func (m *MemberCluster) GetAgentCondition(agentType AgentType, conditionType AgentConditionType) *metav1.Condition {
 	if s := m.GetAgentStatus(agentType); s != nil {
