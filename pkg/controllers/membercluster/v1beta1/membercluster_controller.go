@@ -547,7 +547,7 @@ func (r *Reconciler) syncInternalMemberClusterStatus(imc *clusterv1beta1.Interna
 		return
 	}
 
-	// The remaning fields are only updated when member-agent is updated.
+	// The remaining fields are only updated when member-agent is updated.
 	// Copy resource usages.
 	mc.Status.ResourceUsage = imc.Status.ResourceUsage
 	// Copy additional conditions.
