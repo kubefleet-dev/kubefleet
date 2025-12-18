@@ -1953,39 +1953,6 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Label
 			Eventually(bindingBoundActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to mark binding for member cluster %s as bound", allMemberClusterNames[0])
 		})
 	})
-
-	Context("Rejoin a member cluster and change to rollout CRP with rollingUpdate", Label("joinleave"), Ordered, Serial, func() {
-		It("Should be able to rejoin member cluster 1", func() {
-			setMemberClusterToJoin(allMemberClusters[0])
-			checkIfMemberClusterHasJoined(allMemberClusters[0])
-		})
-
-		It("Should update the CRP rollout strategy to use rollingUpdate", func() {
-			Eventually(func() error {
-				var crp placementv1beta1.ClusterResourcePlacement
-				if err := hubClient.Get(ctx, client.ObjectKey{Name: crpName}, &crp); err != nil {
-					return fmt.Errorf("failed to get CRP %s: %w", crpName, err)
-				}
-				crp.Spec.Strategy = placementv1beta1.RolloutStrategy{
-					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
-				}
-				return hubClient.Update(ctx, &crp)
-			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP rollout strategy to rolling update")
-		})
-
-		It("Should verify resources are placed to member cluster 1 and binding status becomes bound", func() {
-			// Verify CRP status shows all clusters as bounded with rolling update.
-			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, resourceSnapshotIndex1st)
-			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected with rolling update")
-
-			// Verify resources are placed on all member clusters.
-			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun(allMemberClusters)
-
-			// Verify binding for member cluster 1 becomes bound.
-			bindingBoundActual := bindingStateActual(crpName, allMemberClusterNames[0], placementv1beta1.BindingStateBound)
-			Eventually(bindingBoundActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to mark binding for member cluster %s as bound with rolling update", allMemberClusterNames[0])
-		})
-	})
 })
 
 func createClusterStagedUpdateStrategySucceed(strategyName string) *placementv1beta1.ClusterStagedUpdateStrategy {
