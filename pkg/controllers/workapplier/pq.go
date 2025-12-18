@@ -37,23 +37,33 @@ import (
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
+// Note (chenyu1): the work applier is set to periodically requeue Work objects for processing;
+// when the KubeFleet agent restarts, the work applier will also have to re-process all the existing
+// Work objects for correctness reasons. In environments where a large number of Work objects
+// are present, with the default FIFO queue implementation, the work applier might have to spend
+// a significant amount of time processing old Work objects that have not been changed for a while
+// and are already in a consistent state, before it can get to process recently created/updated Work
+// objects, which results in increased latency for new placements to complete. To address this issue,
+// we enabled the usage of priority queues in the work applier, so that events
+// from newly created/updated Work objects will be processed first.
+
 const (
-	// A list of priority levels and their targets for the work applier priority queue.
+	// A list of priority levels for the work applier priority queue.
 	//
 	// The work applier, when a priority queue is in use, will prioritize requests in the following
 	// order:
-	// * with highest priority (2): all Create/Delete events, and all Update events
+	// * with high priority (>0): all Create/Delete events, and all Update events
 	//   that concern recently created Work objects or Work objects that are in a failed/undeterminted
-	//   state (apply op/availability check failure, or diff reporting failure).
-	// * with medium priority (1): all other Update events.
-	// * with default priority (0): all requeues (with or with errors), and all Generic events.
+	//   state (apply op/availability check failure, or diff reporting failure). For specifics,
+	//   see the implementation details below.
+	//   Note that the top priority level is capped at 100 for consistency/cleanness reasons.
+	// * with default priority (0): all other Update events.
+	// * with low priority (-1): all requeues (with or with errors), and all Generic events.
 	//
 	// Note that requests with the same priority level will be processed in the FIFO order.
-	//
-	// TO-DO (chenyu1): evaluate if/how we need to/should prioritize requeues properly.
-	highPriorityLevel    = 2
-	mediumPriorityLevel  = 1
+	highestPriorityLevel = 100
 	defaultPriorityLevel = 0
+	lowPriorityLevel     = -1
 )
 
 type CustomPriorityQueueManager interface {
@@ -66,15 +76,34 @@ var _ handler.TypedEventHandler[client.Object, reconcile.Request] = &priorityBas
 //
 // It is used to process work object events in a priority-based manner with a priority queue.
 type priorityBasedWorkObjEventHandler struct {
-	qm                                 CustomPriorityQueueManager
-	workObjAgeForPrioritizedProcessing time.Duration
+	qm CustomPriorityQueueManager
+
+	priLinearEqCoeffA int
+	priLinearEqCoeffB int
+}
+
+// calcArgBasedPriWithLinearEquation calculates the priority for a work object
+// based on its age using a linear equation: Pri(Work) = A * AgeSinceCreationInMinutes(Work) + B,
+// where A and B are user-configurable coefficients.
+//
+// The calculated priority is capped between defaultPriorityLevel and highestPriorityLevel.
+func (h *priorityBasedWorkObjEventHandler) calcArgBasedPriWithLinearEquation(workObjAgeMinutes int) int {
+	priority := h.priLinearEqCoeffA*workObjAgeMinutes + h.priLinearEqCoeffB
+	if priority < defaultPriorityLevel {
+		return defaultPriorityLevel
+	}
+	if priority > highestPriorityLevel {
+		return highestPriorityLevel
+	}
+	return priority
 }
 
 // Create implements the TypedEventHandler interface.
 func (h *priorityBasedWorkObjEventHandler) Create(_ context.Context, createEvent event.TypedCreateEvent[client.Object], _ workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	// Do a sanity check.
 	//
-	// Normally when this method is called, the priority queue has been initialized.
+	// Normally when this method is called, the priority queue has been initialized. The check is added
+	// as the implementation has no control over when this method is called.
 	if h.qm.PriorityQueue() == nil {
 		wrappedErr := fmt.Errorf("received a Create event, but the priority queue is not initialized")
 		_ = controller.NewUnexpectedBehaviorError(wrappedErr)
@@ -82,9 +111,9 @@ func (h *priorityBasedWorkObjEventHandler) Create(_ context.Context, createEvent
 		return
 	}
 
-	// Enqueue the request with high priority.
+	// Enqueue the request with the highest priority.
 	opts := priorityqueue.AddOpts{
-		Priority: ptr.To(highPriorityLevel),
+		Priority: ptr.To(highestPriorityLevel),
 	}
 	workObjName := createEvent.Object.GetName()
 	workObjNS := createEvent.Object.GetNamespace()
@@ -107,9 +136,9 @@ func (h *priorityBasedWorkObjEventHandler) Delete(_ context.Context, deleteEvent
 		return
 	}
 
-	// Enqueue the request with high priority.
+	// Enqueue the request with the highest priority.
 	opts := priorityqueue.AddOpts{
-		Priority: ptr.To(highPriorityLevel),
+		Priority: ptr.To(highestPriorityLevel),
 	}
 	workObjName := deleteEvent.Object.GetName()
 	workObjNS := deleteEvent.Object.GetNamespace()
@@ -171,9 +200,9 @@ func (h *priorityBasedWorkObjEventHandler) Generic(_ context.Context, genericEve
 		return
 	}
 
-	// Enqueue the request with default priority.
+	// Enqueue the request with low priority.
 	opts := priorityqueue.AddOpts{
-		Priority: ptr.To(defaultPriorityLevel),
+		Priority: ptr.To(lowPriorityLevel),
 	}
 	workObjName := genericEvent.Object.GetName()
 	workObjNS := genericEvent.Object.GetNamespace()
@@ -192,12 +221,14 @@ func (h *priorityBasedWorkObjEventHandler) determineUpdateEventPriority(oldWorkO
 
 	// The age is expected to be the same for both old and new work objects, as the field
 	// is immutable and not user configurable.
-	workObjAge := time.Since(newWorkObj.CreationTimestamp.Time)
-	if workObjAge <= h.workObjAgeForPrioritizedProcessing {
-		return highPriorityLevel
-	}
+	workObjAgeMinutes := int(time.Since(newWorkObj.CreationTimestamp.Time).Minutes())
 
 	// Check if the work object is in a failed/undetermined state.
+	//
+	// * If the work object is in such a state, process its Update event with highest priority (even if the work object
+	//   was created long ago);
+	// * Otherwise, prioritize the processing of the Update event if the work object is recently created;
+	// * Use the default priority level for all other cases.
 	oldApplyStrategy := oldWorkObj.Spec.ApplyStrategy
 	isReportDiffModeEnabled := oldApplyStrategy != nil && oldApplyStrategy.Type == fleetv1beta1.ApplyStrategyTypeReportDiff
 
@@ -211,19 +242,19 @@ func (h *priorityBasedWorkObjEventHandler) determineUpdateEventPriority(oldWorkO
 	switch {
 	case isReportDiffModeEnabled && condition.IsConditionStatusTrue(diffReportedCond, oldWorkObj.Generation):
 		// The ReportDiff mode is enabled and the status suggests that the diff reporting has been completed successfully.
-		// Use medium priority for the Update event.
-		return mediumPriorityLevel
+		// Determine the priority level based on the age of the Work object.
+		return h.calcArgBasedPriWithLinearEquation(workObjAgeMinutes)
 	case isReportDiffModeEnabled:
 		// The ReportDiff mode is enabled, but the diff reporting has not been completed yet or has failed.
 		// Use high priority for the Update event.
-		return highPriorityLevel
+		return highestPriorityLevel
 	case condition.IsConditionStatusTrue(appliedCond, oldWorkObj.Generation) && condition.IsConditionStatusTrue(availableCond, oldWorkObj.Generation):
 		// The apply strategy is set to the CSA/SSA mode and the work object is applied and available.
-		// Use medium priority for the Update event.
-		return mediumPriorityLevel
+		// Determine the priority level based on the age of the Work object.
+		return h.calcArgBasedPriWithLinearEquation(workObjAgeMinutes)
 	default:
 		// The apply strategy is set to the CSA/SSA mode and the work object is in a failed/undetermined state.
 		// Use high priority for the Update event.
-		return highPriorityLevel
+		return highestPriorityLevel
 	}
 }

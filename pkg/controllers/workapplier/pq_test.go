@@ -36,8 +36,6 @@ import (
 )
 
 const (
-	workObjAgeForPrioritizedProcessingTestOnly = time.Minute * 5
-
 	pqName                         = "test-pq"
 	workNameForPriorityTestingTmpl = "prioritized-work-%s"
 )
@@ -65,23 +63,26 @@ func TestCreateEventHandler(t *testing.T) {
 	ctx := context.Background()
 	pq := priorityqueue.New[reconcile.Request](pqName)
 	pqEventHandler := &priorityBasedWorkObjEventHandler{
-		qm:                                 &pqWrapper{pq: pq},
-		workObjAgeForPrioritizedProcessing: workObjAgeForPrioritizedProcessingTestOnly,
+		qm: &pqWrapper{pq: pq},
+		// For simplicity reasons, set all Update events for completed Work objects to have the priority level of 80
+		// regardless of their ages.
+		priLinearEqCoeffA: 0,
+		priLinearEqCoeffB: 80,
 	}
 
-	// Add two keys with medium and default priority levels respectively.
+	// Add two keys with default and low priority levels respectively.
 	opts := priorityqueue.AddOpts{
-		Priority: ptr.To(mediumPriorityLevel),
-	}
-	workWithMediumPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "medium")
-	key := types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithMediumPriName}
-	pq.AddWithOpts(opts, reconcile.Request{NamespacedName: key})
-
-	opts = priorityqueue.AddOpts{
 		Priority: ptr.To(defaultPriorityLevel),
 	}
 	workWithDefaultPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "default")
-	key = types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithDefaultPriName}
+	key := types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithDefaultPriName}
+	pq.AddWithOpts(opts, reconcile.Request{NamespacedName: key})
+
+	opts = priorityqueue.AddOpts{
+		Priority: ptr.To(lowPriorityLevel),
+	}
+	workWithLowPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "low")
+	key = types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithLowPriName}
 	pq.AddWithOpts(opts, reconcile.Request{NamespacedName: key})
 
 	// Handle a CreateEvent, which should add a new key with high priority.
@@ -110,8 +111,8 @@ func TestCreateEventHandler(t *testing.T) {
 	if diff := cmp.Diff(item, wantItem); diff != "" {
 		t.Errorf("dequeued item mismatch (-got, +want):\n%s", diff)
 	}
-	if !cmp.Equal(pri, highPriorityLevel) {
-		t.Errorf("priority of dequeued item, expected %d, got %d", highPriorityLevel, pri)
+	if !cmp.Equal(pri, highestPriorityLevel) {
+		t.Errorf("priority of dequeued item, expected %d, got %d", highestPriorityLevel, pri)
 	}
 }
 
@@ -121,22 +122,23 @@ func TestUpdateEventHandler_NormalOps(t *testing.T) {
 	ctx := context.Background()
 	pq := priorityqueue.New[reconcile.Request](pqName)
 	pqEventHandler := &priorityBasedWorkObjEventHandler{
-		qm:                                 &pqWrapper{pq: pq},
-		workObjAgeForPrioritizedProcessing: workObjAgeForPrioritizedProcessingTestOnly,
+		qm:                &pqWrapper{pq: pq},
+		priLinearEqCoeffA: -10,
+		priLinearEqCoeffB: 80,
 	}
 
-	// Add a key with default priority levels respectively.
+	// Add a key with low priority level.
 	opts := priorityqueue.AddOpts{
-		Priority: ptr.To(defaultPriorityLevel),
+		Priority: ptr.To(lowPriorityLevel),
 	}
-	workWithDefaultPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "default")
-	key := types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithDefaultPriName}
+	workWithLowPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "low")
+	key := types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithLowPriName}
 	pq.AddWithOpts(opts, reconcile.Request{NamespacedName: key})
 
 	// Handle an UpdateEvent that concerns a Work object with ReportDiff strategy and has been
-	// processed successfully long before (>5 minutes ago).
+	// processed successfully long ago (30 minutes).
 	workInReportDiffModeAndProcessedLongBfrName := fmt.Sprintf(workNameForPriorityTestingTmpl, "report-diff-processed-long-bfr")
-	longAgo := time.Now().Add(-time.Minute * 10)
+	longAgo := time.Now().Add(-time.Minute * 30)
 	oldWorkObj := &fleetv1beta1.Work{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:         memberReservedNSName1,
@@ -162,7 +164,7 @@ func TestUpdateEventHandler_NormalOps(t *testing.T) {
 	newWorkObj.Generation += 1
 	pqEventHandler.Update(ctx, event.TypedUpdateEvent[client.Object]{ObjectOld: oldWorkObj, ObjectNew: newWorkObj}, nil)
 
-	// Handle an UpdateEvent that concerns a normal Work object that was created very recently (<5 minutes ago).
+	// Handle an UpdateEvent that concerns a normal Work object that was created very recently (2 minutes ago).
 	workInCSAModeAndJustProcessedName := fmt.Sprintf(workNameForPriorityTestingTmpl, "csa-just-processed")
 	shortWhileAgo := time.Now().Add(-time.Minute * 2)
 	oldWorkObj = &fleetv1beta1.Work{
@@ -204,7 +206,7 @@ func TestUpdateEventHandler_NormalOps(t *testing.T) {
 					Name:      workInCSAModeAndJustProcessedName,
 				},
 			},
-			Priority: highPriorityLevel,
+			Priority: 60, // -10 * 2 + 80 = 60
 		},
 		{
 			Key: reconcile.Request{
@@ -213,16 +215,16 @@ func TestUpdateEventHandler_NormalOps(t *testing.T) {
 					Name:      workInReportDiffModeAndProcessedLongBfrName,
 				},
 			},
-			Priority: mediumPriorityLevel,
+			Priority: defaultPriorityLevel, // -10 * 30 + 80 = -220 -> capped to defaultPriorityLevel (0)
 		},
 		{
 			Key: reconcile.Request{
 				NamespacedName: types.NamespacedName{
 					Namespace: memberReservedNSName1,
-					Name:      workWithDefaultPriName,
+					Name:      workWithLowPriName,
 				},
 			},
-			Priority: defaultPriorityLevel,
+			Priority: lowPriorityLevel,
 		},
 	}
 
@@ -294,8 +296,7 @@ func TestUpdateEventHandler_Erred(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			pq := priorityqueue.New[reconcile.Request](pqName)
 			pqEventHandler := &priorityBasedWorkObjEventHandler{
-				qm:                                 &pqWrapper{pq: pq},
-				workObjAgeForPrioritizedProcessing: workObjAgeForPrioritizedProcessingTestOnly,
+				qm: &pqWrapper{pq: pq},
 			}
 			pqEventHandler.Update(ctx, tc.updateEvent, nil)
 
@@ -312,26 +313,29 @@ func TestDeleteEventHandler(t *testing.T) {
 	ctx := context.Background()
 	pq := priorityqueue.New[reconcile.Request](pqName)
 	pqEventHandler := &priorityBasedWorkObjEventHandler{
-		qm:                                 &pqWrapper{pq: pq},
-		workObjAgeForPrioritizedProcessing: workObjAgeForPrioritizedProcessingTestOnly,
+		qm: &pqWrapper{pq: pq},
+		// For simplicity reasons, set all Update events for completed Work objects to have the priority level of 80
+		// regardless of their ages.
+		priLinearEqCoeffA: 0,
+		priLinearEqCoeffB: 80,
 	}
 
-	// Add two keys with medium and default priority levels respectively.
+	// Add two keys with default and low priority levels respectively.
 	opts := priorityqueue.AddOpts{
-		Priority: ptr.To(mediumPriorityLevel),
-	}
-	workWithMediumPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "medium")
-	key := types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithMediumPriName}
-	pq.AddWithOpts(opts, reconcile.Request{NamespacedName: key})
-
-	opts = priorityqueue.AddOpts{
 		Priority: ptr.To(defaultPriorityLevel),
 	}
 	workWithDefaultPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "default")
-	key = types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithDefaultPriName}
+	key := types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithDefaultPriName}
 	pq.AddWithOpts(opts, reconcile.Request{NamespacedName: key})
 
-	// Handle a DeleteEvent, which should add a new key with high priority.
+	opts = priorityqueue.AddOpts{
+		Priority: ptr.To(lowPriorityLevel),
+	}
+	workWithLowPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "low")
+	key = types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithLowPriName}
+	pq.AddWithOpts(opts, reconcile.Request{NamespacedName: key})
+
+	// Handle a DeleteEvent, which should add a new key with the highest priority.
 	workJustDeletedName := fmt.Sprintf(workNameForPriorityTestingTmpl, "just-deleted")
 	workObj := fleetv1beta1.Work{
 		ObjectMeta: metav1.ObjectMeta{
@@ -357,8 +361,8 @@ func TestDeleteEventHandler(t *testing.T) {
 	if diff := cmp.Diff(item, wantItem); diff != "" {
 		t.Errorf("dequeued item mismatch (-got, +want):\n%s", diff)
 	}
-	if !cmp.Equal(pri, highPriorityLevel) {
-		t.Errorf("priority of dequeued item, expected %d, got %d", highPriorityLevel, pri)
+	if !cmp.Equal(pri, highestPriorityLevel) {
+		t.Errorf("priority of dequeued item, expected %d, got %d", highestPriorityLevel, pri)
 	}
 }
 
@@ -367,23 +371,26 @@ func TestGenericEventHandler(t *testing.T) {
 	ctx := context.Background()
 	pq := priorityqueue.New[reconcile.Request](pqName)
 	pqEventHandler := &priorityBasedWorkObjEventHandler{
-		qm:                                 &pqWrapper{pq: pq},
-		workObjAgeForPrioritizedProcessing: workObjAgeForPrioritizedProcessingTestOnly,
+		qm: &pqWrapper{pq: pq},
+		// For simplicity reasons, set all Update events for completed Work objects to have the priority level of 80
+		// regardless of their ages.
+		priLinearEqCoeffA: 0,
+		priLinearEqCoeffB: 80,
 	}
 
-	// Add two keys with high and medium priority levels respectively.
+	// Add two keys with highest and default priority levels respectively.
 	opts := priorityqueue.AddOpts{
-		Priority: ptr.To(highPriorityLevel),
+		Priority: ptr.To(highestPriorityLevel),
 	}
-	workWithHighPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "high")
-	key := types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithHighPriName}
+	workWithHighestPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "highest")
+	key := types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithHighestPriName}
 	pq.AddWithOpts(opts, reconcile.Request{NamespacedName: key})
 
 	opts = priorityqueue.AddOpts{
-		Priority: ptr.To(mediumPriorityLevel),
+		Priority: ptr.To(defaultPriorityLevel),
 	}
-	workWithMediumPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "medium")
-	key = types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithMediumPriName}
+	workWithDefaultPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "default")
+	key = types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithDefaultPriName}
 	pq.AddWithOpts(opts, reconcile.Request{NamespacedName: key})
 
 	// Handle a GenericEvent, which should add a new key with default priority.
@@ -407,19 +414,19 @@ func TestGenericEventHandler(t *testing.T) {
 			Key: reconcile.Request{
 				NamespacedName: types.NamespacedName{
 					Namespace: memberReservedNSName1,
-					Name:      workWithHighPriName,
+					Name:      workWithHighestPriName,
 				},
 			},
-			Priority: highPriorityLevel,
+			Priority: highestPriorityLevel,
 		},
 		{
 			Key: reconcile.Request{
 				NamespacedName: types.NamespacedName{
 					Namespace: memberReservedNSName1,
-					Name:      workWithMediumPriName,
+					Name:      workWithDefaultPriName,
 				},
 			},
-			Priority: mediumPriorityLevel,
+			Priority: defaultPriorityLevel,
 		},
 		{
 			Key: reconcile.Request{
@@ -428,7 +435,7 @@ func TestGenericEventHandler(t *testing.T) {
 					Name:      workGenericEventName,
 				},
 			},
-			Priority: defaultPriorityLevel,
+			Priority: lowPriorityLevel,
 		},
 	}
 
@@ -446,12 +453,13 @@ func TestGenericEventHandler(t *testing.T) {
 
 func TestDetermineUpdateEventPriority(t *testing.T) {
 	now := metav1.Now()
-	longAgo := metav1.NewTime(now.Add(-time.Minute * 10))
+	longAgo := metav1.NewTime(now.Add(-time.Minute * 30))
 
 	pq := priorityqueue.New[reconcile.Request](pqName)
 	pqEventHandler := &priorityBasedWorkObjEventHandler{
-		qm:                                 &pqWrapper{pq: pq},
-		workObjAgeForPrioritizedProcessing: workObjAgeForPrioritizedProcessingTestOnly,
+		qm:                &pqWrapper{pq: pq},
+		priLinearEqCoeffA: -10,
+		priLinearEqCoeffB: 80,
 	}
 
 	testCases := []struct {
@@ -460,17 +468,6 @@ func TestDetermineUpdateEventPriority(t *testing.T) {
 		newWorkObj   *fleetv1beta1.Work
 		wantPriority int
 	}{
-		{
-			name: "fresh work object",
-			newWorkObj: &fleetv1beta1.Work{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace:         memberReservedNSName1,
-					Name:              workName,
-					CreationTimestamp: now,
-				},
-			},
-			wantPriority: highPriorityLevel,
-		},
 		{
 			name: "reportDiff mode, diff reported",
 			oldWorkObj: &fleetv1beta1.Work{
@@ -500,7 +497,7 @@ func TestDetermineUpdateEventPriority(t *testing.T) {
 					CreationTimestamp: longAgo,
 				},
 			},
-			wantPriority: mediumPriorityLevel,
+			wantPriority: defaultPriorityLevel,
 		},
 		{
 			name: "reportDiff mode, diff not reported",
@@ -531,7 +528,7 @@ func TestDetermineUpdateEventPriority(t *testing.T) {
 					CreationTimestamp: longAgo,
 				},
 			},
-			wantPriority: highPriorityLevel,
+			wantPriority: highestPriorityLevel,
 		},
 		{
 			name: "CSA/SSA mode, applied and available",
@@ -562,7 +559,7 @@ func TestDetermineUpdateEventPriority(t *testing.T) {
 					CreationTimestamp: longAgo,
 				},
 			},
-			wantPriority: mediumPriorityLevel,
+			wantPriority: defaultPriorityLevel,
 		},
 		{
 			name: "CSA/SSA mode, not applied and available",
@@ -589,7 +586,7 @@ func TestDetermineUpdateEventPriority(t *testing.T) {
 					CreationTimestamp: longAgo,
 				},
 			},
-			wantPriority: highPriorityLevel,
+			wantPriority: highestPriorityLevel,
 		},
 	}
 
@@ -598,6 +595,50 @@ func TestDetermineUpdateEventPriority(t *testing.T) {
 			pri := pqEventHandler.determineUpdateEventPriority(tc.oldWorkObj, tc.newWorkObj)
 			if !cmp.Equal(pri, tc.wantPriority) {
 				t.Errorf("determined priority, expected %d, got %d", tc.wantPriority, pri)
+			}
+		})
+	}
+}
+
+// TestCalcArgBasedPriWithLinearEquation tests the calcArgBasedPriWithLinearEquation method.
+func TestCalculateArgBasedPriWithLinearEquation(t *testing.T) {
+	pqEventHandler := &priorityBasedWorkObjEventHandler{
+		priLinearEqCoeffA: -10,
+		priLinearEqCoeffB: highestPriorityLevel + 20, // 120
+	}
+
+	testCases := []struct {
+		name              string
+		workObjAgeMinutes int
+		wantPri           int
+	}{
+		{
+			name:              "just created (capped)",
+			workObjAgeMinutes: 0,
+			wantPri:           highestPriorityLevel,
+		},
+		{
+			name:              "5 minutes old",
+			workObjAgeMinutes: 5,
+			wantPri:           70,
+		},
+		{
+			name:              "8 minutes old",
+			workObjAgeMinutes: 8,
+			wantPri:           40,
+		},
+		{
+			name:              "15 minutes old (capped)",
+			workObjAgeMinutes: 15,
+			wantPri:           defaultPriorityLevel,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			pri := pqEventHandler.calcArgBasedPriWithLinearEquation(tc.workObjAgeMinutes)
+			if !cmp.Equal(pri, tc.wantPri) {
+				t.Errorf("calculated priority, expected %d, got %d", tc.wantPri, pri)
 			}
 		})
 	}

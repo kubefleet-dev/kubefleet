@@ -279,7 +279,8 @@ var _ = BeforeSuite(func() {
 		30*time.Second,
 		nil,   // Use the default backoff rate limiter.
 		false, // Disable priority queueing.
-		0,
+		nil,   // Use the default priority linear equation coefficients.
+		nil,   // Use the default priority linear equation coefficients.
 	)
 	Expect(workApplier1.SetupWithManager(hubMgr1)).To(Succeed())
 
@@ -328,7 +329,8 @@ var _ = BeforeSuite(func() {
 		30*time.Second,
 		superLongExponentialBackoffRateLimiter,
 		false, // Disable priority queueing.
-		0,
+		nil,   // Use the default priority linear equation coefficients.
+		nil,   // Use the default priority linear equation coefficients.
 	)
 	// Due to name conflicts, the second work applier must be set up manually.
 	err = ctrl.NewControllerManagedBy(hubMgr2).Named("work-applier-controller-duplicate").
@@ -372,7 +374,8 @@ var _ = BeforeSuite(func() {
 		30*time.Second,
 		nil,   // Use the default backoff rate limiter.
 		false, // Disable priority queueing.
-		0,
+		nil,   // Use the default priority linear equation coefficients.
+		nil,   // Use the default priority linear equation coefficients.
 	)
 	// Due to name conflicts, the third work applier must be set up manually.
 	err = ctrl.NewControllerManagedBy(hubMgr3).Named("work-applier-controller-waved-parallel-processing").

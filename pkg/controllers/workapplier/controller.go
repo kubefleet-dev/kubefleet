@@ -52,8 +52,6 @@ import (
 
 const (
 	patchDetailPerObjLimit = 100
-
-	minWorkObjAgeForPrioritizedQueueing = time.Minute * 30
 )
 
 const (
@@ -97,24 +95,25 @@ var defaultRequeueRateLimiter *RequeueMultiStageWithExponentialBackoffRateLimite
 
 // Reconciler reconciles a Work object.
 type Reconciler struct {
-	hubClient                          client.Client
-	workNameSpace                      string
-	spokeDynamicClient                 dynamic.Interface
-	spokeClient                        client.Client
-	restMapper                         meta.RESTMapper
-	recorder                           record.EventRecorder
-	concurrentReconciles               int
-	deletionWaitTime                   time.Duration
-	joined                             *atomic.Bool
-	parallelizer                       parallelizerutil.Parallelizer
-	requeueRateLimiter                 *RequeueMultiStageWithExponentialBackoffRateLimiter
-	usePriorityQueue                   bool
-	workObjAgeForPrioritizedProcessing time.Duration
+	hubClient            client.Client
+	workNameSpace        string
+	spokeDynamicClient   dynamic.Interface
+	spokeClient          client.Client
+	restMapper           meta.RESTMapper
+	recorder             record.EventRecorder
+	concurrentReconciles int
+	deletionWaitTime     time.Duration
+	joined               *atomic.Bool
+	parallelizer         parallelizerutil.Parallelizer
+	requeueRateLimiter   *RequeueMultiStageWithExponentialBackoffRateLimiter
+	usePriorityQueue     bool
 	// The custom priority queue in use if the option watchWorkWithPriorityQueue is enabled.
 	//
 	// Note that this variable is set only after the controller starts.
-	pq          priorityqueue.PriorityQueue[reconcile.Request]
-	pqSetupOnce sync.Once
+	pq                priorityqueue.PriorityQueue[reconcile.Request]
+	priLinearEqCoeffA int
+	priLinearEqCoeffB int
+	pqSetupOnce       sync.Once
 }
 
 // NewReconciler returns a new Work object reconciler for the work applier.
@@ -127,7 +126,8 @@ func NewReconciler(
 	deletionWaitTime time.Duration,
 	requeueRateLimiter *RequeueMultiStageWithExponentialBackoffRateLimiter,
 	usePriorityQueue bool,
-	workObjAgeForPrioritizedProcessing time.Duration,
+	priorityLinearEquationCoeffA *int,
+	priorityLinearEquationCoeffB *int,
 ) *Reconciler {
 	if requeueRateLimiter == nil {
 		klog.V(2).InfoS("requeue rate limiter is not set; using the default rate limiter")
@@ -137,27 +137,28 @@ func NewReconciler(
 		klog.V(2).InfoS("parallelizer is not set; using the default parallelizer with a worker count of 1")
 		parallelizer = parallelizerutil.NewParallelizer(1)
 	}
-
-	woAgeForPrioritizedProcessing := workObjAgeForPrioritizedProcessing
-	if usePriorityQueue && woAgeForPrioritizedProcessing < minWorkObjAgeForPrioritizedQueueing {
-		klog.V(2).InfoS("Work object age for prioritized processing is too short; set to the longer default", "workObjAgeForPrioritizedProcessing", woAgeForPrioritizedProcessing)
-		woAgeForPrioritizedProcessing = minWorkObjAgeForPrioritizedQueueing
+	if priorityLinearEquationCoeffA == nil || priorityLinearEquationCoeffB == nil {
+		// Use the default settings if either co-efficient is not set for correctness reasons.
+		klog.V(2).InfoS("priority linear equation coefficients are not set; using the default settings")
+		priorityLinearEquationCoeffA = ptr.To(-3)
+		priorityLinearEquationCoeffB = ptr.To(int(highestPriorityLevel))
 	}
 
 	return &Reconciler{
-		hubClient:                          hubClient,
-		spokeDynamicClient:                 spokeDynamicClient,
-		spokeClient:                        spokeClient,
-		restMapper:                         restMapper,
-		recorder:                           recorder,
-		concurrentReconciles:               concurrentReconciles,
-		parallelizer:                       parallelizer,
-		workNameSpace:                      workNameSpace,
-		joined:                             atomic.NewBool(false),
-		deletionWaitTime:                   deletionWaitTime,
-		requeueRateLimiter:                 requeueRateLimiter,
-		usePriorityQueue:                   usePriorityQueue,
-		workObjAgeForPrioritizedProcessing: woAgeForPrioritizedProcessing,
+		hubClient:            hubClient,
+		spokeDynamicClient:   spokeDynamicClient,
+		spokeClient:          spokeClient,
+		restMapper:           restMapper,
+		recorder:             recorder,
+		concurrentReconciles: concurrentReconciles,
+		parallelizer:         parallelizer,
+		workNameSpace:        workNameSpace,
+		joined:               atomic.NewBool(false),
+		deletionWaitTime:     deletionWaitTime,
+		requeueRateLimiter:   requeueRateLimiter,
+		usePriorityQueue:     usePriorityQueue,
+		priLinearEqCoeffA:    *priorityLinearEquationCoeffA,
+		priLinearEqCoeffB:    *priorityLinearEquationCoeffB,
 	}
 }
 
@@ -630,8 +631,9 @@ func (r *Reconciler) Leave(ctx context.Context) error {
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.usePriorityQueue {
 		eventHandler := &priorityBasedWorkObjEventHandler{
-			qm:                                 r,
-			workObjAgeForPrioritizedProcessing: r.workObjAgeForPrioritizedProcessing,
+			qm:                r,
+			priLinearEqCoeffA: r.priLinearEqCoeffA,
+			priLinearEqCoeffB: r.priLinearEqCoeffB,
 		}
 
 		newPQ := func(controllerName string, rateLimiter workqueue.TypedRateLimiter[reconcile.Request]) workqueue.TypedRateLimitingInterface[reconcile.Request] {
