@@ -65,7 +65,7 @@ var (
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecs(t, "Work Applier Integration Test Suite")
+	RunSpecs(t, "Status Back-Reporter Integration Test Suite")
 }
 
 var _ = BeforeSuite(func() {

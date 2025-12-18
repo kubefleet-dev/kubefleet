@@ -20,7 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -78,38 +77,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// TO-DO (chenyu1): verify status back-reporting strategy from the source (CRP or RP objects),
-	// rather than using the data copied to the Work object.
-	reportBackStrategy := work.Spec.ReportBackStrategy
-	switch {
-	case reportBackStrategy == nil:
-		klog.V(2).InfoS("Skip status back-reporting; the strategy has not been set", "work", workRef)
-		return ctrl.Result{}, nil
-	case reportBackStrategy.Type != placementv1beta1.ReportBackStrategyTypeMirror:
-		klog.V(2).InfoS("Skip status back-reporting; it has been disabled in the strategy", "work", workRef)
-		return ctrl.Result{}, nil
-	case reportBackStrategy.Destination == nil:
-		// This in theory should never occur; CEL based validation should have rejected such strategies.
-		klog.V(2).InfoS("Skip status back-reporting; destination has not been set in the strategy", "work", workRef)
-		return ctrl.Result{}, nil
-	case *reportBackStrategy.Destination != placementv1beta1.ReportBackDestinationOriginalResource:
-		klog.V(2).InfoS("Skip status back-reporting; destination has been set to the Work API", "work", workRef)
-		return ctrl.Result{}, nil
-	}
-
 	// Perform a sanity check; make sure that mirroring back to original resources can be done, i.e.,
 	// the scheduling policy is set to the PickFixed type with exactly one target cluster, or the PickN
-	// type with the number of clusters set to 1.
-	//
-	// TO-DO (chenyu1): at this moment the controller will attempt to locate the CRP/RP object that is
-	// associated with a Work object by parsing its name; KubeFleet does have a label (`kubernetes-fleet.io/parent-CRP`)
-	// that tracks the name of the placement object associated with a Work object, however, for RP objects
-	// the name does not include the owner namespace, which makes it less useful. Once the label situation
-	// improves, the statuses back-reporter should read the label instead for CRP/RP tracking here.
-	placementObj, err := r.validatePlacementObjectForOriginalResourceStatusBackReporting(ctx, work)
+	// type with the number of clusters set to 1. The logic also checks if the report back strategy still
+	// allows status back-reporting.
+	placementObj, shouldSkip, err := r.validatePlacementObjectForOriginalResourceStatusBackReporting(ctx, work)
 	if err != nil {
 		klog.ErrorS(err, "Failed to validate the placement object associated with the Work object for back-reporting statuses to original resources", "work", workRef)
 		return ctrl.Result{}, err
+	}
+	if shouldSkip {
+		klog.V(2).InfoS("Skip status back-reporting to original resources as the report-back strategy on the placement object forbids so", "work", workRef, "placement", klog.KObj(placementObj))
+		return ctrl.Result{}, nil
 	}
 
 	// Prepare a map for quick lookup of whether a resource is enveloped.
@@ -199,51 +178,36 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	return ctrl.Result{}, errorsutil.NewAggregate(errs)
 }
 
-// validatePlacementObjectForOriginalResourceStatusBackReporting validatess whether
+// validatePlacementObjectForOriginalResourceStatusBackReporting validates whether
 // the placement object associated with the given Work object is eligible for back-reporting
 // statuses to original resources.
 func (r *Reconciler) validatePlacementObjectForOriginalResourceStatusBackReporting(
-	ctx context.Context, work *placementv1beta1.Work) (placementv1beta1.PlacementObj, error) {
+	ctx context.Context, work *placementv1beta1.Work) (placementv1beta1.PlacementObj, bool, error) {
 	// Read the `kubernetes-fleet.io/parent-CRP` label to retrieve the CRP/RP name.
 	parentPlacementName, ok := work.Labels[placementv1beta1.PlacementTrackingLabel]
 	if !ok || len(parentPlacementName) == 0 {
 		// Normally this should never occur.
 		wrappedErr := fmt.Errorf("the placement tracking label is absent or invalid (label value: %s)", parentPlacementName)
-		return nil, controller.NewUnexpectedBehaviorError(wrappedErr)
+		return nil, false, controller.NewUnexpectedBehaviorError(wrappedErr)
 	}
 
-	// Parse the name of the Work object to retrieve the namespace of the placement object (if applicable).
-	//
-	// For CRP objects, the Work object has it names formatted as [CRP-NAME]-work, or [CRP-NAME]-[WORK-SUBINDEX].
-	// For RP objects, the Work object has it names formatted as [RP-NAMESPACE].[RP-NAME]-work, or [RP-NAMESPACE].[RP-NAME]-[WORK-SUBINDEX].
-	//
-	// Also note that Kubernetes does not allow dots in the name of namespaces; though dots are
-	// allowed in the names of placement objects (custom resources), even though such usage is often frowned upon by
-	// the system.
-	var parentPlacementNamespace string
-	beforeSeg, afterSeg, found := strings.Cut(work.Name, ".")
-	if found && strings.HasPrefix(afterSeg, parentPlacementName+"-") {
-		// There exists (at least) one dot in the name and the dot is not from the placement object's name.
-		parentPlacementNamespace = beforeSeg
-	} else {
-		// There exists no dots in the name, or the dot is from the placement object's name.
-		parentPlacementNamespace = ""
-	}
+	// Read the `kubernetes-fleet.io/parent-namespace` label to retrieve the RP namespace (if any).
+	parentPlacementNSName := work.Labels[placementv1beta1.ParentNamespaceLabel]
 
 	var placementObj placementv1beta1.PlacementObj
-	if len(parentPlacementNamespace) == 0 {
+	if len(parentPlacementNSName) == 0 {
 		// Retrieve the CRP object.
 		placementObj = &placementv1beta1.ClusterResourcePlacement{}
 		if err := r.hubClient.Get(ctx, client.ObjectKey{Name: parentPlacementName}, placementObj); err != nil {
 			wrappedErr := fmt.Errorf("failed to retrieve CRP object: %w", err)
-			return nil, controller.NewAPIServerError(true, wrappedErr)
+			return nil, false, controller.NewAPIServerError(true, wrappedErr)
 		}
 	} else {
 		// Retrieve the RP object.
 		placementObj = &placementv1beta1.ResourcePlacement{}
-		if err := r.hubClient.Get(ctx, client.ObjectKey{Namespace: parentPlacementNamespace, Name: parentPlacementName}, placementObj); err != nil {
+		if err := r.hubClient.Get(ctx, client.ObjectKey{Namespace: parentPlacementNSName, Name: parentPlacementName}, placementObj); err != nil {
 			wrappedErr := fmt.Errorf("failed to retrieve RP object: %w", err)
-			return nil, controller.NewAPIServerError(true, wrappedErr)
+			return nil, false, controller.NewAPIServerError(true, wrappedErr)
 		}
 	}
 
@@ -253,24 +217,42 @@ func (r *Reconciler) validatePlacementObjectForOriginalResourceStatusBackReporti
 	case schedulingPolicy == nil:
 		// The system uses a default scheduling policy of the PickAll placement type. Reject status back-reporting.
 		wrappedErr := fmt.Errorf("no scheduling policy specified (the PickAll type is in use); cannot back-report status to original resources")
-		return nil, controller.NewUserError(wrappedErr)
+		return nil, false, controller.NewUserError(wrappedErr)
 	case schedulingPolicy.PlacementType == placementv1beta1.PickAllPlacementType:
-		wrappedErr := fmt.Errorf("the scheduling policy in use is of the PickAll type; cannot back-reporting status to original resources")
-		return nil, controller.NewUserError(wrappedErr)
+		wrappedErr := fmt.Errorf("the scheduling policy in use is of the PickAll type; cannot back-report status to original resources")
+		return nil, false, controller.NewUserError(wrappedErr)
 	case schedulingPolicy.PlacementType == placementv1beta1.PickFixedPlacementType && len(schedulingPolicy.ClusterNames) != 1:
 		wrappedErr := fmt.Errorf("the scheduling policy in use is of the PickFixed type, but it has more than one target cluster (%d clusters); cannot back-report status to original resources", len(schedulingPolicy.ClusterNames))
-		return nil, controller.NewUserError(wrappedErr)
+		return nil, false, controller.NewUserError(wrappedErr)
 	case schedulingPolicy.PlacementType == placementv1beta1.PickNPlacementType && schedulingPolicy.NumberOfClusters == nil:
 		// Normally this should never occur.
 		wrappedErr := fmt.Errorf("the scheduling policy in use is of the PickN type, but no number of target clusters is specified; cannot back-report status to original resources")
-		return nil, controller.NewUserError(wrappedErr)
+		return nil, false, controller.NewUserError(wrappedErr)
 	case schedulingPolicy.PlacementType == placementv1beta1.PickNPlacementType && *schedulingPolicy.NumberOfClusters != 1:
 		wrappedErr := fmt.Errorf("the scheduling policy in use is of the PickN type, but the number of target clusters is not set to 1; cannot back-report status to original resources")
-		return nil, controller.NewUserError(wrappedErr)
+		return nil, false, controller.NewUserError(wrappedErr)
+	}
+
+	// Check if the report back strategy on the placement object still allows status back-reporting to the original resources.
+	reportBackStrategy := placementObj.GetPlacementSpec().Strategy.ReportBackStrategy
+	switch {
+	case reportBackStrategy == nil:
+		klog.V(2).InfoS("Skip status back-reporting; the strategy has not been set", "placement", klog.KObj(placementObj))
+		return placementObj, true, nil
+	case reportBackStrategy.Type != placementv1beta1.ReportBackStrategyTypeMirror:
+		klog.V(2).InfoS("Skip status back-reporting; it has been disabled in the strategy", "placement", klog.KObj(placementObj))
+		return placementObj, true, nil
+	case reportBackStrategy.Destination == nil:
+		// This in theory should never occur; CEL based validation should have rejected such strategies.
+		klog.V(2).InfoS("Skip status back-reporting; destination has not been set in the strategy", "placement", klog.KObj(placementObj))
+		return placementObj, true, nil
+	case *reportBackStrategy.Destination != placementv1beta1.ReportBackDestinationOriginalResource:
+		klog.V(2).InfoS("Skip status back-reporting; destination has been set to the Work API", "placement", klog.KObj(placementObj))
+		return placementObj, true, nil
 	}
 
 	// The scheduling policy is valid for back-reporting statuses to original resources.
-	return placementObj, nil
+	return placementObj, false, nil
 }
 
 // formatResourceIdentifier formats a ResourceIdentifier object to a string for keying purposes.

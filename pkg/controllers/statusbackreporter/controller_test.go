@@ -38,8 +38,6 @@ const (
 	// as a result, gosec linter warnings are suppressed for these variables.
 	crpName1               = "crp-1"
 	rpName1                = "rp-1"
-	rpName2                = "test.app"
-	rpName3                = "app"
 	nsName                 = "work"
 	clusterResEnvelopeName = "cluster-res-envelope-1"
 	resEnvelopeName        = "res-envelope-1"
@@ -319,6 +317,7 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 		name                string
 		placementObj        placementv1beta1.PlacementObj
 		work                *placementv1beta1.Work
+		wantShouldSkip      bool
 		wantErred           bool
 		wantErrStrSubString string
 		// The method returns the placement object as it is; for simplicity reasons the test spec here
@@ -348,41 +347,29 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 			wantErrStrSubString: "the placement tracking label is absent or invalid",
 		},
 		{
-			name: "work associated with rp (rp has a name with dots), invalid scheduling policy (nil)",
+			name: "work associated with rp, invalid scheduling policy (nil)",
 			work: &placementv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: rpWorkName1,
 					Labels: map[string]string{
-						placementv1beta1.PlacementTrackingLabel: rpName2,
+						placementv1beta1.PlacementTrackingLabel: rpName1,
+						placementv1beta1.ParentNamespaceLabel:   nsName,
 					},
 				},
 			},
 			placementObj: &placementv1beta1.ResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      rpName2,
+					Name:      rpName1,
 					Namespace: nsName,
 				},
-				Spec: placementv1beta1.PlacementSpec{},
-			},
-			wantErred:           true,
-			wantErrStrSubString: "no scheduling policy specified (the PickAll type is in use)",
-		},
-		{
-			name: "work associated with rp (rp does not have dots in its name), invalid scheduling policy (nil)",
-			work: &placementv1beta1.Work{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: rpWorkName2,
-					Labels: map[string]string{
-						placementv1beta1.PlacementTrackingLabel: rpName3,
+				Spec: placementv1beta1.PlacementSpec{
+					Strategy: placementv1beta1.RolloutStrategy{
+						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{
+							Type:        placementv1beta1.ReportBackStrategyTypeMirror,
+							Destination: ptr.To(placementv1beta1.ReportBackDestinationOriginalResource),
+						},
 					},
 				},
-			},
-			placementObj: &placementv1beta1.ResourcePlacement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      rpName3,
-					Namespace: nsName,
-				},
-				Spec: placementv1beta1.PlacementSpec{},
 			},
 			wantErred:           true,
 			wantErrStrSubString: "no scheduling policy specified (the PickAll type is in use)",
@@ -401,18 +388,26 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 				ObjectMeta: metav1.ObjectMeta{
 					Name: crpName1,
 				},
-				Spec: placementv1beta1.PlacementSpec{},
+				Spec: placementv1beta1.PlacementSpec{
+					Strategy: placementv1beta1.RolloutStrategy{
+						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{
+							Type:        placementv1beta1.ReportBackStrategyTypeMirror,
+							Destination: ptr.To(placementv1beta1.ReportBackDestinationOriginalResource),
+						},
+					},
+				},
 			},
 			wantErred:           true,
 			wantErrStrSubString: "no scheduling policy specified (the PickAll type is in use)",
 		},
 		{
-			name: "work associated with rp (rp does not have dots in its name), rp not found",
+			name: "work associated with rp, rp not found",
 			work: &placementv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: rpWorkName2,
 					Labels: map[string]string{
-						placementv1beta1.PlacementTrackingLabel: rpName3,
+						placementv1beta1.PlacementTrackingLabel: rpName1,
+						placementv1beta1.ParentNamespaceLabel:   nsName,
 					},
 				},
 			},
@@ -433,23 +428,30 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 			wantErrStrSubString: "failed to retrieve CRP object",
 		},
 		{
-			name: "work associated with rp (rp does not have dots in its name), with PickAll scheduling policy",
+			name: "work associated with rp, with PickAll scheduling policy",
 			work: &placementv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: rpWorkName2,
 					Labels: map[string]string{
-						placementv1beta1.PlacementTrackingLabel: rpName3,
+						placementv1beta1.PlacementTrackingLabel: rpName1,
+						placementv1beta1.ParentNamespaceLabel:   nsName,
 					},
 				},
 			},
 			placementObj: &placementv1beta1.ResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      rpName3,
+					Name:      rpName1,
 					Namespace: nsName,
 				},
 				Spec: placementv1beta1.PlacementSpec{
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{
+							Type:        placementv1beta1.ReportBackStrategyTypeMirror,
+							Destination: ptr.To(placementv1beta1.ReportBackDestinationOriginalResource),
+						},
 					},
 				},
 			},
@@ -457,18 +459,19 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 			wantErrStrSubString: "the scheduling policy in use is of the PickAll type",
 		},
 		{
-			name: "work associated with rp (rp does not have dots in its name), with PickFixed placement type and more than 1 selected clusters",
+			name: "work associated with rp, with PickFixed placement type and more than 1 selected clusters",
 			work: &placementv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: rpWorkName2,
 					Labels: map[string]string{
-						placementv1beta1.PlacementTrackingLabel: rpName3,
+						placementv1beta1.PlacementTrackingLabel: rpName1,
+						placementv1beta1.ParentNamespaceLabel:   nsName,
 					},
 				},
 			},
 			placementObj: &placementv1beta1.ResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      rpName3,
+					Name:      rpName1,
 					Namespace: nsName,
 				},
 				Spec: placementv1beta1.PlacementSpec{
@@ -479,30 +482,43 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 							cluster2,
 						},
 					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{
+							Type:        placementv1beta1.ReportBackStrategyTypeMirror,
+							Destination: ptr.To(placementv1beta1.ReportBackDestinationOriginalResource),
+						},
+					},
 				},
 			},
 			wantErred:           true,
 			wantErrStrSubString: "the scheduling policy in use is of the PickFixed type, but it has more than one target cluster",
 		},
 		{
-			name: "work associated with rp (rp does not have dots in its name), with PickN placement type and more than 1 clusters to select",
+			name: "work associated with rp, with PickN placement type and more than 1 clusters to select",
 			work: &placementv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: rpWorkName2,
 					Labels: map[string]string{
-						placementv1beta1.PlacementTrackingLabel: rpName3,
+						placementv1beta1.PlacementTrackingLabel: rpName1,
+						placementv1beta1.ParentNamespaceLabel:   nsName,
 					},
 				},
 			},
 			placementObj: &placementv1beta1.ResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      rpName3,
+					Name:      rpName1,
 					Namespace: nsName,
 				},
 				Spec: placementv1beta1.PlacementSpec{
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
 						NumberOfClusters: ptr.To(int32(2)),
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{
+							Type:        placementv1beta1.ReportBackStrategyTypeMirror,
+							Destination: ptr.To(placementv1beta1.ReportBackDestinationOriginalResource),
+						},
 					},
 				},
 			},
@@ -511,23 +527,30 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 		},
 		{
 			// Normally this will never occur.
-			name: "work associated with rp (rp does not have dots in its name), with PickN placement type and no number of target clusters",
+			name: "work associated with rp, with PickN placement type and no number of target clusters",
 			work: &placementv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: rpWorkName2,
 					Labels: map[string]string{
-						placementv1beta1.PlacementTrackingLabel: rpName3,
+						placementv1beta1.PlacementTrackingLabel: rpName1,
+						placementv1beta1.ParentNamespaceLabel:   nsName,
 					},
 				},
 			},
 			placementObj: &placementv1beta1.ResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      rpName3,
+					Name:      rpName1,
 					Namespace: nsName,
 				},
 				Spec: placementv1beta1.PlacementSpec{
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickNPlacementType,
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{
+							Type:        placementv1beta1.ReportBackStrategyTypeMirror,
+							Destination: ptr.To(placementv1beta1.ReportBackDestinationOriginalResource),
+						},
 					},
 				},
 			},
@@ -555,6 +578,12 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 							cluster1,
 						},
 					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{
+							Type:        placementv1beta1.ReportBackStrategyTypeMirror,
+							Destination: ptr.To(placementv1beta1.ReportBackDestinationOriginalResource),
+						},
+					},
 				},
 			},
 		},
@@ -577,8 +606,127 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 						PlacementType:    placementv1beta1.PickNPlacementType,
 						NumberOfClusters: ptr.To(int32(1)),
 					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{
+							Type:        placementv1beta1.ReportBackStrategyTypeMirror,
+							Destination: ptr.To(placementv1beta1.ReportBackDestinationOriginalResource),
+						},
+					},
 				},
 			},
+		},
+		{
+			name: "work associated with rp, no report back strategy (nil)",
+			work: &placementv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: rpWorkName2,
+					Labels: map[string]string{
+						placementv1beta1.PlacementTrackingLabel: rpName1,
+						placementv1beta1.ParentNamespaceLabel:   nsName,
+					},
+				},
+			},
+			placementObj: &placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      rpName1,
+					Namespace: nsName,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType:    placementv1beta1.PickNPlacementType,
+						NumberOfClusters: ptr.To(int32(1)),
+					},
+					Strategy: placementv1beta1.RolloutStrategy{},
+				},
+			},
+			wantShouldSkip: true,
+		},
+		{
+			name: "work associated with rp, report back strategy not set to Mirror type",
+			work: &placementv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: rpWorkName2,
+					Labels: map[string]string{
+						placementv1beta1.PlacementTrackingLabel: rpName1,
+						placementv1beta1.ParentNamespaceLabel:   nsName,
+					},
+				},
+			},
+			placementObj: &placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      rpName1,
+					Namespace: nsName,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType:    placementv1beta1.PickNPlacementType,
+						NumberOfClusters: ptr.To(int32(1)),
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{
+							Type: placementv1beta1.ReportBackStrategyTypeDisabled,
+						},
+					},
+				},
+			},
+			wantShouldSkip: true,
+		},
+		{
+			name: "work associated with crp, report back strategy destination not set",
+			work: &placementv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpWorkName1,
+					Labels: map[string]string{
+						placementv1beta1.PlacementTrackingLabel: crpName1,
+					},
+				},
+			},
+			placementObj: &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName1,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType:    placementv1beta1.PickNPlacementType,
+						NumberOfClusters: ptr.To(int32(1)),
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{
+							Type: placementv1beta1.ReportBackStrategyTypeMirror,
+						},
+					},
+				},
+			},
+			wantShouldSkip: true,
+		},
+		{
+			name: "work associated with crp, report back strategy destination not set to OriginalResource",
+			work: &placementv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpWorkName1,
+					Labels: map[string]string{
+						placementv1beta1.PlacementTrackingLabel: crpName1,
+					},
+				},
+			},
+			placementObj: &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName1,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType:    placementv1beta1.PickNPlacementType,
+						NumberOfClusters: ptr.To(int32(1)),
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{
+							Type:        placementv1beta1.ReportBackStrategyTypeMirror,
+							Destination: ptr.To(placementv1beta1.ReportBackDestinationWorkAPI),
+						},
+					},
+				},
+			},
+			wantShouldSkip: true,
 		},
 	}
 
@@ -593,7 +741,7 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 
 			r := NewReconciler(fakeClient, nil, nil)
 
-			_, err := r.validatePlacementObjectForOriginalResourceStatusBackReporting(ctx, tc.work)
+			_, shouldSkip, err := r.validatePlacementObjectForOriginalResourceStatusBackReporting(ctx, tc.work)
 			if tc.wantErred {
 				if err == nil {
 					t.Fatalf("validatePlacementObjectForOriginalResourceStatusBackReporting() = nil, want erred")
@@ -603,6 +751,9 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 					t.Fatalf("validatePlacementObjectForOriginalResourceStatusBackReporting() = %v, want to have prefix %s", err, tc.wantErrStrSubString)
 					return
 				}
+			}
+			if shouldSkip != tc.wantShouldSkip {
+				t.Errorf("validatePlacementObjectForOriginalResourceStatusBackReporting() shouldSkip = %v, want %v", shouldSkip, tc.wantShouldSkip)
 			}
 		})
 	}

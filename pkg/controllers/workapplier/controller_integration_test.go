@@ -32,7 +32,6 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -41,6 +40,8 @@ import (
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
+	testutilsactuals "github.com/kubefleet-dev/kubefleet/test/utils/actuals"
+	testutilsresource "github.com/kubefleet-dev/kubefleet/test/utils/resource"
 )
 
 const (
@@ -76,29 +77,9 @@ var (
 	dummyLabelValue5 = "quux"
 )
 
-// createWorkObject creates a new Work object with the given name, manifests, and apply strategy.
+// createWorkObject creates a new Work object with the given work name/namespace, apply strategy, and raw manifest JSONs.
 func createWorkObject(workName, memberClusterReservedNSName string, applyStrategy *fleetv1beta1.ApplyStrategy, rawManifestJSON ...[]byte) {
-	manifests := make([]fleetv1beta1.Manifest, len(rawManifestJSON))
-	for idx := range rawManifestJSON {
-		manifests[idx] = fleetv1beta1.Manifest{
-			RawExtension: runtime.RawExtension{
-				Raw: rawManifestJSON[idx],
-			},
-		}
-	}
-
-	work := &fleetv1beta1.Work{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      workName,
-			Namespace: memberClusterReservedNSName,
-		},
-		Spec: fleetv1beta1.WorkSpec{
-			Workload: fleetv1beta1.WorkloadTemplate{
-				Manifests: manifests,
-			},
-			ApplyStrategy: applyStrategy,
-		},
-	}
+	work := testutilsresource.WorkObjectForTest(workName, memberClusterReservedNSName, "", "", applyStrategy, nil, rawManifestJSON...)
 	Expect(hubClient.Create(ctx, work)).To(Succeed())
 }
 
@@ -121,11 +102,8 @@ func updateWorkObject(workName string, applyStrategy *fleetv1beta1.ApplyStrategy
 }
 
 func marshalK8sObjJSON(obj runtime.Object) []byte {
-	unstructuredObjMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
-	Expect(err).To(BeNil(), "Failed to convert the object to an unstructured object")
-	unstructuredObj := &unstructured.Unstructured{Object: unstructuredObjMap}
-	json, err := unstructuredObj.MarshalJSON()
-	Expect(err).To(BeNil(), "Failed to marshal the unstructured object to JSON")
+	json, err := testutilsresource.MarshalRuntimeObjToJSONForTest(obj)
+	Expect(err).To(BeNil(), "Failed to marshal the k8s object to JSON")
 	return json
 }
 
@@ -565,21 +543,6 @@ func appliedWorkStatusUpdated(workName string, appliedResourceMeta []fleetv1beta
 	}
 }
 
-func workRemovedActual(workName string) func() error {
-	// Wait for the removal of the Work object.
-	return func() error {
-		work := &fleetv1beta1.Work{}
-		if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, work); !errors.IsNotFound(err) && err != nil {
-			return fmt.Errorf("work object still exists or an unexpected error occurred: %w", err)
-		}
-		if controllerutil.ContainsFinalizer(work, fleetv1beta1.WorkFinalizer) {
-			// The Work object is being deleted, but the finalizer is still present.
-			return fmt.Errorf("work object is being deleted, but the finalizer is still present")
-		}
-		return nil
-	}
-}
-
 func deleteWorkObject(workName, memberClusterReservedNSName string) {
 	// Retrieve the Work object.
 	work := &fleetv1beta1.Work{
@@ -932,7 +895,7 @@ var _ = Describe("applying manifests", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -1191,7 +1154,7 @@ var _ = Describe("applying manifests", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt to verify its deletion.
@@ -1388,7 +1351,7 @@ var _ = Describe("applying manifests", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -1584,7 +1547,7 @@ var _ = Describe("applying manifests", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -1739,7 +1702,7 @@ var _ = Describe("applying manifests", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -1999,7 +1962,7 @@ var _ = Describe("work applier garbage collection", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, 2*time.Minute, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// Ensure that the Deployment object still exists.
@@ -2319,7 +2282,7 @@ var _ = Describe("work applier garbage collection", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, 2*time.Minute, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// Ensure that the ClusterRole object still exists.
@@ -2636,7 +2599,7 @@ var _ = Describe("work applier garbage collection", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, 2*time.Minute, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// Ensure that the Deployment object still exists.
@@ -2834,7 +2797,7 @@ var _ = Describe("drift detection and takeover", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -3100,7 +3063,7 @@ var _ = Describe("drift detection and takeover", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -3378,7 +3341,7 @@ var _ = Describe("drift detection and takeover", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -3796,7 +3759,7 @@ var _ = Describe("drift detection and takeover", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -4193,7 +4156,7 @@ var _ = Describe("drift detection and takeover", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -4431,7 +4394,7 @@ var _ = Describe("drift detection and takeover", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -4689,7 +4652,7 @@ var _ = Describe("drift detection and takeover", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -5050,7 +5013,7 @@ var _ = Describe("drift detection and takeover", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -5328,7 +5291,7 @@ var _ = Describe("drift detection and takeover", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -5510,7 +5473,7 @@ var _ = Describe("drift detection and takeover", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -6097,7 +6060,7 @@ var _ = Describe("drift detection and takeover", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -6203,7 +6166,7 @@ var _ = Describe("report diff", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -6531,7 +6494,7 @@ var _ = Describe("report diff", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -6746,7 +6709,7 @@ var _ = Describe("report diff", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -6886,7 +6849,7 @@ var _ = Describe("report diff", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -7152,7 +7115,7 @@ var _ = Describe("report diff", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -7609,7 +7572,7 @@ var _ = Describe("report diff", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -7975,7 +7938,7 @@ var _ = Describe("handling different apply strategies", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -8236,7 +8199,7 @@ var _ = Describe("handling different apply strategies", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -8621,7 +8584,7 @@ var _ = Describe("handling different apply strategies", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -9047,7 +9010,7 @@ var _ = Describe("negative cases", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -9194,7 +9157,7 @@ var _ = Describe("negative cases", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -9623,7 +9586,7 @@ var _ = Describe("negative cases", func() {
 			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace

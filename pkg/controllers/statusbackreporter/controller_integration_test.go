@@ -32,10 +32,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
+	testutilsactuals "github.com/kubefleet-dev/kubefleet/test/utils/actuals"
+	testutilsresource "github.com/kubefleet-dev/kubefleet/test/utils/resource"
 )
 
 const (
@@ -70,41 +71,15 @@ var (
 	}
 )
 
-// createWorkObject creates a new Work object with the given name, manifests, and apply strategy.
-func createWorkObject(workName, memberClusterReservedNSName, placementObjName string, reportBackStrategy *placementv1beta1.ReportBackStrategy, rawManifestJSON ...[]byte) {
-	manifests := make([]placementv1beta1.Manifest, len(rawManifestJSON))
-	for idx := range rawManifestJSON {
-		manifests[idx] = placementv1beta1.Manifest{
-			RawExtension: runtime.RawExtension{
-				Raw: rawManifestJSON[idx],
-			},
-		}
-	}
-
-	work := &placementv1beta1.Work{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      workName,
-			Namespace: memberClusterReservedNSName,
-			Labels: map[string]string{
-				placementv1beta1.PlacementTrackingLabel: placementObjName,
-			},
-		},
-		Spec: placementv1beta1.WorkSpec{
-			Workload: placementv1beta1.WorkloadTemplate{
-				Manifests: manifests,
-			},
-			ReportBackStrategy: reportBackStrategy,
-		},
-	}
+// createWorkObject creates a new Work object with the given work name/namespace, placement object name/namespace, report back strategy, and raw manifest JSONs.
+func createWorkObject(workName, memberClusterReservedNSName, placementObjName, placementObjNSName string, reportBackStrategy *placementv1beta1.ReportBackStrategy, rawManifestJSON ...[]byte) {
+	work := testutilsresource.WorkObjectForTest(workName, memberClusterReservedNSName, placementObjName, placementObjNSName, nil, reportBackStrategy, rawManifestJSON...)
 	Expect(hubClient.Create(ctx, work)).To(Succeed())
 }
 
 func marshalK8sObjJSON(obj runtime.Object) []byte {
-	unstructuredObjMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
-	Expect(err).To(BeNil(), "Failed to convert the object to an unstructured object")
-	unstructuredObj := &unstructured.Unstructured{Object: unstructuredObjMap}
-	json, err := unstructuredObj.MarshalJSON()
-	Expect(err).To(BeNil(), "Failed to marshal the unstructured object to JSON")
+	json, err := testutilsresource.MarshalRuntimeObjToJSONForTest(obj)
+	Expect(err).To(BeNil(), "Failed to marshal the k8s object to JSON")
 	return json
 }
 
@@ -125,21 +100,6 @@ func prepareStatusWrapperData(obj runtime.Object) ([]byte, error) {
 	return statusBackReportingWrapperData, nil
 }
 
-func workObjectRemovedActual(workName string) func() error {
-	// Wait for the removal of the Work object.
-	return func() error {
-		work := &placementv1beta1.Work{}
-		if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName}, work); !errors.IsNotFound(err) && err != nil {
-			return fmt.Errorf("work object still exists or an unexpected error occurred: %w", err)
-		}
-		if controllerutil.ContainsFinalizer(work, placementv1beta1.WorkFinalizer) {
-			// The Work object is being deleted, but the finalizer is still present.
-			return fmt.Errorf("work object is being deleted, but the finalizer is still present")
-		}
-		return nil
-	}
-}
-
 func ensureWorkObjectDeletion(workName string) {
 	// Retrieve the Work object.
 	work := &placementv1beta1.Work{
@@ -150,7 +110,7 @@ func ensureWorkObjectDeletion(workName string) {
 	}
 	Expect(hubClient.Delete(ctx, work)).To(Succeed(), "Failed to delete the Work object")
 
-	workObjRemovedActual := workObjectRemovedActual(workName)
+	workObjRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName)
 	Eventually(workObjRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove work object")
 }
 
@@ -252,7 +212,7 @@ var _ = Describe("back-reporting status", func() {
 				Type:        placementv1beta1.ReportBackStrategyTypeMirror,
 				Destination: ptr.To(placementv1beta1.ReportBackDestinationOriginalResource),
 			}
-			createWorkObject(workName, memberReservedNSName, crpName, reportBackStrategy, nsJSON, deployJSON)
+			createWorkObject(workName, memberReservedNSName, crpName, "", reportBackStrategy, nsJSON, deployJSON)
 		})
 
 		It("can update CRP status", func() {
