@@ -18,17 +18,23 @@ package workapplier
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -2026,6 +2032,887 @@ func TestSetWorkDiffReportedCondition(t *testing.T) {
 				ignoreFieldConditionLTTMsg, cmpopts.EquateEmpty(),
 			); diff != "" {
 				t.Errorf("set work status conditions mismatches (-got, +want):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestBackReportStatus tests the backReportStatus method.
+func TestBackReportStatus(t *testing.T) {
+	workRef := klog.ObjectRef{
+		Name:      workName,
+		Namespace: memberReservedNSName1,
+	}
+	now := metav1.Now()
+
+	deployWithStatus := deploy.DeepCopy()
+	deployWithStatus.Status = appsv1.DeploymentStatus{
+		ObservedGeneration:  2,
+		Replicas:            5,
+		UpdatedReplicas:     5,
+		ReadyReplicas:       5,
+		AvailableReplicas:   5,
+		UnavailableReplicas: 0,
+		Conditions: []appsv1.DeploymentCondition{
+			{
+				Type:   appsv1.DeploymentAvailable,
+				Status: corev1.ConditionTrue,
+			},
+		},
+	}
+	deployStatusWrapperMap := map[string]interface{}{
+		"apiVersion": "apps/v1",
+		"kind":       "Deployment",
+		"status":     deployWithStatus.Status,
+	}
+	deployStatusWrapperBytes, _ := json.Marshal(deployStatusWrapperMap)
+
+	deployWithStatusBfr := deploy.DeepCopy()
+	deployWithStatusBfr.Status = appsv1.DeploymentStatus{
+		ObservedGeneration:  1,
+		Replicas:            4,
+		UpdatedReplicas:     1,
+		ReadyReplicas:       1,
+		AvailableReplicas:   1,
+		UnavailableReplicas: 3,
+		Conditions: []appsv1.DeploymentCondition{
+			{
+				Type:   appsv1.DeploymentAvailable,
+				Status: corev1.ConditionFalse,
+			},
+			{
+				Type:   appsv1.DeploymentProgressing,
+				Status: corev1.ConditionTrue,
+			},
+		},
+	}
+	deployStatusWrapperMapBfr := map[string]interface{}{
+		"apiVersion": "apps/v1",
+		"kind":       "Deployment",
+		"status":     deployWithStatusBfr.Status,
+	}
+	deployStatusWrapperBytesBfr, _ := json.Marshal(deployStatusWrapperMapBfr)
+
+	testCases := []struct {
+		name               string
+		manifestCond       *fleetv1beta1.ManifestCondition
+		inMemberClusterObj *unstructured.Unstructured
+		// The placeholder is added here to help verify the integrity of backported
+		// status by unmarshalling the data into its original data structure (e.g.,
+		// a Kubernetes Deployment).
+		objPlaceholder   client.Object
+		wantManifestCond *fleetv1beta1.ManifestCondition
+		wantIgnored      bool
+	}{
+		{
+			name:               "object with status",
+			manifestCond:       &fleetv1beta1.ManifestCondition{},
+			inMemberClusterObj: toUnstructured(t, deployWithStatus),
+			objPlaceholder:     deploy.DeepCopy(),
+			wantManifestCond: &fleetv1beta1.ManifestCondition{
+				BackReportedStatus: &fleetv1beta1.BackReportedStatus{
+					ObservedStatus: runtime.RawExtension{
+						Raw: deployStatusWrapperBytes,
+					},
+					ObservationTime: now,
+				},
+			},
+		},
+		{
+			name: "object with status, overwriting previous back-reported status",
+			manifestCond: &fleetv1beta1.ManifestCondition{
+				BackReportedStatus: &fleetv1beta1.BackReportedStatus{
+					ObservedStatus: runtime.RawExtension{
+						Raw: deployStatusWrapperBytesBfr,
+					},
+					ObservationTime: metav1.Time{
+						Time: now.Add(-1 * time.Minute),
+					},
+				},
+			},
+			inMemberClusterObj: toUnstructured(t, deployWithStatus),
+			objPlaceholder:     deploy.DeepCopy(),
+			wantManifestCond: &fleetv1beta1.ManifestCondition{
+				BackReportedStatus: &fleetv1beta1.BackReportedStatus{
+					ObservedStatus: runtime.RawExtension{
+						Raw: deployStatusWrapperBytes,
+					},
+					ObservationTime: now,
+				},
+			},
+		},
+		{
+			name:               "object with no status",
+			manifestCond:       &fleetv1beta1.ManifestCondition{},
+			inMemberClusterObj: toUnstructured(t, configMap.DeepCopy()),
+			wantManifestCond:   &fleetv1beta1.ManifestCondition{},
+			wantIgnored:        true,
+		},
+		// Normally this case will never occur.
+		{
+			name:             "no object found on the member cluster side",
+			manifestCond:     &fleetv1beta1.ManifestCondition{},
+			wantManifestCond: &fleetv1beta1.ManifestCondition{},
+			wantIgnored:      true,
+		},
+		// Normally this case will never occur.
+		{
+			name:               "object found on the member cluster side but has no data",
+			manifestCond:       &fleetv1beta1.ManifestCondition{},
+			inMemberClusterObj: &unstructured.Unstructured{},
+			wantManifestCond:   &fleetv1beta1.ManifestCondition{},
+			wantIgnored:        true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			backReportStatus(tc.inMemberClusterObj, tc.manifestCond, now, workRef)
+
+			if tc.wantIgnored {
+				if tc.manifestCond.BackReportedStatus != nil {
+					t.Fatalf("backReportStatus() reported status data unexpectedly")
+					return
+				}
+				return
+			}
+
+			// The test spec here attempts to re-build the status instead of directly
+			// comparing the Raw bytes, as the JSON marshalling ops are not guaranteed
+			// to produce deterministic results (e.g., the order of object keys might vary
+			// on different unmarshalling attempts, even though the data remains the same).
+			backReportedStatusBytes := tc.manifestCond.BackReportedStatus.ObservedStatus.Raw
+			if err := json.Unmarshal(backReportedStatusBytes, tc.objPlaceholder); err != nil {
+				t.Fatalf("back reported data unmarshalling err: %v", err)
+			}
+			backReportedStatusUnstructured := toUnstructured(t, tc.objPlaceholder)
+			// The test spec here does not verify the API version and Kind info as they
+			// are tracked just for structural integrity reasons; the information is not
+			// actually in use.
+			if diff := cmp.Diff(backReportedStatusUnstructured.Object["status"], tc.inMemberClusterObj.Object["status"]); diff != "" {
+				t.Errorf("backReportStatus() manifestCond diffs (-got, +want):\n%s", diff)
+			}
+
+			if !cmp.Equal(tc.manifestCond.BackReportedStatus.ObservationTime, now) {
+				t.Errorf("backReportStatus() observed timestamp not equal, got %v, want %v", tc.manifestCond.BackReportedStatus.ObservationTime, now)
+			}
+		})
+	}
+}
+
+// TestTrimWorkStatusDataWhenOversized tests the trimWorkStatusDataWhenOversized function.
+func TestTrimWorkStatusDataWhenOversized(t *testing.T) {
+	now := metav1.Now()
+
+	testCases := []struct {
+		name           string
+		work           *fleetv1beta1.Work
+		wantWorkStatus fleetv1beta1.WorkStatus
+	}{
+		{
+			name: "no drift/diff data, no back-reported status",
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      workName,
+					Namespace: memberReservedNSName1,
+				},
+				Status: fleetv1beta1.WorkStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   fleetv1beta1.WorkConditionTypeApplied,
+							Status: metav1.ConditionTrue,
+							Reason: condition.WorkAllManifestsAppliedReason,
+						},
+						{
+							Type:   fleetv1beta1.WorkConditionTypeAvailable,
+							Status: metav1.ConditionTrue,
+							Reason: condition.WorkAllManifestsAvailableReason,
+						},
+					},
+					ManifestConditions: []fleetv1beta1.ManifestCondition{
+						{
+							Identifier: fleetv1beta1.WorkResourceIdentifier{
+								Ordinal:   0,
+								Group:     "",
+								Version:   "v1",
+								Kind:      "Namespace",
+								Namespace: nsName,
+							},
+							Conditions: []metav1.Condition{
+								{
+									Type:   fleetv1beta1.WorkConditionTypeApplied,
+									Status: metav1.ConditionTrue,
+									Reason: string(ApplyOrReportDiffResTypeApplied),
+								},
+								{
+									Type:   fleetv1beta1.WorkConditionTypeAvailable,
+									Status: metav1.ConditionTrue,
+									Reason: string(AvailabilityResultTypeAvailable),
+								},
+							},
+						},
+					},
+				},
+			},
+			wantWorkStatus: fleetv1beta1.WorkStatus{
+				Conditions: []metav1.Condition{
+					{
+						Type:   fleetv1beta1.WorkConditionTypeApplied,
+						Status: metav1.ConditionTrue,
+						Reason: condition.WorkAllManifestsAppliedReason,
+					},
+					{
+						Type:   fleetv1beta1.WorkConditionTypeAvailable,
+						Status: metav1.ConditionTrue,
+						Reason: condition.WorkAllManifestsAvailableReason,
+					},
+				},
+				ManifestConditions: []fleetv1beta1.ManifestCondition{
+					{
+						Identifier: fleetv1beta1.WorkResourceIdentifier{
+							Ordinal:   0,
+							Group:     "",
+							Version:   "v1",
+							Kind:      "Namespace",
+							Namespace: nsName,
+						},
+						Conditions: []metav1.Condition{
+							{
+								Type:   fleetv1beta1.WorkConditionTypeApplied,
+								Status: metav1.ConditionTrue,
+								Reason: string(ApplyOrReportDiffResTypeApplied),
+							},
+							{
+								Type:   fleetv1beta1.WorkConditionTypeAvailable,
+								Status: metav1.ConditionTrue,
+								Reason: string(AvailabilityResultTypeAvailable),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "trim drifts (single drift)",
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      workName,
+					Namespace: memberReservedNSName1,
+				},
+				Status: fleetv1beta1.WorkStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   fleetv1beta1.WorkConditionTypeApplied,
+							Status: metav1.ConditionFalse,
+							Reason: condition.WorkNotAllManifestsAppliedReason,
+						},
+					},
+					ManifestConditions: []fleetv1beta1.ManifestCondition{
+						{
+							Identifier: fleetv1beta1.WorkResourceIdentifier{
+								Ordinal:   0,
+								Group:     "apps",
+								Version:   "v1",
+								Kind:      "Deployment",
+								Namespace: deployName,
+							},
+							Conditions: []metav1.Condition{
+								{
+									Type:   fleetv1beta1.WorkConditionTypeApplied,
+									Status: metav1.ConditionFalse,
+									Reason: string(ApplyOrReportDiffResTypeFoundDrifts),
+								},
+							},
+							DriftDetails: &fleetv1beta1.DriftDetails{
+								ObservationTime:                   now,
+								FirstDriftedObservedTime:          now,
+								ObservedInMemberClusterGeneration: 1,
+								ObservedDrifts: []fleetv1beta1.PatchDetail{
+									{
+										Path:          fmt.Sprintf("/metadata/labels/%s", dummyLabelKey),
+										ValueInMember: dummyLabelValue2,
+										ValueInHub:    dummyLabelValue1,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantWorkStatus: fleetv1beta1.WorkStatus{
+				Conditions: []metav1.Condition{
+					{
+						Type:   fleetv1beta1.WorkConditionTypeApplied,
+						Status: metav1.ConditionFalse,
+						Reason: condition.WorkNotAllManifestsAppliedReason,
+					},
+				},
+				ManifestConditions: []fleetv1beta1.ManifestCondition{
+					{
+						Identifier: fleetv1beta1.WorkResourceIdentifier{
+							Ordinal:   0,
+							Group:     "apps",
+							Version:   "v1",
+							Kind:      "Deployment",
+							Namespace: deployName,
+						},
+						Conditions: []metav1.Condition{
+							{
+								Type:   fleetv1beta1.WorkConditionTypeApplied,
+								Status: metav1.ConditionFalse,
+								Reason: string(ApplyOrReportDiffResTypeFoundDrifts),
+							},
+						},
+						DriftDetails: &fleetv1beta1.DriftDetails{
+							ObservationTime:                   now,
+							FirstDriftedObservedTime:          now,
+							ObservedInMemberClusterGeneration: 1,
+							ObservedDrifts: []fleetv1beta1.PatchDetail{
+								{
+									Path:          fmt.Sprintf("/metadata/labels/%s", dummyLabelKey),
+									ValueInMember: "(omitted)",
+									ValueInHub:    "(omitted)",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "trim drifts (multiple drifts)",
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      workName,
+					Namespace: memberReservedNSName1,
+				},
+				Status: fleetv1beta1.WorkStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   fleetv1beta1.WorkConditionTypeApplied,
+							Status: metav1.ConditionFalse,
+							Reason: condition.WorkNotAllManifestsAppliedReason,
+						},
+					},
+					ManifestConditions: []fleetv1beta1.ManifestCondition{
+						{
+							Identifier: fleetv1beta1.WorkResourceIdentifier{
+								Ordinal:   0,
+								Group:     "apps",
+								Version:   "v1",
+								Kind:      "Deployment",
+								Namespace: deployName,
+							},
+							Conditions: []metav1.Condition{
+								{
+									Type:   fleetv1beta1.WorkConditionTypeApplied,
+									Status: metav1.ConditionFalse,
+									Reason: string(ApplyOrReportDiffResTypeFoundDrifts),
+								},
+							},
+							DriftDetails: &fleetv1beta1.DriftDetails{
+								ObservationTime:                   now,
+								FirstDriftedObservedTime:          now,
+								ObservedInMemberClusterGeneration: 1,
+								ObservedDrifts: []fleetv1beta1.PatchDetail{
+									{
+										Path:          fmt.Sprintf("/metadata/labels/%s-1", dummyLabelKey),
+										ValueInMember: dummyLabelValue2,
+										ValueInHub:    dummyLabelValue1,
+									},
+									{
+										Path:          fmt.Sprintf("/metadata/labels/%s-2", dummyLabelKey),
+										ValueInMember: dummyLabelValue2,
+										ValueInHub:    dummyLabelValue1,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantWorkStatus: fleetv1beta1.WorkStatus{
+				Conditions: []metav1.Condition{
+					{
+						Type:   fleetv1beta1.WorkConditionTypeApplied,
+						Status: metav1.ConditionFalse,
+						Reason: condition.WorkNotAllManifestsAppliedReason,
+					},
+				},
+				ManifestConditions: []fleetv1beta1.ManifestCondition{
+					{
+						Identifier: fleetv1beta1.WorkResourceIdentifier{
+							Ordinal:   0,
+							Group:     "apps",
+							Version:   "v1",
+							Kind:      "Deployment",
+							Namespace: deployName,
+						},
+						Conditions: []metav1.Condition{
+							{
+								Type:   fleetv1beta1.WorkConditionTypeApplied,
+								Status: metav1.ConditionFalse,
+								Reason: string(ApplyOrReportDiffResTypeFoundDrifts),
+							},
+						},
+						DriftDetails: &fleetv1beta1.DriftDetails{
+							ObservationTime:                   now,
+							FirstDriftedObservedTime:          now,
+							ObservedInMemberClusterGeneration: 1,
+							ObservedDrifts: []fleetv1beta1.PatchDetail{
+								{
+									Path:          fmt.Sprintf("/metadata/labels/%s-1 and %d more path(s)", dummyLabelKey, 1),
+									ValueInMember: "(omitted)",
+									ValueInHub:    "(omitted)",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "trim diffs (single diff)",
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      workName,
+					Namespace: memberReservedNSName1,
+				},
+				Status: fleetv1beta1.WorkStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   fleetv1beta1.WorkConditionTypeDiffReported,
+							Status: metav1.ConditionTrue,
+							Reason: condition.WorkAllManifestsDiffReportedReason,
+						},
+					},
+					ManifestConditions: []fleetv1beta1.ManifestCondition{
+						{
+							Identifier: fleetv1beta1.WorkResourceIdentifier{
+								Ordinal:   0,
+								Group:     "apps",
+								Version:   "v1",
+								Kind:      "Deployment",
+								Namespace: deployName,
+							},
+							Conditions: []metav1.Condition{
+								{
+									Type:   fleetv1beta1.WorkConditionTypeDiffReported,
+									Status: metav1.ConditionTrue,
+									Reason: string(ApplyOrReportDiffResTypeFoundDiff),
+								},
+							},
+							DiffDetails: &fleetv1beta1.DiffDetails{
+								ObservationTime:                   now,
+								FirstDiffedObservedTime:           now,
+								ObservedInMemberClusterGeneration: ptr.To(int64(1)),
+								ObservedDiffs: []fleetv1beta1.PatchDetail{
+									{
+										Path:          fmt.Sprintf("/metadata/labels/%s", dummyLabelKey),
+										ValueInMember: dummyLabelValue2,
+										ValueInHub:    dummyLabelValue1,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantWorkStatus: fleetv1beta1.WorkStatus{
+				Conditions: []metav1.Condition{
+					{
+						Type:   fleetv1beta1.WorkConditionTypeDiffReported,
+						Status: metav1.ConditionTrue,
+						Reason: condition.WorkAllManifestsDiffReportedReason,
+					},
+				},
+				ManifestConditions: []fleetv1beta1.ManifestCondition{
+					{
+						Identifier: fleetv1beta1.WorkResourceIdentifier{
+							Ordinal:   0,
+							Group:     "apps",
+							Version:   "v1",
+							Kind:      "Deployment",
+							Namespace: deployName,
+						},
+						Conditions: []metav1.Condition{
+							{
+								Type:   fleetv1beta1.WorkConditionTypeDiffReported,
+								Status: metav1.ConditionTrue,
+								Reason: string(ApplyOrReportDiffResTypeFoundDiff),
+							},
+						},
+						DiffDetails: &fleetv1beta1.DiffDetails{
+							ObservationTime:                   now,
+							FirstDiffedObservedTime:           now,
+							ObservedInMemberClusterGeneration: ptr.To(int64(1)),
+							ObservedDiffs: []fleetv1beta1.PatchDetail{
+								{
+									Path:          fmt.Sprintf("/metadata/labels/%s", dummyLabelKey),
+									ValueInMember: "(omitted)",
+									ValueInHub:    "(omitted)",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "trim diffs (multiple diffs)",
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      workName,
+					Namespace: memberReservedNSName1,
+				},
+				Status: fleetv1beta1.WorkStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   fleetv1beta1.WorkConditionTypeDiffReported,
+							Status: metav1.ConditionTrue,
+							Reason: condition.WorkAllManifestsDiffReportedReason,
+						},
+					},
+					ManifestConditions: []fleetv1beta1.ManifestCondition{
+						{
+							Identifier: fleetv1beta1.WorkResourceIdentifier{
+								Ordinal:   0,
+								Group:     "apps",
+								Version:   "v1",
+								Kind:      "Deployment",
+								Namespace: deployName,
+							},
+							Conditions: []metav1.Condition{
+								{
+									Type:   fleetv1beta1.WorkConditionTypeDiffReported,
+									Status: metav1.ConditionTrue,
+									Reason: string(ApplyOrReportDiffResTypeFoundDiff),
+								},
+							},
+							DiffDetails: &fleetv1beta1.DiffDetails{
+								ObservationTime:                   now,
+								FirstDiffedObservedTime:           now,
+								ObservedInMemberClusterGeneration: ptr.To(int64(1)),
+								ObservedDiffs: []fleetv1beta1.PatchDetail{
+									{
+										Path:          fmt.Sprintf("/metadata/labels/%s-1", dummyLabelKey),
+										ValueInMember: dummyLabelValue2,
+										ValueInHub:    dummyLabelValue1,
+									},
+									{
+										Path:          fmt.Sprintf("/metadata/labels/%s-2", dummyLabelKey),
+										ValueInMember: dummyLabelValue2,
+										ValueInHub:    dummyLabelValue1,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			wantWorkStatus: fleetv1beta1.WorkStatus{
+				Conditions: []metav1.Condition{
+					{
+						Type:   fleetv1beta1.WorkConditionTypeDiffReported,
+						Status: metav1.ConditionTrue,
+						Reason: condition.WorkAllManifestsDiffReportedReason,
+					},
+				},
+				ManifestConditions: []fleetv1beta1.ManifestCondition{
+					{
+						Identifier: fleetv1beta1.WorkResourceIdentifier{
+							Ordinal:   0,
+							Group:     "apps",
+							Version:   "v1",
+							Kind:      "Deployment",
+							Namespace: deployName,
+						},
+						Conditions: []metav1.Condition{
+							{
+								Type:   fleetv1beta1.WorkConditionTypeDiffReported,
+								Status: metav1.ConditionTrue,
+								Reason: string(ApplyOrReportDiffResTypeFoundDiff),
+							},
+						},
+						DiffDetails: &fleetv1beta1.DiffDetails{
+							ObservationTime:                   now,
+							FirstDiffedObservedTime:           now,
+							ObservedInMemberClusterGeneration: ptr.To(int64(1)),
+							ObservedDiffs: []fleetv1beta1.PatchDetail{
+								{
+									Path:          fmt.Sprintf("/metadata/labels/%s-1 and %d more path(s)", dummyLabelKey, 1),
+									ValueInMember: "(omitted)",
+									ValueInHub:    "(omitted)",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "trim back-reported status",
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      workName,
+					Namespace: memberReservedNSName1,
+				},
+				Status: fleetv1beta1.WorkStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   fleetv1beta1.WorkConditionTypeApplied,
+							Status: metav1.ConditionTrue,
+							Reason: condition.WorkAllManifestsAppliedReason,
+						},
+						{
+							Type:   fleetv1beta1.WorkConditionTypeAvailable,
+							Status: metav1.ConditionTrue,
+							Reason: condition.WorkAllManifestsAvailableReason,
+						},
+					},
+					ManifestConditions: []fleetv1beta1.ManifestCondition{
+						{
+							Identifier: fleetv1beta1.WorkResourceIdentifier{
+								Ordinal:   0,
+								Group:     "apps",
+								Version:   "v1",
+								Kind:      "Deployment",
+								Namespace: deployName,
+							},
+							Conditions: []metav1.Condition{
+								{
+									Type:   fleetv1beta1.WorkConditionTypeApplied,
+									Status: metav1.ConditionTrue,
+									Reason: string(ApplyOrReportDiffResTypeApplied),
+								},
+								{
+									Type:   fleetv1beta1.WorkConditionTypeAvailable,
+									Status: metav1.ConditionTrue,
+									Reason: string(AvailabilityResultTypeAvailable),
+								},
+							},
+							BackReportedStatus: &fleetv1beta1.BackReportedStatus{
+								ObservationTime: now,
+								ObservedStatus: runtime.RawExtension{
+									Raw: []byte(dummyLabelValue1),
+								},
+							},
+						},
+					},
+				},
+			},
+			wantWorkStatus: fleetv1beta1.WorkStatus{
+				Conditions: []metav1.Condition{
+					{
+						Type:   fleetv1beta1.WorkConditionTypeApplied,
+						Status: metav1.ConditionTrue,
+						Reason: condition.WorkAllManifestsAppliedReason,
+					},
+					{
+						Type:   fleetv1beta1.WorkConditionTypeAvailable,
+						Status: metav1.ConditionTrue,
+						Reason: condition.WorkAllManifestsAvailableReason,
+					},
+				},
+				ManifestConditions: []fleetv1beta1.ManifestCondition{
+					{
+						Identifier: fleetv1beta1.WorkResourceIdentifier{
+							Ordinal:   0,
+							Group:     "apps",
+							Version:   "v1",
+							Kind:      "Deployment",
+							Namespace: deployName,
+						},
+						Conditions: []metav1.Condition{
+							{
+								Type:   fleetv1beta1.WorkConditionTypeApplied,
+								Status: metav1.ConditionTrue,
+								Reason: string(ApplyOrReportDiffResTypeApplied),
+							},
+							{
+								Type:   fleetv1beta1.WorkConditionTypeAvailable,
+								Status: metav1.ConditionTrue,
+								Reason: string(AvailabilityResultTypeAvailable),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			trimWorkStatusDataWhenOversized(tc.work)
+			if diff := cmp.Diff(tc.work.Status, tc.wantWorkStatus); diff != "" {
+				t.Errorf("trimmed work status mismatches (-got, +want):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestSetWorkStatusTrimmedCondition tests the setWorkStatusTrimmedCondition function.
+func TestSetWorkStatusTrimmedCondition(t *testing.T) {
+	testCases := []struct {
+		name                     string
+		work                     *fleetv1beta1.Work
+		sizeDeltaBytes           int
+		sizeLimitBytes           int
+		wantWorkStatusConditions []metav1.Condition
+	}{
+		{
+			name: "no trimming needed (size delta <= 0)",
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       workName,
+					Generation: 1,
+				},
+				Status: fleetv1beta1.WorkStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeApplied,
+							Status:             metav1.ConditionTrue,
+							Reason:             condition.WorkAllManifestsAppliedReason,
+							ObservedGeneration: 1,
+						},
+					},
+				},
+			},
+			sizeDeltaBytes: 0,
+			sizeLimitBytes: 1024,
+			wantWorkStatusConditions: []metav1.Condition{
+				{
+					Type:               fleetv1beta1.WorkConditionTypeApplied,
+					Status:             metav1.ConditionTrue,
+					Reason:             condition.WorkAllManifestsAppliedReason,
+					ObservedGeneration: 1,
+				},
+			},
+		},
+		{
+			name: "remove existing StatusTrimmed condition when size delta <= 0",
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       workName,
+					Generation: 2,
+				},
+				Status: fleetv1beta1.WorkStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeApplied,
+							Status:             metav1.ConditionTrue,
+							Reason:             condition.WorkAllManifestsAppliedReason,
+							ObservedGeneration: 2,
+						},
+						{
+							Type:               fleetv1beta1.WorkConditionTypeStatusTrimmed,
+							Status:             metav1.ConditionTrue,
+							Reason:             WorkStatusTrimmedDueToOversizedStatusReason,
+							Message:            fmt.Sprintf(WorkStatusTrimmedDueToOversizedStatusMsgTmpl, 500, 1024),
+							ObservedGeneration: 1,
+						},
+					},
+				},
+			},
+			sizeDeltaBytes: 0,
+			sizeLimitBytes: 1024,
+			wantWorkStatusConditions: []metav1.Condition{
+				{
+					Type:               fleetv1beta1.WorkConditionTypeApplied,
+					Status:             metav1.ConditionTrue,
+					Reason:             condition.WorkAllManifestsAppliedReason,
+					ObservedGeneration: 2,
+				},
+			},
+		},
+		{
+			name: "set StatusTrimmed condition when size delta > 0",
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       workName,
+					Generation: 1,
+				},
+				Status: fleetv1beta1.WorkStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeApplied,
+							Status:             metav1.ConditionTrue,
+							Reason:             condition.WorkAllManifestsAppliedReason,
+							ObservedGeneration: 1,
+						},
+					},
+				},
+			},
+			sizeDeltaBytes: 500,
+			sizeLimitBytes: 1024,
+			wantWorkStatusConditions: []metav1.Condition{
+				{
+					Type:               fleetv1beta1.WorkConditionTypeApplied,
+					Status:             metav1.ConditionTrue,
+					Reason:             condition.WorkAllManifestsAppliedReason,
+					ObservedGeneration: 1,
+				},
+				{
+					Type:               fleetv1beta1.WorkConditionTypeStatusTrimmed,
+					Status:             metav1.ConditionTrue,
+					Reason:             WorkStatusTrimmedDueToOversizedStatusReason,
+					Message:            fmt.Sprintf(WorkStatusTrimmedDueToOversizedStatusMsgTmpl, 500, 1024),
+					ObservedGeneration: 1,
+				},
+			},
+		},
+		{
+			name: "update existing StatusTrimmed condition with new values",
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       workName,
+					Generation: 2,
+				},
+				Status: fleetv1beta1.WorkStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeApplied,
+							Status:             metav1.ConditionTrue,
+							Reason:             condition.WorkAllManifestsAppliedReason,
+							ObservedGeneration: 2,
+						},
+						{
+							Type:               fleetv1beta1.WorkConditionTypeStatusTrimmed,
+							Status:             metav1.ConditionTrue,
+							Reason:             WorkStatusTrimmedDueToOversizedStatusReason,
+							Message:            fmt.Sprintf(WorkStatusTrimmedDueToOversizedStatusMsgTmpl, 200, 1024),
+							ObservedGeneration: 1,
+						},
+					},
+				},
+			},
+			sizeDeltaBytes: 750,
+			sizeLimitBytes: 2048,
+			wantWorkStatusConditions: []metav1.Condition{
+				{
+					Type:               fleetv1beta1.WorkConditionTypeApplied,
+					Status:             metav1.ConditionTrue,
+					Reason:             condition.WorkAllManifestsAppliedReason,
+					ObservedGeneration: 2,
+				},
+				{
+					Type:               fleetv1beta1.WorkConditionTypeStatusTrimmed,
+					Status:             metav1.ConditionTrue,
+					Reason:             WorkStatusTrimmedDueToOversizedStatusReason,
+					Message:            fmt.Sprintf(WorkStatusTrimmedDueToOversizedStatusMsgTmpl, 750, 2048),
+					ObservedGeneration: 2,
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			setWorkStatusTrimmedCondition(tc.work, tc.sizeDeltaBytes, tc.sizeLimitBytes)
+			if diff := cmp.Diff(
+				tc.work.Status.Conditions, tc.wantWorkStatusConditions,
+				ignoreFieldConditionLTTMsg, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("work status conditions mismatches (-got, +want):\n%s", diff)
 			}
 		})
 	}

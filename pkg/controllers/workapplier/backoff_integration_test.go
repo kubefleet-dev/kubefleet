@@ -179,7 +179,7 @@ var _ = Describe("exponential backoff", func() {
 			applyStrategy := &fleetv1beta1.ApplyStrategy{
 				WhenToTakeOver: fleetv1beta1.WhenToTakeOverTypeIfNoDiff,
 			}
-			createWorkObject(workName, memberReservedNSName2, applyStrategy, regularNSJSON)
+			createWorkObject(workName, memberReservedNSName2, applyStrategy, nil, regularNSJSON)
 		})
 
 		// For simplicity reasons, this test case will skip some of the regular apply op result verification
@@ -396,7 +396,7 @@ var _ = Describe("exponential backoff", func() {
 				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeAlways,
 				WhenToApply:      fleetv1beta1.WhenToApplyTypeAlways,
 			}
-			createWorkObject(workName, memberReservedNSName2, applyStrategy, regularNSJSON)
+			createWorkObject(workName, memberReservedNSName2, applyStrategy, nil, regularNSJSON)
 		})
 
 		// For simplicity reasons, this test case will skip some of the regular apply op result verification

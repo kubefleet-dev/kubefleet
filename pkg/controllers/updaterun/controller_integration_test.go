@@ -26,6 +26,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/prometheus/client_golang/prometheus"
 	prometheusclientmodel "github.com/prometheus/client_model/go"
 
 	corev1 "k8s.io/api/core/v1"
@@ -272,6 +273,16 @@ func generateMetricsLabels(
 	}
 }
 
+func generateInitializationSucceededMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+	return &prometheusclientmodel.Metric{
+		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionInitialized),
+			string(metav1.ConditionTrue), condition.UpdateRunInitializeSucceededReason),
+		Gauge: &prometheusclientmodel.Gauge{
+			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+		},
+	}
+}
+
 func generateInitializationFailedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
 		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionInitialized),
@@ -322,6 +333,16 @@ func generateFailedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *p
 	}
 }
 
+func generateStoppedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+	return &prometheusclientmodel.Metric{
+		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionProgressing),
+			string(metav1.ConditionFalse), condition.UpdateRunStoppedReason),
+		Gauge: &prometheusclientmodel.Gauge{
+			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+		},
+	}
+}
+
 func generateSucceededMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
 		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionSucceeded),
@@ -330,6 +351,24 @@ func generateSucceededMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun)
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 		},
 	}
+}
+
+func labelPairsToMap(pairs []*prometheusclientmodel.LabelPair) prometheus.Labels {
+	m := prometheus.Labels{}
+	for _, p := range pairs {
+		m[p.GetName()] = p.GetValue()
+	}
+	return m
+}
+
+func removeMetricFromMetricList(metricList []*prometheusclientmodel.Metric, metricToRemove *prometheusclientmodel.Metric) []*prometheusclientmodel.Metric {
+	var result []*prometheusclientmodel.Metric
+	for _, metric := range metricList {
+		if !cmp.Equal(labelPairsToMap(metric.Label), labelPairsToMap(metricToRemove.Label)) {
+			result = append(result, metric)
+		}
+	}
+	return result
 }
 
 func generateTestClusterStagedUpdateRun() *placementv1beta1.ClusterStagedUpdateRun {
@@ -341,6 +380,7 @@ func generateTestClusterStagedUpdateRun() *placementv1beta1.ClusterStagedUpdateR
 			PlacementName:            testCRPName,
 			ResourceSnapshotIndex:    testResourceSnapshotIndex,
 			StagedUpdateStrategyName: testUpdateStrategyName,
+			State:                    placementv1beta1.StateRun,
 		},
 	}
 }
@@ -505,15 +545,20 @@ func generateTestClusterStagedUpdateStrategy() *placementv1beta1.ClusterStagedUp
 						},
 					},
 					SortingLabelKey: &sortingKey,
-					AfterStageTasks: []placementv1beta1.AfterStageTask{
+					BeforeStageTasks: []placementv1beta1.StageTask{
 						{
-							Type: placementv1beta1.AfterStageTaskTypeTimedWait,
+							Type: placementv1beta1.StageTaskTypeApproval,
+						},
+					},
+					AfterStageTasks: []placementv1beta1.StageTask{
+						{
+							Type: placementv1beta1.StageTaskTypeTimedWait,
 							WaitTime: &metav1.Duration{
 								Duration: time.Second * 4,
 							},
 						},
 						{
-							Type: placementv1beta1.AfterStageTaskTypeApproval,
+							Type: placementv1beta1.StageTaskTypeApproval,
 						},
 					},
 				},
@@ -526,12 +571,17 @@ func generateTestClusterStagedUpdateStrategy() *placementv1beta1.ClusterStagedUp
 						},
 					},
 					// no sortingLabelKey, should sort by cluster name
-					AfterStageTasks: []placementv1beta1.AfterStageTask{
+					BeforeStageTasks: []placementv1beta1.StageTask{
 						{
-							Type: placementv1beta1.AfterStageTaskTypeApproval,
+							Type: placementv1beta1.StageTaskTypeApproval,
+						},
+					},
+					AfterStageTasks: []placementv1beta1.StageTask{
+						{
+							Type: placementv1beta1.StageTaskTypeApproval,
 						},
 						{
-							Type: placementv1beta1.AfterStageTaskTypeTimedWait,
+							Type: placementv1beta1.StageTaskTypeTimedWait,
 							WaitTime: &metav1.Duration{
 								Duration: time.Second * 4,
 							},
@@ -543,7 +593,7 @@ func generateTestClusterStagedUpdateStrategy() *placementv1beta1.ClusterStagedUp
 	}
 }
 
-func generateTestClusterStagedUpdateStrategyWithSingleStage(afterStageTasks []placementv1beta1.AfterStageTask) *placementv1beta1.ClusterStagedUpdateStrategy {
+func generateTestClusterStagedUpdateStrategyWithSingleStage(beforeStageTasks, afterStageTasks []placementv1beta1.StageTask) *placementv1beta1.ClusterStagedUpdateStrategy {
 	return &placementv1beta1.ClusterStagedUpdateStrategy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: testUpdateStrategyName,
@@ -551,9 +601,10 @@ func generateTestClusterStagedUpdateStrategyWithSingleStage(afterStageTasks []pl
 		Spec: placementv1beta1.UpdateStrategySpec{
 			Stages: []placementv1beta1.StageConfig{
 				{
-					Name:            "stage1",
-					LabelSelector:   &metav1.LabelSelector{}, // Select all clusters.
-					AfterStageTasks: afterStageTasks,
+					Name:             "stage1",
+					LabelSelector:    &metav1.LabelSelector{}, // Select all clusters.
+					BeforeStageTasks: beforeStageTasks,
+					AfterStageTasks:  afterStageTasks,
 				},
 			},
 		},
@@ -719,14 +770,14 @@ func generateTrueCondition(obj client.Object, condType any) metav1.Condition {
 			reason = condition.ClusterUpdatingSucceededReason
 		}
 		typeStr = string(cond)
-	case placementv1beta1.AfterStageTaskConditionType:
+	case placementv1beta1.StageTaskConditionType:
 		switch cond {
-		case placementv1beta1.AfterStageTaskConditionWaitTimeElapsed:
+		case placementv1beta1.StageTaskConditionWaitTimeElapsed:
 			reason = condition.AfterStageTaskWaitTimeElapsedReason
-		case placementv1beta1.AfterStageTaskConditionApprovalRequestCreated:
-			reason = condition.AfterStageTaskApprovalRequestCreatedReason
-		case placementv1beta1.AfterStageTaskConditionApprovalRequestApproved:
-			reason = condition.AfterStageTaskApprovalRequestApprovedReason
+		case placementv1beta1.StageTaskConditionApprovalRequestCreated:
+			reason = condition.StageTaskApprovalRequestCreatedReason
+		case placementv1beta1.StageTaskConditionApprovalRequestApproved:
+			reason = condition.StageTaskApprovalRequestApprovedReason
 		}
 		typeStr = string(cond)
 	case placementv1beta1.ApprovalRequestConditionType:
@@ -796,23 +847,14 @@ func generateFalseCondition(obj client.Object, condType any) metav1.Condition {
 	}
 }
 
-func generateFalseProgressingCondition(obj client.Object, condType any, succeeded bool) metav1.Condition {
+func generateFalseProgressingCondition(obj client.Object, condType any, reason string) metav1.Condition {
 	falseCond := generateFalseCondition(obj, condType)
-	reason := ""
-	switch condType {
-	case placementv1beta1.StagedUpdateRunConditionProgressing:
-		if succeeded {
-			reason = condition.UpdateRunSucceededReason
-		} else {
-			reason = condition.UpdateRunFailedReason
-		}
-	case placementv1beta1.StageUpdatingConditionProgressing:
-		if succeeded {
-			reason = condition.StageUpdatingSucceededReason
-		} else {
-			reason = condition.StageUpdatingFailedReason
-		}
-	}
+	falseCond.Reason = reason
+	return falseCond
+}
+
+func generateFalseConditionWithReason(obj client.Object, condType any, reason string) metav1.Condition {
+	falseCond := generateFalseCondition(obj, condType)
 	falseCond.Reason = reason
 	return falseCond
 }

@@ -87,7 +87,7 @@ var _ = Describe("parallel processing with waves", func() {
 			regularPCJSON := marshalK8sObjJSON(regularPC)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, memberReservedNSName3, nil, regularNSJSON, regularPCJSON)
+			createWorkObject(workName, memberReservedNSName3, nil, nil, regularNSJSON, regularPCJSON)
 		})
 
 		// For simplicity reasons, this test case will skip some of the regular apply op result verification
@@ -225,7 +225,7 @@ var _ = Describe("parallel processing with waves", func() {
 			regularCMJSON := marshalK8sObjJSON(regularCM)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, memberReservedNSName3, nil, regularNSJSON, regularCMJSON)
+			createWorkObject(workName, memberReservedNSName3, nil, nil, regularNSJSON, regularCMJSON)
 		})
 
 		// For simplicity reasons, this test case will skip some of the regular apply op result verification
@@ -369,7 +369,7 @@ var _ = Describe("parallel processing with waves", func() {
 			regularRoleJSON := marshalK8sObjJSON(regularRole)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, memberReservedNSName3, nil, regularNSJSON, regularRoleJSON)
+			createWorkObject(workName, memberReservedNSName3, nil, nil, regularNSJSON, regularRoleJSON)
 		})
 
 		// For simplicity reasons, this test case will skip some of the regular apply op result verification
@@ -1115,7 +1115,7 @@ var _ = Describe("parallel processing with waves", func() {
 			})
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, memberReservedNSName3, nil, allManifestJSONByteArrs...)
+			createWorkObject(workName, memberReservedNSName3, nil, nil, allManifestJSONByteArrs...)
 		})
 
 		// For simplicity reasons, this test case will skip some of the regular apply op result verification

@@ -19,6 +19,7 @@ package workapplier
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -62,6 +63,7 @@ var (
 	ignoreFieldConditionLTTMsg         = cmpopts.IgnoreFields(metav1.Condition{}, "LastTransitionTime", "Message")
 	ignoreDriftDetailsObsTime          = cmpopts.IgnoreFields(fleetv1beta1.DriftDetails{}, "ObservationTime", "FirstDriftedObservedTime")
 	ignoreDiffDetailsObsTime           = cmpopts.IgnoreFields(fleetv1beta1.DiffDetails{}, "ObservationTime", "FirstDiffedObservedTime")
+	ignoreBackReportedStatus           = cmpopts.IgnoreFields(fleetv1beta1.ManifestCondition{}, "BackReportedStatus")
 
 	lessFuncPatchDetail = func(a, b fleetv1beta1.PatchDetail) bool {
 		return a.Path < b.Path
@@ -78,8 +80,8 @@ var (
 )
 
 // createWorkObject creates a new Work object with the given work name/namespace, apply strategy, and raw manifest JSONs.
-func createWorkObject(workName, memberClusterReservedNSName string, applyStrategy *fleetv1beta1.ApplyStrategy, rawManifestJSON ...[]byte) {
-	work := testutilsresource.WorkObjectForTest(workName, memberClusterReservedNSName, "", "", applyStrategy, nil, rawManifestJSON...)
+func createWorkObject(workName, memberClusterReservedNSName string, applyStrategy *fleetv1beta1.ApplyStrategy, reportBackStrategy *fleetv1beta1.ReportBackStrategy, rawManifestJSON ...[]byte) {
+	work := testutilsresource.WorkObjectForTest(workName, memberClusterReservedNSName, "", "", applyStrategy, reportBackStrategy, rawManifestJSON...)
 	Expect(hubClient.Create(ctx, work)).To(Succeed())
 }
 
@@ -482,6 +484,9 @@ func workStatusUpdated(
 			work.Status, wantWorkStatus,
 			ignoreFieldConditionLTTMsg,
 			ignoreDiffDetailsObsTime, ignoreDriftDetailsObsTime,
+			// Back-reported status must be checked separately, as the serialization/deserialization process
+			// does not guarantee key order in objects.
+			ignoreBackReportedStatus,
 			cmpopts.SortSlices(lessFuncPatchDetail),
 		); diff != "" {
 			return fmt.Errorf("work status diff (-got, +want):\n%s", diff)
@@ -744,7 +749,7 @@ var _ = Describe("applying manifests", func() {
 			regularDeployJSON := marshalK8sObjJSON(regularDeploy)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, nil, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -926,7 +931,7 @@ var _ = Describe("applying manifests", func() {
 			regularDeployJSON := marshalK8sObjJSON(regularDeploy)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, nil, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -1192,7 +1197,7 @@ var _ = Describe("applying manifests", func() {
 			regularDeployJSON := marshalK8sObjJSON(regularDeploy)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, nil, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -1392,7 +1397,7 @@ var _ = Describe("applying manifests", func() {
 			regularConfigMapJSON := marshalK8sObjJSON(regularConfigMap)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, decodingErredDeployJSON, regularConfigMapJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, nil, regularNSJSON, decodingErredDeployJSON, regularConfigMapJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -1580,7 +1585,7 @@ var _ = Describe("applying manifests", func() {
 			malformedConfigMapJSON := marshalK8sObjJSON(malformedConfigMap)
 
 			// Create a new Work object with all the manifest JSONs and proper apply strategy.
-			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, malformedConfigMapJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, nil, regularNSJSON, malformedConfigMapJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -1741,7 +1746,7 @@ var _ = Describe("work applier garbage collection", func() {
 			regularDeployJSON := marshalK8sObjJSON(regularDeploy)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, memberReservedNSName1, &fleetv1beta1.ApplyStrategy{AllowCoOwnership: true}, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, &fleetv1beta1.ApplyStrategy{AllowCoOwnership: true}, nil, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -2006,7 +2011,7 @@ var _ = Describe("work applier garbage collection", func() {
 			regularClusterRoleJSON := marshalK8sObjJSON(regularClusterRole)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, memberReservedNSName1, &fleetv1beta1.ApplyStrategy{AllowCoOwnership: true}, regularNSJSON, regularDeployJSON, regularClusterRoleJSON)
+			createWorkObject(workName, memberReservedNSName1, &fleetv1beta1.ApplyStrategy{AllowCoOwnership: true}, nil, regularNSJSON, regularDeployJSON, regularClusterRoleJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -2325,7 +2330,7 @@ var _ = Describe("work applier garbage collection", func() {
 			regularClusterRoleJSON := marshalK8sObjJSON(regularClusterRole)
 
 			// Create a new Work object with all the manifest JSONs.
-			createWorkObject(workName, memberReservedNSName1, &fleetv1beta1.ApplyStrategy{AllowCoOwnership: true}, regularNSJSON, regularDeployJSON, regularClusterRoleJSON)
+			createWorkObject(workName, memberReservedNSName1, &fleetv1beta1.ApplyStrategy{AllowCoOwnership: true}, nil, regularNSJSON, regularDeployJSON, regularClusterRoleJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -2648,7 +2653,7 @@ var _ = Describe("drift detection and takeover", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeIfNoDiff,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -2848,7 +2853,7 @@ var _ = Describe("drift detection and takeover", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeIfNoDiff,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -3113,7 +3118,7 @@ var _ = Describe("drift detection and takeover", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypeFullComparison,
 				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeIfNoDiff,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -3376,7 +3381,7 @@ var _ = Describe("drift detection and takeover", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				WhenToApply:      fleetv1beta1.WhenToApplyTypeIfNotDrifted,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -3803,7 +3808,7 @@ var _ = Describe("drift detection and takeover", func() {
 				WhenToApply:      fleetv1beta1.WhenToApplyTypeIfNotDrifted,
 				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeAlways,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularJobJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON, regularJobJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -4186,7 +4191,7 @@ var _ = Describe("drift detection and takeover", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypeFullComparison,
 				WhenToApply:      fleetv1beta1.WhenToApplyTypeIfNotDrifted,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -4426,7 +4431,7 @@ var _ = Describe("drift detection and takeover", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				WhenToApply:      fleetv1beta1.WhenToApplyTypeAlways,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -4683,7 +4688,7 @@ var _ = Describe("drift detection and takeover", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				WhenToApply:      fleetv1beta1.WhenToApplyTypeIfNotDrifted,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, marshalK8sObjJSON(regularNS))
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, marshalK8sObjJSON(regularNS))
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -5044,7 +5049,7 @@ var _ = Describe("drift detection and takeover", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				WhenToApply:      fleetv1beta1.WhenToApplyTypeIfNotDrifted,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, marshalK8sObjJSON(regularNS))
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, marshalK8sObjJSON(regularNS))
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -5329,7 +5334,7 @@ var _ = Describe("drift detection and takeover", func() {
 			applyStrategy := &fleetv1beta1.ApplyStrategy{
 				WhenToTakeOver: fleetv1beta1.WhenToTakeOverTypeNever,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, marshalK8sObjJSON(regularDeploy))
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON, marshalK8sObjJSON(regularDeploy))
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -5515,7 +5520,7 @@ var _ = Describe("drift detection and takeover", func() {
 				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeNever,
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularCMJSON, regularSecretJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON, regularCMJSON, regularSecretJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -6089,7 +6094,7 @@ var _ = Describe("report diff", func() {
 			applyStrategy := &fleetv1beta1.ApplyStrategy{
 				Type: fleetv1beta1.ApplyStrategyTypeReportDiff,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -6208,7 +6213,7 @@ var _ = Describe("report diff", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				Type:             fleetv1beta1.ApplyStrategyTypeReportDiff,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -6536,7 +6541,7 @@ var _ = Describe("report diff", func() {
 				Type:             fleetv1beta1.ApplyStrategyTypeReportDiff,
 				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeNever,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -6745,7 +6750,7 @@ var _ = Describe("report diff", func() {
 			applyStrategy := &fleetv1beta1.ApplyStrategy{
 				Type: fleetv1beta1.ApplyStrategyTypeReportDiff,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, malformedConfigMapJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON, malformedConfigMapJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -6898,7 +6903,7 @@ var _ = Describe("report diff", func() {
 				Type:             fleetv1beta1.ApplyStrategyTypeReportDiff,
 				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeNever,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, updatedJSONJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON, updatedJSONJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -7164,7 +7169,7 @@ var _ = Describe("report diff", func() {
 				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeNever,
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularCMJSON, regularSecretJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON, regularCMJSON, regularSecretJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -7616,7 +7621,7 @@ var _ = Describe("handling different apply strategies", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				Type:             fleetv1beta1.ApplyStrategyTypeReportDiff,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -7973,7 +7978,7 @@ var _ = Describe("handling different apply strategies", func() {
 				ComparisonOption: fleetv1beta1.ComparisonOptionTypePartialComparison,
 				Type:             fleetv1beta1.ApplyStrategyTypeServerSideApply,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -8242,7 +8247,7 @@ var _ = Describe("handling different apply strategies", func() {
 				Type:             fleetv1beta1.ApplyStrategyTypeClientSideApply,
 				WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeNever,
 			}
-			createWorkObject(workName, memberReservedNSName1, applyStrategy, regularNSJSON, regularDeployJSON)
+			createWorkObject(workName, memberReservedNSName1, applyStrategy, nil, regularNSJSON, regularDeployJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -8641,7 +8646,7 @@ var _ = Describe("handling different apply strategies", func() {
 			oversizedCMJSON := marshalK8sObjJSON(oversizedCM)
 
 			// Create a new Work object with all the manifest JSONs and proper apply strategy.
-			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, oversizedCMJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, nil, regularNSJSON, oversizedCMJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -8849,7 +8854,7 @@ var _ = Describe("negative cases", func() {
 			malformedConfigMapJSON := marshalK8sObjJSON(malformedConfigMap)
 
 			// Create a Work object with all the manifest JSONs.
-			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, malformedConfigMapJSON, regularConfigMapJson)
+			createWorkObject(workName, memberReservedNSName1, nil, nil, regularNSJSON, malformedConfigMapJSON, regularConfigMapJson)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -9042,7 +9047,7 @@ var _ = Describe("negative cases", func() {
 			regularConfigMapJSON := marshalK8sObjJSON(regularConfigMap)
 
 			// Create a Work object with all the manifest JSONs.
-			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, regularConfigMapJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, nil, regularNSJSON, regularConfigMapJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -9193,7 +9198,7 @@ var _ = Describe("negative cases", func() {
 			duplicatedConfigMap.Data[dummyLabelKey] = dummyLabelValue2
 
 			// Create a Work object with all the manifest JSONs.
-			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, regularConfigMapJSON, duplicatedConfigMapJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, nil, regularNSJSON, regularConfigMapJSON, duplicatedConfigMapJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -9388,7 +9393,7 @@ var _ = Describe("negative cases", func() {
 			duplicatedConfigMapJSON := marshalK8sObjJSON(duplicatedConfigMap)
 
 			// Create a Work object with all the manifest JSONs.
-			createWorkObject(workName, memberReservedNSName1, nil, regularNSJSON, regularConfigMapJSON, malformedConfigMapJSON, configMapWithGenerateNameJSON, duplicatedConfigMapJSON)
+			createWorkObject(workName, memberReservedNSName1, nil, nil, regularNSJSON, regularConfigMapJSON, malformedConfigMapJSON, configMapWithGenerateNameJSON, duplicatedConfigMapJSON)
 		})
 
 		It("should add cleanup finalizer to the Work object", func() {
@@ -9591,6 +9596,381 @@ var _ = Describe("negative cases", func() {
 
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt so verify its deletion.
+		})
+	})
+})
+
+var _ = Describe("status back-reporting", func() {
+	deploymentKind := "Deployment"
+	deployStatusBackReportedActual := func(workName, nsName, deployName string, beforeTimestamp metav1.Time) func() error {
+		return func() error {
+			workObj := &fleetv1beta1.Work{}
+			if err := hubClient.Get(ctx, client.ObjectKey{Namespace: memberReservedNSName1, Name: workName}, workObj); err != nil {
+				return fmt.Errorf("failed to retrieve the Work object: %w", err)
+			}
+
+			var backReportedDeployStatusWrapper []byte
+			var backReportedDeployStatusObservedTime metav1.Time
+			for idx := range workObj.Status.ManifestConditions {
+				manifestCond := &workObj.Status.ManifestConditions[idx]
+
+				if manifestCond.Identifier.Kind == deploymentKind && manifestCond.Identifier.Name == deployName && manifestCond.Identifier.Namespace == nsName {
+					backReportedDeployStatusWrapper = manifestCond.BackReportedStatus.ObservedStatus.Raw
+					backReportedDeployStatusObservedTime = manifestCond.BackReportedStatus.ObservationTime
+					break
+				}
+			}
+
+			if len(backReportedDeployStatusWrapper) == 0 {
+				return fmt.Errorf("no status back-reported for deployment")
+			}
+			if backReportedDeployStatusObservedTime.Before(&beforeTimestamp) {
+				return fmt.Errorf("back-reported deployment status observation time, want after %v, got %v", beforeTimestamp, backReportedDeployStatusObservedTime)
+			}
+
+			deployWithBackReportedStatus := &appsv1.Deployment{}
+			if err := json.Unmarshal(backReportedDeployStatusWrapper, deployWithBackReportedStatus); err != nil {
+				return fmt.Errorf("failed to unmarshal wrapped back-reported deployment status: %w", err)
+			}
+			currentDeployWithStatus := &appsv1.Deployment{}
+			if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, currentDeployWithStatus); err != nil {
+				return fmt.Errorf("failed to retrieve Deployment object from member cluster side: %w", err)
+			}
+
+			if diff := cmp.Diff(deployWithBackReportedStatus.Status, currentDeployWithStatus.Status); diff != "" {
+				return fmt.Errorf("back-reported deployment status mismatch (-got, +want):\n%s", diff)
+			}
+			return nil
+		}
+	}
+
+	Context("can handle both object with status and object with no status", Ordered, func() {
+		workName := fmt.Sprintf(workNameTemplate, utils.RandStr())
+		// The environment prepared by the envtest package does not support namespace
+		// deletion; each test case would use a new namespace.
+		nsName := fmt.Sprintf(nsNameTemplate, utils.RandStr())
+
+		var appliedWorkOwnerRef *metav1.OwnerReference
+		// Note: namespaces and deployments have status subresources; config maps do not.
+		var regularNS *corev1.Namespace
+		var regularDeploy *appsv1.Deployment
+		var regularCM *corev1.ConfigMap
+
+		beforeTimestamp := metav1.Now()
+
+		BeforeAll(func() {
+			// Prepare a NS object.
+			regularNS = ns.DeepCopy()
+			regularNS.Name = nsName
+			regularNSJSON := marshalK8sObjJSON(regularNS)
+
+			// Prepare a Deployment object.
+			regularDeploy = deploy.DeepCopy()
+			regularDeploy.Namespace = nsName
+			regularDeploy.Name = deployName
+			regularDeployJSON := marshalK8sObjJSON(regularDeploy)
+
+			// Prepare a ConfigMap object.
+			regularCM = configMap.DeepCopy()
+			regularCM.Namespace = nsName
+			regularCMJSON := marshalK8sObjJSON(regularCM)
+
+			// Create a new Work object with all the manifest JSONs.
+			reportBackStrategy := &fleetv1beta1.ReportBackStrategy{
+				Type:        fleetv1beta1.ReportBackStrategyTypeMirror,
+				Destination: ptr.To(fleetv1beta1.ReportBackDestinationWorkAPI),
+			}
+			createWorkObject(workName, memberReservedNSName1, nil, reportBackStrategy, regularNSJSON, regularDeployJSON, regularCMJSON)
+		})
+
+		It("should add cleanup finalizer to the Work object", func() {
+			finalizerAddedActual := workFinalizerAddedActual(workName)
+			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
+		})
+
+		It("should prepare an AppliedWork object", func() {
+			appliedWorkCreatedActual := appliedWorkCreatedActual(workName)
+			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
+
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(workName)
+		})
+
+		It("can mark the deployment as available", func() {
+			markDeploymentAsAvailable(nsName, deployName)
+		})
+
+		It("should update the Work object status", func() {
+			// Prepare the status information.
+			workConds := []metav1.Condition{
+				{
+					Type:   fleetv1beta1.WorkConditionTypeApplied,
+					Status: metav1.ConditionTrue,
+					Reason: condition.WorkAllManifestsAppliedReason,
+				},
+				{
+					Type:   fleetv1beta1.WorkConditionTypeAvailable,
+					Status: metav1.ConditionTrue,
+					Reason: condition.WorkAllManifestsAvailableReason,
+				},
+			}
+			manifestConds := []fleetv1beta1.ManifestCondition{
+				{
+					Identifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:  0,
+						Group:    "",
+						Version:  "v1",
+						Kind:     "Namespace",
+						Resource: "namespaces",
+						Name:     nsName,
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeApplied,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(ApplyOrReportDiffResTypeApplied),
+							ObservedGeneration: 0,
+						},
+						{
+							Type:               fleetv1beta1.WorkConditionTypeAvailable,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(AvailabilityResultTypeAvailable),
+							ObservedGeneration: 0,
+						},
+					},
+				},
+				{
+					Identifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:   1,
+						Group:     "apps",
+						Version:   "v1",
+						Kind:      "Deployment",
+						Resource:  "deployments",
+						Name:      deployName,
+						Namespace: nsName,
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeApplied,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(ApplyOrReportDiffResTypeApplied),
+							ObservedGeneration: 1,
+						},
+						{
+							Type:               fleetv1beta1.WorkConditionTypeAvailable,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(AvailabilityResultTypeAvailable),
+							ObservedGeneration: 1,
+						},
+					},
+				},
+				{
+					Identifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:   2,
+						Group:     "",
+						Version:   "v1",
+						Kind:      "ConfigMap",
+						Resource:  "configmaps",
+						Name:      configMapName,
+						Namespace: nsName,
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeApplied,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(ApplyOrReportDiffResTypeApplied),
+							ObservedGeneration: 0,
+						},
+						{
+							Type:               fleetv1beta1.WorkConditionTypeAvailable,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(AvailabilityResultTypeAvailable),
+							ObservedGeneration: 0,
+						},
+					},
+				},
+			}
+
+			workStatusUpdatedActual := workStatusUpdated(memberReservedNSName1, workName, workConds, manifestConds, nil, nil)
+			Eventually(workStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update work status")
+		})
+
+		It("should apply the manifests", func() {
+			// Ensure that the NS object has been applied as expected.
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(nsName, appliedWorkOwnerRef)
+			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
+
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Name: nsName}, regularNS)).To(Succeed(), "Failed to retrieve the NS object")
+
+			// Ensure that the Deployment object has been applied as expected.
+			regularDeploymentObjectAppliedActual := regularDeploymentObjectAppliedActual(nsName, deployName, appliedWorkOwnerRef)
+			Eventually(regularDeploymentObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the deployment object")
+
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy)).To(Succeed(), "Failed to retrieve the Deployment object")
+
+			// Ensure that the ConfigMap object has been applied as expected.
+			regularCMObjectAppliedActual := regularConfigMapObjectAppliedActual(nsName, configMapName, appliedWorkOwnerRef)
+			Eventually(regularCMObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the config map object")
+
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: configMapName}, regularCM)).To(Succeed(), "Failed to retrieve the ConfigMap object")
+		})
+
+		It("should back-report deployment status to the Work object", func() {
+			Eventually(deployStatusBackReportedActual(workName, nsName, deployName, beforeTimestamp), eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to back-report deployment status to the Work object")
+		})
+
+		It("should handle objects with no status gracefully", func() {
+			Eventually(func() error {
+				workObj := &fleetv1beta1.Work{}
+				if err := hubClient.Get(ctx, client.ObjectKey{Namespace: memberReservedNSName1, Name: workName}, workObj); err != nil {
+					return fmt.Errorf("failed to retrieve the Work object: %w", err)
+				}
+
+				for idx := range workObj.Status.ManifestConditions {
+					manifestCond := &workObj.Status.ManifestConditions[idx]
+
+					if manifestCond.Identifier.Kind == "ConfigMap" && manifestCond.Identifier.Name == configMapName && manifestCond.Identifier.Namespace == nsName {
+						if manifestCond.BackReportedStatus != nil {
+							return fmt.Errorf("back-reported status for configMap object, want empty, got %s", string(manifestCond.BackReportedStatus.ObservedStatus.Raw))
+						}
+						return nil
+					}
+				}
+				return fmt.Errorf("configMap object not found")
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to handle objects with no status gracefully")
+		})
+
+		It("can refresh deployment status", func() {
+			// Retrieve the Deployment object and update its replica count.
+			//
+			// Use an Eventually block to reduce flakiness.
+			Eventually(func() error {
+				deploy := &appsv1.Deployment{}
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, deploy); err != nil {
+					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
+				}
+
+				deploy.Spec.Replicas = ptr.To(int32(10))
+				if err := memberClient1.Update(ctx, deploy); err != nil {
+					return fmt.Errorf("failed to update the Deployment object: %w", err)
+				}
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to retrieve and update the Deployment object")
+
+			// Refresh the status of the Deployment.
+			//
+			// Note that the Deployment object now becomes unavailable.
+			Eventually(func() error {
+				deploy := &appsv1.Deployment{}
+				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, deploy); err != nil {
+					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
+				}
+
+				now := metav1.Now()
+				deploy.Status = appsv1.DeploymentStatus{
+					ObservedGeneration:  deploy.Generation,
+					Replicas:            10,
+					UpdatedReplicas:     2,
+					ReadyReplicas:       8,
+					AvailableReplicas:   8,
+					UnavailableReplicas: 2,
+					Conditions: []appsv1.DeploymentCondition{
+						{
+							Type:               appsv1.DeploymentAvailable,
+							Status:             corev1.ConditionFalse,
+							Reason:             "MarkedAsUnavailable",
+							Message:            "Deployment has been marked as unavailable",
+							LastUpdateTime:     now,
+							LastTransitionTime: now,
+						},
+						{
+							Type:               appsv1.DeploymentProgressing,
+							Status:             corev1.ConditionTrue,
+							Reason:             "MarkedAsProgressing",
+							Message:            "Deployment has been marked as progressing",
+							LastUpdateTime:     now,
+							LastTransitionTime: now,
+						},
+					},
+				}
+				if err := memberClient1.Status().Update(ctx, deploy); err != nil {
+					return fmt.Errorf("failed to update the Deployment status: %w", err)
+				}
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to refresh the status of the Deployment")
+		})
+
+		It("should back-report refreshed deployment status to the Work object", func() {
+			Eventually(deployStatusBackReportedActual(workName, nsName, deployName, beforeTimestamp), eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to back-report deployment status to the Work object")
+		})
+
+		It("should update the AppliedWork object status", func() {
+			// Prepare the status information.
+			appliedResourceMeta := []fleetv1beta1.AppliedResourceMeta{
+				{
+					WorkResourceIdentifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:  0,
+						Group:    "",
+						Version:  "v1",
+						Kind:     "Namespace",
+						Resource: "namespaces",
+						Name:     nsName,
+					},
+					UID: regularNS.UID,
+				},
+				{
+					WorkResourceIdentifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:   1,
+						Group:     "apps",
+						Version:   "v1",
+						Kind:      "Deployment",
+						Resource:  "deployments",
+						Name:      deployName,
+						Namespace: nsName,
+					},
+					UID: regularDeploy.UID,
+				},
+				{
+					WorkResourceIdentifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:   2,
+						Group:     "",
+						Version:   "v1",
+						Kind:      "ConfigMap",
+						Resource:  "configmaps",
+						Name:      configMapName,
+						Namespace: nsName,
+					},
+					UID: regularCM.UID,
+				},
+			}
+
+			appliedWorkStatusUpdatedActual := appliedWorkStatusUpdated(workName, appliedResourceMeta)
+			Eventually(appliedWorkStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update appliedWork status")
+		})
+
+		AfterAll(func() {
+			// Delete the Work object and related resources.
+			deleteWorkObject(workName, memberReservedNSName1)
+
+			// Ensure applied manifest has been removed.
+			regularDeployRemovedActual := regularDeployRemovedActual(nsName, deployName)
+			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
+
+			regularCMRemovedActual := regularConfigMapRemovedActual(nsName, configMapName)
+			Eventually(regularCMRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the configMap object")
+
+			// Kubebuilder suggests that in a testing environment like this, to check for the existence of the AppliedWork object
+			// OwnerReference in the Namespace object (https://book.kubebuilder.io/reference/envtest.html#testing-considerations).
+			checkNSOwnerReferences(workName, nsName)
+
+			// Ensure that the AppliedWork object has been removed.
+			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
+
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
+
+			// The environment prepared by the envtest package does not support namespace
+			// deletion; consequently this test suite would not attempt to verify its deletion.
 		})
 	})
 })
