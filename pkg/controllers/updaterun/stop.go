@@ -187,7 +187,6 @@ func (r *Reconciler) stopDeleteStage(
 	klog.V(2).InfoS("The delete stage is stopping", "numberOfDeletingClusters", len(toBeDeletedBindings), "updateRun", updateRunRef)
 	allDeletingClustersDeleted := true
 	for _, clusterStatus := range updateRunStatus.DeletionStageStatus.Clusters {
-		klog.InfoS("Checking deletion status of cluster in delete stage", "cluster", clusterStatus.ClusterName, "conditions", clusterStatus.Conditions, "updateRun", updateRunRef)
 		if condition.IsConditionStatusTrue(meta.FindStatusCondition(clusterStatus.Conditions,
 			string(placementv1beta1.ClusterUpdatingConditionStarted)), updateRun.GetGeneration()) && !condition.IsConditionStatusTrue(
 			meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded)),
@@ -197,7 +196,7 @@ func (r *Reconciler) stopDeleteStage(
 		}
 	}
 
-	if allDeletingClustersDeleted || len(toBeDeletedBindings) == 0 {
+	if allDeletingClustersDeleted {
 		markStageUpdatingStopped(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration())
 	}
 	return len(toBeDeletedBindings) == 0, nil

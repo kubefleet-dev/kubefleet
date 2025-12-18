@@ -26,7 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -80,14 +79,6 @@ func TestStopUpdatingStage(t *testing.T) {
 							},
 						},
 					},
-					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
-						Stages: []placementv1beta1.StageConfig{
-							{
-								Name:           "test-stage",
-								MaxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
-							},
-						},
-					},
 				},
 			},
 			bindings:     nil,
@@ -129,14 +120,6 @@ func TestStopUpdatingStage(t *testing.T) {
 										},
 									},
 								},
-							},
-						},
-					},
-					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
-						Stages: []placementv1beta1.StageConfig{
-							{
-								Name:           "test-stage",
-								MaxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
 							},
 						},
 					},
@@ -226,12 +209,8 @@ func TestStopUpdatingStage(t *testing.T) {
 				tt.updateRun.Status.StagesStatus[0].Conditions,
 				string(placementv1beta1.StageUpdatingConditionProgressing),
 			)
-			if progressingCond == nil {
-				t.Errorf("stopUpdatingStage() missing progressing condition")
-			} else {
-				if diff := cmp.Diff(tt.wantProgressCond, *progressingCond, cmpOptions...); diff != "" {
-					t.Errorf("stopUpdatingStage() status mismatch: (-want +got):\n%s", diff)
-				}
+			if diff := cmp.Diff(tt.wantProgressCond, *progressingCond, cmpOptions...); diff != "" {
+				t.Errorf("stopUpdatingStage() status mismatch: (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -246,8 +225,7 @@ func TestStopDeleteStage(t *testing.T) {
 		updateRun           *placementv1beta1.ClusterStagedUpdateRun
 		toBeDeletedBindings []placementv1beta1.BindingObj
 		wantFinished        bool
-		wantError           bool
-		wantAbortError      bool
+		wantError           error
 		wantProgressCond    metav1.Condition
 	}{
 		{
@@ -266,7 +244,7 @@ func TestStopDeleteStage(t *testing.T) {
 			},
 			toBeDeletedBindings: []placementv1beta1.BindingObj{},
 			wantFinished:        true,
-			wantError:           false,
+			wantError:           nil,
 			wantProgressCond: metav1.Condition{
 				Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
 				Status:             metav1.ConditionFalse,
@@ -312,7 +290,7 @@ func TestStopDeleteStage(t *testing.T) {
 				},
 			},
 			wantFinished: false,
-			wantError:    false,
+			wantError:    nil,
 			wantProgressCond: metav1.Condition{
 				Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
 				Status:             metav1.ConditionUnknown,
@@ -357,9 +335,8 @@ func TestStopDeleteStage(t *testing.T) {
 					},
 				},
 			},
-			wantFinished:   false,
-			wantError:      true,
-			wantAbortError: true,
+			wantFinished: false,
+			wantError:    errors.New("the cluster `cluster-1` in the deleting stage is marked as deleting but its corresponding binding is not deleting"),
 			wantProgressCond: metav1.Condition{
 				Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
 				Status:             metav1.ConditionUnknown,
@@ -395,9 +372,8 @@ func TestStopDeleteStage(t *testing.T) {
 					},
 				},
 			},
-			wantFinished:   false,
-			wantError:      false,
-			wantAbortError: false,
+			wantFinished: false,
+			wantError:    nil,
 			wantProgressCond: metav1.Condition{
 				Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
 				Status:             metav1.ConditionFalse,
@@ -462,7 +438,7 @@ func TestStopDeleteStage(t *testing.T) {
 				},
 			},
 			wantFinished: false,
-			wantError:    false,
+			wantError:    nil,
 			wantProgressCond: metav1.Condition{
 				Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
 				Status:             metav1.ConditionUnknown,
@@ -483,15 +459,16 @@ func TestStopDeleteStage(t *testing.T) {
 				t.Errorf("stopDeleteStage() finished = %v, want %v", gotFinished, tt.wantFinished)
 			}
 
-			// Check error expectations.
-			if tt.wantError {
-				if gotErr == nil {
-					t.Errorf("stopDeleteStage() error = nil, want error")
-				} else if tt.wantAbortError && !errors.Is(gotErr, errStagedUpdatedAborted) {
-					t.Errorf("stopDeleteStage() error = %v, want errStagedUpdatedAborted", gotErr)
+			// Verify error expectation.
+			if (tt.wantError != nil) != (gotErr != nil) {
+				t.Fatalf("stopUpdatingStage() want error: %v, got error: %v", tt.wantError, gotErr)
+			}
+
+			// Verify error message contains expected substring.
+			if tt.wantError != nil && gotErr != nil {
+				if !strings.Contains(gotErr.Error(), tt.wantError.Error()) {
+					t.Fatalf("stopUpdatingStage() want error: %v, got error: %v", tt.wantError, gotErr)
 				}
-			} else if gotErr != nil {
-				t.Errorf("stopDeleteStage() error = %v, want nil", gotErr)
 			}
 
 			// Check stage status condition.
@@ -499,12 +476,8 @@ func TestStopDeleteStage(t *testing.T) {
 				tt.updateRun.Status.DeletionStageStatus.Conditions,
 				string(placementv1beta1.StageUpdatingConditionProgressing),
 			)
-			if progressingCond == nil {
-				t.Errorf("stopDeleteStage() missing progressing condition")
-			} else {
-				if diff := cmp.Diff(tt.wantProgressCond, *progressingCond, cmpOptions...); diff != "" {
-					t.Errorf("stopDeleteStage() status mismatch: (-want +got):\n%s", diff)
-				}
+			if diff := cmp.Diff(tt.wantProgressCond, *progressingCond, cmpOptions...); diff != "" {
+				t.Errorf("stopDeleteStage() status mismatch: (-want +got):\n%s", diff)
 			}
 		})
 	}
