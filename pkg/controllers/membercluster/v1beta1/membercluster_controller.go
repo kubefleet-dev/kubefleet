@@ -515,7 +515,7 @@ func (r *Reconciler) syncInternalMemberClusterStatus(imc *clusterv1beta1.Interna
 	}
 
 	// TODO: We didn't handle condition type: clusterv1beta1.ConditionTypeMemberClusterHealthy.
-	var latestAgentStatus []clusterv1beta1.AgentStatus
+	latestAgentStatus := make([]clusterv1beta1.AgentStatus, 0, len(imc.Status.AgentStatus))
 	var memberAgentStatusUpdated bool
 	for i := range imc.Status.AgentStatus {
 		if imc.Status.AgentStatus[i].Conditions == nil {
