@@ -17,6 +17,7 @@ limitations under the License.
 package updaterun
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -219,14 +220,6 @@ var _ = Describe("UpdateRun stop tests", func() {
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
-		It("Should not continue 1st stage when stopped", func() {
-			By("Validating update run is stopped")
-			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, wantStatus, "")
-
-			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(wantMetrics...)
-		})
-
 		It("Should accept the approval request and not rollout 1st stage while in Stop state", func() {
 			By("Approving the approvalRequest")
 			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
@@ -244,9 +237,13 @@ var _ = Describe("UpdateRun stop tests", func() {
 			// Update the test's want status to match the new generation.
 			updateAllStatusConditionsGeneration(wantStatus, updateRun.Generation)
 
+			By("Validating the approvalRequest has ApprovalAccepted status")
+			validateApprovalRequestAccepted(ctx, wantApprovalRequest.Name)
+			// Approval task has been approved.
+			wantStatus.StagesStatus[0].BeforeStageTaskStatus[0].Conditions = append(wantStatus.StagesStatus[0].BeforeStageTaskStatus[0].Conditions,
+				generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestApproved))
+
 			By("Validating update run is running")
-			// Approval request approved for BeforeStageTask.
-			meta.SetStatusCondition(&wantStatus.StagesStatus[0].BeforeStageTaskStatus[0].Conditions, generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestApproved))
 			// Mark 1st cluster started.
 			meta.SetStatusCondition(&wantStatus.StagesStatus[0].Clusters[0].Conditions, generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted))
 			// Mark stage progressing condition as true with progressing reason.
@@ -456,13 +453,7 @@ var _ = Describe("UpdateRun stop tests", func() {
 			updateAllStatusConditionsGeneration(wantStatus, updateRun.Generation)
 
 			By("Validating the approvalRequest has ApprovalAccepted status")
-			Eventually(func() (bool, error) {
-				var approvalRequest placementv1beta1.ClusterApprovalRequest
-				if err := k8sClient.Get(ctx, types.NamespacedName{Name: wantApprovalRequest.Name}, &approvalRequest); err != nil {
-					return false, err
-				}
-				return condition.IsConditionStatusTrue(meta.FindStatusCondition(approvalRequest.Status.Conditions, string(placementv1beta1.ApprovalRequestConditionApprovalAccepted)), approvalRequest.Generation), nil
-			}, timeout, interval).Should(BeTrue(), "failed to validate the approvalRequest approval accepted")
+			validateApprovalRequestAccepted(ctx, wantApprovalRequest.Name)
 
 			By("Validating both after stage tasks have completed and 2nd stage has started")
 			// Approval AfterStageTask completed.
@@ -525,7 +516,7 @@ var _ = Describe("UpdateRun stop tests", func() {
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
-		It("Should not complete deletion stage when stopped", func() {
+		It("Should not complete deletion stage when in progress clusters still deleting while stopped", func() {
 			By("Validating the first unscheduled cluster resource binding has started deleting but is NOT deleted")
 			Consistently(func() error {
 				binding := &placementv1beta1.ClusterResourceBinding{}
@@ -647,4 +638,14 @@ func updateClusterStagedUpdateRunState(updateRunName string, state placementv1be
 		return nil
 	}, timeout, interval).Should(Succeed(), "Failed to update ClusterStagedUpdateRun %s state to %s", updateRunName, state)
 	return updateRun
+}
+
+func validateApprovalRequestAccepted(ctx context.Context, approvalRequestName string) {
+	Eventually(func() (bool, error) {
+		var approvalRequest placementv1beta1.ClusterApprovalRequest
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: approvalRequestName}, &approvalRequest); err != nil {
+			return false, err
+		}
+		return condition.IsConditionStatusTrue(meta.FindStatusCondition(approvalRequest.Status.Conditions, string(placementv1beta1.ApprovalRequestConditionApprovalAccepted)), approvalRequest.Generation), nil
+	}, timeout, interval).Should(BeTrue(), "failed to validate the approvalRequest %s is accepted", approvalRequestName)
 }
