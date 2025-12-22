@@ -56,7 +56,7 @@ import (
 // to (relatively speaking) reliably verify the wave-based parallel processing
 // in the work applier.
 
-var _ = FDescribe("parallel processing with waves", func() {
+var _ = Describe("parallel processing with waves", func() {
 	Context("single wave", Ordered, func() {
 		workName := fmt.Sprintf(workNameTemplate, utils.RandStr())
 		// The environment prepared by the envtest package does not support namespace
