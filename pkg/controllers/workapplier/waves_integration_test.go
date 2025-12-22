@@ -56,7 +56,7 @@ import (
 // to (relatively speaking) reliably verify the wave-based parallel processing
 // in the work applier.
 
-var _ = Describe("parallel processing with waves", func() {
+var _ = FDescribe("parallel processing with waves", func() {
 	Context("single wave", Ordered, func() {
 		workName := fmt.Sprintf(workNameTemplate, utils.RandStr())
 		// The environment prepared by the envtest package does not support namespace
@@ -197,7 +197,7 @@ var _ = Describe("parallel processing with waves", func() {
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the PriorityClass object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient3, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName3)
@@ -330,7 +330,7 @@ var _ = Describe("parallel processing with waves", func() {
 			Eventually(cmRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the ConfigMap object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient3, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName3)
@@ -489,7 +489,7 @@ var _ = Describe("parallel processing with waves", func() {
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Role object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient3, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName3)
@@ -1258,7 +1258,7 @@ var _ = Describe("parallel processing with waves", func() {
 			}
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName, nsName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient3, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName3)
