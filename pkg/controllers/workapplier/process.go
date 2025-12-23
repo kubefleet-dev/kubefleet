@@ -165,7 +165,7 @@ func (r *Reconciler) processOneManifest(
 	}
 
 	// Perform the apply op.
-	appliedObj, err := r.apply(ctx, bundle.gvr, bundle.manifestObj, bundle.inMemberClusterObj, work.Spec.ApplyStrategy, expectedAppliedWorkOwnerRef)
+	appliedObj, err := r.apply(ctx, bundle.gvr, bundle.manifestObj, bundle.inMemberClusterObj, work.Spec.ApplyStrategy, expectedAppliedWorkOwnerRef, work)
 	if err != nil {
 		bundle.applyOrReportDiffErr = fmt.Errorf("failed to apply the manifest: %w", err)
 		bundle.applyOrReportDiffResTyp = ApplyOrReportDiffResTypeFailedToApply
