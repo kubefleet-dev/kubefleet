@@ -33,7 +33,6 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,6 +41,8 @@ import (
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
+	testutilsactuals "github.com/kubefleet-dev/kubefleet/test/utils/actuals"
+	testutilsresource "github.com/kubefleet-dev/kubefleet/test/utils/resource"
 )
 
 const (
@@ -78,35 +79,9 @@ var (
 	dummyLabelValue5 = "quux"
 )
 
-// createWorkObject creates a new Work object with the given name, manifests, and apply strategy.
-func createWorkObject(
-	workName, memberClusterReservedNSName string,
-	applyStrategy *fleetv1beta1.ApplyStrategy,
-	reportBackStrategy *fleetv1beta1.ReportBackStrategy,
-	rawManifestJSON ...[]byte,
-) {
-	manifests := make([]fleetv1beta1.Manifest, len(rawManifestJSON))
-	for idx := range rawManifestJSON {
-		manifests[idx] = fleetv1beta1.Manifest{
-			RawExtension: runtime.RawExtension{
-				Raw: rawManifestJSON[idx],
-			},
-		}
-	}
-
-	work := &fleetv1beta1.Work{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      workName,
-			Namespace: memberClusterReservedNSName,
-		},
-		Spec: fleetv1beta1.WorkSpec{
-			Workload: fleetv1beta1.WorkloadTemplate{
-				Manifests: manifests,
-			},
-			ApplyStrategy:      applyStrategy,
-			ReportBackStrategy: reportBackStrategy,
-		},
-	}
+// createWorkObject creates a new Work object with the given work name/namespace, apply strategy, and raw manifest JSONs.
+func createWorkObject(workName, memberClusterReservedNSName string, applyStrategy *fleetv1beta1.ApplyStrategy, reportBackStrategy *fleetv1beta1.ReportBackStrategy, rawManifestJSON ...[]byte) {
+	work := testutilsresource.WorkObjectForTest(workName, memberClusterReservedNSName, "", "", applyStrategy, reportBackStrategy, rawManifestJSON...)
 	Expect(hubClient.Create(ctx, work)).To(Succeed())
 }
 
@@ -129,11 +104,8 @@ func updateWorkObject(workName string, applyStrategy *fleetv1beta1.ApplyStrategy
 }
 
 func marshalK8sObjJSON(obj runtime.Object) []byte {
-	unstructuredObjMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
-	Expect(err).To(BeNil(), "Failed to convert the object to an unstructured object")
-	unstructuredObj := &unstructured.Unstructured{Object: unstructuredObjMap}
-	json, err := unstructuredObj.MarshalJSON()
-	Expect(err).To(BeNil(), "Failed to marshal the unstructured object to JSON")
+	json, err := testutilsresource.MarshalRuntimeObjToJSONForTest(obj)
+	Expect(err).To(BeNil(), "Failed to marshal the k8s object to JSON")
 	return json
 }
 
@@ -576,21 +548,6 @@ func appliedWorkStatusUpdated(memberClient client.Client, workName string, appli
 	}
 }
 
-func workRemovedActual(workName string) func() error {
-	// Wait for the removal of the Work object.
-	return func() error {
-		work := &fleetv1beta1.Work{}
-		if err := hubClient.Get(ctx, client.ObjectKey{Name: workName, Namespace: memberReservedNSName1}, work); !errors.IsNotFound(err) && err != nil {
-			return fmt.Errorf("work object still exists or an unexpected error occurred: %w", err)
-		}
-		if controllerutil.ContainsFinalizer(work, fleetv1beta1.WorkFinalizer) {
-			// The Work object is being deleted, but the finalizer is still present.
-			return fmt.Errorf("work object is being deleted, but the finalizer is still present")
-		}
-		return nil
-	}
-}
-
 func deleteWorkObject(workName, memberClusterReservedNSName string) {
 	// Retrieve the Work object.
 	work := &fleetv1beta1.Work{
@@ -623,11 +580,11 @@ func checkNSOwnerReferences(memberClient client.Client, workName, nsName string)
 	}), " AppliedWork OwnerReference not found in Namespace object")
 }
 
-func appliedWorkRemovedActual(workName string) func() error {
+func appliedWorkRemovedActual(memberClient client.Client, workName string) func() error {
 	return func() error {
 		// Retrieve the AppliedWork object.
 		appliedWork := &fleetv1beta1.AppliedWork{}
-		if err := memberClient1.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); err != nil {
+		if err := memberClient.Get(ctx, client.ObjectKey{Name: workName}, appliedWork); err != nil {
 			if errors.IsNotFound(err) {
 				// The AppliedWork object has been deleted, which is expected.
 				return nil
@@ -638,7 +595,7 @@ func appliedWorkRemovedActual(workName string) func() error {
 			// The AppliedWork object is being deleted, but the finalizer is still present. Remove the finalizer as there
 			// are no real built-in controllers in this test environment to handle garbage collection.
 			controllerutil.RemoveFinalizer(appliedWork, metav1.FinalizerDeleteDependents)
-			Expect(memberClient1.Update(ctx, appliedWork)).To(Succeed(), "Failed to remove the finalizer from the AppliedWork object")
+			Expect(memberClient.Update(ctx, appliedWork)).To(Succeed(), "Failed to remove the finalizer from the AppliedWork object")
 		}
 		return fmt.Errorf("appliedWork object still exists")
 	}
@@ -940,10 +897,10 @@ var _ = Describe("applying manifests", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -1199,10 +1156,10 @@ var _ = Describe("applying manifests", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 			// The environment prepared by the envtest package does not support namespace
 			// deletion; consequently this test suite would not attempt to verify its deletion.
@@ -1396,10 +1353,10 @@ var _ = Describe("applying manifests", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -1592,10 +1549,10 @@ var _ = Describe("applying manifests", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -1747,10 +1704,10 @@ var _ = Describe("applying manifests", func() {
 			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -2007,10 +1964,10 @@ var _ = Describe("work applier garbage collection", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, 2*time.Minute, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// Ensure that the Deployment object still exists.
@@ -2327,10 +2284,10 @@ var _ = Describe("work applier garbage collection", func() {
 			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, 2*time.Minute, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// Ensure that the ClusterRole object still exists.
@@ -2644,10 +2601,10 @@ var _ = Describe("work applier garbage collection", func() {
 			Eventually(regularClusterRoleRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the ClusterRole object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, 2*time.Minute, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// Ensure that the Deployment object still exists.
@@ -2842,10 +2799,10 @@ var _ = Describe("drift detection and takeover", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -3108,10 +3065,10 @@ var _ = Describe("drift detection and takeover", func() {
 			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -3386,10 +3343,10 @@ var _ = Describe("drift detection and takeover", func() {
 			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -3804,10 +3761,10 @@ var _ = Describe("drift detection and takeover", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -4201,10 +4158,10 @@ var _ = Describe("drift detection and takeover", func() {
 			Consistently(jobNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the job object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -4439,10 +4396,10 @@ var _ = Describe("drift detection and takeover", func() {
 			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -4697,10 +4654,10 @@ var _ = Describe("drift detection and takeover", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -5058,10 +5015,10 @@ var _ = Describe("drift detection and takeover", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -5336,10 +5293,10 @@ var _ = Describe("drift detection and takeover", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -5518,10 +5475,10 @@ var _ = Describe("drift detection and takeover", func() {
 			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -6105,10 +6062,10 @@ var _ = Describe("drift detection and takeover", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -6211,10 +6168,10 @@ var _ = Describe("report diff", func() {
 			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -6539,10 +6496,10 @@ var _ = Describe("report diff", func() {
 			Consistently(regularDeployNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -6754,10 +6711,10 @@ var _ = Describe("report diff", func() {
 			Eventually(regularDeployRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the deployment object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -6894,10 +6851,10 @@ var _ = Describe("report diff", func() {
 			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -7160,10 +7117,10 @@ var _ = Describe("report diff", func() {
 			Consistently(jobNotRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove the job object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -7617,10 +7574,10 @@ var _ = Describe("report diff", func() {
 			Eventually(regularSecretRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Secret object")
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -7983,10 +7940,10 @@ var _ = Describe("handling different apply strategies", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -8244,10 +8201,10 @@ var _ = Describe("handling different apply strategies", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -8629,10 +8586,10 @@ var _ = Describe("handling different apply strategies", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -8837,7 +8794,7 @@ var _ = Describe("handling different apply strategies", func() {
 			deleteWorkObject(workName, memberReservedNSName1)
 
 			// Ensure that all applied manifests have been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
 			Eventually(func() error {
@@ -9055,10 +9012,10 @@ var _ = Describe("negative cases", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -9202,10 +9159,10 @@ var _ = Describe("negative cases", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -9631,10 +9588,10 @@ var _ = Describe("negative cases", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
@@ -10006,10 +9963,10 @@ var _ = Describe("status back-reporting", func() {
 			checkNSOwnerReferences(memberClient1, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace

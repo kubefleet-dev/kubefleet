@@ -26,6 +26,7 @@ import (
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
+	testutilsactuals "github.com/kubefleet-dev/kubefleet/test/utils/actuals"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -286,10 +287,10 @@ var _ = Describe("skipping status update", func() {
 			checkNSOwnerReferences(memberClient4, workName, nsName)
 
 			// Ensure that the AppliedWork object has been removed.
-			appliedWorkRemovedActual := appliedWorkRemovedActual(workName)
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient4, workName)
 			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
 
-			workRemovedActual := workRemovedActual(workName)
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName4)
 			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
 
 			// The environment prepared by the envtest package does not support namespace
