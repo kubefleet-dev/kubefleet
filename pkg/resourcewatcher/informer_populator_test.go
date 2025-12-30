@@ -29,6 +29,7 @@ import (
 
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	testinformer "github.com/kubefleet-dev/kubefleet/test/utils/informer"
+	testresource "github.com/kubefleet-dev/kubefleet/test/utils/resource"
 )
 
 const (
@@ -61,12 +62,7 @@ func TestInformerPopulator_discoverAndCreateInformers(t *testing.T) {
 				{
 					GroupVersion: "v1",
 					APIResources: []metav1.APIResource{
-						{
-							Name:       "configmaps",
-							Kind:       "ConfigMap",
-							Namespaced: true,
-							Verbs:      []string{"list", "watch", "get"},
-						},
+						testresource.APIResourceConfigMap(),
 					},
 				},
 			},
@@ -80,12 +76,7 @@ func TestInformerPopulator_discoverAndCreateInformers(t *testing.T) {
 				{
 					GroupVersion: "v1",
 					APIResources: []metav1.APIResource{
-						{
-							Name:       "configmaps",
-							Kind:       "ConfigMap",
-							Namespaced: true,
-							Verbs:      []string{"get", "delete"}, // Missing list/watch
-						},
+						testresource.APIResourceWithVerbs("configmaps", "ConfigMap", true, []string{"get", "delete"}), // Missing list/watch
 					},
 				},
 			},
@@ -99,12 +90,7 @@ func TestInformerPopulator_discoverAndCreateInformers(t *testing.T) {
 				{
 					GroupVersion: "v1",
 					APIResources: []metav1.APIResource{
-						{
-							Name:       "secrets",
-							Kind:       "Secret",
-							Namespaced: true,
-							Verbs:      []string{"list", "watch", "get"},
-						},
+						testresource.APIResourceSecret(),
 					},
 				},
 			},
@@ -190,12 +176,7 @@ func TestInformerPopulator_Start(t *testing.T) {
 		{
 			GroupVersion: "v1",
 			APIResources: []metav1.APIResource{
-				{
-					Name:       "configmaps",
-					Kind:       "ConfigMap",
-					Namespaced: true,
-					Verbs:      []string{"list", "watch", "get"},
-				},
+				testresource.APIResourceConfigMap(),
 			},
 		},
 	}
@@ -203,28 +184,7 @@ func TestInformerPopulator_Start(t *testing.T) {
 	// Create REST mapper
 	gv := schema.GroupVersion{Group: "", Version: "v1"}
 	groupResources := []*restmapper.APIGroupResources{
-		{
-			Group: metav1.APIGroup{
-				Name: "",
-				Versions: []metav1.GroupVersionForDiscovery{
-					{GroupVersion: "v1", Version: "v1"},
-				},
-				PreferredVersion: metav1.GroupVersionForDiscovery{
-					GroupVersion: "v1",
-					Version:      "v1",
-				},
-			},
-			VersionedResources: map[string][]metav1.APIResource{
-				"v1": {
-					{
-						Name:       "configmaps",
-						Kind:       "ConfigMap",
-						Namespaced: true,
-						Verbs:      []string{"list", "watch", "get"},
-					},
-				},
-			},
-		},
+		testresource.APIGroupResourcesV1(testresource.APIResourceConfigMap()),
 	}
 	restMapper := restmapper.NewDiscoveryRESTMapper(groupResources)
 
@@ -280,29 +240,14 @@ func TestInformerPopulator_Integration(t *testing.T) {
 		{
 			GroupVersion: "v1",
 			APIResources: []metav1.APIResource{
-				{
-					Name:       "configmaps",
-					Kind:       "ConfigMap",
-					Namespaced: true,
-					Verbs:      []string{"list", "watch", "get"},
-				},
-				{
-					Name:       "secrets",
-					Kind:       "Secret",
-					Namespaced: true,
-					Verbs:      []string{"list", "watch", "get"},
-				},
+				testresource.APIResourceConfigMap(),
+				testresource.APIResourceSecret(),
 			},
 		},
 		{
 			GroupVersion: "apps/v1",
 			APIResources: []metav1.APIResource{
-				{
-					Name:       "deployments",
-					Kind:       "Deployment",
-					Namespaced: true,
-					Verbs:      []string{"list", "watch", "get"},
-				},
+				testresource.APIResourceDeployment(),
 			},
 		},
 	}
@@ -310,31 +255,13 @@ func TestInformerPopulator_Integration(t *testing.T) {
 	// Create REST mapper
 	groupResources := []*restmapper.APIGroupResources{
 		{
-			Group: metav1.APIGroup{
-				Name: "",
-				Versions: []metav1.GroupVersionForDiscovery{
-					{GroupVersion: "v1", Version: "v1"},
-				},
-				PreferredVersion: metav1.GroupVersionForDiscovery{
-					GroupVersion: "v1",
-					Version:      "v1",
-				},
-			},
+			Group: testresource.APIGroupV1(),
 			VersionedResources: map[string][]metav1.APIResource{
 				"v1": fakeDiscovery.Resources[0].APIResources,
 			},
 		},
 		{
-			Group: metav1.APIGroup{
-				Name: "apps",
-				Versions: []metav1.GroupVersionForDiscovery{
-					{GroupVersion: "apps/v1", Version: "v1"},
-				},
-				PreferredVersion: metav1.GroupVersionForDiscovery{
-					GroupVersion: "apps/v1",
-					Version:      "v1",
-				},
-			},
+			Group: testresource.APIGroupAppsV1(),
 			VersionedResources: map[string][]metav1.APIResource{
 				"v1": fakeDiscovery.Resources[1].APIResources,
 			},
@@ -380,28 +307,14 @@ func TestInformerPopulator_PeriodicDiscovery(t *testing.T) {
 		{
 			GroupVersion: "v1",
 			APIResources: []metav1.APIResource{
-				{
-					Name:       "configmaps",
-					Kind:       "ConfigMap",
-					Namespaced: true,
-					Verbs:      []string{"list", "watch", "get"},
-				},
+				testresource.APIResourceConfigMap(),
 			},
 		},
 	}
 
 	groupResources := []*restmapper.APIGroupResources{
 		{
-			Group: metav1.APIGroup{
-				Name: "",
-				Versions: []metav1.GroupVersionForDiscovery{
-					{GroupVersion: "v1", Version: "v1"},
-				},
-				PreferredVersion: metav1.GroupVersionForDiscovery{
-					GroupVersion: "v1",
-					Version:      "v1",
-				},
-			},
+			Group: testresource.APIGroupV1(),
 			VersionedResources: map[string][]metav1.APIResource{
 				"v1": fakeDiscovery.Resources[0].APIResources,
 			},

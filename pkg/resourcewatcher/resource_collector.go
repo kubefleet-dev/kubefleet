@@ -86,28 +86,6 @@ func getWatchableResources(discoveryClient discovery.ServerResourcesInterface) (
 	return watchableGroupVersionResources, errors.NewAggregate(allErr)
 }
 
-// shouldWatchResource returns whether a GroupVersionResource should be watched.
-// This is a standalone function that can be used by both ChangeDetector and InformerPopulator.
-func shouldWatchResource(gvr schema.GroupVersionResource, restMapper meta.RESTMapper, resourceConfig *utils.ResourceConfig) bool {
-	// By default, all of the APIs are allowed.
-	if resourceConfig == nil {
-		return true
-	}
-
-	gvks, err := restMapper.KindsFor(gvr)
-	if err != nil {
-		klog.ErrorS(err, "gvr transform failed", "gvr", gvr.String())
-		return false
-	}
-	for _, gvk := range gvks {
-		if resourceConfig.IsResourceDisabled(gvk) {
-			klog.V(4).InfoS("Skip watch resource", "group version kind", gvk.String())
-			return false
-		}
-	}
-	return true
-}
-
 // discoverWatchableResources discovers all API resources in the cluster and filters them
 // based on the resource configuration. This is a shared helper used by both InformerPopulator
 // and ChangeDetector to ensure consistent resource discovery logic.
@@ -119,7 +97,7 @@ func discoverWatchableResources(discoveryClient discovery.DiscoveryInterface, re
 
 	var resourcesToWatch []informer.APIResourceMeta
 	for _, res := range newResources {
-		if shouldWatchResource(res.GroupVersionResource, restMapper, resourceConfig) {
+		if utils.ShouldProcessResource(res.GroupVersionResource, restMapper, resourceConfig) {
 			resourcesToWatch = append(resourcesToWatch, res)
 		}
 	}

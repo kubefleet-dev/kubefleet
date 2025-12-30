@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 
 	testhandler "github.com/kubefleet-dev/kubefleet/test/utils/handler"
+	testresource "github.com/kubefleet-dev/kubefleet/test/utils/resource"
 )
 
 func TestGetAllResources(t *testing.T) {
@@ -39,61 +40,29 @@ func TestGetAllResources(t *testing.T) {
 			name: "mixed cluster and namespace scoped resources",
 			namespaceScopedResources: []APIResourceMeta{
 				{
-					GroupVersionKind: schema.GroupVersionKind{
-						Group:   "",
-						Version: "v1",
-						Kind:    "ConfigMap",
-					},
-					GroupVersionResource: schema.GroupVersionResource{
-						Group:    "",
-						Version:  "v1",
-						Resource: "configmaps",
-					},
-					IsClusterScoped: false,
+					GroupVersionKind:     testresource.GVKConfigMap(),
+					GroupVersionResource: testresource.GVRConfigMap(),
+					IsClusterScoped:      false,
 				},
 				{
-					GroupVersionKind: schema.GroupVersionKind{
-						Group:   "",
-						Version: "v1",
-						Kind:    "Secret",
-					},
-					GroupVersionResource: schema.GroupVersionResource{
-						Group:    "",
-						Version:  "v1",
-						Resource: "secrets",
-					},
-					IsClusterScoped: false,
+					GroupVersionKind:     testresource.GVKSecret(),
+					GroupVersionResource: testresource.GVRSecret(),
+					IsClusterScoped:      false,
 				},
 			},
 			clusterScopedResources: []APIResourceMeta{
 				{
-					GroupVersionKind: schema.GroupVersionKind{
-						Group:   "",
-						Version: "v1",
-						Kind:    "Namespace",
-					},
-					GroupVersionResource: schema.GroupVersionResource{
-						Group:    "",
-						Version:  "v1",
-						Resource: "namespaces",
-					},
-					IsClusterScoped: true,
+					GroupVersionKind:     testresource.GVKNamespace(),
+					GroupVersionResource: testresource.GVRNamespace(),
+					IsClusterScoped:      true,
 				},
 			},
 			staticResources: []APIResourceMeta{
 				{
-					GroupVersionKind: schema.GroupVersionKind{
-						Group:   "",
-						Version: "v1",
-						Kind:    "Node",
-					},
-					GroupVersionResource: schema.GroupVersionResource{
-						Group:    "",
-						Version:  "v1",
-						Resource: "nodes",
-					},
-					IsClusterScoped:  true,
-					isStaticResource: true,
+					GroupVersionKind:     testresource.GVKNode(),
+					GroupVersionResource: testresource.GVRNode(),
+					IsClusterScoped:      true,
+					isStaticResource:     true,
 				},
 			},
 			expectedResourceCount:   4, // All resources including static
@@ -108,17 +77,9 @@ func TestGetAllResources(t *testing.T) {
 			name: "only namespace scoped resources",
 			namespaceScopedResources: []APIResourceMeta{
 				{
-					GroupVersionKind: schema.GroupVersionKind{
-						Group:   "apps",
-						Version: "v1",
-						Kind:    "Deployment",
-					},
-					GroupVersionResource: schema.GroupVersionResource{
-						Group:    "apps",
-						Version:  "v1",
-						Resource: "deployments",
-					},
-					IsClusterScoped: false,
+					GroupVersionKind:     testresource.GVKDeployment(),
+					GroupVersionResource: testresource.GVRDeployment(),
+					IsClusterScoped:      false,
 				},
 			},
 			expectedResourceCount:   1,
@@ -128,17 +89,9 @@ func TestGetAllResources(t *testing.T) {
 			name: "only cluster scoped resources",
 			clusterScopedResources: []APIResourceMeta{
 				{
-					GroupVersionKind: schema.GroupVersionKind{
-						Group:   "rbac.authorization.k8s.io",
-						Version: "v1",
-						Kind:    "ClusterRole",
-					},
-					GroupVersionResource: schema.GroupVersionResource{
-						Group:    "rbac.authorization.k8s.io",
-						Version:  "v1",
-						Resource: "clusterroles",
-					},
-					IsClusterScoped: true,
+					GroupVersionKind:     testresource.GVKClusterRole(),
+					GroupVersionResource: testresource.GVRClusterRole(),
+					IsClusterScoped:      true,
 				},
 			},
 			expectedResourceCount:   1,
@@ -249,35 +202,19 @@ func TestGetAllResources_NotPresent(t *testing.T) {
 
 	// Add a resource that is present
 	presentRes := APIResourceMeta{
-		GroupVersionKind: schema.GroupVersionKind{
-			Group:   "",
-			Version: "v1",
-			Kind:    "ConfigMap",
-		},
-		GroupVersionResource: schema.GroupVersionResource{
-			Group:    "",
-			Version:  "v1",
-			Resource: "configmaps",
-		},
-		IsClusterScoped: false,
-		isPresent:       true,
+		GroupVersionKind:     testresource.GVKConfigMap(),
+		GroupVersionResource: testresource.GVRConfigMap(),
+		IsClusterScoped:      false,
+		isPresent:            true,
 	}
 	implMgr.apiResources[presentRes.GroupVersionKind] = &presentRes
 
 	// Add a resource that is NOT present (deleted)
 	notPresentRes := APIResourceMeta{
-		GroupVersionKind: schema.GroupVersionKind{
-			Group:   "",
-			Version: "v1",
-			Kind:    "Secret",
-		},
-		GroupVersionResource: schema.GroupVersionResource{
-			Group:    "",
-			Version:  "v1",
-			Resource: "secrets",
-		},
-		IsClusterScoped: false,
-		isPresent:       false,
+		GroupVersionKind:     testresource.GVKSecret(),
+		GroupVersionResource: testresource.GVRSecret(),
+		IsClusterScoped:      false,
+		isPresent:            false,
 	}
 	implMgr.apiResources[notPresentRes.GroupVersionKind] = &notPresentRes
 
@@ -297,21 +234,13 @@ func TestAddEventHandlerToInformer(t *testing.T) {
 		addTwice bool // Test adding handler twice to same informer
 	}{
 		{
-			name: "add handler to new informer",
-			gvr: schema.GroupVersionResource{
-				Group:    "",
-				Version:  "v1",
-				Resource: "configmaps",
-			},
+			name:     "add handler to new informer",
+			gvr:      testresource.GVRConfigMap(),
 			addTwice: false,
 		},
 		{
-			name: "add multiple handlers to same informer",
-			gvr: schema.GroupVersionResource{
-				Group:    "apps",
-				Version:  "v1",
-				Resource: "deployments",
-			},
+			name:     "add multiple handlers to same informer",
+			gvr:      testresource.GVRDeployment(),
 			addTwice: true,
 		},
 	}
@@ -363,51 +292,27 @@ func TestCreateInformerForResource(t *testing.T) {
 		{
 			name: "create new informer",
 			resource: APIResourceMeta{
-				GroupVersionKind: schema.GroupVersionKind{
-					Group:   "",
-					Version: "v1",
-					Kind:    "ConfigMap",
-				},
-				GroupVersionResource: schema.GroupVersionResource{
-					Group:    "",
-					Version:  "v1",
-					Resource: "configmaps",
-				},
-				IsClusterScoped: false,
+				GroupVersionKind:     testresource.GVKConfigMap(),
+				GroupVersionResource: testresource.GVRConfigMap(),
+				IsClusterScoped:      false,
 			},
 			createTwice: false,
 		},
 		{
 			name: "create informer twice (idempotent)",
 			resource: APIResourceMeta{
-				GroupVersionKind: schema.GroupVersionKind{
-					Group:   "apps",
-					Version: "v1",
-					Kind:    "Deployment",
-				},
-				GroupVersionResource: schema.GroupVersionResource{
-					Group:    "apps",
-					Version:  "v1",
-					Resource: "deployments",
-				},
-				IsClusterScoped: false,
+				GroupVersionKind:     testresource.GVKDeployment(),
+				GroupVersionResource: testresource.GVRDeployment(),
+				IsClusterScoped:      false,
 			},
 			createTwice: true,
 		},
 		{
 			name: "recreate informer for reappeared resource",
 			resource: APIResourceMeta{
-				GroupVersionKind: schema.GroupVersionKind{
-					Group:   "",
-					Version: "v1",
-					Kind:    "Secret",
-				},
-				GroupVersionResource: schema.GroupVersionResource{
-					Group:    "",
-					Version:  "v1",
-					Resource: "secrets",
-				},
-				IsClusterScoped: false,
+				GroupVersionKind:     testresource.GVKSecret(),
+				GroupVersionResource: testresource.GVRSecret(),
+				IsClusterScoped:      false,
 			},
 			createTwice:    true,
 			markNotPresent: true,
@@ -463,6 +368,10 @@ func TestCreateInformerForResource(t *testing.T) {
 }
 
 func TestCreateInformerForResource_IsIdempotent(t *testing.T) {
+	// Use 3 attempts to verify idempotency works consistently across multiple calls,
+	// not just a single retry scenario
+	const createAttempts = 3
+
 	// Test that creating the same informer multiple times doesn't cause issues
 	fakeClient := fake.NewSimpleDynamicClient(scheme.Scheme)
 	stopCh := make(chan struct{})
@@ -472,25 +381,18 @@ func TestCreateInformerForResource_IsIdempotent(t *testing.T) {
 	implMgr := mgr.(*informerManagerImpl)
 
 	resource := APIResourceMeta{
-		GroupVersionKind: schema.GroupVersionKind{
-			Group:   "",
-			Version: "v1",
-			Kind:    "Pod",
-		},
-		GroupVersionResource: schema.GroupVersionResource{
-			Group:    "",
-			Version:  "v1",
-			Resource: "pods",
-		},
-		IsClusterScoped: false,
+		GroupVersionKind:     testresource.GVKPod(),
+		GroupVersionResource: testresource.GVRPod(),
+		IsClusterScoped:      false,
 	}
 
 	// Create multiple times
-	for i := 0; i < 3; i++ {
+	for i := 0; i < createAttempts; i++ {
 		mgr.CreateInformerForResource(resource)
 	}
 
-	// Should only have one entry in apiResources
+	// Should only have one entry in apiResources after
+	// we create the same informer multiple times
 	if len(implMgr.apiResources) != 1 {
 		t.Errorf("Expected 1 resource in apiResources, got %d", len(implMgr.apiResources))
 	}

@@ -28,6 +28,7 @@ import (
 
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	testinformer "github.com/kubefleet-dev/kubefleet/test/utils/informer"
+	testresource "github.com/kubefleet-dev/kubefleet/test/utils/resource"
 )
 
 func TestChangeDetector_discoverResources(t *testing.T) {
@@ -42,18 +43,8 @@ func TestChangeDetector_discoverResources(t *testing.T) {
 				{
 					GroupVersion: "v1",
 					APIResources: []metav1.APIResource{
-						{
-							Name:       "configmaps",
-							Kind:       "ConfigMap",
-							Namespaced: true,
-							Verbs:      []string{"list", "watch", "get"},
-						},
-						{
-							Name:       "secrets",
-							Kind:       "Secret",
-							Namespaced: true,
-							Verbs:      []string{"list", "watch", "get"},
-						},
+						testresource.APIResourceConfigMap(),
+						testresource.APIResourceSecret(),
 					},
 				},
 			},
@@ -65,12 +56,7 @@ func TestChangeDetector_discoverResources(t *testing.T) {
 				{
 					GroupVersion: "v1",
 					APIResources: []metav1.APIResource{
-						{
-							Name:       "configmaps",
-							Kind:       "ConfigMap",
-							Namespaced: true,
-							Verbs:      []string{"get", "delete"}, // Missing list/watch
-						},
+						testresource.APIResourceWithVerbs("configmaps", "ConfigMap", true, []string{"get", "delete"}), // Missing list/watch
 					},
 				},
 			},
@@ -82,18 +68,8 @@ func TestChangeDetector_discoverResources(t *testing.T) {
 				{
 					GroupVersion: "v1",
 					APIResources: []metav1.APIResource{
-						{
-							Name:       "configmaps",
-							Kind:       "ConfigMap",
-							Namespaced: true,
-							Verbs:      []string{"list", "watch", "get"},
-						},
-						{
-							Name:       "secrets",
-							Kind:       "Secret",
-							Namespaced: true,
-							Verbs:      []string{"list", "watch", "get"},
-						},
+						testresource.APIResourceConfigMap(),
+						testresource.APIResourceSecret(),
 					},
 				},
 			},
@@ -109,18 +85,8 @@ func TestChangeDetector_discoverResources(t *testing.T) {
 				{
 					GroupVersion: "apps/v1",
 					APIResources: []metav1.APIResource{
-						{
-							Name:       "deployments",
-							Kind:       "Deployment",
-							Namespaced: true,
-							Verbs:      []string{"list", "watch", "get"},
-						},
-						{
-							Name:       "statefulsets",
-							Kind:       "StatefulSet",
-							Namespaced: true,
-							Verbs:      []string{"list", "watch", "get"},
-						},
+						testresource.APIResourceDeployment(),
+						testresource.APIResourceStatefulSet(),
 					},
 				},
 			},
