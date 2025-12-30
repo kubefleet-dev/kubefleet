@@ -206,9 +206,12 @@ func (s *informerManagerImpl) Stop() {
 }
 
 func (s *informerManagerImpl) AddEventHandlerToInformer(resource schema.GroupVersionResource, handler cache.ResourceEventHandler) {
+	s.resourcesLock.Lock()
+	defer s.resourcesLock.Unlock()
+
 	// Get or create the informer (this is idempotent - if it exists, we get the same instance)
-	// The idempotent behavior is important because it is called by both the change detector and informer populator,
-	// which run concurrently on the leader hub agent.
+	// The idempotent behavior is important because this method may be called multiple times,
+	// potentially concurrently, and relies on the shared informer instance from the factory.
 	informer := s.informerFactory.ForResource(resource).Informer()
 
 	// Add the event handler to the informer
@@ -225,6 +228,7 @@ func (s *informerManagerImpl) CreateInformerForResource(resource APIResourceMeta
 	if !exist {
 		// Register this resource in our tracking map
 		resource.isPresent = true
+		resource.isStaticResource = false
 		s.apiResources[resource.GroupVersionKind] = &resource
 
 		// Create the informer without adding any event handler
