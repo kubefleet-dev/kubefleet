@@ -205,25 +205,6 @@ func (s *informerManagerImpl) Stop() {
 	s.cancel()
 }
 
-// getOrCreateInformerWithTransform gets or creates an informer for the given resource and ensures
-// the ManagedFields transform is set. This is idempotent - if the informer exists, we get the same
-// instance.
-func (s *informerManagerImpl) getOrCreateInformerWithTransform(resource schema.GroupVersionResource) cache.SharedIndexInformer {
-	// Get or create the informer (this is idempotent - if it exists, we get the same instance)
-	// The idempotent behavior is important because this method may be called multiple times,
-	// potentially concurrently, and relies on the shared informer instance from the factory.
-	informer := s.informerFactory.ForResource(resource).Informer()
-
-	// Set the transform to strip ManagedFields. This is safe to call even if
-	// already set, since we get the same informer instance. If the informer has already
-	// started, this will fail silently (which is fine).
-	if err := informer.SetTransform(ctrlcache.TransformStripManagedFields()); err != nil {
-		klog.V(4).InfoS("Transform already set or informer started", "gvr", resource, "err", err)
-	}
-
-	return informer
-}
-
 // AddEventHandlerToInformer adds an event handler to an existing informer for the given resource.
 // If the informer doesn't exist, it will be created. This is used by the leader's ChangeDetector
 // to add event handlers to informers that were created by the InformerPopulator.
@@ -280,4 +261,23 @@ func ContextForChannel(parentCh <-chan struct{}) (context.Context, context.Cance
 		}
 	}()
 	return ctx, cancel
+}
+
+// getOrCreateInformerWithTransform gets or creates an informer for the given resource and ensures
+// the ManagedFields transform is set. This is idempotent - if the informer exists, we get the same
+// instance.
+func (s *informerManagerImpl) getOrCreateInformerWithTransform(resource schema.GroupVersionResource) cache.SharedIndexInformer {
+	// Get or create the informer (this is idempotent - if it exists, we get the same instance)
+	// The idempotent behavior is important because this method may be called multiple times,
+	// potentially concurrently, and relies on the shared informer instance from the factory.
+	informer := s.informerFactory.ForResource(resource).Informer()
+
+	// Set the transform to strip ManagedFields. This is safe to call even if
+	// already set, since we get the same informer instance. If the informer has already
+	// started, this will fail silently (which is fine).
+	if err := informer.SetTransform(ctrlcache.TransformStripManagedFields()); err != nil {
+		klog.V(4).InfoS("Transform already set or informer started", "gvr", resource, "err", err)
+	}
+
+	return informer
 }
