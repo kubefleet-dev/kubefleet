@@ -160,7 +160,7 @@ func TestValidateClusterUpdatingStatus(t *testing.T) {
 					},
 					{
 						ClusterName: "cluster-2",
-						Conditions:  []metav1.Condition{generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted)},
+						Conditions:  []metav1.Condition{generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted), generateFalseCondition(updateRun, placementv1beta1.ClusterUpdatingConditionSucceeded)},
 					},
 				},
 			},
@@ -184,11 +184,11 @@ func TestValidateClusterUpdatingStatus(t *testing.T) {
 					},
 					{
 						ClusterName: "cluster-2",
-						Conditions:  []metav1.Condition{generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted)},
+						Conditions:  []metav1.Condition{generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted), generateFalseCondition(updateRun, placementv1beta1.ClusterUpdatingConditionSucceeded)},
 					},
 					{
 						ClusterName: "cluster-3",
-						Conditions:  []metav1.Condition{generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted)},
+						Conditions:  []metav1.Condition{generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted), generateFalseCondition(updateRun, placementv1beta1.ClusterUpdatingConditionSucceeded)},
 					},
 				},
 			},

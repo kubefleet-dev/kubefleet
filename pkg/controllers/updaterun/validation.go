@@ -245,8 +245,7 @@ func validateClusterUpdatingStatus(
 			clusterStartedCond := meta.FindStatusCondition(stageStatus.Clusters[j].Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
 			clusterFinishedCond := meta.FindStatusCondition(stageStatus.Clusters[j].Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
 			// cluster is updating if it has started but not yet finished, we also consider failed clusters as updating clusters in execution.
-			if condition.IsConditionStatusTrue(clusterStartedCond, updateRun.GetGeneration()) &&
-				!(condition.IsConditionStatusTrue(clusterFinishedCond, updateRun.GetGeneration()) || condition.IsConditionStatusFalse(clusterFinishedCond, updateRun.GetGeneration())) {
+			if condition.IsConditionStatusTrue(clusterStartedCond, updateRun.GetGeneration()) && !(condition.IsConditionStatusTrue(clusterFinishedCond, updateRun.GetGeneration())) {
 				updatingClusters = append(updatingClusters, stageStatus.Clusters[j].ClusterName)
 			}
 		}
