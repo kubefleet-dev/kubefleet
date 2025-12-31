@@ -205,17 +205,38 @@ func (s *informerManagerImpl) Stop() {
 	s.cancel()
 }
 
-func (s *informerManagerImpl) AddEventHandlerToInformer(resource schema.GroupVersionResource, handler cache.ResourceEventHandler) {
-	s.resourcesLock.Lock()
-	defer s.resourcesLock.Unlock()
-
+// getOrCreateInformerWithTransform gets or creates an informer for the given resource and ensures
+// the ManagedFields transform is set. This is idempotent - if the informer exists, we get the same
+// instance.
+func (s *informerManagerImpl) getOrCreateInformerWithTransform(resource schema.GroupVersionResource) cache.SharedIndexInformer {
 	// Get or create the informer (this is idempotent - if it exists, we get the same instance)
 	// The idempotent behavior is important because this method may be called multiple times,
 	// potentially concurrently, and relies on the shared informer instance from the factory.
 	informer := s.informerFactory.ForResource(resource).Informer()
 
-	// Add the event handler to the informer
-	_, _ = informer.AddEventHandler(handler)
+	// Set the transform to strip ManagedFields. This is safe to call even if
+	// already set, since we get the same informer instance. If the informer has already
+	// started, this will fail silently (which is fine).
+	if err := informer.SetTransform(ctrlcache.TransformStripManagedFields()); err != nil {
+		klog.V(4).InfoS("Transform already set or informer started", "gvr", resource, "err", err)
+	}
+
+	return informer
+}
+
+// AddEventHandlerToInformer adds an event handler to an existing informer for the given resource.
+// If the informer doesn't exist, it will be created. This is used by the leader's ChangeDetector
+// to add event handlers to informers that were created by the InformerPopulator.
+// This method does not grab any locks because it relies on the informerFactory's internal thread-safety.
+func (s *informerManagerImpl) AddEventHandlerToInformer(resource schema.GroupVersionResource, handler cache.ResourceEventHandler) {
+	informer := s.getOrCreateInformerWithTransform(resource)
+
+	// AddEventHandler returns (ResourceEventHandlerRegistration, error). The registration handle
+	// can be used to remove the handler later, but we never remove handlers dynamically -
+	// they persist for the lifetime of the informer, so we discard the handle.
+	if _, err := informer.AddEventHandler(handler); err != nil {
+		klog.Fatal(err, "Failed to add event handler to informer - leader cannot function", "gvr", resource)
+	}
 
 	klog.V(2).InfoS("Added event handler to informer", "gvr", resource)
 }
@@ -231,15 +252,8 @@ func (s *informerManagerImpl) CreateInformerForResource(resource APIResourceMeta
 		resource.isStaticResource = false
 		s.apiResources[resource.GroupVersionKind] = &resource
 
-		// Create the informer without adding any event handler
-		informer := s.informerFactory.ForResource(resource.GroupVersionResource).Informer()
-
-		// Strip away the ManagedFields info from objects to save memory
-		if err := informer.SetTransform(ctrlcache.TransformStripManagedFields()); err != nil {
-			// The SetTransform func would only fail if the informer has already started.
-			// In this case, no further action is needed.
-			klog.ErrorS(err, "Failed to set transform func for informer", "gvr", resource.GroupVersionResource)
-		}
+		// Create the informer without adding any event handler, with transform set
+		_ = s.getOrCreateInformerWithTransform(resource.GroupVersionResource)
 
 		klog.V(3).InfoS("Created informer without handler", "res", resource)
 	} else if !dynRes.isPresent {
