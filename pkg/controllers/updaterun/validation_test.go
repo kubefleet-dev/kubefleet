@@ -170,7 +170,7 @@ func TestValidateClusterUpdatingStatus(t *testing.T) {
 			wantLastFinishedStageIndex: -1,
 		},
 		{
-			name:                   "determineUpdatignStage should not return error if there are multiple clusters have succeeded in an updating stage",
+			name:                   "determineUpdatignStage should not return error if multiple clusters have succeeded in an updating stage",
 			curStage:               0,
 			updatingStageIndex:     -1,
 			lastFinishedStageIndex: -1,
