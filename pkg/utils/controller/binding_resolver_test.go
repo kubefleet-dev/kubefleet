@@ -545,12 +545,8 @@ func TestListBindingsFromKey_ClientError(t *testing.T) {
 				Client: fake.NewClientBuilder().WithScheme(scheme).Build(),
 			}
 
-			_, err := ListBindingsFromKey(ctx, fakeClient, types.NamespacedName{Name: "test-placement"}, tt.fromCache)
-			if err == nil {
-				t.Fatalf("Expected error but got nil")
-			}
-			if !errors.Is(err, tt.wantErr) {
-				t.Errorf("Expected %v but got: %v", tt.wantErr, err)
+			if _, err := ListBindingsFromKey(ctx, fakeClient, types.NamespacedName{Name: "test-placement"}, tt.fromCache); !errors.Is(err, tt.wantErr) {
+				t.Errorf("ListBindingsFromKey() got err %v, want error %v", err, tt.wantErr)
 			}
 		})
 	}
