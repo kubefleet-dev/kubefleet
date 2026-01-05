@@ -96,7 +96,7 @@ type UpdateRunObjList interface {
 // +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Succeeded")].status`,name="Succeeded",type=string
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 // +kubebuilder:printcolumn:JSONPath=`.spec.stagedRolloutStrategyName`,name="Strategy",priority=1,type=string
-// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) < 128",message="metadata.name max length is 127"
+// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) < 64",message="metadata.name max length is 63"
 
 // ClusterStagedUpdateRun represents a stage by stage update process that applies ClusterResourcePlacement
 // selected resources to specified clusters.
@@ -152,30 +152,25 @@ func (c *ClusterStagedUpdateRun) SetUpdateRunStatus(status UpdateRunStatus) {
 type State string
 
 const (
-	// StateInitialized describes user intent to initialize but not execute the update run.
+	// StateInitialize describes user intent to initialize but not run the update run.
 	// This is the default state when an update run is created.
-	// Users can subsequently set the state to Execute or Abandon.
-	StateInitialized State = "Initialize"
+	// Users can subsequently set the state to Run.
+	StateInitialize State = "Initialize"
 
-	// StateExecuted describes user intent to execute (or resume execution if paused).
-	// Users can subsequently set the state to Pause or Abandon.
-	StateExecuted State = "Execute"
+	// StateRun describes user intent to execute (or resume execution if stopped).
+	// Users can subsequently set the state to Stop.
+	StateRun State = "Run"
 
-	// StateStopped describes user intent to pause the update run.
-	// Users can subsequently set the state to Execute or Abandon.
-	StateStopped State = "Pause"
-
-	// StateAbandoned describes user intent to abandon the update run.
-	// This is a terminal state; once set, it cannot be changed.
-	StateAbandoned State = "Abandon"
+	// StateStop describes user intent to stop the update run.
+	// Users can subsequently set the state to Run.
+	StateStop State = "Stop"
 )
 
 // UpdateRunSpec defines the desired rollout strategy and the snapshot indices of the resources to be updated.
 // It specifies a stage-by-stage update process across selected clusters for the given ResourcePlacement object.
-// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.state) && oldSelf.state == 'Initialize' && self.state == 'Pause')",message="invalid state transition: cannot transition from Initialize to Pause"
-// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.state) && oldSelf.state == 'Execute' && self.state == 'Initialize')",message="invalid state transition: cannot transition from Execute to Initialize"
-// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.state) && oldSelf.state == 'Pause' && self.state == 'Initialize')",message="invalid state transition: cannot transition from Pause to Initialize"
-// +kubebuilder:validation:XValidation:rule="!has(oldSelf.state) || oldSelf.state != 'Abandon' || self.state == 'Abandon'",message="invalid state transition: Abandon is a terminal state and cannot transition to any other state"
+// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.state) && oldSelf.state == 'Initialize' && self.state == 'Stop')",message="invalid state transition: cannot transition from Initialize to Stop"
+// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.state) && oldSelf.state == 'Run' && self.state == 'Initialize')",message="invalid state transition: cannot transition from Run to Initialize"
+// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.state) && oldSelf.state == 'Stop' && self.state == 'Initialize')",message="invalid state transition: cannot transition from Stop to Initialize"
 type UpdateRunSpec struct {
 	// PlacementName is the name of placement that this update run is applied to.
 	// There can be multiple active update runs for each placement, but
@@ -201,12 +196,11 @@ type UpdateRunSpec struct {
 
 	// State indicates the desired state of the update run.
 	// Initialize: The update run should be initialized but execution should not start (default).
-	// Execute: The update run should execute or resume execution.
-	// Pause: The update run should pause execution.
-	// Abandon: The update run should be abandoned and terminated.
+	// Run: The update run should execute or resume execution.
+	// Stop: The update run should stop execution.
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=Initialize
-	// +kubebuilder:validation:Enum=Initialize;Execute;Pause;Abandon
+	// +kubebuilder:validation:Enum=Initialize;Run;Stop
 	State State `json:"state,omitempty"`
 }
 
@@ -433,7 +427,7 @@ const (
 	// Its condition status can be one of the following:
 	// - "True": The staged update run is making progress.
 	// - "False": The staged update run is waiting/paused/abandoned.
-	// - "Unknown" means it is unknown.
+	// - "Unknown": The staged update run is in a transitioning state.
 	StagedUpdateRunConditionProgressing StagedUpdateRunConditionType = "Progressing"
 
 	// StagedUpdateRunConditionSucceeded indicates whether the staged update run is completed successfully.
@@ -495,7 +489,8 @@ const (
 	// StageUpdatingConditionProgressing indicates whether the stage updating is making progress.
 	// Its condition status can be one of the following:
 	// - "True": The stage updating is making progress.
-	// - "False": The stage updating is waiting/pausing.
+	// - "False": The stage updating is waiting.
+	// - "Unknown": The staged updating is a transitioning state.
 	StageUpdatingConditionProgressing StageUpdatingConditionType = "Progressing"
 
 	// StageUpdatingConditionSucceeded indicates whether the stage updating is completed successfully.
@@ -679,6 +674,7 @@ type ApprovalRequestObjList interface {
 //   - `TargetUpdateRun`: Points to the cluster staged update run that this approval request is for.
 //   - `TargetStage`: The name of the stage that this approval request is for.
 //   - `IsLatestUpdateRunApproval`: Indicates whether this approval request is the latest one related to this update run.
+//   - `TaskType`: Indicates whether this approval request is for the before or after stage task.
 type ClusterApprovalRequest struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -795,7 +791,7 @@ func (c *ClusterApprovalRequestList) GetApprovalRequestObjs() []ApprovalRequestO
 // +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Succeeded")].status`,name="Succeeded",type=string
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 // +kubebuilder:printcolumn:JSONPath=`.spec.stagedRolloutStrategyName`,name="Strategy",priority=1,type=string
-// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) < 128",message="metadata.name max length is 127"
+// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) < 64",message="metadata.name max length is 63"
 
 // StagedUpdateRun represents a stage by stage update process that applies ResourcePlacement
 // selected resources to specified clusters.
@@ -925,6 +921,7 @@ func (s *StagedUpdateStrategyList) GetUpdateStrategyObjs() []UpdateStrategyObj {
 //   - `TargetUpdateRun`: Points to the staged update run that this approval request is for.
 //   - `TargetStage`: The name of the stage that this approval request is for.
 //   - `IsLatestUpdateRunApproval`: Indicates whether this approval request is the latest one related to this update run.
+//   - `TaskType`: Indicates whether this approval request is for the before or after stage task.
 type ApprovalRequest struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

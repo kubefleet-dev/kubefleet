@@ -173,6 +173,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[0].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
+						placementv1beta1.TaskTypeLabel:                  placementv1beta1.BeforeStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -324,6 +325,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[0].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
+						placementv1beta1.TaskTypeLabel:                  placementv1beta1.AfterStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -379,6 +381,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[1].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
+						placementv1beta1.TaskTypeLabel:                  placementv1beta1.BeforeStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -531,6 +534,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[1].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
+						placementv1beta1.TaskTypeLabel:                  placementv1beta1.AfterStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -1085,6 +1089,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[0].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
+						placementv1beta1.TaskTypeLabel:                  placementv1beta1.AfterStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -1306,6 +1311,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[0].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
+						placementv1beta1.TaskTypeLabel:                  placementv1beta1.BeforeStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -1339,6 +1345,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[0].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
+						placementv1beta1.TaskTypeLabel:                  placementv1beta1.BeforeStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -1441,6 +1448,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 					Labels: map[string]string{
 						placementv1beta1.TargetUpdatingStageNameLabel:   updateRun.Status.StagesStatus[0].StageName,
 						placementv1beta1.TargetUpdateRunLabel:           updateRun.Name,
+						placementv1beta1.TaskTypeLabel:                  placementv1beta1.AfterStageTaskLabelValue,
 						placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 					},
 				},
@@ -1518,11 +1526,11 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 		})
 	})
 
-	Context("Cluster staged update run should update clusters one by one - different states (Initialized -> Executed)", Ordered, func() {
+	Context("Cluster staged update run should update clusters one by one - different states (Initialize -> Run)", Ordered, func() {
 		var wantMetrics []*promclient.Metric
 		BeforeAll(func() {
 			By("Creating a new clusterStagedUpdateRun")
-			updateRun.Spec.State = placementv1beta1.StateInitialized
+			updateRun.Spec.State = placementv1beta1.StateInitialize
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 			By("Validating the initialization succeeded and but not execution started")
@@ -1550,10 +1558,11 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 			validateNotBoundBindingState(ctx, binding)
 		})
 
-		It("Should start execution after changing the state to Execute", func() {
-			By("Updating the updateRun state to Execute")
-			updateRun.Spec.State = placementv1beta1.StateExecuted
-			Expect(k8sClient.Update(ctx, updateRun)).Should(Succeed(), "failed to update the updateRun state")
+		It("Should start execution after changing the state to Run", func() {
+			By("Updating the updateRun state to Run")
+			updateRun = updateClusterStagedUpdateRunState(updateRun.Name, placementv1beta1.StateRun)
+			// Update the test's want status to match the new generation.
+			updateAllStatusConditionsGeneration(wantStatus, updateRun.Generation)
 
 			By("Validating the execution has started")
 			wantStatus = generateExecutionStartedStatus(updateRun, wantStatus)

@@ -40,7 +40,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v6.0.0
+        uses: actions/checkout@v6.0.1
               
       - name: Set up Ginkgo CLI
         run: |
@@ -79,7 +79,7 @@ jobs:
             resource-snapshot-creation-minimum-interval: 30s
             resource-changes-collection-duration: 15s
     runs-on:
-      labels: ubuntu-latest-16-cores
+      labels: oracle-vm-16cpu-64gb-x86-64
     needs: [
       detect-noop,
     ]
@@ -91,7 +91,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v6.0.0
+        uses: actions/checkout@v6.0.1
       
       - name: Install Ginkgo CLI
         run: |
@@ -115,7 +115,7 @@ jobs:
             make e2e-tests-custom
           fi
         env:
-          KUBECONFIG: '/home/runner/.kube/config'
+          KUBECONFIG: '/home/ubuntu/.kube/config'
           HUB_SERVER_URL: 'https://172.19.0.2:6443'
           # Temporarily enable the AKS property provider for the E2E tests, in order
           # to verify the property-based scheduling experience.
@@ -134,12 +134,12 @@ jobs:
           sleep 30
           make collect-e2e-logs
         env:
-          KUBECONFIG: '/home/runner/.kube/config'
+          KUBECONFIG: '/home/ubuntu/.kube/config'
           LOG_DIR: 'logs-${{ matrix.customized-settings }}'
       
       - name: Upload logs
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: e2e-logs-${{ matrix.customized-settings }}
           path: test/e2e/logs-${{ matrix.customized-settings }}/

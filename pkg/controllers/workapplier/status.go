@@ -18,24 +18,38 @@ package workapplier
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/ptr"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/resource"
+)
+
+const (
+	WorkStatusTrimmedDueToOversizedStatusReason  = "Oversized"
+	WorkStatusTrimmedDueToOversizedStatusMsgTmpl = "The status data (drift/diff details and back-reported status) has been trimmed due to size constraints (%d bytes over limit %d)"
 )
 
 // refreshWorkStatus refreshes the status of a Work object based on the processing results of its manifests.
-func (r *Reconciler) refreshWorkStatus(
+//
+// TO-DO (chenyu1): refactor this method a bit to reduce its complexity and enable parallelization.
+func (r *Reconciler) refreshWorkStatus( //nolint:gocyclo
 	ctx context.Context,
 	work *fleetv1beta1.Work,
 	bundles []*manifestProcessingBundle,
 ) error {
+	originalStatus := work.Status.DeepCopy()
+
 	// Note (chenyu1): this method can run in parallel; however, for simplicity reasons,
 	// considering that in most of the time the count of manifests would be low, currently
 	// Fleet still does the status refresh sequentially.
@@ -86,7 +100,10 @@ func (r *Reconciler) refreshWorkStatus(
 		}
 	}
 
+	// Set the two flags here as they are per-work-object settings.
 	isReportDiffModeOn := work.Spec.ApplyStrategy != nil && work.Spec.ApplyStrategy.Type == fleetv1beta1.ApplyStrategyTypeReportDiff
+	isStatusBackReportingOn := work.Spec.ReportBackStrategy != nil && work.Spec.ReportBackStrategy.Type == fleetv1beta1.ReportBackStrategyTypeMirror
+	isDriftedOrDiffed := false
 	for idx := range bundles {
 		bundle := bundles[idx]
 
@@ -115,6 +132,8 @@ func (r *Reconciler) refreshWorkStatus(
 		// Reset the drift details (such details need no port-back).
 		manifestCond.DriftDetails = nil
 		if len(bundle.drifts) > 0 {
+			isDriftedOrDiffed = true
+
 			// Populate drift details if there are drifts found.
 			var observedInMemberClusterGen int64
 			if bundle.inMemberClusterObj != nil {
@@ -137,6 +156,8 @@ func (r *Reconciler) refreshWorkStatus(
 		// Reset the diff details (such details need no port-back).
 		manifestCond.DiffDetails = nil
 		if len(bundle.diffs) > 0 {
+			isDriftedOrDiffed = true
+
 			// Populate diff details if there are diffs found.
 			var observedInMemberClusterGen *int64
 			if bundle.inMemberClusterObj != nil {
@@ -151,9 +172,18 @@ func (r *Reconciler) refreshWorkStatus(
 			}
 		}
 
-		// Tally the stats.
+		// Tally the stats, and perform status back-reporting if applicable.
 		if isManifestObjectApplied(bundle.applyOrReportDiffResTyp) {
 			appliedManifestsCount++
+
+			if isStatusBackReportingOn {
+				// Back-report the status from the member cluster side, if applicable.
+				//
+				// Back-reporting is only performed when:
+				// a) the ReportBackStrategy is of the type Mirror; and
+				// b) the manifest object has been applied successfully.
+				backReportStatus(bundle.inMemberClusterObj, manifestCond, now, klog.KObj(work))
+			}
 		}
 		if isAppliedObjectAvailable(bundle.availabilityResTyp) {
 			availableAppliedObjectsCount++
@@ -184,9 +214,56 @@ func (r *Reconciler) refreshWorkStatus(
 	setWorkDiffReportedCondition(work, manifestCount, diffReportedObjectsCount)
 	work.Status.ManifestConditions = rebuiltManifestConds
 
+	// Perform a size check before the status update. If the Work object goes over the size limit, trim
+	// some data from its status to ensure that update ops can go through.
+	//
+	// Note (chenyu1): at this moment, for simplicity reasons, the trimming op follows a very simple logic:
+	// if the size limit is breached, the work applier will summarize all drift/diff details in the status,
+	// and drop all back-reported status data. More sophisticated trimming logic does obviously exist; here
+	// the controller prefers the simple version primarily for two reasons:
+	//
+	// a) in most of the time, it is rare to reach the size limit: KubeFleet's snapshotting mechanism
+	//    tries to keep the total manifest size in a Work object below 800KB (exceptions do exist), which leaves ~600KB
+	//    space for the status data. The work applier reports for each manifest two conditions at most in the
+	//    status (which are all quite small in size), plus the drift/diff details and the back-reported status
+	//    (if applicable); considering the observation that drifts/diffs are not common and their details are usually small
+	//    (just a JSON path plus the before/after values), and the observation that most Kubernetes objects
+	//    only have a few KBs of status data and not all API types need status back-reporting, most of the time
+	//    the Work object should have enough space for status data without trimming;
+	// b) performing more fine-grained, selective trimming can be a very CPU and memory intensive (e.g.
+	//    various serialization calls) and complex process, and it is difficult to yield optimal results
+	//    even with best efforts.
+	//
+	// TO-DO (chenyu1): re-visit this part of the code and evaluate the need for more fine-grained sharding
+	// if we have users that do use placements of a large collection of manifests and/or very large objects
+	// with drift/diff detection and status back-reporting on.
+	//
+	// TO-DO (chenyu1): evaluate if we need to impose more strict size limits on the manifests to ensure that
+	// Work objects (almost) always have enough space for status data.
+	sizeDeltaBytes, err := resource.CalculateSizeDeltaOverLimitFor(work, resource.DefaultObjSizeLimitWithPaddingBytes)
+	if err != nil {
+		// Normally this should never occur.
+		klog.ErrorS(err, "Failed to check Work object size before status update", "work", klog.KObj(work))
+		wrappedErr := fmt.Errorf("failed to check work object size before status update: %w", err)
+		return controller.NewUnexpectedBehaviorError(wrappedErr)
+	}
+	if sizeDeltaBytes > 0 {
+		klog.V(2).InfoS("Must trim status data as the work object has grown over its size limit",
+			"work", klog.KObj(work),
+			"sizeDeltaBytes", sizeDeltaBytes, "sizeLimitBytes", resource.DefaultObjSizeLimitWithPaddingBytes)
+		trimWorkStatusDataWhenOversized(work)
+	}
+	setWorkStatusTrimmedCondition(work, sizeDeltaBytes, resource.DefaultObjSizeLimitWithPaddingBytes)
+
 	// Update the Work object status.
-	if err := r.hubClient.Status().Update(ctx, work); err != nil {
-		return controller.NewAPIServerError(false, err)
+	if shouldSkipStatusUpdate(isDriftedOrDiffed, isStatusBackReportingOn, originalStatus, &work.Status) {
+		// No status change found; skip the update.
+		klog.V(2).InfoS("No status change found for Work object; skip the status update", "work", klog.KObj(work))
+	} else {
+		klog.V(2).InfoS("Refreshing work object status", "work", klog.KObj(work), "isDriftedOrDiffed", isDriftedOrDiffed, "isStatusBackReportingOn", isStatusBackReportingOn)
+		if err := r.hubClient.Status().Update(ctx, work); err != nil {
+			return controller.NewAPIServerError(false, err)
+		}
 	}
 	return nil
 }
@@ -197,6 +274,8 @@ func (r *Reconciler) refreshAppliedWorkStatus(
 	appliedWork *fleetv1beta1.AppliedWork,
 	bundles []*manifestProcessingBundle,
 ) error {
+	originalStatus := appliedWork.Status.DeepCopy()
+
 	// Note (chenyu1): this method can run in parallel; however, for simplicity reasons,
 	// considering that in most of the time the count of manifests would be low, currently
 	// Fleet still does the status refresh sequentially.
@@ -221,12 +300,18 @@ func (r *Reconciler) refreshAppliedWorkStatus(
 
 	// Update the AppliedWork object status.
 	appliedWork.Status.AppliedResources = appliedResources
-	if err := r.spokeClient.Status().Update(ctx, appliedWork); err != nil {
-		klog.ErrorS(err, "Failed to update AppliedWork status",
-			"appliedWork", klog.KObj(appliedWork))
-		return controller.NewAPIServerError(false, err)
+
+	// Skip the status update if no change found.
+	if equality.Semantic.DeepEqual(originalStatus, &appliedWork.Status) {
+		klog.V(2).InfoS("No status change found for AppliedWork object; skip the status update", "appliedWork", klog.KObj(appliedWork))
+	} else {
+		klog.V(2).InfoS("Refreshing AppliedWork object status", "appliedWork", klog.KObj(appliedWork))
+		if err := r.spokeClient.Status().Update(ctx, appliedWork); err != nil {
+			klog.ErrorS(err, "Failed to update AppliedWork status",
+				"appliedWork", klog.KObj(appliedWork))
+			return controller.NewAPIServerError(false, err)
+		}
 	}
-	klog.V(2).InfoS("Refreshed AppliedWork object status", "appliedWork", klog.KObj(appliedWork))
 	return nil
 }
 
@@ -642,4 +727,142 @@ func prepareRebuiltManifestCondQIdx(bundles []*manifestProcessingBundle) map[str
 		rebuiltManifestCondQIdx[bundle.workResourceIdentifierStr] = idx
 	}
 	return rebuiltManifestCondQIdx
+}
+
+// backReportStatus writes the status field of an object applied on the member cluster side in
+// the status of the Work object.
+func backReportStatus(
+	inMemberClusterObj *unstructured.Unstructured,
+	manifestCond *fleetv1beta1.ManifestCondition,
+	now metav1.Time,
+	workRef klog.ObjectRef,
+) {
+	if inMemberClusterObj == nil || inMemberClusterObj.Object == nil {
+		// Do a sanity check; normally this will never occur (as status back-reporting
+		// only applies to objects that have been successfully applied).
+		//
+		// Should this unexpected situation occurs, the work applier does not register
+		// it as an error; the object shall be ignored for the status back-reporting
+		// part of the reconciliation loop.
+		wrapperErr := fmt.Errorf("attempted to back-report status for a manifest that has not been applied yet or cannot be found on the member cluster side")
+		_ = controller.NewUnexpectedBehaviorError(wrapperErr)
+		klog.ErrorS(wrapperErr, "Failed to back-report status", "work", workRef, "resourceIdentifier", manifestCond.Identifier)
+		return
+	}
+	if _, ok := inMemberClusterObj.Object["status"]; !ok {
+		// The object from the member cluster side does not have a status subresource; this
+		// is not considered as an error.
+		klog.V(2).InfoS("cannot back-report status as the applied resource on the member cluster side does not have a status subresource", "work", workRef, "resourceIdentifier", manifestCond.Identifier)
+		return
+	}
+
+	statusBackReportingWrapper := make(map[string]interface{})
+	// The TypeMeta fields must be added in the wrapper, otherwise the client libraries would
+	// have trouble serializing/deserializing the wrapper object when it's written/read to/from
+	// the API server.
+	statusBackReportingWrapper["apiVersion"] = inMemberClusterObj.GetAPIVersion()
+	statusBackReportingWrapper["kind"] = inMemberClusterObj.GetKind()
+	statusBackReportingWrapper["status"] = inMemberClusterObj.Object["status"]
+	statusData, err := json.Marshal(statusBackReportingWrapper)
+	if err != nil {
+		// This normally should never occur.
+		wrappedErr := fmt.Errorf("failed to marshal wrapped back-reported status: %w", err)
+		_ = controller.NewUnexpectedBehaviorError(wrappedErr)
+		klog.ErrorS(wrappedErr, "Failed to prepare status wrapper", "work", workRef, "resourceIdentifier", manifestCond.Identifier)
+		return
+	}
+
+	manifestCond.BackReportedStatus = &fleetv1beta1.BackReportedStatus{
+		ObservedStatus: runtime.RawExtension{
+			Raw: statusData,
+		},
+		ObservationTime: now,
+	}
+}
+
+// trimWorkStatusDataWhenOversized trims some data from the Work object status when the object
+// reaches its size limit.
+func trimWorkStatusDataWhenOversized(work *fleetv1beta1.Work) {
+	// Trim drift/diff details + back-reported status from the Work object status.
+	// Replace detailed reportings with a summary if applicable.
+	for idx := range work.Status.ManifestConditions {
+		manifestCond := &work.Status.ManifestConditions[idx]
+
+		// Note (chenyu1): check for the second term will always pass; it is added as a sanity check.
+		if manifestCond.DriftDetails != nil && len(manifestCond.DriftDetails.ObservedDrifts) > 0 {
+			driftCount := len(manifestCond.DriftDetails.ObservedDrifts)
+			firstDriftPath := manifestCond.DriftDetails.ObservedDrifts[0].Path
+			// If there are multiple drifts, report only the path of the first drift plus the count of
+			// other paths. Also, leave out the specific value differences.
+			pathSummary := firstDriftPath
+			if len(manifestCond.DriftDetails.ObservedDrifts) > 1 {
+				pathSummary = fmt.Sprintf("%s and %d more path(s)", firstDriftPath, driftCount-1)
+			}
+			manifestCond.DriftDetails.ObservedDrifts = []fleetv1beta1.PatchDetail{
+				{
+					Path:          pathSummary,
+					ValueInMember: "(omitted)",
+					ValueInHub:    "(omitted)",
+				},
+			}
+		}
+
+		// Note (chenyu1): check for the second term will always pass; it is added as a sanity check.
+		if manifestCond.DiffDetails != nil && len(manifestCond.DiffDetails.ObservedDiffs) > 0 {
+			diffCount := len(manifestCond.DiffDetails.ObservedDiffs)
+			firstDiffPath := manifestCond.DiffDetails.ObservedDiffs[0].Path
+			// If there are multiple drifts, report only the path of the first drift plus the count of
+			// other paths. Also, leave out the specific value differences.
+			pathSummary := firstDiffPath
+			if len(manifestCond.DiffDetails.ObservedDiffs) > 1 {
+				pathSummary = fmt.Sprintf("%s and %d more path(s)", firstDiffPath, diffCount-1)
+			}
+			manifestCond.DiffDetails.ObservedDiffs = []fleetv1beta1.PatchDetail{
+				{
+					Path:          pathSummary,
+					ValueInMember: "(omitted)",
+					ValueInHub:    "(omitted)",
+				},
+			}
+		}
+
+		manifestCond.BackReportedStatus = nil
+	}
+}
+
+// setWorkStatusTrimmedCondition sets or removes the StatusTrimmed condition on a Work object
+// based on whether the status has been trimmed due to it being oversized.
+//
+// Note (chenyu1): at this moment, due to limitations on the hub agent controller side (some
+// controllers assume that placement related conditions are always set in a specific sequence),
+// this StatusTrimmed condition might not be exposed on the placement status properly yet.
+func setWorkStatusTrimmedCondition(work *fleetv1beta1.Work, sizeDeltaBytes, sizeLimitBytes int) {
+	if sizeDeltaBytes <= 0 {
+		// Drop the StatusTrimmed condition if it exists.
+		if isCondRemoved := meta.RemoveStatusCondition(&work.Status.Conditions, fleetv1beta1.WorkConditionTypeStatusTrimmed); isCondRemoved {
+			klog.V(2).InfoS("StatusTrimmed condition removed from Work object status", "work", klog.KObj(work))
+		}
+		return
+	}
+
+	// Set or update the StatusTrimmed condition.
+	meta.SetStatusCondition(&work.Status.Conditions, metav1.Condition{
+		Type:               fleetv1beta1.WorkConditionTypeStatusTrimmed,
+		Status:             metav1.ConditionTrue,
+		Reason:             WorkStatusTrimmedDueToOversizedStatusReason,
+		Message:            fmt.Sprintf(WorkStatusTrimmedDueToOversizedStatusMsgTmpl, sizeDeltaBytes, sizeLimitBytes),
+		ObservedGeneration: work.Generation,
+	})
+}
+
+func shouldSkipStatusUpdate(isDriftedOrDiffed, isStatusBackReportingOn bool, originalStatus, currentStatus *fleetv1beta1.WorkStatus) bool {
+	if isDriftedOrDiffed || isStatusBackReportingOn {
+		// Always proceed with status update if there are drifts/diffs detected or if status back-reporting is on.
+		// This is necessary as the drift/diff details and back-reported status data are timestamped and the timestamps are
+		// always refreshed per reconciliation loop.
+		return false
+	}
+
+	// Skip status update if there is no change in the status.
+	return equality.Semantic.DeepEqual(originalStatus, currentStatus)
 }

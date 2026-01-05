@@ -46,6 +46,8 @@ import (
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/workload"
 	mcv1beta1 "github.com/kubefleet-dev/kubefleet/pkg/controllers/membercluster/v1beta1"
+	readiness "github.com/kubefleet-dev/kubefleet/pkg/utils/informer/readiness"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook"
 	// +kubebuilder:scaffold:imports
 )
@@ -156,7 +158,8 @@ func main() {
 
 	if opts.EnableWebhook {
 		whiteListedUsers := strings.Split(opts.WhiteListedUsers, ",")
-		if err := SetupWebhook(mgr, options.WebhookClientConnectionType(opts.WebhookClientConnectionType), opts.WebhookServiceName, whiteListedUsers, opts.EnableGuardRail, opts.EnableV1Beta1APIs, opts.DenyModifyMemberClusterLabels, opts.EnableWorkload); err != nil {
+		if err := SetupWebhook(mgr, options.WebhookClientConnectionType(opts.WebhookClientConnectionType), opts.WebhookServiceName, whiteListedUsers,
+			opts.EnableGuardRail, opts.EnableV1Beta1APIs, opts.DenyModifyMemberClusterLabels, opts.EnableWorkload, opts.NetworkingAgentsEnabled); err != nil {
 			klog.ErrorS(err, "unable to set up webhook")
 			exitWithErrorFunc()
 		}
@@ -164,7 +167,17 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 	if err := workload.SetupControllers(ctx, &wg, mgr, config, opts); err != nil {
-		klog.ErrorS(err, "unable to set up ready check")
+		klog.ErrorS(err, "unable to set up controllers")
+		exitWithErrorFunc()
+	}
+
+	// Add readiness check for dynamic informer cache AFTER controllers are set up.
+	// This ensures the discovery cache is populated before the hub agent is marked ready,
+	// which is critical for all controllers that rely on dynamic resource discovery.
+	// AddReadyzCheck adds additional readiness check instead of replacing the one registered earlier provided the name is different.
+	// Both registered checks need to pass for the manager to be considered ready.
+	if err := mgr.AddReadyzCheck("informer-cache", readiness.InformerReadinessChecker(validator.ResourceInformer)); err != nil {
+		klog.ErrorS(err, "unable to set up informer cache readiness check")
 		exitWithErrorFunc()
 	}
 
@@ -188,7 +201,8 @@ func main() {
 }
 
 // SetupWebhook generates the webhook cert and then set up the webhook configurator.
-func SetupWebhook(mgr manager.Manager, webhookClientConnectionType options.WebhookClientConnectionType, webhookServiceName string, whiteListedUsers []string, enableGuardRail, isFleetV1Beta1API bool, denyModifyMemberClusterLabels bool, enableWorkload bool) error {
+func SetupWebhook(mgr manager.Manager, webhookClientConnectionType options.WebhookClientConnectionType, webhookServiceName string,
+	whiteListedUsers []string, enableGuardRail, isFleetV1Beta1API bool, denyModifyMemberClusterLabels bool, enableWorkload bool, networkingAgentsEnabled bool) error {
 	// Generate self-signed key and crt files in FleetWebhookCertDir for the webhook server to start.
 	w, err := webhook.NewWebhookConfig(mgr, webhookServiceName, FleetWebhookPort, &webhookClientConnectionType, FleetWebhookCertDir, enableGuardRail, denyModifyMemberClusterLabels, enableWorkload)
 	if err != nil {
@@ -199,7 +213,7 @@ func SetupWebhook(mgr manager.Manager, webhookClientConnectionType options.Webho
 		klog.ErrorS(err, "unable to add WebhookConfig")
 		return err
 	}
-	if err = webhook.AddToManager(mgr, whiteListedUsers, denyModifyMemberClusterLabels); err != nil {
+	if err = webhook.AddToManager(mgr, whiteListedUsers, denyModifyMemberClusterLabels, networkingAgentsEnabled); err != nil {
 		klog.ErrorS(err, "unable to register webhooks to the manager")
 		return err
 	}

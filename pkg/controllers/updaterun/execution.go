@@ -18,7 +18,6 @@ package updaterun
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -68,14 +67,7 @@ func (r *Reconciler) execute(
 
 	// Set up defer function to handle errStagedUpdatedAborted.
 	defer func() {
-		if errors.Is(err, errStagedUpdatedAborted) {
-			if updatingStageStatus != nil {
-				markStageUpdatingFailed(updatingStageStatus, updateRun.GetGeneration(), err.Error())
-			} else {
-				// Handle deletion stage case.
-				markStageUpdatingFailed(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration(), err.Error())
-			}
-		}
+		checkIfErrorStagedUpdateAborted(err, updateRun, updatingStageStatus)
 	}()
 
 	// Mark updateRun as progressing if it's not already marked as waiting or stuck.
@@ -83,10 +75,6 @@ func (r *Reconciler) execute(
 	// which would update the lastTransitionTime even though the status hasn't effectively changed.
 	markUpdateRunProgressingIfNotWaitingOrStuck(updateRun)
 	if updatingStageIndex < len(updateRunStatus.StagesStatus) {
-		maxConcurrency, err := calculateMaxConcurrencyValue(updateRunStatus, updatingStageIndex)
-		if err != nil {
-			return false, 0, err
-		}
 		updatingStageStatus = &updateRunStatus.StagesStatus[updatingStageIndex]
 		approved, err := r.checkBeforeStageTasksStatus(ctx, updatingStageIndex, updateRun)
 		if err != nil {
@@ -96,6 +84,10 @@ func (r *Reconciler) execute(
 			markStageUpdatingWaiting(updatingStageStatus, updateRun.GetGeneration(), "Not all before-stage tasks are completed, waiting for approval")
 			markUpdateRunWaiting(updateRun, fmt.Sprintf(condition.UpdateRunWaitingMessageFmt, "before-stage", updatingStageStatus.StageName))
 			return false, stageUpdatingWaitTime, nil
+		}
+		maxConcurrency, err := calculateMaxConcurrencyValue(updateRunStatus, updatingStageIndex)
+		if err != nil {
+			return false, 0, err
 		}
 		waitTime, err = r.executeUpdatingStage(ctx, updateRun, updatingStageIndex, toBeUpdatedBindings, maxConcurrency)
 		// The execution has not finished yet.
@@ -111,17 +103,17 @@ func (r *Reconciler) execute(
 func (r *Reconciler) checkBeforeStageTasksStatus(ctx context.Context, updatingStageIndex int, updateRun placementv1beta1.UpdateRunObj) (bool, error) {
 	updateRunRef := klog.KObj(updateRun)
 	updateRunStatus := updateRun.GetUpdateRunStatus()
-	updatingStageStatus := &updateRunStatus.StagesStatus[updatingStageIndex]
 	updatingStage := &updateRunStatus.UpdateStrategySnapshot.Stages[updatingStageIndex]
 	if updatingStage.BeforeStageTasks == nil {
 		klog.V(2).InfoS("There is no before stage task for this stage", "stage", updatingStage.Name, "updateRun", updateRunRef)
 		return true, nil
 	}
 
+	updatingStageStatus := &updateRunStatus.StagesStatus[updatingStageIndex]
 	for i, task := range updatingStage.BeforeStageTasks {
 		switch task.Type {
 		case placementv1beta1.StageTaskTypeApproval:
-			approved, err := r.handleStageApprovalTask(ctx, &updatingStageStatus.BeforeStageTaskStatus[i], updatingStage, updateRun)
+			approved, err := r.handleStageApprovalTask(ctx, &updatingStageStatus.BeforeStageTaskStatus[i], updatingStage, updateRun, placementv1beta1.BeforeStageTaskLabelValue)
 			if err != nil {
 				return false, err
 			}
@@ -232,9 +224,7 @@ func (r *Reconciler) executeUpdatingStage(
 				}
 			}
 			markClusterUpdatingStarted(clusterStatus, updateRun.GetGeneration())
-			if finishedClusterCount == 0 {
-				markStageUpdatingStarted(updatingStageStatus, updateRun.GetGeneration())
-			}
+			markStageUpdatingProgressStarted(updatingStageStatus, updateRun.GetGeneration())
 			// Need to continue as we need to process at most maxConcurrency number of clusters in parallel.
 			continue
 		}
@@ -338,7 +328,7 @@ func (r *Reconciler) executeDeleteStage(
 		existingDeleteStageClusterMap[existingDeleteStageStatus.Clusters[i].ClusterName] = &existingDeleteStageStatus.Clusters[i]
 	}
 	// Mark the delete stage as started in case it's not.
-	markStageUpdatingStarted(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration())
+	markStageUpdatingProgressStarted(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration())
 	for _, binding := range toBeDeletedBindings {
 		bindingSpec := binding.GetBindingSpec()
 		curCluster, exist := existingDeleteStageClusterMap[bindingSpec.TargetCluster]
@@ -418,7 +408,7 @@ func (r *Reconciler) checkAfterStageTasksStatus(ctx context.Context, updatingSta
 				klog.V(2).InfoS("The after stage wait task has completed", "stage", updatingStage.Name, "updateRun", updateRunRef)
 			}
 		case placementv1beta1.StageTaskTypeApproval:
-			approved, err := r.handleStageApprovalTask(ctx, &updatingStageStatus.AfterStageTaskStatus[i], updatingStage, updateRun)
+			approved, err := r.handleStageApprovalTask(ctx, &updatingStageStatus.AfterStageTaskStatus[i], updatingStage, updateRun, placementv1beta1.AfterStageTaskLabelValue)
 			if err != nil {
 				return false, -1, err
 			}
@@ -440,6 +430,7 @@ func (r *Reconciler) handleStageApprovalTask(
 	stageTaskStatus *placementv1beta1.StageTaskStatus,
 	updatingStage *placementv1beta1.StageConfig,
 	updateRun placementv1beta1.UpdateRunObj,
+	stageTaskType string,
 ) (bool, error) {
 	updateRunRef := klog.KObj(updateRun)
 
@@ -450,7 +441,7 @@ func (r *Reconciler) handleStageApprovalTask(
 	}
 
 	// Check if the approval request has been created.
-	approvalRequest := buildApprovalRequestObject(types.NamespacedName{Name: stageTaskStatus.ApprovalRequestName, Namespace: updateRun.GetNamespace()}, updatingStage.Name, updateRun.GetName())
+	approvalRequest := buildApprovalRequestObject(types.NamespacedName{Name: stageTaskStatus.ApprovalRequestName, Namespace: updateRun.GetNamespace()}, updatingStage.Name, updateRun.GetName(), stageTaskType)
 	requestRef := klog.KObj(approvalRequest)
 	if err := r.Client.Create(ctx, approvalRequest); err != nil {
 		if apierrors.IsAlreadyExists(err) {
@@ -563,7 +554,7 @@ func calculateMaxConcurrencyValue(status *placementv1beta1.UpdateRunStatus, stag
 func aggregateUpdateRunStatus(updateRun placementv1beta1.UpdateRunObj, stageName string, stuckClusterNames []string) {
 	if len(stuckClusterNames) > 0 {
 		markUpdateRunStuck(updateRun, stageName, strings.Join(stuckClusterNames, ", "))
-	} else {
+	} else if updateRun.GetUpdateRunSpec().State == placementv1beta1.StateRun {
 		// If there is no stuck cluster but some progress has been made, mark the update run as progressing.
 		markUpdateRunProgressing(updateRun)
 	}
@@ -618,9 +609,9 @@ func checkClusterUpdateResult(
 	return false, nil
 }
 
-// buildApprovalRequestObject creates an approval request object for after-stage tasks.
+// buildApprovalRequestObject creates an approval request object for before-stage or after-stage tasks.
 // It returns a ClusterApprovalRequest if namespace is empty, otherwise returns an ApprovalRequest.
-func buildApprovalRequestObject(namespacedName types.NamespacedName, stageName, updateRunName string) placementv1beta1.ApprovalRequestObj {
+func buildApprovalRequestObject(namespacedName types.NamespacedName, stageName, updateRunName, stageTaskType string) placementv1beta1.ApprovalRequestObj {
 	var approvalRequest placementv1beta1.ApprovalRequestObj
 	if namespacedName.Namespace == "" {
 		approvalRequest = &placementv1beta1.ClusterApprovalRequest{
@@ -629,6 +620,7 @@ func buildApprovalRequestObject(namespacedName types.NamespacedName, stageName, 
 				Labels: map[string]string{
 					placementv1beta1.TargetUpdatingStageNameLabel:   stageName,
 					placementv1beta1.TargetUpdateRunLabel:           updateRunName,
+					placementv1beta1.TaskTypeLabel:                  stageTaskType,
 					placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 				},
 			},
@@ -645,6 +637,7 @@ func buildApprovalRequestObject(namespacedName types.NamespacedName, stageName, 
 				Labels: map[string]string{
 					placementv1beta1.TargetUpdatingStageNameLabel:   stageName,
 					placementv1beta1.TargetUpdateRunLabel:           updateRunName,
+					placementv1beta1.TaskTypeLabel:                  stageTaskType,
 					placementv1beta1.IsLatestUpdateRunApprovalLabel: "true",
 				},
 			},
@@ -669,7 +662,7 @@ func markUpdateRunProgressing(updateRun placementv1beta1.UpdateRunObj) {
 	})
 }
 
-// markUpdateRunProgressingIfNotWaitingOrStuck marks the update run as proegressing in memory if it's not marked as waiting or stuck already.
+// markUpdateRunProgressingIfNotWaitingOrStuck marks the update run as progressing in memory if it's not marked as waiting or stuck already.
 func markUpdateRunProgressingIfNotWaitingOrStuck(updateRun placementv1beta1.UpdateRunObj) {
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	progressingCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionProgressing))
@@ -705,8 +698,8 @@ func markUpdateRunWaiting(updateRun placementv1beta1.UpdateRunObj, message strin
 	})
 }
 
-// markStageUpdatingStarted marks the stage updating status as started in memory.
-func markStageUpdatingStarted(stageUpdatingStatus *placementv1beta1.StageUpdatingStatus, generation int64) {
+// markStageUpdatingProgressStarted marks the stage updating status as started in memory.
+func markStageUpdatingProgressStarted(stageUpdatingStatus *placementv1beta1.StageUpdatingStatus, generation int64) {
 	if stageUpdatingStatus.StartTime == nil {
 		stageUpdatingStatus.StartTime = &metav1.Time{Time: time.Now()}
 	}
