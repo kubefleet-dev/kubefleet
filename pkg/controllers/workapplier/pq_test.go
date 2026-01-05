@@ -393,7 +393,7 @@ func TestGenericEventHandler(t *testing.T) {
 	key = types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithDefaultPriName}
 	pq.AddWithOpts(opts, reconcile.Request{NamespacedName: key})
 
-	// Handle a GenericEvent, which should add a new key with default priority.
+	// Handle a GenericEvent, which should add a new key with low priority.
 	workGenericEventName := fmt.Sprintf(workNameForPriorityTestingTmpl, "generic")
 	workObj := fleetv1beta1.Work{
 		ObjectMeta: metav1.ObjectMeta{
@@ -465,7 +465,6 @@ func TestDetermineUpdateEventPriority(t *testing.T) {
 	testCases := []struct {
 		name         string
 		oldWorkObj   *fleetv1beta1.Work
-		newWorkObj   *fleetv1beta1.Work
 		wantPriority int
 	}{
 		{
@@ -488,13 +487,6 @@ func TestDetermineUpdateEventPriority(t *testing.T) {
 							Status: metav1.ConditionTrue,
 						},
 					},
-				},
-			},
-			newWorkObj: &fleetv1beta1.Work{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace:         memberReservedNSName1,
-					Name:              workName,
-					CreationTimestamp: longAgo,
 				},
 			},
 			wantPriority: defaultPriorityLevel,
@@ -521,13 +513,6 @@ func TestDetermineUpdateEventPriority(t *testing.T) {
 					},
 				},
 			},
-			newWorkObj: &fleetv1beta1.Work{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace:         memberReservedNSName1,
-					Name:              workName,
-					CreationTimestamp: longAgo,
-				},
-			},
 			wantPriority: highestPriorityLevel,
 		},
 		{
@@ -552,13 +537,6 @@ func TestDetermineUpdateEventPriority(t *testing.T) {
 					},
 				},
 			},
-			newWorkObj: &fleetv1beta1.Work{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace:         memberReservedNSName1,
-					Name:              workName,
-					CreationTimestamp: longAgo,
-				},
-			},
 			wantPriority: defaultPriorityLevel,
 		},
 		{
@@ -579,20 +557,13 @@ func TestDetermineUpdateEventPriority(t *testing.T) {
 					},
 				},
 			},
-			newWorkObj: &fleetv1beta1.Work{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace:         memberReservedNSName1,
-					Name:              workName,
-					CreationTimestamp: longAgo,
-				},
-			},
 			wantPriority: highestPriorityLevel,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			pri := pqEventHandler.determineUpdateEventPriority(tc.oldWorkObj, tc.newWorkObj)
+			pri := pqEventHandler.determineUpdateEventPriority(tc.oldWorkObj)
 			if !cmp.Equal(pri, tc.wantPriority) {
 				t.Errorf("determined priority, expected %d, got %d", tc.wantPriority, pri)
 			}
@@ -641,5 +612,119 @@ func TestCalculateArgBasedPriWithLinearEquation(t *testing.T) {
 				t.Errorf("calculated priority, expected %d, got %d", tc.wantPri, pri)
 			}
 		})
+	}
+}
+
+// TestRequeue tests the Requeue method of the priority-based Work object event handler.
+func TestRequeue(t *testing.T) {
+	pq := priorityqueue.New[reconcile.Request](pqName)
+	pqEventHandler := &priorityBasedWorkObjEventHandler{
+		qm: &pqWrapper{pq: pq},
+		// For simplicity reasons, set all Update events for completed Work objects to have the priority level of 80
+		// regardless of their ages.
+		priLinearEqCoeffA: 0,
+		priLinearEqCoeffB: 80,
+	}
+
+	// Add two keys with highest and default priority levels respectively.
+	opts := priorityqueue.AddOpts{
+		Priority: ptr.To(highestPriorityLevel),
+	}
+	workWithHighestPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "highest")
+	key := types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithHighestPriName}
+	pq.AddWithOpts(opts, reconcile.Request{NamespacedName: key})
+
+	opts = priorityqueue.AddOpts{
+		Priority: ptr.To(defaultPriorityLevel),
+	}
+	workWithDefaultPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "default")
+	key = types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithDefaultPriName}
+	pq.AddWithOpts(opts, reconcile.Request{NamespacedName: key})
+
+	// Requeue a request immediately, which should add a new key with low priority.
+	requeuedWork := fmt.Sprintf(workNameForPriorityTestingTmpl, "requeued")
+	workObj := fleetv1beta1.Work{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: memberReservedNSName1,
+			Name:      requeuedWork,
+		},
+	}
+	pqEventHandler.Requeue(&workObj, 0)
+
+	// Requeue a request with some delay, which should also add a new key with low priority.
+	requeuedWorkWithDelay := fmt.Sprintf(workNameForPriorityTestingTmpl, "requeued-with-delay")
+	workObjWithDelay := fleetv1beta1.Work{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: memberReservedNSName1,
+			Name:      requeuedWorkWithDelay,
+		},
+	}
+	pqEventHandler.Requeue(&workObjWithDelay, time.Second*5)
+
+	// Wait for a very short while as the default rate limiter has a base delay.
+	time.Sleep(time.Millisecond * 100)
+
+	// Check the queue length.
+	if !cmp.Equal(pq.Len(), 3) {
+		t.Fatalf("priority queue length, expected 3, got %d", pq.Len())
+	}
+
+	// Wait for the delay to pass (add 1 second as buffer).
+	time.Sleep(time.Second * 6)
+
+	// Check the queue length again.
+	if !cmp.Equal(pq.Len(), 4) {
+		t.Fatalf("priority queue length after delay, expected 4, got %d", pq.Len())
+	}
+
+	// Dequeue all items and check if the keys and their assigned priorities are as expected.
+	wantDequeuedItemsWithPriorities := []ExpectedDequeuedKeyAndPriority{
+		{
+			Key: reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: memberReservedNSName1,
+					Name:      workWithHighestPriName,
+				},
+			},
+			Priority: highestPriorityLevel,
+		},
+		{
+			Key: reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: memberReservedNSName1,
+					Name:      workWithDefaultPriName,
+				},
+			},
+			Priority: defaultPriorityLevel,
+		},
+		{
+			Key: reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: memberReservedNSName1,
+					Name:      requeuedWork,
+				},
+			},
+			Priority: lowPriorityLevel,
+		},
+		{
+			Key: reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Namespace: memberReservedNSName1,
+					Name:      requeuedWorkWithDelay,
+				},
+			},
+			Priority: lowPriorityLevel,
+		},
+	}
+
+	for i := 0; i < 4; i++ {
+		item, pri, _ := pq.GetWithPriority()
+		wantItemWithPri := wantDequeuedItemsWithPriorities[i]
+		if diff := cmp.Diff(item, wantItemWithPri.Key); diff != "" {
+			t.Errorf("dequeued item #%d mismatch (-got, +want):\n%s", i, diff)
+		}
+		if !cmp.Equal(pri, wantItemWithPri.Priority) {
+			t.Errorf("priority of dequeued item #%d, expected %d, got %d", i, wantItemWithPri.Priority, pri)
+		}
 	}
 }

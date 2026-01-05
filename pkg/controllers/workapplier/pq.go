@@ -58,7 +58,8 @@ const (
 	//   see the implementation details below.
 	//   Note that the top priority level is capped at 100 for consistency/cleanness reasons.
 	// * with default priority (0): all other Update events.
-	// * with low priority (-1): all requeues (with or with errors), and all Generic events.
+	// * with low priority (-1): all requeues, and all Generic events.
+	// * errors will be requeued in the request's original priority level.
 	//
 	// Note that requests with the same priority level will be processed in the FIFO order.
 	highestPriorityLevel = 100
@@ -166,21 +167,22 @@ func (h *priorityBasedWorkObjEventHandler) Update(_ context.Context, updateEvent
 		return
 	}
 
+	// No need to check the updated Work object, as both objects have the same creation timestamp,
+	// and the prioritization logic concerns only the old Work object's status.
 	oldWorkObj, oldOK := updateEvent.ObjectOld.(*fleetv1beta1.Work)
-	newWorkObj, newOK := updateEvent.ObjectNew.(*fleetv1beta1.Work)
-	if !oldOK || !newOK {
+	if !oldOK {
 		wrappedErr := fmt.Errorf("received an Update event, but the objects cannot be cast to Work objects")
 		_ = controller.NewUnexpectedBehaviorError(wrappedErr)
 		klog.ErrorS(wrappedErr, "Failed to process Update event")
 		return
 	}
 
-	pri := h.determineUpdateEventPriority(oldWorkObj, newWorkObj)
+	pri := h.determineUpdateEventPriority(oldWorkObj)
 	opts := priorityqueue.AddOpts{
 		Priority: ptr.To(pri),
 	}
-	workObjName := newWorkObj.GetName()
-	workObjNS := newWorkObj.GetNamespace()
+	workObjName := oldWorkObj.GetName()
+	workObjNS := oldWorkObj.GetNamespace()
 	req := reconcile.Request{
 		NamespacedName: types.NamespacedName{
 			Namespace: workObjNS,
@@ -215,13 +217,13 @@ func (h *priorityBasedWorkObjEventHandler) Generic(_ context.Context, genericEve
 	h.qm.PriorityQueue().AddWithOpts(opts, req)
 }
 
-func (h *priorityBasedWorkObjEventHandler) determineUpdateEventPriority(oldWorkObj, newWorkObj *fleetv1beta1.Work) int {
+func (h *priorityBasedWorkObjEventHandler) determineUpdateEventPriority(oldWorkObj *fleetv1beta1.Work) int {
 	// If the work object is recently created (its age is within the given threshold),
 	// process its Update event with high priority.
 
 	// The age is expected to be the same for both old and new work objects, as the field
 	// is immutable and not user configurable.
-	workObjAgeMinutes := int(time.Since(newWorkObj.CreationTimestamp.Time).Minutes())
+	workObjAgeMinutes := int(time.Since(oldWorkObj.CreationTimestamp.Time).Minutes())
 
 	// Check if the work object is in a failed/undetermined state.
 	//
@@ -257,4 +259,36 @@ func (h *priorityBasedWorkObjEventHandler) determineUpdateEventPriority(oldWorkO
 		// Use high priority for the Update event.
 		return highestPriorityLevel
 	}
+}
+
+// Requeue requeues the given work object for processing after the given delay.
+func (h *priorityBasedWorkObjEventHandler) Requeue(work *fleetv1beta1.Work, delay time.Duration) {
+	// Do a sanity check.
+	if h.qm.PriorityQueue() == nil {
+		wrappedErr := fmt.Errorf("received a requeue request, but the priority queue is not initialized")
+		_ = controller.NewUnexpectedBehaviorError(wrappedErr)
+		klog.ErrorS(wrappedErr, "Failed to process Requeue request")
+		return
+	}
+
+	opts := priorityqueue.AddOpts{
+		// All requeued requests have the low priority level.
+		Priority: ptr.To(int(lowPriorityLevel)),
+	}
+	// Set the RateLimited flag in consistency with the controller runtime requeueing behavior.
+	if delay == 0 {
+		opts.RateLimited = true
+	} else {
+		opts.After = delay
+	}
+
+	workObjName := work.GetName()
+	workObjNS := work.GetNamespace()
+	req := reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Namespace: workObjNS,
+			Name:      workObjName,
+		},
+	}
+	h.qm.PriorityQueue().AddWithOpts(opts, req)
 }

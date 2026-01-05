@@ -95,6 +95,10 @@ var defaultRequeueRateLimiter *RequeueMultiStageWithExponentialBackoffRateLimite
 
 // Reconciler reconciles a Work object.
 type Reconciler struct {
+	// A controller name might be needed as when the priority queue is in use, the work applier
+	// will watch the Work objects with the Watch() method rather than the For() method, and in this
+	// case the controller runtime requires a controller name to be explicitly specified.
+	controllerName       string
 	hubClient            client.Client
 	workNameSpace        string
 	spokeDynamicClient   dynamic.Interface
@@ -111,6 +115,7 @@ type Reconciler struct {
 	//
 	// Note that this variable is set only after the controller starts.
 	pq                priorityqueue.PriorityQueue[reconcile.Request]
+	pqEventHandler    *priorityBasedWorkObjEventHandler
 	priLinearEqCoeffA int
 	priLinearEqCoeffB int
 	pqSetupOnce       sync.Once
@@ -118,6 +123,7 @@ type Reconciler struct {
 
 // NewReconciler returns a new Work object reconciler for the work applier.
 func NewReconciler(
+	controllerName string,
 	hubClient client.Client, workNameSpace string,
 	spokeDynamicClient dynamic.Interface, spokeClient client.Client, restMapper meta.RESTMapper,
 	recorder record.EventRecorder,
@@ -145,6 +151,7 @@ func NewReconciler(
 	}
 
 	return &Reconciler{
+		controllerName:       controllerName,
 		hubClient:            hubClient,
 		spokeDynamicClient:   spokeDynamicClient,
 		spokeClient:          spokeClient,
@@ -408,6 +415,17 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// Requeue the Work object with a delay based on the requeue rate limiter.
 	requeueDelay := r.requeueRateLimiter.When(work, bundles)
 	klog.V(2).InfoS("Requeue the Work object for re-processing", "work", workRef, "delaySeconds", requeueDelay.Seconds())
+	if r.usePriorityQueue {
+		// A priority queue is in use; requeue the Work object with custom logic.
+		//
+		// This is needed as the default controller runtime requeueing behavior will always attempt to
+		// requeue a request with its original priority; with work applier's periodic requeueing mechanism,
+		// this might lead to a situation where a request always gets processed with high priority, even
+		// though such preference no longer applies.
+		r.pqEventHandler.Requeue(work, requeueDelay)
+		return ctrl.Result{}, nil
+	}
+	// No priority queue is in use; requeue the Work object with the default controller runtime logic.
 	return ctrl.Result{RequeueAfter: requeueDelay}, nil
 }
 
@@ -635,6 +653,7 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			priLinearEqCoeffA: r.priLinearEqCoeffA,
 			priLinearEqCoeffB: r.priLinearEqCoeffB,
 		}
+		r.pqEventHandler = eventHandler
 
 		newPQ := func(controllerName string, rateLimiter workqueue.TypedRateLimiter[reconcile.Request]) workqueue.TypedRateLimitingInterface[reconcile.Request] {
 			withRateLimiterOpt := func(opts *priorityqueue.Opts[reconcile.Request]) {
@@ -646,18 +665,17 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 			return r.pq
 		}
 
-		return ctrl.NewControllerManagedBy(mgr).Named("work-applier-controller").
+		return ctrl.NewControllerManagedBy(mgr).Named(r.controllerName).
 			WithOptions(ctrloption.Options{
 				MaxConcurrentReconciles: r.concurrentReconciles,
 				NewQueue:                newPQ,
 			}).
-			For(&fleetv1beta1.Work{}).
 			// Use custom event handler to allow access to the priority queue interface.
 			Watches(&fleetv1beta1.Work{}, eventHandler).
 			Complete(r)
 	}
 
-	return ctrl.NewControllerManagedBy(mgr).Named("work-applier-controller").
+	return ctrl.NewControllerManagedBy(mgr).Named(r.controllerName).
 		WithOptions(ctrloption.Options{
 			MaxConcurrentReconciles: r.concurrentReconciles,
 		}).

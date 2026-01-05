@@ -425,6 +425,7 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 		)
 
 		workApplier := workapplier.NewReconciler(
+			"work-applier",
 			hubMgr.GetClient(),
 			targetNS,
 			spokeDynamicClient,
