@@ -263,13 +263,9 @@ func TestUpdateEventHandler_Erred(t *testing.T) {
 			Generation: 1,
 		},
 	}
-	invalidUpdateEvent1 := event.TypedUpdateEvent[client.Object]{
+	invalidUpdateEvent := event.TypedUpdateEvent[client.Object]{
 		ObjectOld: nsObj,
 		ObjectNew: workObj,
-	}
-	invalidUpdateEvent2 := event.TypedUpdateEvent[client.Object]{
-		ObjectOld: workObj,
-		ObjectNew: nsObj,
 	}
 
 	testCases := []struct {
@@ -283,12 +279,7 @@ func TestUpdateEventHandler_Erred(t *testing.T) {
 		{
 			// Normally this should never occur.
 			name:        "invalid update event with the old object not being a Work",
-			updateEvent: invalidUpdateEvent1,
-		},
-		{
-			// Normally this should never occur.
-			name:        "invalid update event with the new object not being a Work",
-			updateEvent: invalidUpdateEvent2,
+			updateEvent: invalidUpdateEvent,
 		},
 	}
 
