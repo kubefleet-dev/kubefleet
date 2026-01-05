@@ -35,7 +35,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 )
 
-var _ = Describe("UpdateRun stop tests", func() {
+var _ = FDescribe("UpdateRun stop tests", func() {
 	var updateRun *placementv1beta1.ClusterStagedUpdateRun
 	var crp *placementv1beta1.ClusterResourcePlacement
 	var policySnapshot *placementv1beta1.ClusterSchedulingPolicySnapshot
@@ -239,17 +239,12 @@ var _ = Describe("UpdateRun stop tests", func() {
 
 			By("Validating the approvalRequest has ApprovalAccepted status")
 			validateApprovalRequestAccepted(ctx, wantApprovalRequest.Name)
+
+			By("Validating update run is running")
+			wantStatus = generateExecutionStartedStatus(updateRun, wantStatus)
 			// Approval task has been approved.
 			wantStatus.StagesStatus[0].BeforeStageTaskStatus[0].Conditions = append(wantStatus.StagesStatus[0].BeforeStageTaskStatus[0].Conditions,
 				generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestApproved))
-
-			By("Validating update run is running")
-			// Mark 1st cluster started.
-			meta.SetStatusCondition(&wantStatus.StagesStatus[0].Clusters[0].Conditions, generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted))
-			// Mark stage progressing condition as true with progressing reason.
-			meta.SetStatusCondition(&wantStatus.StagesStatus[0].Conditions, generateTrueCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
-			// Mark updateRun progressing condition as true with progressing reason.
-			meta.SetStatusCondition(&wantStatus.Conditions, generateTrueCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
 			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
 
 			By("Checking update run status metrics are emitted")
@@ -297,7 +292,7 @@ var _ = Describe("UpdateRun stop tests", func() {
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
-		It("Should wait for cluster to finish updating before update run is completely stopped", func() {
+		It("Should wait for cluster to finish updating so update run should still be stopping", func() {
 			By("Validating the 2nd clusterResourceBinding is updated to Bound")
 			binding := resourceBindings[1] // cluster-1
 			validateBindingState(ctx, binding, resourceSnapshot.Name, updateRun, 0)
@@ -429,15 +424,19 @@ var _ = Describe("UpdateRun stop tests", func() {
 			approveClusterApprovalRequest(ctx, wantApprovalRequest.Name)
 
 			By("Validating the to-be-deleted bindings are NOT deleted")
-			Eventually(func() error {
+			Consistently(func() error {
 				for i := numTargetClusters; i < numTargetClusters+numUnscheduledClusters; i++ {
-					binding := &placementv1beta1.ClusterResourceBinding{}
-					if err := k8sClient.Get(ctx, types.NamespacedName{Name: resourceBindings[i].Name}, binding); err != nil {
+					binding := placementv1beta1.ClusterResourceBinding{}
+					if err := k8sClient.Get(ctx, types.NamespacedName{Name: resourceBindings[i].Name}, &binding); err != nil {
 						return fmt.Errorf("get binding %s returned a not-found error or another error: %w", binding.Name, err)
+					}
+
+					if !binding.DeletionTimestamp.IsZero() {
+						return fmt.Errorf("binding %s is being deleted when it should not be", binding.Name)
 					}
 				}
 				return nil
-			}, timeout, interval).Should(Succeed(), "failed to validate the to-be-deleted bindings still exist")
+			}, duration, interval).Should(Succeed(), "failed to validate the to-be-deleted bindings still exist")
 
 			By("Validating update run is stopped")
 			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, wantStatus, "")
@@ -446,7 +445,7 @@ var _ = Describe("UpdateRun stop tests", func() {
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 		})
 
-		It("Should complete the 1st stage once it starts running again when wait time passed and approval request approved then move on to the 2nd stage", func() {
+		It("Should complete the 1st stage once it starts running again when wait time passed and approval request approved then move on to the Delete stage", func() {
 			By("Updating updateRun state to Run")
 			updateRun = updateClusterStagedUpdateRunState(updateRun.Name, placementv1beta1.StateRun)
 			// Update the test's want status to match the new generation.
@@ -455,7 +454,7 @@ var _ = Describe("UpdateRun stop tests", func() {
 			By("Validating the approvalRequest has ApprovalAccepted status")
 			validateApprovalRequestAccepted(ctx, wantApprovalRequest.Name)
 
-			By("Validating both after stage tasks have completed and 2nd stage has started")
+			By("Validating both after stage tasks have completed and Deletion has started")
 			// Approval AfterStageTask completed.
 			wantStatus.StagesStatus[0].AfterStageTaskStatus[0].Conditions = append(wantStatus.StagesStatus[0].AfterStageTaskStatus[0].Conditions,
 				generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestApproved))
@@ -469,10 +468,8 @@ var _ = Describe("UpdateRun stop tests", func() {
 			meta.SetStatusCondition(&wantStatus.DeletionStageStatus.Conditions, generateTrueCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
 			// Mark 1 cluster started and the other clusters as succeeded in deletion stage.
 			for i := range wantStatus.DeletionStageStatus.Clusters {
-				if i == 0 {
-					wantStatus.DeletionStageStatus.Clusters[i].Conditions = append(wantStatus.DeletionStageStatus.Clusters[i].Conditions, generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted))
-				} else {
-					wantStatus.DeletionStageStatus.Clusters[i].Conditions = append(wantStatus.DeletionStageStatus.Clusters[i].Conditions, generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted))
+				wantStatus.DeletionStageStatus.Clusters[i].Conditions = append(wantStatus.DeletionStageStatus.Clusters[i].Conditions, generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted))
+				if i != 0 { // first unscheduled cluster is still deleting
 					wantStatus.DeletionStageStatus.Clusters[i].Conditions = append(wantStatus.DeletionStageStatus.Clusters[i].Conditions, generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionSucceeded))
 				}
 			}
