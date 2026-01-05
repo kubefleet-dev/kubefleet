@@ -35,7 +35,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 )
 
-var _ = FDescribe("UpdateRun stop tests", func() {
+var _ = Describe("UpdateRun stop tests", func() {
 	var updateRun *placementv1beta1.ClusterStagedUpdateRun
 	var crp *placementv1beta1.ClusterResourcePlacement
 	var policySnapshot *placementv1beta1.ClusterSchedulingPolicySnapshot
