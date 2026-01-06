@@ -72,7 +72,7 @@ func (nt *NamespaceTracker) AddOrUpdate(namespace *corev1.Namespace) {
 		if len(nt.namespacesByName) == namespaceTrackerLimit {
 			if !nt.reachLimit {
 				nt.reachLimit = true
-				klog.Warning("Namespace tracker has reached its tracking limit; new namespaces will not be tracked anymore", "limit", namespaceTrackerLimit)
+				klog.Warningf("Namespace tracker has reached its tracking limit; new namespaces will not be tracked anymore, limit %d", namespaceTrackerLimit)
 			}
 			klog.V(2).InfoS("Ignoring namespace as namespace tracker has reached its tracking limit", "namespace", nsKObj)
 			return
