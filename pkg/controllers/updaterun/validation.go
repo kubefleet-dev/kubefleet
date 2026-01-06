@@ -240,17 +240,17 @@ func validateClusterUpdatingStatus(
 		}
 		updatingStageIndex = curStage
 		// Collect the updating clusters.
-		var updatingClusters []string
+		updatingClusterCount := 0
 		for j := range stageStatus.Clusters {
 			clusterStartedCond := meta.FindStatusCondition(stageStatus.Clusters[j].Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
 			clusterFinishedCond := meta.FindStatusCondition(stageStatus.Clusters[j].Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded))
 			// cluster is updating if it has started but not yet finished, we also consider failed clusters as updating clusters in execution.
 			if condition.IsConditionStatusTrue(clusterStartedCond, updateRun.GetGeneration()) && !(condition.IsConditionStatusTrue(clusterFinishedCond, updateRun.GetGeneration())) {
-				updatingClusters = append(updatingClusters, stageStatus.Clusters[j].ClusterName)
+				updatingClusterCount++
 			}
 		}
-		if len(updatingClusters) > maxConcurrency {
-			unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the number of updating clusters `%d` in the updating stage `%s` exceeds maxConcurrency `%d`", len(updatingClusters), stageStatus.StageName, maxConcurrency))
+		if updatingClusterCount > maxConcurrency {
+			unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the number of updating clusters `%d` in the updating stage `%s` exceeds maxConcurrency `%d`", updatingClusterCount, stageStatus.StageName, maxConcurrency))
 			klog.ErrorS(unexpectedErr, "The number of updating clusters in the updating stage exceeds maxConcurrency", "updateRun", klog.KObj(updateRun))
 			return -1, -1, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
 		}
