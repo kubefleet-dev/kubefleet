@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -2123,7 +2124,9 @@ func updateRunInitializedConditions(generation int64) []metav1.Condition {
 	}
 }
 
-func clusterStagedUpdateRunStatusSucceededActual(
+func ClusterStagedUpdateRunStatusSucceededActual(
+	ctx context.Context,
+	hubClient client.Client,
 	updateRunName string,
 	wantResourceIndex string,
 	wantPolicyIndex string,
@@ -2166,7 +2169,9 @@ func clusterStagedUpdateRunStatusSucceededActual(
 	}
 }
 
-func stagedUpdateRunStatusSucceededActual(
+func StagedUpdateRunStatusSucceededActual(
+	ctx context.Context,
+	hubClient client.Client,
 	updateRunName, namespace string,
 	wantResourceIndex, wantPolicyIndex string,
 	wantClusterCount int,
