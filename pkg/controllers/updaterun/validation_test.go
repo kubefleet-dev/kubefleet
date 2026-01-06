@@ -146,6 +146,28 @@ func TestValidateClusterUpdatingStatus(t *testing.T) {
 			wantLastFinishedStageIndex: -1,
 		},
 		{
+			name:                   "determineUpdatignStage should not return error if there are multiple clusters in an updating stage with no condition set (execution not started)",
+			curStage:               0,
+			updatingStageIndex:     -1,
+			lastFinishedStageIndex: -1,
+			stageStatus: &placementv1beta1.StageUpdatingStatus{
+				StageName:  "test-stage",
+				Conditions: []metav1.Condition{generateTrueCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing)},
+				Clusters: []placementv1beta1.ClusterUpdatingStatus{
+					{
+						ClusterName: "cluster-1",
+					},
+					{
+						ClusterName: "cluster-2",
+					},
+				},
+			},
+			maxConcurrency:             2,
+			wantErr:                    nil,
+			wantUpdatingStageIndex:     0,
+			wantLastFinishedStageIndex: -1,
+		},
+		{
 			name:                   "determineUpdatignStage should not return error if there are multiple clusters updating in an updating stage",
 			curStage:               0,
 			updatingStageIndex:     -1,

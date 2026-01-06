@@ -168,7 +168,7 @@ func validateUpdateStagesStatus(existingStageStatus []placementv1beta1.StageUpda
 		// Calculate maxConcurrency for the current stage.
 		maxConcurrency, err := calculateMaxConcurrencyValue(updateRunStatus, curStage)
 		if err != nil {
-			return -1, -1, err
+			return -1, -1, fmt.Errorf("%w: %s", errStagedUpdatedAborted, err.Error())
 		}
 		updatingStageIndex, lastFinishedStageIndex, err = validateClusterUpdatingStatus(curStage, updatingStageIndex, lastFinishedStageIndex, &existingStageStatus[curStage], maxConcurrency, updateRun)
 		if err != nil {
