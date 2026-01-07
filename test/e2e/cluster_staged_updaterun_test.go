@@ -1625,7 +1625,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		It("Should rollout resources to member-cluster-2 only after update run is in Run state", func() {
 			// Update the update run state to Run
 			By("Updating the update run state to Run")
-			updateClusterStagedUpdateRunState(updateRunNames[0], placementv1beta1.StateRun)
+			UpdateClusterStagedUpdateRunState(ctx, hubClient, updateRunNames[0], placementv1beta1.StateRun)
 
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[1]})
 			checkIfRemovedWorkResourcesFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0], allMemberClusters[2]})
@@ -1649,7 +1649,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 
 		It("Should not rollout to all member clusters after stopping update run", func() {
 			By("Updating update run state to Stop")
-			updateClusterStagedUpdateRunState(updateRunNames[0], placementv1beta1.StateStop)
+			UpdateClusterStagedUpdateRunState(ctx, hubClient, updateRunNames[0], placementv1beta1.StateStop)
 
 			By("Validating not rolled out to member-cluster-1 and member-cluster-3 yet")
 			checkIfRemovedWorkResourcesFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0], allMemberClusters[2]})
@@ -1670,7 +1670,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		It("Should complete rollout to all member clusters after resuming the update run to Run state", func() {
 			// Update the update run state back to Run.
 			By("Updating the update run state back to Run")
-			updateClusterStagedUpdateRunState(updateRunNames[0], placementv1beta1.StateRun)
+			UpdateClusterStagedUpdateRunState(ctx, hubClient, updateRunNames[0], placementv1beta1.StateRun)
 
 			By("All member clusters should have work resources placed")
 			checkIfPlacedWorkResourcesOnMemberClustersInUpdateRun([]*framework.Cluster{allMemberClusters[0], allMemberClusters[1], allMemberClusters[2]})
@@ -2077,7 +2077,7 @@ func createClusterStagedUpdateRunSucceedWithNoResourceSnapshotIndex(updateRunNam
 	Expect(hubClient.Create(ctx, updateRun)).To(Succeed(), "Failed to create ClusterStagedUpdateRun %s", updateRunName)
 }
 
-func updateClusterStagedUpdateRunState(updateRunName string, state placementv1beta1.State) {
+func UpdateClusterStagedUpdateRunState(ctx context.Context, hubClient client.Client, updateRunName string, state placementv1beta1.State) {
 	Eventually(func() error {
 		updateRun := &placementv1beta1.ClusterStagedUpdateRun{}
 		if err := hubClient.Get(ctx, types.NamespacedName{Name: updateRunName}, updateRun); err != nil {
