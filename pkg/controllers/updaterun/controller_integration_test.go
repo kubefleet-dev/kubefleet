@@ -446,19 +446,7 @@ func generateTestClusterResourceBindingsAndClusters(policySnapshotIndex int) ([]
 		resourceBindings[i] = generateTestClusterResourceBinding(policySnapshotName, targetClusters[i].Name, placementv1beta1.BindingStateScheduled)
 	}
 
-	unscheduledClusters := make([]*clusterv1beta1.MemberCluster, numUnscheduledClusters)
-	unscheduledClusterName := "unscheduled-cluster-%d"
-	// Half of the unscheduled clusters have old policy snapshot.
-	for i := range numUnscheduledClusters / 2 {
-		unscheduledClusters[i] = generateTestMemberCluster(i, fmt.Sprintf(unscheduledClusterName, i), map[string]string{"group": "staging"})
-		// Update the policySnapshot name so that these clusters are considered to-be-deleted.
-		resourceBindings[numTargetClusters+i] = generateTestClusterResourceBinding(policySnapshotName+"new", unscheduledClusters[i].Name, placementv1beta1.BindingStateUnscheduled)
-	}
-	// The other half of the unscheduled clusters have latest policy snapshot but still unscheduled.
-	for i := numUnscheduledClusters / 2; i < numUnscheduledClusters; i++ {
-		unscheduledClusters[i] = generateTestMemberCluster(i, fmt.Sprintf(unscheduledClusterName, i), map[string]string{"group": "staging"})
-		resourceBindings[numTargetClusters+i] = generateTestClusterResourceBinding(policySnapshotName, unscheduledClusters[i].Name, placementv1beta1.BindingStateUnscheduled)
-	}
+	resourceBindings, unscheduledClusters := generateTestUnscheduledClusterResourceBindingsAndClusters(policySnapshotName, numUnscheduledClusters, resourceBindings)
 	return resourceBindings, targetClusters, unscheduledClusters
 }
 
@@ -490,7 +478,7 @@ func generateTestUnscheduledClusterResourceBindingsAndClusters(policySnapshotNam
 	for i := range numUnscheduledClusters / 2 {
 		unscheduledClusters[i] = generateTestMemberCluster(i, fmt.Sprintf(unscheduledClusterName, i), map[string]string{"group": "staging"})
 		// Update the policySnapshot name so that these clusters are considered to-be-deleted.
-		bindings[targetClusters+i] = generateTestClusterResourceBinding(policySnapshotName+"new", unscheduledClusters[i].Name, placementv1beta1.BindingStateUnscheduled)
+		bindings[targetClusters+i] = generateTestClusterResourceBinding(policySnapshotName+"old", unscheduledClusters[i].Name, placementv1beta1.BindingStateUnscheduled)
 	}
 	// The other half of the unscheduled clusters have latest policy snapshot but still unscheduled.
 	for i := numUnscheduledClusters / 2; i < numUnscheduledClusters; i++ {

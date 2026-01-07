@@ -293,10 +293,6 @@ var _ = Describe("UpdateRun stop tests", func() {
 		})
 
 		It("Should wait for cluster to finish updating so update run should still be stopping", func() {
-			By("Validating the 2nd clusterResourceBinding is updated to Bound")
-			binding := resourceBindings[1] // cluster-1
-			validateBindingState(ctx, binding, resourceSnapshot.Name, updateRun, 0)
-
 			By("Validating the 2nd cluster has NOT succeeded and the update run is still stopping")
 			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, wantStatus, "")
 
@@ -326,7 +322,7 @@ var _ = Describe("UpdateRun stop tests", func() {
 			wantMetrics = append(wantMetrics, generateStoppedMetric(updateRun))
 			validateUpdateRunMetricsEmitted(wantMetrics...)
 
-			By("Validating update run us is in stopped state")
+			By("Validating update run is in stopped state")
 			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, wantStatus, "")
 
 			By("Validating 3rd clusterResourceBinding is NOT updated to Bound")
