@@ -437,3 +437,175 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateUserForFleetCRD(t *testing.T) {
+	testCases := map[string]struct {
+		req              admission.Request
+		whiteListedUsers []string
+		group            string
+		wantResponse     admission.Response
+	}{
+		"allow user in system:masters group for fleet placement CRD": {
+			req: admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name:        "clusterresourceplacements.placement.kubernetes-fleet.io",
+					RequestKind: &metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"},
+					UserInfo: authenticationv1.UserInfo{
+						Username: "test-user",
+						Groups:   []string{mastersGroup},
+					},
+					Operation: admissionv1.Create,
+				},
+			},
+			group: "placement.kubernetes-fleet.io",
+			wantResponse: admission.Allowed(fmt.Sprintf(ResourceAllowedFormat, "test-user", utils.GenerateGroupString([]string{mastersGroup}), admissionv1.Create,
+				&metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"}, "",
+				types.NamespacedName{Name: "clusterresourceplacements.placement.kubernetes-fleet.io"})),
+		},
+		"deny non-admin user for fleet placement CRD": {
+			req: admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name:        "clusterresourceplacements.placement.kubernetes-fleet.io",
+					RequestKind: &metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"},
+					UserInfo: authenticationv1.UserInfo{
+						Username: "regular-user",
+						Groups:   []string{"regular-group"},
+					},
+					Operation: admissionv1.Update,
+				},
+			},
+			group: "placement.kubernetes-fleet.io",
+			wantResponse: admission.Denied(fmt.Sprintf(ResourceDeniedFormat, "regular-user", utils.GenerateGroupString([]string{"regular-group"}), admissionv1.Update,
+				&metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"}, "",
+				types.NamespacedName{Name: "clusterresourceplacements.placement.kubernetes-fleet.io"})),
+		},
+		"allow user in kubeadm:cluster-admins group for fleet cluster CRD": {
+			req: admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name:        "memberclusters.cluster.kubernetes-fleet.io",
+					RequestKind: &metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"},
+					UserInfo: authenticationv1.UserInfo{
+						Username: "test-user",
+						Groups:   []string{kubeadmClusterAdminsGroup},
+					},
+					Operation: admissionv1.Update,
+				},
+			},
+			group: "cluster.kubernetes-fleet.io",
+			wantResponse: admission.Allowed(fmt.Sprintf(ResourceAllowedFormat, "test-user", utils.GenerateGroupString([]string{kubeadmClusterAdminsGroup}), admissionv1.Update,
+				&metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"}, "",
+				types.NamespacedName{Name: "memberclusters.cluster.kubernetes-fleet.io"})),
+		},
+		"deny service account for fleet cluster CRD": {
+			req: admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name:        "memberclusters.cluster.kubernetes-fleet.io",
+					RequestKind: &metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"},
+					UserInfo: authenticationv1.UserInfo{
+						Username: "system:serviceaccount:default:test-sa",
+						Groups:   []string{serviceAccountsGroup},
+					},
+					Operation: admissionv1.Update,
+				},
+			},
+			group: "cluster.kubernetes-fleet.io",
+			wantResponse: admission.Denied(fmt.Sprintf(ResourceDeniedFormat, "system:serviceaccount:default:test-sa", utils.GenerateGroupString([]string{serviceAccountsGroup}), admissionv1.Update,
+				&metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"}, "",
+				types.NamespacedName{Name: "memberclusters.cluster.kubernetes-fleet.io"})),
+		},
+		"allow white listed user for fleet networking CRD": {
+			req: admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name:        "internalserviceexports.networking.fleet.azure.com",
+					RequestKind: &metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"},
+					UserInfo: authenticationv1.UserInfo{
+						Username: "white-listed-user",
+						Groups:   []string{"test-group"},
+					},
+					Operation:   admissionv1.Delete,
+					SubResource: "status",
+				},
+			},
+			whiteListedUsers: []string{"white-listed-user"},
+			group:            "networking.fleet.azure.com",
+			wantResponse: admission.Allowed(fmt.Sprintf(ResourceAllowedFormat, "white-listed-user", utils.GenerateGroupString([]string{"test-group"}), admissionv1.Delete,
+				&metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"}, "status",
+				types.NamespacedName{Name: "internalserviceexports.networking.fleet.azure.com"})),
+		},
+		"deny regular user for fleet networking CRD": {
+			req: admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name:        "internalserviceexports.networking.fleet.azure.com",
+					RequestKind: &metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"},
+					UserInfo: authenticationv1.UserInfo{
+						Username: "regular-user",
+						Groups:   []string{"regular-group"},
+					},
+					Operation: admissionv1.Create,
+				},
+			},
+			group: "networking.fleet.azure.com",
+			wantResponse: admission.Denied(fmt.Sprintf(ResourceDeniedFormat, "regular-user", utils.GenerateGroupString([]string{"regular-group"}), admissionv1.Create,
+				&metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"}, "",
+				types.NamespacedName{Name: "internalserviceexports.networking.fleet.azure.com"})),
+		},
+		"allow system:masters for cluster inventory CRD": {
+			req: admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name:        "clusterprofiles.multicluster.x-k8s.io",
+					RequestKind: &metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"},
+					UserInfo: authenticationv1.UserInfo{
+						Username: "admin-user",
+						Groups:   []string{mastersGroup},
+					},
+					Operation: admissionv1.Create,
+				},
+			},
+			group: "multicluster.x-k8s.io",
+			wantResponse: admission.Allowed(fmt.Sprintf(ResourceAllowedFormat, "admin-user", utils.GenerateGroupString([]string{mastersGroup}), admissionv1.Create,
+				&metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"}, "",
+				types.NamespacedName{Name: "clusterprofiles.multicluster.x-k8s.io"})),
+		},
+		"deny regular user for cluster inventory CRD": {
+			req: admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name:        "clusterprofiles.multicluster.x-k8s.io",
+					RequestKind: &metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"},
+					UserInfo: authenticationv1.UserInfo{
+						Username: "regular-user",
+						Groups:   []string{"regular-group"},
+					},
+					Operation: admissionv1.Create,
+				},
+			},
+			group: "multicluster.x-k8s.io",
+			wantResponse: admission.Denied(fmt.Sprintf(ResourceDeniedFormat, "regular-user", utils.GenerateGroupString([]string{"regular-group"}), admissionv1.Create,
+				&metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"}, "",
+				types.NamespacedName{Name: "clusterprofiles.multicluster.x-k8s.io"})),
+		},
+		"allow any user for non-fleet-managed CRD group": {
+			req: admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name:        "gateways.gateway.networking.k8s.io",
+					RequestKind: &metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"},
+					UserInfo: authenticationv1.UserInfo{
+						Username: "regular-user",
+						Groups:   []string{"regular-group"},
+					},
+					Operation: admissionv1.Create,
+				},
+			},
+			group: "networking.k8s.io",
+			wantResponse: admission.Allowed(fmt.Sprintf(ResourceAllowedFormat, "regular-user", utils.GenerateGroupString([]string{"regular-group"}), admissionv1.Create,
+				&metav1.GroupVersionKind{Group: "apiextensions.k8s.io", Version: "v1", Kind: "CustomResourceDefinition"}, "",
+				types.NamespacedName{Name: "gateways.gateway.networking.k8s.io"})),
+		},
+	}
+
+	for testName, testCase := range testCases {
+		t.Run(testName, func(t *testing.T) {
+			gotResult := ValidateUserForFleetCRD(testCase.req, testCase.whiteListedUsers, testCase.group)
+			assert.Equal(t, testCase.wantResponse, gotResult, utils.TestCaseMsg, testName)
+		})
+	}
+}
