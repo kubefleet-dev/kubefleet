@@ -17,7 +17,6 @@ limitations under the License.
 package e2e
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -2121,95 +2120,6 @@ func updateRunInitializedConditions(generation int64) []metav1.Condition {
 			Reason:             condition.UpdateRunInitializeSucceededReason,
 			ObservedGeneration: generation,
 		},
-	}
-}
-
-func ClusterStagedUpdateRunStatusSucceededActual(
-	ctx context.Context,
-	hubClient client.Client,
-	updateRunName string,
-	wantResourceIndex string,
-	wantPolicyIndex string,
-	wantClusterCount int,
-	wantApplyStrategy *placementv1beta1.ApplyStrategy,
-	wantStrategySpec *placementv1beta1.UpdateStrategySpec,
-	wantSelectedClusters [][]string,
-	wantUnscheduledClusters []string,
-	wantCROs map[string][]string,
-	wantROs map[string][]placementv1beta1.NamespacedName,
-	execute bool,
-) func() error {
-	return func() error {
-		updateRun := &placementv1beta1.ClusterStagedUpdateRun{}
-		if err := hubClient.Get(ctx, types.NamespacedName{Name: updateRunName}, updateRun); err != nil {
-			return err
-		}
-
-		wantStatus := placementv1beta1.UpdateRunStatus{
-			PolicySnapshotIndexUsed:    wantPolicyIndex,
-			ResourceSnapshotIndexUsed:  wantResourceIndex,
-			PolicyObservedClusterCount: wantClusterCount,
-			ApplyStrategy:              wantApplyStrategy.DeepCopy(),
-			UpdateStrategySnapshot:     wantStrategySpec,
-		}
-
-		if execute {
-			wantStatus.StagesStatus = buildStageUpdatingStatuses(wantStrategySpec, wantSelectedClusters, wantCROs, wantROs, updateRun)
-			wantStatus.DeletionStageStatus = buildDeletionStageStatus(wantUnscheduledClusters, updateRun)
-			wantStatus.Conditions = updateRunSucceedConditions(updateRun.Generation)
-		} else {
-			wantStatus.StagesStatus = buildStageUpdatingStatusesForInitialized(wantStrategySpec, wantSelectedClusters, wantCROs, wantROs, updateRun)
-			wantStatus.DeletionStageStatus = buildDeletionStatusWithoutConditions(wantUnscheduledClusters, updateRun)
-			wantStatus.Conditions = updateRunInitializedConditions(updateRun.Generation)
-		}
-		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusCmpOption...); diff != "" {
-			return fmt.Errorf("UpdateRun status diff (-got, +want): %s", diff)
-		}
-		return nil
-	}
-}
-
-func StagedUpdateRunStatusSucceededActual(
-	ctx context.Context,
-	hubClient client.Client,
-	updateRunName, namespace string,
-	wantResourceIndex, wantPolicyIndex string,
-	wantClusterCount int,
-	wantApplyStrategy *placementv1beta1.ApplyStrategy,
-	wantStrategySpec *placementv1beta1.UpdateStrategySpec,
-	wantSelectedClusters [][]string,
-	wantUnscheduledClusters []string,
-	wantCROs map[string][]string,
-	wantROs map[string][]placementv1beta1.NamespacedName,
-	execute bool,
-) func() error {
-	return func() error {
-		updateRun := &placementv1beta1.StagedUpdateRun{}
-		if err := hubClient.Get(ctx, client.ObjectKey{Name: updateRunName, Namespace: namespace}, updateRun); err != nil {
-			return err
-		}
-
-		wantStatus := placementv1beta1.UpdateRunStatus{
-			PolicySnapshotIndexUsed:    wantPolicyIndex,
-			ResourceSnapshotIndexUsed:  wantResourceIndex,
-			PolicyObservedClusterCount: wantClusterCount,
-			ApplyStrategy:              wantApplyStrategy.DeepCopy(),
-			UpdateStrategySnapshot:     wantStrategySpec,
-		}
-
-		if execute {
-			wantStatus.StagesStatus = buildStageUpdatingStatuses(wantStrategySpec, wantSelectedClusters, wantCROs, wantROs, updateRun)
-			wantStatus.DeletionStageStatus = buildDeletionStageStatus(wantUnscheduledClusters, updateRun)
-			wantStatus.Conditions = updateRunSucceedConditions(updateRun.Generation)
-		} else {
-			wantStatus.StagesStatus = buildStageUpdatingStatusesForInitialized(wantStrategySpec, wantSelectedClusters, wantCROs, wantROs, updateRun)
-			wantStatus.DeletionStageStatus = buildDeletionStatusWithoutConditions(wantUnscheduledClusters, updateRun)
-			wantStatus.Conditions = updateRunInitializedConditions(updateRun.Generation)
-		}
-		if diff := cmp.Diff(updateRun.Status, wantStatus, updateRunStatusCmpOption...); diff != "" {
-			return fmt.Errorf("UpdateRun status diff (-got, +want): %s", diff)
-		}
-		return nil
 	}
 }
 

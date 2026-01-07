@@ -17,7 +17,6 @@ limitations under the License.
 package e2e
 
 import (
-	"context"
 	"fmt"
 	"os/exec"
 	"time"
@@ -28,7 +27,6 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -2075,50 +2073,6 @@ func createClusterStagedUpdateRunSucceedWithNoResourceSnapshotIndex(updateRunNam
 		},
 	}
 	Expect(hubClient.Create(ctx, updateRun)).To(Succeed(), "Failed to create ClusterStagedUpdateRun %s", updateRunName)
-}
-
-func UpdateClusterStagedUpdateRunState(ctx context.Context, hubClient client.Client, updateRunName string, state placementv1beta1.State) {
-	Eventually(func() error {
-		updateRun := &placementv1beta1.ClusterStagedUpdateRun{}
-		if err := hubClient.Get(ctx, types.NamespacedName{Name: updateRunName}, updateRun); err != nil {
-			return fmt.Errorf("failed to get ClusterStagedUpdateRun %s", updateRunName)
-		}
-
-		updateRun.Spec.State = state
-		if err := hubClient.Update(ctx, updateRun); err != nil {
-			return fmt.Errorf("failed to update ClusterStagedUpdateRun %s", updateRunName)
-		}
-		return nil
-	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update ClusterStagedUpdateRun %s state to %s", updateRunName, state)
-}
-
-func ValidateAndApproveClusterApprovalRequests(ctx context.Context, hubClient client.Client, updateRunName, stageName, approvalRequestNameFmt, stageTaskType string) {
-	Eventually(func() error {
-		appReqList := &placementv1beta1.ClusterApprovalRequestList{}
-		if err := hubClient.List(ctx, appReqList, client.MatchingLabels{
-			placementv1beta1.TargetUpdatingStageNameLabel: stageName,
-			placementv1beta1.TargetUpdateRunLabel:         updateRunName,
-			placementv1beta1.TaskTypeLabel:                stageTaskType,
-		}); err != nil {
-			return fmt.Errorf("failed to list approval requests: %w", err)
-		}
-
-		if len(appReqList.Items) != 1 {
-			return fmt.Errorf("got %d approval requests, want 1", len(appReqList.Items))
-		}
-		appReq := &appReqList.Items[0]
-		approvalRequestName := fmt.Sprintf(approvalRequestNameFmt, updateRunName, stageName)
-		if appReq.Name != approvalRequestName {
-			return fmt.Errorf("got approval request %s, want %s", appReq.Name, approvalRequestName)
-		}
-		meta.SetStatusCondition(&appReq.Status.Conditions, metav1.Condition{
-			Status:             metav1.ConditionTrue,
-			Type:               string(placementv1beta1.ApprovalRequestConditionApproved),
-			ObservedGeneration: appReq.GetGeneration(),
-			Reason:             "lgtm",
-		})
-		return hubClient.Status().Update(ctx, appReq)
-	}, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to get or approve approval request")
 }
 
 func updateConfigMapSucceed(newConfigMap *corev1.ConfigMap) {
