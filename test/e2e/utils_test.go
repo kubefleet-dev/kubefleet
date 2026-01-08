@@ -585,6 +585,9 @@ func setupInvalidClusters() {
 }
 
 func cleanupInvalidClusters() {
+	if hubClient == nil {
+		return
+	}
 	invalidClusterNames := []string{memberCluster4UnhealthyName, memberCluster5LeftName}
 	for _, name := range invalidClusterNames {
 		mcObj := &clusterv1beta1.MemberCluster{
@@ -654,6 +657,9 @@ func createResourcesForFleetGuardRail() {
 
 // deleteResourcesForFleetGuardRail deletes resources created for guard rail E2Es.
 func deleteResourcesForFleetGuardRail() {
+	if hubClient == nil {
+		return
+	}
 	crb := rbacv1.ClusterRoleBinding{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "test-cluster-role-binding",
@@ -670,6 +676,9 @@ func deleteResourcesForFleetGuardRail() {
 }
 
 func deleteTestResourceCRD() {
+	if hubClient == nil {
+		return
+	}
 	crd := apiextensionsv1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "testresources.test.kubernetes-fleet.io",
@@ -870,6 +879,9 @@ func cleanupConfigMapOnCluster(cluster *framework.Cluster) {
 
 // setMemberClusterToLeave sets a specific member cluster to leave the fleet.
 func setMemberClusterToLeave(memberCluster *framework.Cluster) {
+	if hubClient == nil {
+		return
+	}
 	mcObj := &clusterv1beta1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: memberCluster.ClusterName,
@@ -952,6 +964,9 @@ func cleanupAnotherValidOwnerReference(nsName string) {
 
 // checkIfMemberClusterHasLeft verifies if the specified member cluster has left.
 func checkIfMemberClusterHasLeft(memberCluster *framework.Cluster) {
+	if hubClient == nil {
+		return
+	}
 	Eventually(func() error {
 		mcObj := &clusterv1beta1.MemberCluster{}
 		if err := hubClient.Get(ctx, types.NamespacedName{Name: memberCluster.ClusterName}, mcObj); !k8serrors.IsNotFound(err) {
