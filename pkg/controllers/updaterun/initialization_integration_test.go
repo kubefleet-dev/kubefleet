@@ -69,6 +69,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 		updateRunNamespacedName = types.NamespacedName{Name: testUpdateRunName}
 
 		updateRun = generateTestClusterStagedUpdateRun()
+		updateRun.Spec.State = placementv1beta1.StateInitialize
 		crp = generateTestClusterResourcePlacement()
 		updateStrategy = generateTestClusterStagedUpdateStrategy()
 		clusterResourceOverride = generateTestClusterResourceOverride()
@@ -874,14 +875,13 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 			By("Validating the clusterStagedUpdateRun stats")
 			initialized := generateSucceededInitializationStatus(crp, updateRun, testResourceSnapshotIndex, policySnapshot, updateStrategy, clusterResourceOverride)
-			want := generateExecutionNotStartedStatus(updateRun, initialized)
-			validateClusterStagedUpdateRunStatus(ctx, updateRun, want, "")
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, initialized, "")
 
 			By("Validating the clusterStagedUpdateRun initialized consistently")
-			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, want, "")
+			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, initialized, "")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateWaitingMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationSucceededMetric(updateRun))
 		})
 
 		It("Should put related ClusterResourceOverrides in the status", func() {
@@ -896,14 +896,13 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 			By("Validating the clusterStagedUpdateRun stats")
 			initialized := generateSucceededInitializationStatus(crp, updateRun, testResourceSnapshotIndex, policySnapshot, updateStrategy, clusterResourceOverride)
-			want := generateExecutionNotStartedStatus(updateRun, initialized)
-			validateClusterStagedUpdateRunStatus(ctx, updateRun, want, "")
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, initialized, "")
 
 			By("Validating the clusterStagedUpdateRun initialized consistently")
-			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, want, "")
+			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, initialized, "")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateWaitingMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationSucceededMetric(updateRun))
 		})
 
 		It("Should pick latest master resource snapshot if multiple snapshots", func() {
@@ -931,14 +930,13 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 			By("Validating the clusterStagedUpdateRun status")
 			initialized := generateSucceededInitializationStatus(crp, updateRun, "2", policySnapshot, updateStrategy, clusterResourceOverride)
-			want := generateExecutionNotStartedStatus(updateRun, initialized)
-			validateClusterStagedUpdateRunStatus(ctx, updateRun, want, "")
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, initialized, "")
 
 			By("Validating the clusterStagedUpdateRun initialized consistently")
-			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, want, "")
+			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, initialized, "")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateWaitingMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationSucceededMetric(updateRun))
 		})
 	})
 })
