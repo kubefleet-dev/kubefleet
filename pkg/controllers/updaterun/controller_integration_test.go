@@ -265,8 +265,6 @@ func generateMetricsLabels(
 	return []*prometheusclientmodel.LabelPair{
 		{Name: ptr.To("namespace"), Value: &updateRun.Namespace},
 		{Name: ptr.To("name"), Value: &updateRun.Name},
-		{Name: ptr.To("state"), Value: ptr.To(string(updateRun.Spec.State))},
-		{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(updateRun.Generation, 10))},
 		{Name: ptr.To("condition"), Value: ptr.To(condition)},
 		{Name: ptr.To("status"), Value: ptr.To(status)},
 		{Name: ptr.To("reason"), Value: ptr.To(reason)},
