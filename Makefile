@@ -99,7 +99,7 @@ $(ENVTEST):
 	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) sigs.k8s.io/controller-runtime/tools/setup-envtest $(ENVTEST_BIN) $(ENVTEST_VER)
 
 .PHONY: help
-help: ## Display this help.
+help: ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
 
@@ -123,12 +123,12 @@ staticcheck: $(STATICCHECK) ## Run static analysis
 	$(STATICCHECK) ./...
 
 .PHONY: fmt
-fmt:  $(GOIMPORTS) ## Run go fmt against code.
+fmt:  $(GOIMPORTS) ## Run go fmt against code
 	go fmt ./...
 	$(GOIMPORTS) -local go.goms.io/fleet -w $$(go list -f {{.Dir}} ./...)
 
 .PHONY: vet
-vet: ## Run go vet against code.
+vet: ## Run go vet against code
 	go vet ./...
 
 ## --------------------------------------
@@ -136,19 +136,19 @@ vet: ## Run go vet against code.
 ## --------------------------------------
 
 .PHONY: test
-test: manifests generate fmt vet local-unit-test integration-test## Run tests.
+test: manifests generate fmt vet local-unit-test integration-test## Run unit tests and integration tests
 
 ##
 # Set up the timeout parameters as some of the tests (rollout controller) lengths have exceeded the default 10 minute mark.
 # TO-DO (chenyu1): enable parallelization for single package integration tests.
 .PHONY: local-unit-test
-local-unit-test: $(ENVTEST) ## Run tests.
+local-unit-test: $(ENVTEST) ## Run unit tests
 	export CGO_ENABLED=1 && \
 	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" && \
 	go test `go list ./pkg/... ./cmd/...` -race -coverpkg=./...  -coverprofile=ut-coverage.xml -covermode=atomic -v -timeout=30m
 
 .PHONY: integration-test
-integration-test: $(ENVTEST) ## Run tests.
+integration-test: $(ENVTEST) ## Run integration tests
 	export CGO_ENABLED=1 && \
 	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" && \
 	ginkgo -v -p --race --cover --coverpkg=./pkg/scheduler/... ./test/scheduler && \
@@ -202,16 +202,16 @@ generate: $(CONTROLLER_GEN) ## Generate deep copy methods
 ## --------------------------------------
 
 .PHONY: build
-build: generate fmt vet ## Build agent binaries.
+build: generate fmt vet ## Build agent binaries
 	go build -o bin/hubagent cmd/hubagent/main.go
 	go build -o bin/memberagent cmd/memberagent/main.go
 
 .PHONY: run-hubagent
-run-hubagent: manifests generate fmt vet ## Run a controllers from your host.
+run-hubagent: manifests generate fmt vet ## Run hub-agent from your host
 	go run ./cmd/hubagent/main.go
 
 .PHONY: run-memberagent
-run-memberagent: manifests generate fmt vet ## Run a controllers from your host.
+run-memberagent: manifests generate fmt vet ## Run member-agent from your host
 	go run ./cmd/memberagent/main.go
 
 ## --------------------------------------
