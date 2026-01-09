@@ -876,6 +876,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			By("Validating the clusterStagedUpdateRun stats")
 			initialized := generateSucceededInitializationStatus(crp, updateRun, testResourceSnapshotIndex, policySnapshot, updateStrategy, clusterResourceOverride)
 			validateClusterStagedUpdateRunStatus(ctx, updateRun, initialized, "")
+			Expect(updateRun.Status.ResourceSnapshotIndexUsed).To(Equal(testResourceSnapshotIndex), "resource snapshot index used mismatch in the updateRun status")
 
 			By("Validating the clusterStagedUpdateRun initialized consistently")
 			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, initialized, "")
