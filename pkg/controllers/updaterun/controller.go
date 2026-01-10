@@ -52,7 +52,8 @@ var (
 	// errStagedUpdatedAborted is the error when the updateRun is aborted.
 	errStagedUpdatedAborted = fmt.Errorf("cannot continue the updateRun")
 	// errValidationFailed is the error when the updateRun fails validation.
-	// It is a wrapped error of errStagedUpdatedAborted, because some initialization functions are reused in the validation step.
+	// It is a wrapped error of errStagedUpdatedAborted, because we perform validation during initialization 
+	// and subsequent reconciliations where initialization is skipped.
 	errValidationFailed = fmt.Errorf("%w: failed to validate the updateRun", errStagedUpdatedAborted)
 )
 
