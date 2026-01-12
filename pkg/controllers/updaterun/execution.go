@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
-	"strings"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -152,7 +151,7 @@ func (r *Reconciler) executeUpdatingStage(
 
 	finishedClusterCount := 0
 	clusterUpdatingCount := 0
-	var stuckClusterNames []string
+	stuckClusterCount := 0
 	var clusterUpdateErrors []error
 	// Go through each cluster in the stage and check if it's updating/succeeded/failed.
 	for i := 0; i < len(updatingStageStatus.Clusters) && clusterUpdatingCount < maxConcurrency; i++ {
@@ -260,13 +259,13 @@ func (r *Reconciler) executeUpdatingStage(
 			timeElapsed := time.Since(clusterStartedCond.LastTransitionTime.Time)
 			if timeElapsed > updateRunStuckThreshold {
 				klog.V(2).InfoS("Time waiting for cluster update to finish passes threshold, mark the update run as stuck", "time elapsed", timeElapsed, "threshold", updateRunStuckThreshold, "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
-				stuckClusterNames = append(stuckClusterNames, clusterStatus.ClusterName)
+				stuckClusterCount++
 			}
 		}
 	}
 
 	// After processing maxConcurrency number of cluster, check if we need to mark the update run as stuck or progressing.
-	aggregateUpdateRunStatus(updateRun, updatingStageStatus.StageName, stuckClusterNames)
+	aggregateUpdateRunStatus(updateRun, updatingStageStatus.StageName, stuckClusterCount)
 
 	// Aggregate and return errors.
 	if len(clusterUpdateErrors) > 0 {
@@ -551,9 +550,9 @@ func calculateMaxConcurrencyValue(status *placementv1beta1.UpdateRunStatus, stag
 
 // aggregateUpdateRunStatus aggregates the status of the update run based on the cluster update status.
 // It marks the update run as stuck if any clusters are stuck, or as progressing if some clusters have finished updating.
-func aggregateUpdateRunStatus(updateRun placementv1beta1.UpdateRunObj, stageName string, stuckClusterNames []string) {
-	if len(stuckClusterNames) > 0 {
-		markUpdateRunStuck(updateRun, stageName, strings.Join(stuckClusterNames, ", "))
+func aggregateUpdateRunStatus(updateRun placementv1beta1.UpdateRunObj, stageName string, stuckClusterCount int) {
+	if stuckClusterCount > 0 {
+		markUpdateRunStuck(updateRun, stageName, stuckClusterCount)
 	} else if updateRun.GetUpdateRunSpec().State == placementv1beta1.StateRun {
 		// If there is no stuck cluster but some progress has been made, mark the update run as progressing.
 		markUpdateRunProgressing(updateRun)
@@ -675,14 +674,14 @@ func markUpdateRunProgressingIfNotWaitingOrStuck(updateRun placementv1beta1.Upda
 }
 
 // markUpdateRunStuck marks the updateRun as stuck in memory.
-func markUpdateRunStuck(updateRun placementv1beta1.UpdateRunObj, stageName, clusterNames string) {
+func markUpdateRunStuck(updateRun placementv1beta1.UpdateRunObj, stageName string, clusterCount int) {
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	meta.SetStatusCondition(&updateRunStatus.Conditions, metav1.Condition{
 		Type:               string(placementv1beta1.StagedUpdateRunConditionProgressing),
 		Status:             metav1.ConditionFalse,
 		ObservedGeneration: updateRun.GetGeneration(),
 		Reason:             condition.UpdateRunStuckReason,
-		Message:            fmt.Sprintf("The updateRun is stuck waiting for cluster(s) %s in stage %s to finish updating, please check placement status for potential errors", clusterNames, stageName),
+		Message:            fmt.Sprintf("The updateRun is stuck waiting for %d cluster(s) in stage %s to finish updating, please check placement status for potential errors", clusterCount, stageName),
 	})
 }
 
