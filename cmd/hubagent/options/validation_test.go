@@ -104,7 +104,7 @@ func TestValidateControllerManagerConfiguration(t *testing.T) {
 			}),
 			want: field.ErrorList{
 				field.Invalid(newPath.Child("UseCertManager"), true, "UseCertManager requires EnableWebhook to be true (cert-manager is only used for webhook certificate management)"),
-				field.Invalid(newPath.Child("UseCertManager"), true, "UseCertManager requires EnableWorkload to be true (cert-manager pods need to run in the hub cluster)"),
+				field.Invalid(newPath.Child("UseCertManager"), true, "UseCertManager requires EnableWorkload to be true (when EnableWorkload is false, a validating webhook blocks pod creation except for certain system pods; cert-manager controller pods must be allowed to run in the hub cluster)"),
 			},
 		},
 		"UseCertManager with EnableWebhook": {
@@ -113,7 +113,7 @@ func TestValidateControllerManagerConfiguration(t *testing.T) {
 				option.WebhookServiceName = testWebhookServiceName
 				option.UseCertManager = true
 			}),
-			want: field.ErrorList{field.Invalid(newPath.Child("UseCertManager"), true, "UseCertManager requires EnableWorkload to be true (cert-manager pods need to run in the hub cluster)")},
+			want: field.ErrorList{field.Invalid(newPath.Child("UseCertManager"), true, "UseCertManager requires EnableWorkload to be true (when EnableWorkload is false, a validating webhook blocks pod creation except for certain system pods; cert-manager controller pods must be allowed to run in the hub cluster)")},
 		},
 		"UseCertManager without EnableWorkload": {
 			opt: newTestOptions(func(option *Options) {
@@ -122,7 +122,7 @@ func TestValidateControllerManagerConfiguration(t *testing.T) {
 				option.UseCertManager = true
 				option.EnableWorkload = false
 			}),
-			want: field.ErrorList{field.Invalid(newPath.Child("UseCertManager"), true, "UseCertManager requires EnableWorkload to be true (cert-manager pods need to run in the hub cluster)")},
+			want: field.ErrorList{field.Invalid(newPath.Child("UseCertManager"), true, "UseCertManager requires EnableWorkload to be true (when EnableWorkload is false, a validating webhook blocks pod creation except for certain system pods; cert-manager controller pods must be allowed to run in the hub cluster)")},
 		},
 		"UseCertManager with EnableWebhook and EnableWorkload": {
 			opt: newTestOptions(func(option *Options) {
