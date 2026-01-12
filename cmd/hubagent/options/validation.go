@@ -57,7 +57,7 @@ func (o *Options) Validate() field.ErrorList {
 	}
 
 	if o.UseCertManager && !o.EnableWorkload {
-		errs = append(errs, field.Invalid(newPath.Child("UseCertManager"), o.UseCertManager, "UseCertManager requires EnableWorkload to be true (cert-manager pods need to run in the hub cluster)"))
+		errs = append(errs, field.Invalid(newPath.Child("UseCertManager"), o.UseCertManager, "UseCertManager requires EnableWorkload to be true (when EnableWorkload is false, a validating webhook blocks pod creation except for certain system pods; cert-manager controller pods must be allowed to run in the hub cluster)"))
 	}
 
 	connectionType := o.WebhookClientConnectionType
