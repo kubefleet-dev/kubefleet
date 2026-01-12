@@ -249,41 +249,51 @@ func (w *Config) CheckCAInjection(ctx context.Context) error {
 	cl := w.mgr.GetClient()
 
 	// Check mutating webhook configuration
-	var mutatingCfg admv1.MutatingWebhookConfiguration
-	if err := cl.Get(ctx, client.ObjectKey{Name: fleetMutatingWebhookCfgName}, &mutatingCfg); err != nil {
-		return fmt.Errorf("failed to get MutatingWebhookConfiguration %s: %w", fleetMutatingWebhookCfgName, err)
-	}
-	for _, webhook := range mutatingCfg.Webhooks {
-		if len(webhook.ClientConfig.CABundle) == 0 {
-			return fmt.Errorf("MutatingWebhookConfiguration %s webhook %s is missing CA bundle (cert-manager injection pending)", fleetMutatingWebhookCfgName, webhook.Name)
-		}
+	if err := w.checkMutatingWebhookCABundle(ctx, cl, fleetMutatingWebhookCfgName); err != nil {
+		return err
 	}
 
 	// Check validating webhook configuration
-	var validatingCfg admv1.ValidatingWebhookConfiguration
-	if err := cl.Get(ctx, client.ObjectKey{Name: fleetValidatingWebhookCfgName}, &validatingCfg); err != nil {
-		return fmt.Errorf("failed to get ValidatingWebhookConfiguration %s: %w", fleetValidatingWebhookCfgName, err)
-	}
-	for _, webhook := range validatingCfg.Webhooks {
-		if len(webhook.ClientConfig.CABundle) == 0 {
-			return fmt.Errorf("ValidatingWebhookConfiguration %s webhook %s is missing CA bundle (cert-manager injection pending)", fleetValidatingWebhookCfgName, webhook.Name)
-		}
+	if err := w.checkValidatingWebhookCABundle(ctx, cl, fleetValidatingWebhookCfgName); err != nil {
+		return err
 	}
 
 	// Check guard rail webhook configuration if enabled
 	if w.enableGuardRail {
-		var guardRailCfg admv1.ValidatingWebhookConfiguration
-		if err := cl.Get(ctx, client.ObjectKey{Name: fleetGuardRailWebhookCfgName}, &guardRailCfg); err != nil {
-			return fmt.Errorf("failed to get ValidatingWebhookConfiguration %s: %w", fleetGuardRailWebhookCfgName, err)
-		}
-		for _, webhook := range guardRailCfg.Webhooks {
-			if len(webhook.ClientConfig.CABundle) == 0 {
-				return fmt.Errorf("ValidatingWebhookConfiguration %s webhook %s is missing CA bundle (cert-manager injection pending)", fleetGuardRailWebhookCfgName, webhook.Name)
-			}
+		if err := w.checkValidatingWebhookCABundle(ctx, cl, fleetGuardRailWebhookCfgName); err != nil {
+			return err
 		}
 	}
 
 	klog.V(2).InfoS("All webhook configurations have CA bundles injected by cert-manager")
+	return nil
+}
+
+// checkMutatingWebhookCABundle verifies that all webhooks in a MutatingWebhookConfiguration have CA bundles.
+func (w *Config) checkMutatingWebhookCABundle(ctx context.Context, cl client.Client, configName string) error {
+	var cfg admv1.MutatingWebhookConfiguration
+	if err := cl.Get(ctx, client.ObjectKey{Name: configName}, &cfg); err != nil {
+		return fmt.Errorf("failed to get MutatingWebhookConfiguration %s: %w", configName, err)
+	}
+	for _, webhook := range cfg.Webhooks {
+		if len(webhook.ClientConfig.CABundle) == 0 {
+			return fmt.Errorf("MutatingWebhookConfiguration %s webhook %s is missing CA bundle (cert-manager injection pending)", configName, webhook.Name)
+		}
+	}
+	return nil
+}
+
+// checkValidatingWebhookCABundle verifies that all webhooks in a ValidatingWebhookConfiguration have CA bundles.
+func (w *Config) checkValidatingWebhookCABundle(ctx context.Context, cl client.Client, configName string) error {
+	var cfg admv1.ValidatingWebhookConfiguration
+	if err := cl.Get(ctx, client.ObjectKey{Name: configName}, &cfg); err != nil {
+		return fmt.Errorf("failed to get ValidatingWebhookConfiguration %s: %w", configName, err)
+	}
+	for _, webhook := range cfg.Webhooks {
+		if len(webhook.ClientConfig.CABundle) == 0 {
+			return fmt.Errorf("ValidatingWebhookConfiguration %s webhook %s is missing CA bundle (cert-manager injection pending)", configName, webhook.Name)
+		}
+	}
 	return nil
 }
 
