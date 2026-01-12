@@ -92,9 +92,9 @@ spec:
       - name: webhook-cert
         secret:
           secretName: {{ .Values.webhookCertSecretName }}
-          # defaultMode 0400 (read-only for owner) prevents unauthorized access to certificate files
-          # and reduces attack surface by ensuring only the container process can read the certs
-          defaultMode: 0400
+          # defaultMode 0444 (read for all) allows the container process to read the certs
+          # regardless of the user/group it runs as
+          defaultMode: 0444
       {{- end }}
       {{- with .Values.affinity }}
       affinity:
