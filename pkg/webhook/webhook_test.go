@@ -194,7 +194,7 @@ func TestNewWebhookConfig(t *testing.T) {
 				setupMockCertManagerFiles(t, tt.certDir)
 			}
 
-			got, err := NewWebhookConfig(tt.mgr, tt.webhookServiceName, tt.port, tt.clientConnectionType, tt.certDir, tt.enableGuardRail, tt.denyModifyMemberClusterLabels, tt.enableWorkload, tt.useCertManager, "fleet-webhook-server-cert")
+			got, err := NewWebhookConfig(tt.mgr, tt.webhookServiceName, tt.port, tt.clientConnectionType, tt.certDir, tt.enableGuardRail, tt.denyModifyMemberClusterLabels, tt.enableWorkload, tt.useCertManager, "fleet-webhook-server-cert", "fleet-webhook-server-cert")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewWebhookConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -269,7 +269,7 @@ func TestNewWebhookConfig_CertManagerNotMounted(t *testing.T) {
 	dir := t.TempDir()
 	// Don't create any certificate files to simulate cert-manager not ready
 
-	_, err := NewWebhookConfig(nil, "test-webhook", 8080, nil, dir, true, true, false, true, "fleet-webhook-server-cert")
+	_, err := NewWebhookConfig(nil, "test-webhook", 8080, nil, dir, true, true, false, true, "fleet-webhook-server-cert", "fleet-webhook-server-cert")
 	if err == nil {
 		t.Error("Expected error when cert-manager certificates not mounted")
 	}
@@ -295,6 +295,7 @@ func TestNewWebhookConfig_SelfSignedCertError(t *testing.T) {
 		false,                       // denyModifyMemberClusterLabels
 		false,                       // enableWorkload
 		false,                       // useCertManager = false to trigger self-signed path
+		"fleet-webhook-server-cert", // webhookCertName
 		"fleet-webhook-server-cert", // webhookCertSecretName
 	)
 
@@ -317,6 +318,7 @@ func TestBuildWebhookAnnotations(t *testing.T) {
 			config: Config{
 				useCertManager:        false,
 				serviceNamespace:      "fleet-system",
+				webhookCertName:       "fleet-webhook-server-cert",
 				webhookCertSecretName: "fleet-webhook-server-cert",
 			},
 			expectedAnnotions: map[string]string{},
@@ -325,17 +327,19 @@ func TestBuildWebhookAnnotations(t *testing.T) {
 			config: Config{
 				useCertManager:        true,
 				serviceNamespace:      "fleet-system",
+				webhookCertName:       "fleet-webhook-server-cert",
 				webhookCertSecretName: "fleet-webhook-server-cert",
 			},
 			expectedAnnotions: map[string]string{
 				"cert-manager.io/inject-ca-from": "fleet-system/fleet-webhook-server-cert",
 			},
 		},
-		"useCertManager is true with custom namespace and secret name": {
+		"useCertManager is true with custom namespace and cert name": {
 			config: Config{
 				useCertManager:        true,
 				serviceNamespace:      "custom-namespace",
-				webhookCertSecretName: "custom-webhook-cert",
+				webhookCertName:       "custom-webhook-cert",
+				webhookCertSecretName: "custom-webhook-secret",
 			},
 			expectedAnnotions: map[string]string{
 				"cert-manager.io/inject-ca-from": "custom-namespace/custom-webhook-cert",

@@ -165,11 +165,14 @@ type Config struct {
 	enableWorkload                bool
 	// useCertManager indicates whether cert-manager is used for certificate management
 	useCertManager bool
+	// webhookCertName is the name of the Certificate resource created by cert-manager.
+	// This is referenced in the cert-manager.io/inject-ca-from annotation.
+	webhookCertName string
 	// webhookCertSecretName is the name of the Secret containing webhook certificates
 	webhookCertSecretName string
 }
 
-func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32, clientConnectionType *options.WebhookClientConnectionType, certDir string, enableGuardRail bool, denyModifyMemberClusterLabels bool, enableWorkload bool, useCertManager bool, webhookCertSecretName string) (*Config, error) {
+func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32, clientConnectionType *options.WebhookClientConnectionType, certDir string, enableGuardRail bool, denyModifyMemberClusterLabels bool, enableWorkload bool, useCertManager bool, webhookCertName string, webhookCertSecretName string) (*Config, error) {
 	// We assume the Pod namespace should be passed to env through downward API in the Pod spec.
 	namespace := os.Getenv("POD_NAMESPACE")
 	if namespace == "" {
@@ -186,6 +189,7 @@ func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32
 		denyModifyMemberClusterLabels: denyModifyMemberClusterLabels,
 		enableWorkload:                enableWorkload,
 		useCertManager:                useCertManager,
+		webhookCertName:               webhookCertName,
 		webhookCertSecretName:         webhookCertSecretName,
 	}
 
@@ -243,7 +247,7 @@ func (w *Config) buildWebhookAnnotations() map[string]string {
 	if w.useCertManager {
 		// Tell cert-manager's CA injector to automatically inject the CA bundle from the Certificate resource.
 		// Format: "namespace/certificate-name" - references the Certificate resource, not the Secret.
-		annotations["cert-manager.io/inject-ca-from"] = fmt.Sprintf("%s/%s", w.serviceNamespace, w.webhookCertSecretName)
+		annotations["cert-manager.io/inject-ca-from"] = fmt.Sprintf("%s/%s", w.serviceNamespace, w.webhookCertName)
 	}
 	return annotations
 }

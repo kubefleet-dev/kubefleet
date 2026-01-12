@@ -158,7 +158,7 @@ func main() {
 	if opts.EnableWebhook {
 		whiteListedUsers := strings.Split(opts.WhiteListedUsers, ",")
 		if err := SetupWebhook(mgr, options.WebhookClientConnectionType(opts.WebhookClientConnectionType), opts.WebhookServiceName, whiteListedUsers,
-			opts.EnableGuardRail, opts.EnableV1Beta1APIs, opts.DenyModifyMemberClusterLabels, opts.EnableWorkload, opts.NetworkingAgentsEnabled, opts.UseCertManager, opts.WebhookCertDir, opts.WebhookCertSecretName); err != nil {
+			opts.EnableGuardRail, opts.EnableV1Beta1APIs, opts.DenyModifyMemberClusterLabels, opts.EnableWorkload, opts.NetworkingAgentsEnabled, opts.UseCertManager, opts.WebhookCertDir, opts.WebhookCertName, opts.WebhookCertSecretName); err != nil {
 			klog.ErrorS(err, "unable to set up webhook")
 			exitWithErrorFunc()
 		}
@@ -201,9 +201,9 @@ func main() {
 
 // SetupWebhook generates the webhook cert and then set up the webhook configurator.
 func SetupWebhook(mgr manager.Manager, webhookClientConnectionType options.WebhookClientConnectionType, webhookServiceName string,
-	whiteListedUsers []string, enableGuardRail, isFleetV1Beta1API bool, denyModifyMemberClusterLabels bool, enableWorkload bool, networkingAgentsEnabled bool, useCertManager bool, webhookCertDir string, webhookCertSecretName string) error {
+	whiteListedUsers []string, enableGuardRail, isFleetV1Beta1API bool, denyModifyMemberClusterLabels bool, enableWorkload bool, networkingAgentsEnabled bool, useCertManager bool, webhookCertDir string, webhookCertName string, webhookCertSecretName string) error {
 	// Generate self-signed key and crt files in webhookCertDir for the webhook server to start.
-	w, err := webhook.NewWebhookConfig(mgr, webhookServiceName, FleetWebhookPort, &webhookClientConnectionType, webhookCertDir, enableGuardRail, denyModifyMemberClusterLabels, enableWorkload, useCertManager, webhookCertSecretName)
+	w, err := webhook.NewWebhookConfig(mgr, webhookServiceName, FleetWebhookPort, &webhookClientConnectionType, webhookCertDir, enableGuardRail, denyModifyMemberClusterLabels, enableWorkload, useCertManager, webhookCertName, webhookCertSecretName)
 	if err != nil {
 		klog.ErrorS(err, "fail to generate WebhookConfig")
 		return err

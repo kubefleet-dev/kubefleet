@@ -3,7 +3,7 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ .Values.webhookCertSecretName }}
+  name: {{ .Values.webhookCertName }}
   namespace: {{ .Values.namespace }}
   labels:
     {{- include "hub-agent.labels" . | nindent 4 }}
