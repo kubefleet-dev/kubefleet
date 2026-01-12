@@ -193,25 +193,20 @@ func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32
 		webhookCertSecretName:         webhookCertSecretName,
 	}
 
-	var caPEM []byte
-	var err error
-
 	if useCertManager {
-		// When using cert-manager, certificates are mounted as files by Kubernetes
-		// cert-manager creates tls.crt and tls.key, but we need ca.crt for the webhook config
-		caPEM, err = w.loadCertManagerCA(certDir)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load cert-manager CA certificate: %w", err)
-		}
+		// When using cert-manager, the CA bundle is automatically injected by cert-manager's CA injector
+		// based on the cert-manager.io/inject-ca-from annotation. We don't need to load or set the CA here.
+		// The certificates (tls.crt and tls.key) are mounted by Kubernetes and used automatically by the webhook server.
+		klog.V(2).InfoS("Using cert-manager for certificate management", "certDir", certDir)
 	} else {
 		// Use self-signed certificate generation (original flow)
-		caPEM, err = w.genCertificate(certDir)
+		caPEM, err := w.genCertificate(certDir)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate self-signed certificate: %w", err)
 		}
+		w.caPEM = caPEM
 	}
 
-	w.caPEM = caPEM
 	return &w, nil
 }
 
@@ -675,9 +670,14 @@ func (w *Config) createClientConfig(validationPath string) admv1.WebhookClientCo
 	}
 	serviceEndpoint := w.serviceURL + validationPath
 	serviceRef.Path = ptr.To(validationPath)
-	config := admv1.WebhookClientConfig{
-		CABundle: w.caPEM,
+	config := admv1.WebhookClientConfig{}
+
+	// When using cert-manager, leave CABundle empty so cert-manager's CA injector can populate it.
+	// The cert-manager.io/inject-ca-from annotation triggers automatic CA injection.
+	if !w.useCertManager {
+		config.CABundle = w.caPEM
 	}
+
 	switch *w.clientConnectionType {
 	case options.Service:
 		config.Service = &serviceRef
@@ -701,26 +701,6 @@ func (w *Config) genCertificate(certDir string) ([]byte, error) {
 		return nil, err
 	}
 	return caPEM, nil
-}
-
-// loadCertManagerCA loads the CA certificate from the mounted cert-manager Secret.
-// When using cert-manager, Kubernetes mounts the Secret as files in the certDir.
-// cert-manager creates: ca.crt, tls.crt, and tls.key.
-// The tls.crt and tls.key are automatically used by the webhook server.
-// We only need to read ca.crt for the webhook configuration's CABundle.
-func (w *Config) loadCertManagerCA(certDir string) ([]byte, error) {
-	caPath := filepath.Join(certDir, "ca.crt")
-	caCert, err := os.ReadFile(caPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read ca.crt from %s: %w", caPath, err)
-	}
-
-	if len(caCert) == 0 {
-		return nil, fmt.Errorf("ca.crt is empty at %s", caPath)
-	}
-
-	klog.V(2).InfoS("Successfully loaded CA certificate from cert-manager mounted Secret", "path", caPath)
-	return caCert, nil
 }
 
 // genSelfSignedCert generates the self signed Certificate/Key pair
