@@ -27,6 +27,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
+const (
+	testWebhookServiceName = "test-webhook"
+)
+
 // a callback function to modify options
 type ModifyOptions func(option *Options)
 
@@ -92,6 +96,42 @@ func TestValidateControllerManagerConfiguration(t *testing.T) {
 				option.WebhookServiceName = ""
 			}),
 			want: field.ErrorList{field.Invalid(newPath.Child("WebhookServiceName"), "", "Webhook service name is required when webhook is enabled")},
+		},
+		"UseCertManager without EnableWebhook": {
+			opt: newTestOptions(func(option *Options) {
+				option.EnableWebhook = false
+				option.UseCertManager = true
+			}),
+			want: field.ErrorList{
+				field.Invalid(newPath.Child("UseCertManager"), true, "UseCertManager requires EnableWebhook to be true (cert-manager is only used for webhook certificate management)"),
+				field.Invalid(newPath.Child("UseCertManager"), true, "UseCertManager requires EnableWorkload to be true (cert-manager pods need to run in the hub cluster)"),
+			},
+		},
+		"UseCertManager with EnableWebhook": {
+			opt: newTestOptions(func(option *Options) {
+				option.EnableWebhook = true
+				option.WebhookServiceName = testWebhookServiceName
+				option.UseCertManager = true
+			}),
+			want: field.ErrorList{field.Invalid(newPath.Child("UseCertManager"), true, "UseCertManager requires EnableWorkload to be true (cert-manager pods need to run in the hub cluster)")},
+		},
+		"UseCertManager without EnableWorkload": {
+			opt: newTestOptions(func(option *Options) {
+				option.EnableWebhook = true
+				option.WebhookServiceName = testWebhookServiceName
+				option.UseCertManager = true
+				option.EnableWorkload = false
+			}),
+			want: field.ErrorList{field.Invalid(newPath.Child("UseCertManager"), true, "UseCertManager requires EnableWorkload to be true (cert-manager pods need to run in the hub cluster)")},
+		},
+		"UseCertManager with EnableWebhook and EnableWorkload": {
+			opt: newTestOptions(func(option *Options) {
+				option.EnableWebhook = true
+				option.WebhookServiceName = testWebhookServiceName
+				option.UseCertManager = true
+				option.EnableWorkload = true
+			}),
+			want: field.ErrorList{},
 		},
 	}
 

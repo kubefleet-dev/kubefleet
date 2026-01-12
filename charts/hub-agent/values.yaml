@@ -21,6 +21,12 @@ enableWorkload: false
 # When enabled, cert-manager will be installed as a dependency
 # and a Certificate resource will be created
 useCertManager: false
+# webhookCertDir is the directory where webhook certificates are mounted
+# This is configurable via --webhook-cert-dir flag and must match the volumeMount path in deployment
+webhookCertDir: /tmp/k8s-webhook-server/serving-certs
+# webhookCertSecretName is the name of the Secret containing webhook certificates
+# When using cert-manager, this must match the Certificate resource's secretName
+webhookCertSecretName: fleet-webhook-server-cert
 
 forceDeleteWaitTime: 15m0s
 clusterUnhealthyThreshold: 3m0s

@@ -24,7 +24,7 @@ helm install cert-manager jetstack/cert-manager \
   --set crds.enabled=true
 
 # Then install hub-agent with cert-manager enabled
-helm install hub-agent ./charts/hub-agent --set useCertManager=true
+helm install hub-agent ./charts/hub-agent --set useCertManager=true --set enableWorkload=true --set enableWebhook=true
 ```
 
 This configures cert-manager to manage webhook certificates.
@@ -58,7 +58,9 @@ _See [helm install](https://helm.sh/docs/helm/helm_install/) for command documen
 | `webhookServiceName`                      | Webhook service name                                                                       | `fleetwebhook`                                   |
 | `enableGuardRail`                         | Enable guard rail webhook configurations                                                   | `true`                                           |
 | `webhookClientConnectionType`             | Connection type for webhook client (service or url)                                        | `service`                                        |
-| `useCertManager`                          | Use cert-manager for webhook certificate management                                        | `false`                                          |
+| `useCertManager`                          | Use cert-manager for webhook certificate management (requires `enableWebhook=true` and `enableWorkload=true`) | `false`                                          |
+| `webhookCertDir`                          | Directory where webhook certificates are stored/mounted                                    | `/tmp/k8s-webhook-server/serving-certs`          |
+| `webhookCertSecretName`                   | Name of the Secret containing webhook certificates                                         | `fleet-webhook-server-cert`                      |
 | `enableV1Beta1APIs`                       | Watch for v1beta1 APIs                                                                     | `true`                                           |
 | `hubAPIQPS`                               | QPS for fleet-apiserver (not including events/node heartbeat)                              | `250`                                            |
 | `hubAPIBurst`                             | Burst for fleet-apiserver (not including events/node heartbeat)                            | `1000`                                           |
@@ -85,6 +87,8 @@ By default, the hub-agent generates certificates automatically at startup. This 
 
 When `useCertManager=true`, certificates are managed by cert-manager. This mode:
 - Requires cert-manager to be installed as a prerequisite
+- Requires `enableWorkload=true` to allow cert-manager pods to run in the hub cluster (without this, pod creation would be blocked by the webhook)
+- Requires `enableWebhook=true` because cert-manager is only used for webhook certificate management
 - Handles certificate rotation automatically (90-day certificates)
 - Follows industry-standard certificate management practices
 - Suitable for production environments
@@ -101,5 +105,26 @@ helm install cert-manager jetstack/cert-manager \
   --set crds.enabled=true
 
 # Then install hub-agent with cert-manager enabled
-helm install hub-agent ./charts/hub-agent --set useCertManager=true
+helm install hub-agent ./charts/hub-agent --set useCertManager=true --set enableWorkload=true --set enableWebhook=true
+```
+
+### Certificate Directory Configuration
+
+The `webhookCertDir` parameter allows you to customize where webhook certificates are stored:
+- Default: `/tmp/k8s-webhook-server/serving-certs`
+- Must match the volumeMount path when using cert-manager
+- Configurable via both Helm values and `--webhook-cert-dir` flag
+
+The `webhookCertSecretName` parameter allows you to customize the Secret name for webhook certificates:
+- Default: `fleet-webhook-server-cert`
+- When using cert-manager, this must match the Certificate resource's secretName
+- Configurable via both Helm values and `--webhook-cert-secret-name` flag
+
+Example with custom certificate directory and secret name:
+```console
+helm install hub-agent ./charts/hub-agent \
+  --set useCertManager=true \
+  --set enableWorkload=true \
+  --set webhookCertDir=/custom/cert/path \
+  --set webhookCertSecretName=my-webhook-cert
 ```

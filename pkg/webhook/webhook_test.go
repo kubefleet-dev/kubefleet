@@ -194,7 +194,7 @@ func TestNewWebhookConfig(t *testing.T) {
 				setupMockCertManagerFiles(t, tt.certDir)
 			}
 
-			got, err := NewWebhookConfig(tt.mgr, tt.webhookServiceName, tt.port, tt.clientConnectionType, tt.certDir, tt.enableGuardRail, tt.denyModifyMemberClusterLabels, tt.enableWorkload, tt.useCertManager)
+			got, err := NewWebhookConfig(tt.mgr, tt.webhookServiceName, tt.port, tt.clientConnectionType, tt.certDir, tt.enableGuardRail, tt.denyModifyMemberClusterLabels, tt.enableWorkload, tt.useCertManager, "fleet-webhook-server-cert")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewWebhookConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -269,7 +269,7 @@ func TestNewWebhookConfig_CertManagerNotMounted(t *testing.T) {
 	dir := t.TempDir()
 	// Don't create any certificate files to simulate cert-manager not ready
 
-	_, err := NewWebhookConfig(nil, "test-webhook", 8080, nil, dir, true, true, false, true)
+	_, err := NewWebhookConfig(nil, "test-webhook", 8080, nil, dir, true, true, false, true, "fleet-webhook-server-cert")
 	if err == nil {
 		t.Error("Expected error when cert-manager certificates not mounted")
 	}
@@ -291,10 +291,11 @@ func TestNewWebhookConfig_SelfSignedCertError(t *testing.T) {
 		443,
 		&clientConnectionType,
 		invalidCertDir,
-		false, // enableGuardRail
-		false, // denyModifyMemberClusterLabels
-		false, // enableWorkload
-		false, // useCertManager = false to trigger self-signed path
+		false,                       // enableGuardRail
+		false,                       // denyModifyMemberClusterLabels
+		false,                       // enableWorkload
+		false,                       // useCertManager = false to trigger self-signed path
+		"fleet-webhook-server-cert", // webhookCertSecretName
 	)
 
 	if err == nil {

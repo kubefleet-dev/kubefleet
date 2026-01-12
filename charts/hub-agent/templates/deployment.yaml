@@ -30,6 +30,8 @@ spec:
             - --enable-guard-rail={{ .Values.enableGuardRail }}
             - --enable-workload={{ .Values.enableWorkload }}
             - --use-cert-manager={{ .Values.useCertManager }}
+            - --webhook-cert-dir={{ .Values.webhookCertDir }}
+            - --webhook-cert-secret-name={{ .Values.webhookCertSecretName }}
             - --whitelisted-users=system:serviceaccount:fleet-system:hub-agent-sa
             - --webhook-client-connection-type={{.Values.webhookClientConnectionType}}
             - --v={{ .Values.logVerbosity }}
@@ -81,14 +83,16 @@ spec:
           {{- if .Values.useCertManager }}
           volumeMounts:
           - name: webhook-cert
-            mountPath: /tmp/k8s-webhook-server/serving-certs
+            mountPath: {{ .Values.webhookCertDir }}
             readOnly: true
           {{- end }}
       {{- if .Values.useCertManager }}
       volumes:
       - name: webhook-cert
         secret:
-          secretName: fleet-webhook-server-cert
+          secretName: {{ .Values.webhookCertSecretName }}
+          # defaultMode 0400 (read-only for owner) prevents unauthorized access to certificate files
+          # and reduces attack surface by ensuring only the container process can read the certs
           defaultMode: 0400
       {{- end }}
       {{- with .Values.affinity }}
