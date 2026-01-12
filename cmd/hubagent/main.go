@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"math"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -157,10 +158,24 @@ func main() {
 
 	if opts.EnableWebhook {
 		whiteListedUsers := strings.Split(opts.WhiteListedUsers, ",")
-		if err := SetupWebhook(mgr, options.WebhookClientConnectionType(opts.WebhookClientConnectionType), opts.WebhookServiceName, whiteListedUsers,
-			opts.EnableGuardRail, opts.EnableV1Beta1APIs, opts.DenyModifyMemberClusterLabels, opts.EnableWorkload, opts.NetworkingAgentsEnabled, opts.UseCertManager, opts.WebhookCertDir, opts.WebhookCertName, opts.WebhookCertSecretName); err != nil {
+		webhookConfig, err := SetupWebhook(mgr, options.WebhookClientConnectionType(opts.WebhookClientConnectionType), opts.WebhookServiceName, whiteListedUsers,
+			opts.EnableGuardRail, opts.EnableV1Beta1APIs, opts.DenyModifyMemberClusterLabels, opts.EnableWorkload, opts.NetworkingAgentsEnabled, opts.UseCertManager, opts.WebhookCertDir, opts.WebhookCertName, opts.WebhookCertSecretName)
+		if err != nil {
 			klog.ErrorS(err, "unable to set up webhook")
 			exitWithErrorFunc()
+		}
+
+		// When using cert-manager, add a readiness check to ensure CA bundles are injected before marking ready.
+		// This prevents the pod from accepting traffic before cert-manager has populated the webhook CA bundles,
+		// which would cause webhook calls to fail.
+		if opts.UseCertManager {
+			if err := mgr.AddReadyzCheck("cert-manager-ca-injection", func(req *http.Request) error {
+				return webhookConfig.CheckCAInjection(req.Context())
+			}); err != nil {
+				klog.ErrorS(err, "unable to set up cert-manager CA injection readiness check")
+				exitWithErrorFunc()
+			}
+			klog.V(2).InfoS("Added cert-manager CA injection readiness check")
 		}
 	}
 
@@ -200,21 +215,22 @@ func main() {
 }
 
 // SetupWebhook generates the webhook cert and then set up the webhook configurator.
+// Returns the webhook Config so it can be used for readiness checks.
 func SetupWebhook(mgr manager.Manager, webhookClientConnectionType options.WebhookClientConnectionType, webhookServiceName string,
-	whiteListedUsers []string, enableGuardRail, isFleetV1Beta1API bool, denyModifyMemberClusterLabels bool, enableWorkload bool, networkingAgentsEnabled bool, useCertManager bool, webhookCertDir string, webhookCertName string, webhookCertSecretName string) error {
+	whiteListedUsers []string, enableGuardRail, isFleetV1Beta1API bool, denyModifyMemberClusterLabels bool, enableWorkload bool, networkingAgentsEnabled bool, useCertManager bool, webhookCertDir string, webhookCertName string, webhookCertSecretName string) (*webhook.Config, error) {
 	// Generate self-signed key and crt files in webhookCertDir for the webhook server to start.
 	w, err := webhook.NewWebhookConfig(mgr, webhookServiceName, FleetWebhookPort, &webhookClientConnectionType, webhookCertDir, enableGuardRail, denyModifyMemberClusterLabels, enableWorkload, useCertManager, webhookCertName, webhookCertSecretName)
 	if err != nil {
 		klog.ErrorS(err, "fail to generate WebhookConfig")
-		return err
+		return nil, err
 	}
 	if err = mgr.Add(w); err != nil {
 		klog.ErrorS(err, "unable to add WebhookConfig")
-		return err
+		return nil, err
 	}
 	if err = webhook.AddToManager(mgr, whiteListedUsers, denyModifyMemberClusterLabels, networkingAgentsEnabled); err != nil {
 		klog.ErrorS(err, "unable to register webhooks to the manager")
-		return err
+		return nil, err
 	}
-	return nil
+	return w, nil
 }

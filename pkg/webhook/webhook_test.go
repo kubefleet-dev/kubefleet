@@ -1,19 +1,24 @@
 package webhook
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/assert"
+	admv1 "k8s.io/api/admissionregistration/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
+	testmanager "github.com/kubefleet-dev/kubefleet/test/utils/manager"
 )
-
-const testWebhookServiceName = "test-webhook"
 
 func TestBuildFleetMutatingWebhooks(t *testing.T) {
 	url := options.WebhookClientConnectionType("url")
@@ -335,6 +340,253 @@ func TestCreateClientConfig(t *testing.T) {
 				}
 				if *clientConfig.Service.Path != tc.validationPath {
 					t.Errorf("Expected Service.Path=%s, got %s", tc.validationPath, *clientConfig.Service.Path)
+				}
+			}
+		})
+	}
+}
+
+func TestCheckCAInjection(t *testing.T) {
+	testCases := map[string]struct {
+		config           Config
+		existingObjects  []client.Object
+		expectError      bool
+		expectedErrorMsg string
+	}{
+		"useCertManager is false - returns nil without checking": {
+			config: Config{
+				useCertManager:  false,
+				enableGuardRail: false,
+			},
+			expectError: false,
+		},
+		"useCertManager is true, all CA bundles present": {
+			config: Config{
+				useCertManager:  true,
+				enableGuardRail: false,
+			},
+			existingObjects: []client.Object{
+				&admv1.MutatingWebhookConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: fleetMutatingWebhookCfgName},
+					Webhooks: []admv1.MutatingWebhook{
+						{
+							Name: "test-mutating-webhook",
+							ClientConfig: admv1.WebhookClientConfig{
+								CABundle: []byte("fake-ca-bundle"),
+							},
+						},
+					},
+				},
+				&admv1.ValidatingWebhookConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: fleetValidatingWebhookCfgName},
+					Webhooks: []admv1.ValidatingWebhook{
+						{
+							Name: "test-validating-webhook-1",
+							ClientConfig: admv1.WebhookClientConfig{
+								CABundle: []byte("fake-ca-bundle"),
+							},
+						},
+						{
+							Name: "test-validating-webhook-2",
+							ClientConfig: admv1.WebhookClientConfig{
+								CABundle: []byte("fake-ca-bundle"),
+							},
+						},
+					},
+				},
+			},
+			expectError: false,
+		},
+		"useCertManager is true, mutating webhook missing CA bundle": {
+			config: Config{
+				useCertManager:  true,
+				enableGuardRail: false,
+			},
+			existingObjects: []client.Object{
+				&admv1.MutatingWebhookConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: fleetMutatingWebhookCfgName},
+					Webhooks: []admv1.MutatingWebhook{
+						{
+							Name: "test-mutating-webhook",
+							ClientConfig: admv1.WebhookClientConfig{
+								CABundle: nil, // Missing CA bundle
+							},
+						},
+					},
+				},
+				&admv1.ValidatingWebhookConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: fleetValidatingWebhookCfgName},
+					Webhooks: []admv1.ValidatingWebhook{
+						{
+							Name: "test-validating-webhook",
+							ClientConfig: admv1.WebhookClientConfig{
+								CABundle: []byte("fake-ca-bundle"),
+							},
+						},
+					},
+				},
+			},
+			expectError:      true,
+			expectedErrorMsg: "test-mutating-webhook is missing CA bundle",
+		},
+		"useCertManager is true, validating webhook missing CA bundle": {
+			config: Config{
+				useCertManager:  true,
+				enableGuardRail: false,
+			},
+			existingObjects: []client.Object{
+				&admv1.MutatingWebhookConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: fleetMutatingWebhookCfgName},
+					Webhooks: []admv1.MutatingWebhook{
+						{
+							Name: "test-mutating-webhook",
+							ClientConfig: admv1.WebhookClientConfig{
+								CABundle: []byte("fake-ca-bundle"),
+							},
+						},
+					},
+				},
+				&admv1.ValidatingWebhookConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: fleetValidatingWebhookCfgName},
+					Webhooks: []admv1.ValidatingWebhook{
+						{
+							Name: "test-validating-webhook-1",
+							ClientConfig: admv1.WebhookClientConfig{
+								CABundle: []byte("fake-ca-bundle"),
+							},
+						},
+						{
+							Name: "test-validating-webhook-2",
+							ClientConfig: admv1.WebhookClientConfig{
+								CABundle: []byte{}, // Empty CA bundle
+							},
+						},
+					},
+				},
+			},
+			expectError:      true,
+			expectedErrorMsg: "test-validating-webhook-2 is missing CA bundle",
+		},
+		"useCertManager is true with guard rail, all CA bundles present": {
+			config: Config{
+				useCertManager:  true,
+				enableGuardRail: true,
+			},
+			existingObjects: []client.Object{
+				&admv1.MutatingWebhookConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: fleetMutatingWebhookCfgName},
+					Webhooks: []admv1.MutatingWebhook{
+						{
+							Name: "test-mutating-webhook",
+							ClientConfig: admv1.WebhookClientConfig{
+								CABundle: []byte("fake-ca-bundle"),
+							},
+						},
+					},
+				},
+				&admv1.ValidatingWebhookConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: fleetValidatingWebhookCfgName},
+					Webhooks: []admv1.ValidatingWebhook{
+						{
+							Name: "test-validating-webhook",
+							ClientConfig: admv1.WebhookClientConfig{
+								CABundle: []byte("fake-ca-bundle"),
+							},
+						},
+					},
+				},
+				&admv1.ValidatingWebhookConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: fleetGuardRailWebhookCfgName},
+					Webhooks: []admv1.ValidatingWebhook{
+						{
+							Name: "test-guard-rail-webhook",
+							ClientConfig: admv1.WebhookClientConfig{
+								CABundle: []byte("fake-ca-bundle"),
+							},
+						},
+					},
+				},
+			},
+			expectError: false,
+		},
+		"useCertManager is true with guard rail, guard rail webhook missing CA bundle": {
+			config: Config{
+				useCertManager:  true,
+				enableGuardRail: true,
+			},
+			existingObjects: []client.Object{
+				&admv1.MutatingWebhookConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: fleetMutatingWebhookCfgName},
+					Webhooks: []admv1.MutatingWebhook{
+						{
+							Name: "test-mutating-webhook",
+							ClientConfig: admv1.WebhookClientConfig{
+								CABundle: []byte("fake-ca-bundle"),
+							},
+						},
+					},
+				},
+				&admv1.ValidatingWebhookConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: fleetValidatingWebhookCfgName},
+					Webhooks: []admv1.ValidatingWebhook{
+						{
+							Name: "test-validating-webhook",
+							ClientConfig: admv1.WebhookClientConfig{
+								CABundle: []byte("fake-ca-bundle"),
+							},
+						},
+					},
+				},
+				&admv1.ValidatingWebhookConfiguration{
+					ObjectMeta: metav1.ObjectMeta{Name: fleetGuardRailWebhookCfgName},
+					Webhooks: []admv1.ValidatingWebhook{
+						{
+							Name: "test-guard-rail-webhook",
+							ClientConfig: admv1.WebhookClientConfig{
+								CABundle: nil, // Missing CA bundle
+							},
+						},
+					},
+				},
+			},
+			expectError:      true,
+			expectedErrorMsg: "test-guard-rail-webhook is missing CA bundle",
+		},
+		"useCertManager is true, webhook configuration not found": {
+			config: Config{
+				useCertManager:  true,
+				enableGuardRail: false,
+			},
+			existingObjects:  []client.Object{},
+			expectError:      true,
+			expectedErrorMsg: "failed to get MutatingWebhookConfiguration",
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			// Create a fake client with a proper scheme
+			scheme := runtime.NewScheme()
+			_ = admv1.AddToScheme(scheme)
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(tc.existingObjects...).
+				Build()
+
+			// Create a fake manager that returns our fake client
+			tc.config.mgr = &testmanager.FakeManager{Client: fakeClient}
+
+			err := tc.config.CheckCAInjection(context.Background())
+
+			if tc.expectError {
+				if err == nil {
+					t.Errorf("Expected error but got nil")
+				} else if !strings.Contains(err.Error(), tc.expectedErrorMsg) {
+					t.Errorf("Expected error message to contain %q, but got: %v", tc.expectedErrorMsg, err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %v", err)
 				}
 			}
 		})
