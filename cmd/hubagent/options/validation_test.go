@@ -97,16 +97,6 @@ func TestValidateControllerManagerConfiguration(t *testing.T) {
 			}),
 			want: field.ErrorList{field.Invalid(newPath.Child("WebhookServiceName"), "", "Webhook service name is required when webhook is enabled")},
 		},
-		"UseCertManager without EnableWebhook": {
-			opt: newTestOptions(func(option *Options) {
-				option.EnableWebhook = false
-				option.UseCertManager = true
-			}),
-			want: field.ErrorList{
-				field.Invalid(newPath.Child("UseCertManager"), true, "UseCertManager requires EnableWebhook to be true (cert-manager is only used for webhook certificate management)"),
-				field.Invalid(newPath.Child("UseCertManager"), true, "UseCertManager requires EnableWorkload to be true (when EnableWorkload is false, a validating webhook blocks pod creation except for certain system pods; cert-manager controller pods must be allowed to run in the hub cluster)"),
-			},
-		},
 		"UseCertManager with EnableWebhook": {
 			opt: newTestOptions(func(option *Options) {
 				option.EnableWebhook = true

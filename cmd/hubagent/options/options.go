@@ -119,9 +119,6 @@ type Options struct {
 	// WebhookCertName is the name of the Certificate resource created by cert-manager.
 	// This is referenced in the cert-manager.io/inject-ca-from annotation.
 	WebhookCertName string
-	// WebhookCertSecretName is the name of the Secret containing webhook certificates.
-	// When using cert-manager, this is the Secret name created by the Certificate resource.
-	WebhookCertSecretName string
 	// ResourceSnapshotCreationMinimumInterval is the minimum interval at which resource snapshots could be created.
 	// Whether the resource snapshot is created or not depends on the both ResourceSnapshotCreationMinimumInterval and ResourceChangesCollectionDuration.
 	ResourceSnapshotCreationMinimumInterval time.Duration
@@ -200,7 +197,6 @@ func (o *Options) AddFlags(flags *flag.FlagSet) {
 	flags.BoolVar(&o.UseCertManager, "use-cert-manager", false, "If set, cert-manager will be used for webhook certificate management instead of self-signed certificates.")
 	flags.StringVar(&o.WebhookCertDir, "webhook-cert-dir", "/tmp/k8s-webhook-server/serving-certs", "The directory where webhook certificates are stored. Must match the volumeMount path in deployment when using cert-manager.")
 	flags.StringVar(&o.WebhookCertName, "webhook-cert-name", "fleet-webhook-server-cert", "The name of the Certificate resource created by cert-manager. Referenced in cert-manager.io/inject-ca-from annotation.")
-	flags.StringVar(&o.WebhookCertSecretName, "webhook-cert-secret-name", "fleet-webhook-server-cert", "The name of the Secret containing webhook certificates. Must match the secretName in deployment and Certificate resource when using cert-manager.")
 	flags.DurationVar(&o.ResourceSnapshotCreationMinimumInterval, "resource-snapshot-creation-minimum-interval", 30*time.Second, "The minimum interval at which resource snapshots could be created.")
 	flags.DurationVar(&o.ResourceChangesCollectionDuration, "resource-changes-collection-duration", 15*time.Second,
 		"The duration for collecting resource changes into one snapshot. The default is 15 seconds, which means that the controller will collect resource changes for 15 seconds before creating a resource snapshot.")

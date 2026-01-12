@@ -32,7 +32,6 @@ spec:
             - --use-cert-manager={{ .Values.useCertManager }}
             - --webhook-cert-dir={{ .Values.webhookCertDir }}
             - --webhook-cert-name={{ .Values.webhookCertName }}
-            - --webhook-cert-secret-name={{ .Values.webhookCertSecretName }}
             - --whitelisted-users=system:serviceaccount:fleet-system:hub-agent-sa
             - --webhook-client-connection-type={{.Values.webhookClientConnectionType}}
             - --v={{ .Values.logVerbosity }}
@@ -91,7 +90,7 @@ spec:
       volumes:
       - name: webhook-cert
         secret:
-          secretName: {{ .Values.webhookCertSecretName }}
+          secretName: fleet-webhook-server-cert
           # defaultMode 0444 (read for all) allows the container process to read the certs
           # regardless of the user/group it runs as
           defaultMode: 0444

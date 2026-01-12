@@ -27,9 +27,6 @@ webhookCertDir: /tmp/k8s-webhook-server/serving-certs
 # webhookCertName is the name of the Certificate resource created by cert-manager
 # This is referenced in the cert-manager.io/inject-ca-from annotation
 webhookCertName: fleet-webhook-server-cert
-# webhookCertSecretName is the name of the Secret containing webhook certificates
-# When using cert-manager, this is the Secret name created by the Certificate resource
-webhookCertSecretName: fleet-webhook-server-cert
 
 forceDeleteWaitTime: 15m0s
 clusterUnhealthyThreshold: 3m0s

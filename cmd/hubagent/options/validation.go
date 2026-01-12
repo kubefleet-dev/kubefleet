@@ -52,10 +52,6 @@ func (o *Options) Validate() field.ErrorList {
 		errs = append(errs, field.Invalid(newPath.Child("WebhookServiceName"), o.WebhookServiceName, "Webhook service name is required when webhook is enabled"))
 	}
 
-	if o.UseCertManager && !o.EnableWebhook {
-		errs = append(errs, field.Invalid(newPath.Child("UseCertManager"), o.UseCertManager, "UseCertManager requires EnableWebhook to be true (cert-manager is only used for webhook certificate management)"))
-	}
-
 	if o.UseCertManager && !o.EnableWorkload {
 		errs = append(errs, field.Invalid(newPath.Child("UseCertManager"), o.UseCertManager, "UseCertManager requires EnableWorkload to be true (when EnableWorkload is false, a validating webhook blocks pod creation except for certain system pods; cert-manager controller pods must be allowed to run in the hub cluster)"))
 	}

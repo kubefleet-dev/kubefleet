@@ -70,7 +70,6 @@ import (
 const (
 	fleetWebhookCertFileName      = "tls.crt"
 	fleetWebhookKeyFileName       = "tls.key"
-	fleetWebhookCertSecretName    = "fleet-webhook-server-cert" //nolint:gosec // This is a Secret name, not a credential
 	fleetValidatingWebhookCfgName = "fleet-validating-webhook-configuration"
 	fleetGuardRailWebhookCfgName  = "fleet-guard-rail-webhook-configuration"
 	fleetMutatingWebhookCfgName   = "fleet-mutating-webhook-configuration"
@@ -168,11 +167,9 @@ type Config struct {
 	// webhookCertName is the name of the Certificate resource created by cert-manager.
 	// This is referenced in the cert-manager.io/inject-ca-from annotation.
 	webhookCertName string
-	// webhookCertSecretName is the name of the Secret containing webhook certificates
-	webhookCertSecretName string
 }
 
-func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32, clientConnectionType *options.WebhookClientConnectionType, certDir string, enableGuardRail bool, denyModifyMemberClusterLabels bool, enableWorkload bool, useCertManager bool, webhookCertName string, webhookCertSecretName string) (*Config, error) {
+func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32, clientConnectionType *options.WebhookClientConnectionType, certDir string, enableGuardRail bool, denyModifyMemberClusterLabels bool, enableWorkload bool, useCertManager bool, webhookCertName string) (*Config, error) {
 	// We assume the Pod namespace should be passed to env through downward API in the Pod spec.
 	namespace := os.Getenv("POD_NAMESPACE")
 	if namespace == "" {
@@ -190,7 +187,6 @@ func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32
 		enableWorkload:                enableWorkload,
 		useCertManager:                useCertManager,
 		webhookCertName:               webhookCertName,
-		webhookCertSecretName:         webhookCertSecretName,
 	}
 
 	if useCertManager {
