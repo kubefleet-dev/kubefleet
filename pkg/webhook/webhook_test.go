@@ -1,6 +1,8 @@
 package webhook
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -11,6 +13,27 @@ import (
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 )
+
+const mockCA = `-----BEGIN CERTIFICATE-----
+MIIBkTCB+wIJAKHHCgVZU7c4MA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnRl
+c3RDQTAeFw0yNDAxMDEwMDAwMDBaFw0yNTAxMDEwMDAwMDBaMBExDzANBgNVBAMM
+BnRlc3RDQTCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEAwjBCKwYJKoZIhvcN
+AQkBFhZmb3JtYXRAZXhhbXBsZS5jb20wHhcNMjQwMTAxMDAwMDAwWhcNMjUwMTAx
+MDAwMDAwWjARMQ8wDQYDVQQDDAZ0ZXN0Q0EwXDANBgkqhkiG9w0BAQEFAANLADBI
+AkEAwjBCKwYJKoZIhvcNAQEBBQADQQAwPgJBAMIwQisGCSqGSIb3DQEBAQUAA0EA
+MD4CQQDCMEIrBgkqhkiG9w0BAQEFAANBADANBgkqhkiG9w0BAQUFAANBAMA=
+-----END CERTIFICATE-----`
+
+// setupMockCertManagerFiles creates mock certificate files for testing cert-manager mode.
+func setupMockCertManagerFiles(t *testing.T, certDir string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(certDir, "ca.crt"), []byte(mockCA), 0600); err != nil {
+		t.Fatalf("failed to create mock ca.crt: %v", err)
+	}
+	t.Cleanup(func() {
+		os.RemoveAll(certDir)
+	})
+}
 
 func TestBuildFleetMutatingWebhooks(t *testing.T) {
 	url := options.WebhookClientConnectionType("url")
@@ -110,6 +133,7 @@ func TestNewWebhookConfig(t *testing.T) {
 		enableGuardRail               bool
 		denyModifyMemberClusterLabels bool
 		enableWorkload                bool
+		useCertManager                bool
 		want                          *Config
 		wantErr                       bool
 	}{
@@ -119,10 +143,11 @@ func TestNewWebhookConfig(t *testing.T) {
 			webhookServiceName:            "test-webhook",
 			port:                          8080,
 			clientConnectionType:          nil,
-			certDir:                       "/tmp/cert",
+			certDir:                       t.TempDir(),
 			enableGuardRail:               true,
 			denyModifyMemberClusterLabels: true,
 			enableWorkload:                false,
+			useCertManager:                false,
 			want: &Config{
 				serviceNamespace:              "test-namespace",
 				serviceName:                   "test-webhook",
@@ -131,6 +156,30 @@ func TestNewWebhookConfig(t *testing.T) {
 				enableGuardRail:               true,
 				denyModifyMemberClusterLabels: true,
 				enableWorkload:                false,
+				useCertManager:                false,
+			},
+			wantErr: false,
+		},
+		{
+			name:                          "valid input with cert-manager",
+			mgr:                           nil,
+			webhookServiceName:            "test-webhook",
+			port:                          8080,
+			clientConnectionType:          nil,
+			certDir:                       t.TempDir(),
+			enableGuardRail:               true,
+			denyModifyMemberClusterLabels: true,
+			enableWorkload:                false,
+			useCertManager:                true,
+			want: &Config{
+				serviceNamespace:              "test-namespace",
+				serviceName:                   "test-webhook",
+				servicePort:                   8080,
+				clientConnectionType:          nil,
+				enableGuardRail:               true,
+				denyModifyMemberClusterLabels: true,
+				enableWorkload:                false,
+				useCertManager:                true,
 			},
 			wantErr: false,
 		},
@@ -138,8 +187,13 @@ func TestNewWebhookConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("POD_NAMESPACE", "test-namespace")
-			defer t.Setenv("POD_NAMESPACE", "")
-			got, err := NewWebhookConfig(tt.mgr, tt.webhookServiceName, tt.port, tt.clientConnectionType, tt.certDir, tt.enableGuardRail, tt.denyModifyMemberClusterLabels, tt.enableWorkload)
+
+			// Create mock certificate files for cert-manager mode
+			if tt.useCertManager {
+				setupMockCertManagerFiles(t, tt.certDir)
+			}
+
+			got, err := NewWebhookConfig(tt.mgr, tt.webhookServiceName, tt.port, tt.clientConnectionType, tt.certDir, tt.enableGuardRail, tt.denyModifyMemberClusterLabels, tt.enableWorkload, tt.useCertManager)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewWebhookConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return

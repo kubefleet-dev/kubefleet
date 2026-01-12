@@ -70,6 +70,7 @@ import (
 const (
 	fleetWebhookCertFileName      = "tls.crt"
 	fleetWebhookKeyFileName       = "tls.key"
+	fleetWebhookCertSecretName    = "fleet-webhook-server-cert" //nolint:gosec // This is a Secret name, not a credential
 	fleetValidatingWebhookCfgName = "fleet-validating-webhook-configuration"
 	fleetGuardRailWebhookCfgName  = "fleet-guard-rail-webhook-configuration"
 	fleetMutatingWebhookCfgName   = "fleet-mutating-webhook-configuration"
@@ -162,9 +163,11 @@ type Config struct {
 
 	denyModifyMemberClusterLabels bool
 	enableWorkload                bool
+	// useCertManager indicates whether cert-manager is used for certificate management
+	useCertManager bool
 }
 
-func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32, clientConnectionType *options.WebhookClientConnectionType, certDir string, enableGuardRail bool, denyModifyMemberClusterLabels bool, enableWorkload bool) (*Config, error) {
+func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32, clientConnectionType *options.WebhookClientConnectionType, certDir string, enableGuardRail bool, denyModifyMemberClusterLabels bool, enableWorkload bool, useCertManager bool) (*Config, error) {
 	// We assume the Pod namespace should be passed to env through downward API in the Pod spec.
 	namespace := os.Getenv("POD_NAMESPACE")
 	if namespace == "" {
@@ -180,13 +183,29 @@ func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32
 		enableGuardRail:               enableGuardRail,
 		denyModifyMemberClusterLabels: denyModifyMemberClusterLabels,
 		enableWorkload:                enableWorkload,
+		useCertManager:                useCertManager,
 	}
-	caPEM, err := w.genCertificate(certDir)
-	if err != nil {
-		return nil, err
+
+	var caPEM []byte
+	var err error
+
+	if useCertManager {
+		// When using cert-manager, certificates are mounted as files by Kubernetes
+		// cert-manager creates tls.crt and tls.key, but we need ca.crt for the webhook config
+		caPEM, err = w.loadCertManagerCA(certDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load cert-manager CA certificate: %w", err)
+		}
+	} else {
+		// Use self-signed certificate generation (original flow)
+		caPEM, err = w.genCertificate(certDir)
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	w.caPEM = caPEM
-	return &w, err
+	return &w, nil
 }
 
 func (w *Config) Start(ctx context.Context) error {
@@ -216,12 +235,19 @@ func (w *Config) createFleetWebhookConfiguration(ctx context.Context) error {
 
 // createMutatingWebhookConfiguration creates the MutatingWebhookConfiguration object for the webhook.
 func (w *Config) createMutatingWebhookConfiguration(ctx context.Context, webhooks []admv1.MutatingWebhook, configName string) error {
+	annotations := map[string]string{}
+	if w.useCertManager {
+		// Tell cert-manager's CA injector to automatically inject the CA bundle
+		annotations["cert-manager.io/inject-ca-from"] = fmt.Sprintf("%s/%s", w.serviceNamespace, fleetWebhookCertSecretName)
+	}
+
 	mutatingWebhookConfig := admv1.MutatingWebhookConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: configName,
 			Labels: map[string]string{
 				"admissions.enforcer/disabled": "true",
 			},
+			Annotations: annotations,
 		},
 		Webhooks: webhooks,
 	}
@@ -269,12 +295,19 @@ func (w *Config) buildFleetMutatingWebhooks() []admv1.MutatingWebhook {
 }
 
 func (w *Config) createValidatingWebhookConfiguration(ctx context.Context, webhooks []admv1.ValidatingWebhook, configName string) error {
+	annotations := map[string]string{}
+	if w.useCertManager {
+		// Tell cert-manager's CA injector to automatically inject the CA bundle
+		annotations["cert-manager.io/inject-ca-from"] = fmt.Sprintf("%s/%s", w.serviceNamespace, fleetWebhookCertSecretName)
+	}
+
 	validatingWebhookConfig := admv1.ValidatingWebhookConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: configName,
 			Labels: map[string]string{
 				"admissions.enforcer/disabled": "true",
 			},
+			Annotations: annotations,
 		},
 		Webhooks: webhooks,
 	}
@@ -657,6 +690,26 @@ func (w *Config) genCertificate(certDir string) ([]byte, error) {
 		return nil, err
 	}
 	return caPEM, nil
+}
+
+// loadCertManagerCA loads the CA certificate from the mounted cert-manager Secret.
+// When using cert-manager, Kubernetes mounts the Secret as files in the certDir.
+// cert-manager creates: ca.crt, tls.crt, and tls.key
+// The tls.crt and tls.key are automatically used by the webhook server.
+// We only need to read ca.crt for the webhook configuration's CABundle.
+func (w *Config) loadCertManagerCA(certDir string) ([]byte, error) {
+	caPath := filepath.Join(certDir, "ca.crt")
+	caCert, err := os.ReadFile(caPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read ca.crt from %s: %w", caPath, err)
+	}
+
+	if len(caCert) == 0 {
+		return nil, fmt.Errorf("ca.crt is empty at %s", caPath)
+	}
+
+	klog.V(2).InfoS("Successfully loaded CA certificate from cert-manager mounted Secret", "path", caPath)
+	return caCert, nil
 }
 
 // genSelfSignedCert generates the self signed Certificate/Key pair
