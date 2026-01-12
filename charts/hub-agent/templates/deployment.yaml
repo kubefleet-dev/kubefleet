@@ -90,7 +90,7 @@ spec:
       volumes:
       - name: webhook-cert
         secret:
-          secretName: fleet-webhook-server-cert
+          secretName: {{ .Values.webhookCertSecretName }}
           # defaultMode 0444 (read for all) allows the container process to read the certs
           # regardless of the user/group it runs as
           defaultMode: 0444

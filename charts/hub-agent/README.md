@@ -60,7 +60,8 @@ _See [helm install](https://helm.sh/docs/helm/helm_install/) for command documen
 | `webhookClientConnectionType`             | Connection type for webhook client (service or url)                                        | `service`                                        |
 | `useCertManager`                          | Use cert-manager for webhook certificate management (requires `enableWorkload=true`) | `false`                                          |
 | `webhookCertDir`                          | Directory where webhook certificates are stored/mounted                                    | `/tmp/k8s-webhook-server/serving-certs`          |
-| `webhookCertName`                         | Name of the Certificate resource created by cert-manager                                   | `fleet-webhook-server-cert`                      |
+| `webhookCertName`                         | Name of the Certificate resource created by cert-manager                                   | `fleet-webhook-certificate`                      |
+| `webhookCertSecretName`                   | Name of the Secret where cert-manager stores the certificate                               | `fleet-webhook-server-cert`                      |
 | `enableV1Beta1APIs`                       | Watch for v1beta1 APIs                                                                     | `true`                                           |
 | `hubAPIQPS`                               | QPS for fleet-apiserver (not including events/node heartbeat)                              | `250`                                            |
 | `hubAPIBurst`                             | Burst for fleet-apiserver (not including events/node heartbeat)                            | `1000`                                           |
@@ -116,11 +117,15 @@ The `webhookCertDir` parameter allows you to customize where webhook certificate
 - Configurable via both Helm values and `--webhook-cert-dir` flag
 
 The `webhookCertName` parameter specifies the Certificate resource name:
-- Default: `fleet-webhook-server-cert`
+- Default: `fleet-webhook-certificate`
 - When using cert-manager, this is the name of the Certificate resource
 - Referenced in the `cert-manager.io/inject-ca-from` annotation
 - Configurable via both Helm values and `--webhook-cert-name` flag
-- The Secret name is automatically set to `fleet-webhook-server-cert` and cannot be changed
+
+The `webhookCertSecretName` parameter specifies the Secret name for the certificate:
+- Default: `fleet-webhook-server-cert`
+- When using cert-manager, this is where cert-manager stores the certificate
+- Must match the secret name referenced in the deployment volume mount
 
 Example with custom certificate directory and name:
 ```console
