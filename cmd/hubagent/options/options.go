@@ -196,7 +196,7 @@ func (o *Options) AddFlags(flags *flag.FlagSet) {
 	flags.BoolVar(&o.EnableWorkload, "enable-workload", false, "If set, workloads (pods and replicasets) can be created in the hub cluster. This disables the pod and replicaset validating webhooks.")
 	flags.BoolVar(&o.UseCertManager, "use-cert-manager", false, "If set, cert-manager will be used for webhook certificate management instead of self-signed certificates.")
 	flags.StringVar(&o.WebhookCertDir, "webhook-cert-dir", "/tmp/k8s-webhook-server/serving-certs", "The directory where webhook certificates are stored. Must match the volumeMount path in deployment when using cert-manager.")
-	flags.StringVar(&o.WebhookCertName, "webhook-cert-name", "fleet-webhook-server-cert", "The name of the Certificate resource created by cert-manager. Referenced in cert-manager.io/inject-ca-from annotation.")
+	flags.StringVar(&o.WebhookCertName, "webhook-cert-name", "fleet-webhook-certificate", "The name of the Certificate resource created by cert-manager. Referenced in cert-manager.io/inject-ca-from annotation.")
 	flags.DurationVar(&o.ResourceSnapshotCreationMinimumInterval, "resource-snapshot-creation-minimum-interval", 30*time.Second, "The minimum interval at which resource snapshots could be created.")
 	flags.DurationVar(&o.ResourceChangesCollectionDuration, "resource-changes-collection-duration", 15*time.Second,
 		"The duration for collecting resource changes into one snapshot. The default is 15 seconds, which means that the controller will collect resource changes for 15 seconds before creating a resource snapshot.")
