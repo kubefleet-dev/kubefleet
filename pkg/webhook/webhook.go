@@ -200,7 +200,7 @@ func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32
 		// Use self-signed certificate generation (original flow)
 		caPEM, err = w.genCertificate(certDir)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to generate self-signed certificate: %w", err)
 		}
 	}
 
@@ -694,7 +694,7 @@ func (w *Config) genCertificate(certDir string) ([]byte, error) {
 
 // loadCertManagerCA loads the CA certificate from the mounted cert-manager Secret.
 // When using cert-manager, Kubernetes mounts the Secret as files in the certDir.
-// cert-manager creates: ca.crt, tls.crt, and tls.key
+// cert-manager creates: ca.crt, tls.crt, and tls.key.
 // The tls.crt and tls.key are automatically used by the webhook server.
 // We only need to read ca.crt for the webhook configuration's CABundle.
 func (w *Config) loadCertManagerCA(certDir string) ([]byte, error) {

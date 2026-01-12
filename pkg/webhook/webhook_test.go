@@ -3,6 +3,7 @@ package webhook
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -213,5 +214,95 @@ func TestNewWebhookConfig(t *testing.T) {
 				t.Errorf("NewWebhookConfig() mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+func TestLoadCertManagerCA_NotFound(t *testing.T) {
+	config := &Config{}
+	_, err := config.loadCertManagerCA("/nonexistent/path")
+	if err == nil {
+		t.Error("Expected error when certificate files don't exist")
+	}
+}
+
+func TestLoadCertManagerCA_EmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	// Create empty files
+	if err := os.WriteFile(filepath.Join(dir, "tls.crt"), []byte{}, 0600); err != nil {
+		t.Fatalf("failed to create empty tls.crt: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ca.crt"), []byte{}, 0600); err != nil {
+		t.Fatalf("failed to create empty ca.crt: %v", err)
+	}
+
+	config := &Config{}
+	_, err := config.loadCertManagerCA(dir)
+	if err == nil {
+		t.Error("Expected error for empty certificate files")
+	}
+	if !strings.Contains(err.Error(), "empty") {
+		t.Errorf("Expected error message to contain 'empty', got: %v", err)
+	}
+}
+
+func TestLoadCertManagerCA_Success(t *testing.T) {
+	t.Run("loads ca.crt successfully", func(t *testing.T) {
+		dir := t.TempDir()
+		caContent := []byte("test-ca-content")
+		if err := os.WriteFile(filepath.Join(dir, "ca.crt"), caContent, 0600); err != nil {
+			t.Fatalf("failed to create ca.crt: %v", err)
+		}
+
+		config := &Config{}
+		result, err := config.loadCertManagerCA(dir)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if string(result) != string(caContent) {
+			t.Errorf("Expected %s, got %s", caContent, result)
+		}
+	})
+}
+
+func TestNewWebhookConfig_CertManagerNotMounted(t *testing.T) {
+	t.Setenv("POD_NAMESPACE", "test-namespace")
+
+	dir := t.TempDir()
+	// Don't create any certificate files to simulate cert-manager not ready
+
+	_, err := NewWebhookConfig(nil, "test-webhook", 8080, nil, dir, true, true, false, true)
+	if err == nil {
+		t.Error("Expected error when cert-manager certificates not mounted")
+	}
+	if !strings.Contains(err.Error(), "failed to load cert-manager CA certificate") {
+		t.Errorf("Expected error about loading cert-manager CA, got: %v", err)
+	}
+}
+
+func TestNewWebhookConfig_SelfSignedCertError(t *testing.T) {
+	t.Setenv("POD_NAMESPACE", "test-namespace")
+
+	// Use an invalid certDir (read-only location) to force genCertificate to fail
+	invalidCertDir := "/proc/invalid-cert-dir"
+
+	clientConnectionType := options.Service
+	_, err := NewWebhookConfig(
+		nil,
+		"test-service",
+		443,
+		&clientConnectionType,
+		invalidCertDir,
+		false, // enableGuardRail
+		false, // denyModifyMemberClusterLabels
+		false, // enableWorkload
+		false, // useCertManager = false to trigger self-signed path
+	)
+
+	if err == nil {
+		t.Fatal("Expected error when genCertificate fails, got nil")
+	}
+
+	expectedErrMsg := "failed to generate self-signed certificate"
+	if !strings.Contains(err.Error(), expectedErrMsg) {
+		t.Errorf("Expected error to contain '%s', got: %v", expectedErrMsg, err)
 	}
 }

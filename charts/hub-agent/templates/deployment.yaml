@@ -1,3 +1,6 @@
+{{- if and (not .Values.useCertManager) (gt (.Values.replicaCount | int) 1) }}
+{{- fail "ERROR: replicaCount > 1 requires useCertManager=true (self-signed certificates cannot be shared across replicas)" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -86,7 +89,7 @@ spec:
       - name: webhook-cert
         secret:
           secretName: fleet-webhook-server-cert
-          defaultMode: 0644
+          defaultMode: 0400
       {{- end }}
       {{- with .Values.affinity }}
       affinity:
