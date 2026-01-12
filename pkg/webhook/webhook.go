@@ -29,6 +29,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	admv1 "k8s.io/api/admissionregistration/v1"
@@ -134,14 +135,14 @@ var AddToManagerFleetResourceValidator func(manager.Manager, []string, bool) err
 var AddToManagerMemberclusterValidator func(manager.Manager, bool)
 
 // AddToManager adds all Controllers to the Manager
-func AddToManager(m manager.Manager, whiteListedUsers []string, denyModifyMemberClusterLabels bool, networkingAgentsEnabled bool) error {
+func AddToManager(m manager.Manager, config *Config) error {
 	for _, f := range AddToManagerFuncs {
 		if err := f(m); err != nil {
 			return err
 		}
 	}
-	AddToManagerMemberclusterValidator(m, networkingAgentsEnabled)
-	return AddToManagerFleetResourceValidator(m, whiteListedUsers, denyModifyMemberClusterLabels)
+	AddToManagerMemberclusterValidator(m, config.networkingAgentsEnabled)
+	return AddToManagerFleetResourceValidator(m, config.whiteListedUsers, config.denyModifyMemberClusterLabels)
 }
 
 type Config struct {
@@ -167,9 +168,13 @@ type Config struct {
 	// webhookCertName is the name of the Certificate resource created by cert-manager.
 	// This is referenced in the cert-manager.io/inject-ca-from annotation.
 	webhookCertName string
+	// whiteListedUsers is a list of users who are allowed to modify fleet resources
+	whiteListedUsers []string
+	// networkingAgentsEnabled indicates whether networking agents are enabled
+	networkingAgentsEnabled bool
 }
 
-func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32, clientConnectionType *options.WebhookClientConnectionType, certDir string, enableGuardRail bool, denyModifyMemberClusterLabels bool, enableWorkload bool, useCertManager bool, webhookCertName string) (*Config, error) {
+func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32, clientConnectionType *options.WebhookClientConnectionType, certDir string, enableGuardRail bool, denyModifyMemberClusterLabels bool, enableWorkload bool, useCertManager bool, webhookCertName string, whiteListedUsers []string, networkingAgentsEnabled bool) (*Config, error) {
 	// We assume the Pod namespace should be passed to env through downward API in the Pod spec.
 	namespace := os.Getenv("POD_NAMESPACE")
 	if namespace == "" {
@@ -187,6 +192,8 @@ func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32
 		enableWorkload:                enableWorkload,
 		useCertManager:                useCertManager,
 		webhookCertName:               webhookCertName,
+		whiteListedUsers:              whiteListedUsers,
+		networkingAgentsEnabled:       networkingAgentsEnabled,
 	}
 
 	if useCertManager {
@@ -204,6 +211,21 @@ func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32
 	}
 
 	return &w, nil
+}
+
+// NewWebhookConfigFromOptions creates a webhook config from command-line options.
+// This helper handles type conversions from option strings to proper types.
+// Note: This function assumes opts has been pre-validated using opts.Validate().
+// String-to-enum conversions (e.g., WebhookClientConnectionType) are performed without
+// additional validation, as validation happens at the Options level.
+func NewWebhookConfigFromOptions(mgr manager.Manager, opts *options.Options, webhookPort int32) (*Config, error) {
+	webhookClientConnectionType := options.WebhookClientConnectionType(opts.WebhookClientConnectionType)
+	whiteListedUsers := strings.Split(opts.WhiteListedUsers, ",")
+
+	return NewWebhookConfig(mgr, opts.WebhookServiceName, webhookPort,
+		&webhookClientConnectionType, opts.WebhookCertDir, opts.EnableGuardRail,
+		opts.DenyModifyMemberClusterLabels, opts.EnableWorkload, opts.UseCertManager,
+		opts.WebhookCertName, whiteListedUsers, opts.NetworkingAgentsEnabled)
 }
 
 func (w *Config) Start(ctx context.Context) error {

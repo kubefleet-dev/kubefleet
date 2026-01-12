@@ -173,7 +173,7 @@ func TestNewWebhookConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("POD_NAMESPACE", "test-namespace")
 
-			got, err := NewWebhookConfig(tt.mgr, tt.webhookServiceName, tt.port, tt.clientConnectionType, tt.certDir, tt.enableGuardRail, tt.denyModifyMemberClusterLabels, tt.enableWorkload, tt.useCertManager, "fleet-webhook-server-cert")
+			got, err := NewWebhookConfig(tt.mgr, tt.webhookServiceName, tt.port, tt.clientConnectionType, tt.certDir, tt.enableGuardRail, tt.denyModifyMemberClusterLabels, tt.enableWorkload, tt.useCertManager, "fleet-webhook-server-cert", nil, false)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewWebhookConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -214,6 +214,8 @@ func TestNewWebhookConfig_SelfSignedCertError(t *testing.T) {
 		false,                       // enableWorkload
 		false,                       // useCertManager = false to trigger self-signed path
 		"fleet-webhook-server-cert", // webhookCertName
+		nil,                         // whiteListedUsers
+		false,                       // networkingAgentsEnabled
 	)
 
 	if err == nil {
@@ -223,6 +225,99 @@ func TestNewWebhookConfig_SelfSignedCertError(t *testing.T) {
 	expectedErrMsg := "failed to generate self-signed certificate"
 	if !strings.Contains(err.Error(), expectedErrMsg) {
 		t.Errorf("Expected error to contain '%s', got: %v", expectedErrMsg, err)
+	}
+}
+
+func TestNewWebhookConfigFromOptions(t *testing.T) {
+	t.Setenv("POD_NAMESPACE", "test-namespace")
+
+	testCases := map[string]struct {
+		opts       *options.Options
+		wantErr    bool
+		wantConfig *Config
+	}{
+		"valid options with cert-manager": {
+			opts: &options.Options{
+				WebhookServiceName:            "test-webhook",
+				WebhookClientConnectionType:   "service",
+				WebhookCertDir:                t.TempDir(),
+				EnableGuardRail:               true,
+				DenyModifyMemberClusterLabels: true,
+				EnableWorkload:                true,
+				UseCertManager:                true,
+				WebhookCertName:               "test-cert",
+				WhiteListedUsers:              "user1,user2,user3",
+				NetworkingAgentsEnabled:       true,
+			},
+			wantErr: false,
+			wantConfig: &Config{
+				serviceNamespace:              "test-namespace",
+				serviceName:                   "test-webhook",
+				servicePort:                   8443,
+				enableGuardRail:               true,
+				denyModifyMemberClusterLabels: true,
+				enableWorkload:                true,
+				useCertManager:                true,
+				webhookCertName:               "test-cert",
+				whiteListedUsers:              []string{"user1", "user2", "user3"},
+				networkingAgentsEnabled:       true,
+			},
+		},
+		"valid options without cert-manager": {
+			opts: &options.Options{
+				WebhookServiceName:            "test-webhook",
+				WebhookClientConnectionType:   "url",
+				WebhookCertDir:                t.TempDir(),
+				EnableGuardRail:               false,
+				DenyModifyMemberClusterLabels: false,
+				EnableWorkload:                false,
+				UseCertManager:                false,
+				WebhookCertName:               "test-cert",
+				WhiteListedUsers:              "admin",
+				NetworkingAgentsEnabled:       false,
+			},
+			wantErr: false,
+			wantConfig: &Config{
+				serviceNamespace:              "test-namespace",
+				serviceName:                   "test-webhook",
+				servicePort:                   8443,
+				enableGuardRail:               false,
+				denyModifyMemberClusterLabels: false,
+				enableWorkload:                false,
+				useCertManager:                false,
+				webhookCertName:               "test-cert",
+				whiteListedUsers:              []string{"admin"},
+				networkingAgentsEnabled:       false,
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			got, err := NewWebhookConfigFromOptions(nil, tc.opts, 8443)
+			if (err != nil) != tc.wantErr {
+				t.Errorf("NewWebhookConfigFromOptions() error = %v, wantErr %v", err, tc.wantErr)
+				return
+			}
+
+			if tc.wantErr {
+				return
+			}
+
+			// Verify key fields are set correctly
+			opts := []cmp.Option{
+				cmpopts.IgnoreFields(Config{}, "caPEM", "mgr", "clientConnectionType", "serviceURL"),
+			}
+			opts = append(opts, cmpopts.IgnoreUnexported(Config{}))
+			if diff := cmp.Diff(tc.wantConfig, got, opts...); diff != "" {
+				t.Errorf("NewWebhookConfigFromOptions() mismatch (-want +got):\n%s", diff)
+			}
+
+			// Verify whiteListedUsers were split correctly
+			if diff := cmp.Diff(tc.wantConfig.whiteListedUsers, got.whiteListedUsers); diff != "" {
+				t.Errorf("whiteListedUsers mismatch (-want +got):\n%s", diff)
+			}
+		})
 	}
 }
 

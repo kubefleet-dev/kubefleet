@@ -22,7 +22,6 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -157,10 +156,15 @@ func main() {
 	}
 
 	if opts.EnableWebhook {
-		whiteListedUsers := strings.Split(opts.WhiteListedUsers, ",")
-		webhookConfig, err := SetupWebhook(mgr, options.WebhookClientConnectionType(opts.WebhookClientConnectionType), opts.WebhookServiceName, whiteListedUsers,
-			opts.EnableGuardRail, opts.EnableV1Beta1APIs, opts.DenyModifyMemberClusterLabels, opts.EnableWorkload, opts.NetworkingAgentsEnabled, opts.UseCertManager, opts.WebhookCertDir, opts.WebhookCertName)
+		// Generate webhook configuration with certificates
+		webhookConfig, err := webhook.NewWebhookConfigFromOptions(mgr, opts, FleetWebhookPort)
 		if err != nil {
+			klog.ErrorS(err, "unable to create webhook config")
+			exitWithErrorFunc()
+		}
+
+		// Setup webhooks with the manager
+		if err := SetupWebhook(mgr, webhookConfig); err != nil {
 			klog.ErrorS(err, "unable to set up webhook")
 			exitWithErrorFunc()
 		}
@@ -214,23 +218,15 @@ func main() {
 	wg.Wait()
 }
 
-// SetupWebhook generates the webhook cert and then set up the webhook configurator.
-// Returns the webhook Config so it can be used for readiness checks.
-func SetupWebhook(mgr manager.Manager, webhookClientConnectionType options.WebhookClientConnectionType, webhookServiceName string,
-	whiteListedUsers []string, enableGuardRail, isFleetV1Beta1API bool, denyModifyMemberClusterLabels bool, enableWorkload bool, networkingAgentsEnabled bool, useCertManager bool, webhookCertDir string, webhookCertName string) (*webhook.Config, error) {
-	// Generate self-signed key and crt files in webhookCertDir for the webhook server to start.
-	w, err := webhook.NewWebhookConfig(mgr, webhookServiceName, FleetWebhookPort, &webhookClientConnectionType, webhookCertDir, enableGuardRail, denyModifyMemberClusterLabels, enableWorkload, useCertManager, webhookCertName)
-	if err != nil {
-		klog.ErrorS(err, "fail to generate WebhookConfig")
-		return nil, err
-	}
-	if err = mgr.Add(w); err != nil {
+// SetupWebhook registers the webhook config and webhook handlers with the manager.
+func SetupWebhook(mgr manager.Manager, webhookConfig *webhook.Config) error {
+	if err := mgr.Add(webhookConfig); err != nil {
 		klog.ErrorS(err, "unable to add WebhookConfig")
-		return nil, err
+		return err
 	}
-	if err = webhook.AddToManager(mgr, whiteListedUsers, denyModifyMemberClusterLabels, networkingAgentsEnabled); err != nil {
+	if err := webhook.AddToManager(mgr, webhookConfig); err != nil {
 		klog.ErrorS(err, "unable to register webhooks to the manager")
-		return nil, err
+		return err
 	}
-	return w, nil
+	return nil
 }
