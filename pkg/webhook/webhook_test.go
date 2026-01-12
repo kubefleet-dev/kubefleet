@@ -307,3 +307,48 @@ func TestNewWebhookConfig_SelfSignedCertError(t *testing.T) {
 		t.Errorf("Expected error to contain '%s', got: %v", expectedErrMsg, err)
 	}
 }
+
+func TestBuildWebhookAnnotations(t *testing.T) {
+	testCases := map[string]struct {
+		config            Config
+		expectedAnnotions map[string]string
+	}{
+		"useCertManager is false - returns empty map": {
+			config: Config{
+				useCertManager:        false,
+				serviceNamespace:      "fleet-system",
+				webhookCertSecretName: "fleet-webhook-server-cert",
+			},
+			expectedAnnotions: map[string]string{},
+		},
+		"useCertManager is true - returns annotation with correct format": {
+			config: Config{
+				useCertManager:        true,
+				serviceNamespace:      "fleet-system",
+				webhookCertSecretName: "fleet-webhook-server-cert",
+			},
+			expectedAnnotions: map[string]string{
+				"cert-manager.io/inject-ca-from": "fleet-system/fleet-webhook-server-cert",
+			},
+		},
+		"useCertManager is true with custom namespace and secret name": {
+			config: Config{
+				useCertManager:        true,
+				serviceNamespace:      "custom-namespace",
+				webhookCertSecretName: "custom-webhook-cert",
+			},
+			expectedAnnotions: map[string]string{
+				"cert-manager.io/inject-ca-from": "custom-namespace/custom-webhook-cert",
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			got := tc.config.buildWebhookAnnotations()
+			if diff := cmp.Diff(tc.expectedAnnotions, got); diff != "" {
+				t.Errorf("buildWebhookAnnotations() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}

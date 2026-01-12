@@ -236,13 +236,21 @@ func (w *Config) createFleetWebhookConfiguration(ctx context.Context) error {
 	return nil
 }
 
-// createMutatingWebhookConfiguration creates the MutatingWebhookConfiguration object for the webhook.
-func (w *Config) createMutatingWebhookConfiguration(ctx context.Context, webhooks []admv1.MutatingWebhook, configName string) error {
+// buildWebhookAnnotations creates annotations for webhook configurations.
+// When using cert-manager, adds the inject-ca-from annotation to automatically inject the CA bundle.
+func (w *Config) buildWebhookAnnotations() map[string]string {
 	annotations := map[string]string{}
 	if w.useCertManager {
-		// Tell cert-manager's CA injector to automatically inject the CA bundle
+		// Tell cert-manager's CA injector to automatically inject the CA bundle from the Certificate resource.
+		// Format: "namespace/certificate-name" - references the Certificate resource, not the Secret.
 		annotations["cert-manager.io/inject-ca-from"] = fmt.Sprintf("%s/%s", w.serviceNamespace, w.webhookCertSecretName)
 	}
+	return annotations
+}
+
+// createMutatingWebhookConfiguration creates the MutatingWebhookConfiguration object for the webhook.
+func (w *Config) createMutatingWebhookConfiguration(ctx context.Context, webhooks []admv1.MutatingWebhook, configName string) error {
+	annotations := w.buildWebhookAnnotations()
 
 	mutatingWebhookConfig := admv1.MutatingWebhookConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
@@ -298,11 +306,7 @@ func (w *Config) buildFleetMutatingWebhooks() []admv1.MutatingWebhook {
 }
 
 func (w *Config) createValidatingWebhookConfiguration(ctx context.Context, webhooks []admv1.ValidatingWebhook, configName string) error {
-	annotations := map[string]string{}
-	if w.useCertManager {
-		// Tell cert-manager's CA injector to automatically inject the CA bundle
-		annotations["cert-manager.io/inject-ca-from"] = fmt.Sprintf("%s/%s", w.serviceNamespace, w.webhookCertSecretName)
-	}
+	annotations := w.buildWebhookAnnotations()
 
 	validatingWebhookConfig := admv1.ValidatingWebhookConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
