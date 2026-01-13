@@ -120,7 +120,7 @@ func main() {
 		},
 		WebhookServer: ctrlwebhook.NewServer(ctrlwebhook.Options{
 			Port:    FleetWebhookPort,
-			CertDir: opts.WebhookCertDir,
+			CertDir: webhook.FleetWebhookCertDir,
 		}),
 	}
 	if opts.EnablePprof {

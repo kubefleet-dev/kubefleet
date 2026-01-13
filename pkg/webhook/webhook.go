@@ -75,6 +75,13 @@ const (
 	fleetGuardRailWebhookCfgName  = "fleet-guard-rail-webhook-configuration"
 	fleetMutatingWebhookCfgName   = "fleet-mutating-webhook-configuration"
 
+	// FleetWebhookCertDir is the directory where webhook certificates are stored.
+	// This path must match the volumeMount path in charts/hub-agent/templates/deployment.yaml
+	FleetWebhookCertDir = "/tmp/k8s-webhook-server/serving-certs"
+	// FleetWebhookCertName is the name of the Certificate resource created by cert-manager.
+	// This name must match the Certificate name in charts/hub-agent/templates/certificate.yaml
+	FleetWebhookCertName = "fleet-webhook-certificate"
+
 	crdResourceName                      = "customresourcedefinitions"
 	bindingResourceName                  = "bindings"
 	configMapResourceName                = "configmaps"
@@ -223,9 +230,9 @@ func NewWebhookConfigFromOptions(mgr manager.Manager, opts *options.Options, web
 	whiteListedUsers := strings.Split(opts.WhiteListedUsers, ",")
 
 	return NewWebhookConfig(mgr, opts.WebhookServiceName, webhookPort,
-		&webhookClientConnectionType, opts.WebhookCertDir, opts.EnableGuardRail,
+		&webhookClientConnectionType, FleetWebhookCertDir, opts.EnableGuardRail,
 		opts.DenyModifyMemberClusterLabels, opts.EnableWorkload, opts.UseCertManager,
-		opts.WebhookCertName, whiteListedUsers, opts.NetworkingAgentsEnabled)
+		FleetWebhookCertName, whiteListedUsers, opts.NetworkingAgentsEnabled)
 }
 
 func (w *Config) Start(ctx context.Context) error {
