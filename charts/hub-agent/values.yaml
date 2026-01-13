@@ -21,9 +21,9 @@ enableWorkload: false
 # When enabled, cert-manager must be installed as a prerequisite (it is not installed automatically by this chart)
 # and a Certificate resource will be created
 useCertManager: false
-# webhookCertSecretName is the name of the Secret where cert-manager stores the certificate
-# This must match the secretName in the Certificate resource and the volume mount in deployment
-webhookCertSecretName: fleet-webhook-server-cert
+# webhookCertSecretName is ONLY used when useCertManager=true
+# It specifies the name of the Secret where cert-manager stores the certificate
+# webhookCertSecretName: fleet-webhook-server-cert
 
 forceDeleteWaitTime: 15m0s
 clusterUnhealthyThreshold: 3m0s
