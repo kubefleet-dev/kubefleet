@@ -126,8 +126,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		var initErr error
 		if toBeUpdatedBindings, toBeDeletedBindings, initErr = r.initialize(ctx, updateRun); initErr != nil {
 			klog.ErrorS(initErr, "Failed to initialize the updateRun", "updateRun", runObjRef)
-			// errInitializedFailed cannot be retried.
-			if errors.Is(initErr, errValidationFailed) {
+			// errStagedUpdatedAborted cannot be retried.
+			if errors.Is(initErr, errStagedUpdatedAborted) {
 				return runtime.Result{}, r.recordInitializationFailed(ctx, updateRun, initErr.Error())
 			}
 			return runtime.Result{}, initErr
