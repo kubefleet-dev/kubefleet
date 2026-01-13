@@ -690,11 +690,15 @@ func generateStuckClustersString(stuckClusterNames []string) string {
 	if len(stuckClusterNames) == 0 {
 		return ""
 	}
-	if len(stuckClusterNames) == 1 {
-		return stuckClusterNames[0]
+	if len(stuckClusterNames) <= 3 {
+		return strings.Join(stuckClusterNames, ", ")
 	}
-	// Multiple clusters: join all with commas and append ", ..."
-	return strings.Join(stuckClusterNames, ", ") + "..."
+	// Print first 3 if more than 3 stuck clusters.
+	clustersToShow := stuckClusterNames
+	if len(stuckClusterNames) > 3 {
+		clustersToShow = stuckClusterNames[:3]
+	}
+	return strings.Join(clustersToShow, ", ") + "..."
 }
 
 // markUpdateRunWaiting marks the updateRun as waiting in memory.
