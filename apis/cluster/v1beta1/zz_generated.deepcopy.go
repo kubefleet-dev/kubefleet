@@ -21,7 +21,7 @@ limitations under the License.
 package v1beta1
 
 import (
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
@@ -156,6 +156,13 @@ func (in *InternalMemberClusterStatus) DeepCopyInto(out *InternalMemberClusterSt
 		}
 	}
 	in.ResourceUsage.DeepCopyInto(&out.ResourceUsage)
+	if in.Namespaces != nil {
+		in, out := &in.Namespaces, &out.Namespaces
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
 	if in.AgentStatus != nil {
 		in, out := &in.AgentStatus, &out.AgentStatus
 		*out = make([]AgentStatus, len(*in))
