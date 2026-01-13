@@ -14,13 +14,13 @@ helm install hub-agent ./charts/hub-agent/
 When using cert-manager for certificate management, install cert-manager as a prerequisite first:
 
 ```console
-# Install cert-manager
+# Install cert-manager (omit --version to get latest, or specify a version like --version v1.16.2)
+# Note: See CERT_MANAGER_VERSION in .github/workflows/ci.yml for the version tested in CI
 helm repo add jetstack https://charts.jetstack.io
 helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --version v1.16.2 \
   --set crds.enabled=true
 
 # Then install hub-agent with cert-manager enabled
@@ -81,6 +81,7 @@ By default, the hub-agent generates certificates automatically at startup. This 
 - Requires no external dependencies
 - Works out of the box
 - Certificates are valid for 10 years
+- **Limitation: Only supports single replica deployment** (replicaCount must be 1)
 
 ### cert-manager (Optional)
 
@@ -90,17 +91,18 @@ When `useCertManager=true`, certificates are managed by cert-manager. This mode:
 - Requires `enableWebhook=true` because cert-manager is only used for webhook certificate management
 - Handles certificate rotation automatically (90-day certificates)
 - Follows industry-standard certificate management practices
+- **Supports high availability with multiple replicas** (replicaCount > 1)
 - Suitable for production environments
 
 To switch to cert-manager mode:
 ```console
-# Install cert-manager first
+# Install cert-manager first (omit --version to get latest, or specify a version like --version v1.16.2)
+# Note: See CERT_MANAGER_VERSION in .github/workflows/ci.yml for the version tested in CI
 helm repo add jetstack https://charts.jetstack.io
 helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --version v1.16.2 \
   --set crds.enabled=true
 
 # Then install hub-agent with cert-manager enabled

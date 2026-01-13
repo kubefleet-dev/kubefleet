@@ -140,6 +140,7 @@ helm install hub-agent ../../charts/hub-agent/ \
     --set logVerbosity=5 \
     --set replicaCount=3 \
     --set useCertManager=true \
+    --set webhookCertSecretName=fleet-webhook-server-cert \
     --set enableWebhook=true \
     --set enableWorkload=true \
     --set webhookClientConnectionType=service \
