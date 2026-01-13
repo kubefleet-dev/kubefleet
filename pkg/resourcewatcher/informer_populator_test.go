@@ -39,6 +39,15 @@ const (
 	testSleep = 150 * time.Millisecond
 )
 
+func TestInformerPopulator_NeedLeaderElection(t *testing.T) {
+	populator := &InformerPopulator{}
+
+	// InformerPopulator should NOT need leader election so it runs on all pods
+	if populator.NeedLeaderElection() {
+		t.Error("InformerPopulator should not need leader election")
+	}
+}
+
 func TestInformerPopulator_discoverAndCreateInformers(t *testing.T) {
 	tests := []struct {
 		name                    string

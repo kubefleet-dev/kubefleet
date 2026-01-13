@@ -37,7 +37,8 @@ const (
 
 // make sure that our InformerPopulator implements controller runtime interfaces
 var (
-	_ manager.Runnable = &InformerPopulator{}
+	_ manager.Runnable               = &InformerPopulator{}
+	_ manager.LeaderElectionRunnable = &InformerPopulator{}
 )
 
 // InformerPopulator discovers API resources and creates informers for them WITHOUT adding event handlers.
@@ -92,4 +93,10 @@ func (p *InformerPopulator) discoverAndCreateInformers() {
 	p.InformerManager.Start()
 
 	klog.V(2).InfoS("Informer populator: discovered resources", "count", len(resourcesToWatch))
+}
+
+// NeedLeaderElection implements LeaderElectionRunnable interface.
+// Returns false so this runs on ALL pods (leader and followers).
+func (p *InformerPopulator) NeedLeaderElection() bool {
+	return false
 }
