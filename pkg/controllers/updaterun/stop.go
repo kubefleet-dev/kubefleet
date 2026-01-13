@@ -73,7 +73,7 @@ func (r *Reconciler) stopUpdatingStage(
 	// Mark the stage as stopping in case it's not.
 	markStageUpdatingStopping(updatingStageStatus, updateRun.GetGeneration())
 	clusterUpdatingCount := 0
-	stuckClusterCount := 0
+	var stuckClusterNames []string
 	var clusterUpdateErrors []error
 	// Go through each cluster in the stage and check if it's updating/succeeded/failed/not started.
 	for i := 0; i < len(updatingStageStatus.Clusters); i++ {
@@ -105,13 +105,13 @@ func (r *Reconciler) stopUpdatingStage(
 			timeElapsed := time.Since(clusterStartedCond.LastTransitionTime.Time)
 			if timeElapsed > updateRunStuckThreshold {
 				klog.V(2).InfoS("Time waiting for cluster update to finish passes threshold, mark the update run as stuck", "time elapsed", timeElapsed, "threshold", updateRunStuckThreshold, "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
-				stuckClusterCount++
+				stuckClusterNames = append(stuckClusterNames, clusterStatus.ClusterName)
 			}
 		}
 	}
 
 	// If there are stuck clusters, aggregate them into an error.
-	aggregateUpdateRunStatus(updateRun, updatingStageStatus.StageName, stuckClusterCount)
+	aggregateUpdateRunStatus(updateRun, updatingStageStatus.StageName, stuckClusterNames)
 
 	// Aggregate and return errors.
 	if len(clusterUpdateErrors) > 0 {
