@@ -137,7 +137,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 	Context("Test validateCRP", func() {
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should fail to initialize if CRP is not found", func() {
@@ -189,7 +189,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should fail to initialize if the latest policy snapshot is not found", func() {
@@ -299,7 +299,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 		It("Should copy the latest policy snapshot details to the updateRun status -- pickFixed policy", func() {
 			By("Creating scheduling policy snapshot with pickFixed policy")
@@ -347,7 +347,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 		})
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should copy the latest policy snapshot details to the updateRun status -- pickAll policy", func() {
@@ -405,7 +405,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 		It("Should fail to initialize if there is no selected or to-be-deleted cluster", func() {
 			By("Creating a new clusterStagedUpdateRun")
@@ -499,7 +499,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should not report error if there are only to-be-deleted clusters", func() {
@@ -564,7 +564,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("fail the initialization if the clusterStagedUpdateStrategy is not found", func() {
@@ -766,7 +766,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "invalid resource snapshot index `invalid-index` provided")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should fail to initialize if the specified resource snapshot index is invalid - negative integer", func() {
@@ -778,7 +778,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "invalid resource snapshot index `-1` provided")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should fail to initialize if the specified resource snapshot is not found - no resourceSnapshots at all", func() {
@@ -789,7 +789,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "no resourceSnapshots with index `0` found")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should NOT fail to initialize if the specified resource snapshot is not found when no resource index specified - no resourceSnapshots at all", func() {
@@ -829,7 +829,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "no resourceSnapshots with index `0` found")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should fail to initialize if the specified resource snapshot is not found - no resource index label found", func() {
@@ -844,7 +844,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "no resourceSnapshots with index `0` found")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should fail to initialize if the specified resource snapshot is not master snapshot", func() {
@@ -859,7 +859,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "no master resourceSnapshot found for placement")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should select latest resource snapshot in the status when no resource index defined", func() {
@@ -882,7 +882,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, initialized, "")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationSucceededMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationSucceededMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should put related ClusterResourceOverrides in the status", func() {
@@ -903,7 +903,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, initialized, "")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationSucceededMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationSucceededMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should pick latest master resource snapshot if multiple snapshots", func() {
@@ -937,7 +937,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, initialized, "")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationSucceededMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationSucceededMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 	})
 })
