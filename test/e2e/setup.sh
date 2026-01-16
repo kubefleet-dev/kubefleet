@@ -132,6 +132,10 @@ helm install hub-agent ../../charts/hub-agent/ \
     --set resourceSnapshotCreationMinimumInterval=$RESOURCE_SNAPSHOT_CREATION_MINIMUM_INTERVAL \
     --set resourceChangesCollectionDuration=$RESOURCE_CHANGES_COLLECTION_DURATION
 
+# Wait for hub-agent deployment to be ready (includes webhook)
+echo "Waiting for hub-agent deployment to be ready..."
+kubectl rollout status deployment/hub-agent -n fleet-system --timeout=2m
+
 # Download CRDs from Fleet networking repo
 export ENDPOINT_SLICE_EXPORT_CRD_URL=https://raw.githubusercontent.com/Azure/fleet-networking/v0.2.7/config/crd/bases/networking.fleet.azure.com_endpointsliceexports.yaml
 export INTERNAL_SERVICE_EXPORT_CRD_URL=https://raw.githubusercontent.com/Azure/fleet-networking/v0.2.7/config/crd/bases/networking.fleet.azure.com_internalserviceexports.yaml
