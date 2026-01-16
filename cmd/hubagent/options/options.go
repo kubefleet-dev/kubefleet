@@ -70,10 +70,18 @@ type Options struct {
 	AllowedPropagatingAPIs string
 	// SkippedPropagatingNamespaces is a list of namespaces that will be skipped for propagating.
 	SkippedPropagatingNamespaces string
-	// HubQPS is the QPS to use while talking with hub-apiserver. Default is 20.0.
+	// HubQPS is the maximum QPS while talking with the hub cluster API server; leader election requests
+	// are exempted from this limit. Default is 250.0.
 	HubQPS float64
-	// HubBurst is the burst to allow while talking with hub-apiserver. Default is 100.
+	// HubBurst is the rate limiter burst value while talking with the hub cluster API server; leader election requests
+	// are exempted from this limit. Default is 1000.
 	HubBurst int
+	// LeaderElectionQPS is the maximum QPS while talking with the hub cluster API server for leader election requests.
+	// Default is 250.0.
+	LeaderElectionQPS float64
+	// LeaderElectionBurst is the rate limiter burst value while talking with the hub cluster API server for leader
+	// election requests. Default is 1000.
+	LeaderElectionBurst int
 	// ResyncPeriod is the base frequency the informers are resynced. Defaults is 5 minutes.
 	ResyncPeriod metav1.Duration
 	// MaxConcurrentClusterPlacement is the number of cluster placement that are allowed to run concurrently.
@@ -121,7 +129,16 @@ type Options struct {
 func NewOptions() *Options {
 	return &Options{
 		LeaderElection: componentbaseconfig.LeaderElectionConfiguration{
-			LeaderElect:       true,
+			LeaderElect: true,
+			LeaseDuration: metav1.Duration{
+				Duration: time.Second * 180,
+			},
+			RenewDeadline: metav1.Duration{
+				Duration: time.Second * 120,
+			},
+			RetryPeriod: metav1.Duration{
+				Duration: time.Second * 5,
+			},
 			ResourceLock:      resourcelock.LeasesResourceLock,
 			ResourceNamespace: utils.FleetSystemNamespace,
 			ResourceName:      "136224848560.hub.fleet.azure.com",
@@ -146,7 +163,9 @@ func (o *Options) AddFlags(flags *flag.FlagSet) {
 		"The IP address on which to listen for the --secure-port port.")
 	flags.StringVar(&o.MetricsBindAddress, "metrics-bind-address", ":8080", "The TCP address that the controller should bind to for serving prometheus metrics(e.g. 127.0.0.1:8088, :8088)")
 	flags.BoolVar(&o.LeaderElection.LeaderElect, "leader-elect", false, "Start a leader election client and gain leadership before executing the main loop. Enable this when running replicated components for high availability.")
-	flags.DurationVar(&o.LeaderElection.LeaseDuration.Duration, "leader-lease-duration", 15*time.Second, "This is effectively the maximum duration that a leader can be stopped before someone else will replace it.")
+	flags.DurationVar(&o.LeaderElection.LeaseDuration.Duration, "leader-lease-duration", 180*time.Second, "This is effectively the maximum duration that a leader can be stopped before someone else will replace it.")
+	flags.DurationVar(&o.LeaderElection.RenewDeadline.Duration, "leader-election-lease-renew-deadline", 120*time.Second, "The interval between attempts by the acting master to renew a leadership slot before it stops leading.")
+	flags.DurationVar(&o.LeaderElection.RetryPeriod.Duration, "leader-election-retry-period", 5*time.Second, "The duration the clients should wait between attempting acquisition and renewal of a leadership.")
 	flag.StringVar(&o.LeaderElection.ResourceNamespace, "leader-election-namespace", utils.FleetSystemNamespace, "The namespace in which the leader election resource will be created.")
 	flag.BoolVar(&o.EnableWebhook, "enable-webhook", true, "If set, the fleet webhook is enabled.")
 	// set a default value 'fleetwebhook' for webhook service name for backward compatibility. The service name was hard coded to 'fleetwebhook' in the past.
@@ -168,8 +187,10 @@ func (o *Options) AddFlags(flags *flag.FlagSet) {
 		"<group>/<version>/<kind>,<kind> for skip one or more specific resource(e.g. networking.k8s.io/v1beta1/Ingress,IngressClass) where the kinds are case-insensitive.")
 	flags.StringVar(&o.SkippedPropagatingNamespaces, "skipped-propagating-namespaces", "",
 		"Comma-separated namespaces that should be skipped from propagating in addition to the default skipped namespaces(fleet-system, namespaces prefixed by kube- and fleet-work-).")
-	flags.Float64Var(&o.HubQPS, "hub-api-qps", 250, "QPS to use while talking with fleet-apiserver. Doesn't cover events and node heartbeat apis which rate limiting is controlled by a different set of flags.")
-	flags.IntVar(&o.HubBurst, "hub-api-burst", 1000, "Burst to use while talking with fleet-apiserver. Doesn't cover events and node heartbeat apis which rate limiting is controlled by a different set of flags.")
+	flags.Float64Var(&o.HubQPS, "hub-api-qps", 250, "The maximum QPS while talking with the hub cluster API server. Certain requests, such as leader election ones, are exempted from the limit.")
+	flags.IntVar(&o.HubBurst, "hub-api-burst", 1000, "The rate limiter burst value while talking with the hub cluster API server; Certain requests, such as leader election ones, are exempted from this limit.")
+	flag.Float64Var(&o.LeaderElectionQPS, "leader-election-qps", 250.0, "The maximum QPS while talking with the hub cluster API server for leader election requests")
+	flag.IntVar(&o.LeaderElectionBurst, "leader-election-burst", 1000, "The rate limiter burst value while talking with the hub cluster API server for leader election requests")
 	flags.DurationVar(&o.ResyncPeriod.Duration, "resync-period", 6*time.Hour, "Base frequency the informers are resynced.")
 	flags.IntVar(&o.MaxConcurrentClusterPlacement, "max-concurrent-cluster-placement", 100, "The max number of concurrent cluster placement to run concurrently.")
 	flags.IntVar(&o.ConcurrentResourceChangeSyncs, "concurrent-resource-change-syncs", 20, "The number of resourceChange reconcilers that are allowed to run concurrently.")
