@@ -258,6 +258,10 @@ func validateUpdateRunMetricsEmitted(wantMetrics ...*prometheusclientmodel.Metri
 	}, timeout, interval).Should(Succeed(), "failed to validate the update run status metrics")
 }
 
+// generateMetricsLabels generates the labels for the update run status metrics.
+// We pass the state explicitly instead of using updateRun.Spec.State because the metric
+// should reflect the state at the time the condition occurred, which may be different from
+// the current updateRun state if the updateRun has transitioned since then.
 func generateMetricsLabels(
 	updateRun *placementv1beta1.ClusterStagedUpdateRun,
 	state, condition, status, reason string,
