@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -14,7 +15,7 @@ import (
 
 func TestBuildFleetMutatingWebhooks(t *testing.T) {
 	url := options.WebhookClientConnectionType("url")
-	testCases := map[string]struct {
+	testCases := map[string]*struct {
 		config     Config
 		wantLength int
 	}{
@@ -41,7 +42,7 @@ func TestBuildFleetMutatingWebhooks(t *testing.T) {
 
 func TestBuildFleetValidatingWebhooks(t *testing.T) {
 	url := options.WebhookClientConnectionType("url")
-	testCases := map[string]struct {
+	testCases := map[string]*struct {
 		config     Config
 		wantLength int
 	}{
@@ -76,7 +77,7 @@ func TestBuildFleetValidatingWebhooks(t *testing.T) {
 
 func TestBuildFleetGuardRailValidatingWebhooks(t *testing.T) {
 	url := options.WebhookClientConnectionType("url")
-	testCases := map[string]struct {
+	testCases := map[string]*struct {
 		config     Config
 		wantLength int
 	}{
@@ -160,4 +161,40 @@ func TestNewWebhookConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReadinessChecker(t *testing.T) {
+	w := &Config{}
+	checker := w.ReadinessChecker()
+
+	if err := checker(nil); err == nil {
+		t.Fatalf("expected readiness error before ready is set")
+	}
+
+	w.ready.Store(true)
+	if err := checker(nil); err != nil {
+		t.Fatalf("unexpected readiness error after ready is set: %v", err)
+	}
+}
+
+func TestReadinessCheckerConcurrent(t *testing.T) {
+	w := &Config{}
+	checker := w.ReadinessChecker()
+
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 1000 {
+				_ = checker(nil)
+			}
+		}()
+	}
+
+	w.ready.Store(true)
+	if err := checker(nil); err != nil {
+		t.Fatalf("unexpected readiness error after ready is set: %v", err)
+	}
+	wg.Wait()
 }

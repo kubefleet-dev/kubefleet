@@ -27,8 +27,10 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/http"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	admv1 "k8s.io/api/admissionregistration/v1"
@@ -162,6 +164,9 @@ type Config struct {
 
 	denyModifyMemberClusterLabels bool
 	enableWorkload                bool
+
+	// ready is set to true after webhook configurations have been created successfully.
+	ready atomic.Bool
 }
 
 func NewWebhookConfig(mgr manager.Manager, webhookServiceName string, port int32, clientConnectionType *options.WebhookClientConnectionType, certDir string, enableGuardRail bool, denyModifyMemberClusterLabels bool, enableWorkload bool) (*Config, error) {
@@ -195,7 +200,20 @@ func (w *Config) Start(ctx context.Context) error {
 		klog.ErrorS(err, "unable to setup webhook configurations in apiserver")
 		return err
 	}
+	w.ready.Store(true)
+	klog.V(2).InfoS("webhook configurations created successfully, marking webhook as ready")
 	return nil
+}
+
+// ReadinessChecker returns a healthz.Checker that reports ready only after
+// webhook configurations have been created successfully.
+func (w *Config) ReadinessChecker() func(*http.Request) error {
+	return func(_ *http.Request) error {
+		if !w.ready.Load() {
+			return fmt.Errorf("webhook not ready: configurations not yet created")
+		}
+		return nil
+	}
 }
 
 // createFleetWebhookConfiguration creates the ValidatingWebhookConfiguration object for the webhook.

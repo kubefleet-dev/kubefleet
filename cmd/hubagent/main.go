@@ -158,9 +158,16 @@ func main() {
 
 	if opts.EnableWebhook {
 		whiteListedUsers := strings.Split(opts.WhiteListedUsers, ",")
-		if err := SetupWebhook(mgr, options.WebhookClientConnectionType(opts.WebhookClientConnectionType), opts.WebhookServiceName, whiteListedUsers,
-			opts.EnableGuardRail, opts.EnableV1Beta1APIs, opts.DenyModifyMemberClusterLabels, opts.EnableWorkload, opts.NetworkingAgentsEnabled); err != nil {
+		webhookConfig, err := SetupWebhook(mgr, options.WebhookClientConnectionType(opts.WebhookClientConnectionType), opts.WebhookServiceName, whiteListedUsers,
+			opts.EnableGuardRail, opts.EnableV1Beta1APIs, opts.DenyModifyMemberClusterLabels, opts.EnableWorkload, opts.NetworkingAgentsEnabled)
+		if err != nil {
 			klog.ErrorS(err, "unable to set up webhook")
+			exitWithErrorFunc()
+		}
+		// Add webhook readiness check to ensure the pod is not marked ready until
+		// webhook configurations have been created in the API server.
+		if err := mgr.AddReadyzCheck("webhook", webhookConfig.ReadinessChecker()); err != nil {
+			klog.ErrorS(err, "unable to set up webhook readiness check")
 			exitWithErrorFunc()
 		}
 	}
@@ -201,21 +208,22 @@ func main() {
 }
 
 // SetupWebhook generates the webhook cert and then set up the webhook configurator.
+// It returns the webhook Config so callers can register the readiness checker.
 func SetupWebhook(mgr manager.Manager, webhookClientConnectionType options.WebhookClientConnectionType, webhookServiceName string,
-	whiteListedUsers []string, enableGuardRail, isFleetV1Beta1API bool, denyModifyMemberClusterLabels bool, enableWorkload bool, networkingAgentsEnabled bool) error {
+	whiteListedUsers []string, enableGuardRail, isFleetV1Beta1API bool, denyModifyMemberClusterLabels bool, enableWorkload bool, networkingAgentsEnabled bool) (*webhook.Config, error) {
 	// Generate self-signed key and crt files in FleetWebhookCertDir for the webhook server to start.
 	w, err := webhook.NewWebhookConfig(mgr, webhookServiceName, FleetWebhookPort, &webhookClientConnectionType, FleetWebhookCertDir, enableGuardRail, denyModifyMemberClusterLabels, enableWorkload)
 	if err != nil {
 		klog.ErrorS(err, "fail to generate WebhookConfig")
-		return err
+		return nil, err
 	}
 	if err = mgr.Add(w); err != nil {
 		klog.ErrorS(err, "unable to add WebhookConfig")
-		return err
+		return nil, err
 	}
 	if err = webhook.AddToManager(mgr, whiteListedUsers, denyModifyMemberClusterLabels, networkingAgentsEnabled); err != nil {
 		klog.ErrorS(err, "unable to register webhooks to the manager")
-		return err
+		return nil, err
 	}
-	return nil
+	return w, nil
 }
