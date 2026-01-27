@@ -739,7 +739,7 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 			}
 			fakeClient := fakeClientBuilder.Build()
 
-			r := NewReconciler(fakeClient, nil, nil)
+			r := NewReconciler(fakeClient, nil, nil, nil)
 
 			_, shouldSkip, err := r.validatePlacementObjectForOriginalResourceStatusBackReporting(ctx, tc.work)
 			if tc.wantErred {

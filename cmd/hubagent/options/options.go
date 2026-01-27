@@ -118,6 +118,27 @@ type Options struct {
 	ResourceSnapshotCreationMinimumInterval time.Duration
 	// ResourceChangesCollectionDuration is the duration for collecting resource changes into one snapshot.
 	ResourceChangesCollectionDuration time.Duration
+	// EnableStatusBackReporting enables the status back-reporting feature, which allows users to view object
+	// status of placed objects on the member cluster side directly on the hub cluster side.
+	EnableStatusBackReporting bool
+	// StatusMirroringToOriginalResourceAllowedGVKsRawStr is the raw string input that specifies a list of GVKs that are allowed
+	// to have their object status back-reported from the member cluster side to the **original resource** on
+	// the hub cluster side. The whitelist has no effect if the status back-reporting destination is set to the Work API.
+	//
+	// The string is a collection of segments, separated by commas; each segment is of the format
+	// `API_GROUP/VERSION/KIND`, where `API_GROUP`, `VERSION`, and `KIND` are the API group, version, and
+	// kind of a Kubernetes API resource respectively, such as `apps/v1/Deployment`. For API resources
+	// that are in the core API group, the `API_GROUP/` part can be omitted, e.g., `v1/Pod`.
+	//
+	// Use the wildcard character asterisk (`*`) to enable wildcard matching in any of the\
+	// `API_GROUP`, `VERSION`, or `KIND` parts. For example, `example.com/*/*` will allow resources
+	// of all kinds and versions of the API group `example.com` to have their object status back-reported.
+	//
+	// Important: only add GVKs to this list if you would like to use the back-report status to original resource
+	// strategy and if it has been verified that there are no other controllers on the Fleet hub cluster that will
+	// reconcile these GVKs; otherwise there could be contentions between the Fleet agent
+	// and such controllers, and unexpected behaviors might occur.
+	StatusMirroringToOriginalResourceAllowedGVKsRawStr string
 }
 
 // NewOptions builds an empty options.
@@ -193,4 +214,9 @@ func (o *Options) AddFlags(flags *flag.FlagSet) {
 	flags.DurationVar(&o.ResourceChangesCollectionDuration, "resource-changes-collection-duration", 15*time.Second,
 		"The duration for collecting resource changes into one snapshot. The default is 15 seconds, which means that the controller will collect resource changes for 15 seconds before creating a resource snapshot.")
 	o.RateLimiterOpts.AddFlags(flags)
+	flags.BoolVar(&o.EnableStatusBackReporting, "enable-status-back-reporting", false, "If set, the status back-reporting feature is enabled. This allows users to view object status of placed objects on the member cluster side directly on the hub cluster side.")
+	flags.StringVar(&o.StatusMirroringToOriginalResourceAllowedGVKsRawStr,
+		"status-mirroring-to-original-resource-allowed-gvks",
+		"",
+		"A collection of GVKs that are allowed to have their object status back-reported from the member cluster side to the hub cluster side. The format is a collection of segments separated by commas, where each segment is of the format 'API_GROUP/VERSION/KIND'. Use '*' as a wildcard in any of the parts. Example: `apps/v1/Deployment,example.com/*/*`. Important: only add GVKs to this list if you would like to use the back-report status to original resource strategy and if it has been confirmed that there are no controllers on the Fleet hub cluster that will reconcile the GVKs; otherwise there could be contentions between the Fleet agent and such controllers, and unexpected behaviors might occur.")
 }

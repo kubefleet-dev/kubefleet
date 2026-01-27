@@ -18,6 +18,7 @@ package workload
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"strings"
 	"sync"
@@ -43,6 +44,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/resourcechange"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/rollout"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/schedulingpolicysnapshot"
+	"github.com/kubefleet-dev/kubefleet/pkg/controllers/statusbackreporter"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/updaterun"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workgenerator"
 	"github.com/kubefleet-dev/kubefleet/pkg/resourcewatcher"
@@ -57,7 +59,9 @@ import (
 	schedulerspswatcher "github.com/kubefleet-dev/kubefleet/pkg/scheduler/watchers/schedulingpolicysnapshot"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/gvkwhitelist"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/parallelizer"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
 )
 
@@ -462,6 +466,24 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		}).SetupWithManager(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up resourceOverride controller")
 			return err
+		}
+
+		// Set up the status back-reporting controller.
+		if opts.EnableStatusBackReporting {
+			allowedGVKs, err := gvkwhitelist.Parse(opts.StatusMirroringToOriginalResourceAllowedGVKsRawStr)
+			if err != nil {
+				panic(fmt.Sprintf("invalid GVK whitelist for status back-reporting to original resources: %v", err))
+			}
+			klog.Info("Setting up the status back-reporting controller")
+			if err := statusbackreporter.NewReconciler(
+				mgr.GetClient(),
+				dynamicClient,
+				allowedGVKs,
+				parallelizer.NewParallelizer(parallelizer.DefaultNumOfWorkers),
+			).SetupWithManager(mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up status back-reporting controller")
+				return err
+			}
 		}
 
 		// Verify cluster inventory CRD installation status.

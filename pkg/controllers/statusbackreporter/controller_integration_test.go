@@ -25,6 +25,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -47,16 +48,21 @@ const (
 	crpNameTemplate     = "crp-%s"
 
 	deployName = "app"
+	jobName    = "work"
 
 	workOrManifestAppliedReason  = "MarkedAsApplied"
 	workOrManifestAppliedMessage = "the object is marked as applied"
 	deployAvailableReason        = "MarkedAsAvailable"
 	deployAvailableMessage       = "the object is marked as available"
+	jobCompletedReason           = "MarkedAsCompleted"
+	jobCompletedMessage          = "the job is marked as completed"
 )
 
 const (
-	eventuallyDuration = time.Second * 10
-	eventuallyInterval = time.Second * 1
+	eventuallyDuration   = time.Second * 10
+	eventuallyInterval   = time.Second * 1
+	consistentlyDuration = time.Second * 10
+	consistentlyInterval = time.Second * 3
 )
 
 var (
@@ -396,6 +402,288 @@ var _ = Describe("back-reporting status", func() {
 					return fmt.Errorf("failed to delete Deployment object: %w", err)
 				}
 				if err := hubClient.Get(ctx, client.ObjectKey{Name: deployName, Namespace: nsName}, deploy); err != nil && !errors.IsNotFound(err) {
+					return fmt.Errorf("Deployment object still exists or an unexpected error occurred: %w", err)
+				}
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove Deployment object")
+
+			// The environment prepared by the envtest package does not support namespace
+			// deletion; consequently this test suite would not attempt to verify its deletion.
+		})
+	})
+
+	Context("back-report status for non-whitelisted GVKs (Job) (CRP)", Ordered, func() {
+		crpName := fmt.Sprintf(crpNameTemplate, utils.RandStr())
+		workName := fmt.Sprintf(crpWorkNameTemplate, crpName, utils.RandStr())
+		// The environment prepared by the envtest package does not support namespace
+		// deletion; each test case would use a new namespace.
+		nsName := fmt.Sprintf(nsNameTemplate, utils.RandStr())
+
+		var ns *corev1.Namespace
+		var job *batchv1.Job
+		var now metav1.Time
+
+		BeforeAll(func() {
+			now = metav1.Now().Rfc3339Copy()
+
+			// Create the namespace.
+			ns = nsTemplate.DeepCopy()
+			nsJSON := marshalK8sObjJSON(ns)
+			ns.Name = nsName
+			Expect(hubClient.Create(ctx, ns)).To(Succeed())
+
+			// Create the deployment.
+			job = &batchv1.Job{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Job",
+					APIVersion: "batch/v1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: nsName,
+					Name:      jobName,
+				},
+				Spec: batchv1.JobSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{
+								"app": "busybox",
+							},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:  "busybox",
+									Image: "busybox",
+									Command: []string{
+										"sh",
+										"-c",
+										"sleep 60",
+									},
+								},
+							},
+							RestartPolicy: corev1.RestartPolicyNever,
+						},
+					},
+					Parallelism: ptr.To(int32(1)),
+					Completions: ptr.To(int32(2)),
+				},
+			}
+			jobJSON := marshalK8sObjJSON(job)
+			Expect(hubClient.Create(ctx, job)).To(Succeed())
+
+			// Create the CRP.
+			crp := &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:   "",
+							Version: "v1",
+							Kind:    "Namespace",
+							Name:    nsName,
+						},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickFixedPlacementType,
+						ClusterNames: []string{
+							cluster1,
+						},
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{
+							Type:        placementv1beta1.ReportBackStrategyTypeMirror,
+							Destination: ptr.To(placementv1beta1.ReportBackDestinationOriginalResource),
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, crp)).To(Succeed())
+
+			// Create the Work object.
+			reportBackStrategy := &placementv1beta1.ReportBackStrategy{
+				Type:        placementv1beta1.ReportBackStrategyTypeMirror,
+				Destination: ptr.To(placementv1beta1.ReportBackDestinationOriginalResource),
+			}
+			createWorkObject(workName, memberReservedNSName, crpName, "", reportBackStrategy, nsJSON, jobJSON)
+		})
+
+		It("can update CRP status", func() {
+			Eventually(func() error {
+				crp := &placementv1beta1.ClusterResourcePlacement{}
+				if err := hubClient.Get(ctx, client.ObjectKey{Name: crpName}, crp); err != nil {
+					return fmt.Errorf("failed to retrieve CRP object: %w", err)
+				}
+
+				crp.Status = placementv1beta1.PlacementStatus{
+					SelectedResources: []placementv1beta1.ResourceIdentifier{
+						{
+							Group:   "",
+							Version: "v1",
+							Kind:    "Namespace",
+							Name:    nsName,
+						},
+						{
+							Group:     "batch",
+							Version:   "v1",
+							Kind:      "Job",
+							Name:      jobName,
+							Namespace: nsName,
+						},
+					},
+				}
+				if err := hubClient.Status().Update(ctx, crp); err != nil {
+					return fmt.Errorf("failed to update CRP status: %w", err)
+				}
+				return nil
+			}, eventuallyDuration, eventuallyInterval).To(Succeed(), "Failed to update CRP status")
+		})
+
+		It("can update work status", func() {
+			Eventually(func() error {
+				work := &placementv1beta1.Work{}
+				if err := hubClient.Get(ctx, client.ObjectKey{Namespace: memberReservedNSName, Name: workName}, work); err != nil {
+					return fmt.Errorf("failed to retrieve work object: %w", err)
+				}
+
+				jobWithStatus := job.DeepCopy()
+				jobWithStatus.Status = batchv1.JobStatus{
+					Conditions: []batchv1.JobCondition{
+						{
+							Type:               batchv1.JobComplete,
+							Status:             corev1.ConditionTrue,
+							LastProbeTime:      now,
+							LastTransitionTime: now,
+							Reason:             jobCompletedReason,
+							Message:            jobCompletedMessage,
+						},
+					},
+					StartTime:      &now,
+					CompletionTime: &now,
+					Active:         0,
+					Succeeded:      1,
+					Failed:         0,
+					Ready:          ptr.To(int32(0)),
+				}
+
+				statusBackReportingWrapperData, err := prepareStatusWrapperData(jobWithStatus)
+				if err != nil {
+					return fmt.Errorf("failed to prepare status wrapper data: %w", err)
+				}
+
+				work.Status = placementv1beta1.WorkStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:               placementv1beta1.WorkConditionTypeApplied,
+							Status:             metav1.ConditionTrue,
+							Reason:             workOrManifestAppliedReason,
+							Message:            workOrManifestAppliedMessage,
+							ObservedGeneration: 1,
+							LastTransitionTime: now,
+						},
+					},
+					ManifestConditions: []placementv1beta1.ManifestCondition{
+						{
+							Identifier: placementv1beta1.WorkResourceIdentifier{
+								Ordinal:   0,
+								Group:     "",
+								Version:   "v1",
+								Kind:      "Namespace",
+								Resource:  "namespaces",
+								Namespace: "",
+								Name:      nsName,
+							},
+							Conditions: []metav1.Condition{
+								{
+									Type:               placementv1beta1.WorkConditionTypeApplied,
+									Status:             metav1.ConditionTrue,
+									Reason:             workOrManifestAppliedReason,
+									Message:            workOrManifestAppliedMessage,
+									ObservedGeneration: 1,
+									LastTransitionTime: now,
+								},
+							},
+						},
+						{
+							Identifier: placementv1beta1.WorkResourceIdentifier{
+								Ordinal:   1,
+								Group:     "batch",
+								Version:   "v1",
+								Kind:      "Job",
+								Resource:  "jobs",
+								Namespace: nsName,
+								Name:      jobName,
+							},
+							Conditions: []metav1.Condition{
+								{
+									Type:               placementv1beta1.WorkConditionTypeApplied,
+									Status:             metav1.ConditionTrue,
+									Reason:             workOrManifestAppliedReason,
+									Message:            workOrManifestAppliedMessage,
+									ObservedGeneration: 1,
+									LastTransitionTime: now,
+								},
+							},
+							BackReportedStatus: &placementv1beta1.BackReportedStatus{
+								ObservedStatus: runtime.RawExtension{
+									Raw: statusBackReportingWrapperData,
+								},
+								ObservationTime: now,
+							},
+						},
+					},
+				}
+				if err := hubClient.Status().Update(ctx, work); err != nil {
+					return fmt.Errorf("failed to update Work object status: %w", err)
+				}
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update Work object status")
+		})
+
+		It("should not back-report status to original resource (GVK is not allowed)", func() {
+			Eventually(func() error {
+				job := &batchv1.Job{}
+				if err := hubClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: jobName}, job); err != nil {
+					return fmt.Errorf("failed to retrieve Job object: %w", err)
+				}
+
+				if _, found := job.Annotations[statusBackReportingToOriginalResourceSkippedAnnotation]; found {
+					return nil
+				}
+				return fmt.Errorf("the job object has not been annotated with the expected status back-reporting skipped label yet")
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Expected annotation is not found")
+
+			Consistently(func() error {
+				job := &batchv1.Job{}
+				if err := hubClient.Get(ctx, client.ObjectKey{Namespace: nsName, Name: jobName}, job); err != nil {
+					return fmt.Errorf("failed to retrieve Job object: %w", err)
+				}
+
+				wantJobStatus := batchv1.JobStatus{}
+				if diff := cmp.Diff(job.Status, wantJobStatus); diff != "" {
+					return fmt.Errorf("job status diff (-got, +want):\n%s", diff)
+				}
+				return nil
+			}, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Job status has been unexpectedly modified")
+		})
+
+		AfterAll(func() {
+			// Delete the Work object.
+			ensureWorkObjectDeletion(workName)
+
+			// Delete the Deployment object.
+			Eventually(func() error {
+				job := &batchv1.Job{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: nsName,
+						Name:      jobName,
+					},
+				}
+				if err := hubClient.Delete(ctx, job); err != nil && !errors.IsNotFound(err) {
+					return fmt.Errorf("failed to delete Job object: %w", err)
+				}
+				if err := hubClient.Get(ctx, client.ObjectKey{Name: jobName, Namespace: nsName}, job); err != nil && !errors.IsNotFound(err) {
 					return fmt.Errorf("Deployment object still exists or an unexpected error occurred: %w", err)
 				}
 				return nil
