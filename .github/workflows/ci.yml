@@ -30,9 +30,6 @@ jobs:
           do_not_skip: '["workflow_dispatch", "schedule", "push"]'
           concurrent_skipping: false
 
-  # Run all unit tests and integration tests with the go test command; skip the tests that
-  # are intended to be run with Ginkgo CLI.
-  # TO-DO (chenyu1): run applicable tests with the Ginkgo CLI so that parallelization can be enabled.
   unit-and-integration-tests:
     runs-on:
       labels: oracle-vm-16cpu-64gb-x86-64
