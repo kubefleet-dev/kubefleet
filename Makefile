@@ -155,7 +155,7 @@ integration-test: $(ENVTEST) ## Run integration tests
 	ginkgo -v -p --race --cover --coverpkg=./apis/ -coverprofile=api-validation-it.out ./test/apis/...
 
 .PHONY: kubebuilder-assets-path
-kubebuilder-assets-path: $(ENVTEST) ## Get the path to kubebuilder assets
+kubebuilder-assets-path: ## Get the path to kubebuilder assets
 	@export CGO_ENABLED=1 && \
 	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" && \
 	echo $$KUBEBUILDER_ASSETS
