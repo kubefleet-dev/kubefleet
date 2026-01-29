@@ -135,24 +135,30 @@ vet: ## Run go vet against code
 ## --------------------------------------
 
 .PHONY: test
-test: manifests generate fmt vet local-unit-test integration-test## Run unit tests and integration tests
+test: manifests generate fmt vet local-unit-test integration-test ## Run unit tests and integration tests
 
 ##
 # Set up the timeout parameters as some of the tests (rollout controller) lengths have exceeded the default 10 minute mark.
-# Note: this recipe runs both unit tests and integration tests under the pkg/ directory with the go test command.
+# Note: this recipe runs both unit tests and integration tests under the pkg/ directory.
 .PHONY: local-unit-test
 local-unit-test: $(ENVTEST) ## Run unit tests
 	export CGO_ENABLED=1 && \
 	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" && \
-	go test `go list ./pkg/... ./cmd/...` -race -coverpkg=./...  -coverprofile=ut-coverage.xml -covermode=atomic -v -timeout=30m
+	KUBEFLEET_CI_SKIP_TESTS_IF_NOT_RUN_WITH_GINKGO=true go test `go list ./pkg/... ./cmd/...` -race -coverpkg=./...  -coverprofile=ut-it-coverage.out -covermode=atomic -v -timeout=30m
+
+# The work applier integration tests use in-memory Kubernetes environment setup; due to resource constraints
+# and the way the tests are organized, running the suite with as many parallel Ginkgo processes as possible (i.e.,
+# the number of all CPU cores) might not lead to the optimal outcome.
+	ginkgo -v -p --procs=4 --race --cover -coverprofile=work-applier-it-coverage.out ./pkg/controllers/workapplier/ 
+    KUBEFLEET_CI_WORK_APPLIER_RUN_WITHOUT_PRIORITY_QUEUE=true ginkgo -v -p --procs=4 --race --cover -coverprofile=work-applier-it-no-pri-q-coverage.out ./pkg/controllers/workapplier/
 
 # Note: this recipe runs the integration tests under the /test/scheduler and /test/apis/ directories with the Ginkgo CLI.
 .PHONY: integration-test
 integration-test: $(ENVTEST) ## Run integration tests
 	export CGO_ENABLED=1 && \
 	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" && \
-	ginkgo -v -p --race --cover --coverpkg=./pkg/scheduler/... ./test/scheduler && \
-	ginkgo -v -p --race --cover --coverpkg=./... ./test/apis/...
+	ginkgo -v -p --race --cover --coverpkg=./pkg/scheduler/... -coverprofile=scheduler-it.out ./test/scheduler && \
+	ginkgo -v -p --race --cover --coverpkg=./apis/ -coverprofile=api-validation-it.out ./test/apis/...
 
 .PHONY: kubebuilder-assets-path
 kubebuilder-assets-path: $(ENVTEST) ## Get the path to kubebuilder assets
