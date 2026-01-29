@@ -144,7 +144,7 @@ test: manifests generate fmt vet local-unit-test integration-test ## Run unit te
 local-unit-test: $(ENVTEST) ## Run unit tests
 	export CGO_ENABLED=1 && \
 	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" && \
-	echo $$KUBEBUILDER_ASSETS
+	go test `go list ./pkg/... ./cmd/...` -race -coverpkg=./...  -coverprofile=ut-coverage.xml -covermode=atomic -v -timeout=30m
 
 # Note: this recipe runs the integration tests under the /test/scheduler and /test/apis/ directories with the Ginkgo CLI.
 .PHONY: integration-test
