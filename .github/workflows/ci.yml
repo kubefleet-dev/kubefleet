@@ -47,6 +47,11 @@ jobs:
       - name: Set up Ginkgo CLI
         run: |
           go install github.com/onsi/ginkgo/v2/ginkgo@v2.19.1
+      
+      - name: Prepare necessary environment variables
+        run: |
+          echo "CGO_ENABLED=1" >> $GITHUB_ENV
+          echo 'KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)"' >> $GITHUB_ENV
 
       # Certain tests that require special setup (e.g., those that should be run with Ginkgo CLI only) will
       # be skipped in this step.

@@ -142,16 +142,16 @@ test: manifests generate fmt vet local-unit-test integration-test ## Run unit te
 # Note: this recipe runs both unit tests and integration tests under the pkg/ directory.
 .PHONY: local-unit-test
 local-unit-test: $(ENVTEST) ## Run unit tests
-	export CGO_ENABLED=1
-	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)"
+	export CGO_ENABLED=1 && \
+	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" && \
 	go test `go list ./pkg/... ./cmd/...` -race -coverpkg=./...  -coverprofile=ut-it-coverage.out -covermode=atomic -v -timeout=30m
 
 # Note: this recipe runs the integration tests under the /test/scheduler and /test/apis/ directories with the Ginkgo CLI.
 .PHONY: integration-test
 integration-test: $(ENVTEST) ## Run integration tests
-	export CGO_ENABLED=1
-	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)"
-	ginkgo -v -p --race --cover --coverpkg=./pkg/scheduler/... -coverprofile=scheduler-it.out ./test/scheduler
+	export CGO_ENABLED=1 && \
+	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" && \
+	ginkgo -v -p --race --cover --coverpkg=./pkg/scheduler/... -coverprofile=scheduler-it.out ./test/scheduler && \
 	ginkgo -v -p --race --cover --coverpkg=./apis/ -coverprofile=api-validation-it.out ./test/apis/...
 
 .PHONY: kubebuilder-assets-path
