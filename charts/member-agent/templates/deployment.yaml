@@ -46,9 +46,9 @@ spec:
             - --region={{ .Values.region }}
             {{- end }}
             {{- if .Values.priorityQueue.enabled }}
-            - --enable-priority-queue=true
-            - --priority-linear-equation-coeff-a={{ .Values.priorityQueue.priorityLinearEquationCoeffA }}
-            - --priority-linear-equation-coeff-b={{ .Values.priorityQueue.priorityLinearEquationCoeffB }}
+            - --enable-work-applier-priority-queue=true
+            - --work-applier-priority-linear-equation-coeff-a={{ .Values.priorityQueue.priorityLinearEquationCoeffA }}
+            - --work-applier-priority-linear-equation-coeff-b={{ .Values.priorityQueue.priorityLinearEquationCoeffB }}
             {{- end }}
           env:
           - name: HUB_SERVER_URL

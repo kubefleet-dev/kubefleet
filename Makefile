@@ -156,7 +156,8 @@ integration-test: $(ENVTEST) ## Run integration tests
 
 .PHONY: kubebuilder-assets-path
 kubebuilder-assets-path: $(ENVTEST) ## Get the path to kubebuilder assets
-	@echo $(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)
+	@export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" && \
+	echo "$$KUBEBUILDER_ASSETS"
 
 ## local tests & e2e tests
 
