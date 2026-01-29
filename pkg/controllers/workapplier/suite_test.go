@@ -177,7 +177,7 @@ func setupResources() {
 }
 
 // Note: each Ginkgo process must do the same setup; unlike our E2E tests, the integration
-// tests uses in-memory testing envrionments, and as a result cannot be shared across processes.
+// tests uses in-memory testing environments, and as a result cannot be shared across processes.
 var _ = BeforeSuite(func() {
 	ctx, cancel = context.WithCancel(context.TODO())
 
