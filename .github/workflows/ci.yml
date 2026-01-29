@@ -51,15 +51,7 @@ jobs:
       - name: Prepare necessary environment variables
         run: |
           echo "CGO_ENABLED=1" >> $GITHUB_ENV
-          echo 'KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)"' >> $GITHUB_ENV
-
-      # Certain tests that require special setup (e.g., those that should be run with Ginkgo CLI only) will
-      # be skipped in this step.
-      - name: Run unit and integration tests with default setup & generate coverage
-        run: |
-          make test
-        env:
-          KUBEFLEET_CI_TEST_RUNNER_NAME: 'default'
+          echo 'KUBEBUILDER_ASSETS="$(make kubebuilder-assets-path)"' >> $GITHUB_ENV
       
       # The work applier integration tests use in-memory Kubernetes environment setup; due to resource constraints
       # and the way the tests are organized, running the suite with as many parallel Ginkgo processes as possible (i.e.,
@@ -72,6 +64,14 @@ jobs:
           KUBEFLEET_CI_WORK_APPLIER_RUN_WITHOUT_PRIORITY_QUEUE=true ginkgo -v -p --procs=4 --race --cover -coverprofile=work-applier-it-no-pri-q-coverage.out ./pkg/controllers/workapplier/
         env:
           KUBEFLEET_CI_TEST_RUNNER_NAME: 'ginkgo'
+
+      # Certain tests that require special setup (e.g., those that should be run with Ginkgo CLI only) will
+      # be skipped in this step.
+      - name: Run unit and integration tests with default setup & generate coverage
+        run: |
+          make test
+        env:
+          KUBEFLEET_CI_TEST_RUNNER_NAME: 'default'      
 
       - name: Upload Codecov report
         uses: codecov/codecov-action@v5
