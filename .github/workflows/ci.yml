@@ -52,7 +52,7 @@ jobs:
         run: |
           echo "CGO_ENABLED=1" >> $GITHUB_ENV
           KUBEBUILDER_ASSETS=$(make kubebuilder-assets-path)
-          echo 'KUBEBUILDER_ASSETS="'$KUBEBUILDER_ASSETS'"' >> $GITHUB_ENV
+          echo "KUBEBUILDER_ASSETS="$KUBEBUILDER_ASSETS"" >> $GITHUB_ENV
       
       # The work applier integration tests use in-memory Kubernetes environment setup; due to resource constraints
       # and the way the tests are organized, running the suite with as many parallel Ginkgo processes as possible (i.e.,
