@@ -210,6 +210,7 @@ do
             --set logVerbosity=5 \
             --set namespace=fleet-system \
             --set enableV1Beta1APIs=true \
+            --set priorityQueue.enabled=true \
             --set propertyProvider=$PROPERTY_PROVIDER \
             --set region=${REGIONS[$i]} \
             $( [ "$PROPERTY_PROVIDER" = "azure" ] && echo "-f azure_valid_config.yaml" )
@@ -226,6 +227,7 @@ do
             --set logVerbosity=5 \
             --set namespace=fleet-system \
             --set enableV1Beta1APIs=true \
+            --set priorityQueue.enabled=true \
             --set propertyProvider=$PROPERTY_PROVIDER \
             $( [ "$PROPERTY_PROVIDER" = "azure" ] && echo "-f azure_valid_config.yaml" )
     fi

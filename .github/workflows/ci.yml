@@ -30,7 +30,10 @@ jobs:
           do_not_skip: '["workflow_dispatch", "schedule", "push"]'
           concurrent_skipping: false
 
-  unit-tests:
+  # Run all unit tests and integration tests with the go test command; skip the tests that
+  # are intended to be run with Ginkgo CLI.
+  # TO-DO (chenyu1): run applicable tests with the Ginkgo CLI so that parallelization can be enabled.
+  unit-and-integration-tests-with-default-setup:
     runs-on: ubuntu-latest
     needs: detect-noop
     if: needs.detect-noop.outputs.noop != 'true'
@@ -47,16 +50,66 @@ jobs:
         run: |
           go install github.com/onsi/ginkgo/v2/ginkgo@v2.19.1
 
-      - name: Run unit tests & Generate coverage
-        run: make test
+      - name: Run all unit tests and integration tests under pkg/ directory with go test & generate coverage
+        run: |
+          KUBEFLEET_CI_SKIP_TESTS_IF_NOT_RUN_WITH_GINKGO=true make test
+
+      - name: Upload Codecov report
+        uses: codecov/codecov-action@v5
+        with:
+          ## Repository upload token - get it from codecov.io. Required only for private repositories
+          token: ${{ secrets.CODECOV_TOKEN }}
+          # The codecov action will auto-search all coverage files by default. All uploaded coverage will be
+          # merged automatically.
+  
+  unit-and-integration-tests-with-ginkgo-setup:
+    runs-on:
+      labels: oracle-vm-8cpu-32gb-x86-64
+    needs: detect-noop
+    if: needs.detect-noop.outputs.noop != 'true'
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v6.0.1
+      
+      - name: Set up Ginkgo CLI
+        run: |
+          go install github.com/onsi/ginkgo/v2/ginkgo@v2.19.1
+      
+      - name: Set up shared environment variables
+        run: |
+          echo "KUBEBUILDER_ASSETS=$(make kubebuilder-assets-path)" >> $GITHUB_ENV
+          echo "CGO_ENABLED=1" >> $GITHUB_ENV
+
+      - name: Run the work applier integration tests with Ginkgo & generate coverage
+        # Note: this test suite runs the Kubernetes environment in memory; due to a variety of the limitations and
+        # the way the tests are composed, running the tests with as many parallel processes as possible (i.e., number of
+        # CPU cores) might not lead to optimal results. As result, a process count of 4 is used here.
+        #
+        # Note: switch to test matrices if there are more configuration combos to verify in the future.
+        run: |
+          ginkgo -v -p --procs=4 --race --cover -coverprofile=work-applier-it-coverage.out ./pkg/controllers/workapplier/
+          KUBEFLEET_CI_WORK_APPLIER_RUN_WITHOUT_PRIORITY_QUEUE=true ginkgo -v -p --procs=4 --race --cover -coverprofile=work-applier-it-no-pri-q-coverage.out ./pkg/controllers/workapplier/
+      
+      - name: Run the scheduler integration tests with Ginkgo & generate coverage
+        run: |
+          ginkgo -v -p --race --cover -coverprofile=scheduler-it-coverage.out --coverpkg=./pkg/scheduler/... ./test/scheduler/
+      
+      - name: Run the API validation rule integration tests with Ginkgo & generate coverage
+        run: |
+          ginkgo -v -p --race --cover -coverprofile=api-validation-it-coverage.out --coverpkg=./apis/... ./test/apis/...
 
       - name: Upload Codecov report
         uses: codecov/codecov-action@v5
         with:
            ## Repository upload token - get it from codecov.io. Required only for private repositories
           token: ${{ secrets.CODECOV_TOKEN }}
-          ## Comma-separated list of files to upload
-          files: ./ut-coverage.xml
+          # The codecov action will auto-search all coverage files by default. All uploaded coverage will be
+          # merged automatically.
   
   e2e-tests:
     strategy:

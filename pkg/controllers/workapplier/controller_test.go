@@ -39,6 +39,10 @@ import (
 )
 
 const (
+	skipTestsIfNotRunWithGinkgoInCIEnvVarName = "KUBEFLEET_CI_SKIP_TESTS_IF_NOT_RUN_WITH_GINKGO"
+)
+
+const (
 	workName = "work-1"
 
 	deployName      = "deploy-1"
@@ -251,6 +255,13 @@ func manifestAppliedCond(workGeneration int64, status metav1.ConditionStatus, re
 }
 
 func TestMain(m *testing.M) {
+	// Skip the tests in the CI environment if requested so. See the CI workflow definition for
+	// more information.
+	if v := os.Getenv(skipTestsIfNotRunWithGinkgoInCIEnvVarName); len(v) != 0 {
+		log.Println("Skipping all tests as requested in the CI environment")
+		os.Exit(0)
+	}
+
 	// Add custom APIs to the runtime scheme.
 	if err := fleetv1beta1.AddToScheme(scheme.Scheme); err != nil {
 		log.Fatalf("failed to add custom APIs (placement/v1beta1) to the runtime scheme: %v", err)

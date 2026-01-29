@@ -19,6 +19,7 @@ package workapplier
 import (
 	"context"
 	"flag"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -47,6 +48,10 @@ import (
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/parallelizer"
 	testv1alpha1 "github.com/kubefleet-dev/kubefleet/test/apis/v1alpha1"
+)
+
+const (
+	runWithoutPriorityQueueInCIEnvVarName = "KUBEFLEET_CI_WORK_APPLIER_RUN_WITHOUT_PRIORITY_QUEUE"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
@@ -89,6 +94,9 @@ var (
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	// Enable priority queue in the work applier by default.
+	usePriorityQueue = true
 )
 
 const (
@@ -128,6 +136,11 @@ func (p *parallelizerWithFixedDelay) ParallelizeUntil(ctx context.Context, piece
 var _ parallelizer.Parallelizer = &parallelizerWithFixedDelay{}
 
 func TestAPIs(t *testing.T) {
+	if v := os.Getenv(runWithoutPriorityQueueInCIEnvVarName); len(v) != 0 {
+		t.Log("Priority queue is disabled for the integration tests")
+		usePriorityQueue = false
+	}
+
 	RegisterFailHandler(Fail)
 
 	RunSpecs(t, "Work Applier Integration Test Suite")
@@ -163,6 +176,8 @@ func setupResources() {
 	Expect(hubClient.Create(ctx, ns4)).To(Succeed())
 }
 
+// Note: each Ginkgo process must do the same setup; unlike our E2E tests, the integration
+// tests uses in-memory testing envrionments, and as a result cannot be shared across processes.
 var _ = BeforeSuite(func() {
 	ctx, cancel = context.WithCancel(context.TODO())
 
@@ -171,7 +186,9 @@ var _ = BeforeSuite(func() {
 	klog.InitFlags(fs)
 	Expect(fs.Parse([]string{"--v", "5", "-add_dir_header", "true"})).Should(Succeed())
 
-	klog.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+	logger := zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true))
+	klog.SetLogger(logger)
+	ctrl.SetLogger(logger)
 
 	By("Bootstrapping test environments")
 	hubEnv = &envtest.Environment{
@@ -307,10 +324,10 @@ var _ = BeforeSuite(func() {
 		maxConcurrentReconciles,
 		parallelizer.NewParallelizer(workerCount),
 		30*time.Second,
-		nil,   // Use the default backoff rate limiter.
-		false, // Disable priority queueing.
-		nil,   // Use the default priority linear equation coefficients.
-		nil,   // Use the default priority linear equation coefficients.
+		nil, // Use the default backoff rate limiter.
+		usePriorityQueue,
+		nil, // Use the default priority linear equation coefficients.
+		nil, // Use the default priority linear equation coefficients.
 	)
 	Expect(workApplier1.SetupWithManager(hubMgr1)).To(Succeed())
 
@@ -359,9 +376,9 @@ var _ = BeforeSuite(func() {
 		parallelizer.NewParallelizer(workerCount),
 		30*time.Second,
 		superLongExponentialBackoffRateLimiter,
-		false, // Disable priority queueing.
-		nil,   // Use the default priority linear equation coefficients.
-		nil,   // Use the default priority linear equation coefficients.
+		usePriorityQueue,
+		nil, // Use the default priority linear equation coefficients.
+		nil, // Use the default priority linear equation coefficients.
 	)
 	Expect(workApplier2.SetupWithManager(hubMgr2)).To(Succeed())
 
@@ -397,10 +414,10 @@ var _ = BeforeSuite(func() {
 		maxConcurrentReconciles,
 		pWithDelay,
 		30*time.Second,
-		nil,   // Use the default backoff rate limiter.
-		false, // Disable priority queueing.
-		nil,   // Use the default priority linear equation coefficients.
-		nil,   // Use the default priority linear equation coefficients.
+		nil, // Use the default backoff rate limiter.
+		usePriorityQueue,
+		nil, // Use the default priority linear equation coefficients.
+		nil, // Use the default priority linear equation coefficients.
 	)
 	Expect(workApplier3.SetupWithManager(hubMgr3)).To(Succeed())
 
@@ -434,10 +451,10 @@ var _ = BeforeSuite(func() {
 		maxConcurrentReconciles,
 		parallelizer.NewParallelizer(workerCount),
 		30*time.Second,
-		nil,   // Use the default backoff rate limiter.
-		false, // Disable priority queueing.
-		nil,   // Use the default priority linear equation coefficients.
-		nil,   // Use the default priority linear equation coefficients.
+		nil, // Use the default backoff rate limiter.
+		usePriorityQueue,
+		nil, // Use the default priority linear equation coefficients.
+		nil, // Use the default priority linear equation coefficients.
 	)
 	// Due to name conflicts, the third work applier must be set up manually.
 	Expect(workApplier4.SetupWithManager(hubMgr4)).To(Succeed())
