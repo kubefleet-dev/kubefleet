@@ -38,7 +38,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/kubefleet-dev/kubefleet/apis"
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
@@ -111,6 +113,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	}
 	if err := r.join(ctx, &mc, currentIMC); err != nil {
 		klog.ErrorS(err, "Failed to join", "memberCluster", mcObjRef)
+		return runtime.Result{}, err
+	}
+
+	// Update namespace affinity labels based on CRP placement status
+	if err := r.reconcileNamespaceAffinityLabels(ctx, &mc); err != nil {
+		klog.ErrorS(err, "Failed to reconcile namespace affinity labels", "memberCluster", mcObjRef)
 		return runtime.Result{}, err
 	}
 
@@ -709,6 +717,36 @@ func markMemberClusterUnknown(recorder record.EventRecorder, mc apis.Conditioned
 	mc.SetConditions(newCondition)
 }
 
+// enqueueRequestsForCRPChanges returns a handler for CRP events that enqueues reconcile requests
+// for MemberClusters affected by placement status changes
+func (r *Reconciler) enqueueRequestsForCRPChanges() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+		crp, ok := obj.(*placementv1beta1.ClusterResourcePlacement)
+		if !ok {
+			klog.ErrorS(fmt.Errorf("unexpected object type"), "Failed to cast object to ClusterResourcePlacement", "object", obj)
+			return nil
+		}
+
+		// Get all cluster names from the placement status
+		var requests []reconcile.Request
+		clustersSet := make(map[string]bool)
+
+		for _, status := range crp.Status.PerClusterPlacementStatuses {
+			if status.ClusterName != "" && !clustersSet[status.ClusterName] {
+				clustersSet[status.ClusterName] = true
+				requests = append(requests, reconcile.Request{
+					NamespacedName: types.NamespacedName{Name: status.ClusterName},
+				})
+			}
+		}
+
+		klog.V(4).InfoS("Enqueuing MemberCluster reconciliation due to CRP status change",
+			"crp", klog.KObj(crp), "affectedClusters", len(requests))
+
+		return requests
+	})
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr runtime.Manager, name string) error {
 	r.recorder = mgr.GetEventRecorderFor("mcv1beta1")
@@ -724,5 +762,6 @@ func (r *Reconciler) SetupWithManager(mgr runtime.Manager, name string) error {
 		WithOptions(ctrl.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}). // set the max number of concurrent reconciles
 		For(&clusterv1beta1.MemberCluster{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&clusterv1beta1.InternalMemberCluster{}).
+		Watches(&placementv1beta1.ClusterResourcePlacement{}, r.enqueueRequestsForCRPChanges()).
 		Complete(r)
 }
