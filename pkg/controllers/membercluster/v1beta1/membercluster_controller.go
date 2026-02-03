@@ -114,6 +114,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		return runtime.Result{}, err
 	}
 
+	// Update namespace affinity labels based on member-driven CRP associations from InternalMemberCluster
+	if err := r.reconcileMemberDrivenNamespaceAffinityLabels(ctx, &mc, currentIMC); err != nil {
+		klog.ErrorS(err, "Failed to reconcile member-driven namespace affinity labels", "memberCluster", mcObjRef)
+		return runtime.Result{}, err
+	}
+
 	// Copy status from InternalMemberCluster to MemberCluster.
 	r.syncInternalMemberClusterStatus(currentIMC, &mc)
 	if err := r.updateMemberClusterStatus(ctx, &mc); err != nil {

@@ -78,6 +78,12 @@ type InternalMemberClusterStatus struct {
 	// AgentStatus is an array of current observed status, each corresponding to one member agent running in the member cluster.
 	// +optional
 	AgentStatus []AgentStatus `json:"agentStatus,omitempty"`
+
+	// CRPNamespaceAssociations tracks which namespaces were successfully placed by each CRP on this member cluster.
+	// Key: CRP name, Value: list of namespace names successfully applied by that CRP.
+	// This field is populated by the member agent based on Work object processing results.
+	// +optional
+	CRPNamespaceAssociations map[string][]string `json:"crpNamespaceAssociations,omitempty"`
 }
 
 //+kubebuilder:object:root=true

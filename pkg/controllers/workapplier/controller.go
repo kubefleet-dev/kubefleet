@@ -119,6 +119,9 @@ type Reconciler struct {
 	priLinearEqCoeffA int
 	priLinearEqCoeffB int
 	pqSetupOnce       sync.Once
+
+	// CRP namespace tracker for member-driven affinity labeling
+	crpNamespaceTracker *CRPNamespaceTracker
 }
 
 // NewReconciler returns a new Work object reconciler for the work applier.
@@ -166,6 +169,7 @@ func NewReconciler(
 		usePriorityQueue:     usePriorityQueue,
 		priLinearEqCoeffA:    *priorityLinearEquationCoeffA,
 		priLinearEqCoeffB:    *priorityLinearEquationCoeffB,
+		crpNamespaceTracker:  NewCRPNamespaceTracker(hubClient),
 	}
 }
 
@@ -398,6 +402,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
+	// Update CRP namespace associations based on successfully processed namespace manifests
+	if err := r.updateCRPNamespaceAssociations(ctx, work, bundles); err != nil {
+		klog.ErrorS(err, "Failed to update CRP namespace associations", "work", workRef)
+		// Don't fail the reconciliation for this, as it's supplementary information
+	}
+
 	// Refresh the status of the Work object.
 	if err := r.refreshWorkStatus(ctx, work, bundles); err != nil {
 		klog.ErrorS(err, "Failed to refresh work object status", "work", workRef)
@@ -437,6 +447,10 @@ func (r *Reconciler) garbageCollectAppliedWork(ctx context.Context, work *fleetv
 	if !controllerutil.ContainsFinalizer(work, fleetv1beta1.WorkFinalizer) {
 		return ctrl.Result{}, nil
 	}
+
+	// Clean up CRP namespace associations when Work is being deleted
+	r.cleanupCRPNamespaceAssociationsOnDelete(ctx, work)
+
 	appliedWork := &fleetv1beta1.AppliedWork{
 		ObjectMeta: metav1.ObjectMeta{Name: work.Name},
 	}
@@ -657,6 +671,100 @@ func (r *Reconciler) Leave(ctx context.Context) error {
 	klog.V(2).InfoS("Successfully removed all the work finalizers in the cluster namespace",
 		"clusterNS", r.workNameSpace, "number of work", len(works.Items))
 	return nil
+}
+
+// updateCRPNamespaceAssociations updates the InternalMemberCluster with CRP-namespace associations
+// based on successfully processed Work objects
+func (r *Reconciler) updateCRPNamespaceAssociations(ctx context.Context, work *fleetv1beta1.Work, bundles []*manifestProcessingBundle) error {
+	// Extract successful namespaces from the bundles
+	var successfulNamespaces []string
+	var failedNamespaces []string
+
+	for _, bundle := range bundles {
+		if bundle.manifestObj == nil {
+			continue
+		}
+
+		// Check if this is a namespace resource
+		if bundle.manifestObj.GetKind() == "Namespace" &&
+			bundle.manifestObj.GetAPIVersion() == "v1" &&
+			bundle.manifestObj.GetName() != "" {
+			namespaceName := bundle.manifestObj.GetName()
+
+			// Check if the manifest was successfully applied
+			if bundle.applyOrReportDiffResTyp == ApplyOrReportDiffResTypeApplied {
+				successfulNamespaces = append(successfulNamespaces, namespaceName)
+			} else if bundle.applyOrReportDiffErr != nil {
+				failedNamespaces = append(failedNamespaces, namespaceName)
+			}
+		}
+	}
+
+	// If no namespaces were processed, nothing to update
+	if len(successfulNamespaces) == 0 && len(failedNamespaces) == 0 {
+		return nil
+	}
+
+	// Extract member cluster name from work namespace (format: fleet-member-<cluster-name>)
+	memberClusterName := extractMemberClusterNameFromNamespace(r.workNameSpace)
+	if memberClusterName == "" {
+		klog.V(4).InfoS("Could not extract member cluster name from work namespace",
+			"workNamespace", r.workNameSpace, "work", klog.KObj(work))
+		return nil
+	}
+
+	// Update successful namespace associations
+	if len(successfulNamespaces) > 0 {
+		if err := r.crpNamespaceTracker.UpdateCRPNamespaceAssociations(
+			ctx, r.workNameSpace, memberClusterName, work, successfulNamespaces); err != nil {
+			return fmt.Errorf("failed to update CRP namespace associations: %w", err)
+		}
+	}
+
+	// Remove failed namespace associations
+	if len(failedNamespaces) > 0 {
+		if err := r.crpNamespaceTracker.RemoveCRPNamespaceAssociations(
+			ctx, r.workNameSpace, memberClusterName, work, failedNamespaces); err != nil {
+			return fmt.Errorf("failed to remove failed CRP namespace associations: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// extractMemberClusterNameFromNamespace extracts the member cluster name from the work namespace
+// Expected format: fleet-member-<cluster-name>
+func extractMemberClusterNameFromNamespace(namespace string) string {
+	const prefix = "fleet-member-"
+	if len(namespace) > len(prefix) && namespace[:len(prefix)] == prefix {
+		return namespace[len(prefix):]
+	}
+	return ""
+}
+
+// cleanupCRPNamespaceAssociationsOnDelete cleans up CRP namespace associations when a Work object is deleted
+func (r *Reconciler) cleanupCRPNamespaceAssociationsOnDelete(ctx context.Context, work *fleetv1beta1.Work) {
+	// Extract namespaces from the Work object
+	namespacesToRemove := ExtractNamespacesFromWork(work)
+	if len(namespacesToRemove) == 0 {
+		return
+	}
+
+	// Extract member cluster name from work namespace
+	memberClusterName := extractMemberClusterNameFromNamespace(r.workNameSpace)
+	if memberClusterName == "" {
+		klog.V(4).InfoS("Could not extract member cluster name for cleanup",
+			"workNamespace", r.workNameSpace, "work", klog.KObj(work))
+		return
+	}
+
+	// Remove the namespace associations
+	if err := r.crpNamespaceTracker.RemoveCRPNamespaceAssociations(
+		ctx, r.workNameSpace, memberClusterName, work, namespacesToRemove); err != nil {
+		klog.ErrorS(err, "Failed to cleanup CRP namespace associations on Work deletion",
+			"work", klog.KObj(work), "namespaces", namespacesToRemove)
+		// Don't fail the deletion for this
+	}
 }
 
 // SetupWithManager wires up the controller.
