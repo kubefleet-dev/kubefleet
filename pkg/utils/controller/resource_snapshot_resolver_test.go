@@ -1555,125 +1555,127 @@ func TestListAllResourceSnapshotWithAnIndex(t *testing.T) {
 	}
 }
 
-//func TestBuildMasterResourceSnapshot(t *testing.T) {
-//	tests := []struct {
-//		name                        string
-//		placementObj                fleetv1beta1.PlacementObj
-//		latestResourceSnapshotIndex int
-//		resourceSnapshotCount       int
-//		envelopeObjCount            int
-//		resourceHash                string
-//		selectedResources           []fleetv1beta1.ResourceContent
-//		expectedResult              fleetv1beta1.ResourceSnapshotObj
-//	}{
-//		{
-//			name: "build master resource snapshot - namespaced",
-//			placementObj: &fleetv1beta1.ResourcePlacement{
-//				ObjectMeta: metav1.ObjectMeta{
-//					Name:      "test-placement",
-//					Namespace: "test-namespace",
-//				},
-//			},
-//			latestResourceSnapshotIndex: 5,
-//			resourceSnapshotCount:       3,
-//			envelopeObjCount:            10,
-//			resourceHash:                "hash123",
-//			selectedResources: []fleetv1beta1.ResourceContent{
-//				{
-//					RawExtension: runtime.RawExtension{
-//						Raw: []byte("test-content"),
-//					},
-//				},
-//			},
-//			expectedResult: &fleetv1beta1.ResourceSnapshot{
-//				ObjectMeta: metav1.ObjectMeta{
-//					Name:      "test-placement-5-snapshot",
-//					Namespace: "test-namespace",
-//					Labels: map[string]string{
-//						fleetv1beta1.PlacementTrackingLabel: "test-placement",
-//						fleetv1beta1.IsLatestSnapshotLabel:  "true",
-//						fleetv1beta1.ResourceIndexLabel:     "5",
-//					},
-//					Annotations: map[string]string{
-//						fleetv1beta1.ResourceGroupHashAnnotation:         "hash123",
-//						fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "3",
-//						fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:  "10",
-//					},
-//				},
-//				Spec: fleetv1beta1.ResourceSnapshotSpec{
-//					SelectedResources: []fleetv1beta1.ResourceContent{
-//						{
-//							RawExtension: runtime.RawExtension{
-//								Raw: []byte("test-content"),
-//							},
-//						},
-//					},
-//				},
-//			},
-//		},
-//		{
-//			name: "build master resource snapshot - cluster-scoped",
-//			placementObj: &fleetv1beta1.ClusterResourcePlacement{
-//				ObjectMeta: metav1.ObjectMeta{
-//					Name: "test-crp",
-//				},
-//			},
-//			latestResourceSnapshotIndex: 2,
-//			resourceSnapshotCount:       1,
-//			envelopeObjCount:            5,
-//			resourceHash:                "hash456",
-//			selectedResources: []fleetv1beta1.ResourceContent{
-//				{
-//					RawExtension: runtime.RawExtension{
-//						Raw: []byte("test-cluster-content"),
-//					},
-//				},
-//			},
-//			expectedResult: &fleetv1beta1.ClusterResourceSnapshot{
-//				ObjectMeta: metav1.ObjectMeta{
-//					Name: "test-crp-2-snapshot",
-//					Labels: map[string]string{
-//						fleetv1beta1.PlacementTrackingLabel: "test-crp",
-//						fleetv1beta1.IsLatestSnapshotLabel:  "true",
-//						fleetv1beta1.ResourceIndexLabel:     "2",
-//					},
-//					Annotations: map[string]string{
-//						fleetv1beta1.ResourceGroupHashAnnotation:         "hash456",
-//						fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "1",
-//						fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:  "5",
-//					},
-//				},
-//				Spec: fleetv1beta1.ResourceSnapshotSpec{
-//					SelectedResources: []fleetv1beta1.ResourceContent{
-//						{
-//							RawExtension: runtime.RawExtension{
-//								Raw: []byte("test-cluster-content"),
-//							},
-//						},
-//					},
-//				},
-//			},
-//		},
-//	}
-//
-//	for _, tt := range tests {
-//		t.Run(tt.name, func(t *testing.T) {
-//			result := BuildMasterResourceSnapshot(
-//				tt.placementObj,
-//				tt.latestResourceSnapshotIndex,
-//				tt.resourceSnapshotCount,
-//				tt.envelopeObjCount,
-//				tt.resourceHash,
-//				tt.selectedResources,
-//			)
-//
-//			// Use cmp.Diff for comprehensive comparison
-//			if diff := cmp.Diff(tt.expectedResult, result, resourceSnapshotCmpOptions...); diff != "" {
-//				t.Errorf("BuildMasterResourceSnapshot() mismatch (-want +got):\n%s", diff)
-//			}
-//		})
-//	}
-//}
+func TestBuildMasterResourceSnapshot(t *testing.T) {
+	tests := []struct {
+		name                        string
+		placementObj                fleetv1beta1.PlacementObj
+		latestResourceSnapshotIndex int
+		resourceSnapshotCount       int
+		envelopeObjCount            int
+		resourceHash                string
+		selectedResources           []fleetv1beta1.ResourceContent
+		expectedResult              fleetv1beta1.ResourceSnapshotObj
+	}{
+		{
+			name: "build master resource snapshot - namespaced",
+			placementObj: &fleetv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-placement",
+					Namespace: "test-namespace",
+				},
+			},
+			latestResourceSnapshotIndex: 5,
+			resourceSnapshotCount:       3,
+			envelopeObjCount:            10,
+			resourceHash:                "hash123",
+			selectedResources: []fleetv1beta1.ResourceContent{
+				{
+					RawExtension: runtime.RawExtension{
+						Raw: []byte("test-content"),
+					},
+				},
+			},
+			expectedResult: &fleetv1beta1.ResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-placement-5-snapshot",
+					Namespace: "test-namespace",
+					Labels: map[string]string{
+						fleetv1beta1.PlacementTrackingLabel: "test-placement",
+						fleetv1beta1.IsLatestSnapshotLabel:  "true",
+						fleetv1beta1.ResourceIndexLabel:     "5",
+					},
+					Annotations: map[string]string{
+						fleetv1beta1.ResourceGroupHashAnnotation:         "hash123",
+						fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "3",
+						fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:  "10",
+					},
+				},
+				Spec: fleetv1beta1.ResourceSnapshotSpec{
+					SelectedResources: []fleetv1beta1.ResourceContent{
+						{
+							RawExtension: runtime.RawExtension{
+								Raw: []byte("test-content"),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "build master resource snapshot - cluster-scoped",
+			placementObj: &fleetv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp",
+				},
+			},
+			latestResourceSnapshotIndex: 2,
+			resourceSnapshotCount:       1,
+			envelopeObjCount:            5,
+			resourceHash:                "hash456",
+			selectedResources: []fleetv1beta1.ResourceContent{
+				{
+					RawExtension: runtime.RawExtension{
+						Raw: []byte("test-cluster-content"),
+					},
+				},
+			},
+			expectedResult: &fleetv1beta1.ClusterResourceSnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp-2-snapshot",
+					Labels: map[string]string{
+						fleetv1beta1.PlacementTrackingLabel: "test-crp",
+						fleetv1beta1.IsLatestSnapshotLabel:  "true",
+						fleetv1beta1.ResourceIndexLabel:     "2",
+					},
+					Annotations: map[string]string{
+						fleetv1beta1.ResourceGroupHashAnnotation:         "hash456",
+						fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "1",
+						fleetv1beta1.NumberOfEnvelopedObjectsAnnotation:  "5",
+					},
+				},
+				Spec: fleetv1beta1.ResourceSnapshotSpec{
+					SelectedResources: []fleetv1beta1.ResourceContent{
+						{
+							RawExtension: runtime.RawExtension{
+								Raw: []byte("test-cluster-content"),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			result := BuildMasterResourceSnapshot(
+				tt.latestResourceSnapshotIndex,
+				tt.resourceSnapshotCount,
+				tt.envelopeObjCount,
+				tt.placementObj.GetName(),
+				tt.placementObj.GetNamespace(),
+				tt.resourceHash,
+				tt.selectedResources,
+			)
+
+			// Use cmp.Diff for comprehensive comparison
+			if diff := cmp.Diff(tt.expectedResult, result, resourceSnapshotCmpOptions...); diff != "" {
+				t.Errorf("BuildMasterResourceSnapshot() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
 
 func TestDeleteResourceSnapshots(t *testing.T) {
 	scheme := runtime.NewScheme()
