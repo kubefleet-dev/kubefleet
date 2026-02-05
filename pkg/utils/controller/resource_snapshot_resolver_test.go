@@ -1881,7 +1881,7 @@ func (e *errorClient) List(ctx context.Context, list client.ObjectList, opts ...
 	return fmt.Errorf("failed to list")
 }
 
-func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
+func TestDefaultGetOrCreateClusterResourceSnapshot(t *testing.T) {
 	// test service is 383 bytes in size.
 	serviceResourceContent := *resource.ServiceResourceContentForTest(t)
 	// test deployment 390 bytes in size.
@@ -3535,7 +3535,7 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 				t.Fatalf("failed to handle getOrCreateResourceSnapshot: %v", err)
 			}
 			if (res.RequeueAfter > 0) != tc.wantRequeue {
-				t.Fatalf("getOrCreateResourceSnapshot() got Requeue %v, want %v", (res.RequeueAfter > 0), tc.wantRequeue)
+				t.Fatalf("DefaultetOrCreateResourceSnapshot() got Requeue %v, want %v", (res.RequeueAfter > 0), tc.wantRequeue)
 			}
 
 			options := []cmp.Option{
@@ -3546,7 +3546,7 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 			}
 			if tc.wantRequeue {
 				if res.RequeueAfter <= 0 {
-					t.Fatalf("getOrCreateResourceSnapshot() got RequeueAfter %v, want greater than zero value", res.RequeueAfter)
+					t.Fatalf("DefaultGetOrCreateResourceSnapshot() got RequeueAfter %v, want greater than zero value", res.RequeueAfter)
 				}
 			}
 			annotationOption := cmp.Transformer("NormalizeAnnotations", func(m map[string]string) map[string]string {
@@ -3570,7 +3570,7 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 				t.Fatalf("expected *fleetv1beta1.ClusterResourceSnapshot, got %T", got)
 			}
 			if diff := cmp.Diff(tc.wantResourceSnapshots[tc.wantLatestSnapshotIndex], *gotSnapshot, options...); diff != "" {
-				t.Errorf("getOrCreateResourceSnapshot() mismatch (-want, +got):\n%s", diff)
+				t.Errorf("DefaultGetOrCreateResourceSnapshot() mismatch (-want, +got):\n%s", diff)
 			}
 			clusterResourceSnapshotList := &fleetv1beta1.ClusterResourceSnapshotList{}
 			if err := fakeClient.List(ctx, clusterResourceSnapshotList); err != nil {
@@ -3583,7 +3583,7 @@ func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 	}
 }
 
-func TestGetOrCreateClusterResourceSnapshot_failure(t *testing.T) {
+func TestDefaultGetOrCreateClusterResourceSnapshot_failure(t *testing.T) {
 	selectedResources := []fleetv1beta1.ResourceContent{
 		*resource.ServiceResourceContentForTest(t),
 	}
@@ -3922,13 +3922,13 @@ func TestGetOrCreateClusterResourceSnapshot_failure(t *testing.T) {
 			resolver.WithSnapshotFunction(resolver.DefaultGetOrCreateResourceSnapshot)
 			res, _, err := resolver.GetOrCreateSnapshotFn(ctx, crp, 0, resourceSnapshotSpecA, 1)
 			if err == nil { // if error is nil
-				t.Fatal("getOrCreateClusterResourceSnapshot() = nil, want err")
+				t.Fatal("DefailtGetOrCreateClusterResourceSnapshot() = nil, want err")
 			}
 			if res.RequeueAfter > 0 {
-				t.Fatal("getOrCreateClusterResourceSnapshot() requeue = true, want false")
+				t.Fatal("DefaultGetOrCreateClusterResourceSnapshot() requeue = true, want false")
 			}
 			if !errors.Is(err, ErrUnexpectedBehavior) {
-				t.Errorf("getOrCreateClusterResourceSnapshot() got %v, want %v type", err, ErrUnexpectedBehavior)
+				t.Errorf("DefaultGetOrCreateClusterResourceSnapshot() got %v, want %v type", err, ErrUnexpectedBehavior)
 			}
 		})
 	}
