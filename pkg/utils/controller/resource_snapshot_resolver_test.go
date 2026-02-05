@@ -63,13 +63,6 @@ var (
 	sortClusterResourceSnapshotOption = cmpopts.SortSlices(func(r1, r2 fleetv1beta1.ClusterResourceSnapshot) bool {
 		return r1.Name < r2.Name
 	})
-	cmpOptions = []cmp.Option{
-		cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion"),
-		cmpopts.SortSlices(func(p1, p2 fleetv1beta1.ClusterSchedulingPolicySnapshot) bool {
-			return p1.Name < p2.Name
-		}),
-		sortClusterResourceSnapshotOption,
-	}
 
 	singleRevisionLimit   = int32(1)
 	multipleRevisionLimit = int32(2)
