@@ -50,11 +50,6 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/resource"
 )
 
-// The max size of an object in k8s is 1.5MB because of ETCD limit https://etcd.io/docs/v3.3/dev-guide/limit/.
-// We choose 800KB as the soft limit for all the selected resources within one resourceSnapshot object because of this test in k8s which checks
-// if object size is greater than 1MB https://github.com/kubernetes/kubernetes/blob/db1990f48b92d603f469c1c89e2ad36da1b74846/test/integration/master/synthetic_master_test.go#L337
-var resourceSnapshotResourceSizeLimit = 800 * (1 << 10) // 800KB
-
 // We use a safety resync period to requeue all the finished request just in case there is a bug in the system.
 // TODO: unify all the controllers with this pattern and make this configurable in place of the controller runtime resync period.
 const controllerResyncPeriod = 30 * time.Minute
