@@ -569,8 +569,9 @@ func (r *Reconciler) ensureAppliedWork(ctx context.Context, work *fleetv1beta1.W
 	// usually it is safe for us to assume that if the finalizer is absent, the AppliedWork object should
 	// not exist. This is not the case with the work applier though, as the controller features a
 	// Leave method that will strip all Work objects off their finalizers, which is called when the
-	// member cluster leaves the fleet. Because of this, here we always check for the existence of
-	// the AppliedWork object, with or without the finalizer.
+	// member cluster leaves the fleet. If the member cluster chooses to re-join the fleet, the controller
+	// will see a Work object with no finalizer but with an AppliedWork object. Because of this, here we always
+	// check for the existence of the AppliedWork object, with or without the finalizer.
 	appliedWork := &fleetv1beta1.AppliedWork{}
 	err := r.spokeClient.Get(ctx, types.NamespacedName{Name: work.Name}, appliedWork)
 	switch {
@@ -594,6 +595,9 @@ func (r *Reconciler) ensureAppliedWork(ctx context.Context, work *fleetv1beta1.W
 		},
 	}
 	if err := r.spokeClient.Create(ctx, appliedWork); err != nil {
+		// Note: the controller must retry on AppliedWork AlreadyExists errors; otherwise the
+		// controller will run the reconciliation loop with an AppliedWork that has no UID,
+		// which might lead to takeover failures in later steps.
 		klog.ErrorS(err, "Failed to create an AppliedWork object for the Work object", "appliedWork", klog.KObj(appliedWork), "work", workRef)
 		return nil, controller.NewAPIServerError(false, err)
 	}
