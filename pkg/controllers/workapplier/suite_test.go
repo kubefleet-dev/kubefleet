@@ -51,7 +51,7 @@ import (
 )
 
 const (
-	runWithoutPriorityQueueInCIEnvVarName = "KUBEFLEET_CI_WORK_APPLIER_RUN_WITHOUT_PRIORITY_QUEUE"
+	runWithPriorityQueueInCIEnvVarName = "KUBEFLEET_CI_WORK_APPLIER_RUN_WITH_PRIORITY_QUEUE"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
@@ -95,8 +95,7 @@ var (
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	// Enable priority queue in the work applier by default.
-	usePriorityQueue = true
+	usePriorityQueue = false
 )
 
 const (
@@ -136,9 +135,9 @@ func (p *parallelizerWithFixedDelay) ParallelizeUntil(ctx context.Context, piece
 var _ parallelizer.Parallelizer = &parallelizerWithFixedDelay{}
 
 func TestAPIs(t *testing.T) {
-	if v := os.Getenv(runWithoutPriorityQueueInCIEnvVarName); len(v) != 0 {
-		t.Log("Priority queue is disabled for the integration tests")
-		usePriorityQueue = false
+	if v := os.Getenv(runWithPriorityQueueInCIEnvVarName); len(v) != 0 {
+		t.Log("Priority queue is enabled for the integration tests")
+		usePriorityQueue = true
 	}
 
 	RegisterFailHandler(Fail)

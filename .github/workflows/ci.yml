@@ -72,7 +72,7 @@ jobs:
       - name: Run work applier unit and integration tests with Ginkgo CLI & generate coverage
         run: |
           ginkgo -v -p --procs=4 --race --cover -coverprofile=work-applier-it-coverage.out ./pkg/controllers/workapplier/ 
-          KUBEFLEET_CI_WORK_APPLIER_RUN_WITHOUT_PRIORITY_QUEUE=true ginkgo -v -p --procs=4 --race --cover -coverprofile=work-applier-it-no-pri-q-coverage.out ./pkg/controllers/workapplier/
+          KUBEFLEET_CI_WORK_APPLIER_RUN_WITH_PRIORITY_QUEUE=true ginkgo -v -p --procs=4 --race --cover -coverprofile=work-applier-it-no-pri-q-coverage.out ./pkg/controllers/workapplier/
         env:
           KUBEFLEET_CI_TEST_RUNNER_NAME: 'ginkgo'
       
