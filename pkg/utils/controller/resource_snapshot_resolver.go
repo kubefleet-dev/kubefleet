@@ -46,9 +46,6 @@ import (
 // if object size is greater than 1MB https://github.com/kubernetes/kubernetes/blob/db1990f48b92d603f469c1c89e2ad36da1b74846/test/integration/master/synthetic_master_test.go#L337
 var resourceSnapshotResourceSizeLimit = 800 * (1 << 10) // 800KB
 
-// Define function types for clarity and reusability
-type GetOrCreateSnapshotFunction func(ctx context.Context, placement fleetv1beta1.PlacementObj, envelopeObjCount int, resourceSnapshotSpec *fleetv1beta1.ResourceSnapshotSpec, revisionHistoryLimit int) (ctrl.Result, fleetv1beta1.ResourceSnapshotObj, error)
-
 type ResourceSnapshotResolver struct {
 	Client client.Client
 	Scheme *runtime.Scheme
@@ -56,10 +53,6 @@ type ResourceSnapshotResolver struct {
 	// Config provides configuration functions for snapshot behavior.
 	// If nil, default behavior (no timing restrictions) is used.
 	Config *ResourceSnapshotConfig
-
-	// GetOrCreateSnapshotFn holds a function that implements the snapshot creation logic
-	// This allows different controllers to provide different implementations.
-	GetOrCreateSnapshotFn GetOrCreateSnapshotFunction
 }
 
 // NewResourceSnapshotResolver creates a new ResourceSnapshotResolver with the universal fields
@@ -70,25 +63,7 @@ func NewResourceSnapshotResolver(client client.Client, scheme *runtime.Scheme) *
 	}
 }
 
-// WithConfig sets the configuration for the resolver and returns the resolver for method chaining
-func (r *ResourceSnapshotResolver) WithConfig(config *ResourceSnapshotConfig) *ResourceSnapshotResolver {
-	r.Config = config
-	return r
-}
-
-// WithSnapshotFunction sets the getOrCreateResourceSnapshot function and returns the resolver for method chaining
-func (r *ResourceSnapshotResolver) WithSnapshotFunction(fn GetOrCreateSnapshotFunction) *ResourceSnapshotResolver {
-	r.GetOrCreateSnapshotFn = fn
-	return r
-}
-
-// WithDefaultSnapshotFunction sets the default getOrCreateResourceSnapshot implementation
-func (r *ResourceSnapshotResolver) WithDefaultSnapshotFunction() *ResourceSnapshotResolver {
-	r.GetOrCreateSnapshotFn = r.DefaultGetOrCreateResourceSnapshot
-	return r
-}
-
-// ResourceSnapshotConfig provides configuration functions for resource snapshot behavior.
+// ResourceSnapshotConfig defines timing parameters for resource snapshot management.
 type ResourceSnapshotConfig struct {
 	// ResourceSnapshotCreationMinimumInterval is the minimum interval to create a new resourcesnapshot
 	// to avoid too frequent updates.
@@ -106,7 +81,7 @@ func NewResourceSnapshotConfig(creationInterval, collectionDuration time.Duratio
 	}
 }
 
-// DefaultGetOrCreateResourceSnapshot is the default implementation
+// DefaultGetOrCreateResourceSnapshot is the default implementation.
 func (r *ResourceSnapshotResolver) DefaultGetOrCreateResourceSnapshot(ctx context.Context, placement fleetv1beta1.PlacementObj, envelopeObjCount int, resourceSnapshotSpec *fleetv1beta1.ResourceSnapshotSpec, revisionHistoryLimit int) (ctrl.Result, fleetv1beta1.ResourceSnapshotObj, error) {
 	placementKObj := klog.KObj(placement)
 	resourceHash, err := resource.HashOf(resourceSnapshotSpec)

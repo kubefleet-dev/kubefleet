@@ -3523,14 +3523,14 @@ func TestDefaultGetOrCreateClusterResourceSnapshot(t *testing.T) {
 				WithScheme(scheme).
 				WithObjects(objects...).
 				Build()
-			resolver := NewResourceSnapshotResolver(fakeClient, scheme).WithConfig(NewResourceSnapshotConfig(1*time.Minute, 0))
-			resolver.WithSnapshotFunction(resolver.DefaultGetOrCreateResourceSnapshot)
+			resolver := NewResourceSnapshotResolver(fakeClient, scheme)
+			resolver.Config = NewResourceSnapshotConfig(1*time.Minute, 0)
 			limit := int32(defaulter.DefaultRevisionHistoryLimitValue)
 			if tc.revisionHistoryLimit != nil {
 				limit = *tc.revisionHistoryLimit
 			}
 			resourceSnapshotResourceSizeLimit = tc.selectedResourcesSizeLimit
-			res, got, err := resolver.GetOrCreateSnapshotFn(ctx, crp, tc.envelopeObjCount, tc.resourceSnapshotSpec, int(limit))
+			res, got, err := resolver.DefaultGetOrCreateResourceSnapshot(ctx, crp, tc.envelopeObjCount, tc.resourceSnapshotSpec, int(limit))
 			if err != nil {
 				t.Fatalf("failed to handle getOrCreateResourceSnapshot: %v", err)
 			}
@@ -3919,8 +3919,7 @@ func TestDefaultGetOrCreateClusterResourceSnapshot_failure(t *testing.T) {
 				WithObjects(objects...).
 				Build()
 			resolver := NewResourceSnapshotResolver(fakeClient, scheme)
-			resolver.WithSnapshotFunction(resolver.DefaultGetOrCreateResourceSnapshot)
-			res, _, err := resolver.GetOrCreateSnapshotFn(ctx, crp, 0, resourceSnapshotSpecA, 1)
+			res, _, err := resolver.DefaultGetOrCreateResourceSnapshot(ctx, crp, 0, resourceSnapshotSpecA, 1)
 			if err == nil { // if error is nil
 				t.Fatal("DefailtGetOrCreateClusterResourceSnapshot() = nil, want err")
 			}
@@ -4028,10 +4027,10 @@ func TestShouldCreateNewResourceSnapshotNow(t *testing.T) {
 				WithRuntimeObjects(snapshot.DeepCopy()).
 				Build()
 
-			resolver := NewResourceSnapshotResolver(client, nil).WithConfig(
-				NewResourceSnapshotConfig(tc.creationInterval, // Fast creation
-					tc.collectionDuration, // Longer collection
-				))
+			resolver := NewResourceSnapshotResolver(client, nil)
+			resolver.Config = NewResourceSnapshotConfig(tc.creationInterval, // Fast creation
+				tc.collectionDuration, // Longer collection
+			)
 
 			ctx := context.Background()
 			if err := client.Get(ctx, types.NamespacedName{Name: snapshot.Name}, snapshot); err != nil {

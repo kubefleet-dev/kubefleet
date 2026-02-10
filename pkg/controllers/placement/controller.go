@@ -213,7 +213,7 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 		return ctrl.Result{}, err
 	}
 
-	createResourceSnapshotRes, latestResourceSnapshot, err := r.ResourceSnapshotResolver.GetOrCreateSnapshotFn(ctx, placementObj, envelopeObjCount,
+	createResourceSnapshotRes, latestResourceSnapshot, err := r.ResourceSnapshotResolver.DefaultGetOrCreateResourceSnapshot(ctx, placementObj, envelopeObjCount,
 		&fleetv1beta1.ResourceSnapshotSpec{SelectedResources: selectedResources}, int(revisionLimit))
 	if err != nil {
 		return ctrl.Result{}, err
