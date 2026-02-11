@@ -81,8 +81,12 @@ func NewResourceSnapshotConfig(creationInterval, collectionDuration time.Duratio
 	}
 }
 
-// DefaultGetOrCreateResourceSnapshot is the default implementation.
-func (r *ResourceSnapshotResolver) DefaultGetOrCreateResourceSnapshot(ctx context.Context, placement fleetv1beta1.PlacementObj, envelopeObjCount int, resourceSnapshotSpec *fleetv1beta1.ResourceSnapshotSpec, revisionHistoryLimit int) (ctrl.Result, fleetv1beta1.ResourceSnapshotObj, error) {
+// GetOrCreateResourceSnapshot gets or creates a resource snapshot for the given placement.
+// It returns the latest resource snapshot if it exists and is up to date, otherwise it creates a new one.
+// It also returns the ctrl.Result to indicate whether the request should be requeued or not.
+// Note: when the ctrl.Result.Requeue is true, it still returns the current latest resourceSnapshot so that
+// placement can update the rollout status.
+func (r *ResourceSnapshotResolver) GetOrCreateResourceSnapshot(ctx context.Context, placement fleetv1beta1.PlacementObj, envelopeObjCount int, resourceSnapshotSpec *fleetv1beta1.ResourceSnapshotSpec, revisionHistoryLimit int) (ctrl.Result, fleetv1beta1.ResourceSnapshotObj, error) {
 	placementKObj := klog.KObj(placement)
 	resourceHash, err := resource.HashOf(resourceSnapshotSpec)
 	if err != nil {

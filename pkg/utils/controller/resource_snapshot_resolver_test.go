@@ -1881,7 +1881,7 @@ func (e *errorClient) List(ctx context.Context, list client.ObjectList, opts ...
 	return fmt.Errorf("failed to list")
 }
 
-func TestDefaultGetOrCreateClusterResourceSnapshot(t *testing.T) {
+func TestGetOrCreateClusterResourceSnapshot(t *testing.T) {
 	// test service is 383 bytes in size.
 	serviceResourceContent := *resource.ServiceResourceContentForTest(t)
 	// test deployment 390 bytes in size.
@@ -3530,12 +3530,12 @@ func TestDefaultGetOrCreateClusterResourceSnapshot(t *testing.T) {
 				limit = *tc.revisionHistoryLimit
 			}
 			resourceSnapshotResourceSizeLimit = tc.selectedResourcesSizeLimit
-			res, got, err := resolver.DefaultGetOrCreateResourceSnapshot(ctx, crp, tc.envelopeObjCount, tc.resourceSnapshotSpec, int(limit))
+			res, got, err := resolver.GetOrCreateResourceSnapshot(ctx, crp, tc.envelopeObjCount, tc.resourceSnapshotSpec, int(limit))
 			if err != nil {
 				t.Fatalf("failed to handle getOrCreateResourceSnapshot: %v", err)
 			}
 			if (res.RequeueAfter > 0) != tc.wantRequeue {
-				t.Fatalf("DefaultetOrCreateResourceSnapshot() got Requeue %v, want %v", (res.RequeueAfter > 0), tc.wantRequeue)
+				t.Fatalf("GetOrCreateResourceSnapshot() got Requeue %v, want %v", (res.RequeueAfter > 0), tc.wantRequeue)
 			}
 
 			options := []cmp.Option{
@@ -3546,7 +3546,7 @@ func TestDefaultGetOrCreateClusterResourceSnapshot(t *testing.T) {
 			}
 			if tc.wantRequeue {
 				if res.RequeueAfter <= 0 {
-					t.Fatalf("DefaultGetOrCreateResourceSnapshot() got RequeueAfter %v, want greater than zero value", res.RequeueAfter)
+					t.Fatalf("GetOrCreateResourceSnapshot() got RequeueAfter %v, want greater than zero value", res.RequeueAfter)
 				}
 			}
 			annotationOption := cmp.Transformer("NormalizeAnnotations", func(m map[string]string) map[string]string {
@@ -3570,7 +3570,7 @@ func TestDefaultGetOrCreateClusterResourceSnapshot(t *testing.T) {
 				t.Fatalf("expected *fleetv1beta1.ClusterResourceSnapshot, got %T", got)
 			}
 			if diff := cmp.Diff(tc.wantResourceSnapshots[tc.wantLatestSnapshotIndex], *gotSnapshot, options...); diff != "" {
-				t.Errorf("DefaultGetOrCreateResourceSnapshot() mismatch (-want, +got):\n%s", diff)
+				t.Errorf("GetOrCreateResourceSnapshot() mismatch (-want, +got):\n%s", diff)
 			}
 			clusterResourceSnapshotList := &fleetv1beta1.ClusterResourceSnapshotList{}
 			if err := fakeClient.List(ctx, clusterResourceSnapshotList); err != nil {
@@ -3583,7 +3583,7 @@ func TestDefaultGetOrCreateClusterResourceSnapshot(t *testing.T) {
 	}
 }
 
-func TestDefaultGetOrCreateClusterResourceSnapshot_failure(t *testing.T) {
+func TestGetOrCreateClusterResourceSnapshot_failure(t *testing.T) {
 	selectedResources := []fleetv1beta1.ResourceContent{
 		*resource.ServiceResourceContentForTest(t),
 	}
@@ -3919,15 +3919,15 @@ func TestDefaultGetOrCreateClusterResourceSnapshot_failure(t *testing.T) {
 				WithObjects(objects...).
 				Build()
 			resolver := NewResourceSnapshotResolver(fakeClient, scheme)
-			res, _, err := resolver.DefaultGetOrCreateResourceSnapshot(ctx, crp, 0, resourceSnapshotSpecA, 1)
+			res, _, err := resolver.GetOrCreateResourceSnapshot(ctx, crp, 0, resourceSnapshotSpecA, 1)
 			if err == nil { // if error is nil
-				t.Fatal("DefailtGetOrCreateClusterResourceSnapshot() = nil, want err")
+				t.Fatal("GetOrCreateClusterResourceSnapshot() = nil, want err")
 			}
 			if res.RequeueAfter > 0 {
-				t.Fatal("DefaultGetOrCreateClusterResourceSnapshot() requeue = true, want false")
+				t.Fatal("GetOrCreateClusterResourceSnapshot() requeue = true, want false")
 			}
 			if !errors.Is(err, ErrUnexpectedBehavior) {
-				t.Errorf("DefaultGetOrCreateClusterResourceSnapshot() got %v, want %v type", err, ErrUnexpectedBehavior)
+				t.Errorf("GetOrCreateClusterResourceSnapshot() got %v, want %v type", err, ErrUnexpectedBehavior)
 			}
 		})
 	}
