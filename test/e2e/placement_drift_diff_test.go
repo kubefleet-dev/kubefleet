@@ -104,6 +104,7 @@ var _ = Describe("take over existing resources", func() {
 				ignoreNamespaceStatusField,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
 				ignoreObjectMetaAnnotationField,
+				ignoreParentCRPLabel,
 			)
 			Expect(diff).To(BeEmpty(), "Namespace diff (-got +want):\n%s", diff)
 
@@ -120,6 +121,7 @@ var _ = Describe("take over existing resources", func() {
 				cm, &wantCM,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
 				ignoreObjectMetaAnnotationField,
+				ignoreParentCRPLabel,
 			)
 			Expect(diff).To(BeEmpty(), "ConfigMap diff (-got +want):\n%s", diff)
 		})
@@ -272,6 +274,7 @@ var _ = Describe("take over existing resources", func() {
 				ignoreNamespaceStatusField,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
 				ignoreObjectMetaAnnotationField,
+				ignoreParentCRPLabel,
 			)
 			Expect(diff).To(BeEmpty(), "Namespace diff (-got +want):\n%s", diff)
 		})
@@ -292,6 +295,7 @@ var _ = Describe("take over existing resources", func() {
 				cm, &wantCM,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
 				ignoreObjectMetaAnnotationField,
+				ignoreParentCRPLabel,
 			)
 			Expect(diff).To(BeEmpty(), "ConfigMap diff (-got +want):\n%s", diff)
 		})
@@ -468,6 +472,7 @@ var _ = Describe("take over existing resources", func() {
 				ignoreNamespaceStatusField,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
 				ignoreObjectMetaAnnotationField,
+				ignoreParentCRPLabel,
 			)
 			Expect(diff).To(BeEmpty(), "Namespace diff (-got +want):\n%s", diff)
 
@@ -486,6 +491,7 @@ var _ = Describe("take over existing resources", func() {
 				cm, &wantCM,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
 				ignoreObjectMetaAnnotationField,
+				ignoreParentCRPLabel,
 			)
 			Expect(diff).To(BeEmpty(), "ConfigMap diff (-got +want):\n%s", diff)
 		})
@@ -634,6 +640,7 @@ var _ = Describe("detect drifts on placed resources", func() {
 				cm, &wantCM,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
 				ignoreObjectMetaAnnotationField,
+				ignoreParentCRPLabel,
 			)
 			Expect(diff).To(BeEmpty(), "ConfigMap diff (-got +want):\n%s", diff)
 		})
@@ -797,6 +804,7 @@ var _ = Describe("detect drifts on placed resources", func() {
 				ignoreNamespaceStatusField,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
 				ignoreObjectMetaAnnotationField,
+				ignoreParentCRPLabel,
 			)
 			Expect(diff).To(BeEmpty(), "Namespace diff (-got +want):\n%s", diff)
 
@@ -818,6 +826,7 @@ var _ = Describe("detect drifts on placed resources", func() {
 				cm, &wantCM,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
 				ignoreObjectMetaAnnotationField,
+				ignoreParentCRPLabel,
 			)
 			Expect(diff).To(BeEmpty(), "ConfigMap diff (-got +want):\n%s", diff)
 		})
@@ -1008,6 +1017,7 @@ var _ = Describe("detect drifts on placed resources", func() {
 				ignoreNamespaceStatusField,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
 				ignoreObjectMetaAnnotationField,
+				ignoreParentCRPLabel,
 			)
 			Expect(diff).To(BeEmpty(), "Namespace diff (-got +want):\n%s", diff)
 
@@ -1029,6 +1039,7 @@ var _ = Describe("detect drifts on placed resources", func() {
 				cm, &wantCM,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
 				ignoreObjectMetaAnnotationField,
+				ignoreParentCRPLabel,
 			)
 			Expect(diff).To(BeEmpty(), "ConfigMap diff (-got +want):\n%s", diff)
 		})
@@ -1238,6 +1249,7 @@ var _ = Describe("report diff mode", func() {
 				ignoreNamespaceStatusField,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
 				ignoreObjectMetaAnnotationField,
+				ignoreParentCRPLabel,
 			)
 			Expect(diff).To(BeEmpty(), "Namespace diff (-got +want):\n%s", diff)
 
@@ -1256,6 +1268,7 @@ var _ = Describe("report diff mode", func() {
 				cm, &wantCM,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
 				ignoreObjectMetaAnnotationField,
+				ignoreParentCRPLabel,
 			)
 			Expect(diff).To(BeEmpty(), "ConfigMap diff (-got +want):\n%s", diff)
 		})

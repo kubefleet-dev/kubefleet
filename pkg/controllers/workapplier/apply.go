@@ -52,7 +52,12 @@ func (r *Reconciler) applyInDryRunMode(
 	ctx context.Context,
 	gvr *schema.GroupVersionResource,
 	manifestObj, inMemberClusterObj *unstructured.Unstructured,
+	parentCRPName string,
 ) (*unstructured.Unstructured, error) {
+	// Add parent-CRP label to namespace objects for namespace affinity support
+	manifestObjCopy := manifestObj.DeepCopy()
+	labelNamespaceWithParentCRP(manifestObjCopy, parentCRPName)
+
 	// In this method, Fleet will always use forced server-side apply
 	// w/o optimistic lock for diff calculation.
 	//
@@ -61,7 +66,7 @@ func (r *Reconciler) applyInDryRunMode(
 	// before the comparison.
 	//
 	// Note that full comparison can be carried out directly without involving the apply op.
-	return r.serverSideApply(ctx, gvr, manifestObj, inMemberClusterObj, true, false, true)
+	return r.serverSideApply(ctx, gvr, manifestObjCopy, inMemberClusterObj, true, false, true)
 }
 
 func (r *Reconciler) apply(
@@ -70,6 +75,7 @@ func (r *Reconciler) apply(
 	manifestObj, inMemberClusterObj *unstructured.Unstructured,
 	applyStrategy *fleetv1beta1.ApplyStrategy,
 	expectedAppliedWorkOwnerRef *metav1.OwnerReference,
+	parentCRPName string,
 ) (*unstructured.Unstructured, error) {
 	// Create a sanitized copy of the manifest object.
 	//
@@ -83,6 +89,9 @@ func (r *Reconciler) apply(
 	// pre-processed by the Fleet hub agent as well, provided that there are no further
 	// backwards compatibility concerns.
 	manifestObjCopy := sanitizeManifestObject(manifestObj)
+
+	// Add parent-CRP label to namespace objects for namespace affinity support
+	labelNamespaceWithParentCRP(manifestObjCopy, parentCRPName)
 
 	// Compute the hash of the manifest object.
 	//
@@ -129,7 +138,7 @@ func (r *Reconciler) apply(
 
 	// Create the object if it does not exist in the member cluster.
 	if inMemberClusterObj == nil {
-		return r.createManifestObject(ctx, gvr, manifestObjCopy)
+		return r.createManifestObject(ctx, gvr, manifestObjCopy, parentCRPName)
 	}
 
 	// Note: originally Fleet will add its owner reference and
@@ -199,6 +208,7 @@ func (r *Reconciler) createManifestObject(
 	ctx context.Context,
 	gvr *schema.GroupVersionResource,
 	manifestObject *unstructured.Unstructured,
+	parentCRPName string,
 ) (*unstructured.Unstructured, error) {
 	createOpts := metav1.CreateOptions{
 		FieldManager: workFieldManagerName,
@@ -648,4 +658,37 @@ func shouldUseForcedServerSideApply(inMemberClusterObj *unstructured.Unstructure
 	klog.V(2).InfoS("All field managers are either Fleet or the `before-first-apply` field manager; Fleet will enable forced server-side apply",
 		"GVK", inMemberClusterObj.GroupVersionKind(), "inMemberClusterObj", klog.KObj(inMemberClusterObj))
 	return true
+}
+
+// labelNamespaceWithParentCRP adds parent-CRP label to namespace objects being applied.
+// This supports the namespace affinity feature where ResourcePlacements can be scheduled
+// only on clusters that have the required namespace.
+func labelNamespaceWithParentCRP(manifestObj *unstructured.Unstructured, parentCRPName string) {
+	// Only label if this is a namespace object
+	if manifestObj.GetKind() != "Namespace" || manifestObj.GetAPIVersion() != "v1" {
+		return
+	}
+
+	// Skip if no parent CRP name is provided
+	if parentCRPName == "" {
+		klog.Warningf("No parent CRP name provided for namespace %s, skipping labeling",
+			manifestObj.GetName())
+		return
+	}
+
+	// Get existing labels or create new map
+	labels := manifestObj.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+
+	// Add the parent-CRP label
+	// Format: kubernetes-fleet.io/parent-CRP: {crp-name}
+	labels[fleetv1beta1.PlacementTrackingLabel] = parentCRPName
+
+	// Set the updated labels back
+	manifestObj.SetLabels(labels)
+
+	klog.V(2).InfoS("Added parent-CRP label to namespace",
+		"namespace", manifestObj.GetName(), "crpName", parentCRPName)
 }
