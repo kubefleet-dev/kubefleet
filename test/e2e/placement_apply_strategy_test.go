@@ -581,6 +581,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 				ignoreNamespaceStatusField,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
 				ignoreObjectMetaAnnotationField,
+				ignoreParentCRPLabel,
 			)
 			Expect(diff).To(BeEmpty(), "Namespace diff (-got +want):\n%s", diff)
 
@@ -597,6 +598,7 @@ var _ = Describe("validating CRP when resources exists", Ordered, func() {
 				cm, &wantCM,
 				ignoreObjectMetaAutoGenExceptOwnerRefFields,
 				ignoreObjectMetaAnnotationField,
+				ignoreParentCRPLabel,
 			)
 			Expect(diff).To(BeEmpty(), "ConfigMap diff (-got +want):\n%s", diff)
 		})
