@@ -74,6 +74,8 @@ jobs:
           ginkgo -v -p --procs=4 --race --cover -coverprofile=work-applier-it-coverage.out ./pkg/controllers/workapplier/ 
           KUBEFLEET_CI_WORK_APPLIER_RUN_WITH_PRIORITY_QUEUE=true ginkgo -v -p --procs=4 --race --cover -coverprofile=work-applier-it-no-pri-q-coverage.out ./pkg/controllers/workapplier/
         env:
+          CGO_ENABLED: 1
+          KUBEBUILDER_ASSETS: ${{ env.KUBEBUILDER_ASSETS }}
           KUBEFLEET_CI_TEST_RUNNER_NAME: 'ginkgo'
       
       - name: Upload Codecov report
