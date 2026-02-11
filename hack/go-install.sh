@@ -25,6 +25,10 @@ if [[ -z "${GOBIN}" ]]; then
   exit 1
 fi
 
+# Unset GOROOT to allow the go binary to use its own GOROOT
+# This prevents version mismatch when system GOROOT differs from the go binary version
+unset GOROOT
+
 tmp_dir=$(mktemp -d -t goinstall_XXXXXXXXXX)
 function clean {
   rm -rf "${tmp_dir}"
