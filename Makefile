@@ -66,9 +66,9 @@ GOLANGCI_LINT_BIN := golangci-lint
 GOLANGCI_LINT := $(abspath $(TOOLS_BIN_DIR)/$(GOLANGCI_LINT_BIN)-$(GOLANGCI_LINT_VER))
 
 # ENVTEST_K8S_VERSION refers to the version of k8s binary assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.30.0
+ENVTEST_K8S_VERSION = 1.33.0
 # ENVTEST_VER is the version of the ENVTEST binary
-ENVTEST_VER = release-0.19
+ENVTEST_VER = release-0.22
 ENVTEST_BIN := setup-envtest
 ENVTEST :=  $(abspath $(TOOLS_BIN_DIR)/$(ENVTEST_BIN)-$(ENVTEST_VER))
 
@@ -232,6 +232,14 @@ BUILDKIT_VERSION ?= v0.18.1
 .PHONY: push
 push: ## Build and push all Docker images
 	$(MAKE) OUTPUT_TYPE="type=registry" docker-build-hub-agent docker-build-member-agent docker-build-refresh-token
+
+.PHONY: helm-push
+helm-push: ## Package and push Helm charts to OCI registry
+	helm package charts/hub-agent --version $(TAG) --app-version $(TAG) --destination .helm-packages
+	helm package charts/member-agent --version $(TAG) --app-version $(TAG) --destination .helm-packages
+	helm push .helm-packages/hub-agent-$(TAG).tgz oci://$(REGISTRY)
+	helm push .helm-packages/member-agent-$(TAG).tgz oci://$(REGISTRY)
+	rm -rf .helm-packages
 
 # By default, docker buildx create will pull image moby/buildkit:buildx-stable-1 and hit the too many requests error
 .PHONY: docker-buildx-builder
