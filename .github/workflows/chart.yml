@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - ".github/workflows/chart.yaml"
+      - ".github/workflows/chart.yml"
       - "charts/**"
   create:
     # Publish semver tags as releases.

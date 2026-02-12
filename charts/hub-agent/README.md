@@ -2,6 +2,19 @@
 
 ## Install Chart
 
+### Using Published Chart (Recommended)
+
+The hub-agent chart is published to GitHub Pages and can be installed directly from the Helm repository:
+
+```console
+# Add the KubeFleet Helm repository
+helm repo add kubefleet https://kubefleet-dev.github.io/kubefleet/charts
+helm repo update
+
+# Install hub-agent
+helm install hub-agent kubefleet/hub-agent --namespace fleet-system --create-namespace
+```
+
 ### Default Installation (Self-Signed Certificates)
 
 ```console
@@ -24,7 +37,7 @@ helm install cert-manager jetstack/cert-manager \
   --set crds.enabled=true
 
 # Then install hub-agent with cert-manager enabled
-helm install hub-agent ./charts/hub-agent --set useCertManager=true --set enableWorkload=true --set enableWebhook=true
+helm install hub-agent kubefleet/hub-agent --set useCertManager=true --set enableWorkload=true --set enableWebhook=true
 ```
 
 This configures cert-manager to manage webhook certificates.
@@ -32,7 +45,7 @@ This configures cert-manager to manage webhook certificates.
 ## Upgrade Chart
 
 ```console
-helm upgrade hub-agent ./charts/hubagent/ --namespace fleet-system --create-namespace
+helm upgrade hub-agent kubefleet/hub-agent --namespace fleet-system
 ```
 
 _See [parameters](#parameters) below._
@@ -106,7 +119,7 @@ helm install cert-manager jetstack/cert-manager \
   --set crds.enabled=true
 
 # Then install hub-agent with cert-manager enabled
-helm install hub-agent ./charts/hub-agent --set useCertManager=true --set enableWorkload=true --set enableWebhook=true
+helm install hub-agent kubefleet/hub-agent --set useCertManager=true --set enableWorkload=true --set enableWebhook=true
 ```
 
 The `webhookCertSecretName` parameter specifies the Secret name for the certificate:
@@ -116,7 +129,7 @@ The `webhookCertSecretName` parameter specifies the Secret name for the certific
 
 Example with custom secret name:
 ```console
-helm install hub-agent ./charts/hub-agent \
+helm install hub-agent kubefleet/hub-agent \
   --set useCertManager=true \
   --set enableWorkload=true \
   --set webhookCertSecretName=my-webhook-secret

@@ -1,13 +1,21 @@
 # Azure Fleet Member Agent Helm Chart
 
-## Get Repo
+## Install Chart
+
+### Using Published Chart (Recommended)
+
+The member-agent chart is published to GitHub Pages and can be installed directly from the Helm repository:
 
 ```console
-helm repo add member-agent https://azure.github.io/fleet/charts/member-agent
+# Add the KubeFleet Helm repository
+helm repo add kubefleet https://kubefleet-dev.github.io/kubefleet/charts
 helm repo update
+
+# Install member-agent
+helm install member-agent kubefleet/member-agent --namespace fleet-system --create-namespace
 ```
 
-## Install Chart
+### From Local Source
 
 ```console
 # Go to `charts` folder inside the repo
@@ -21,10 +29,8 @@ _See [helm install](https://helm.sh/docs/helm/helm_install/) for command documen
 ## Upgrade Chart
 
 ```console
-# Go to `charts` folder inside the repo
-cd <REPO_DIRECTORY>/fleet/charts
-# Helm upgrade
-helm upgrade member-agent member-agent/ --namespace fleet-system
+# Using published chart
+helm upgrade member-agent kubefleet/member-agent --namespace fleet-system
 ```
 
 ## Parameters
