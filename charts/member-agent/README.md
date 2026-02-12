@@ -4,7 +4,19 @@
 
 ### Using Published Chart (Recommended)
 
-The member-agent chart is published to GitHub Pages and can be installed directly from the Helm repository:
+The member-agent chart is published to both GitHub Container Registry (OCI) and GitHub Pages.
+
+#### Option 1: OCI Registry (Recommended)
+
+```console
+# Install directly from OCI registry (no repo add needed)
+helm install member-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/member-agent \
+  --version 0.1.0 \
+  --namespace fleet-system \
+  --create-namespace
+```
+
+#### Option 2: Traditional Helm Repository
 
 ```console
 # Add the KubeFleet Helm repository
@@ -29,7 +41,12 @@ _See [helm install](https://helm.sh/docs/helm/helm_install/) for command documen
 ## Upgrade Chart
 
 ```console
-# Using published chart
+# Using OCI registry
+helm upgrade member-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/member-agent \
+  --version 0.1.0 \
+  --namespace fleet-system
+
+# Using traditional repository
 helm upgrade member-agent kubefleet/member-agent --namespace fleet-system
 ```
 
