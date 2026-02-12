@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/crossplane/crossplane-runtime/pkg/test"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/test"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/assert"
@@ -355,6 +355,11 @@ func TestSyncRole(t *testing.T) {
 
 func TestSyncRoleBinding(t *testing.T) {
 	identity := rbacv1.Subject{
+		APIGroup: "rbac.authorization.k8s.io",
+		Kind:     "User",
+		Name:     "MemberClusterIdentity",
+	}
+	identityWithoutGroup := rbacv1.Subject{
 		Kind: "User",
 		Name: "MemberClusterIdentity",
 	}
@@ -423,6 +428,40 @@ func TestSyncRoleBinding(t *testing.T) {
 			memberCluster: &clusterv1beta1.MemberCluster{
 				ObjectMeta: metav1.ObjectMeta{Name: "mc1"},
 				Spec:       clusterv1beta1.MemberClusterSpec{Identity: identity},
+			},
+			namespaceName: namespace1,
+			roleName:      "fleet-role-mc1",
+			wantedError:   "",
+		},
+		"identity without APIGroup should not trigger roleBinding reconcile": {
+			r: &Reconciler{
+				Client: &test.MockClient{
+					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
+						roleRef := rbacv1.RoleRef{
+							APIGroup: rbacv1.GroupName,
+							Kind:     "Role",
+							Name:     "fleet-role-mc1",
+						}
+						o := obj.(*rbacv1.RoleBinding)
+						*o = rbacv1.RoleBinding{
+							TypeMeta: metav1.TypeMeta{
+								Kind:       "RoleBinding",
+								APIVersion: rbacv1.SchemeGroupVersion.String(),
+							},
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "fleet-rolebinding-mc1",
+								Namespace: namespace1,
+							},
+							Subjects: []rbacv1.Subject{identity}, // Returned roleBinding has APIGroup set.
+							RoleRef:  roleRef,
+						}
+						return nil
+					},
+				},
+			},
+			memberCluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "mc1"},
+				Spec:       clusterv1beta1.MemberClusterSpec{Identity: identityWithoutGroup},
 			},
 			namespaceName: namespace1,
 			roleName:      "fleet-role-mc1",
@@ -706,6 +745,8 @@ func TestMarkMemberClusterJoined(t *testing.T) {
 
 func TestSyncInternalMemberClusterStatus(t *testing.T) {
 	now := metav1.Now()
+	imcObservedGeneration := int64(1)
+	mcObservedGeneration := int64(2)
 	tests := map[string]struct {
 		r                     *Reconciler
 		internalMemberCluster *clusterv1beta1.InternalMemberCluster
@@ -728,6 +769,7 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Status:             propertyProviderConditionStatus1,
 							Reason:             propertyProviderConditionReason1,
 							Message:            propertyProviderConditionMessage1,
+							ObservedGeneration: imcObservedGeneration,
 							LastTransitionTime: now,
 						},
 						{
@@ -735,6 +777,7 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Status:             propertyProviderConditionStatus2,
 							Reason:             propertyProviderConditionReason2,
 							Message:            propertyProviderConditionMessage2,
+							ObservedGeneration: imcObservedGeneration,
 							LastTransitionTime: now,
 						},
 					},
@@ -768,9 +811,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.MemberAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionTrue,
-									Reason: "Joined",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionTrue,
+									Reason:             "Joined",
+									ObservedGeneration: imcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -779,9 +823,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.ServiceExportImportAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionTrue,
-									Reason: "Joined",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionTrue,
+									Reason:             "Joined",
+									ObservedGeneration: imcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -789,24 +834,31 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 					},
 				},
 			},
-			memberCluster: &clusterv1beta1.MemberCluster{},
+			memberCluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: mcObservedGeneration,
+				},
+			},
 			wantedMemberCluster: &clusterv1beta1.MemberCluster{
 				Status: clusterv1beta1.MemberClusterStatus{
 					Conditions: []metav1.Condition{
 						{
-							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
-							Status: metav1.ConditionTrue,
-							Reason: reasonMemberClusterJoined,
+							Type:               string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+							Status:             metav1.ConditionTrue,
+							Reason:             reasonMemberClusterJoined,
+							ObservedGeneration: mcObservedGeneration,
 						},
 						{
-							Type:   propertyProviderConditionType1,
-							Status: propertyProviderConditionStatus1,
-							Reason: propertyProviderConditionReason1,
+							Type:               propertyProviderConditionType1,
+							Status:             propertyProviderConditionStatus1,
+							Reason:             propertyProviderConditionReason1,
+							ObservedGeneration: mcObservedGeneration,
 						},
 						{
-							Type:   propertyProviderConditionType2,
-							Status: propertyProviderConditionStatus2,
-							Reason: propertyProviderConditionReason2,
+							Type:               propertyProviderConditionType2,
+							Status:             propertyProviderConditionStatus2,
+							Reason:             propertyProviderConditionReason2,
+							ObservedGeneration: mcObservedGeneration,
 						},
 					},
 					Properties: map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue{
@@ -839,9 +891,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.MemberAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionTrue,
-									Reason: "Joined",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionTrue,
+									Reason:             "Joined",
+									ObservedGeneration: mcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -850,9 +903,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.ServiceExportImportAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionTrue,
-									Reason: "Joined",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionTrue,
+									Reason:             "Joined",
+									ObservedGeneration: mcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -885,9 +939,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.MemberAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionFalse,
-									Reason: "Left",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionFalse,
+									Reason:             "Left",
+									ObservedGeneration: imcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -896,9 +951,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.ServiceExportImportAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionFalse,
-									Reason: "Left",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionFalse,
+									Reason:             "Left",
+									ObservedGeneration: imcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -906,19 +962,25 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 					},
 				},
 			},
-			memberCluster: &clusterv1beta1.MemberCluster{},
+			memberCluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: mcObservedGeneration,
+				},
+			},
 			wantedMemberCluster: &clusterv1beta1.MemberCluster{
 				Status: clusterv1beta1.MemberClusterStatus{
 					Conditions: []metav1.Condition{
 						{
-							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
-							Status: metav1.ConditionFalse,
-							Reason: reasonMemberClusterLeft,
+							Type:               string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+							Status:             metav1.ConditionFalse,
+							Reason:             reasonMemberClusterLeft,
+							ObservedGeneration: mcObservedGeneration,
 						},
 						{
-							Type:   string(clusterv1beta1.ConditionTypeMemberClusterReadyToJoin),
-							Status: metav1.ConditionFalse,
-							Reason: reasonMemberClusterNotReadyToJoin,
+							Type:               string(clusterv1beta1.ConditionTypeMemberClusterReadyToJoin),
+							Status:             metav1.ConditionFalse,
+							Reason:             reasonMemberClusterNotReadyToJoin,
+							ObservedGeneration: mcObservedGeneration,
 						},
 					},
 					ResourceUsage: clusterv1beta1.ResourceUsage{
@@ -935,9 +997,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.MemberAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionFalse,
-									Reason: "Left",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionFalse,
+									Reason:             "Left",
+									ObservedGeneration: mcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -946,9 +1009,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.ServiceExportImportAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionFalse,
-									Reason: "Left",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionFalse,
+									Reason:             "Left",
+									ObservedGeneration: mcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -981,9 +1045,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.MemberAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionTrue,
-									Reason: "Joined",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionTrue,
+									Reason:             "Joined",
+									ObservedGeneration: imcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -992,9 +1057,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.ServiceExportImportAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionFalse,
-									Reason: "Left",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionFalse,
+									Reason:             "Left",
+									ObservedGeneration: imcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -1002,14 +1068,19 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 					},
 				},
 			},
-			memberCluster: &clusterv1beta1.MemberCluster{},
+			memberCluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: mcObservedGeneration,
+				},
+			},
 			wantedMemberCluster: &clusterv1beta1.MemberCluster{
 				Status: clusterv1beta1.MemberClusterStatus{
 					Conditions: []metav1.Condition{
 						{
-							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
-							Status: metav1.ConditionUnknown,
-							Reason: reasonMemberClusterUnknown,
+							Type:               string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+							Status:             metav1.ConditionUnknown,
+							Reason:             reasonMemberClusterUnknown,
+							ObservedGeneration: mcObservedGeneration,
 						},
 					},
 					ResourceUsage: clusterv1beta1.ResourceUsage{
@@ -1026,9 +1097,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.MemberAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionTrue,
-									Reason: "Joined",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionTrue,
+									Reason:             "Joined",
+									ObservedGeneration: mcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -1037,9 +1109,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.ServiceExportImportAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionFalse,
-									Reason: "Left",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionFalse,
+									Reason:             "Left",
+									ObservedGeneration: mcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -1068,7 +1141,11 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 					},
 				},
 			},
-			memberCluster: &clusterv1beta1.MemberCluster{},
+			memberCluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: mcObservedGeneration,
+				},
+			},
 			wantedMemberCluster: &clusterv1beta1.MemberCluster{
 				Status: clusterv1beta1.MemberClusterStatus{
 					ResourceUsage: clusterv1beta1.ResourceUsage{
@@ -1082,9 +1159,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 					},
 					Conditions: []metav1.Condition{
 						{
-							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
-							Status: metav1.ConditionUnknown,
-							Reason: reasonMemberClusterUnknown,
+							Type:               string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+							Status:             metav1.ConditionUnknown,
+							Reason:             reasonMemberClusterUnknown,
+							ObservedGeneration: mcObservedGeneration,
 						},
 					},
 				},
@@ -1125,9 +1203,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.MemberAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionTrue,
-									Reason: "Joined",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionTrue,
+									Reason:             "Joined",
+									ObservedGeneration: imcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -1136,9 +1215,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.ServiceExportImportAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionTrue,
-									Reason: "Joined",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionTrue,
+									Reason:             "Joined",
+									ObservedGeneration: imcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -1147,9 +1227,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.MultiClusterServiceAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionFalse,
-									Reason: "Left",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionFalse,
+									Reason:             "Left",
+									ObservedGeneration: imcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -1157,14 +1238,19 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 					},
 				},
 			},
-			memberCluster: &clusterv1beta1.MemberCluster{},
+			memberCluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: mcObservedGeneration,
+				},
+			},
 			wantedMemberCluster: &clusterv1beta1.MemberCluster{
 				Status: clusterv1beta1.MemberClusterStatus{
 					Conditions: []metav1.Condition{
 						{
-							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
-							Status: metav1.ConditionTrue,
-							Reason: reasonMemberClusterJoined,
+							Type:               string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+							Status:             metav1.ConditionTrue,
+							Reason:             reasonMemberClusterJoined,
+							ObservedGeneration: mcObservedGeneration,
 						},
 					},
 					ResourceUsage: clusterv1beta1.ResourceUsage{
@@ -1181,9 +1267,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.MemberAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionTrue,
-									Reason: "Joined",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionTrue,
+									Reason:             "Joined",
+									ObservedGeneration: mcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -1192,9 +1279,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.ServiceExportImportAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionTrue,
-									Reason: "Joined",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionTrue,
+									Reason:             "Joined",
+									ObservedGeneration: mcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -1203,9 +1291,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.MultiClusterServiceAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionFalse,
-									Reason: "Left",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionFalse,
+									Reason:             "Left",
+									ObservedGeneration: mcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -1238,9 +1327,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.MemberAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionTrue,
-									Reason: "Joined",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionTrue,
+									Reason:             "Joined",
+									ObservedGeneration: imcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -1248,14 +1338,19 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 					},
 				},
 			},
-			memberCluster: &clusterv1beta1.MemberCluster{},
+			memberCluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: mcObservedGeneration,
+				},
+			},
 			wantedMemberCluster: &clusterv1beta1.MemberCluster{
 				Status: clusterv1beta1.MemberClusterStatus{
 					Conditions: []metav1.Condition{
 						{
-							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
-							Status: metav1.ConditionUnknown,
-							Reason: reasonMemberClusterUnknown,
+							Type:               string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+							Status:             metav1.ConditionUnknown,
+							Reason:             reasonMemberClusterUnknown,
+							ObservedGeneration: mcObservedGeneration,
 						},
 					},
 					ResourceUsage: clusterv1beta1.ResourceUsage{
@@ -1272,9 +1367,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.MemberAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionTrue,
-									Reason: "Joined",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionTrue,
+									Reason:             "Joined",
+									ObservedGeneration: mcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -1307,9 +1403,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.MemberAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionTrue,
-									Reason: "Joined",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionTrue,
+									Reason:             "Joined",
+									ObservedGeneration: imcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -1321,14 +1418,19 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 					},
 				},
 			},
-			memberCluster: &clusterv1beta1.MemberCluster{},
+			memberCluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: mcObservedGeneration,
+				},
+			},
 			wantedMemberCluster: &clusterv1beta1.MemberCluster{
 				Status: clusterv1beta1.MemberClusterStatus{
 					Conditions: []metav1.Condition{
 						{
-							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
-							Status: metav1.ConditionUnknown,
-							Reason: reasonMemberClusterUnknown,
+							Type:               string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+							Status:             metav1.ConditionUnknown,
+							Reason:             reasonMemberClusterUnknown,
+							ObservedGeneration: mcObservedGeneration,
 						},
 					},
 					ResourceUsage: clusterv1beta1.ResourceUsage{
@@ -1345,9 +1447,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.MemberAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionTrue,
-									Reason: "Joined",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionTrue,
+									Reason:             "Joined",
+									ObservedGeneration: mcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -1384,9 +1487,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.MemberAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionTrue,
-									Reason: "Joined",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionTrue,
+									Reason:             "Joined",
+									ObservedGeneration: imcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,
@@ -1398,14 +1502,19 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 					},
 				},
 			},
-			memberCluster: &clusterv1beta1.MemberCluster{},
+			memberCluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Generation: mcObservedGeneration,
+				},
+			},
 			wantedMemberCluster: &clusterv1beta1.MemberCluster{
 				Status: clusterv1beta1.MemberClusterStatus{
 					Conditions: []metav1.Condition{
 						{
-							Type:   string(clusterv1beta1.ConditionTypeMemberClusterJoined),
-							Status: metav1.ConditionUnknown,
-							Reason: reasonMemberClusterUnknown,
+							Type:               string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+							Status:             metav1.ConditionUnknown,
+							Reason:             reasonMemberClusterUnknown,
+							ObservedGeneration: mcObservedGeneration,
 						},
 					},
 					ResourceUsage: clusterv1beta1.ResourceUsage{
@@ -1422,9 +1531,10 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 							Type: clusterv1beta1.MemberAgent,
 							Conditions: []metav1.Condition{
 								{
-									Type:   string(clusterv1beta1.AgentJoined),
-									Status: metav1.ConditionTrue,
-									Reason: "Joined",
+									Type:               string(clusterv1beta1.AgentJoined),
+									Status:             metav1.ConditionTrue,
+									Reason:             "Joined",
+									ObservedGeneration: mcObservedGeneration,
 								},
 							},
 							LastReceivedHeartbeat: now,

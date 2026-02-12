@@ -27,7 +27,6 @@ import (
 	appv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	discoveryv1 "k8s.io/api/discovery/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -35,24 +34,18 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
-	workv1alpha1 "sigs.k8s.io/work-api/pkg/apis/v1alpha1"
 
 	fleetnetworkingv1alpha1 "go.goms.io/fleet-networking/api/v1alpha1"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	placementv1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	fleetv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
 )
 
 const (
@@ -80,6 +73,8 @@ const (
 	ServiceKind     = "Service"
 	NamespaceKind   = "Namespace"
 	JobKind         = "Job"
+	ReplicaSetKind  = "ReplicaSet"
+	PodKind         = "Pod"
 )
 
 const (
@@ -113,11 +108,6 @@ const (
 )
 
 var (
-	FleetRule = rbacv1.PolicyRule{
-		Verbs:     []string{"*"},
-		APIGroups: []string{fleetv1alpha1.GroupVersion.Group},
-		Resources: []string{"*"},
-	}
 	FleetClusterRule = rbacv1.PolicyRule{
 		Verbs:     []string{"*"},
 		APIGroups: []string{clusterv1beta1.GroupVersion.Group},
@@ -133,11 +123,6 @@ var (
 		APIGroups: []string{""},
 		Resources: []string{"events"},
 	}
-	WorkRule = rbacv1.PolicyRule{
-		Verbs:     []string{"*"},
-		APIGroups: []string{workv1alpha1.GroupName},
-		Resources: []string{"*"},
-	}
 	FleetNetworkRule = rbacv1.PolicyRule{
 		Verbs:     []string{"*"},
 		APIGroups: []string{NetworkingGroupName},
@@ -147,18 +132,6 @@ var (
 
 // Those are the GVR/GVKs in use by Fleet source code.
 var (
-	ClusterResourcePlacementV1Alpha1GVK = schema.GroupVersionKind{
-		Group:   fleetv1alpha1.GroupVersion.Group,
-		Version: fleetv1alpha1.GroupVersion.Version,
-		Kind:    "ClusterResourcePlacement",
-	}
-
-	ClusterResourcePlacementV1Alpha1GVR = schema.GroupVersionResource{
-		Group:    fleetv1alpha1.GroupVersion.Group,
-		Version:  fleetv1alpha1.GroupVersion.Version,
-		Resource: fleetv1alpha1.ClusterResourcePlacementResource,
-	}
-
 	ClusterResourcePlacementGVR = schema.GroupVersionResource{
 		Group:    placementv1beta1.GroupVersion.Group,
 		Version:  placementv1beta1.GroupVersion.Version,
@@ -249,12 +222,6 @@ var (
 		Kind:    "Event",
 	}
 
-	IMCV1Alpha1MetaGVK = metav1.GroupVersionKind{
-		Group:   fleetv1alpha1.GroupVersion.Group,
-		Version: fleetv1alpha1.GroupVersion.Version,
-		Kind:    "InternalMemberCluster",
-	}
-
 	IngressClassGVR = schema.GroupVersionResource{
 		Group:    networkingv1.SchemeGroupVersion.Group,
 		Version:  networkingv1.SchemeGroupVersion.Version,
@@ -283,24 +250,6 @@ var (
 		Group:    corev1.SchemeGroupVersion.Group,
 		Version:  corev1.SchemeGroupVersion.Version,
 		Resource: "limitranges",
-	}
-
-	MCV1Alpha1MetaGVK = metav1.GroupVersionKind{
-		Group:   fleetv1alpha1.GroupVersion.Group,
-		Version: fleetv1alpha1.GroupVersion.Version,
-		Kind:    "MemberCluster",
-	}
-
-	MCV1Alpha1GVK = schema.GroupVersionKind{
-		Group:   fleetv1alpha1.GroupVersion.Group,
-		Version: fleetv1alpha1.GroupVersion.Version,
-		Kind:    fleetv1alpha1.MemberClusterKind,
-	}
-
-	MCV1Alpha1GVR = schema.GroupVersionResource{
-		Group:    fleetv1alpha1.GroupVersion.Group,
-		Version:  fleetv1alpha1.GroupVersion.Version,
-		Resource: fleetv1alpha1.MemberClusterResource,
 	}
 
 	MCMetaGVK = metav1.GroupVersionKind{
@@ -385,24 +334,6 @@ var (
 		Group:    storagev1.SchemeGroupVersion.Group,
 		Version:  storagev1.SchemeGroupVersion.Version,
 		Resource: "storageclasses",
-	}
-
-	WorkV1Alpha1MetaGVK = metav1.GroupVersionKind{
-		Group:   workv1alpha1.GroupVersion.Group,
-		Version: workv1alpha1.GroupVersion.Version,
-		Kind:    "Work",
-	}
-
-	WorkV1Alpha1GVK = schema.GroupVersionKind{
-		Group:   workv1alpha1.GroupVersion.Group,
-		Version: workv1alpha1.GroupVersion.Version,
-		Kind:    workv1alpha1.WorkKind,
-	}
-
-	WorkV1Alpha1GVR = schema.GroupVersionResource{
-		Group:    workv1alpha1.GroupVersion.Group,
-		Version:  workv1alpha1.GroupVersion.Version,
-		Resource: workv1alpha1.WorkResource,
 	}
 
 	WorkMetaGVK = metav1.GroupVersionKind{
@@ -568,52 +499,6 @@ func CheckCRDInstalled(discoveryClient discovery.DiscoveryInterface, gvk schema.
 	return err
 }
 
-// ShouldPropagateObj decides if one should propagate the object
-func ShouldPropagateObj(informerManager informer.Manager, uObj *unstructured.Unstructured) (bool, error) {
-	// TODO:  add more special handling for different resource kind
-	switch uObj.GroupVersionKind() {
-	case corev1.SchemeGroupVersion.WithKind(ConfigMapKind):
-		// Skip the built-in custom CA certificate created in the namespace
-		if uObj.GetName() == "kube-root-ca.crt" {
-			return false, nil
-		}
-	case corev1.SchemeGroupVersion.WithKind("ServiceAccount"):
-		// Skip the default service account created in the namespace
-		if uObj.GetName() == "default" {
-			return false, nil
-		}
-	case corev1.SchemeGroupVersion.WithKind("Secret"):
-		// The secret, with type 'kubernetes.io/service-account-token', is created along with `ServiceAccount` should be
-		// prevented from propagating.
-		var secret corev1.Secret
-		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(uObj.Object, &secret); err != nil {
-			return false, controller.NewUnexpectedBehaviorError(fmt.Errorf("failed to convert a secret object %s in namespace %s: %w", uObj.GetName(), uObj.GetNamespace(), err))
-		}
-		if secret.Type == corev1.SecretTypeServiceAccountToken {
-			return false, nil
-		}
-	case corev1.SchemeGroupVersion.WithKind("Endpoints"):
-		// we assume that all endpoints with the same name of a service is created by the service controller
-		if _, err := informerManager.Lister(ServiceGVR).ByNamespace(uObj.GetNamespace()).Get(uObj.GetName()); err != nil {
-			if apierrors.IsNotFound(err) {
-				// there is no service of the same name as the end point,
-				// we assume that this endpoint is created by the user
-				return true, nil
-			}
-			return false, controller.NewAPIServerError(true, fmt.Errorf("failed to get the service %s in namespace %s: %w", uObj.GetName(), uObj.GetNamespace(), err))
-		}
-		// we find a service of the same name as the endpoint, we assume it's created by the service
-		return false, nil
-	case discoveryv1.SchemeGroupVersion.WithKind("EndpointSlice"):
-		// all EndpointSlice created by the EndpointSlice controller has a managed by label
-		if _, exist := uObj.GetLabels()[discoveryv1.LabelManagedBy]; exist {
-			// do not propagate hub cluster generated endpoint slice
-			return false, nil
-		}
-	}
-	return true, nil
-}
-
 // IsReservedNamespace indicates if an argued namespace is reserved.
 func IsReservedNamespace(namespace string) bool {
 	return strings.HasPrefix(namespace, fleetPrefix) || strings.HasPrefix(namespace, kubePrefix)
@@ -655,6 +540,12 @@ var LessFuncResourceIdentifier = func(a, b placementv1beta1.ResourceIdentifier) 
 	return aStr < bStr
 }
 
+var LessFuncResourceIdentifierV1 = func(a, b placementv1.ResourceIdentifier) bool {
+	aStr := fmt.Sprintf(ResourceIdentifierStringFormat, a.Group, a.Version, a.Kind, a.Namespace, a.Name)
+	bStr := fmt.Sprintf(ResourceIdentifierStringFormat, b.Group, b.Version, b.Kind, b.Namespace, b.Name)
+	return aStr < bStr
+}
+
 // LessFuncPatchDetail is a less function for sorting patch details
 var LessFuncPatchDetail = func(a, b placementv1beta1.PatchDetail) bool {
 	if a.Path != b.Path {
@@ -668,6 +559,22 @@ var LessFuncPatchDetail = func(a, b placementv1beta1.PatchDetail) bool {
 
 // LessFuncFailedResourcePlacements is a less function for sorting failed resource placements
 var LessFuncFailedResourcePlacements = func(a, b placementv1beta1.FailedResourcePlacement) bool {
+	var aStr, bStr string
+	if a.Envelope != nil {
+		aStr = fmt.Sprintf(ResourceIdentifierWithEnvelopeIdentifierStringFormat, a.Group, a.Version, a.Kind, a.Namespace, a.Name, a.Envelope.Type, a.Envelope.Namespace, a.Envelope.Name)
+	} else {
+		aStr = fmt.Sprintf(ResourceIdentifierStringFormat, a.Group, a.Version, a.Kind, a.Namespace, a.Name)
+	}
+	if b.Envelope != nil {
+		bStr = fmt.Sprintf(ResourceIdentifierWithEnvelopeIdentifierStringFormat, b.Group, b.Version, b.Kind, b.Namespace, b.Name, b.Envelope.Type, b.Envelope.Namespace, b.Envelope.Name)
+	} else {
+		bStr = fmt.Sprintf(ResourceIdentifierStringFormat, b.Group, b.Version, b.Kind, b.Namespace, b.Name)
+
+	}
+	return aStr < bStr
+}
+
+var LessFuncFailedResourcePlacementsV1 = func(a, b placementv1.FailedResourcePlacement) bool {
 	var aStr, bStr string
 	if a.Envelope != nil {
 		aStr = fmt.Sprintf(ResourceIdentifierWithEnvelopeIdentifierStringFormat, a.Group, a.Version, a.Kind, a.Namespace, a.Name, a.Envelope.Type, a.Envelope.Namespace, a.Envelope.Name)
@@ -708,6 +615,22 @@ func IsFailedResourcePlacementsEqual(oldFailedResourcePlacements, newFailedResou
 
 // LessFuncDriftedResourcePlacements is a less function for sorting drifted resource placements
 var LessFuncDriftedResourcePlacements = func(a, b placementv1beta1.DriftedResourcePlacement) bool {
+	var aStr, bStr string
+	if a.Envelope != nil {
+		aStr = fmt.Sprintf(ResourceIdentifierWithEnvelopeIdentifierStringFormat, a.Group, a.Version, a.Kind, a.Namespace, a.Name, a.Envelope.Type, a.Envelope.Namespace, a.Envelope.Name)
+	} else {
+		aStr = fmt.Sprintf(ResourceIdentifierStringFormat, a.Group, a.Version, a.Kind, a.Namespace, a.Name)
+	}
+	if b.Envelope != nil {
+		bStr = fmt.Sprintf(ResourceIdentifierWithEnvelopeIdentifierStringFormat, b.Group, b.Version, b.Kind, b.Namespace, b.Name, b.Envelope.Type, b.Envelope.Namespace, b.Envelope.Name)
+	} else {
+		bStr = fmt.Sprintf(ResourceIdentifierStringFormat, b.Group, b.Version, b.Kind, b.Namespace, b.Name)
+
+	}
+	return aStr < bStr
+}
+
+var LessFuncDriftedResourcePlacementsV1 = func(a, b placementv1.DriftedResourcePlacement) bool {
 	var aStr, bStr string
 	if a.Envelope != nil {
 		aStr = fmt.Sprintf(ResourceIdentifierWithEnvelopeIdentifierStringFormat, a.Group, a.Version, a.Kind, a.Namespace, a.Name, a.Envelope.Type, a.Envelope.Namespace, a.Envelope.Name)
@@ -764,7 +687,23 @@ var LessFuncDiffedResourcePlacements = func(a, b placementv1beta1.DiffedResource
 	return aStr < bStr
 }
 
-// LessFuncCondition is a less function for sorting conditions based on its types.
+var LessFuncDiffedResourcePlacementsV1 = func(a, b placementv1.DiffedResourcePlacement) bool {
+	var aStr, bStr string
+	if a.Envelope != nil {
+		aStr = fmt.Sprintf(ResourceIdentifierWithEnvelopeIdentifierStringFormat, a.Group, a.Version, a.Kind, a.Namespace, a.Name, a.Envelope.Type, a.Envelope.Namespace, a.Envelope.Name)
+	} else {
+		aStr = fmt.Sprintf(ResourceIdentifierStringFormat, a.Group, a.Version, a.Kind, a.Namespace, a.Name)
+	}
+	if b.Envelope != nil {
+		bStr = fmt.Sprintf(ResourceIdentifierWithEnvelopeIdentifierStringFormat, b.Group, b.Version, b.Kind, b.Namespace, b.Name, b.Envelope.Type, b.Envelope.Namespace, b.Envelope.Name)
+	} else {
+		bStr = fmt.Sprintf(ResourceIdentifierStringFormat, b.Group, b.Version, b.Kind, b.Namespace, b.Name)
+
+	}
+	return aStr < bStr
+}
+
+// LessFuncConditionByType is a less function for sorting conditions based on its types.
 var LessFuncConditionByType = func(a, b metav1.Condition) bool {
 	return a.Type < b.Type
 }

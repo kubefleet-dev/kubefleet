@@ -20,8 +20,8 @@ import (
 	"flag"
 	"fmt"
 	"math"
+	"net/http"
 	"os"
-	"strings"
 	"sync"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -37,18 +37,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
-	workv1alpha1 "sigs.k8s.io/work-api/pkg/apis/v1alpha1"
 
 	fleetnetworkingv1alpha1 "go.goms.io/fleet-networking/api/v1alpha1"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	fleetv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/workload"
-	mcv1alpha1 "github.com/kubefleet-dev/kubefleet/pkg/controllers/membercluster/v1alpha1"
 	mcv1beta1 "github.com/kubefleet-dev/kubefleet/pkg/controllers/membercluster/v1beta1"
+	readiness "github.com/kubefleet-dev/kubefleet/pkg/utils/informer/readiness"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook"
 	// +kubebuilder:scaffold:imports
 )
@@ -66,14 +65,11 @@ var (
 )
 
 const (
-	FleetWebhookCertDir = "/tmp/k8s-webhook-server/serving-certs"
-	FleetWebhookPort    = 9443
+	FleetWebhookPort = 9443
 )
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(fleetv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(workv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(placementv1beta1.AddToScheme(scheme))
 	utilruntime.Must(clusterv1beta1.AddToScheme(scheme))
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
@@ -124,7 +120,7 @@ func main() {
 		},
 		WebhookServer: ctrlwebhook.NewServer(ctrlwebhook.Options{
 			Port:    FleetWebhookPort,
-			CertDir: FleetWebhookCertDir,
+			CertDir: webhook.FleetWebhookCertDir,
 		}),
 	}
 	if opts.EnablePprof {
@@ -137,16 +133,6 @@ func main() {
 	}
 
 	klog.V(2).InfoS("starting hubagent")
-	if opts.EnableV1Alpha1APIs {
-		klog.Info("Setting up memberCluster v1alpha1 controller")
-		if err = (&mcv1alpha1.Reconciler{
-			Client:                  mgr.GetClient(),
-			NetworkingAgentsEnabled: opts.NetworkingAgentsEnabled,
-		}).SetupWithManager(mgr, "memberclusterv1alpha1-controller"); err != nil {
-			klog.ErrorS(err, "unable to create v1alpha1 controller", "controller", "MemberCluster")
-			exitWithErrorFunc()
-		}
-	}
 	if opts.EnableV1Beta1APIs {
 		klog.Info("Setting up memberCluster v1beta1 controller")
 		if err = (&mcv1beta1.Reconciler{
@@ -170,16 +156,46 @@ func main() {
 	}
 
 	if opts.EnableWebhook {
-		whiteListedUsers := strings.Split(opts.WhiteListedUsers, ",")
-		if err := SetupWebhook(mgr, options.WebhookClientConnectionType(opts.WebhookClientConnectionType), opts.WebhookServiceName, whiteListedUsers, opts.EnableGuardRail, opts.EnableV1Beta1APIs, opts.DenyModifyMemberClusterLabels); err != nil {
+		// Generate webhook configuration with certificates
+		webhookConfig, err := webhook.NewWebhookConfigFromOptions(mgr, opts, FleetWebhookPort)
+		if err != nil {
+			klog.ErrorS(err, "unable to create webhook config")
+			exitWithErrorFunc()
+		}
+
+		// Setup webhooks with the manager
+		if err := SetupWebhook(mgr, webhookConfig); err != nil {
 			klog.ErrorS(err, "unable to set up webhook")
 			exitWithErrorFunc()
+		}
+
+		// When using cert-manager, add a readiness check to ensure CA bundles are injected before marking ready.
+		// This prevents the pod from accepting traffic before cert-manager has populated the webhook CA bundles,
+		// which would cause webhook calls to fail.
+		if opts.UseCertManager {
+			if err := mgr.AddReadyzCheck("cert-manager-ca-injection", func(req *http.Request) error {
+				return webhookConfig.CheckCAInjection(req.Context())
+			}); err != nil {
+				klog.ErrorS(err, "unable to set up cert-manager CA injection readiness check")
+				exitWithErrorFunc()
+			}
+			klog.V(2).InfoS("Added cert-manager CA injection readiness check")
 		}
 	}
 
 	ctx := ctrl.SetupSignalHandler()
 	if err := workload.SetupControllers(ctx, &wg, mgr, config, opts); err != nil {
-		klog.ErrorS(err, "unable to set up ready check")
+		klog.ErrorS(err, "unable to set up controllers")
+		exitWithErrorFunc()
+	}
+
+	// Add readiness check for dynamic informer cache AFTER controllers are set up.
+	// This ensures the discovery cache is populated before the hub agent is marked ready,
+	// which is critical for all controllers that rely on dynamic resource discovery.
+	// AddReadyzCheck adds additional readiness check instead of replacing the one registered earlier provided the name is different.
+	// Both registered checks need to pass for the manager to be considered ready.
+	if err := mgr.AddReadyzCheck("informer-cache", readiness.InformerReadinessChecker(validator.ResourceInformer)); err != nil {
+		klog.ErrorS(err, "unable to set up informer cache readiness check")
 		exitWithErrorFunc()
 	}
 
@@ -202,19 +218,13 @@ func main() {
 	wg.Wait()
 }
 
-// SetupWebhook generates the webhook cert and then set up the webhook configurator.
-func SetupWebhook(mgr manager.Manager, webhookClientConnectionType options.WebhookClientConnectionType, webhookServiceName string, whiteListedUsers []string, enableGuardRail, isFleetV1Beta1API bool, denyModifyMemberClusterLabels bool) error {
-	// Generate self-signed key and crt files in FleetWebhookCertDir for the webhook server to start.
-	w, err := webhook.NewWebhookConfig(mgr, webhookServiceName, FleetWebhookPort, &webhookClientConnectionType, FleetWebhookCertDir, enableGuardRail, denyModifyMemberClusterLabels)
-	if err != nil {
-		klog.ErrorS(err, "fail to generate WebhookConfig")
-		return err
-	}
-	if err = mgr.Add(w); err != nil {
+// SetupWebhook registers the webhook config and webhook handlers with the manager.
+func SetupWebhook(mgr manager.Manager, webhookConfig *webhook.Config) error {
+	if err := mgr.Add(webhookConfig); err != nil {
 		klog.ErrorS(err, "unable to add WebhookConfig")
 		return err
 	}
-	if err = webhook.AddToManager(mgr, whiteListedUsers, isFleetV1Beta1API, denyModifyMemberClusterLabels); err != nil {
+	if err := webhook.AddToManager(mgr, webhookConfig); err != nil {
 		klog.ErrorS(err, "unable to register webhooks to the manager")
 		return err
 	}

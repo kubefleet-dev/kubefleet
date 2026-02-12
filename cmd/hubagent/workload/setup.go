@@ -29,17 +29,14 @@ import (
 	"k8s.io/klog/v2"
 	clusterinventory "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
-	workv1alpha1 "sigs.k8s.io/work-api/pkg/apis/v1alpha1"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	fleetv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/bindingwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterinventory/clusterprofile"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacementeviction"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacementstatuswatcher"
-	"github.com/kubefleet-dev/kubefleet/pkg/controllers/memberclusterplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/overrider"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placement"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placementwatcher"
@@ -65,26 +62,17 @@ import (
 )
 
 const (
-	crpControllerName         = "cluster-resource-placement-controller"
-	crpControllerV1Alpha1Name = crpControllerName + "-v1alpha1"
-	crpControllerV1Beta1Name  = crpControllerName + "-v1beta1"
-	rpControllerName          = "resource-placement-controller"
-	placementControllerName   = "placement-controller"
+	crpControllerName        = "cluster-resource-placement-controller"
+	crpControllerV1Beta1Name = crpControllerName + "-v1beta1"
+	rpControllerName         = "resource-placement-controller"
+	placementControllerName  = "placement-controller"
 
 	resourceChangeControllerName = "resource-change-controller"
-	mcPlacementControllerName    = "memberCluster-placement-controller"
 
 	schedulerQueueName = "scheduler-queue"
 )
 
 var (
-	v1Alpha1RequiredGVKs = []schema.GroupVersionKind{
-		fleetv1alpha1.GroupVersion.WithKind(fleetv1alpha1.MemberClusterKind),
-		fleetv1alpha1.GroupVersion.WithKind(fleetv1alpha1.InternalMemberClusterKind),
-		fleetv1alpha1.GroupVersion.WithKind(fleetv1alpha1.ClusterResourcePlacementKind),
-		workv1alpha1.SchemeGroupVersion.WithKind(workv1alpha1.WorkKind),
-	}
-
 	v1Beta1RequiredGVKs = []schema.GroupVersionKind{
 		clusterv1beta1.GroupVersion.WithKind(clusterv1beta1.MemberClusterKind),
 		clusterv1beta1.GroupVersion.WithKind(clusterv1beta1.InternalMemberClusterKind),
@@ -169,40 +157,26 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	validator.RestMapper = mgr.GetRESTMapper()          // webhook needs this to validate GVK of resource selector
 
 	// Set up  a custom controller to reconcile placement objects
+	resourceSelectorResolver := controller.ResourceSelectorResolver{
+		RestMapper:        mgr.GetRESTMapper(),
+		InformerManager:   dynamicInformerManager,
+		ResourceConfig:    resourceConfig,
+		SkippedNamespaces: skippedNamespaces,
+		EnableWorkload:    opts.EnableWorkload,
+	}
 	pc := &placement.Reconciler{
 		Client:                                  mgr.GetClient(),
 		Recorder:                                mgr.GetEventRecorderFor(placementControllerName),
-		RestMapper:                              mgr.GetRESTMapper(),
-		InformerManager:                         dynamicInformerManager,
-		ResourceConfig:                          resourceConfig,
-		SkippedNamespaces:                       skippedNamespaces,
 		Scheme:                                  mgr.GetScheme(),
 		UncachedReader:                          mgr.GetAPIReader(),
+		ResourceSelectorResolver:                resourceSelectorResolver,
 		ResourceSnapshotCreationMinimumInterval: opts.ResourceSnapshotCreationMinimumInterval,
 		ResourceChangesCollectionDuration:       opts.ResourceChangesCollectionDuration,
 	}
 
 	rateLimiter := options.DefaultControllerRateLimiter(opts.RateLimiterOpts)
-	var clusterResourcePlacementControllerV1Alpha1 controller.Controller
 	var clusterResourcePlacementControllerV1Beta1 controller.Controller
 	var resourcePlacementController controller.Controller
-	var memberClusterPlacementController controller.Controller
-	if opts.EnableV1Alpha1APIs {
-		for _, gvk := range v1Alpha1RequiredGVKs {
-			if err = utils.CheckCRDInstalled(discoverClient, gvk); err != nil {
-				klog.ErrorS(err, "unable to find the required CRD", "GVK", gvk)
-				return err
-			}
-		}
-		klog.Info("Setting up clusterResourcePlacement v1alpha1 controller")
-		clusterResourcePlacementControllerV1Alpha1 = controller.NewController(crpControllerV1Alpha1Name, controller.NamespaceKeyFunc, pc.ReconcileV1Alpha1, rateLimiter)
-		klog.Info("Setting up member cluster change controller")
-		mcp := &memberclusterplacement.Reconciler{
-			InformerManager:     dynamicInformerManager,
-			PlacementController: clusterResourcePlacementControllerV1Alpha1,
-		}
-		memberClusterPlacementController = controller.NewController(mcPlacementControllerName, controller.NamespaceKeyFunc, mcp.Reconcile, rateLimiter)
-	}
 
 	if opts.EnableV1Beta1APIs {
 		for _, gvk := range v1Beta1RequiredGVKs {
@@ -387,7 +361,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		defaultProfile := profile.NewDefaultProfile()
 		defaultFramework := framework.NewFramework(defaultProfile, mgr)
 		defaultSchedulingQueue := queue.NewSimplePlacementSchedulingQueue(
-			queue.WithName(schedulerQueueName),
+			schedulerQueueName, nil,
 		)
 		// we use one scheduler for every 10 concurrent placement
 		defaultScheduler := scheduler.NewScheduler("DefaultScheduler", defaultFramework, defaultSchedulingQueue, mgr,
@@ -520,26 +494,40 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		Recorder:                    mgr.GetEventRecorderFor(resourceChangeControllerName),
 		RestMapper:                  mgr.GetRESTMapper(),
 		InformerManager:             dynamicInformerManager,
-		PlacementControllerV1Alpha1: clusterResourcePlacementControllerV1Alpha1,
 		PlacementControllerV1Beta1:  clusterResourcePlacementControllerV1Beta1,
 		ResourcePlacementController: resourcePlacementController,
 	}
 	resourceChangeController := controller.NewController(resourceChangeControllerName, controller.ClusterWideKeyFunc, rcr.Reconcile, rateLimiter)
 
+	// Set up the InformerPopulator that runs on ALL pods (leader and followers)
+	// This ensures all pods have synced informer caches for webhook validation
+	klog.Info("Setting up informer populator")
+	informerPopulator := &resourcewatcher.InformerPopulator{
+		DiscoveryClient: discoverClient,
+		RESTMapper:      mgr.GetRESTMapper(),
+		InformerManager: dynamicInformerManager,
+		ResourceConfig:  resourceConfig,
+	}
+
+	if err := mgr.Add(informerPopulator); err != nil {
+		klog.ErrorS(err, "Failed to setup informer populator")
+		return err
+	}
+
 	// Set up a runner that starts all the custom controllers we created above
+	// This runs ONLY on the leader and adds event handlers to the informers created by InformerPopulator
 	resourceChangeDetector := &resourcewatcher.ChangeDetector{
 		DiscoveryClient: discoverClient,
 		RESTMapper:      mgr.GetRESTMapper(),
-		ClusterResourcePlacementControllerV1Alpha1: clusterResourcePlacementControllerV1Alpha1,
-		ClusterResourcePlacementControllerV1Beta1:  clusterResourcePlacementControllerV1Beta1,
-		ResourcePlacementController:                resourcePlacementController,
-		ResourceChangeController:                   resourceChangeController,
-		MemberClusterPlacementController:           memberClusterPlacementController,
-		InformerManager:                            dynamicInformerManager,
-		ResourceConfig:                             resourceConfig,
-		SkippedNamespaces:                          skippedNamespaces,
-		ConcurrentPlacementWorker:                  int(math.Ceil(float64(opts.MaxConcurrentClusterPlacement) / 10)),
-		ConcurrentResourceChangeWorker:             opts.ConcurrentResourceChangeSyncs,
+		ClusterResourcePlacementControllerV1Beta1: clusterResourcePlacementControllerV1Beta1,
+		ResourcePlacementController:               resourcePlacementController,
+		ResourceChangeController:                  resourceChangeController,
+		InformerManager:                           dynamicInformerManager,
+		ResourceConfig:                            resourceConfig,
+		SkippedNamespaces:                         skippedNamespaces,
+		ConcurrentPlacementWorker:                 int(math.Ceil(float64(opts.MaxConcurrentClusterPlacement) / 10)),
+		ConcurrentResourceChangeWorker:            opts.ConcurrentResourceChangeSyncs,
+		EnableWorkload:                            opts.EnableWorkload,
 	}
 
 	if err := mgr.Add(resourceChangeDetector); err != nil {

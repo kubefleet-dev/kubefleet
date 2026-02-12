@@ -518,6 +518,9 @@ spec:
                       type: object
                     type: array
                 type: object
+                x-kubernetes-validations:
+                - message: placement type is immutable
+                  rule: '!(self.placementType != oldSelf.placementType)'
               resourceSelectors:
                 description: |-
                   ResourceSelectors is an array of selectors used to select cluster scoped resources. The selectors are `ORed`.
@@ -989,10 +992,17 @@ spec:
                     - RollingUpdate
                     - External
                     type: string
+                    x-kubernetes-validations:
+                    - message: cannot change rollout strategy type from 'External'
+                        to other types
+                      rule: '!(self != ''External'' && oldSelf == ''External'')'
                 type: object
             required:
             - resourceSelectors
             type: object
+            x-kubernetes-validations:
+            - message: policy cannot be removed once set
+              rule: '!(has(oldSelf.policy) && !has(self.policy))'
           status:
             description: The observed status of ResourcePlacement.
             properties:

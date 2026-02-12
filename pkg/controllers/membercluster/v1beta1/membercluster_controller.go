@@ -426,6 +426,14 @@ func (r *Reconciler) syncRoleBinding(ctx context.Context, mc *clusterv1beta1.Mem
 			Name:     roleName,
 		},
 	}
+	// For User and Group kind, the APIGroup is defaulted to rbac.authorization.k8s.io if not set.
+	// Reference: https://pkg.go.dev/k8s.io/api/rbac/v1#Subject
+	for i := range expectedRoleBinding.Subjects {
+		subj := &expectedRoleBinding.Subjects[i]
+		if subj.APIGroup == "" && (subj.Kind == rbacv1.GroupKind || subj.Kind == rbacv1.UserKind) {
+			subj.APIGroup = rbacv1.GroupName
+		}
+	}
 
 	// Creates role binding if not found.
 	var currentRoleBinding rbacv1.RoleBinding
@@ -515,8 +523,18 @@ func (r *Reconciler) syncInternalMemberClusterStatus(imc *clusterv1beta1.Interna
 	}
 
 	// TODO: We didn't handle condition type: clusterv1beta1.ConditionTypeMemberClusterHealthy.
-	// Copy Agent status.
-	mc.Status.AgentStatus = imc.Status.AgentStatus
+	// Copy Agent status and set ObservedGeneration for agent conditions.
+	if len(imc.Status.AgentStatus) > 0 {
+		mc.Status.AgentStatus = make([]clusterv1beta1.AgentStatus, len(imc.Status.AgentStatus))
+	}
+	for i := range imc.Status.AgentStatus {
+		mc.Status.AgentStatus[i] = *imc.Status.AgentStatus[i].DeepCopy()
+		// Set ObservedGeneration for each agent condition.
+		for j := range mc.Status.AgentStatus[i].Conditions {
+			mc.Status.AgentStatus[i].Conditions[j].ObservedGeneration = mc.GetGeneration()
+		}
+	}
+
 	r.aggregateJoinedCondition(mc)
 	// Copy resource usages.
 	mc.Status.ResourceUsage = imc.Status.ResourceUsage

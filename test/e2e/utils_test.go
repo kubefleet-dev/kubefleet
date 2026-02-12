@@ -57,6 +57,18 @@ import (
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
 )
 
+// StatefulSetVariant represents different StatefulSet configurations for testing
+type StatefulSetVariant int
+
+const (
+	// StatefulSetBasic is a StatefulSet without any persistent volume claims
+	StatefulSetBasic StatefulSetVariant = iota
+	// StatefulSetInvalidStorage is a StatefulSet with a non-existent storage class
+	StatefulSetInvalidStorage
+	// StatefulSetWithStorage is a StatefulSet with a valid standard storage class
+	StatefulSetWithStorage
+)
+
 var (
 	croTestAnnotationKey    = "cro-test-annotation"
 	croTestAnnotationValue  = "cro-test-annotation-val"
@@ -85,7 +97,7 @@ func createMemberCluster(name, svcAccountName string, labels, annotations map[st
 			HeartbeatPeriodSeconds: memberClusterHeartbeatPeriodSeconds,
 		},
 	}
-	Expect(hubClient.Create(ctx, mcObj)).To(Succeed(), "Failed to create member cluster object %s", name)
+	Expect(hubClient.Create(ctx, mcObj)).To(SatisfyAny(&utils.AlreadyExistMatcher{}, Succeed()), "Failed to create member cluster object %s", name)
 }
 
 func updateMemberClusterDeleteOptions(name string, deleteOptions *clusterv1beta1.DeleteOptions) {
@@ -312,10 +324,15 @@ func checkIfAzurePropertyProviderIsWorking() {
 			ignoreCostProperties := cmpopts.IgnoreMapEntries(func(k clusterv1beta1.PropertyName, v clusterv1beta1.PropertyValue) bool {
 				return k == azure.PerCPUCoreCostProperty || k == azure.PerGBMemoryCostProperty
 			})
+			// we don't know the exact value of k8s version and cluster entry point
+			ignoreClusterProperties := cmpopts.IgnoreMapEntries(func(k clusterv1beta1.PropertyName, v clusterv1beta1.PropertyValue) bool {
+				return k == propertyprovider.K8sVersionProperty || k == propertyprovider.ClusterCertificateAuthorityProperty
+			})
 			if diff := cmp.Diff(
 				mcObj.Status.Properties, wantStatus.Properties,
 				ignoreTimeTypeFields,
 				ignoreCostProperties,
+				ignoreClusterProperties,
 			); diff != "" {
 				return fmt.Errorf("member cluster status properties diff (-got, +want):\n%s", diff)
 			}
@@ -576,7 +593,7 @@ func cleanupInvalidClusters() {
 		}
 		Eventually(func() error {
 			err := hubClient.Get(ctx, types.NamespacedName{Name: name}, mcObj)
-			if err != nil {
+			if err != nil && !k8serrors.IsNotFound(err) {
 				return err
 			}
 			mcObj.Finalizers = []string{}
@@ -658,6 +675,29 @@ func deleteTestResourceCRD() {
 		},
 	}
 	Expect(hubClient.Delete(ctx, &crd)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}))
+}
+
+func waitForCRDToBeReady(crdName string) {
+	Eventually(func() error { // wait for CRD to be created
+		crd := &apiextensionsv1.CustomResourceDefinition{}
+		if err := hubClient.Get(ctx, types.NamespacedName{Name: crdName}, crd); err != nil {
+			return err
+		}
+		if crd.Status.Conditions == nil {
+			return fmt.Errorf("CRD status conditions are nil for %s", crdName)
+		}
+
+		for _, cond := range crd.Status.Conditions {
+			if cond.Type == apiextensionsv1.Established && cond.Status != apiextensionsv1.ConditionTrue {
+				return fmt.Errorf("CRD is not established: %s", crdName)
+			}
+			if cond.Type == apiextensionsv1.NamesAccepted && cond.Status != apiextensionsv1.ConditionTrue {
+				return fmt.Errorf("CRD names are not accepted: %s", crdName)
+			}
+		}
+
+		return nil
+	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "CRD failed to be ready %s", crdName)
 }
 
 func createTestResourceCRD() {
@@ -1019,6 +1059,20 @@ func checkIfRemovedWorkResourcesFromMemberClustersConsistently(clusters []*frame
 		Consistently(workResourcesRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove work resources from member cluster %s consistently", memberCluster.ClusterName)
 	}
 }
+
+func checkIfRemovedConfigMapFromAllMemberClustersConsistently() {
+	checkIfRemovedConfigMapFromMemberClustersConsistently(allMemberClusters)
+}
+
+func checkIfRemovedConfigMapFromMemberClustersConsistently(clusters []*framework.Cluster) {
+	for idx := range clusters {
+		memberCluster := clusters[idx]
+
+		configMapRemovedActual := namespacedResourcesRemovedFromClusterActual(memberCluster)
+		Consistently(configMapRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to remove config map from member cluster %s consistently", memberCluster.ClusterName)
+	}
+}
+
 func checkNamespaceExistsWithOwnerRefOnMemberCluster(nsName, crpName string) {
 	Consistently(func() error {
 		ns := &corev1.Namespace{}
@@ -1534,13 +1588,18 @@ func readDaemonSetTestManifest(testDaemonSet *appsv1.DaemonSet) {
 	Expect(err).Should(Succeed())
 }
 
-func readStatefulSetTestManifest(testStatefulSet *appsv1.StatefulSet, withVolume bool) {
+func readStatefulSetTestManifest(testStatefulSet *appsv1.StatefulSet, variant StatefulSetVariant) {
 	By("Read the statefulSet resource")
-	if withVolume {
-		Expect(utils.GetObjectFromManifest("resources/statefulset-with-volume.yaml", testStatefulSet)).Should(Succeed())
-	} else {
-		Expect(utils.GetObjectFromManifest("resources/test-statefulset.yaml", testStatefulSet)).Should(Succeed())
+	var manifestPath string
+	switch variant {
+	case StatefulSetBasic:
+		manifestPath = "resources/statefulset-basic.yaml"
+	case StatefulSetInvalidStorage:
+		manifestPath = "resources/statefulset-invalid-storage.yaml"
+	case StatefulSetWithStorage:
+		manifestPath = "resources/statefulset-with-storage.yaml"
 	}
+	Expect(utils.GetObjectFromManifest(manifestPath, testStatefulSet)).Should(Succeed())
 }
 
 func readServiceTestManifest(testService *corev1.Service) {

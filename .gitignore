@@ -34,3 +34,7 @@ ut-coverage.xml
 *~
 
 .vscode/
+.qoder/
+
+# Helm chart packaging
+.helm-packages/

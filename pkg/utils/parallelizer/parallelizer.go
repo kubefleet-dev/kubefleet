@@ -30,19 +30,25 @@ const (
 )
 
 // Parallelizer helps run tasks in parallel.
-type Parallerlizer struct {
+type Parallelizer interface {
+	// ParallelizeUntil runs tasks in parallel, wrapping workqueue.ParallelizeUntil.
+	ParallelizeUntil(ctx context.Context, pieces int, doWork workqueue.DoWorkPieceFunc, operation string)
+}
+
+// Parallelizer helps run tasks in parallel.
+type parallelizer struct {
 	numOfWorkers int
 }
 
-// NewParallelizer returns a Parallelizer for running tasks in parallel.
-func NewParallelizer(workers int) *Parallerlizer {
-	return &Parallerlizer{
+// NewParallelizer returns a parallelizer for running tasks in parallel.
+func NewParallelizer(workers int) *parallelizer {
+	return &parallelizer{
 		numOfWorkers: workers,
 	}
 }
 
 // ParallelizeUntil wraps workqueue.ParallelizeUntil for running tasks in parallel.
-func (p *Parallerlizer) ParallelizeUntil(ctx context.Context, pieces int, doWork workqueue.DoWorkPieceFunc, operation string) {
+func (p *parallelizer) ParallelizeUntil(ctx context.Context, pieces int, doWork workqueue.DoWorkPieceFunc, operation string) {
 	doWorkWithLogs := func(piece int) {
 		klog.V(4).Infof("run piece %d for operation %s", piece, operation)
 		doWork(piece)
@@ -50,4 +56,13 @@ func (p *Parallerlizer) ParallelizeUntil(ctx context.Context, pieces int, doWork
 	}
 
 	workqueue.ParallelizeUntil(ctx, p.numOfWorkers, pieces, doWorkWithLogs)
+
+	// Note (chenyu1): the ParallelizeUntil method is essentially a thin wrapper around the
+	// workqueue.ParallelizeUntil method. Note that the workqueue.ParallelizeUntil method
+	// right now does not return any error; it returns when the context is cancelled, possibly
+	// in a willingly manner. Some of the KubeFleet code makes use of this to facilitate a
+	// fail-fast pattern (i.e., pass in a child context to the parallelizer; if one worker
+	// has exited, cancel the child context in the worker and consequently the whole parallelization).
+	// As only the caller knows why a context is cancelled (willingly by a worker or not), we leave it to the
+	// caller to inspect the context after this method returns rather than trying to do it here.
 }

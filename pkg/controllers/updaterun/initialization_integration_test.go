@@ -57,7 +57,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 	var resourceBindings []*placementv1beta1.ClusterResourceBinding
 	var targetClusters []*clusterv1beta1.MemberCluster
 	var unscheduledClusters []*clusterv1beta1.MemberCluster
-	var resourceSnapshot *placementv1beta1.ClusterResourceSnapshot
+	var resourceSnapshot, resourceSnapshot2, resourceSnapshot3 *placementv1beta1.ClusterResourceSnapshot
 	var clusterResourceOverride *placementv1beta1.ClusterResourceOverrideSnapshot
 
 	BeforeEach(func() {
@@ -69,12 +69,15 @@ var _ = Describe("Updaterun initialization tests", func() {
 		updateRunNamespacedName = types.NamespacedName{Name: testUpdateRunName}
 
 		updateRun = generateTestClusterStagedUpdateRun()
+		updateRun.Spec.State = placementv1beta1.StateInitialize
 		crp = generateTestClusterResourcePlacement()
 		updateStrategy = generateTestClusterStagedUpdateStrategy()
 		clusterResourceOverride = generateTestClusterResourceOverride()
 		resourceBindings, targetClusters, unscheduledClusters = generateTestClusterResourceBindingsAndClusters(1)
 		policySnapshot = generateTestClusterSchedulingPolicySnapshot(1, len(targetClusters))
 		resourceSnapshot = generateTestClusterResourceSnapshot()
+		resourceSnapshot2 = generateTestClusterResourceSnapshot()
+		resourceSnapshot3 = generateTestClusterResourceSnapshot()
 
 		// Set smaller wait time for testing
 		stageUpdatingWaitTime = time.Second * 3
@@ -113,9 +116,13 @@ var _ = Describe("Updaterun initialization tests", func() {
 		Expect(k8sClient.Delete(ctx, updateStrategy)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}))
 		updateStrategy = nil
 
-		By("Deleting the clusterResourceSnapshot")
+		By("Deleting the clusterResourceSnapshots")
 		Expect(k8sClient.Delete(ctx, resourceSnapshot)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}))
 		resourceSnapshot = nil
+		Expect(k8sClient.Delete(ctx, resourceSnapshot2)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}))
+		resourceSnapshot2 = nil
+		Expect(k8sClient.Delete(ctx, resourceSnapshot3)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}))
+		resourceSnapshot3 = nil
 
 		By("Deleting the clusterResourceOverride")
 		Expect(k8sClient.Delete(ctx, clusterResourceOverride)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}))
@@ -130,7 +137,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 	Context("Test validateCRP", func() {
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should fail to initialize if CRP is not found", func() {
@@ -182,7 +189,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should fail to initialize if the latest policy snapshot is not found", func() {
@@ -292,7 +299,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 		It("Should copy the latest policy snapshot details to the updateRun status -- pickFixed policy", func() {
 			By("Creating scheduling policy snapshot with pickFixed policy")
@@ -340,7 +347,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 		})
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should copy the latest policy snapshot details to the updateRun status -- pickAll policy", func() {
@@ -398,7 +405,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 		It("Should fail to initialize if there is no selected or to-be-deleted cluster", func() {
 			By("Creating a new clusterStagedUpdateRun")
@@ -492,7 +499,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should not report error if there are only to-be-deleted clusters", func() {
@@ -557,7 +564,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("fail the initialization if the clusterStagedUpdateStrategy is not found", func() {
@@ -572,9 +579,9 @@ var _ = Describe("Updaterun initialization tests", func() {
 			Context("Test validateAfterStageTask", func() {
 				It("Should fail to initialize if any after stage task has 2 same tasks", func() {
 					By("Creating a clusterStagedUpdateStrategy with 2 same after stage tasks")
-					updateStrategy.Spec.Stages[0].AfterStageTasks = []placementv1beta1.AfterStageTask{
-						{Type: placementv1beta1.AfterStageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: time.Second * 1}},
-						{Type: placementv1beta1.AfterStageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: time.Second * 1}},
+					updateStrategy.Spec.Stages[0].AfterStageTasks = []placementv1beta1.StageTask{
+						{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: time.Second * 1}},
+						{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: time.Second * 1}},
 					}
 					Expect(k8sClient.Create(ctx, updateStrategy)).To(Succeed())
 
@@ -587,8 +594,8 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 				It("Should fail to initialize if the wait time is not valid", func() {
 					By("Creating a clusterStagedUpdateStrategy with invalid wait time duration")
-					updateStrategy.Spec.Stages[0].AfterStageTasks = []placementv1beta1.AfterStageTask{
-						{Type: placementv1beta1.AfterStageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: time.Second * 0}},
+					updateStrategy.Spec.Stages[0].AfterStageTasks = []placementv1beta1.StageTask{
+						{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: time.Second * 0}},
 					}
 					Expect(k8sClient.Create(ctx, updateStrategy)).To(Succeed())
 
@@ -654,7 +661,8 @@ var _ = Describe("Updaterun initialization tests", func() {
 						return err
 					}
 
-					want := generateSucceededInitializationStatus(crp, updateRun, policySnapshot, updateStrategy, clusterResourceOverride)
+					// no resource snapshot created in this test
+					want := generateSucceededInitializationStatus(crp, updateRun, "", policySnapshot, updateStrategy, clusterResourceOverride)
 					// No clusters should be selected in the first stage.
 					want.StagesStatus[0].Clusters = []placementv1beta1.ClusterUpdatingStatus{}
 					// All clusters should be selected in the second stage and sorted by name.
@@ -696,7 +704,8 @@ var _ = Describe("Updaterun initialization tests", func() {
 					return err
 				}
 
-				want := generateSucceededInitializationStatus(crp, updateRun, policySnapshot, updateStrategy, clusterResourceOverride)
+				// no resource snapshot created in this test
+				want := generateSucceededInitializationStatus(crp, updateRun, "", policySnapshot, updateStrategy, clusterResourceOverride)
 				for i := range want.StagesStatus[0].Clusters {
 					// Remove the CROs, as they are not added in this test.
 					want.StagesStatus[0].Clusters[i].ClusterResourceOverrideSnapshots = nil
@@ -757,7 +766,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "invalid resource snapshot index `invalid-index` provided")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should fail to initialize if the specified resource snapshot index is invalid - negative integer", func() {
@@ -769,7 +778,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "invalid resource snapshot index `-1` provided")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should fail to initialize if the specified resource snapshot is not found - no resourceSnapshots at all", func() {
@@ -780,7 +789,32 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "no resourceSnapshots with index `0` found")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
+		})
+
+		It("Should NOT fail to initialize if the specified resource snapshot is not found when no resource index specified - no resourceSnapshots at all", func() {
+			By("Creating a new clusterStagedUpdateRun without specifying resourceSnapshotIndex")
+			updateRun.Spec.ResourceSnapshotIndex = ""
+			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
+
+			By("Validating the initialization did not fail due to resourceSnapshot not found (retryable error)")
+			// Populate the cache first.
+			Eventually(func() error {
+				if err := k8sClient.Get(ctx, updateRunNamespacedName, updateRun); err != nil {
+					return err
+				}
+				return nil
+			}, timeout, interval).Should(Succeed(), "failed to get the updateRun")
+			Consistently(func() error {
+				if err := k8sClient.Get(ctx, updateRunNamespacedName, updateRun); err != nil {
+					return err
+				}
+				initCond := meta.FindStatusCondition(updateRun.Status.Conditions, string(placementv1beta1.StagedUpdateRunConditionInitialized))
+				if initCond != nil {
+					return fmt.Errorf("got initialization condition: %v, want nil", initCond)
+				}
+				return nil
+			}, duration, interval).Should(Succeed(), "the initialization should keep retrying, not failed")
 		})
 
 		It("Should fail to initialize if the specified resource snapshot is not found - no CRP label found", func() {
@@ -795,7 +829,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "no resourceSnapshots with index `0` found")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should fail to initialize if the specified resource snapshot is not found - no resource index label found", func() {
@@ -810,7 +844,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "no resourceSnapshots with index `0` found")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should fail to initialize if the specified resource snapshot is not master snapshot", func() {
@@ -825,7 +859,30 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "no master resourceSnapshot found for placement")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
+		})
+
+		It("Should select latest resource snapshot in the status when no resource index defined", func() {
+			By("Creating a new resource snapshot")
+			Expect(k8sClient.Create(ctx, resourceSnapshot)).To(Succeed())
+
+			By("Creating a new cluster resource override")
+			Expect(k8sClient.Create(ctx, clusterResourceOverride)).To(Succeed())
+
+			By("Creating a new clusterStagedUpdateRun without specifying resourceSnapshotIndex")
+			updateRun.Spec.ResourceSnapshotIndex = ""
+			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
+
+			By("Validating the clusterStagedUpdateRun stats")
+			initialized := generateSucceededInitializationStatus(crp, updateRun, testResourceSnapshotIndex, policySnapshot, updateStrategy, clusterResourceOverride)
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, initialized, "")
+			Expect(updateRun.Status.ResourceSnapshotIndexUsed).To(Equal(testResourceSnapshotIndex), "resource snapshot index used mismatch in the updateRun status")
+
+			By("Validating the clusterStagedUpdateRun initialized consistently")
+			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, initialized, "")
+
+			By("Checking update run status metrics are emitted")
+			validateUpdateRunMetricsEmitted(generateInitializationSucceededMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 
 		It("Should put related ClusterResourceOverrides in the status", func() {
@@ -839,15 +896,48 @@ var _ = Describe("Updaterun initialization tests", func() {
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 			By("Validating the clusterStagedUpdateRun stats")
-			initialized := generateSucceededInitializationStatus(crp, updateRun, policySnapshot, updateStrategy, clusterResourceOverride)
-			want := generateExecutionStartedStatus(updateRun, initialized)
-			validateClusterStagedUpdateRunStatus(ctx, updateRun, want, "")
+			initialized := generateSucceededInitializationStatus(crp, updateRun, testResourceSnapshotIndex, policySnapshot, updateStrategy, clusterResourceOverride)
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, initialized, "")
 
 			By("Validating the clusterStagedUpdateRun initialized consistently")
-			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, want, "")
+			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, initialized, "")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateProgressingMetric(updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationSucceededMetric(placementv1beta1.StateInitialize, updateRun))
+		})
+
+		It("Should pick latest master resource snapshot if multiple snapshots", func() {
+			By("Creating a new resource snapshot")
+			resourceSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] = "false"
+			Expect(k8sClient.Create(ctx, resourceSnapshot)).To(Succeed())
+
+			By("Creating a another new resource snapshot")
+			resourceSnapshot2.Name = testCRPName + "-1-snapshot"
+			resourceSnapshot2.Labels[placementv1beta1.IsLatestSnapshotLabel] = "false"
+			resourceSnapshot2.Labels[placementv1beta1.ResourceIndexLabel] = "1"
+			Expect(k8sClient.Create(ctx, resourceSnapshot2)).To(Succeed())
+
+			By("Creating a latest master resource snapshot")
+			resourceSnapshot3.Name = testCRPName + "-2-snapshot"
+			resourceSnapshot3.Labels[placementv1beta1.ResourceIndexLabel] = "2"
+			Expect(k8sClient.Create(ctx, resourceSnapshot3)).To(Succeed())
+
+			By("Creating a new cluster resource override")
+			Expect(k8sClient.Create(ctx, clusterResourceOverride)).To(Succeed())
+
+			By("Creating a new clusterStagedUpdateRun without specifying resourceSnapshotIndex")
+			updateRun.Spec.ResourceSnapshotIndex = ""
+			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
+
+			By("Validating the clusterStagedUpdateRun status")
+			initialized := generateSucceededInitializationStatus(crp, updateRun, "2", policySnapshot, updateStrategy, clusterResourceOverride)
+			validateClusterStagedUpdateRunStatus(ctx, updateRun, initialized, "")
+
+			By("Validating the clusterStagedUpdateRun initialized consistently")
+			validateClusterStagedUpdateRunStatusConsistently(ctx, updateRun, initialized, "")
+
+			By("Checking update run status metrics are emitted")
+			validateUpdateRunMetricsEmitted(generateInitializationSucceededMetric(placementv1beta1.StateInitialize, updateRun))
 		})
 	})
 })
@@ -872,6 +962,7 @@ func validateFailedInitCondition(ctx context.Context, updateRun *placementv1beta
 func generateSucceededInitializationStatus(
 	crp *placementv1beta1.ClusterResourcePlacement,
 	updateRun *placementv1beta1.ClusterStagedUpdateRun,
+	resourceSnapshotIndex string,
 	policySnapshot *placementv1beta1.ClusterSchedulingPolicySnapshot,
 	updateStrategy *placementv1beta1.ClusterStagedUpdateStrategy,
 	clusterResourceOverride *placementv1beta1.ClusterResourceOverrideSnapshot,
@@ -879,6 +970,7 @@ func generateSucceededInitializationStatus(
 	status := &placementv1beta1.UpdateRunStatus{
 		PolicySnapshotIndexUsed:    policySnapshot.Labels[placementv1beta1.PolicyIndexLabel],
 		PolicyObservedClusterCount: 10,
+		ResourceSnapshotIndexUsed:  resourceSnapshotIndex,
 		ApplyStrategy:              crp.Spec.Strategy.ApplyStrategy.DeepCopy(),
 		UpdateStrategySnapshot:     &updateStrategy.Spec,
 		StagesStatus: []placementv1beta1.StageUpdatingStatus{
@@ -917,15 +1009,25 @@ func generateSucceededInitializationStatus(
 		},
 	}
 	for i := range status.StagesStatus {
-		var tasks []placementv1beta1.AfterStageTaskStatus
-		for _, task := range updateStrategy.Spec.Stages[i].AfterStageTasks {
-			taskStatus := placementv1beta1.AfterStageTaskStatus{Type: task.Type}
-			if task.Type == placementv1beta1.AfterStageTaskTypeApproval {
-				taskStatus.ApprovalRequestName = updateRun.Name + "-" + status.StagesStatus[i].StageName
+		var beforeTasks []placementv1beta1.StageTaskStatus
+		for _, task := range updateStrategy.Spec.Stages[i].BeforeStageTasks {
+			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
+			if task.Type == placementv1beta1.StageTaskTypeApproval {
+				taskStatus.ApprovalRequestName = fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.Name, status.StagesStatus[i].StageName)
 			}
-			tasks = append(tasks, taskStatus)
+			beforeTasks = append(beforeTasks, taskStatus)
 		}
-		status.StagesStatus[i].AfterStageTaskStatus = tasks
+		status.StagesStatus[i].BeforeStageTaskStatus = beforeTasks
+
+		var afterTasks []placementv1beta1.StageTaskStatus
+		for _, task := range updateStrategy.Spec.Stages[i].AfterStageTasks {
+			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
+			if task.Type == placementv1beta1.StageTaskTypeApproval {
+				taskStatus.ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.Name, status.StagesStatus[i].StageName)
+			}
+			afterTasks = append(afterTasks, taskStatus)
+		}
+		status.StagesStatus[i].AfterStageTaskStatus = afterTasks
 	}
 	return status
 }
@@ -933,12 +1035,15 @@ func generateSucceededInitializationStatus(
 func generateSucceededInitializationStatusForSmallClusters(
 	crp *placementv1beta1.ClusterResourcePlacement,
 	updateRun *placementv1beta1.ClusterStagedUpdateRun,
+	resourceSnapshotIndex string,
 	policySnapshot *placementv1beta1.ClusterSchedulingPolicySnapshot,
 	updateStrategy *placementv1beta1.ClusterStagedUpdateStrategy,
+	numUnscheduledClusters int,
 ) *placementv1beta1.UpdateRunStatus {
 	status := &placementv1beta1.UpdateRunStatus{
 		PolicySnapshotIndexUsed:    policySnapshot.Labels[placementv1beta1.PolicyIndexLabel],
 		PolicyObservedClusterCount: 3,
+		ResourceSnapshotIndexUsed:  resourceSnapshotIndex,
 		ApplyStrategy:              crp.Spec.Strategy.ApplyStrategy.DeepCopy(),
 		UpdateStrategySnapshot:     &updateStrategy.Spec,
 		StagesStatus: []placementv1beta1.StageUpdatingStatus{
@@ -960,29 +1065,61 @@ func generateSucceededInitializationStatusForSmallClusters(
 			generateTrueCondition(updateRun, placementv1beta1.StagedUpdateRunConditionInitialized),
 		},
 	}
+	for i := range numUnscheduledClusters {
+		status.DeletionStageStatus.Clusters = append(status.DeletionStageStatus.Clusters,
+			placementv1beta1.ClusterUpdatingStatus{ClusterName: fmt.Sprintf("unscheduled-cluster-%d", i)})
+	}
 	for i := range status.StagesStatus {
-		var tasks []placementv1beta1.AfterStageTaskStatus
-		for _, task := range updateStrategy.Spec.Stages[i].AfterStageTasks {
-			taskStatus := placementv1beta1.AfterStageTaskStatus{Type: task.Type}
-			if task.Type == placementv1beta1.AfterStageTaskTypeApproval {
-				taskStatus.ApprovalRequestName = updateRun.Name + "-" + status.StagesStatus[i].StageName
+		var beforeTasks []placementv1beta1.StageTaskStatus
+		for _, task := range updateStrategy.Spec.Stages[i].BeforeStageTasks {
+			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
+			if task.Type == placementv1beta1.StageTaskTypeApproval {
+				taskStatus.ApprovalRequestName = fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.Name, status.StagesStatus[i].StageName)
 			}
-			tasks = append(tasks, taskStatus)
+			beforeTasks = append(beforeTasks, taskStatus)
 		}
-		status.StagesStatus[i].AfterStageTaskStatus = tasks
+		status.StagesStatus[i].BeforeStageTaskStatus = beforeTasks
+
+		var afterTasks []placementv1beta1.StageTaskStatus
+		for _, task := range updateStrategy.Spec.Stages[i].AfterStageTasks {
+			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
+			if task.Type == placementv1beta1.StageTaskTypeApproval {
+				taskStatus.ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.Name, status.StagesStatus[i].StageName)
+			}
+			afterTasks = append(afterTasks, taskStatus)
+		}
+		status.StagesStatus[i].AfterStageTaskStatus = afterTasks
 	}
 	return status
 }
 
 func generateExecutionStartedStatus(
 	updateRun *placementv1beta1.ClusterStagedUpdateRun,
-	initialized *placementv1beta1.UpdateRunStatus,
+	status *placementv1beta1.UpdateRunStatus,
 ) *placementv1beta1.UpdateRunStatus {
 	// Mark updateRun execution has started.
-	initialized.Conditions = append(initialized.Conditions, generateTrueCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
+	meta.SetStatusCondition(&status.Conditions, generateTrueCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
+
 	// Mark updateRun 1st stage has started.
-	initialized.StagesStatus[0].Conditions = append(initialized.StagesStatus[0].Conditions, generateTrueCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
+	meta.SetStatusCondition(&status.StagesStatus[0].Conditions, generateTrueCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
+
 	// Mark updateRun 1st cluster in the 1st stage has started.
-	initialized.StagesStatus[0].Clusters[0].Conditions = []metav1.Condition{generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted)}
-	return initialized
+	status.StagesStatus[0].Clusters[0].Conditions = []metav1.Condition{generateTrueCondition(updateRun, placementv1beta1.ClusterUpdatingConditionStarted)}
+	return status
+}
+
+func generateExecutionNotStartedStatus(
+	updateRun *placementv1beta1.ClusterStagedUpdateRun,
+	status *placementv1beta1.UpdateRunStatus,
+) *placementv1beta1.UpdateRunStatus {
+	// Mark updateRun execution has not started.
+	status.Conditions = append(status.Conditions, generateFalseCondition(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing))
+
+	// Mark updateRun 1st stage has not started.
+	status.StagesStatus[0].Conditions = append(status.StagesStatus[0].Conditions, generateFalseCondition(updateRun, placementv1beta1.StageUpdatingConditionProgressing))
+
+	// Mark updateRun 1st stage BeforeStageTasks has created approval request.
+	status.StagesStatus[0].BeforeStageTaskStatus[0].Conditions = append(status.StagesStatus[0].BeforeStageTaskStatus[0].Conditions,
+		generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestCreated))
+	return status
 }

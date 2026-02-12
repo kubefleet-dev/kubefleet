@@ -45,6 +45,7 @@ import (
 	fleetnetworkingv1alpha1 "go.goms.io/fleet-networking/api/v1alpha1"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	placementv1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1"
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider/azure/trackers"
@@ -75,7 +76,6 @@ const (
 	hubClusterSAName = "fleet-hub-agent"
 	fleetSystemNS    = "fleet-system"
 
-	kubeConfigPathEnvVarName            = "KUBECONFIG"
 	propertyProviderEnvVarName          = "PROPERTY_PROVIDER"
 	azurePropertyProviderEnvVarValue    = "azure"
 	fleetClusterResourceIDAnnotationKey = "fleet.azure.com/cluster-resource-id"
@@ -195,6 +195,9 @@ var (
 	lessFuncPlacementStatus = func(a, b placementv1beta1.PerClusterPlacementStatus) bool {
 		return a.ClusterName < b.ClusterName
 	}
+	lessFuncPlacementStatusV1 = func(a, b placementv1.ResourcePlacementStatus) bool {
+		return a.ClusterName < b.ClusterName
+	}
 	lessFuncPlacementStatusByConditions = func(a, b placementv1beta1.PerClusterPlacementStatus) bool {
 		return len(a.Conditions) < len(b.Conditions)
 	}
@@ -221,7 +224,9 @@ var (
 	})
 	ignoreTimeTypeFields                                      = cmpopts.IgnoreTypes(time.Time{}, metav1.Time{})
 	ignorePlacementStatusDriftedPlacementsTimestampFields     = cmpopts.IgnoreFields(placementv1beta1.DriftedResourcePlacement{}, "ObservationTime", "FirstDriftedObservedTime")
+	ignorePlacementStatusDriftedPlacementsTimestampFieldsV1   = cmpopts.IgnoreFields(placementv1.DriftedResourcePlacement{}, "ObservationTime", "FirstDriftedObservedTime")
 	ignorePlacementStatusDiffedPlacementsTimestampFields      = cmpopts.IgnoreFields(placementv1beta1.DiffedResourcePlacement{}, "ObservationTime", "FirstDiffedObservedTime")
+	ignorePlacementStatusDiffedPlacementsTimestampFieldsV1    = cmpopts.IgnoreFields(placementv1.DiffedResourcePlacement{}, "ObservationTime", "FirstDiffedObservedTime")
 	ignorePerClusterPlacementStatusObservedResourceIndexField = cmpopts.IgnoreFields(placementv1beta1.PerClusterPlacementStatus{}, "ObservedResourceIndex")
 	ignorePlacementStatusObservedResourceIndexField           = cmpopts.IgnoreFields(placementv1beta1.PlacementStatus{}, "ObservedResourceIndex")
 
@@ -264,13 +269,6 @@ var (
 		ignoreClusterNameField,
 		cmpopts.EquateEmpty(),
 	}
-
-	updateRunStatusCmpOption = cmp.Options{
-		cmpopts.SortSlices(lessFuncCondition),
-		utils.IgnoreConditionLTTAndMessageFields,
-		cmpopts.IgnoreFields(placementv1beta1.StageUpdatingStatus{}, "StartTime", "EndTime"),
-		cmpopts.EquateEmpty(),
-	}
 )
 
 // TestMain sets up the E2E test environment.
@@ -284,6 +282,9 @@ func TestMain(m *testing.M) {
 	}
 	if err := placementv1beta1.AddToScheme(scheme); err != nil {
 		log.Fatalf("failed to add custom APIs (placement) to the runtime scheme: %v", err)
+	}
+	if err := placementv1.AddToScheme(scheme); err != nil {
+		log.Fatalf("failed to add custom APIs (placement v1) to the runtime scheme: %v", err)
 	}
 	if err := fleetnetworkingv1alpha1.AddToScheme(scheme); err != nil {
 		log.Fatalf("failed to add custom APIs (networking) to the runtime scheme: %v", err)
@@ -321,9 +322,6 @@ func beforeSuiteForAllProcesses() {
 	fs := flag.NewFlagSet("klog", flag.ContinueOnError)
 	klog.InitFlags(fs)
 	Expect(fs.Parse([]string{"--v", "5", "-add_dir_header", "true"})).Should(Succeed())
-
-	// Check if the required environment variable, which specifies the path to kubeconfig file, has been set.
-	Expect(os.Getenv(kubeConfigPathEnvVarName)).NotTo(BeEmpty(), "Required environment variable KUBECONFIG is not set")
 
 	resourceSnapshotCreationMinimumIntervalEnv := os.Getenv("RESOURCE_SNAPSHOT_CREATION_MINIMUM_INTERVAL")
 	if resourceSnapshotCreationMinimumIntervalEnv == "" {

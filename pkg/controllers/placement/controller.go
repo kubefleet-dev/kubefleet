@@ -30,10 +30,13 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -56,6 +59,31 @@ var resourceSnapshotResourceSizeLimit = 800 * (1 << 10) // 800KB
 // We use a safety resync period to requeue all the finished request just in case there is a bug in the system.
 // TODO: unify all the controllers with this pattern and make this configurable in place of the controller runtime resync period.
 const controllerResyncPeriod = 30 * time.Minute
+
+// Reconciler reconciles a cluster resource placement object
+type Reconciler struct {
+	// Client is used to update objects which goes to the api server directly.
+	Client client.Client
+
+	// UncachedReader is the uncached read-only client for accessing Kubernetes API server; in most cases client should
+	// be used instead, unless consistency becomes a serious concern.
+	// It's only needed by v1beta1 APIs.
+	UncachedReader client.Reader
+
+	Recorder record.EventRecorder
+
+	Scheme *runtime.Scheme
+
+	// ResourceSelectorResolver
+	ResourceSelectorResolver controller.ResourceSelectorResolver
+
+	// ResourceSnapshotCreationMinimumInterval is the minimum interval to create a new resourcesnapshot
+	// to avoid too frequent updates.
+	ResourceSnapshotCreationMinimumInterval time.Duration
+
+	// ResourceChangesCollectionDuration is the duration for collecting resource changes into one snapshot.
+	ResourceChangesCollectionDuration time.Duration
+}
 
 func (r *Reconciler) Reconcile(ctx context.Context, key controller.QueueKey) (ctrl.Result, error) {
 	placementKey, ok := key.(string)
@@ -156,7 +184,7 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 	}
 
 	// validate the resource selectors first before creating any snapshot
-	envelopeObjCount, selectedResources, selectedResourceIDs, err := r.selectResourcesForPlacement(placementObj)
+	envelopeObjCount, selectedResources, selectedResourceIDs, err := r.ResourceSelectorResolver.SelectResourcesForPlacement(placementObj)
 	if err != nil {
 		klog.ErrorS(err, "Failed to select the resources", "placement", placementKObj)
 		if !errors.Is(err, controller.ErrUserError) {
@@ -202,7 +230,7 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 	}
 
 	// We don't requeue the request here immediately so that placement can keep tracking the rollout status.
-	if createResourceSnapshotRes.Requeue {
+	if createResourceSnapshotRes.RequeueAfter > 0 {
 		latestResourceSnapshotKObj := klog.KObj(latestResourceSnapshot)
 		// We cannot create the resource snapshot immediately because of the resource snapshot creation interval.
 		// Rebuild the seletedResourceIDs using the latestResourceSnapshot.
@@ -258,7 +286,7 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 			klog.V(2).InfoS("Placement has finished the rollout process and reached the desired status", "placement", placementKObj, "generation", placementObj.GetGeneration())
 			r.Recorder.Event(placementObj, corev1.EventTypeNormal, "PlacementRolloutCompleted", "Placement has finished the rollout process and reached the desired status")
 		}
-		if createResourceSnapshotRes.Requeue {
+		if createResourceSnapshotRes.RequeueAfter > 0 {
 			klog.V(2).InfoS("Requeue the request to handle the new resource snapshot", "placement", placementKObj, "generation", placementObj.GetGeneration())
 			// We requeue the request to handle the resource snapshot.
 			return createResourceSnapshotRes, nil
@@ -280,7 +308,7 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 		// Here we requeue the request to prevent a bug in the watcher.
 		klog.V(2).InfoS("Scheduler has not scheduled any cluster yet and requeue the request as a backup",
 			"placement", placementKObj, "scheduledCondition", placementObj.GetCondition(string(fleetv1beta1.ClusterResourcePlacementScheduledConditionType)), "generation", placementObj.GetGeneration())
-		if createResourceSnapshotRes.Requeue {
+		if createResourceSnapshotRes.RequeueAfter > 0 {
 			klog.V(2).InfoS("Requeue the request to handle the new resource snapshot", "placement", placementKObj, "generation", placementObj.GetGeneration())
 			// We requeue the request to handle the resource snapshot.
 			return createResourceSnapshotRes, nil
@@ -288,7 +316,7 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 		return ctrl.Result{RequeueAfter: controllerResyncPeriod}, nil
 	}
 	klog.V(2).InfoS("Placement rollout has not finished yet and requeue the request", "placement", placementKObj, "status", placementObj.GetPlacementStatus(), "generation", placementObj.GetGeneration())
-	if createResourceSnapshotRes.Requeue {
+	if createResourceSnapshotRes.RequeueAfter > 0 {
 		klog.V(2).InfoS("Requeue the request to handle the new resource snapshot", "placement", placementKObj, "generation", placementObj.GetGeneration())
 		// We requeue the request to handle the resource snapshot.
 		return createResourceSnapshotRes, nil
@@ -514,7 +542,7 @@ func (r *Reconciler) getOrCreateResourceSnapshot(ctx context.Context, placement 
 		if error != nil {
 			return ctrl.Result{}, nil, error
 		}
-		if res.Requeue {
+		if res.RequeueAfter > 0 {
 			// If the latest resource snapshot is not ready to be updated, we requeue the request.
 			return res, latestResourceSnapshot, nil
 		}
@@ -597,7 +625,7 @@ func (r *Reconciler) shouldCreateNewResourceSnapshotNow(ctx context.Context, lat
 			"resourceSnapshot", snapshotKObj, "nextCreationTime", nextCreationTime, "latestResourceSnapshotCreationTime", latestResourceSnapshot.GetCreationTimestamp(),
 			"resourceSnapshotCreationMinimumInterval", r.ResourceSnapshotCreationMinimumInterval, "resourceChangesCollectionDuration", r.ResourceChangesCollectionDuration,
 			"afterDuration", nextCreationTime.Sub(now))
-		return ctrl.Result{Requeue: true, RequeueAfter: nextCreationTime.Sub(now)}, nil
+		return ctrl.Result{RequeueAfter: nextCreationTime.Sub(now)}, nil
 	}
 	return ctrl.Result{}, nil
 }
@@ -1175,7 +1203,7 @@ func (r *Reconciler) determineRolloutStateForPlacementWithExternalRolloutStrateg
 			})
 			// As placement status will refresh even if the spec has not changed, we reset any unused conditions to avoid confusion.
 			for i := condition.RolloutStartedCondition + 1; i < condition.TotalCondition; i++ {
-				meta.RemoveStatusCondition(&placementStatus.Conditions, string(i.ClusterResourcePlacementConditionType()))
+				meta.RemoveStatusCondition(&placementStatus.Conditions, getPlacementConditionType(placementObj, i))
 			}
 			return true, nil
 		}

@@ -23,12 +23,13 @@ import (
 	coordv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/klog/v2"
 	metricsV1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	fleetv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/v1alpha1"
 )
 
 var (
@@ -187,10 +188,6 @@ func NewResourceConfig(isAllowList bool) *ResourceConfig {
 	if r.isAllowList {
 		return r
 	}
-	// TODO: remove after we remove v1alpha1 support
-	// disable v1alpha1 related resources by default
-	r.AddGroup(fleetv1alpha1.GroupVersion.Group)
-	r.AddGroupVersionKind(WorkV1Alpha1GVK)
 
 	// disable cluster group by default
 	r.AddGroup(clusterv1beta1.GroupVersion.Group)
@@ -366,4 +363,27 @@ func (r *ResourceConfig) AddGroupKind(gk schema.GroupKind) {
 // AddGroupVersionKind stores a GroupVersionKind in the resource config.
 func (r *ResourceConfig) AddGroupVersionKind(gvk schema.GroupVersionKind) {
 	r.groupVersionKinds[gvk] = struct{}{}
+}
+
+// ShouldProcessResource returns whether a GroupVersionResource should be processed (watched or selected).
+// It checks if the resource is enabled based on the ResourceConfig settings.
+// Returns true if resourceConfig is nil (all APIs allowed by default) or if the resource is not disabled.
+func ShouldProcessResource(gvr schema.GroupVersionResource, restMapper meta.RESTMapper, resourceConfig *ResourceConfig) bool {
+	// By default, all of the APIs are allowed.
+	if resourceConfig == nil {
+		return true
+	}
+
+	gvks, err := restMapper.KindsFor(gvr)
+	if err != nil {
+		klog.ErrorS(err, "gvr transform failed", "gvr", gvr.String())
+		return false
+	}
+	for _, gvk := range gvks {
+		if resourceConfig.IsResourceDisabled(gvk) {
+			klog.V(4).InfoS("Skip processing resource", "group version kind", gvk.String())
+			return false
+		}
+	}
+	return true
 }

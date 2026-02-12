@@ -19,7 +19,9 @@ package workapplier
 import (
 	"context"
 	"flag"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -32,21 +34,24 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/textlogger"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrloption "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/parallelizer"
 	testv1alpha1 "github.com/kubefleet-dev/kubefleet/test/apis/v1alpha1"
+)
+
+const (
+	runWithPriorityQueueInCIEnvVarName = "KUBEFLEET_CI_WORK_APPLIER_RUN_WITH_PRIORITY_QUEUE"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
@@ -70,9 +75,27 @@ var (
 	memberDynamicClient2 dynamic.Interface
 	workApplier2         *Reconciler
 
+	memberCfg3           *rest.Config
+	memberEnv3           *envtest.Environment
+	hubMgr3              manager.Manager
+	memberClient3        client.Client
+	memberDynamicClient3 dynamic.Interface
+	workApplier3         *Reconciler
+
+	memberCfg4                      *rest.Config
+	memberEnv4                      *envtest.Environment
+	hubMgr4                         manager.Manager
+	memberClient4                   client.Client
+	memberClient4Wrapper            *clientWrapperWithStatusUpdateCounter
+	memberDynamicClient4            dynamic.Interface
+	workApplier4                    *Reconciler
+	hubClientWrapperForWorkApplier4 *clientWrapperWithStatusUpdateCounter
+
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	usePriorityQueue = false
 )
 
 const (
@@ -83,9 +106,40 @@ const (
 
 	memberReservedNSName1 = "fleet-member-experimental-1"
 	memberReservedNSName2 = "fleet-member-experimental-2"
+	memberReservedNSName3 = "fleet-member-experimental-3"
+	memberReservedNSName4 = "fleet-member-experimental-4"
+
+	parallelizerFixedDelay = time.Second * 5
 )
 
+// tasks in parallel with a fixed delay after completing each task group.
+//
+// This is added to help verify the behavior of waved parallel processing in the work applier.
+type parallelizerWithFixedDelay struct {
+	regularParallelizer parallelizer.Parallelizer
+	delay               time.Duration
+}
+
+func (p *parallelizerWithFixedDelay) ParallelizeUntil(ctx context.Context, pieces int, doWork workqueue.DoWorkPieceFunc, operation string) {
+	p.regularParallelizer.ParallelizeUntil(ctx, pieces, doWork, operation)
+	klog.V(2).InfoS("Parallelization completed, start to wait with a fixed delay", "operation", operation, "delay", p.delay)
+	// No need to add delay for non-waved operations.
+	if strings.HasPrefix(operation, "processingManifestsInWave") {
+		// Only log the delay for operations that are actually related to waves.
+		klog.V(2).InfoS("Waiting with a fixed delay after processing a wave", "operation", operation, "delay", p.delay)
+		time.Sleep(p.delay)
+	}
+}
+
+// Verify that parallelizerWithFixedDelay implements the parallelizer.Parallelizer interface.
+var _ parallelizer.Parallelizer = &parallelizerWithFixedDelay{}
+
 func TestAPIs(t *testing.T) {
+	if v := os.Getenv(runWithPriorityQueueInCIEnvVarName); len(v) != 0 {
+		t.Log("Priority queue is enabled for the integration tests")
+		usePriorityQueue = true
+	}
+
 	RegisterFailHandler(Fail)
 
 	RunSpecs(t, "Work Applier Integration Test Suite")
@@ -105,8 +159,24 @@ func setupResources() {
 		},
 	}
 	Expect(hubClient.Create(ctx, ns2)).To(Succeed())
+
+	ns3 := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: memberReservedNSName3,
+		},
+	}
+	Expect(hubClient.Create(ctx, ns3)).To(Succeed())
+
+	ns4 := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: memberReservedNSName4,
+		},
+	}
+	Expect(hubClient.Create(ctx, ns4)).To(Succeed())
 }
 
+// Note: each Ginkgo process must do the same setup; unlike our E2E tests, the integration
+// tests uses in-memory testing environments, and as a result cannot be shared across processes.
 var _ = BeforeSuite(func() {
 	ctx, cancel = context.WithCancel(context.TODO())
 
@@ -115,7 +185,9 @@ var _ = BeforeSuite(func() {
 	klog.InitFlags(fs)
 	Expect(fs.Parse([]string{"--v", "5", "-add_dir_header", "true"})).Should(Succeed())
 
-	klog.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+	logger := zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true))
+	klog.SetLogger(logger)
+	ctrl.SetLogger(logger)
 
 	By("Bootstrapping test environments")
 	hubEnv = &envtest.Environment{
@@ -143,6 +215,22 @@ var _ = BeforeSuite(func() {
 			filepath.Join("../../../", "test", "manifests"),
 		},
 	}
+	// memberEnv3 is the test environment for verifying the behavior of waved parallel processing in
+	// the work applier.
+	memberEnv3 = &envtest.Environment{
+		CRDDirectoryPaths: []string{
+			filepath.Join("../../../", "config", "crd", "bases"),
+			filepath.Join("../../../", "test", "manifests"),
+		},
+	}
+	// memberEnv4 is the test environment for verifying that work applier can skip status updates as
+	// expected.
+	memberEnv4 = &envtest.Environment{
+		CRDDirectoryPaths: []string{
+			filepath.Join("../../../", "config", "crd", "bases"),
+			filepath.Join("../../../", "test", "manifests"),
+		},
+	}
 
 	var err error
 	hubCfg, err = hubEnv.Start()
@@ -156,6 +244,14 @@ var _ = BeforeSuite(func() {
 	memberCfg2, err = memberEnv2.Start()
 	Expect(err).ToNot(HaveOccurred())
 	Expect(memberCfg2).ToNot(BeNil())
+
+	memberCfg3, err = memberEnv3.Start()
+	Expect(err).ToNot(HaveOccurred())
+	Expect(memberCfg3).ToNot(BeNil())
+
+	memberCfg4, err = memberEnv4.Start()
+	Expect(err).ToNot(HaveOccurred())
+	Expect(memberCfg4).ToNot(BeNil())
 
 	err = batchv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
@@ -177,11 +273,25 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 	Expect(memberClient2).ToNot(BeNil())
 
+	memberClient3, err = client.New(memberCfg3, client.Options{Scheme: scheme.Scheme})
+	Expect(err).ToNot(HaveOccurred())
+	Expect(memberClient3).ToNot(BeNil())
+
+	memberClient4, err = client.New(memberCfg4, client.Options{Scheme: scheme.Scheme})
+	Expect(err).ToNot(HaveOccurred())
+	Expect(memberClient4).ToNot(BeNil())
+
 	// This setup also requires a client-go dynamic client for the member cluster.
 	memberDynamicClient1, err = dynamic.NewForConfig(memberCfg1)
 	Expect(err).ToNot(HaveOccurred())
 
 	memberDynamicClient2, err = dynamic.NewForConfig(memberCfg2)
+	Expect(err).ToNot(HaveOccurred())
+
+	memberDynamicClient3, err = dynamic.NewForConfig(memberCfg3)
+	Expect(err).ToNot(HaveOccurred())
+
+	memberDynamicClient4, err = dynamic.NewForConfig(memberCfg4)
 	Expect(err).ToNot(HaveOccurred())
 
 	By("Setting up the resources")
@@ -203,6 +313,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	workApplier1 = NewReconciler(
+		"work-applier",
 		hubClient,
 		memberReservedNSName1,
 		memberDynamicClient1,
@@ -210,11 +321,12 @@ var _ = BeforeSuite(func() {
 		memberClient1.RESTMapper(),
 		hubMgr1.GetEventRecorderFor("work-applier"),
 		maxConcurrentReconciles,
-		workerCount,
+		parallelizer.NewParallelizer(workerCount),
 		30*time.Second,
-		true,
-		60,
 		nil, // Use the default backoff rate limiter.
+		usePriorityQueue,
+		nil, // Use the default priority linear equation coefficients.
+		nil, // Use the default priority linear equation coefficients.
 	)
 	Expect(workApplier1.SetupWithManager(hubMgr1)).To(Succeed())
 
@@ -252,30 +364,102 @@ var _ = BeforeSuite(func() {
 		true,
 	)
 	workApplier2 = NewReconciler(
+		"work-applier-long-backoff",
 		hubClient,
 		memberReservedNSName2,
 		memberDynamicClient2,
 		memberClient2,
 		memberClient2.RESTMapper(),
-		hubMgr2.GetEventRecorderFor("work-applier"),
+		hubMgr2.GetEventRecorderFor("work-applier-long-backoff"),
 		maxConcurrentReconciles,
-		workerCount,
+		parallelizer.NewParallelizer(workerCount),
 		30*time.Second,
-		true,
-		60,
 		superLongExponentialBackoffRateLimiter,
+		usePriorityQueue,
+		nil, // Use the default priority linear equation coefficients.
+		nil, // Use the default priority linear equation coefficients.
 	)
-	// Due to name conflicts, the second work applier must be set up manually.
-	err = ctrl.NewControllerManagedBy(hubMgr2).Named("work-applier-controller-duplicate").
-		WithOptions(ctrloption.Options{
-			MaxConcurrentReconciles: workApplier2.concurrentReconciles,
-		}).
-		For(&fleetv1beta1.Work{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Complete(workApplier2)
-	Expect(err).NotTo(HaveOccurred())
+	Expect(workApplier2.SetupWithManager(hubMgr2)).To(Succeed())
+
+	By("Setting up the controller and the controller manager for member cluster 3")
+	hubMgr3, err = ctrl.NewManager(hubCfg, ctrl.Options{
+		Scheme: scheme.Scheme,
+		Metrics: server.Options{
+			BindAddress: "0",
+		},
+		Cache: cache.Options{
+			DefaultNamespaces: map[string]cache.Config{
+				memberReservedNSName3: {},
+			},
+		},
+		Logger: textlogger.NewLogger(textlogger.NewConfig(textlogger.Verbosity(4))),
+	})
+	Expect(err).ToNot(HaveOccurred())
+
+	pWithDelay := &parallelizerWithFixedDelay{
+		regularParallelizer: parallelizer.NewParallelizer(parallelizer.DefaultNumOfWorkers),
+		// To avoid flakiness, use a fixed delay of 5 seconds so that we could reliably verify
+		// if manifests are actually being processed in waves.
+		delay: parallelizerFixedDelay,
+	}
+	workApplier3 = NewReconciler(
+		"work-applier-waved-parallel-processing",
+		hubClient,
+		memberReservedNSName3,
+		memberDynamicClient3,
+		memberClient3,
+		memberClient3.RESTMapper(),
+		hubMgr3.GetEventRecorderFor("work-applier"),
+		maxConcurrentReconciles,
+		pWithDelay,
+		30*time.Second,
+		nil, // Use the default backoff rate limiter.
+		usePriorityQueue,
+		nil, // Use the default priority linear equation coefficients.
+		nil, // Use the default priority linear equation coefficients.
+	)
+	Expect(workApplier3.SetupWithManager(hubMgr3)).To(Succeed())
+
+	By("Setting up the controller and the controller manager for member cluster 4")
+	hubMgr4, err = ctrl.NewManager(hubCfg, ctrl.Options{
+		Scheme: scheme.Scheme,
+		Metrics: server.Options{
+			BindAddress: "0",
+		},
+		Cache: cache.Options{
+			DefaultNamespaces: map[string]cache.Config{
+				memberReservedNSName4: {},
+			},
+		},
+		Logger: textlogger.NewLogger(textlogger.NewConfig(textlogger.Verbosity(4))),
+	})
+	Expect(err).ToNot(HaveOccurred())
+
+	wrappedHubClient := NewClientWrapperWithStatusUpdateCounter(hubClient)
+	hubClientWrapperForWorkApplier4 = wrappedHubClient.(*clientWrapperWithStatusUpdateCounter)
+	wrappedMemberClient4 := NewClientWrapperWithStatusUpdateCounter(memberClient4)
+	memberClient4Wrapper = wrappedMemberClient4.(*clientWrapperWithStatusUpdateCounter)
+	workApplier4 = NewReconciler(
+		"work-applier-wrapped-client",
+		wrappedHubClient,
+		memberReservedNSName4,
+		memberDynamicClient4,
+		wrappedMemberClient4,
+		memberClient4.RESTMapper(),
+		hubMgr4.GetEventRecorderFor("work-applier-wrapped-client"),
+		maxConcurrentReconciles,
+		parallelizer.NewParallelizer(workerCount),
+		30*time.Second,
+		nil, // Use the default backoff rate limiter.
+		usePriorityQueue,
+		nil, // Use the default priority linear equation coefficients.
+		nil, // Use the default priority linear equation coefficients.
+	)
+	// Due to name conflicts, the third work applier must be set up manually.
+	Expect(workApplier4.SetupWithManager(hubMgr4)).To(Succeed())
 
 	wg = sync.WaitGroup{}
-	wg.Add(2)
+	wg.Add(4)
 	go func() {
 		defer GinkgoRecover()
 		defer wg.Done()
@@ -289,6 +473,20 @@ var _ = BeforeSuite(func() {
 		Expect(workApplier2.Join(ctx)).To(Succeed())
 		Expect(hubMgr2.Start(ctx)).To(Succeed())
 	}()
+
+	go func() {
+		defer GinkgoRecover()
+		defer wg.Done()
+		Expect(workApplier3.Join(ctx)).To(Succeed())
+		Expect(hubMgr3.Start(ctx)).To(Succeed())
+	}()
+
+	go func() {
+		defer GinkgoRecover()
+		defer wg.Done()
+		Expect(workApplier4.Join(ctx)).To(Succeed())
+		Expect(hubMgr4.Start(ctx)).To(Succeed())
+	}()
 })
 
 var _ = AfterSuite(func() {
@@ -300,4 +498,6 @@ var _ = AfterSuite(func() {
 	Expect(hubEnv.Stop()).To(Succeed())
 	Expect(memberEnv1.Stop()).To(Succeed())
 	Expect(memberEnv2.Stop()).To(Succeed())
+	Expect(memberEnv3.Stop()).To(Succeed())
+	Expect(memberEnv4.Stop()).To(Succeed())
 })

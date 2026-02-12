@@ -34,7 +34,11 @@ make e2e-tests
 
 # Run custom E2E tests with labels
 make e2e-tests-custom
+
+# Clean up E2E environment
+make clean-e2e-tests
 ```
+
 
 ### Code Quality
 ```bash
@@ -209,7 +213,6 @@ All controllers follow standard Kubernetes controller patterns:
 - Custom properties supported for scheduling decisions
 
 ### Multi-API Version Support
-- v1alpha1 APIs maintained for backward compatibility  
 - v1beta1 APIs are current stable version
 - Feature flags control API version enablement
 

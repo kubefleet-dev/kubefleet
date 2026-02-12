@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/kubectl/pkg/util/deployment"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -58,6 +59,7 @@ func TestSanitizeManifestObject(t *testing.T) {
 				fleetv1beta1.ManifestHashAnnotation:      dummyLabelValue1,
 				fleetv1beta1.LastAppliedConfigAnnotation: dummyLabelValue1,
 				corev1.LastAppliedConfigAnnotation:       dummyLabelValue1,
+				deployment.RevisionAnnotation:            dummyLabelValue1,
 				dummyLabelKey:                            dummyLabelValue1,
 			},
 			Labels: map[string]string{
@@ -382,7 +384,7 @@ func TestSetFleetLastAppliedAnnotation(t *testing.T) {
 	nsManifestObj1 := ns.DeepCopy()
 	wantNSManifestObj1 := ns.DeepCopy()
 	wantNSManifestObj1.SetAnnotations(map[string]string{
-		fleetv1beta1.LastAppliedConfigAnnotation: string("{\"apiVersion\":\"v1\",\"kind\":\"Namespace\",\"metadata\":{\"annotations\":{},\"creationTimestamp\":null,\"name\":\"ns-1\"},\"spec\":{},\"status\":{}}\n"),
+		fleetv1beta1.LastAppliedConfigAnnotation: string("{\"apiVersion\":\"v1\",\"kind\":\"Namespace\",\"metadata\":{\"annotations\":{},\"name\":\"ns-1\"},\"spec\":{},\"status\":{}}\n"),
 	})
 
 	nsManifestObj2 := ns.DeepCopy()
@@ -391,7 +393,7 @@ func TestSetFleetLastAppliedAnnotation(t *testing.T) {
 	})
 	wantNSManifestObj2 := ns.DeepCopy()
 	wantNSManifestObj2.SetAnnotations(map[string]string{
-		fleetv1beta1.LastAppliedConfigAnnotation: string("{\"apiVersion\":\"v1\",\"kind\":\"Namespace\",\"metadata\":{\"annotations\":{},\"creationTimestamp\":null,\"name\":\"ns-1\"},\"spec\":{},\"status\":{}}\n"),
+		fleetv1beta1.LastAppliedConfigAnnotation: string("{\"apiVersion\":\"v1\",\"kind\":\"Namespace\",\"metadata\":{\"annotations\":{},\"name\":\"ns-1\"},\"spec\":{},\"status\":{}}\n"),
 	})
 
 	// Annotation size limit is 262144 bytes.

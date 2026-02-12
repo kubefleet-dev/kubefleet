@@ -87,6 +87,7 @@ type Options struct {
 	// RateLimiterOpts is the ratelimit parameters for the work queue
 	RateLimiterOpts RateLimitOptions
 	// EnableV1Alpha1APIs enables the agents to watch the v1alpha1 CRs.
+	// TODO(weiweng): remove this field soon. Only kept for backward compatibility.
 	EnableV1Alpha1APIs bool
 	// EnableV1Beta1APIs enables the agents to watch the v1beta1 CRs.
 	EnableV1Beta1APIs bool
@@ -106,6 +107,12 @@ type Options struct {
 	PprofPort int
 	// DenyModifyMemberClusterLabels indicates if the member cluster labels cannot be modified by groups (excluding system:masters)
 	DenyModifyMemberClusterLabels bool
+	// EnableWorkload enables workload resources (pods and replicasets) to be created in the hub cluster.
+	// When set to true, the pod and replicaset validating webhooks are disabled.
+	EnableWorkload bool
+	// UseCertManager indicates whether to use cert-manager for webhook certificate management.
+	// When enabled, webhook certificates are managed by cert-manager instead of self-signed generation.
+	UseCertManager bool
 	// ResourceSnapshotCreationMinimumInterval is the minimum interval at which resource snapshots could be created.
 	// Whether the resource snapshot is created or not depends on the both ResourceSnapshotCreationMinimumInterval and ResourceChangesCollectionDuration.
 	ResourceSnapshotCreationMinimumInterval time.Duration
@@ -180,6 +187,8 @@ func (o *Options) AddFlags(flags *flag.FlagSet) {
 	flags.BoolVar(&o.EnablePprof, "enable-pprof", false, "If set, the pprof profiling is enabled.")
 	flags.IntVar(&o.PprofPort, "pprof-port", 6065, "The port for pprof profiling.")
 	flags.BoolVar(&o.DenyModifyMemberClusterLabels, "deny-modify-member-cluster-labels", false, "If set, users not in the system:masters cannot modify member cluster labels.")
+	flags.BoolVar(&o.EnableWorkload, "enable-workload", false, "If set, workloads (pods and replicasets) can be created in the hub cluster. This disables the pod and replicaset validating webhooks.")
+	flags.BoolVar(&o.UseCertManager, "use-cert-manager", false, "If set, cert-manager will be used for webhook certificate management instead of self-signed certificates.")
 	flags.DurationVar(&o.ResourceSnapshotCreationMinimumInterval, "resource-snapshot-creation-minimum-interval", 30*time.Second, "The minimum interval at which resource snapshots could be created.")
 	flags.DurationVar(&o.ResourceChangesCollectionDuration, "resource-changes-collection-duration", 15*time.Second,
 		"The duration for collecting resource changes into one snapshot. The default is 15 seconds, which means that the controller will collect resource changes for 15 seconds before creating a resource snapshot.")
