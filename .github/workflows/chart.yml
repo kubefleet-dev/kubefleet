@@ -54,19 +54,21 @@ jobs:
           
           # Package and push hub-agent chart
           echo "📦 Packaging hub-agent chart..."
+          HUB_VERSION=$(grep '^version:' charts/hub-agent/Chart.yaml | awk '{print $2}')
           helm package charts/hub-agent
           
           echo "🚀 Pushing hub-agent to OCI registry..."
-          helm push hub-agent-*.tgz oci://${{ env.REGISTRY }}/${REPO_LOWER}/charts
+          helm push hub-agent-${HUB_VERSION}.tgz oci://${{ env.REGISTRY }}/${REPO_LOWER}/charts
           
           # Package and push member-agent chart
           echo "📦 Packaging member-agent chart..."
+          MEMBER_VERSION=$(grep '^version:' charts/member-agent/Chart.yaml | awk '{print $2}')
           helm package charts/member-agent
           
           echo "🚀 Pushing member-agent to OCI registry..."
-          helm push member-agent-*.tgz oci://${{ env.REGISTRY }}/${REPO_LOWER}/charts
+          helm push member-agent-${MEMBER_VERSION}.tgz oci://${{ env.REGISTRY }}/${REPO_LOWER}/charts
           
           echo ""
           echo "✅ Helm charts published to OCI registry!"
-          echo "📍 Hub Agent: oci://${{ env.REGISTRY }}/${REPO_LOWER}/charts/hub-agent"
-          echo "📍 Member Agent: oci://${{ env.REGISTRY }}/${REPO_LOWER}/charts/member-agent"
+          echo "📍 Hub Agent: oci://${{ env.REGISTRY }}/${REPO_LOWER}/charts/hub-agent:${HUB_VERSION}"
+          echo "📍 Member Agent: oci://${{ env.REGISTRY }}/${REPO_LOWER}/charts/member-agent:${MEMBER_VERSION}"
