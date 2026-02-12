@@ -27,7 +27,6 @@ ifeq ($(TARGET_ARCH),$(filter $(TARGET_ARCH),x86_64))
 else ifeq ($(TARGET_ARCH),$(filter $(TARGET_ARCH),aarch64 arm))
 	TARGET_ARCH := arm64
 endif
-$(info Auto-detected system architecture: $(TARGET_ARCH))
 endif
 endif
 
@@ -67,9 +66,9 @@ GOLANGCI_LINT_BIN := golangci-lint
 GOLANGCI_LINT := $(abspath $(TOOLS_BIN_DIR)/$(GOLANGCI_LINT_BIN)-$(GOLANGCI_LINT_VER))
 
 # ENVTEST_K8S_VERSION refers to the version of k8s binary assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.30.0
+ENVTEST_K8S_VERSION = 1.33.0
 # ENVTEST_VER is the version of the ENVTEST binary
-ENVTEST_VER = v0.0.0-20240317073005-bd9ea79e8d18
+ENVTEST_VER = release-0.22
 ENVTEST_BIN := setup-envtest
 ENVTEST :=  $(abspath $(TOOLS_BIN_DIR)/$(ENVTEST_BIN)-$(ENVTEST_VER))
 
@@ -136,23 +135,30 @@ vet: ## Run go vet against code
 ## --------------------------------------
 
 .PHONY: test
-test: manifests generate fmt vet local-unit-test integration-test## Run unit tests and integration tests
+test: manifests generate fmt vet local-unit-test integration-test ## Run unit tests and integration tests
 
 ##
 # Set up the timeout parameters as some of the tests (rollout controller) lengths have exceeded the default 10 minute mark.
-# TO-DO (chenyu1): enable parallelization for single package integration tests.
+# Note: this recipe runs both unit tests and integration tests under the pkg/ directory.
 .PHONY: local-unit-test
 local-unit-test: $(ENVTEST) ## Run unit tests
 	export CGO_ENABLED=1 && \
 	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" && \
 	go test `go list ./pkg/... ./cmd/...` -race -coverpkg=./...  -coverprofile=ut-coverage.xml -covermode=atomic -v -timeout=30m
 
+# Note: this recipe runs the integration tests under the /test/scheduler and /test/apis/ directories with the Ginkgo CLI.
 .PHONY: integration-test
 integration-test: $(ENVTEST) ## Run integration tests
 	export CGO_ENABLED=1 && \
 	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" && \
-	ginkgo -v -p --race --cover --coverpkg=./pkg/scheduler/... ./test/scheduler && \
-	ginkgo -v -p --race --cover --coverpkg=./... ./test/apis/...
+	ginkgo -v -p --race --cover --coverpkg=./pkg/scheduler/... -coverprofile=scheduler-it.out ./test/scheduler && \
+	ginkgo -v -p --race --cover --coverpkg=./apis/ -coverprofile=api-validation-it.out ./test/apis/...
+
+.PHONY: kubebuilder-assets-path
+kubebuilder-assets-path: $(ENVTEST) ## Get the path to kubebuilder assets
+	@export CGO_ENABLED=1 && \
+	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" && \
+	echo $$KUBEBUILDER_ASSETS
 
 ## local tests & e2e tests
 
@@ -227,6 +233,14 @@ BUILDKIT_VERSION ?= v0.18.1
 push: ## Build and push all Docker images
 	$(MAKE) OUTPUT_TYPE="type=registry" docker-build-hub-agent docker-build-member-agent docker-build-refresh-token
 
+.PHONY: helm-push
+helm-push: ## Package and push Helm charts to OCI registry
+	helm package charts/hub-agent --version $(TAG) --app-version $(TAG) --destination .helm-packages
+	helm package charts/member-agent --version $(TAG) --app-version $(TAG) --destination .helm-packages
+	helm push .helm-packages/hub-agent-$(TAG).tgz oci://$(REGISTRY)
+	helm push .helm-packages/member-agent-$(TAG).tgz oci://$(REGISTRY)
+	rm -rf .helm-packages
+
 # By default, docker buildx create will pull image moby/buildkit:buildx-stable-1 and hit the too many requests error
 .PHONY: docker-buildx-builder
 # Note (chenyu1): the step below sets up emulation for building/running non-native binaries on the host. The original
@@ -237,6 +251,7 @@ push: ## Build and push all Docker images
 # On some systems the emulation setup might not work at all (e.g., macOS on Apple Silicon -> Rosetta 2 will be used 
 # by Docker Desktop as the default emulation option for AMD64 on ARM64 container compatibility).
 docker-buildx-builder:
+	$(info Auto-detected system architecture: $(TARGET_ARCH))
 	@if ! docker buildx ls | grep $(BUILDX_BUILDER_NAME); then \
 		if [ "$(TARGET_ARCH)" = "amd64" ] ; then \
 			echo "The target is an x86_64 platform; setting up emulation for other known architectures"; \
