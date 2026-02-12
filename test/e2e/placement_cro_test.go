@@ -604,6 +604,7 @@ var _ = Context("creating clusterResourceOverride with and resource becomes inva
 var _ = Context("creating clusterResourceOverride with delete rules for one cluster", Ordered, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	croName := fmt.Sprintf(croNameTemplate, GinkgoParallelProcess())
+	croSnapShotName := fmt.Sprintf(placementv1beta1.OverrideSnapshotNameFmt, croName, 0)
 
 	BeforeAll(func() {
 		By("creating work resources")
@@ -658,6 +659,12 @@ var _ = Context("creating clusterResourceOverride with delete rules for one clus
 		}
 		By(fmt.Sprintf("creating clusterResourceOverride %s", croName))
 		Expect(hubClient.Create(ctx, cro)).To(Succeed(), "Failed to create clusterResourceOverride %s", croName)
+
+		//this is to make sure the cro snapshot is created before the CRP
+		Eventually(func() error {
+			croSnap := &placementv1beta1.ClusterResourceOverrideSnapshot{}
+			return hubClient.Get(ctx, types.NamespacedName{Name: croSnapShotName}, croSnap)
+		}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to create CRO snapshot %s", croSnapShotName)
 
 		// Create the CRP.
 		createCRP(crpName)
