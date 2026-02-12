@@ -1,5 +1,9 @@
 # Azure Fleet Member Agent Helm Chart
 
+## Chart Versioning
+
+Chart versions match the KubeFleet release versions. For example, to install KubeFleet v0.2.1, use chart version `0.2.1`.
+
 ## Install Chart
 
 ### Using Published Chart (Recommended)
@@ -9,9 +13,9 @@ The member-agent chart is published to both GitHub Container Registry (OCI) and 
 #### Option 1: OCI Registry (Recommended)
 
 ```console
-# Install directly from OCI registry (no repo add needed)
+# Install directly from OCI registry (replace VERSION with the desired release)
 helm install member-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/member-agent \
-  --version 0.1.0 \
+  --version VERSION \
   --namespace fleet-system \
   --create-namespace
 ```
@@ -23,7 +27,7 @@ helm install member-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/member-ag
 helm repo add kubefleet https://kubefleet-dev.github.io/kubefleet/charts
 helm repo update
 
-# Install member-agent
+# Install member-agent (specify --version to pin to a specific release)
 helm install member-agent kubefleet/member-agent --namespace fleet-system --create-namespace
 ```
 
@@ -41,9 +45,9 @@ _See [helm install](https://helm.sh/docs/helm/helm_install/) for command documen
 ## Upgrade Chart
 
 ```console
-# Using OCI registry
+# Using OCI registry (specify VERSION)
 helm upgrade member-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/member-agent \
-  --version 0.1.0 \
+  --version VERSION \
   --namespace fleet-system
 
 # Using traditional repository

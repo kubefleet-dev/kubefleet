@@ -1,5 +1,9 @@
 # Hub agent controller Helm Chart
 
+## Chart Versioning
+
+Chart versions match the KubeFleet release versions. For example, to install KubeFleet v0.2.1, use chart version `0.2.1`.
+
 ## Install Chart
 
 ### Using Published Chart (Recommended)
@@ -9,9 +13,9 @@ The hub-agent chart is published to both GitHub Container Registry (OCI) and Git
 #### Option 1: OCI Registry (Recommended)
 
 ```console
-# Install directly from OCI registry (no repo add needed)
+# Install directly from OCI registry (replace VERSION with the desired release)
 helm install hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
-  --version 0.1.0 \
+  --version VERSION \
   --namespace fleet-system \
   --create-namespace
 ```
@@ -23,7 +27,7 @@ helm install hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
 helm repo add kubefleet https://kubefleet-dev.github.io/kubefleet/charts
 helm repo update
 
-# Install hub-agent
+# Install hub-agent (specify --version to pin to a specific release)
 helm install hub-agent kubefleet/hub-agent --namespace fleet-system --create-namespace
 ```
 
@@ -48,9 +52,9 @@ helm install cert-manager jetstack/cert-manager \
   --create-namespace \
   --set crds.enabled=true
 
-# Then install hub-agent with cert-manager enabled (OCI)
+# Then install hub-agent with cert-manager enabled (OCI, specify VERSION)
 helm install hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
-  --version 0.1.0 \
+  --version VERSION \
   --set useCertManager=true \
   --set enableWorkload=true \
   --set enableWebhook=true
@@ -67,9 +71,9 @@ This configures cert-manager to manage webhook certificates.
 ## Upgrade Chart
 
 ```console
-# Using OCI registry
+# Using OCI registry (specify VERSION)
 helm upgrade hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
-  --version 0.1.0 \
+  --version VERSION \
   --namespace fleet-system
 
 # Using traditional repository
@@ -146,9 +150,9 @@ helm install cert-manager jetstack/cert-manager \
   --create-namespace \
   --set crds.enabled=true
 
-# Then install hub-agent with cert-manager enabled (OCI)
+# Then install hub-agent with cert-manager enabled (OCI, specify VERSION)
 helm install hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
-  --version 0.1.0 \
+  --version VERSION \
   --set useCertManager=true \
   --set enableWorkload=true \
   --set enableWebhook=true
@@ -167,9 +171,9 @@ The `webhookCertSecretName` parameter specifies the Secret name for the certific
 
 Example with custom secret name:
 ```console
-# Using OCI registry
+# Using OCI registry (specify VERSION)
 helm install hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
-  --version 0.1.0 \
+  --version VERSION \
   --set useCertManager=true \
   --set enableWorkload=true \
   --set webhookCertSecretName=my-webhook-secret

@@ -7,6 +7,17 @@ This directory contains Helm charts for deploying KubeFleet components.
 - **hub-agent**: The central controller that runs on the hub cluster, managing placement decisions, scheduling, and cluster inventory
 - **member-agent**: The agent that runs on each member cluster, applying workloads and reporting cluster status
 
+## Chart Versioning
+
+**Important:** Chart versions match the KubeFleet release versions. When a KubeFleet release is tagged (e.g., `v0.2.1`), the Helm charts are published with the same version (`0.2.1`).
+
+**Example:** To install KubeFleet v0.2.1, use:
+```bash
+helm install hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent --version 0.2.1
+```
+
+This ensures consistency between the application version and the chart version, making it easy to know which chart version to use with each KubeFleet release.
+
 ## Using Published Charts
 
 KubeFleet Helm charts are automatically published to both GitHub Container Registry (GHCR) as OCI artifacts and GitHub Pages as a traditional Helm repository.
@@ -18,9 +29,9 @@ Install directly from GitHub Container Registry without adding a repository:
 #### Hub Agent
 
 ```bash
-# Install hub-agent on the hub cluster
+# Install hub-agent on the hub cluster (replace VERSION with your desired release)
 helm install hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
-  --version 0.1.0 \
+  --version VERSION \
   --namespace fleet-system \
   --create-namespace
 ```
@@ -28,9 +39,9 @@ helm install hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
 #### Member Agent
 
 ```bash
-# Install member-agent on each member cluster
+# Install member-agent on each member cluster (replace VERSION with your desired release)
 helm install member-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/member-agent \
-  --version 0.1.0 \
+  --version VERSION \
   --namespace fleet-system \
   --create-namespace
 ```
@@ -62,9 +73,9 @@ helm install member-agent kubefleet/member-agent \
 #### OCI Registry
 
 ```bash
-# Install a specific version from OCI registry
+# Install a specific version from OCI registry (e.g., v0.2.1 release)
 helm install hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
-  --version 0.1.0 \
+  --version 0.2.1 \
   --namespace fleet-system \
   --create-namespace
 ```
@@ -75,9 +86,9 @@ helm install hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
 # List available versions
 helm search repo kubefleet --versions
 
-# Install a specific version
+# Install a specific version (e.g., v0.2.1 release)
 helm install hub-agent kubefleet/hub-agent \
-  --version 0.1.0 \
+  --version 0.2.1 \
   --namespace fleet-system \
   --create-namespace
 ```
@@ -87,13 +98,13 @@ helm install hub-agent kubefleet/hub-agent \
 #### OCI Registry
 
 ```bash
-# Upgrade to a specific version
+# Upgrade to a specific version (e.g., v0.2.1)
 helm upgrade hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
-  --version 0.1.0 \
+  --version 0.2.1 \
   --namespace fleet-system
 
 helm upgrade member-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/member-agent \
-  --version 0.1.0 \
+  --version 0.2.1 \
   --namespace fleet-system
 ```
 
