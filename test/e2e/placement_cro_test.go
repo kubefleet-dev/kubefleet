@@ -660,7 +660,7 @@ var _ = Context("creating clusterResourceOverride with delete rules for one clus
 		By(fmt.Sprintf("creating clusterResourceOverride %s", croName))
 		Expect(hubClient.Create(ctx, cro)).To(Succeed(), "Failed to create clusterResourceOverride %s", croName)
 
-		//this is to make sure the cro snapshot is created before the CRP
+		// This is to make sure the CRO snapshot is created before the CRP.
 		Eventually(func() error {
 			croSnap := &placementv1beta1.ClusterResourceOverrideSnapshot{}
 			return hubClient.Get(ctx, types.NamespacedName{Name: croSnapShotName}, croSnap)
