@@ -86,7 +86,7 @@ The controller takes whichever time is later.
    - If t < 30s: requeues with delay
    - If t ≥ 30s: **Snapshot 1 created**
 
-### Example Timeline
+### Example Timeline (Production with 30s delays)
 
 ```
 t=0s    : CRP created, selects Namespace + ResourceEnvelope
@@ -102,6 +102,38 @@ t=30.1s : Reconcile again, timing requirement met
 t=30.2s : Snapshot 1 created (hash: def456)
 ```
 
+### Example Timeline (E2E Tests with 0s delays)
+
+```
+t=0s     : CRP created, selects Namespace + ResourceEnvelope
+t=0.05s  : PlacementController reconciles, creates snapshot 0 (hash: abc123)
+t=0.1s   : CRP status updated: ObservedResourceIndex="0"
+t=0.15s  : Test's Eventually() starts checking CRP status
+t=0.2s   : Envelope processing happens (varies by timing)
+t=0.25s  : Hash changes to def456
+t=0.3s   : PlacementController reconciles again, creates snapshot 1
+t=0.35s  : CRP status updated: ObservedResourceIndex="1"
+```
+
+**The Race Condition**: Where does the test's `Eventually()` check occur relative to the status updates?
+
+**Scenario A - Test sees index 0 (passes if expecting 0, fails if expecting 1)**:
+```
+t=0.1s  : CRP status = ObservedResourceIndex="0" with complete conditions
+t=0.15s : Eventually() checks → matches expected status → SUCCESS
+t=0.35s : CRP status changes to ObservedResourceIndex="1" (but test already passed)
+```
+
+**Scenario B - Test only sees index 1 (fails if expecting 0, passes if expecting 1)**:
+```
+t=0.05s : Snapshot 0 created but status not yet updated
+t=0.08s : Envelope processing completes quickly
+t=0.1s  : Snapshot 1 created  
+t=0.12s : Eventually() starts checking
+t=0.15s : CRP status = ObservedResourceIndex="1" with complete conditions
+t=0.15s-10s : Eventually() keeps checking, always sees "1", expects "0" → TIMEOUT/FAIL
+```
+
 ## Why E2E Tests Set Delays to 0
 
 In `test/e2e/setup.sh`:
@@ -114,8 +146,47 @@ export RESOURCE_CHANGES_COLLECTION_DURATION="${RESOURCE_CHANGES_COLLECTION_DURAT
 **Reason**: Tests need fast feedback and don't want to wait 30-45 seconds for snapshots. However, this makes timing **non-deterministic**:
 
 - With delays=0: Snapshots created immediately when hash changes
-- Race condition: Test validation might run before or after snapshot increment
+- Race condition: Test validation might catch status in "snapshot 0" state OR "snapshot 1" state
 - Solution: Use `placementStatusCmpOptionsOnCreate` to ignore `ObservedResourceIndex`
+
+### Why the Race Isn't Always Index 1
+
+Even though envelope processing ALWAYS happens, the test doesn't always see index 1 because:
+
+1. **Timing Variability**: Multiple asynchronous operations with variable latencies:
+   - PlacementController reconciliation loop timing
+   - CRP status update to API server
+   - Test's `Eventually()` check timing  
+   - Envelope processing speed (depends on content size, CPU load)
+   - Controller work queue depth and processing rate
+   - Kubernetes API server response times
+   - Informer cache synchronization delays
+
+2. **The Critical Window**: There's a brief period where:
+   - Snapshot 0 exists and CRP status shows ObservedResourceIndex="0"
+   - Envelope processing hasn't completed yet
+   - If the test's `Eventually()` checks during this window, it sees index "0"
+   - If the test checks after this window, it only sees index "1"
+
+3. **Eventually() Behavior**: 
+   - Checks every 250ms (eventuallyInterval) for up to 10s (eventuallyDuration)
+   - First successful match stops the checking
+   - If it catches index "0" state early, it succeeds and stops checking
+   - If index "1" is created before the first successful match, it never sees index "0"
+
+### Timing Variability Factors
+
+What makes the critical window variable:
+
+| Factor | Impact on Window | Example |
+|--------|------------------|---------|
+| CPU load | High load → slower processing → longer window | CI with parallel jobs |
+| Envelope size | Larger content → slower extraction → longer window | Simple ConfigMap vs large Secret |
+| Controller queue depth | More items → delayed reconciliation → longer window | Multiple CRPs created simultaneously |
+| API server latency | Higher latency → slower status updates → longer window | Network issues, etcd performance |
+| Cache warmth | Cold cache → slower reads → longer window | First test run vs subsequent runs |
+
+**Example**: On a busy CI runner with high CPU load, envelope processing might take 200ms instead of 50ms, giving the test's Eventually() more chances to catch the "snapshot 0" state.
 
 ## Resource Hash Calculation
 
@@ -243,4 +314,20 @@ kubectl logs -n fleet-system deployment/fleet-hub-agent | grep "resourceSnapshot
 3. After 30-45 seconds (or immediately in tests with delays=0), snapshot 1 is created
 4. This can repeat for each envelope modification
 
-**Key Insight**: The number of envelopes doesn't determine snapshot count. Instead, it's the **number of times the resource content hash changes** over time that drives snapshot creation.
+**Q: If envelope processing always happens, why isn't the test always failing with index 1?**
+
+**A**: The race condition exists because of timing variability. The test's `Eventually()` checks every 250ms:
+
+- **Sometimes** it catches the brief "snapshot 0" state before envelope processing completes → sees index "0"
+- **Sometimes** envelope processing completes before the first successful check → only sees index "1"
+
+The critical window (when CRP status shows index "0") duration varies based on:
+- CPU load and scheduling
+- Controller work queue processing rate
+- Envelope content size and processing complexity
+- Kubernetes API server latency
+- Informer cache synchronization timing
+
+On a fast system with light load, the window might be only 20-50ms. On a busy CI runner, it might be 100-300ms, giving the test more chances to catch the "snapshot 0" state.
+
+**Key Insight**: The number of envelopes doesn't determine snapshot count. Instead, it's the **number of times the resource content hash changes** over time that drives snapshot creation. The flakiness comes from **when** the test observes the CRP status relative to **when** the state transitions occur.
