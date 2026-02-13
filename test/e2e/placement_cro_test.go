@@ -704,12 +704,9 @@ var _ = Context("creating clusterResourceOverride with delete rules for one clus
 
 	It("should not place the selected resources on the member clusters that are deleted", func() {
 		memberCluster := allMemberClusters[2]
-		// First, wait for resources to be removed if they were initially placed.
+		// With CRO snapshot ready before CRP creation, resources should never be placed.
 		workResourcesRemovedActual := workNamespaceRemovedFromClusterActual(memberCluster)
-		Eventually(workResourcesRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove work resources from member cluster %s", memberCluster.ClusterName)
-
-		// Then verify they stay removed.
-		Consistently(workResourcesRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Work resources reappeared on member cluster %s", memberCluster.ClusterName)
+		Consistently(workResourcesRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Work resources should not be placed on member cluster %s", memberCluster.ClusterName)
 	})
 })
 
