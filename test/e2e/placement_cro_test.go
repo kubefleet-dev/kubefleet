@@ -704,14 +704,12 @@ var _ = Context("creating clusterResourceOverride with delete rules for one clus
 
 	It("should not place the selected resources on the member clusters that are deleted", func() {
 		memberCluster := allMemberClusters[2]
-		Consistently(func() bool {
-			ns := &corev1.Namespace{}
-			workNamespaceName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
-			if err := memberCluster.KubeClient.Get(ctx, types.NamespacedName{Name: workNamespaceName}, ns); err != nil {
-				return errors.IsNotFound(err)
-			}
-			return false
-		}, consistentlyDuration, eventuallyInterval).Should(BeTrue(), "Failed to delete work resources on member cluster %s", memberCluster.ClusterName)
+		// First, wait for resources to be removed if they were initially placed.
+		workResourcesRemovedActual := workNamespaceRemovedFromClusterActual(memberCluster)
+		Eventually(workResourcesRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove work resources from member cluster %s", memberCluster.ClusterName)
+
+		// Then verify they stay removed.
+		Consistently(workResourcesRemovedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Work resources reappeared on member cluster %s", memberCluster.ClusterName)
 	})
 })
 
