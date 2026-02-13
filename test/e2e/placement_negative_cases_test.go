@@ -485,8 +485,9 @@ var _ = Describe("handling errors and failures gracefully", func() {
 						},
 					},
 				}
-				// Use placementStatusCmpOptionsOnCreate to ignore ObservedResourceIndex fields
-				// since envelope processing may trigger additional snapshots
+				// Use placementStatusCmpOptionsOnCreate to ignore ObservedResourceIndex fields.
+				// This test's purpose is to validate duplicate detection behavior, not to validate
+				// the exact snapshot index, which can vary based on timing of envelope processing.
 				if diff := cmp.Diff(crp.Status, wantStatus, placementStatusCmpOptionsOnCreate...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
