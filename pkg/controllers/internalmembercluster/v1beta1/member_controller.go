@@ -43,6 +43,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -819,12 +820,28 @@ func (r *Reconciler) namespaceToIMCMapper(ctx context.Context, obj client.Object
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *Reconciler) SetupWithManager(mgr ctrl.Manager, name string) error {
-	r.recorder = mgr.GetEventRecorderFor("v1beta1InternalMemberClusterController")
-	return ctrl.NewControllerManagedBy(mgr).Named(name).
+// It requires both the hub manager (for watching InternalMemberCluster) and the member manager (for watching Namespace).
+//
+// This creates a single controller with two watch sources:
+// 1. Watches InternalMemberCluster on the hub cluster (triggers on generation changes)
+// 2. Watches Namespace on the member cluster (triggers on create/delete events with parent-CRP labels)
+//
+// Both watch sources funnel events into the same work queue, ensuring only one reconciliation
+// occurs at a time for any given IMC.
+func (r *Reconciler) SetupWithManager(hubMgr, memberMgr ctrl.Manager, name string) error {
+	r.recorder = hubMgr.GetEventRecorderFor("v1beta1InternalMemberClusterController")
+
+	// Set up the main controller on hub manager to watch InternalMemberCluster
+	return ctrl.NewControllerManagedBy(hubMgr).Named(name).
 		For(&clusterv1beta1.InternalMemberCluster{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&corev1.Namespace{},
-			handler.EnqueueRequestsFromMapFunc(r.namespaceToIMCMapper),
-			builder.WithPredicates(buildNamespaceEventPredicate())).
+		WatchesRawSource(
+			// Use TypedKind to explicitly link the Namespace object to a reconcile.Request
+			source.TypedKind[client.Object](
+				memberMgr.GetCache(),
+				&corev1.Namespace{},
+				handler.TypedEnqueueRequestsFromMapFunc(r.namespaceToIMCMapper),
+				buildNamespaceEventPredicate(),
+			),
+		).
 		Complete(r)
 }

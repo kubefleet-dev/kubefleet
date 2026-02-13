@@ -479,7 +479,7 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 			klog.ErrorS(err, "Failed to create InternalMemberCluster v1beta1 reconciler")
 			return fmt.Errorf("failed to create InternalMemberCluster v1beta1 reconciler: %w", err)
 		}
-		if err := imcReconciler.SetupWithManager(hubMgr, "internalmembercluster-controller"); err != nil {
+		if err := imcReconciler.SetupWithManager(hubMgr, memberMgr, "internalmembercluster-controller"); err != nil {
 			klog.ErrorS(err, "Failed to set up InternalMemberCluster v1beta1 controller with the controller manager")
 			return fmt.Errorf("failed to set up InternalMemberCluster v1beta1 controller with the controller manager: %w", err)
 		}

@@ -384,7 +384,7 @@ var _ = BeforeSuite(func() {
 	propertyProvider1 = &manuallyUpdatedProvider{}
 	member1Reconciler, err := NewReconciler(ctx, hubClient, member1Cfg, member1Client, workApplier1, propertyProvider1, member1Name)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(member1Reconciler.SetupWithManager(member1Mgr, member1Name+"-controller")).To(Succeed())
+	Expect(member1Reconciler.SetupWithManager(member1Mgr, member1Mgr, member1Name+"-controller")).To(Succeed())
 
 	member2Mgr, err = ctrl.NewManager(hubCfg, ctrl.Options{
 		Scheme: scheme.Scheme,
@@ -406,7 +406,7 @@ var _ = BeforeSuite(func() {
 
 	member2Reconciler, err := NewReconciler(ctx, hubClient, member2Cfg, member2Client, workApplier2, nil, member2Name)
 	Expect(err).NotTo(HaveOccurred())
-	Expect(member2Reconciler.SetupWithManager(member2Mgr, member2Name+"-controller")).To(Succeed())
+	Expect(member2Reconciler.SetupWithManager(member2Mgr, member2Mgr, member2Name+"-controller")).To(Succeed())
 
 	go func() {
 		defer GinkgoRecover()
