@@ -1505,6 +1505,9 @@ func TestUpdateNamespaceToCRPMapping(t *testing.T) {
 		},
 		{
 			name: "multiple namespaces with parent-CRP labels",
+			// Note: Multiple namespaces mapping to the same CRP (test-ns-1 and test-ns-3 -> test-crp-1)
+			// is not a realistic scenario in the actual system, but we test the function's behavior
+			// in isolation to ensure it correctly builds the mapping from whatever state it observes.
 			namespaces: []corev1.Namespace{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -1836,7 +1839,7 @@ func TestNamespaceToIMCMapper(t *testing.T) {
 		namespace       *corev1.Namespace
 		imcList         []clusterv1beta1.InternalMemberCluster
 		memberCluster   string
-		wantRequests    int
+		wantRequest     bool
 		wantRequestName string
 		wantRequestNS   string
 	}{
@@ -1859,7 +1862,7 @@ func TestNamespaceToIMCMapper(t *testing.T) {
 				},
 			},
 			memberCluster:   "member-1",
-			wantRequests:    1,
+			wantRequest:     true,
 			wantRequestName: "member-1",
 			wantRequestNS:   "fleet-member-1",
 		},
@@ -1879,7 +1882,7 @@ func TestNamespaceToIMCMapper(t *testing.T) {
 				},
 			},
 			memberCluster: "different-member",
-			wantRequests:  0,
+			wantRequest:   false,
 		},
 		{
 			name: "multiple IMCs only matches correct one",
@@ -1912,7 +1915,7 @@ func TestNamespaceToIMCMapper(t *testing.T) {
 				},
 			},
 			memberCluster:   "member-2",
-			wantRequests:    1,
+			wantRequest:     true,
 			wantRequestName: "member-2",
 			wantRequestNS:   "fleet-member-2",
 		},
@@ -1921,7 +1924,7 @@ func TestNamespaceToIMCMapper(t *testing.T) {
 			namespace:     &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test-ns"}},
 			imcList:       []clusterv1beta1.InternalMemberCluster{},
 			memberCluster: "member-1",
-			wantRequests:  0,
+			wantRequest:   false,
 		},
 	}
 
@@ -1948,12 +1951,16 @@ func TestNamespaceToIMCMapper(t *testing.T) {
 
 			requests := r.namespaceToIMCMapper(context.Background(), tc.namespace)
 
-			if len(requests) != tc.wantRequests {
-				t.Errorf("namespaceToIMCMapper() got %d requests, want %d", len(requests), tc.wantRequests)
+			if tc.wantRequest && len(requests) != 1 {
+				t.Errorf("namespaceToIMCMapper() got %d requests, want 1", len(requests))
+				return
+			}
+			if !tc.wantRequest && len(requests) != 0 {
+				t.Errorf("namespaceToIMCMapper() got %d requests, want 0", len(requests))
 				return
 			}
 
-			if tc.wantRequests > 0 {
+			if tc.wantRequest {
 				if requests[0].Name != tc.wantRequestName {
 					t.Errorf("namespaceToIMCMapper() request name = %s, want %s", requests[0].Name, tc.wantRequestName)
 				}

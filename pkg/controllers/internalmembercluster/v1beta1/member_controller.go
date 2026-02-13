@@ -732,7 +732,8 @@ func (r *Reconciler) updateNamespaceToCRPMapping(ctx context.Context, imc *clust
 	}
 
 	// Check if mapping has changed to avoid unnecessary updates (handles nil vs empty correctly)
-	if !maps.Equal(imc.Status.NamespaceToCRPMapping, namespaceToCRPMapping) {
+	// Always update to ensure consistency (empty map instead of nil)
+	if !maps.Equal(imc.Status.NamespaceToCRPMapping, namespaceToCRPMapping) || imc.Status.NamespaceToCRPMapping == nil {
 		imc.Status.NamespaceToCRPMapping = namespaceToCRPMapping
 		klog.V(2).InfoS("Updated namespace to CRP mapping in IMC status",
 			"imc", klog.KObj(imc), "mappingCount", len(namespaceToCRPMapping))
@@ -744,24 +745,28 @@ func (r *Reconciler) updateNamespaceToCRPMapping(ctx context.Context, imc *clust
 // buildNamespaceEventPredicate creates a predicate that only triggers on namespace
 // creation and deletion where the namespace has the parent-CRP label.
 func buildNamespaceEventPredicate() predicate.Predicate {
+	// Helper function to check if namespace has parent-CRP label
+	hasParentCRPLabel := func(obj client.Object, eventType string) bool {
+		ns, ok := obj.(*corev1.Namespace)
+		if !ok {
+			return false
+		}
+
+		parentCRPName := ns.Labels[placementv1beta1.PlacementTrackingLabel]
+		if parentCRPName == "" {
+			klog.V(3).InfoS("Namespace does not have parent-CRP label, skipping",
+				"namespace", klog.KObj(ns))
+			return false
+		}
+
+		klog.V(2).InfoS("Namespace with parent-CRP label "+eventType,
+			"namespace", klog.KObj(ns), "parentCRP", parentCRPName)
+		return true
+	}
+
 	return predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			ns, ok := e.Object.(*corev1.Namespace)
-			if !ok {
-				return false
-			}
-
-			// Only process namespaces that have the parent-CRP label
-			parentCRPName := ns.Labels[placementv1beta1.PlacementTrackingLabel]
-			if parentCRPName == "" {
-				klog.V(3).InfoS("Namespace does not have parent-CRP label, skipping",
-					"namespace", klog.KObj(ns))
-				return false
-			}
-
-			klog.V(2).InfoS("Namespace with parent-CRP label created",
-				"namespace", klog.KObj(ns), "parentCRP", parentCRPName)
-			return true
+			return hasParentCRPLabel(e.Object, "created")
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			// Ignore update events
@@ -769,22 +774,7 @@ func buildNamespaceEventPredicate() predicate.Predicate {
 			return false
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
-			ns, ok := e.Object.(*corev1.Namespace)
-			if !ok {
-				return false
-			}
-
-			// Process deletion to remove mapping
-			parentCRPName := ns.Labels[placementv1beta1.PlacementTrackingLabel]
-			if parentCRPName == "" {
-				klog.V(3).InfoS("Namespace does not have parent-CRP label, skipping",
-					"namespace", klog.KObj(ns))
-				return false
-			}
-
-			klog.V(2).InfoS("Namespace with parent-CRP label deleted",
-				"namespace", klog.KObj(ns), "parentCRP", parentCRPName)
-			return true
+			return hasParentCRPLabel(e.Object, "deleted")
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
 			return false
