@@ -197,6 +197,135 @@ What makes the critical window variable:
 
 **Example**: On a busy CI runner with high CPU load, envelope processing might take 200ms instead of 50ms, giving the test's Eventually() more chances to catch the "snapshot 0" state.
 
+## Why Not Just Match Index 1?
+
+**Q: If envelope processing usually creates snapshot 1, why not just expect `ObservedResourceIndex="1"` instead of ignoring it?**
+
+**A**: This would still be brittle and incorrect for several reasons:
+
+### 1. It's Not Always Index 1
+
+The final snapshot index is **non-deterministic** and depends on:
+
+**Possible Outcomes**:
+- **Index 0**: Envelope processing completes, but no resource hash change occurs (rare but possible if envelope is empty or unchanged)
+- **Index 1**: Most common - envelope processing triggers one hash change
+- **Index 2+**: Multiple changes occur:
+  - Envelope metadata updated by controller
+  - Status updates from member clusters
+  - Additional resource modifications
+  - Concurrent changes to other selected resources
+
+**Example Timeline Leading to Index 2**:
+```
+t=0s    : CRP created → snapshot 0 (namespace + envelope)
+t=0.3s  : Envelope processed → hash change → snapshot 1
+t=0.5s  : Member cluster updates Work status
+t=0.6s  : Status propagates back, triggers CRP reconcile
+t=0.7s  : Resource hash changes again → snapshot 2
+t=10s   : Test checks → sees index 2, expects index 1 → FAIL
+```
+
+### 2. Test Semantics Are Wrong
+
+The test validates **duplicate detection behavior**, not **snapshot versioning**:
+
+```go
+// What the test SHOULD validate:
+✅ Duplicate ConfigMap is detected
+✅ Failure condition is set correctly
+✅ Failed placement is reported with correct reason
+✅ Other resources are placed successfully
+
+// What the test should NOT validate:
+❌ Which snapshot index happens to be active
+❌ How many times the snapshot was recreated
+❌ Timing of snapshot creation
+```
+
+Hardcoding any index value (0, 1, 2) makes the test validate an **implementation detail** rather than the **functional behavior**.
+
+### 3. Consistently() Check Would Still Fail
+
+The test uses `Consistently()` after `Eventually()`:
+
+```go
+Eventually(crpStatusUpdatedActual, 10s, 250ms).Should(Succeed())
+Consistently(crpStatusUpdatedActual, 15s, 500ms).Should(Succeed()) // ← checks for 15 more seconds!
+```
+
+Even if you catch index 1 with Eventually():
+- Consistently() checks every 500ms for 15 seconds (30 more checks!)
+- Any additional resource changes during those 15s → index 2, 3, etc.
+- Test would fail because index changed from 1 to 2
+
+**Possible during Consistently()**:
+- Controller status updates
+- Informer cache resync
+- Background resource reconciliation
+- Namespace finalizer processing
+- Garbage collection annotations
+
+### 4. Future Brittleness
+
+Controller implementation could change:
+- Optimization might reduce unnecessary snapshots
+- New features might trigger additional snapshots
+- Hash calculation changes
+- Timing adjustments in reconciliation loops
+
+Hardcoding index 1 couples the test to **current implementation details**, making it break when the implementation improves.
+
+### 5. Multiple Independent Change Sources
+
+Many components can trigger snapshot updates:
+
+| Component | Trigger | Example |
+|-----------|---------|---------|
+| WorkGenerator | Extracts envelope manifests | Snapshot 0 → 1 |
+| Member agent | Updates Work status | Snapshot 1 → 2 |
+| PlacementController | Detects resource changes | Any index + 1 |
+| ChangeDetector | Watches all resource types | Any index + 1 |
+| User operations | Modifies envelope content | Any index + 1 |
+| GC controller | Adds/removes finalizers | Any index + 1 |
+
+Any combination of these can occur during the test, creating unpredictable snapshot counts.
+
+### The Correct Solution
+
+**Ignore `ObservedResourceIndex` entirely** using `placementStatusCmpOptionsOnCreate`:
+
+```go
+// Validates behavior, not implementation details
+wantStatus := placementv1beta1.PlacementStatus{
+    // No ObservedResourceIndex field
+    PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+        {
+            ClusterName: "cluster-1",
+            FailedPlacements: [...],  // ← This is what matters
+            Conditions: [...],         // ← This is what matters
+        },
+    },
+}
+```
+
+This approach:
+- ✅ Tests functional behavior (duplicate detection)
+- ✅ Ignores timing artifacts (snapshot index)
+- ✅ Works regardless of how many snapshots are created
+- ✅ Remains stable through implementation changes
+- ✅ Passes both Eventually() and Consistently() checks
+
+### Summary
+
+Matching index 1 would be **better than matching index 0** (catches more cases), but it's still **fundamentally wrong** because:
+1. Test would still flake when index is 0 or 2+
+2. Test validates wrong thing (timing artifact vs behavior)
+3. Consistently() check would fail on subsequent changes
+4. Brittle to implementation changes
+
+**The right fix**: Ignore snapshot index, validate actual behavior.
+
 ## Resource Hash Calculation
 
 From `pkg/controllers/placement/controller.go:481`:
@@ -227,6 +356,7 @@ From `pkg/resourcewatcher/change_dector.go`:
 ## Best Practices for Tests
 
 ### ❌ Don't Do This
+
 ```go
 wantStatus := placementv1beta1.PlacementStatus{
     ObservedResourceIndex: "0",  // Hardcoded - will break with timing variance
@@ -238,6 +368,23 @@ if diff := cmp.Diff(crp.Status, wantStatus, placementStatusCmpOptions...); diff 
     return fmt.Errorf("diff: %s", diff)
 }
 ```
+
+### ❌ Also Don't Do This
+
+```go
+wantStatus := placementv1beta1.PlacementStatus{
+    ObservedResourceIndex: "1",  // Better than "0", but still wrong!
+    PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+        {ObservedResourceIndex: "1", ...},  // Could be 0, 1, 2, or higher
+    },
+}
+```
+
+**Why "1" is also wrong**: See "Why Not Just Match Index 1?" section above for detailed explanation. TL;DR:
+- Could be 0 (no changes), 1 (one change), or 2+ (multiple changes)
+- Test semantics are wrong (validates timing, not behavior)
+- Consistently() check will fail on subsequent updates
+- Brittle to implementation changes
 
 ### ✅ Do This Instead
 ```go
