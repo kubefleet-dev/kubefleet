@@ -19,6 +19,7 @@ package v1beta1
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -28,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -37,9 +39,14 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	sharedmetrics "github.com/kubefleet-dev/kubefleet/pkg/metrics/shared"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
@@ -107,6 +114,10 @@ type Reconciler struct {
 
 	// The property provider configuration.
 	propertyProviderCfg *propertyProviderConfig
+
+	// The name of the member cluster this controller is running on.
+	// This is used to map namespace events back to the correct InternalMemberCluster.
+	memberClusterName string
 
 	recorder record.EventRecorder
 }
@@ -178,6 +189,7 @@ func NewReconciler(globalCtx context.Context,
 	memberClient client.Client,
 	workController controller.MemberController,
 	propertyProvider propertyprovider.PropertyProvider,
+	memberClusterName string,
 ) (*Reconciler, error) {
 	rawMemberClientSet, err := kubernetes.NewForConfig(memberCfg)
 	if err != nil {
@@ -190,6 +202,7 @@ func NewReconciler(globalCtx context.Context,
 		memberClient:       memberClient,
 		rawMemberClientSet: rawMemberClientSet,
 		workController:     workController,
+		memberClusterName:  memberClusterName,
 		propertyProviderCfg: &propertyProviderConfig{
 			memberConfig:     memberCfg,
 			propertyProvider: propertyProvider,
@@ -219,6 +232,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		updateMemberAgentHeartBeat(&imc)
 		updateHealthErr := r.updateHealth(ctx, &imc)
 		clusterPropertyCollectionErr := r.connectToPropertyProvider(ctx, &imc)
+		// Update namespace to CRP mapping for namespace affinity
+		if err := r.updateNamespaceToCRPMapping(ctx, &imc); err != nil {
+			klog.ErrorS(err, "Failed to update namespace to CRP mapping", "imc", klog.KObj(&imc))
+			// Don't fail the entire reconciliation, just log the error
+		}
 		r.markInternalMemberClusterJoined(&imc)
 		if err := r.updateInternalMemberClusterWithRetry(ctx, &imc); err != nil {
 			if apierrors.IsConflict(err) {
@@ -692,10 +710,138 @@ func (r *Reconciler) markInternalMemberClusterLeaveFailed(imc clusterv1beta1.Con
 	imc.SetConditionsWithType(clusterv1beta1.MemberAgent, newCondition)
 }
 
+// updateNamespaceToCRPMapping scans all namespaces on the member cluster
+// and builds the namespace→CRP mapping for the IMC status.
+func (r *Reconciler) updateNamespaceToCRPMapping(ctx context.Context, imc *clusterv1beta1.InternalMemberCluster) error {
+	klog.V(2).InfoS("Updating namespace to CRP mapping", "imc", klog.KObj(imc))
+
+	// List all namespaces on the member cluster
+	nsList := &corev1.NamespaceList{}
+	if err := r.memberClient.List(ctx, nsList); err != nil {
+		return fmt.Errorf("failed to list namespaces on member cluster: %w", err)
+	}
+
+	// Build the mapping
+	namespaceToCRPMapping := make(map[string]string)
+	for _, ns := range nsList.Items {
+		// Check if namespace has the parent-CRP label
+		if parentCRPName, ok := ns.Labels[placementv1beta1.PlacementTrackingLabel]; ok && parentCRPName != "" {
+			namespaceToCRPMapping[ns.Name] = parentCRPName
+			klog.V(3).InfoS("Found namespace with parent-CRP label",
+				"namespace", ns.Name, "parentCRP", parentCRPName)
+		}
+	}
+
+	// Check if mapping has changed to avoid unnecessary updates (handles nil vs empty correctly)
+	// Always update to ensure consistency (empty map instead of nil)
+	if !maps.Equal(imc.Status.NamespaceToCRPMapping, namespaceToCRPMapping) || imc.Status.NamespaceToCRPMapping == nil {
+		imc.Status.NamespaceToCRPMapping = namespaceToCRPMapping
+		klog.V(2).InfoS("Updated namespace to CRP mapping in IMC status",
+			"imc", klog.KObj(imc), "mappingCount", len(namespaceToCRPMapping))
+	}
+
+	return nil
+}
+
+// buildNamespaceEventPredicate creates a predicate that only triggers on namespace
+// creation and deletion where the namespace has the parent-CRP label.
+func buildNamespaceEventPredicate() predicate.Predicate {
+	// Helper function to check if namespace has parent-CRP label
+	hasParentCRPLabel := func(obj client.Object, eventType string) bool {
+		ns, ok := obj.(*corev1.Namespace)
+		if !ok {
+			return false
+		}
+
+		parentCRPName := ns.Labels[placementv1beta1.PlacementTrackingLabel]
+		if parentCRPName == "" {
+			klog.V(3).InfoS("Namespace does not have parent-CRP label, skipping",
+				"namespace", klog.KObj(ns))
+			return false
+		}
+
+		klog.V(2).InfoS("Namespace with parent-CRP label "+eventType,
+			"namespace", klog.KObj(ns), "parentCRP", parentCRPName)
+		return true
+	}
+
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return hasParentCRPLabel(e.Object, "created")
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			// Ignore update events
+			// Namespace affinity only cares about existence, not updates
+			return false
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return hasParentCRPLabel(e.Object, "deleted")
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return false
+		},
+	}
+}
+
+// namespaceToIMCMapper maps a namespace event to the InternalMemberCluster reconcile request.
+func (r *Reconciler) namespaceToIMCMapper(ctx context.Context, obj client.Object) []reconcile.Request {
+	ns, ok := obj.(*corev1.Namespace)
+	if !ok {
+		return nil
+	}
+
+	// Get the InternalMemberCluster for this member cluster
+	// There should be exactly one IMC per member cluster
+	imcList := &clusterv1beta1.InternalMemberClusterList{}
+	if err := r.hubClient.List(ctx, imcList); err != nil {
+		klog.ErrorS(err, "Failed to list InternalMemberClusters for namespace event",
+			"namespace", klog.KObj(ns))
+		return nil
+	}
+
+	// Find the IMC for this member cluster
+	// The member controller should know its own member cluster name
+	for _, imc := range imcList.Items {
+		if imc.Name == r.memberClusterName {
+			return []reconcile.Request{
+				{
+					NamespacedName: types.NamespacedName{
+						Name:      imc.Name,
+						Namespace: imc.Namespace,
+					},
+				},
+			}
+		}
+	}
+
+	klog.V(2).InfoS("No matching InternalMemberCluster found for namespace event",
+		"namespace", klog.KObj(ns), "memberCluster", r.memberClusterName)
+	return nil
+}
+
 // SetupWithManager sets up the controller with the Manager.
-func (r *Reconciler) SetupWithManager(mgr ctrl.Manager, name string) error {
-	r.recorder = mgr.GetEventRecorderFor("v1beta1InternalMemberClusterController")
-	return ctrl.NewControllerManagedBy(mgr).Named(name).
+// It requires both the hub manager (for watching InternalMemberCluster) and the member manager (for watching Namespace).
+//
+// This creates a single controller with two watch sources:
+// 1. Watches InternalMemberCluster on the hub cluster (triggers on generation changes)
+// 2. Watches Namespace on the member cluster (triggers on create/delete events with parent-CRP labels)
+//
+// Both watch sources funnel events into the same work queue, ensuring only one reconciliation
+// occurs at a time for any given IMC.
+func (r *Reconciler) SetupWithManager(hubMgr, memberMgr ctrl.Manager, name string) error {
+	r.recorder = hubMgr.GetEventRecorderFor("v1beta1InternalMemberClusterController")
+
+	// Set up the main controller on hub manager to watch InternalMemberCluster
+	return ctrl.NewControllerManagedBy(hubMgr).Named(name).
 		For(&clusterv1beta1.InternalMemberCluster{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		WatchesRawSource(
+			// Use TypedKind to explicitly link the Namespace object to a reconcile.Request
+			source.TypedKind[client.Object](
+				memberMgr.GetCache(),
+				&corev1.Namespace{},
+				handler.TypedEnqueueRequestsFromMapFunc(r.namespaceToIMCMapper),
+				buildNamespaceEventPredicate(),
+			),
+		).
 		Complete(r)
 }

@@ -47,6 +47,7 @@ func (r *Reconciler) takeOverPreExistingObject(
 	manifestObj, inMemberClusterObj *unstructured.Unstructured,
 	applyStrategy *fleetv1beta1.ApplyStrategy,
 	expectedAppliedWorkOwnerRef *metav1.OwnerReference,
+	parentCRPName string,
 ) (*unstructured.Unstructured, []fleetv1beta1.PatchDetail, bool, error) {
 	inMemberClusterObjCopy := inMemberClusterObj.DeepCopy()
 	existingOwnerRefs := inMemberClusterObjCopy.GetOwnerReferences()
@@ -91,7 +92,7 @@ func (r *Reconciler) takeOverPreExistingObject(
 	//
 	// Note that the default takeover action is AlwaysApply.
 	if applyStrategy.WhenToTakeOver == fleetv1beta1.WhenToTakeOverTypeIfNoDiff {
-		configDiffs, diffCalculatedInDegradedMode, err := r.diffBetweenManifestAndInMemberClusterObjects(ctx, gvr, manifestObj, inMemberClusterObjCopy, applyStrategy.ComparisonOption)
+		configDiffs, diffCalculatedInDegradedMode, err := r.diffBetweenManifestAndInMemberClusterObjects(ctx, gvr, manifestObj, inMemberClusterObjCopy, applyStrategy.ComparisonOption, parentCRPName)
 		switch {
 		case err != nil:
 			return nil, nil, false, fmt.Errorf("failed to calculate configuration diffs between the manifest object and the object from the member cluster: %w", err)
@@ -121,10 +122,11 @@ func (r *Reconciler) diffBetweenManifestAndInMemberClusterObjects(
 	gvr *schema.GroupVersionResource,
 	manifestObj, inMemberClusterObj *unstructured.Unstructured,
 	cmpOption fleetv1beta1.ComparisonOptionType,
+	parentCRPName string,
 ) ([]fleetv1beta1.PatchDetail, bool, error) {
 	switch cmpOption {
 	case fleetv1beta1.ComparisonOptionTypePartialComparison:
-		return r.partialDiffBetweenManifestAndInMemberClusterObjects(ctx, gvr, manifestObj, inMemberClusterObj)
+		return r.partialDiffBetweenManifestAndInMemberClusterObjects(ctx, gvr, manifestObj, inMemberClusterObj, parentCRPName)
 	case fleetv1beta1.ComparisonOptionTypeFullComparison:
 		// For the full comparison, Fleet compares directly the JSON representations of the
 		// manifest object and the object in the member cluster.
@@ -143,10 +145,11 @@ func (r *Reconciler) partialDiffBetweenManifestAndInMemberClusterObjects(
 	ctx context.Context,
 	gvr *schema.GroupVersionResource,
 	manifestObj, inMemberClusterObj *unstructured.Unstructured,
+	parentCRPName string,
 ) ([]fleetv1beta1.PatchDetail, bool, error) {
 	// Fleet calculates the partial diff between two objects by running apply ops in the dry-run
 	// mode.
-	appliedObj, err := r.applyInDryRunMode(ctx, gvr, manifestObj, inMemberClusterObj)
+	appliedObj, err := r.applyInDryRunMode(ctx, gvr, manifestObj, inMemberClusterObj, parentCRPName)
 
 	// After the dry-run apply op, all the managed fields should have been overwritten using the
 	// values from the manifest object, while leaving all the unmanaged fields untouched. This

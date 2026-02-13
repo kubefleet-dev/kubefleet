@@ -216,7 +216,7 @@ func main() {
 		hubOpts.PprofBindAddress = fmt.Sprintf(":%d", *hubPprofPort)
 	}
 
-	if err := Start(ctrl.SetupSignalHandler(), hubConfig, memberConfig, hubOpts, memberOpts); err != nil {
+	if err := Start(ctrl.SetupSignalHandler(), hubConfig, memberConfig, hubOpts, memberOpts, mcName); err != nil {
 		klog.ErrorS(err, "Failed to start the controllers for the member agent")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
@@ -313,7 +313,7 @@ func buildHubConfig(hubURL string, useCertificateAuth bool, tlsClientInsecure bo
 }
 
 // Start the member controllers with the supplied config
-func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memberOpts ctrl.Options) error {
+func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memberOpts ctrl.Options, mcName string) error {
 	hubMgr, err := ctrl.NewManager(hubCfg, hubOpts)
 	if err != nil {
 		return fmt.Errorf("unable to start hub manager: %w", err)
@@ -473,12 +473,13 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 			hubMgr.GetClient(),
 			memberMgr.GetConfig(), memberMgr.GetClient(),
 			workApplier,
-			pp)
+			pp,
+			mcName)
 		if err != nil {
 			klog.ErrorS(err, "Failed to create InternalMemberCluster v1beta1 reconciler")
 			return fmt.Errorf("failed to create InternalMemberCluster v1beta1 reconciler: %w", err)
 		}
-		if err := imcReconciler.SetupWithManager(hubMgr, "internalmembercluster-controller"); err != nil {
+		if err := imcReconciler.SetupWithManager(hubMgr, memberMgr, "internalmembercluster-controller"); err != nil {
 			klog.ErrorS(err, "Failed to set up InternalMemberCluster v1beta1 controller with the controller manager")
 			return fmt.Errorf("failed to set up InternalMemberCluster v1beta1 controller with the controller manager: %w", err)
 		}

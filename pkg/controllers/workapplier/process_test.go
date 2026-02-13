@@ -97,3 +97,97 @@ func TestShouldInitiateTakeOverAttempt(t *testing.T) {
 		})
 	}
 }
+
+// TestGetParentCRPNameFromWork tests the getParentCRPNameFromWork function.
+func TestGetParentCRPNameFromWork(t *testing.T) {
+	testCases := []struct {
+		name string
+		work *fleetv1beta1.Work
+		want string
+	}{
+		{
+			name: "work with parent-CRP label",
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-work",
+					Namespace: "fleet-member-cluster-1",
+					Labels: map[string]string{
+						fleetv1beta1.PlacementTrackingLabel: "test-crp",
+						"other-label":                       "other-value",
+					},
+				},
+			},
+			want: "test-crp",
+		},
+		{
+			name: "work without parent-CRP label",
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-work",
+					Namespace: "fleet-member-cluster-1",
+					Labels: map[string]string{
+						"other-label": "other-value",
+					},
+				},
+			},
+			want: "",
+		},
+		{
+			name: "work with no labels",
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-work",
+					Namespace: "fleet-member-cluster-1",
+				},
+			},
+			want: "",
+		},
+		{
+			name: "work with nil labels map",
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-work",
+					Namespace: "fleet-member-cluster-1",
+					Labels:    nil,
+				},
+			},
+			want: "",
+		},
+		{
+			name: "work with empty parent-CRP label value",
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-work",
+					Namespace: "fleet-member-cluster-1",
+					Labels: map[string]string{
+						fleetv1beta1.PlacementTrackingLabel: "",
+						"other-label":                       "other-value",
+					},
+				},
+			},
+			want: "",
+		},
+		{
+			name: "work with complex CRP name",
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-work",
+					Namespace: "fleet-member-cluster-1",
+					Labels: map[string]string{
+						fleetv1beta1.PlacementTrackingLabel: "my-app-production-crp",
+					},
+				},
+			},
+			want: "my-app-production-crp",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := getParentCRPNameFromWork(tc.work)
+			if got != tc.want {
+				t.Errorf("getParentCRPNameFromWork() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

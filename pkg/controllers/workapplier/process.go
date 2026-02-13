@@ -165,7 +165,10 @@ func (r *Reconciler) processOneManifest(
 	}
 
 	// Perform the apply op.
-	appliedObj, err := r.apply(ctx, bundle.gvr, bundle.manifestObj, bundle.inMemberClusterObj, work.Spec.ApplyStrategy, expectedAppliedWorkOwnerRef)
+	// Extract parent-CRP name from Work object labels for namespace affinity support
+	parentCRPName := getParentCRPNameFromWork(work)
+
+	appliedObj, err := r.apply(ctx, bundle.gvr, bundle.manifestObj, bundle.inMemberClusterObj, work.Spec.ApplyStrategy, expectedAppliedWorkOwnerRef, parentCRPName)
 	if err != nil {
 		bundle.applyOrReportDiffErr = fmt.Errorf("failed to apply the manifest: %w", err)
 		bundle.applyOrReportDiffResTyp = ApplyOrReportDiffResTypeFailedToApply
@@ -256,9 +259,12 @@ func (r *Reconciler) takeOverInMemberClusterObjectIfApplicable(
 
 	// Take over the object. Note that this steps adds only the owner reference; no other
 	// fields are modified (on the object from the member cluster).
+	// Extract parent-CRP name for namespace affinity support
+	parentCRPName := getParentCRPNameFromWork(work)
+
 	takenOverInMemberClusterObj, configDiffs, diffCalculatedInDegradedMode, err := r.takeOverPreExistingObject(ctx,
 		bundle.gvr, bundle.manifestObj, bundle.inMemberClusterObj,
-		work.Spec.ApplyStrategy, expectedAppliedWorkOwnerRef)
+		work.Spec.ApplyStrategy, expectedAppliedWorkOwnerRef, parentCRPName)
 	switch {
 	case err != nil:
 		// An unexpected error has occurred.
@@ -371,10 +377,14 @@ func (r *Reconciler) reportDiffOnlyIfApplicable(
 
 	// The object has been created in the member cluster; Fleet will calculate the configuration
 	// diffs between the manifest object and the object from the member cluster.
+	// Extract parent-CRP name for namespace affinity support
+	parentCRPName := getParentCRPNameFromWork(work)
+
 	configDiffs, diffCalculatedInDegradedMode, err := r.diffBetweenManifestAndInMemberClusterObjects(ctx,
 		bundle.gvr,
 		bundle.manifestObj, bundle.inMemberClusterObj,
-		work.Spec.ApplyStrategy.ComparisonOption)
+		work.Spec.ApplyStrategy.ComparisonOption,
+		parentCRPName)
 	switch {
 	case err != nil:
 		// Failed to calculate the configuration diffs.
@@ -463,10 +473,14 @@ func (r *Reconciler) performPreApplyDriftDetectionIfApplicable(
 		return false
 	default:
 		// Run the drift detection process.
+		// Extract parent-CRP name for namespace affinity support
+		parentCRPName := getParentCRPNameFromWork(work)
+
 		drifts, driftsCalculatedInDegradedMode, err := r.diffBetweenManifestAndInMemberClusterObjects(ctx,
 			bundle.gvr,
 			bundle.manifestObj, bundle.inMemberClusterObj,
-			work.Spec.ApplyStrategy.ComparisonOption)
+			work.Spec.ApplyStrategy.ComparisonOption,
+			parentCRPName)
 		switch {
 		case err != nil:
 			// An unexpected error has occurred.
@@ -546,10 +560,14 @@ func (r *Reconciler) performPostApplyDriftDetectionIfApplicable(
 		return false
 	}
 
+	// Extract parent-CRP name for namespace affinity support
+	parentCRPName := getParentCRPNameFromWork(work)
+
 	drifts, driftsCalculatedInDegradedMode, err := r.diffBetweenManifestAndInMemberClusterObjects(ctx,
 		bundle.gvr,
 		bundle.manifestObj, bundle.inMemberClusterObj,
-		work.Spec.ApplyStrategy.ComparisonOption)
+		work.Spec.ApplyStrategy.ComparisonOption,
+		parentCRPName)
 	switch {
 	case err != nil:
 		// An unexpected error has occurred.
@@ -594,4 +612,13 @@ func shouldPerformPostApplyDriftDetection(applyStrategy *fleetv1beta1.ApplyStrat
 	// Post-apply drift detection is performed if (and only if):
 	// * The apply strategy dictates that drift detection should run in full comparison mode.
 	return applyStrategy.ComparisonOption == fleetv1beta1.ComparisonOptionTypeFullComparison
+}
+
+// getParentCRPNameFromWork extracts the parent CRP name from Work object labels.
+// Returns empty string if the label is not found.
+func getParentCRPNameFromWork(work *fleetv1beta1.Work) string {
+	if workLabels := work.GetLabels(); workLabels != nil {
+		return workLabels[fleetv1beta1.PlacementTrackingLabel]
+	}
+	return ""
 }
