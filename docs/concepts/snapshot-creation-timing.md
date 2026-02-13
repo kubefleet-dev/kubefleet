@@ -120,19 +120,24 @@ t=0.35s  : CRP status updated: ObservedResourceIndex="1"
 **Scenario A - Test sees index 0 (passes if expecting 0, fails if expecting 1)**:
 ```
 t=0.1s  : CRP status = ObservedResourceIndex="0" with complete conditions
-t=0.15s : Eventually() checks → matches expected status → SUCCESS
-t=0.35s : CRP status changes to ObservedResourceIndex="1" (but test already passed)
+t=0.15s : Eventually() first check → matches expected status → SUCCESS, stops checking
+t=0.35s : CRP status changes to ObservedResourceIndex="1" (but Eventually() already stopped)
 ```
+**Result**: Test passes with index "0". Eventually() never sees index "1" because it stopped after first successful match.
 
 **Scenario B - Test only sees index 1 (fails if expecting 0, passes if expecting 1)**:
 ```
 t=0.05s : Snapshot 0 created but status not yet updated
 t=0.08s : Envelope processing completes quickly
 t=0.1s  : Snapshot 1 created  
-t=0.12s : Eventually() starts checking
-t=0.15s : CRP status = ObservedResourceIndex="1" with complete conditions
-t=0.15s-10s : Eventually() keeps checking, always sees "1", expects "0" → TIMEOUT/FAIL
+t=0.12s : Eventually() first check → CRP status still updating
+t=0.15s : Eventually() second check → CRP status = ObservedResourceIndex="1" with complete conditions
+t=0.15s : Matches expected? If expecting "0" → NO → keeps checking
+t=0.4s-10s : Eventually() keeps checking every 250ms, always sees "1", expects "0" → TIMEOUT/FAIL
 ```
+**Result**: Test fails. Eventually() NEVER sees index "0" because envelope processing completed before CRP status reached the "snapshot 0" state with complete conditions.
+
+**Important**: In Scenario A, even though snapshot 1 WILL be created at t=0.35s, the test never observes it because Eventually() already stopped at t=0.15s after matching index "0". The test doesn't "eventually catch index 1" - it stops checking as soon as it succeeds.
 
 ## Why E2E Tests Set Delays to 0
 
@@ -168,11 +173,15 @@ Even though envelope processing ALWAYS happens, the test doesn't always see inde
    - If the test's `Eventually()` checks during this window, it sees index "0"
    - If the test checks after this window, it only sees index "1"
 
-3. **Eventually() Behavior**: 
+3. **Eventually() Behavior - Critical Point**: 
    - Checks every 250ms (eventuallyInterval) for up to 10s (eventuallyDuration)
-   - First successful match stops the checking
-   - If it catches index "0" state early, it succeeds and stops checking
-   - If index "1" is created before the first successful match, it never sees index "0"
+   - **First successful match stops the checking immediately**
+   - If it catches index "0" state early and matches expected status → **SUCCESS, stops checking, never sees index "1"**
+   - If index "1" is created before the first successful match → **only sees index "1", never sees index "0"**
+   
+   **Key**: Eventually() does NOT keep checking after success. Once the actual status matches expected status, it stops. So:
+   - ✅ If first match happens during "snapshot 0" state → test succeeds with index "0", never observes transition to "1"
+   - ❌ If "snapshot 1" created before first match → test only sees index "1", fails if expecting "0"
 
 ### Timing Variability Factors
 
@@ -318,8 +327,8 @@ kubectl logs -n fleet-system deployment/fleet-hub-agent | grep "resourceSnapshot
 
 **A**: The race condition exists because of timing variability. The test's `Eventually()` checks every 250ms:
 
-- **Sometimes** it catches the brief "snapshot 0" state before envelope processing completes → sees index "0"
-- **Sometimes** envelope processing completes before the first successful check → only sees index "1"
+- **Sometimes** it catches the brief "snapshot 0" state before envelope processing completes → sees index "0", matches, **stops checking immediately**, never observes index "1"
+- **Sometimes** envelope processing completes before the first successful check → only sees index "1", keeps checking for 10s expecting "0", times out and fails
 
 The critical window (when CRP status shows index "0") duration varies based on:
 - CPU load and scheduling
@@ -329,5 +338,18 @@ The critical window (when CRP status shows index "0") duration varies based on:
 - Informer cache synchronization timing
 
 On a fast system with light load, the window might be only 20-50ms. On a busy CI runner, it might be 100-300ms, giving the test more chances to catch the "snapshot 0" state.
+
+**Q: So eventually it will catch index 1 then?**
+
+**A**: **No, not necessarily!** This is a common misconception. `Eventually()` **stops checking as soon as it gets a successful match**. 
+
+If the test's first successful status check happens at t=0.15s when index is "0", Eventually() returns success and stops. Even though snapshot 1 will be created at t=0.35s, the test never sees it because it already finished.
+
+The test only "catches index 1" if envelope processing completes SO QUICKLY that snapshot 1 is created and CRP status is updated BEFORE Eventually() gets its first successful match with complete conditions.
+
+Think of it like this:
+- 🏁 **Race to first match**: Does Eventually() match index "0" first, OR does envelope processing create index "1" first?
+- ⏱️ **Critical timing**: First successful match wins and stops the race
+- 🎯 **Outcome**: Whichever state exists during first successful match determines what the test observes
 
 **Key Insight**: The number of envelopes doesn't determine snapshot count. Instead, it's the **number of times the resource content hash changes** over time that drives snapshot creation. The flakiness comes from **when** the test observes the CRP status relative to **when** the state transitions occur.
