@@ -444,8 +444,7 @@ var _ = Describe("handling errors and failures gracefully", func() {
 					Conditions: crpAppliedFailedConditions(crp.Generation),
 					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
 						{
-							ClusterName:           memberCluster1EastProdName,
-							ObservedResourceIndex: "0",
+							ClusterName: memberCluster1EastProdName,
 							FailedPlacements: []placementv1beta1.FailedResourcePlacement{
 								{
 									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
@@ -485,9 +484,10 @@ var _ = Describe("handling errors and failures gracefully", func() {
 							Namespace: workNamespaceName,
 						},
 					},
-					ObservedResourceIndex: "0",
 				}
-				if diff := cmp.Diff(crp.Status, wantStatus, placementStatusCmpOptions...); diff != "" {
+				// Use placementStatusCmpOptionsOnCreate to ignore ObservedResourceIndex fields
+				// since envelope processing may trigger additional snapshots
+				if diff := cmp.Diff(crp.Status, wantStatus, placementStatusCmpOptionsOnCreate...); diff != "" {
 					return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
 				}
 				return nil
