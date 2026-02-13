@@ -523,25 +523,46 @@ func (r *Reconciler) syncInternalMemberClusterStatus(imc *clusterv1beta1.Interna
 	}
 
 	// TODO: We didn't handle condition type: clusterv1beta1.ConditionTypeMemberClusterHealthy.
-	// Copy Agent status and set ObservedGeneration for agent conditions.
-	if len(imc.Status.AgentStatus) > 0 {
-		mc.Status.AgentStatus = make([]clusterv1beta1.AgentStatus, len(imc.Status.AgentStatus))
-	}
+	latestAgentStatus := make([]clusterv1beta1.AgentStatus, 0, len(imc.Status.AgentStatus))
+	var memberAgentStatusUpdated bool
 	for i := range imc.Status.AgentStatus {
-		mc.Status.AgentStatus[i] = *imc.Status.AgentStatus[i].DeepCopy()
-		// Set ObservedGeneration for each agent condition.
-		for j := range mc.Status.AgentStatus[i].Conditions {
-			mc.Status.AgentStatus[i].Conditions[j].ObservedGeneration = mc.GetGeneration()
+		if imc.Status.AgentStatus[i].Conditions == nil {
+			err := controller.NewUnexpectedBehaviorError(fmt.Errorf("find an unexpected agent status for member cluster %s", mc.Name))
+			klog.ErrorS(controller.NewUnexpectedBehaviorError(err), "Skipping invalid agent status", "memberCluster", klog.KObj(mc), "agentStatus", imc.Status.AgentStatus[i].Type)
+			continue // skip this invalid agent status
 		}
+
+		if imc.Status.AgentStatus[i].Conditions[0].ObservedGeneration < imc.GetGeneration() { // assuming the agent status conditions are always updated together
+			klog.V(2).InfoS("Skipping stale agent status", "memberCluster", klog.KObj(mc), "agentType", imc.Status.AgentStatus[i].Type)
+			continue // skip stale agent status
+		}
+		agentType := imc.Status.AgentStatus[i].Type
+		if agentType == clusterv1beta1.MemberAgent {
+			memberAgentStatusUpdated = true
+		}
+
+		mcAgentStatus := *imc.Status.AgentStatus[i].DeepCopy()
+		for j := range mcAgentStatus.Conditions {
+			mcAgentStatus.Conditions[j].ObservedGeneration = mc.GetGeneration() // using the mc generation
+		}
+		latestAgentStatus = append(latestAgentStatus, mcAgentStatus)
+		mc.SetAgentStatus(agentType, mcAgentStatus)
 	}
 
-	r.aggregateJoinedCondition(mc)
+	r.aggregateJoinedCondition(latestAgentStatus, mc)
+	if !memberAgentStatusUpdated {
+		klog.V(2).InfoS("Member agent status not found in internal member cluster status, skip updating member cluster status related fields", "memberCluster", klog.KObj(mc))
+		return
+	}
+
+	// The remaining fields are only updated when member-agent is updated.
 	// Copy resource usages.
 	mc.Status.ResourceUsage = imc.Status.ResourceUsage
 	// Copy additional conditions.
+	// Right now all the additional conditions are reported by the member-agent.
 	for idx := range imc.Status.Conditions {
 		cond := imc.Status.Conditions[idx]
-		cond.ObservedGeneration = mc.GetGeneration()
+		cond.ObservedGeneration = mc.GetGeneration() // using the mc generation
 		meta.SetStatusCondition(&mc.Status.Conditions, cond)
 	}
 	// Copy the cluster properties.
@@ -572,32 +593,33 @@ func (r *Reconciler) updateMemberClusterStatus(ctx context.Context, mc *clusterv
 }
 
 // aggregateJoinedCondition is used to calculate and mark the joined or left status for member cluster based on join conditions from all agents.
-func (r *Reconciler) aggregateJoinedCondition(mc *clusterv1beta1.MemberCluster) {
+// agentStatus contains the latest status reported by the agents based on the latest mc spec.
+func (r *Reconciler) aggregateJoinedCondition(agentStatus []clusterv1beta1.AgentStatus, mc *clusterv1beta1.MemberCluster) {
 	klog.V(4).InfoS("Aggregate joined condition from all agents", "memberCluster", klog.KObj(mc))
 	var unknownMessage string
-	if len(mc.Status.AgentStatus) < len(r.agents) {
-		unknownMessage = fmt.Sprintf("Member cluster %s has not reported all the expected agents, expected %d, got %d", mc.Name, len(r.agents), len(mc.Status.AgentStatus))
+	if len(agentStatus) < len(r.agents) {
+		unknownMessage = fmt.Sprintf("Member cluster %s has not reported all the expected agents, expected %d, got %d", mc.Name, len(r.agents), len(agentStatus))
 		markMemberClusterUnknown(r.recorder, mc, unknownMessage)
 		return
 	}
 	joined := true
 	left := true
 	reportedAgents := make(map[clusterv1beta1.AgentType]bool)
-	for _, agentStatus := range mc.Status.AgentStatus {
-		if !r.agents[agentStatus.Type] {
-			_ = controller.NewUnexpectedBehaviorError(fmt.Errorf("find an unexpected agent type %s for member cluster %s", agentStatus.Type, mc.Name))
+	for _, status := range agentStatus {
+		if !r.agents[status.Type] {
+			_ = controller.NewUnexpectedBehaviorError(fmt.Errorf("find an unexpected agent type %s for member cluster %s", status.Type, mc.Name))
 			continue // ignore any unexpected agent type
 		}
-		condition := meta.FindStatusCondition(agentStatus.Conditions, string(clusterv1beta1.AgentJoined))
+		condition := meta.FindStatusCondition(status.Conditions, string(clusterv1beta1.AgentJoined))
 		if condition == nil {
-			unknownMessage = fmt.Sprintf("Member cluster %s has not reported the join condition for agent %s", mc.Name, agentStatus.Type)
+			unknownMessage = fmt.Sprintf("Member cluster %s has not reported the join condition for agent %s", mc.Name, status.Type)
 			markMemberClusterUnknown(r.recorder, mc, unknownMessage)
 			return
 		}
 
 		joined = joined && condition.Status == metav1.ConditionTrue
 		left = left && condition.Status == metav1.ConditionFalse
-		reportedAgents[agentStatus.Type] = true
+		reportedAgents[status.Type] = true
 	}
 
 	if len(reportedAgents) < len(r.agents) {
