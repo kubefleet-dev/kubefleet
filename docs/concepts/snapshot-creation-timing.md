@@ -326,6 +326,142 @@ Matching index 1 would be **better than matching index 0** (catches more cases),
 
 **The right fix**: Ignore snapshot index, validate actual behavior.
 
+## Alternative Approach: Wait for Stable State
+
+### Valid Criticism
+
+**"It is a test case we have control over. It should be eventually consistently 1"**
+
+This is a **valid point**! Looking at the test setup:
+- ✅ Static resources (namespace, envelope, CRP created once)
+- ✅ NO subsequent modifications
+- ✅ Controlled environment
+- ✅ Eventually() already waits up to 10 seconds
+
+So why not just **wait for the system to stabilize at index 1**?
+
+### The Alternative Solution
+
+Instead of ignoring `ObservedResourceIndex`, we could:
+
+```go
+It("should update CRP status as expected", func() {
+    crpStatusUpdatedActual := func() error {
+        crp := &placementv1beta1.ClusterResourcePlacement{}
+        if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+            return err
+        }
+
+        wantStatus := placementv1beta1.PlacementStatus{
+            ObservedResourceIndex: "1",  // Explicitly wait for index 1
+            Conditions: crpAppliedFailedConditions(crp.Generation),
+            PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+                {
+                    ClusterName: memberCluster1EastProdName,
+                    ObservedResourceIndex: "1",  // Explicitly wait for index 1
+                    FailedPlacements: [...],
+                    Conditions: [...],
+                },
+            },
+            SelectedResources: [...],
+        }
+        if diff := cmp.Diff(crp.Status, wantStatus, placementStatusCmpOptions...); diff != "" {
+            return fmt.Errorf("CRP status diff (-got, +want): %s", diff)
+        }
+        return nil
+    }
+    
+    // Wait longer to ensure envelope processing completes
+    Eventually(crpStatusUpdatedActual, eventuallyDuration*2, eventuallyInterval).Should(Succeed())
+    Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed())
+})
+```
+
+### Pros and Cons
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **Ignore index** (current) | • Works with any number of snapshots<br>• Robust to timing variations<br>• Focuses on behavior, not implementation<br>• Simple and maintainable | • Doesn't validate system stabilization<br>• Could miss snapshot thrashing issues<br>• Less explicit about expected state |
+| **Wait for index 1** (alternative) | • Validates system reaches stable state<br>• More explicit test expectations<br>• Could catch snapshot thrashing<br>• Proves envelope processing completes | • Assumes envelope processing creates exactly 1 new snapshot<br>• Could fail if optimization reduces snapshots<br>• Could fail if additional processing creates snapshot 2<br>• Harder to maintain if implementation changes |
+
+### When Each Approach is Appropriate
+
+**Use "Ignore index" when**:
+- ✅ Test validates **functional behavior** (e.g., duplicate detection, error conditions)
+- ✅ Snapshot versioning is an **implementation detail**
+- ✅ Test should be **resilient to controller optimizations**
+- ✅ Multiple controllers might trigger snapshots unpredictably
+
+**Use "Wait for specific index" when**:
+- ✅ Test specifically validates **snapshot creation behavior**
+- ✅ Snapshot count is part of the **contract being tested**
+- ✅ Need to prove **system stabilization** after known operations
+- ✅ Can guarantee **no additional snapshot triggers** during test
+
+### Why We Chose "Ignore Index" for This Test
+
+For the duplicate detection test specifically:
+
+1. **Test Purpose**: Validate that duplicate ConfigMaps are detected and reported correctly
+   - The failure condition is what matters
+   - The snapshot index is incidental
+
+2. **Robustness**: Even with controlled setup, edge cases exist:
+   - If E2E delays are set to 0, BOTH snapshots might be created before first Eventually() check
+   - Controller optimizations might eliminate snapshot 0→1 transition
+   - Additional controllers (GC, finalizers) might trigger snapshot 2
+
+3. **Maintenance**: If implementation improves (e.g., skips unnecessary snapshots), test continues working
+
+### The Pragmatic Middle Ground
+
+For tests where you DO control the setup and want to validate stabilization:
+
+```go
+// First wait for the expected stable state
+Eventually(func() error {
+    crp := &placementv1beta1.ClusterResourcePlacement{}
+    if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
+        return err
+    }
+    
+    // Check the functional status (behavior)
+    if diff := cmp.Diff(crp.Status, wantStatus, placementStatusCmpOptionsOnCreate...); diff != "" {
+        return fmt.Errorf("behavior diff: %s", diff)
+    }
+    
+    // Additionally check we've reached a stable snapshot index (optional)
+    if crp.Status.ObservedResourceIndex == "" {
+        return fmt.Errorf("snapshot not yet created")
+    }
+    
+    return nil
+}, workloadEventuallyDuration, eventuallyInterval).Should(Succeed())
+
+// Then verify it stays stable
+Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed())
+```
+
+This approach:
+- ✅ Waits for system stabilization (snapshot index exists)
+- ✅ Validates functional behavior (ignores which specific index)
+- ✅ Uses Consistently() to prove no thrashing
+- ✅ Robust to snapshot count variations
+
+### Conclusion
+
+**Your criticism is valid!** For a controlled test setup, we COULD wait for index 1 specifically. The trade-off is:
+
+- **Ignore index** = More robust, less explicit
+- **Wait for index 1** = More explicit, less robust
+
+For this specific test (duplicate detection), we chose robustness over explicitness because:
+1. The test validates behavior, not snapshot mechanics
+2. Implementation changes shouldn't break the test
+3. The approach matches the pattern used elsewhere in the codebase
+
+But you're absolutely right that the alternative (waiting for index 1) is also valid, especially if you want to explicitly validate that envelope processing completes and the system stabilizes.
+
 ## Resource Hash Calculation
 
 From `pkg/controllers/placement/controller.go:481`:
