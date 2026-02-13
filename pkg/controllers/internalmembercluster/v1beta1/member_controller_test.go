@@ -38,6 +38,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
@@ -1464,6 +1465,501 @@ func TestConnectToPropertyProvider(t *testing.T) {
 				sortByConditionType,
 			); diff != "" {
 				t.Fatalf("InternalMemberCluster status (-got, +want):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestUpdateNamespaceToCRPMapping tests the updateNamespaceToCRPMapping method.
+func TestUpdateNamespaceToCRPMapping(t *testing.T) {
+	testCases := []struct {
+		name        string
+		namespaces  []corev1.Namespace
+		currentIMC  *clusterv1beta1.InternalMemberCluster
+		wantMapping map[string]string
+		wantErr     bool
+	}{
+		{
+			name: "single namespace with parent-CRP label",
+			namespaces: []corev1.Namespace{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns-1",
+						Labels: map[string]string{
+							"kubernetes-fleet.io/parent-CRP": "test-crp-1",
+						},
+					},
+				},
+			},
+			currentIMC: &clusterv1beta1.InternalMemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      imcName,
+					Namespace: "fleet-member-1",
+				},
+				Status: clusterv1beta1.InternalMemberClusterStatus{},
+			},
+			wantMapping: map[string]string{
+				"test-ns-1": "test-crp-1",
+			},
+			wantErr: false,
+		},
+		{
+			name: "multiple namespaces with parent-CRP labels",
+			namespaces: []corev1.Namespace{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns-1",
+						Labels: map[string]string{
+							"kubernetes-fleet.io/parent-CRP": "test-crp-1",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns-2",
+						Labels: map[string]string{
+							"kubernetes-fleet.io/parent-CRP": "test-crp-2",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns-3",
+						Labels: map[string]string{
+							"kubernetes-fleet.io/parent-CRP": "test-crp-1",
+						},
+					},
+				},
+			},
+			currentIMC: &clusterv1beta1.InternalMemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      imcName,
+					Namespace: "fleet-member-1",
+				},
+				Status: clusterv1beta1.InternalMemberClusterStatus{},
+			},
+			wantMapping: map[string]string{
+				"test-ns-1": "test-crp-1",
+				"test-ns-2": "test-crp-2",
+				"test-ns-3": "test-crp-1",
+			},
+			wantErr: false,
+		},
+		{
+			name: "namespace without parent-CRP label should be ignored",
+			namespaces: []corev1.Namespace{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns-1",
+						Labels: map[string]string{
+							"kubernetes-fleet.io/parent-CRP": "test-crp-1",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns-no-label",
+						Labels: map[string]string{
+							"other-label": "value",
+						},
+					},
+				},
+			},
+			currentIMC: &clusterv1beta1.InternalMemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      imcName,
+					Namespace: "fleet-member-1",
+				},
+				Status: clusterv1beta1.InternalMemberClusterStatus{},
+			},
+			wantMapping: map[string]string{
+				"test-ns-1": "test-crp-1",
+			},
+			wantErr: false,
+		},
+		{
+			name: "namespace with empty parent-CRP label should be ignored",
+			namespaces: []corev1.Namespace{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns-1",
+						Labels: map[string]string{
+							"kubernetes-fleet.io/parent-CRP": "test-crp-1",
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns-empty",
+						Labels: map[string]string{
+							"kubernetes-fleet.io/parent-CRP": "",
+						},
+					},
+				},
+			},
+			currentIMC: &clusterv1beta1.InternalMemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      imcName,
+					Namespace: "fleet-member-1",
+				},
+				Status: clusterv1beta1.InternalMemberClusterStatus{},
+			},
+			wantMapping: map[string]string{
+				"test-ns-1": "test-crp-1",
+			},
+			wantErr: false,
+		},
+		{
+			name:       "no namespaces returns empty mapping",
+			namespaces: []corev1.Namespace{},
+			currentIMC: &clusterv1beta1.InternalMemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      imcName,
+					Namespace: "fleet-member-1",
+				},
+				Status: clusterv1beta1.InternalMemberClusterStatus{},
+			},
+			wantMapping: map[string]string{},
+			wantErr:     false,
+		},
+		{
+			name: "existing mapping is updated correctly",
+			namespaces: []corev1.Namespace{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns-1",
+						Labels: map[string]string{
+							"kubernetes-fleet.io/parent-CRP": "test-crp-1",
+						},
+					},
+				},
+			},
+			currentIMC: &clusterv1beta1.InternalMemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      imcName,
+					Namespace: "fleet-member-1",
+				},
+				Status: clusterv1beta1.InternalMemberClusterStatus{
+					NamespaceToCRPMapping: map[string]string{
+						"old-ns": "old-crp",
+					},
+				},
+			},
+			wantMapping: map[string]string{
+				"test-ns-1": "test-crp-1",
+			},
+			wantErr: false,
+		},
+	}
+
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add scheme (corev1): %v", err)
+	}
+	if err := clusterv1beta1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add scheme (clusterv1beta1): %v", err)
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeClientBuilder := fake.NewClientBuilder().WithScheme(scheme)
+			for i := range tc.namespaces {
+				fakeClientBuilder.WithObjects(&tc.namespaces[i])
+			}
+			fakeClient := fakeClientBuilder.Build()
+
+			r := &Reconciler{
+				memberClient: fakeClient,
+			}
+
+			imc := tc.currentIMC.DeepCopy()
+			err := r.updateNamespaceToCRPMapping(context.Background(), imc)
+
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("updateNamespaceToCRPMapping() expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("updateNamespaceToCRPMapping() got error %v, want no error", err)
+			}
+
+			if diff := cmp.Diff(tc.wantMapping, imc.Status.NamespaceToCRPMapping); diff != "" {
+				t.Errorf("NamespaceToCRPMapping mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestBuildNamespaceEventPredicate tests the buildNamespaceEventPredicate function.
+func TestBuildNamespaceEventPredicate(t *testing.T) {
+	predicate := buildNamespaceEventPredicate()
+
+	testCases := []struct {
+		name     string
+		testFunc func(t *testing.T)
+	}{
+		{
+			name: "CreateFunc - namespace with parent-CRP label returns true",
+			testFunc: func(t *testing.T) {
+				ns := &corev1.Namespace{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns",
+						Labels: map[string]string{
+							"kubernetes-fleet.io/parent-CRP": "test-crp",
+						},
+					},
+				}
+				e := event.CreateEvent{Object: ns}
+				if !predicate.Create(e) {
+					t.Error("CreateFunc should return true for namespace with parent-CRP label")
+				}
+			},
+		},
+		{
+			name: "CreateFunc - namespace without parent-CRP label returns false",
+			testFunc: func(t *testing.T) {
+				ns := &corev1.Namespace{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns",
+					},
+				}
+				e := event.CreateEvent{Object: ns}
+				if predicate.Create(e) {
+					t.Error("CreateFunc should return false for namespace without parent-CRP label")
+				}
+			},
+		},
+		{
+			name: "CreateFunc - namespace with empty parent-CRP label returns false",
+			testFunc: func(t *testing.T) {
+				ns := &corev1.Namespace{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns",
+						Labels: map[string]string{
+							"kubernetes-fleet.io/parent-CRP": "",
+						},
+					},
+				}
+				e := event.CreateEvent{Object: ns}
+				if predicate.Create(e) {
+					t.Error("CreateFunc should return false for namespace with empty parent-CRP label")
+				}
+			},
+		},
+		{
+			name: "UpdateFunc - always returns false",
+			testFunc: func(t *testing.T) {
+				oldNs := &corev1.Namespace{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns",
+						Labels: map[string]string{
+							"kubernetes-fleet.io/parent-CRP": "test-crp",
+						},
+					},
+				}
+				newNs := &corev1.Namespace{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns",
+						Labels: map[string]string{
+							"kubernetes-fleet.io/parent-CRP": "updated-crp",
+						},
+					},
+				}
+				e := event.UpdateEvent{ObjectOld: oldNs, ObjectNew: newNs}
+				if predicate.Update(e) {
+					t.Error("UpdateFunc should always return false")
+				}
+			},
+		},
+		{
+			name: "DeleteFunc - namespace with parent-CRP label returns true",
+			testFunc: func(t *testing.T) {
+				ns := &corev1.Namespace{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns",
+						Labels: map[string]string{
+							"kubernetes-fleet.io/parent-CRP": "test-crp",
+						},
+					},
+				}
+				e := event.DeleteEvent{Object: ns}
+				if !predicate.Delete(e) {
+					t.Error("DeleteFunc should return true for namespace with parent-CRP label")
+				}
+			},
+		},
+		{
+			name: "DeleteFunc - namespace without parent-CRP label returns false",
+			testFunc: func(t *testing.T) {
+				ns := &corev1.Namespace{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns",
+					},
+				}
+				e := event.DeleteEvent{Object: ns}
+				if predicate.Delete(e) {
+					t.Error("DeleteFunc should return false for namespace without parent-CRP label")
+				}
+			},
+		},
+		{
+			name: "GenericFunc - always returns false",
+			testFunc: func(t *testing.T) {
+				ns := &corev1.Namespace{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-ns",
+						Labels: map[string]string{
+							"kubernetes-fleet.io/parent-CRP": "test-crp",
+						},
+					},
+				}
+				e := event.GenericEvent{Object: ns}
+				if predicate.Generic(e) {
+					t.Error("GenericFunc should always return false")
+				}
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, tc.testFunc)
+	}
+}
+
+// TestNamespaceToIMCMapper tests the namespaceToIMCMapper method.
+func TestNamespaceToIMCMapper(t *testing.T) {
+	testCases := []struct {
+		name            string
+		namespace       *corev1.Namespace
+		imcList         []clusterv1beta1.InternalMemberCluster
+		memberCluster   string
+		wantRequests    int
+		wantRequestName string
+		wantRequestNS   string
+	}{
+		{
+			name: "namespace triggers reconcile for matching IMC",
+			namespace: &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-ns",
+					Labels: map[string]string{
+						"kubernetes-fleet.io/parent-CRP": "test-crp",
+					},
+				},
+			},
+			imcList: []clusterv1beta1.InternalMemberCluster{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "member-1",
+						Namespace: "fleet-member-1",
+					},
+				},
+			},
+			memberCluster:   "member-1",
+			wantRequests:    1,
+			wantRequestName: "member-1",
+			wantRequestNS:   "fleet-member-1",
+		},
+		{
+			name: "no matching IMC returns empty requests",
+			namespace: &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-ns",
+				},
+			},
+			imcList: []clusterv1beta1.InternalMemberCluster{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "member-1",
+						Namespace: "fleet-member-1",
+					},
+				},
+			},
+			memberCluster: "different-member",
+			wantRequests:  0,
+		},
+		{
+			name: "multiple IMCs only matches correct one",
+			namespace: &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-ns",
+					Labels: map[string]string{
+						"kubernetes-fleet.io/parent-CRP": "test-crp",
+					},
+				},
+			},
+			imcList: []clusterv1beta1.InternalMemberCluster{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "member-1",
+						Namespace: "fleet-member-1",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "member-2",
+						Namespace: "fleet-member-2",
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "member-3",
+						Namespace: "fleet-member-3",
+					},
+				},
+			},
+			memberCluster:   "member-2",
+			wantRequests:    1,
+			wantRequestName: "member-2",
+			wantRequestNS:   "fleet-member-2",
+		},
+		{
+			name:          "empty IMC list returns empty requests",
+			namespace:     &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test-ns"}},
+			imcList:       []clusterv1beta1.InternalMemberCluster{},
+			memberCluster: "member-1",
+			wantRequests:  0,
+		},
+	}
+
+	scheme := runtime.NewScheme()
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add scheme (corev1): %v", err)
+	}
+	if err := clusterv1beta1.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add scheme (clusterv1beta1): %v", err)
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeClientBuilder := fake.NewClientBuilder().WithScheme(scheme)
+			for i := range tc.imcList {
+				fakeClientBuilder.WithObjects(&tc.imcList[i])
+			}
+			fakeClient := fakeClientBuilder.Build()
+
+			r := &Reconciler{
+				hubClient:         fakeClient,
+				memberClusterName: tc.memberCluster,
+			}
+
+			requests := r.namespaceToIMCMapper(context.Background(), tc.namespace)
+
+			if len(requests) != tc.wantRequests {
+				t.Errorf("namespaceToIMCMapper() got %d requests, want %d", len(requests), tc.wantRequests)
+				return
+			}
+
+			if tc.wantRequests > 0 {
+				if requests[0].Name != tc.wantRequestName {
+					t.Errorf("namespaceToIMCMapper() request name = %s, want %s", requests[0].Name, tc.wantRequestName)
+				}
+				if requests[0].Namespace != tc.wantRequestNS {
+					t.Errorf("namespaceToIMCMapper() request namespace = %s, want %s", requests[0].Namespace, tc.wantRequestNS)
+				}
 			}
 		})
 	}

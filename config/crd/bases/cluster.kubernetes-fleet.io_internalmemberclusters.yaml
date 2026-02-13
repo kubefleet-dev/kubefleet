@@ -486,6 +486,15 @@ spec:
                   - type
                   type: object
                 type: array
+              namespaceToCRPMapping:
+                additionalProperties:
+                  type: string
+                description: |-
+                  NamespaceToCRPMapping tracks which CRPs have placed namespaces on this cluster.
+                  Map key: namespace name
+                  Map value: CRP name that placed the namespace
+                  This is used for namespace affinity scheduling of ResourcePlacements.
+                type: object
               properties:
                 additionalProperties:
                   description: PropertyValue is the value of a cluster property.
