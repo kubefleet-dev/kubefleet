@@ -101,7 +101,7 @@ var (
 	workApplierRequeueRateLimiterMaxFastBackoffDelaySeconds                          = flag.Float64("work-applier-requeue-rate-limiter-max-fast-backoff-delay-seconds", 900, "If set, the work applier will not back off longer than this value in seconds when it is in the fast backoff stage.")
 	workApplierRequeueRateLimiterSkipToFastBackoffForAvailableOrDiffReportedWorkObjs = flag.Bool("work-applier-requeue-rate-limiter-skip-to-fast-backoff-for-available-or-diff-reported-work-objs", true, "If set, the rate limiter will skip the slow backoff stage and start fast backoff immediately for work objects that are available or have diff reported.")
 
-  // Property feature gates when the property provider is not none.
+	// Property feature gates when the property provider is not none.
 	enableNamespaceCollectionInPropertyProvider = flag.Bool("enable-namespace-collection-in-property-provider", false, "If set, the property provider will collect the namespaces in the member cluster.")
 
 	// Work applier priority queue settings.
