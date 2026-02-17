@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/resource"
 )
@@ -665,14 +666,15 @@ func shouldUseForcedServerSideApply(inMemberClusterObj *unstructured.Unstructure
 // only on clusters that have the required namespace.
 func labelNamespaceWithParentCRP(manifestObj *unstructured.Unstructured, parentCRPName string) {
 	// Only label if this is a namespace object
-	if manifestObj.GetKind() != "Namespace" || manifestObj.GetAPIVersion() != "v1" {
+	if manifestObj.GetKind() != utils.NamespaceKind || manifestObj.GetAPIVersion() != corev1.SchemeGroupVersion.String() {
 		return
 	}
 
 	// Skip if no parent CRP name is provided
+	// This should never happen as PlacementTrackingLabel is a required label on all bindings.
 	if parentCRPName == "" {
-		klog.Warningf("No parent CRP name provided for namespace %s, skipping labeling",
-			manifestObj.GetName())
+		klog.ErrorS(nil, "Parent placement name is empty for namespace object, skipping labeling",
+			"namespace", manifestObj.GetName())
 		return
 	}
 
