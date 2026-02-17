@@ -294,7 +294,8 @@ func (r *Reconciler) handleStageCompletion(
 
 	// Only record metric the first time cluster updating completes in the stage (before marking as waiting).
 	progressingCond := meta.FindStatusCondition(updatingStageStatus.Conditions, string(placementv1beta1.StageUpdatingConditionProgressing))
-	if !condition.IsConditionStatusFalse(progressingCond, updateRun.GetGeneration()) && progressingCond.Reason != condition.StageUpdatingWaitingReason {
+	if progressingCond != nil && (!condition.IsConditionStatusFalse(progressingCond, updateRun.GetGeneration()) &&
+		progressingCond.Reason != condition.StageUpdatingWaitingReason) {
 		// First time reaching completion - record the duration.
 		recordStageClusterUpdatingDuration(updatingStageStatus, updateRun)
 	}
