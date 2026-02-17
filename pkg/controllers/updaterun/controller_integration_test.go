@@ -357,26 +357,13 @@ func generateStageClusterUpdatingMetric(
 func generateApprovalStageTaskMetric(
 	updateRun *placementv1beta1.ClusterStagedUpdateRun,
 	stageTask string,
+	stageTaskCount uint64,
 ) *prometheusclientmodel.Metric {
-	var stageTaskCount uint64
-	for _, stage := range updateRun.Status.UpdateStrategySnapshot.Stages {
-		if stage.BeforeStageTasks != nil && stageTask == placementv1beta1.BeforeStageTaskLabelValue {
-			stageTaskCount++
-		}
-		if stage.AfterStageTasks != nil {
-			for _, task := range stage.AfterStageTasks {
-				if task.Type == placementv1beta1.StageTaskTypeApproval && stageTask == placementv1beta1.AfterStageTaskLabelValue {
-					stageTaskCount++
-				}
-			}
-		}
-	}
-	println("stageTaskCount:", stageTaskCount)
 	return &prometheusclientmodel.Metric{
 		Label: []*prometheusclientmodel.LabelPair{
 			{Name: ptr.To("namespace"), Value: &updateRun.Namespace},
 			{Name: ptr.To("name"), Value: &updateRun.Name},
-			{Name: ptr.To("stageTask"), Value: ptr.To(stageTask)},
+			{Name: ptr.To("taskType"), Value: ptr.To(stageTask)},
 		},
 		Histogram: &prometheusclientmodel.Histogram{
 			SampleCount: ptr.To(stageTaskCount),

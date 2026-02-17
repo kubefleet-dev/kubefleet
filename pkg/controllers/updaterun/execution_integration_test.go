@@ -619,7 +619,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			By("Checking update run status metrics are emitted")
 			validateUpdateRunMetricsEmitted(generateWaitingMetric(placementv1beta1.StateRun, updateRun), generateProgressingMetric(placementv1beta1.StateRun, updateRun), generateSucceededMetric(placementv1beta1.StateRun, updateRun))
 			validateUpdateRunStageMetricsEmitted(generateStageClusterUpdatingMetric(updateRun))
-			validateUpdateRunApprovalStageTaskMetric(generateApprovalStageTaskMetric(updateRun, placementv1beta1.AfterStageTaskLabelValue), generateApprovalStageTaskMetric(updateRun, placementv1beta1.BeforeStageTaskLabelValue))
+			validateUpdateRunApprovalStageTaskMetric(generateApprovalStageTaskMetric(updateRun, placementv1beta1.AfterStageTaskLabelValue, 1), generateApprovalStageTaskMetric(updateRun, placementv1beta1.BeforeStageTaskLabelValue, 1))
 		})
 	})
 
@@ -1031,7 +1031,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 			By("Checking update run status metrics are emitted")
 			validateUpdateRunMetricsEmitted(generateWaitingMetric(placementv1beta1.StateRun, updateRun), generateProgressingMetric(placementv1beta1.StateRun, updateRun), generateSucceededMetric(placementv1beta1.StateRun, updateRun))
 			validateUpdateRunStageMetricsEmitted(generateStageClusterUpdatingMetric(updateRun))
-			validateUpdateRunApprovalStageTaskMetric(generateApprovalStageTaskMetric(updateRun, placementv1beta1.BeforeStageTaskLabelValue))
+			validateUpdateRunApprovalStageTaskMetric(generateApprovalStageTaskMetric(updateRun, placementv1beta1.BeforeStageTaskLabelValue, 1))
 		})
 	})
 
@@ -1282,7 +1282,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 			By("Checking update run status metrics are emitted")
 			validateUpdateRunMetricsEmitted(generateWaitingMetric(placementv1beta1.StateRun, updateRun), generateProgressingMetric(placementv1beta1.StateRun, updateRun), generateSucceededMetric(placementv1beta1.StateRun, updateRun))
 			validateUpdateRunStageMetricsEmitted(generateStageClusterUpdatingMetric(updateRun))
-			validateUpdateRunApprovalStageTaskMetric(generateApprovalStageTaskMetric(updateRun, placementv1beta1.AfterStageTaskLabelValue))
+			validateUpdateRunApprovalStageTaskMetric(generateApprovalStageTaskMetric(updateRun, placementv1beta1.AfterStageTaskLabelValue, 1))
 		})
 	})
 

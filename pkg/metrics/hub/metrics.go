@@ -49,14 +49,14 @@ var (
 		Help: "The latency from approval request creation to user approval in seconds",
 		// Buckets: 1min, 5min, 15min, 30min, 1hr, 2hr, 6hr, 12hr, 24hr
 		Buckets: []float64{60, 300, 900, 1800, 3600, 7200, 21600, 43200, 86400},
-	}, []string{"namespace", "name", "stageTask"})
+	}, []string{"namespace", "name", "taskType"})
 
 	// FleetUpdateRunStageClusterUpdatingDurationSeconds tracks the duration of each stage of an update run, excluding the execution time of stage tasks.
 	FleetUpdateRunStageClusterUpdatingDurationSeconds = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name: "fleet_workload_update_run_stage_cluster_updating_duration_seconds",
 		Help: "The duration the stage of an update run in seconds without stage tasks execution time",
-		// Buckets: 10s, 30s, 1min, 2min, 5min, 10min, 30min, 1hr
-		Buckets: []float64{10, 30, 60, 120, 300, 600, 1800, 3600},
+		// Buckets: 15s, 30s, 1min, 2min, 5min, 10min, 30min, 1hr
+		Buckets: []float64{15, 30, 60, 120, 300, 600, 1800, 3600},
 	}, []string{"namespace", "name"})
 )
 

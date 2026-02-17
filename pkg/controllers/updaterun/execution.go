@@ -292,9 +292,9 @@ func (r *Reconciler) handleStageCompletion(
 ) (time.Duration, error) {
 	updateRunRef := klog.KObj(updateRun)
 
-	// Only record metric the first time cluster updating completes (before marking as waiting).
+	// Only record metric the first time cluster updating completes in the stage (before marking as waiting).
 	progressingCond := meta.FindStatusCondition(updatingStageStatus.Conditions, string(placementv1beta1.StageUpdatingConditionProgressing))
-	if progressingCond == nil || progressingCond.Reason == condition.StageUpdatingStartedReason {
+	if !condition.IsConditionStatusFalse(progressingCond, updateRun.GetGeneration()) && progressingCond.Reason != condition.StageUpdatingWaitingReason {
 		// First time reaching completion - record the duration.
 		recordStageClusterUpdatingDuration(updatingStageStatus, updateRun)
 	}
@@ -485,7 +485,7 @@ func (r *Reconciler) handleStageApprovalTask(
 				klog.V(2).InfoS("The approval request has been approval-accepted, ignoring changing back to unapproved", "approvalRequestTask", requestRef, "stage", updatingStage.Name, "updateRun", updateRunRef)
 			}
 			markStageTaskRequestApproved(stageTaskStatus, updateRun.GetGeneration())
-			recordApprovalRequestLatency(approvalRequest, updateRun, stageTaskType)
+			recordApprovalRequestLatency(updatingStage, updateRun, stageTaskType)
 		} else {
 			// retriable error
 			klog.ErrorS(err, "Failed to create the approval request", "approvalRequest", requestRef, "stage", updatingStage.Name, "updateRun", updateRunRef)
