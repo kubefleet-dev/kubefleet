@@ -28,6 +28,7 @@ export PROPERTY_PROVIDER="${PROPERTY_PROVIDER:-azure}"
 export USE_PREDEFINED_REGIONS="${USE_PREDEFINED_REGIONS:-false}"
 export RESOURCE_SNAPSHOT_CREATION_MINIMUM_INTERVAL="${RESOURCE_SNAPSHOT_CREATION_MINIMUM_INTERVAL:-0m}"
 export RESOURCE_CHANGES_COLLECTION_DURATION="${RESOURCE_CHANGES_COLLECTION_DURATION:-0m}"
+export CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.16.2}"
 
 # The pre-defined regions; if the AKS property provider is used.
 #
@@ -114,14 +115,32 @@ done
 
 # Install the helm charts
 
-# Install the hub agent to the hub cluster
 kind export kubeconfig --name $HUB_CLUSTER
+
+# Install cert-manager first (required for webhook certificates)
+echo "Installing cert-manager..."
+
+# Install cert-manager using Helm to avoid ownership conflicts with hub-agent chart
+helm repo add jetstack https://charts.jetstack.io --force-update
+helm repo update
+helm install cert-manager jetstack/cert-manager \
+    --namespace cert-manager \
+    --create-namespace \
+    --version $CERT_MANAGER_VERSION \
+    --set crds.enabled=true \
+    --wait \
+    --timeout=300s
+
+# Install the hub agent to the hub cluster
 helm install hub-agent ../../charts/hub-agent/ \
     --set image.pullPolicy=Never \
     --set image.repository=$REGISTRY/$HUB_AGENT_IMAGE \
     --set image.tag=$TAG \
     --set namespace=fleet-system \
     --set logVerbosity=5 \
+    --set replicaCount=3 \
+    --set useCertManager=true \
+    --set webhookCertSecretName=fleet-webhook-server-cert \
     --set enableWebhook=true \
     --set enableWorkload=true \
     --set webhookClientConnectionType=service \
@@ -175,6 +194,8 @@ kind export kubeconfig --name $HUB_CLUSTER
 HUB_SERVER_URL="https://$(docker inspect $HUB_CLUSTER-control-plane --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'):6443"
 
 # Install the member agents and related components
+# Note that the work applier in the member agent are set to requeue at max. every 5 seconds instead of using the default 
+# exponential backoff behavior; this is to accommodate some of the timeout settings in the E2E test specs.
 for (( i=0; i<${MEMBER_CLUSTER_COUNT}; i++ ));
 do
     kind export kubeconfig --name "${MEMBER_CLUSTERS[$i]}"
@@ -191,6 +212,9 @@ do
             --set logVerbosity=5 \
             --set namespace=fleet-system \
             --set enableV1Beta1APIs=true \
+            --set priorityQueue.enabled=true \
+            --set workApplierRequeueRateLimiterMaxSlowBackoffDelaySeconds=5 \
+            --set workApplierRequeueRateLimiterMaxFastBackoffDelaySeconds=5 \
             --set propertyProvider=$PROPERTY_PROVIDER \
             --set region=${REGIONS[$i]} \
             $( [ "$PROPERTY_PROVIDER" = "azure" ] && echo "-f azure_valid_config.yaml" )
@@ -207,6 +231,9 @@ do
             --set logVerbosity=5 \
             --set namespace=fleet-system \
             --set enableV1Beta1APIs=true \
+            --set priorityQueue.enabled=true \
+            --set workApplierRequeueRateLimiterMaxSlowBackoffDelaySeconds=5 \
+            --set workApplierRequeueRateLimiterMaxFastBackoffDelaySeconds=5 \
             --set propertyProvider=$PROPERTY_PROVIDER \
             $( [ "$PROPERTY_PROVIDER" = "azure" ] && echo "-f azure_valid_config.yaml" )
     fi

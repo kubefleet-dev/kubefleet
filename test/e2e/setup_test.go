@@ -76,7 +76,6 @@ const (
 	hubClusterSAName = "fleet-hub-agent"
 	fleetSystemNS    = "fleet-system"
 
-	kubeConfigPathEnvVarName            = "KUBECONFIG"
 	propertyProviderEnvVarName          = "PROPERTY_PROVIDER"
 	azurePropertyProviderEnvVarValue    = "azure"
 	fleetClusterResourceIDAnnotationKey = "fleet.azure.com/cluster-resource-id"
@@ -270,13 +269,6 @@ var (
 		ignoreClusterNameField,
 		cmpopts.EquateEmpty(),
 	}
-
-	updateRunStatusCmpOption = cmp.Options{
-		cmpopts.SortSlices(lessFuncCondition),
-		utils.IgnoreConditionLTTAndMessageFields,
-		cmpopts.IgnoreFields(placementv1beta1.StageUpdatingStatus{}, "StartTime", "EndTime"),
-		cmpopts.EquateEmpty(),
-	}
 )
 
 // TestMain sets up the E2E test environment.
@@ -330,9 +322,6 @@ func beforeSuiteForAllProcesses() {
 	fs := flag.NewFlagSet("klog", flag.ContinueOnError)
 	klog.InitFlags(fs)
 	Expect(fs.Parse([]string{"--v", "5", "-add_dir_header", "true"})).Should(Succeed())
-
-	// Check if the required environment variable, which specifies the path to kubeconfig file, has been set.
-	Expect(os.Getenv(kubeConfigPathEnvVarName)).NotTo(BeEmpty(), "Required environment variable KUBECONFIG is not set")
 
 	resourceSnapshotCreationMinimumIntervalEnv := os.Getenv("RESOURCE_SNAPSHOT_CREATION_MINIMUM_INTERVAL")
 	if resourceSnapshotCreationMinimumIntervalEnv == "" {

@@ -26,7 +26,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/prometheus/client_golang/prometheus"
 	prometheusclientmodel "github.com/prometheus/client_model/go"
 
 	corev1 "k8s.io/api/core/v1"
@@ -259,23 +258,27 @@ func validateUpdateRunMetricsEmitted(wantMetrics ...*prometheusclientmodel.Metri
 	}, timeout, interval).Should(Succeed(), "failed to validate the update run status metrics")
 }
 
+// generateMetricsLabels generates the labels for the update run status metrics.
+// We pass the state explicitly instead of using updateRun.Spec.State because the metric
+// should reflect the state at the time the condition occurred, which may be different from
+// the current updateRun state if the updateRun has transitioned since then.
 func generateMetricsLabels(
 	updateRun *placementv1beta1.ClusterStagedUpdateRun,
-	condition, status, reason string,
+	state, condition, status, reason string,
 ) []*prometheusclientmodel.LabelPair {
 	return []*prometheusclientmodel.LabelPair{
 		{Name: ptr.To("namespace"), Value: &updateRun.Namespace},
 		{Name: ptr.To("name"), Value: &updateRun.Name},
-		{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(updateRun.Generation, 10))},
+		{Name: ptr.To("state"), Value: ptr.To(state)},
 		{Name: ptr.To("condition"), Value: ptr.To(condition)},
 		{Name: ptr.To("status"), Value: ptr.To(status)},
 		{Name: ptr.To("reason"), Value: ptr.To(reason)},
 	}
 }
 
-func generateInitializationSucceededMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateInitializationSucceededMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionInitialized),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionInitialized),
 			string(metav1.ConditionTrue), condition.UpdateRunInitializeSucceededReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -283,9 +286,9 @@ func generateInitializationSucceededMetric(updateRun *placementv1beta1.ClusterSt
 	}
 }
 
-func generateInitializationFailedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateInitializationFailedMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionInitialized),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionInitialized),
 			string(metav1.ConditionFalse), condition.UpdateRunInitializeFailedReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -293,9 +296,9 @@ func generateInitializationFailedMetric(updateRun *placementv1beta1.ClusterStage
 	}
 }
 
-func generateProgressingMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateProgressingMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionProgressing),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionProgressing),
 			string(metav1.ConditionTrue), condition.UpdateRunProgressingReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -303,9 +306,9 @@ func generateProgressingMetric(updateRun *placementv1beta1.ClusterStagedUpdateRu
 	}
 }
 
-func generateWaitingMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateWaitingMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionProgressing),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionProgressing),
 			string(metav1.ConditionFalse), condition.UpdateRunWaitingReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -313,9 +316,9 @@ func generateWaitingMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *
 	}
 }
 
-func generateStuckMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateStuckMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionProgressing),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionProgressing),
 			string(metav1.ConditionFalse), condition.UpdateRunStuckReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -323,9 +326,9 @@ func generateStuckMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *pr
 	}
 }
 
-func generateFailedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateFailedMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionSucceeded),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionSucceeded),
 			string(metav1.ConditionFalse), condition.UpdateRunFailedReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -333,9 +336,9 @@ func generateFailedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *p
 	}
 }
 
-func generateStoppingMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateStoppingMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionProgressing),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionProgressing),
 			string(metav1.ConditionUnknown), condition.UpdateRunStoppingReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -343,9 +346,9 @@ func generateStoppingMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) 
 	}
 }
 
-func generateStoppedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateStoppedMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionProgressing),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionProgressing),
 			string(metav1.ConditionFalse), condition.UpdateRunStoppedReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -353,32 +356,14 @@ func generateStoppedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *
 	}
 }
 
-func generateSucceededMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateSucceededMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionSucceeded),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionSucceeded),
 			string(metav1.ConditionTrue), condition.UpdateRunSucceededReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 		},
 	}
-}
-
-func labelPairsToMap(pairs []*prometheusclientmodel.LabelPair) prometheus.Labels {
-	m := prometheus.Labels{}
-	for _, p := range pairs {
-		m[p.GetName()] = p.GetValue()
-	}
-	return m
-}
-
-func removeMetricFromMetricList(metricList []*prometheusclientmodel.Metric, metricToRemove *prometheusclientmodel.Metric) []*prometheusclientmodel.Metric {
-	var result []*prometheusclientmodel.Metric
-	for _, metric := range metricList {
-		if !cmp.Equal(labelPairsToMap(metric.Label), labelPairsToMap(metricToRemove.Label)) {
-			result = append(result, metric)
-		}
-	}
-	return result
 }
 
 func generateTestClusterStagedUpdateRun() *placementv1beta1.ClusterStagedUpdateRun {
@@ -460,30 +445,19 @@ func generateTestClusterResourceBindingsAndClusters(policySnapshotIndex int) ([]
 		if i%2 == 0 {
 			region = regionWestus
 		}
-		// reserse the order of the clusters by index
+		// reverse the order of the clusters by index
 		targetClusters[i] = generateTestMemberCluster(numTargetClusters-1-i, "cluster-"+strconv.Itoa(i), map[string]string{"group": "prod", "region": region})
 		resourceBindings[i] = generateTestClusterResourceBinding(policySnapshotName, targetClusters[i].Name, placementv1beta1.BindingStateScheduled)
 	}
 
-	unscheduledClusters := make([]*clusterv1beta1.MemberCluster, numUnscheduledClusters)
-	// Half of the unscheduled clusters have old policy snapshot.
-	for i := range numUnscheduledClusters / 2 {
-		unscheduledClusters[i] = generateTestMemberCluster(i, "unscheduled-cluster-"+strconv.Itoa(i), map[string]string{"group": "staging"})
-		// Update the policySnapshot name so that these clusters are considered to-be-deleted.
-		resourceBindings[numTargetClusters+i] = generateTestClusterResourceBinding(policySnapshotName+"a", unscheduledClusters[i].Name, placementv1beta1.BindingStateUnscheduled)
-	}
-	// The other half of the unscheduled clusters have latest policy snapshot but still unscheduled.
-	for i := numUnscheduledClusters / 2; i < numUnscheduledClusters; i++ {
-		unscheduledClusters[i] = generateTestMemberCluster(i, "unscheduled-cluster-"+strconv.Itoa(i), map[string]string{"group": "staging"})
-		resourceBindings[numTargetClusters+i] = generateTestClusterResourceBinding(policySnapshotName, unscheduledClusters[i].Name, placementv1beta1.BindingStateUnscheduled)
-	}
+	resourceBindings, unscheduledClusters := generateTestUnscheduledClusterResourceBindingsAndClusters(policySnapshotName, numUnscheduledClusters, resourceBindings)
 	return resourceBindings, targetClusters, unscheduledClusters
 }
 
-func generateSmallTestClusterResourceBindingsAndClusters(policySnapshotIndex int) ([]*placementv1beta1.ClusterResourceBinding, []*clusterv1beta1.MemberCluster, []*clusterv1beta1.MemberCluster) {
+func generateSmallTestClusterResourceBindingsAndClusters(policySnapshotIndex int, numUnscheduledClusters int) ([]*placementv1beta1.ClusterResourceBinding, []*clusterv1beta1.MemberCluster, []*clusterv1beta1.MemberCluster) {
 	numTargetClusters := 3
 	policySnapshotName := fmt.Sprintf(placementv1beta1.PolicySnapshotNameFmt, testCRPName, policySnapshotIndex)
-	resourceBindings := make([]*placementv1beta1.ClusterResourceBinding, numTargetClusters)
+	resourceBindings := make([]*placementv1beta1.ClusterResourceBinding, numTargetClusters+numUnscheduledClusters)
 	targetClusters := make([]*clusterv1beta1.MemberCluster, numTargetClusters)
 	for i := range targetClusters {
 		// split the clusters into 2 regions
@@ -491,12 +465,31 @@ func generateSmallTestClusterResourceBindingsAndClusters(policySnapshotIndex int
 		if i%2 == 0 {
 			region = regionWestus
 		}
-		// reserse the order of the clusters by index
+		// reverse the order of the clusters by index
 		targetClusters[i] = generateTestMemberCluster(numTargetClusters-1-i, "cluster-"+strconv.Itoa(i), map[string]string{"group": "prod", "region": region})
 		resourceBindings[i] = generateTestClusterResourceBinding(policySnapshotName, targetClusters[i].Name, placementv1beta1.BindingStateScheduled)
 	}
-	unscheduledClusters := make([]*clusterv1beta1.MemberCluster, 0)
+
+	resourceBindings, unscheduledClusters := generateTestUnscheduledClusterResourceBindingsAndClusters(policySnapshotName, numUnscheduledClusters, resourceBindings)
 	return resourceBindings, targetClusters, unscheduledClusters
+}
+
+func generateTestUnscheduledClusterResourceBindingsAndClusters(policySnapshotName string, numUnscheduledClusters int, bindings []*placementv1beta1.ClusterResourceBinding) ([]*placementv1beta1.ClusterResourceBinding, []*clusterv1beta1.MemberCluster) {
+	targetClusters := len(bindings) - numUnscheduledClusters
+	unscheduledClusters := make([]*clusterv1beta1.MemberCluster, numUnscheduledClusters)
+	unscheduledClusterName := "unscheduled-cluster-%d"
+	// Half of the unscheduled clusters have old policy snapshot.
+	for i := range numUnscheduledClusters / 2 {
+		unscheduledClusters[i] = generateTestMemberCluster(i, fmt.Sprintf(unscheduledClusterName, i), map[string]string{"group": "staging"})
+		// Update the policySnapshot name so that these clusters are considered to-be-deleted.
+		bindings[targetClusters+i] = generateTestClusterResourceBinding(policySnapshotName+"old", unscheduledClusters[i].Name, placementv1beta1.BindingStateUnscheduled)
+	}
+	// The other half of the unscheduled clusters have latest policy snapshot but still unscheduled.
+	for i := numUnscheduledClusters / 2; i < numUnscheduledClusters; i++ {
+		unscheduledClusters[i] = generateTestMemberCluster(i, fmt.Sprintf(unscheduledClusterName, i), map[string]string{"group": "staging"})
+		bindings[targetClusters+i] = generateTestClusterResourceBinding(policySnapshotName, unscheduledClusters[i].Name, placementv1beta1.BindingStateUnscheduled)
+	}
+	return bindings, unscheduledClusters
 }
 
 func generateTestClusterResourceBinding(policySnapshotName, targetCluster string, state placementv1beta1.BindingState) *placementv1beta1.ClusterResourceBinding {
