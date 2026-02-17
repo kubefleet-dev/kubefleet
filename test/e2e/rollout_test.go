@@ -105,7 +105,9 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 
 		It("should update CRP status as expected", func() {
 			crpStatusUpdatedActual := crpStatusUpdatedActual(wantSelectedResources, allMemberClusterNames, nil, "0")
-			Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+			// Use envelopeEventuallyDuration for envelope-heavy tests as envelope processing
+			// (unwrapping resources and generating work objects) can take longer than standard workload operations
+			Eventually(crpStatusUpdatedActual, envelopeEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
 		It("should place the resources on all member clusters", func() {

@@ -89,6 +89,8 @@ const (
 	eventuallyDuration = time.Second * 10
 	// this is for workload related test cases
 	workloadEventuallyDuration = time.Second * 45
+	// this is for envelope-heavy test cases which may require additional processing time
+	envelopeEventuallyDuration = time.Second * 90
 	// This is for cluster setup.
 	longEventuallyDuration = time.Minute * 2
 	eventuallyInterval     = time.Millisecond * 250
