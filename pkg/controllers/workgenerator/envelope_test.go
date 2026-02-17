@@ -484,9 +484,9 @@ func TestCreateOrUpdateEnvelopeCRWorkObj(t *testing.T) {
 			wantErr:                             true,
 		},
 		{
-			name: "two existing works should result in error",
-			envelopeReader: resourceEnvelope,
-			resourceOverrideSnapshotHash: "new-resource-hash",
+			name:                                "two existing works should result in error",
+			envelopeReader:                      resourceEnvelope,
+			resourceOverrideSnapshotHash:        "new-resource-hash",
 			clusterResourceOverrideSnapshotHash: "new-cluster-resource-hash",
 			existingObjects: func() []client.Object {
 				existingWork1 := existingWork.DeepCopy()
