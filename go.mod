@@ -2,6 +2,8 @@ module github.com/kubefleet-dev/kubefleet
 
 go 1.24.13
 
+toolchain go1.24
+
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.0
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.10.1
