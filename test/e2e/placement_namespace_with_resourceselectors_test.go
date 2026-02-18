@@ -18,12 +18,14 @@ package e2e
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -380,6 +382,105 @@ var _ = Describe("CRP with NamespaceWithResourceSelectors with cluster-scoped re
 				return err != nil
 			}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "Namespace %s should be removed from cluster %s", testNamespace, cluster.ClusterName)
 		}
+	})
+
+	It("should remove controller finalizers from CRP", func() {
+		finalizerRemovedActual := allFinalizersExceptForCustomDeletionBlockerRemovedFromPlacementActual(types.NamespacedName{Name: crpName})
+		Eventually(finalizerRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove controller finalizers from CRP %s", crpName)
+	})
+})
+
+// Negative test case: selecting multiple namespaces with NamespaceWithResourceSelectors should fail
+var _ = Describe("CRP with NamespaceWithResourceSelectors selecting multiple namespaces should fail", Ordered, func() {
+	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+	namespace1 := fmt.Sprintf("test-ns-multi-1-%d", GinkgoParallelProcess())
+	namespace2 := fmt.Sprintf("test-ns-multi-2-%d", GinkgoParallelProcess())
+	labelKey := fmt.Sprintf("test-label-%d", GinkgoParallelProcess())
+
+	BeforeAll(func() {
+		By("creating two namespaces with matching labels")
+		ns1 := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: namespace1,
+				Labels: map[string]string{
+					labelKey: "match",
+				},
+			},
+		}
+		Expect(hubClient.Create(ctx, ns1)).To(Succeed(), "Failed to create namespace %s", namespace1)
+
+		ns2 := &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: namespace2,
+				Labels: map[string]string{
+					labelKey: "match",
+				},
+			},
+		}
+		Expect(hubClient.Create(ctx, ns2)).To(Succeed(), "Failed to create namespace %s", namespace2)
+	})
+
+	AfterAll(func() {
+		By("cleaning up test namespaces and CRP")
+		ns1 := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace1}}
+		Expect(client.IgnoreNotFound(hubClient.Delete(ctx, ns1))).To(Succeed())
+
+		ns2 := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace2}}
+		Expect(client.IgnoreNotFound(hubClient.Delete(ctx, ns2))).To(Succeed())
+
+		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+	})
+
+	It("should create CRP that selects multiple namespaces", func() {
+		crp := &placementv1beta1.ClusterResourcePlacement{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       crpName,
+				Finalizers: []string{customDeletionBlockerFinalizer},
+			},
+			Spec: placementv1beta1.PlacementSpec{
+				ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+					{
+						Group:          "",
+						Kind:           "Namespace",
+						Version:        "v1",
+						SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								labelKey: "match",
+							},
+						},
+					},
+				},
+			},
+		}
+		By(fmt.Sprintf("creating CRP %s", crpName))
+		Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP %s", crpName)
+	})
+
+	It("should show error in CRP status for selecting multiple namespaces", func() {
+		Eventually(func() bool {
+			var crp placementv1beta1.ClusterResourcePlacement
+			if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp); err != nil {
+				return false
+			}
+			// Check if there's a condition indicating the error
+			for _, cond := range crp.Status.Conditions {
+				if strings.Contains(cond.Message, "NamespaceWithResourceSelectors mode requires exactly one namespace") ||
+					strings.Contains(cond.Message, "namespaces were selected") {
+					return true
+				}
+			}
+			return false
+		}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "CRP %s should have error condition for multiple namespaces", crpName)
+	})
+
+	It("can delete the CRP", func() {
+		crp := &placementv1beta1.ClusterResourcePlacement{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: crpName,
+			},
+		}
+		Expect(hubClient.Delete(ctx, crp)).To(Succeed(), "Failed to delete CRP %s", crpName)
 	})
 
 	It("should remove controller finalizers from CRP", func() {

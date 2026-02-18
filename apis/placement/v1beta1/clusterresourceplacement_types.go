@@ -218,9 +218,11 @@ const (
 	// NamespaceWithResources means all the resources under the namespace including namespace itself are selected.
 	NamespaceWithResources SelectionScope = "NamespaceWithResources"
 
-	// NamespaceWithResourceSelectors means the namespace and resources specified by additional selectors are selected.
-	// When this mode is used, additional resource selectors must be provided to specify which resources
-	// within the namespace(s) should be selected. Cluster-scoped resources can also be included.
+	// NamespaceWithResourceSelectors means the namespace and optionally resources specified by additional selectors are selected.
+	// When this mode is used, you can provide additional resource selectors to specify which resources
+	// within the namespace(s) should be selected. If no additional selectors are provided, only the namespace itself is selected.
+	// Cluster-scoped resources can also be included with additional selectors.
+	// Important: exactly one namespace must be selected (either by name or label selector matching one namespace).
 	NamespaceWithResourceSelectors SelectionScope = "NamespaceWithResourceSelectors"
 )
 
