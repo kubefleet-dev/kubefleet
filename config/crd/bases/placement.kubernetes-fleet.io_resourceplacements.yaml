@@ -598,6 +598,7 @@ spec:
                       enum:
                       - NamespaceOnly
                       - NamespaceWithResources
+                      - NamespaceWithResourceSelectors
                       type: string
                     version:
                       description: Version of the to be selected resource.

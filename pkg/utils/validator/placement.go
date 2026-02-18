@@ -41,6 +41,7 @@ import (
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
 )
@@ -65,12 +66,32 @@ var (
 	resourceCapacityTypes             = supportedResourceCapacityTypes()
 )
 
+// countNamespaceSelectors counts the number of namespace selectors and checks if any have NamespaceWithResourceSelectors mode.
+func countNamespaceSelectors(resourceSelectors []placementv1beta1.ResourceSelectorTerm) (namespaceSelectorsCount int, hasNamespaceWithResourceSelectorsMode bool) {
+	for _, selector := range resourceSelectors {
+		if selector.Group == utils.NamespaceGVK.Group && selector.Version == utils.NamespaceGVK.Version && selector.Kind == utils.NamespaceGVK.Kind {
+			namespaceSelectorsCount++
+			if selector.SelectionScope == placementv1beta1.NamespaceWithResourceSelectors {
+				hasNamespaceWithResourceSelectorsMode = true
+			}
+		}
+	}
+	return namespaceSelectorsCount, hasNamespaceWithResourceSelectorsMode
+}
+
 // validatePlacement validates a placement object (either ClusterResourcePlacement or ResourcePlacement).
 func validatePlacement(name string, resourceSelectors []placementv1beta1.ResourceSelectorTerm, policy *placementv1beta1.PlacementPolicy, strategy placementv1beta1.RolloutStrategy, isClusterScoped bool) error {
 	allErr := make([]error, 0)
 
 	if len(name) > validation.DNS1035LabelMaxLength {
 		allErr = append(allErr, fmt.Errorf("the name field cannot have length exceeding %d", validation.DNS1035LabelMaxLength))
+	}
+
+	namespaceSelectorsCount, hasNamespaceWithResourceSelectorsMode := countNamespaceSelectors(resourceSelectors)
+
+	// Validate at most one namespace selector
+	if namespaceSelectorsCount > 1 {
+		allErr = append(allErr, fmt.Errorf("at most one namespace selector is allowed, found %d namespace selectors", namespaceSelectorsCount))
 	}
 
 	for _, selector := range resourceSelectors {
@@ -90,6 +111,13 @@ func validatePlacement(name string, resourceSelectors []placementv1beta1.Resourc
 			return apiErrors.NewAggregate(allErr) // skip next check if we cannot get GVR
 		}
 
+		// Validate SelectionScope is only used with Namespace kind
+		if selector.SelectionScope != "" {
+			if selector.Group != utils.NamespaceGVK.Group || selector.Kind != utils.NamespaceGVK.Kind {
+				allErr = append(allErr, fmt.Errorf("SelectionScope can only be used with Namespace kind selectors, got %s/%s with SelectionScope=%s", selector.Group, selector.Kind, selector.SelectionScope))
+			}
+		}
+
 		if ResourceInformer != nil {
 			gvk := schema.GroupVersionKind{
 				Group:   selector.Group,
@@ -97,7 +125,8 @@ func validatePlacement(name string, resourceSelectors []placementv1beta1.Resourc
 				Kind:    selector.Kind,
 			}
 			// Only check cluster scope for ClusterResourcePlacement
-			if isClusterScoped && !ResourceInformer.IsClusterScopedResources(gvk) {
+			// Exception: NamespaceWithResourceSelectors mode allows namespace-scoped resources
+			if isClusterScoped && !ResourceInformer.IsClusterScopedResources(gvk) && !hasNamespaceWithResourceSelectorsMode {
 				allErr = append(allErr, fmt.Errorf("the resource is not found in schema (please retry) or it is not a cluster scoped resource: %v", gvk))
 			}
 

@@ -202,7 +202,7 @@ type ResourceSelectorTerm struct {
 	LabelSelector *metav1.LabelSelector `json:"labelSelector,omitempty"`
 
 	// SelectionScope defines the scope of resource selections when the Kind is `namespace`.
-	// +kubebuilder:validation:Enum=NamespaceOnly;NamespaceWithResources
+	// +kubebuilder:validation:Enum=NamespaceOnly;NamespaceWithResources;NamespaceWithResourceSelectors
 	// +kubebuilder:default=NamespaceWithResources
 	// +kubebuilder:validation:Optional
 	SelectionScope SelectionScope `json:"selectionScope,omitempty"`
@@ -217,6 +217,11 @@ const (
 
 	// NamespaceWithResources means all the resources under the namespace including namespace itself are selected.
 	NamespaceWithResources SelectionScope = "NamespaceWithResources"
+
+	// NamespaceWithResourceSelectors means the namespace and resources specified by additional selectors are selected.
+	// When this mode is used, additional resource selectors must be provided to specify which resources
+	// within the namespace(s) should be selected. Cluster-scoped resources can also be included.
+	NamespaceWithResourceSelectors SelectionScope = "NamespaceWithResourceSelectors"
 )
 
 // PlacementPolicy contains the rules to select target member clusters to place the selected resources.
