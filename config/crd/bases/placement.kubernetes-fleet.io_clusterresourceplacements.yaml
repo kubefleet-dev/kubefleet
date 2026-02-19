@@ -2028,7 +2028,27 @@ spec:
                     kind:
                       description: |-
                         Kind of the to be selected resource.
-                        Note: When `Kind` is `namespace`, by default ALL the resources under the selected namespaces are selected.
+
+                        Special behavior when Kind is `namespace`:
+                        - You can use SelectionScope to control what gets selected:
+                          - NamespaceOnly: Only the namespace object itself
+                          - NamespaceWithResources: The namespace AND all resources within it (default)
+                          - NamespaceWithResourceSelectors: The namespace AND resources specified by additional selectors
+
+                        When SelectionScope is NamespaceWithResourceSelectors, you can define additional ResourceSelectorTerms
+                        (after the namespace selector) to specify which resources to include. These additional selectors can
+                        target both namespace-scoped resources (within the selected namespace) and cluster-scoped resources.
+
+                        Important requirements for NamespaceWithResourceSelectors mode:
+                        - The namespace selector MUST be the FIRST selector (index 0) in the ResourceSelectors array
+                        - Exactly one namespace must be selected (by name or label matching one namespace)
+                        - Both requirements are validated at webhook admission time
+
+                        Example using NamespaceWithResourceSelectors:
+                        - First selector: {Group: "", Version: "v1", Kind: "Namespace", Name: "prod", SelectionScope: "NamespaceWithResourceSelectors"}
+                        - Second selector: {Group: "apps", Version: "v1", Kind: "Deployment", LabelSelector: {app: "frontend"}}
+                        - Third selector: {Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole", Name: "admin"}
+                        This selects: the "prod" namespace, all Deployments with label app=frontend in "prod", and the "admin" ClusterRole.
                       type: string
                     labelSelector:
                       description: |-
@@ -2083,8 +2103,10 @@ spec:
                       type: string
                     selectionScope:
                       default: NamespaceWithResources
-                      description: SelectionScope defines the scope of resource selections
-                        when the Kind is `namespace`.
+                      description: |-
+                        SelectionScope defines the scope of resource selections when the Kind is `namespace`.
+                        This field is only applicable when Kind is "Namespace" and is ignored for other resource kinds.
+                        See the Kind field documentation for detailed examples and usage patterns.
                       enum:
                       - NamespaceOnly
                       - NamespaceWithResources

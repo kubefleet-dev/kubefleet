@@ -78,12 +78,50 @@ func hasNamespaceWithResourceSelectorsMode(resourceSelectors []placementv1beta1.
 	return false
 }
 
+// validateNamespaceWithResourceSelectorsMode validates that when NamespaceWithResourceSelectors mode is used,
+// there is exactly one namespace selector with this mode.
+func validateNamespaceWithResourceSelectorsMode(resourceSelectors []placementv1beta1.ResourceSelectorTerm) error {
+	namespaceSelectorsCount := 0
+	var namespaceSelectorIndices []int
+
+	for i, selector := range resourceSelectors {
+		if selector.Group == utils.NamespaceGVK.Group && selector.Version == utils.NamespaceGVK.Version && selector.Kind == utils.NamespaceGVK.Kind {
+			if selector.SelectionScope == placementv1beta1.NamespaceWithResourceSelectors {
+				namespaceSelectorsCount++
+				namespaceSelectorIndices = append(namespaceSelectorIndices, i)
+			}
+		}
+	}
+
+	// If no NamespaceWithResourceSelectors mode is used, validation passes
+	if namespaceSelectorsCount == 0 {
+		return nil
+	}
+
+	// Exactly one namespace selector with NamespaceWithResourceSelectors mode is required
+	if namespaceSelectorsCount > 1 {
+		return fmt.Errorf("when using NamespaceWithResourceSelectors mode, exactly one namespace selector with this mode is required, but found %d namespace selectors at indices %v", namespaceSelectorsCount, namespaceSelectorIndices)
+	}
+
+	// Ensure the namespace selector is the first selector
+	if namespaceSelectorIndices[0] != 0 {
+		return fmt.Errorf("when using NamespaceWithResourceSelectors mode, the namespace selector must be the first selector (index 0), but found it at index %d", namespaceSelectorIndices[0])
+	}
+
+	return nil
+}
+
 // validatePlacement validates a placement object (either ClusterResourcePlacement or ResourcePlacement).
 func validatePlacement(name string, resourceSelectors []placementv1beta1.ResourceSelectorTerm, policy *placementv1beta1.PlacementPolicy, strategy placementv1beta1.RolloutStrategy, isClusterScoped bool) error {
 	allErr := make([]error, 0)
 
 	if len(name) > validation.DNS1035LabelMaxLength {
 		allErr = append(allErr, fmt.Errorf("the name field cannot have length exceeding %d", validation.DNS1035LabelMaxLength))
+	}
+
+	// Validate NamespaceWithResourceSelectors mode has exactly one namespace selector
+	if err := validateNamespaceWithResourceSelectorsMode(resourceSelectors); err != nil {
+		allErr = append(allErr, err)
 	}
 
 	hasNsWithResourceSelectorsMode := hasNamespaceWithResourceSelectorsMode(resourceSelectors)

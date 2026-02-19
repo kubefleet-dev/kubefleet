@@ -254,9 +254,9 @@ func (rs *ResourceSelectorResolver) gatherSelectedResource(placementKey types.Na
 			}
 			// NamespaceWithResourceSelectors mode requires exactly one namespace
 			if len(namespaces) == 0 {
-				klog.V(2).InfoS("No namespaces selected with NamespaceWithResourceSelectors mode", "placement", placementKey.Name)
-				// No namespaces selected, continue
-				break
+				err := fmt.Errorf("invalid clusterResourcePlacement %s: NamespaceWithResourceSelectors mode requires exactly one namespace, but no namespaces were selected", placementKey.Name)
+				klog.ErrorS(err, "No namespaces selected with NamespaceWithResourceSelectors mode", "placement", placementKey.Name)
+				return nil, NewUserError(err)
 			}
 			if len(namespaces) > 1 {
 				err := fmt.Errorf("invalid clusterResourcePlacement %s: NamespaceWithResourceSelectors mode requires exactly one namespace, but %d namespaces were selected", placementKey.Name, len(namespaces))
