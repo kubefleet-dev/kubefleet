@@ -339,29 +339,6 @@ func TestValidateClusterResourcePlacement(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		"invalid CRP with SelectionScope on non-Namespace kind": {
-			crp: &placementv1beta1.ClusterResourcePlacement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-crp",
-				},
-				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
-						{
-							Group:          "apps",
-							Version:        "v1",
-							Kind:           "Deployment",
-							Name:           "test-deployment",
-							SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
-						},
-					},
-				},
-			},
-			resourceInformer: &testinformer.FakeManager{
-				APIResources: map[schema.GroupVersionKind]bool{utils.DeploymentGVK: true},
-			},
-			wantErr:    true,
-			wantErrMsg: "SelectionScope can only be used with Namespace kind selectors, got apps/Deployment with SelectionScope=NamespaceWithResourceSelectors",
-		},
 		"valid CRP with NamespaceWithResourceSelectors and cluster-scoped resources": {
 			crp: &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{

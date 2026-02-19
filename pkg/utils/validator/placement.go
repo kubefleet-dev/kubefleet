@@ -105,13 +105,6 @@ func validatePlacement(name string, resourceSelectors []placementv1beta1.Resourc
 			return apiErrors.NewAggregate(allErr) // skip next check if we cannot get GVR
 		}
 
-		// Validate SelectionScope is only used with Namespace kind
-		if selector.SelectionScope != "" {
-			if selector.Group != utils.NamespaceGVK.Group || selector.Kind != utils.NamespaceGVK.Kind {
-				allErr = append(allErr, fmt.Errorf("SelectionScope can only be used with Namespace kind selectors, got %s/%s with SelectionScope=%s", selector.Group, selector.Kind, selector.SelectionScope))
-			}
-		}
-
 		if ResourceInformer != nil {
 			gvk := schema.GroupVersionKind{
 				Group:   selector.Group,
