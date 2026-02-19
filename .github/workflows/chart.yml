@@ -19,32 +19,9 @@ env:
 
 jobs:
   export-registry:
-    runs-on: ubuntu-latest
-    outputs:
-      registry_repo: ${{ steps.export.outputs.registry_repo }}
-      release_tag: ${{ steps.export.outputs.release_tag }}
-      release_version: ${{ steps.export.outputs.release_version }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6.0.2
-      - id: export
-        run: |
-          # registry must be in lowercase
-          echo "registry=$(echo "${{ env.REGISTRY }}/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
-
-          # Extract tag from github ref or workflow input
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ inputs.tag }}"
-          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            TAG=${GITHUB_REF#refs/tags/}
-          else
-            echo "Error: Workflow triggered by unsupported event or ref"
-            echo "Event: ${{ github.event_name }}"
-            echo "Ref: ${{ github.ref }}"
-            exit 1
-          fi
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "Release tag: ${TAG}"
+    uses: ./.github/workflows/setup-release.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
 
   publish-github-pages:
     needs: export-registry
@@ -80,16 +57,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          RELEASE_VERSION="${{ needs.export-registry.outputs.release_version }}"
+          RELEASE_VERSION="${{ needs.export-registry.outputs.version }}"
 
-          OCI_REGISTRY="${{ needs.export-registry.outputs.registry_repo }}/charts"
+          OCI_REGISTRY="${{ needs.export-registry.outputs.registry }}/charts"
           make helm-push REGISTRY="${OCI_REGISTRY}" TAG="${RELEASE_VERSION}"
 
       - name: Verify chart appVersion matches release tag
         run: |
           set -euo pipefail
 
-          RELEASE_VERSION="${{ needs.export-registry.outputs.release_version }}"
+          RELEASE_VERSION="${{ needs.export-registry.outputs.version }}"
           CHART_VERSION="${RELEASE_VERSION}"
           EXPECTED_APP_VERSION="${RELEASE_VERSION}"
 
@@ -97,7 +74,7 @@ jobs:
           mkdir -p .helm-verify
 
           for chart in hub-agent member-agent; do
-            helm pull "oci://${{ needs.export-registry.outputs.registry_repo }}/charts/${chart}" --version "${CHART_VERSION}" --destination .helm-verify >/dev/null
+            helm pull "oci://${{ needs.export-registry.outputs.registry }}/charts/${chart}" --version "${CHART_VERSION}" --destination .helm-verify >/dev/null
             packaged=".helm-verify/${chart}-${CHART_VERSION}.tgz"
             actual_app_version=$(tar -xOf "${packaged}" "${chart}/Chart.yaml" | awk -F': ' '/^appVersion:/ {gsub(/"/, "", $2); print $2}')
             if [[ "${actual_app_version}" != "${EXPECTED_APP_VERSION}" ]]; then
