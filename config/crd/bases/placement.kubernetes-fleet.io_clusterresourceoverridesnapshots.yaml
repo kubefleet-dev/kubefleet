@@ -465,11 +465,13 @@ spec:
                           description: |-
                             Kind of the to be selected resource.
 
-                            Special behavior when Kind is `namespace`:
-                            - You can use SelectionScope to control what gets selected:
-                              - NamespaceOnly: Only the namespace object itself
-                              - NamespaceWithResources: The namespace AND all resources within it (default)
-                              - NamespaceWithResourceSelectors: The namespace AND resources specified by additional selectors
+                            Special behavior when Kind is `namespace` (ClusterResourcePlacement only):
+                            Note: ResourcePlacement cannot select namespaces since it is namespace-scoped and selects resources within a namespace.
+
+                            For ClusterResourcePlacement, you can use SelectionScope to control what gets selected:
+                            - NamespaceOnly: Only the namespace object itself
+                            - NamespaceWithResources: The namespace AND all resources within it (default)
+                            - NamespaceWithResourceSelectors: The namespace AND resources specified by additional selectors
 
                             When SelectionScope is NamespaceWithResourceSelectors, you can define additional ResourceSelectorTerms
                             (after the namespace selector) to specify which resources to include. These additional selectors can
@@ -479,6 +481,7 @@ spec:
                             - The namespace selector MUST be the FIRST selector (index 0) in the ResourceSelectors array
                             - Exactly one namespace must be selected (by name or label matching one namespace)
                             - Both requirements are validated at webhook admission time
+                            - If the selected namespace is deleted after CRP creation, the controller will report an error condition
 
                             Example using NamespaceWithResourceSelectors:
                             - First selector: {Group: "", Version: "v1", Kind: "Namespace", Name: "prod", SelectionScope: "NamespaceWithResourceSelectors"}
@@ -875,11 +878,13 @@ spec:
                           description: |-
                             Kind of the to be selected resource.
 
-                            Special behavior when Kind is `namespace`:
-                            - You can use SelectionScope to control what gets selected:
-                              - NamespaceOnly: Only the namespace object itself
-                              - NamespaceWithResources: The namespace AND all resources within it (default)
-                              - NamespaceWithResourceSelectors: The namespace AND resources specified by additional selectors
+                            Special behavior when Kind is `namespace` (ClusterResourcePlacement only):
+                            Note: ResourcePlacement cannot select namespaces since it is namespace-scoped and selects resources within a namespace.
+
+                            For ClusterResourcePlacement, you can use SelectionScope to control what gets selected:
+                            - NamespaceOnly: Only the namespace object itself
+                            - NamespaceWithResources: The namespace AND all resources within it (default)
+                            - NamespaceWithResourceSelectors: The namespace AND resources specified by additional selectors
 
                             When SelectionScope is NamespaceWithResourceSelectors, you can define additional ResourceSelectorTerms
                             (after the namespace selector) to specify which resources to include. These additional selectors can
@@ -889,6 +894,7 @@ spec:
                             - The namespace selector MUST be the FIRST selector (index 0) in the ResourceSelectors array
                             - Exactly one namespace must be selected (by name or label matching one namespace)
                             - Both requirements are validated at webhook admission time
+                            - If the selected namespace is deleted after CRP creation, the controller will report an error condition
 
                             Example using NamespaceWithResourceSelectors:
                             - First selector: {Group: "", Version: "v1", Kind: "Namespace", Name: "prod", SelectionScope: "NamespaceWithResourceSelectors"}

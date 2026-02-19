@@ -186,11 +186,13 @@ type ResourceSelectorTerm struct {
 
 	// Kind of the to be selected resource.
 	//
-	// Special behavior when Kind is `namespace`:
-	// - You can use SelectionScope to control what gets selected:
-	//   - NamespaceOnly: Only the namespace object itself
-	//   - NamespaceWithResources: The namespace AND all resources within it (default)
-	//   - NamespaceWithResourceSelectors: The namespace AND resources specified by additional selectors
+	// Special behavior when Kind is `namespace` (ClusterResourcePlacement only):
+	// Note: ResourcePlacement cannot select namespaces since it is namespace-scoped and selects resources within a namespace.
+	//
+	// For ClusterResourcePlacement, you can use SelectionScope to control what gets selected:
+	// - NamespaceOnly: Only the namespace object itself
+	// - NamespaceWithResources: The namespace AND all resources within it (default)
+	// - NamespaceWithResourceSelectors: The namespace AND resources specified by additional selectors
 	//
 	// When SelectionScope is NamespaceWithResourceSelectors, you can define additional ResourceSelectorTerms
 	// (after the namespace selector) to specify which resources to include. These additional selectors can
@@ -200,6 +202,7 @@ type ResourceSelectorTerm struct {
 	// - The namespace selector MUST be the FIRST selector (index 0) in the ResourceSelectors array
 	// - Exactly one namespace must be selected (by name or label matching one namespace)
 	// - Both requirements are validated at webhook admission time
+	// - If the selected namespace is deleted after CRP creation, the controller will report an error condition
 	//
 	// Example using NamespaceWithResourceSelectors:
 	// - First selector: {Group: "", Version: "v1", Kind: "Namespace", Name: "prod", SelectionScope: "NamespaceWithResourceSelectors"}
@@ -290,6 +293,11 @@ const (
 	// - The namespace selector with this mode MUST be the first selector in the ResourceSelectors array
 	// - Exactly ONE namespace must be selected (controller will reject if 0 or multiple namespaces match)
 	// - Both constraints are enforced at webhook admission time and will result in validation errors if violated
+	//
+	// Runtime behavior:
+	// - If the selected namespace is deleted after the CRP is created, the controller will detect this during
+	//   the next reconciliation and report an error condition in the CRP status
+	// - The CRP will transition to a failed state until the namespace is recreated or the CRP is updated
 	NamespaceWithResourceSelectors SelectionScope = "NamespaceWithResourceSelectors"
 )
 
