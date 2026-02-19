@@ -70,11 +70,9 @@ jobs:
           set -euo pipefail
 
           RELEASE_VERSION="${{ needs.export-registry.outputs.release_version }}"
-          CHART_VERSION="${RELEASE_VERSION}"
-          APP_VERSION="${RELEASE_VERSION}"
 
           OCI_REGISTRY="${{ needs.export-registry.outputs.registry_repo }}/charts"
-          make helm-push REGISTRY="${OCI_REGISTRY}" CHART_VERSION="${CHART_VERSION}" APP_VERSION="${APP_VERSION}"
+          make helm-push REGISTRY="${OCI_REGISTRY}" TAG="${RELEASE_VERSION}"
 
       - name: Verify chart appVersion matches release tag
         run: |
