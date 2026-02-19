@@ -66,17 +66,16 @@ var (
 	resourceCapacityTypes             = supportedResourceCapacityTypes()
 )
 
-// countNamespaceSelectors counts the number of namespace selectors and checks if any have NamespaceWithResourceSelectors mode.
-func countNamespaceSelectors(resourceSelectors []placementv1beta1.ResourceSelectorTerm) (namespaceSelectorsCount int, hasNamespaceWithResourceSelectorsMode bool) {
+// hasNamespaceWithResourceSelectorsMode checks if any namespace selector has NamespaceWithResourceSelectors mode.
+func hasNamespaceWithResourceSelectorsMode(resourceSelectors []placementv1beta1.ResourceSelectorTerm) bool {
 	for _, selector := range resourceSelectors {
 		if selector.Group == utils.NamespaceGVK.Group && selector.Version == utils.NamespaceGVK.Version && selector.Kind == utils.NamespaceGVK.Kind {
-			namespaceSelectorsCount++
 			if selector.SelectionScope == placementv1beta1.NamespaceWithResourceSelectors {
-				hasNamespaceWithResourceSelectorsMode = true
+				return true
 			}
 		}
 	}
-	return namespaceSelectorsCount, hasNamespaceWithResourceSelectorsMode
+	return false
 }
 
 // validatePlacement validates a placement object (either ClusterResourcePlacement or ResourcePlacement).
@@ -87,12 +86,7 @@ func validatePlacement(name string, resourceSelectors []placementv1beta1.Resourc
 		allErr = append(allErr, fmt.Errorf("the name field cannot have length exceeding %d", validation.DNS1035LabelMaxLength))
 	}
 
-	namespaceSelectorsCount, hasNamespaceWithResourceSelectorsMode := countNamespaceSelectors(resourceSelectors)
-
-	// Validate at most one namespace selector
-	if namespaceSelectorsCount > 1 {
-		allErr = append(allErr, fmt.Errorf("at most one namespace selector is allowed, found %d namespace selectors", namespaceSelectorsCount))
-	}
+	hasNsWithResourceSelectorsMode := hasNamespaceWithResourceSelectorsMode(resourceSelectors)
 
 	for _, selector := range resourceSelectors {
 		if selector.LabelSelector != nil {
@@ -126,7 +120,7 @@ func validatePlacement(name string, resourceSelectors []placementv1beta1.Resourc
 			}
 			// Only check cluster scope for ClusterResourcePlacement
 			// Exception: NamespaceWithResourceSelectors mode allows namespace-scoped resources
-			if isClusterScoped && !ResourceInformer.IsClusterScopedResources(gvk) && !hasNamespaceWithResourceSelectorsMode {
+			if isClusterScoped && !ResourceInformer.IsClusterScopedResources(gvk) && !hasNsWithResourceSelectorsMode {
 				allErr = append(allErr, fmt.Errorf("the resource is not found in schema (please retry) or it is not a cluster scoped resource: %v", gvk))
 			}
 
