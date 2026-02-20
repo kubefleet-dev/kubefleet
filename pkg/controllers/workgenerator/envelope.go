@@ -62,10 +62,10 @@ func (r *Reconciler) createOrUpdateEnvelopeCRWorkObj(
 		fleetv1beta1.PlacementTrackingLabel: binding.GetLabels()[fleetv1beta1.PlacementTrackingLabel],
 		fleetv1beta1.EnvelopeTypeLabel:      envelopeReader.GetEnvelopeType(),
 		fleetv1beta1.EnvelopeNameLabel:      envelopeReader.GetName(),
-		fleetv1beta1.EnvelopeNamespaceLabel: envelopeReader.GetNamespace(),
 	}
 	// Add ParentNamespaceLabel if the binding is namespaced
 	if binding.GetNamespace() != "" {
+		labelMatcher[fleetv1beta1.EnvelopeNamespaceLabel] = envelopeReader.GetNamespace()
 		labelMatcher[fleetv1beta1.ParentNamespaceLabel] = binding.GetNamespace()
 	}
 	workList := &fleetv1beta1.WorkList{}
@@ -87,6 +87,12 @@ func (r *Reconciler) createOrUpdateEnvelopeCRWorkObj(
 			"resourceBinding", klog.KObj(binding),
 			"resourceSnapshot", klog.KObj(resourceSnapshot),
 			"envelope", envelopeReader.GetEnvelopeObjRef())
+		// Log the work object names to help debug.
+		workNames := make([]string, len(workList.Items))
+		for i := range workList.Items {
+			workNames[i] = workList.Items[i].Name
+		}
+		klog.ErrorS(wrappedErr, "Duplicate work objects found", "works", workNames)
 		return nil, controller.NewUnexpectedBehaviorError(wrappedErr)
 	case len(workList.Items) == 1:
 		klog.V(2).InfoS("Found existing work object for the envelope; updating it",
