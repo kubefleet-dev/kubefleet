@@ -36,8 +36,10 @@ type PropertyCollectionResponse struct {
 	// Resources is a group of resources, described by their allocatable capacity and
 	// available capacity.
 	Resources clusterv1beta1.ResourceUsage
-	// Namespace is a group of kv pairs and the key is namespace and value is associated work
-	// name if it's applied by the placement.
+	// Namespaces is a map of namespace names to their associated work names for namespaces
+	// that are managed by Fleet (i.e., have AppliedWork owner references when created).
+	// The key is the namespace name and the value is the work name from the AppliedWork owner reference.
+	// This field is only populated when namespace collection is enabled in the property provider.
 	Namespaces map[string]string
 	// Conditions is an array of conditions that explains the property collection status.
 	//

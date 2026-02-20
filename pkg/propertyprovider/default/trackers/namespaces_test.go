@@ -26,8 +26,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-
-	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
 // namespaceTrackerCmpOptions defines the common comparison options for NamespaceTracker tests.
@@ -42,11 +40,6 @@ func TestNamespaceTracker_AddOrUpdate(t *testing.T) {
 	newNamespaceName := "new-test-namespace"
 	s := scheme.Scheme
 	fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
-	testNamespace := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: namespaceName,
-		},
-	}
 
 	tests := []struct {
 		name        string
@@ -58,8 +51,8 @@ func TestNamespaceTracker_AddOrUpdate(t *testing.T) {
 		{
 			name: "add new namespace",
 			tracker: &NamespaceTracker{
-				namespacesByName: map[string]*corev1.Namespace{
-					namespaceName: testNamespace,
+				appliedWorkByNamespace: map[string]string{
+					namespaceName: "",
 				},
 				namespaceCreationTimes: map[string]time.Time{
 					namespaceName: time.Now(),
@@ -73,13 +66,9 @@ func TestNamespaceTracker_AddOrUpdate(t *testing.T) {
 			},
 			trackLimit: 200,
 			wantTracker: &NamespaceTracker{
-				namespacesByName: map[string]*corev1.Namespace{
-					namespaceName: testNamespace,
-					newNamespaceName: {
-						ObjectMeta: metav1.ObjectMeta{
-							Name: newNamespaceName,
-						},
-					},
+				appliedWorkByNamespace: map[string]string{
+					namespaceName:    "",
+					newNamespaceName: "",
 				},
 				namespaceCreationTimes: map[string]time.Time{
 					namespaceName:    time.Now(),
@@ -91,8 +80,8 @@ func TestNamespaceTracker_AddOrUpdate(t *testing.T) {
 		{
 			name: "update existing namespace",
 			tracker: &NamespaceTracker{
-				namespacesByName: map[string]*corev1.Namespace{
-					namespaceName: testNamespace,
+				appliedWorkByNamespace: map[string]string{
+					namespaceName: "",
 				},
 				namespaceCreationTimes: map[string]time.Time{
 					namespaceName: time.Now(),
@@ -109,15 +98,8 @@ func TestNamespaceTracker_AddOrUpdate(t *testing.T) {
 			},
 			trackLimit: 200,
 			wantTracker: &NamespaceTracker{
-				namespacesByName: map[string]*corev1.Namespace{
-					namespaceName: {
-						ObjectMeta: metav1.ObjectMeta{
-							Name: namespaceName,
-							Labels: map[string]string{
-								"updated": "true",
-							},
-						},
-					},
+				appliedWorkByNamespace: map[string]string{
+					namespaceName: "",
 				},
 				namespaceCreationTimes: map[string]time.Time{
 					namespaceName: time.Now(),
@@ -128,8 +110,8 @@ func TestNamespaceTracker_AddOrUpdate(t *testing.T) {
 		{
 			name: "try to add when limit reached",
 			tracker: &NamespaceTracker{
-				namespacesByName: map[string]*corev1.Namespace{
-					namespaceName: testNamespace,
+				appliedWorkByNamespace: map[string]string{
+					namespaceName: "",
 				},
 				namespaceCreationTimes: map[string]time.Time{
 					namespaceName: time.Now(),
@@ -143,8 +125,8 @@ func TestNamespaceTracker_AddOrUpdate(t *testing.T) {
 			},
 			trackLimit: 1,
 			wantTracker: &NamespaceTracker{
-				namespacesByName: map[string]*corev1.Namespace{
-					namespaceName: testNamespace,
+				appliedWorkByNamespace: map[string]string{
+					namespaceName: "",
 				},
 				namespaceCreationTimes: map[string]time.Time{
 					namespaceName: time.Now(),
@@ -176,16 +158,6 @@ func TestNamespaceTracker_Remove(t *testing.T) {
 	anotherNamespaceName := "another-namespace"
 	s := scheme.Scheme
 	fakeClient := fake.NewClientBuilder().WithScheme(s).Build()
-	testNamespace := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: namespaceName,
-		},
-	}
-	anotherNamespace := &corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: anotherNamespaceName,
-		},
-	}
 
 	tests := []struct {
 		name              string
@@ -197,9 +169,9 @@ func TestNamespaceTracker_Remove(t *testing.T) {
 		{
 			name: "remove existing namespace",
 			tracker: &NamespaceTracker{
-				namespacesByName: map[string]*corev1.Namespace{
-					namespaceName:        testNamespace,
-					anotherNamespaceName: anotherNamespace,
+				appliedWorkByNamespace: map[string]string{
+					namespaceName:        "",
+					anotherNamespaceName: "",
 				},
 				namespaceCreationTimes: map[string]time.Time{
 					namespaceName:        time.Now(),
@@ -210,8 +182,8 @@ func TestNamespaceTracker_Remove(t *testing.T) {
 			trackLimit:        200,
 			namespaceToRemove: namespaceName,
 			wantTracker: &NamespaceTracker{
-				namespacesByName: map[string]*corev1.Namespace{
-					anotherNamespaceName: anotherNamespace,
+				appliedWorkByNamespace: map[string]string{
+					anotherNamespaceName: "",
 				},
 				namespaceCreationTimes: map[string]time.Time{
 					anotherNamespaceName: time.Now(),
@@ -222,8 +194,8 @@ func TestNamespaceTracker_Remove(t *testing.T) {
 		{
 			name: "remove non-existent namespace",
 			tracker: &NamespaceTracker{
-				namespacesByName: map[string]*corev1.Namespace{
-					namespaceName: testNamespace,
+				appliedWorkByNamespace: map[string]string{
+					namespaceName: "",
 				},
 				namespaceCreationTimes: map[string]time.Time{
 					namespaceName: time.Now(),
@@ -233,8 +205,8 @@ func TestNamespaceTracker_Remove(t *testing.T) {
 			trackLimit:        200,
 			namespaceToRemove: "non-existent",
 			wantTracker: &NamespaceTracker{
-				namespacesByName: map[string]*corev1.Namespace{
-					namespaceName: testNamespace,
+				appliedWorkByNamespace: map[string]string{
+					namespaceName: "",
 				},
 				namespaceCreationTimes: map[string]time.Time{
 					namespaceName: time.Now(),
@@ -245,14 +217,14 @@ func TestNamespaceTracker_Remove(t *testing.T) {
 		{
 			name: "remove from empty tracker",
 			tracker: &NamespaceTracker{
-				namespacesByName:       map[string]*corev1.Namespace{},
+				appliedWorkByNamespace: map[string]string{},
 				namespaceCreationTimes: map[string]time.Time{},
 				client:                 fakeClient,
 			},
 			trackLimit:        200,
 			namespaceToRemove: namespaceName,
 			wantTracker: &NamespaceTracker{
-				namespacesByName:       map[string]*corev1.Namespace{},
+				appliedWorkByNamespace: map[string]string{},
 				namespaceCreationTimes: map[string]time.Time{},
 				reachLimit:             false,
 				client:                 fakeClient,
@@ -261,8 +233,8 @@ func TestNamespaceTracker_Remove(t *testing.T) {
 		{
 			name: "remove namespace when limit reached - should reset reachLimit to false",
 			tracker: &NamespaceTracker{
-				namespacesByName: map[string]*corev1.Namespace{
-					namespaceName: testNamespace,
+				appliedWorkByNamespace: map[string]string{
+					namespaceName: "",
 				},
 				namespaceCreationTimes: map[string]time.Time{
 					namespaceName: time.Now(),
@@ -273,7 +245,7 @@ func TestNamespaceTracker_Remove(t *testing.T) {
 			trackLimit:        1,
 			namespaceToRemove: namespaceName,
 			wantTracker: &NamespaceTracker{
-				namespacesByName:       map[string]*corev1.Namespace{},
+				appliedWorkByNamespace: map[string]string{},
 				namespaceCreationTimes: map[string]time.Time{},
 				client:                 fakeClient,
 			},
@@ -310,7 +282,7 @@ func TestNamespaceTracker_ListNamespaces(t *testing.T) {
 		{
 			name: "empty tracker",
 			tracker: &NamespaceTracker{
-				namespacesByName:       map[string]*corev1.Namespace{},
+				appliedWorkByNamespace: map[string]string{},
 				namespaceCreationTimes: map[string]time.Time{},
 				client:                 fakeClient,
 			},
@@ -320,12 +292,8 @@ func TestNamespaceTracker_ListNamespaces(t *testing.T) {
 		{
 			name: "single namespace without owner reference",
 			tracker: &NamespaceTracker{
-				namespacesByName: map[string]*corev1.Namespace{
-					"ns-without-owner": {
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "ns-without-owner",
-						},
-					},
+				appliedWorkByNamespace: map[string]string{
+					"ns-without-owner": "",
 				},
 				namespaceCreationTimes: map[string]time.Time{
 					"ns-without-owner": time.Now(),
@@ -340,20 +308,8 @@ func TestNamespaceTracker_ListNamespaces(t *testing.T) {
 		{
 			name: "single namespace with AppliedWork owner reference",
 			tracker: &NamespaceTracker{
-				namespacesByName: map[string]*corev1.Namespace{
-					"ns-with-work": {
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "ns-with-work",
-							OwnerReferences: []metav1.OwnerReference{
-								{
-									APIVersion: placementv1beta1.GroupVersion.String(),
-									Kind:       placementv1beta1.AppliedWorkKind,
-									Name:       workName,
-									UID:        "test-uid",
-								},
-							},
-						},
-					},
+				appliedWorkByNamespace: map[string]string{
+					"ns-with-work": workName,
 				},
 				namespaceCreationTimes: map[string]time.Time{
 					"ns-with-work": time.Now(),
@@ -368,20 +324,8 @@ func TestNamespaceTracker_ListNamespaces(t *testing.T) {
 		{
 			name: "single namespace with non-AppliedWork owner reference",
 			tracker: &NamespaceTracker{
-				namespacesByName: map[string]*corev1.Namespace{
-					"ns-with-other-owner": {
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "ns-with-other-owner",
-							OwnerReferences: []metav1.OwnerReference{
-								{
-									APIVersion: "v1",
-									Kind:       "Pod",
-									Name:       "some-pod",
-									UID:        "pod-uid",
-								},
-							},
-						},
-					},
+				appliedWorkByNamespace: map[string]string{
+					"ns-with-other-owner": "",
 				},
 				namespaceCreationTimes: map[string]time.Time{
 					"ns-with-other-owner": time.Now(),
@@ -396,26 +340,8 @@ func TestNamespaceTracker_ListNamespaces(t *testing.T) {
 		{
 			name: "namespace with multiple owner references including AppliedWork",
 			tracker: &NamespaceTracker{
-				namespacesByName: map[string]*corev1.Namespace{
-					"ns-multiple-owners": {
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "ns-multiple-owners",
-							OwnerReferences: []metav1.OwnerReference{
-								{
-									APIVersion: "v1",
-									Kind:       "Pod",
-									Name:       "some-pod",
-									UID:        "pod-uid",
-								},
-								{
-									APIVersion: placementv1beta1.GroupVersion.String(),
-									Kind:       placementv1beta1.AppliedWorkKind,
-									Name:       workName,
-									UID:        "work-uid",
-								},
-							},
-						},
-					},
+				appliedWorkByNamespace: map[string]string{
+					"ns-multiple-owners": workName,
 				},
 				namespaceCreationTimes: map[string]time.Time{
 					"ns-multiple-owners": time.Now(),
@@ -430,12 +356,8 @@ func TestNamespaceTracker_ListNamespaces(t *testing.T) {
 		{
 			name: "tracker with reach limit set",
 			tracker: &NamespaceTracker{
-				namespacesByName: map[string]*corev1.Namespace{
-					"ns-test": {
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "ns-test",
-						},
-					},
+				appliedWorkByNamespace: map[string]string{
+					"ns-test": "",
 				},
 				namespaceCreationTimes: map[string]time.Time{
 					"ns-test": time.Now(),

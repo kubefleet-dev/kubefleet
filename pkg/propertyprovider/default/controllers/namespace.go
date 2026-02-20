@@ -20,6 +20,7 @@ package controllers
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -27,6 +28,8 @@ import (
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider/default/trackers"
 )
@@ -75,8 +78,46 @@ func (r *NamespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *NamespaceReconciler) SetupWithManager(mgr ctrl.Manager, controllerName string) error {
+	// Watch Create, Update (for terminating state and owner reference changes), and Delete events.
+	// Deletion is handled via the Delete event which triggers reconciliation,
+	// and the NotFound check in Reconcile removes it from the tracker.
+	namespaceEventFilter := predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return true // Watch all create events
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldNs, ok := e.ObjectOld.(*corev1.Namespace)
+			if !ok {
+				return false
+			}
+			newNs, ok := e.ObjectNew.(*corev1.Namespace)
+			if !ok {
+				return false
+			}
+
+			// Watch for namespace transitioning to terminating state
+			if oldNs.DeletionTimestamp == nil && newNs.DeletionTimestamp != nil {
+				return true
+			}
+
+			// Watch for owner reference changes
+			if !reflect.DeepEqual(oldNs.OwnerReferences, newNs.OwnerReferences) {
+				return true
+			}
+
+			return false
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return true // Watch all delete events
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return false // Ignore generic events
+		},
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(controllerName).
 		For(&corev1.Namespace{}).
+		WithEventFilter(namespaceEventFilter).
 		Complete(r)
 }

@@ -19,6 +19,7 @@ limitations under the License.
 package trackers
 
 import (
+	"maps"
 	"sync"
 	"time"
 
@@ -35,10 +36,12 @@ var (
 	namespaceTrackerLimit = 200
 )
 
-// NamespaceTracker helps track specific stats about namespaces in a Kubernetes cluster, e.g., its ownerReference.
+// NamespaceTracker helps track specific stats about namespaces in a Kubernetes cluster that are
+// managed by Fleet (i.e., have AppliedWork owner references when created).
+// Once tracked, namespaces remain tracked until deleted.
 type NamespaceTracker struct {
-	// namespacesByName tracks namespaces by their name
-	namespacesByName map[string]*corev1.Namespace
+	// appliedWorkByNamespace tracks the AppliedWork name for each namespace
+	appliedWorkByNamespace map[string]string
 	// namespaceCreationTimes tracks when each namespace was first tracked.
 	namespaceCreationTimes map[string]time.Time
 
@@ -55,7 +58,7 @@ type NamespaceTracker struct {
 // NewNamespaceTracker returns a namespace tracker.
 func NewNamespaceTracker(client client.Client) *NamespaceTracker {
 	return &NamespaceTracker{
-		namespacesByName:       make(map[string]*corev1.Namespace),
+		appliedWorkByNamespace: make(map[string]string),
 		namespaceCreationTimes: make(map[string]time.Time),
 		client:                 client,
 	}
@@ -68,8 +71,8 @@ func (nt *NamespaceTracker) AddOrUpdate(namespace *corev1.Namespace) {
 	defer nt.mu.Unlock()
 
 	nsKObj := klog.KObj(namespace)
-	if _, exists := nt.namespacesByName[namespace.Name]; !exists {
-		if len(nt.namespacesByName) == namespaceTrackerLimit {
+	if _, exists := nt.appliedWorkByNamespace[namespace.Name]; !exists {
+		if len(nt.appliedWorkByNamespace) == namespaceTrackerLimit {
 			if !nt.reachLimit {
 				nt.reachLimit = true
 				klog.Warningf("Namespace tracker has reached its tracking limit; new namespaces will not be tracked anymore, limit %d", namespaceTrackerLimit)
@@ -84,8 +87,9 @@ func (nt *NamespaceTracker) AddOrUpdate(namespace *corev1.Namespace) {
 		klog.V(4).InfoS("Updated namespace information", "namespace", nsKObj)
 	}
 
-	// Store a copy of the namespace to avoid potential modifications
-	nt.namespacesByName[namespace.Name] = namespace.DeepCopy()
+	// Extract and store the AppliedWork name directly
+	workName := nt.extractWorkNameFromNamespace(namespace)
+	nt.appliedWorkByNamespace[namespace.Name] = workName
 }
 
 // Remove stops tracking a namespace.
@@ -93,14 +97,14 @@ func (nt *NamespaceTracker) Remove(namespaceName string) {
 	nt.mu.Lock()
 	defer nt.mu.Unlock()
 
-	if _, exists := nt.namespacesByName[namespaceName]; exists {
-		delete(nt.namespacesByName, namespaceName)
+	if _, exists := nt.appliedWorkByNamespace[namespaceName]; exists {
+		delete(nt.appliedWorkByNamespace, namespaceName)
 		delete(nt.namespaceCreationTimes, namespaceName)
 
 		// Reset reachLimit flag if we were at the limit and now have space for new namespaces
-		if nt.reachLimit && len(nt.namespacesByName) < namespaceTrackerLimit {
+		if nt.reachLimit && len(nt.appliedWorkByNamespace) < namespaceTrackerLimit {
 			nt.reachLimit = false
-			klog.V(2).InfoS("Namespace tracker limit reset - can accept new namespaces", "currentCount", len(nt.namespacesByName), "limit", namespaceTrackerLimit)
+			klog.V(2).InfoS("Namespace tracker limit reset - can accept new namespaces", "currentCount", len(nt.appliedWorkByNamespace), "limit", namespaceTrackerLimit)
 		}
 
 		klog.V(2).InfoS("Stopped tracking namespace", "namespace", namespaceName)
@@ -114,11 +118,8 @@ func (nt *NamespaceTracker) ListNamespaces() (map[string]string, bool) {
 	nt.mu.RLock()
 	defer nt.mu.RUnlock()
 
-	result := make(map[string]string, len(nt.namespacesByName))
-	for name, namespace := range nt.namespacesByName {
-		workName := nt.extractWorkNameFromNamespace(namespace)
-		result[name] = workName
-	}
+	result := make(map[string]string, len(nt.appliedWorkByNamespace))
+	maps.Copy(result, nt.appliedWorkByNamespace)
 	return result, nt.reachLimit
 }
 

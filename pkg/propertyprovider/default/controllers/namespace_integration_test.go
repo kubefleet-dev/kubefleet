@@ -65,7 +65,24 @@ var _ = Describe("Test Namespace Controller", func() {
 			validateNamespaces(wantNamespaces)
 		})
 
-		It("Update the namespace and should track namespace with AppliedWork owner references", func() {
+		It("should ignore irrelevant updates like labels and annotations", func() {
+			// Update the namespace with labels and annotations (should not trigger reconciliation)
+			Eventually(func() error {
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: namespaceName}, namespace); err != nil {
+					return err
+				}
+				namespace.Labels = map[string]string{"test-label": "test-value"}
+				namespace.Annotations = map[string]string{"test-annotation": "test-value"}
+				return k8sClient.Update(ctx, namespace)
+			}, eventuallyTimeout, eventuallyInterval).Should(Succeed(), "failed to update the namespace")
+
+			// Namespace should still be tracked without owner reference
+			wantNamespaces[namespaceName] = ""
+			By("By validating namespaces")
+			validateNamespaces(wantNamespaces)
+		})
+
+		It("should track namespace when owner references are added", func() {
 			// Update the namespace with owner reference
 			Eventually(func() error {
 				if err := k8sClient.Get(ctx, types.NamespacedName{Name: namespaceName}, namespace); err != nil {
@@ -87,12 +104,36 @@ var _ = Describe("Test Namespace Controller", func() {
 			validateNamespaces(wantNamespaces)
 		})
 
+		It("should track namespace when owner references are modified", func() {
+			newWorkName := "new-work"
+			// Update the namespace with a different owner reference
+			Eventually(func() error {
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: namespaceName}, namespace); err != nil {
+					return err
+				}
+				namespace.OwnerReferences = []metav1.OwnerReference{
+					{
+						APIVersion: placementv1beta1.GroupVersion.String(),
+						Kind:       placementv1beta1.AppliedWorkKind,
+						Name:       newWorkName,
+						UID:        "new-test-uuid",
+					},
+				}
+				return k8sClient.Update(ctx, namespace)
+			}, eventuallyTimeout, eventuallyInterval).Should(Succeed(), "failed to update the namespace")
+
+			wantNamespaces[namespaceName] = newWorkName
+			By("By validating namespaces with updated owner reference")
+			validateNamespaces(wantNamespaces)
+		})
+
 		It("should untrack namespaces when ns is marked for deletion", func() {
 			Expect(k8sClient.Delete(ctx, namespace)).Should(Succeed())
 
 			// The namespace will be in the terminating state because of missing namespace controller.
-			// Verify the namespace gets untracked
-			By("By validating namespaces")
+			// This should trigger the update event filter (oldNs.DeletionTimestamp == nil && newNs.DeletionTimestamp != nil)
+			// which will cause reconciliation and untrack the namespace.
+			By("By validating namespaces are untracked when transitioning to terminating state")
 			delete(wantNamespaces, namespaceName)
 			validateNamespaces(wantNamespaces)
 		})
