@@ -34,7 +34,12 @@ import (
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/gvkwhitelist"
 	parallelizerutil "github.com/kubefleet-dev/kubefleet/pkg/utils/parallelizer"
+)
+
+const (
+	statusBackReportingToOriginalResourceSkippedAnnotation = "placement.kubernetes-fleet.io/status-back-reporting-to-original-resource-skipped"
 )
 
 // Reconciler reconciles a Work object (specifically its status) to back-report
@@ -43,11 +48,26 @@ type Reconciler struct {
 	hubClient        client.Client
 	hubDynamicClient dynamic.Interface
 
+	allowedGVKs *gvkwhitelist.WhitelistedGVKs
+
 	parallelizer parallelizerutil.Parallelizer
+
+	// annotateOriginalResourcesSkippedForStatusReporting is a flag reserved for testing purposes;
+	// once set, the status back-reporter will annotate an original resource if the controller,
+	// for some reason, cannot back-report status to it. This is needed as right now, due to
+	// a number of condition-related limits, the status back-reporting status has not been added to
+	// the placement APIs yet; and this annotation can help us verify in tests if the status
+	// back-reporter is acting as expected.
+	annotateOriginalResourcesSkippedForStatusReporting bool
 }
 
 // NewReconciler creates a new Reconciler.
-func NewReconciler(hubClient client.Client, hubDynamicClient dynamic.Interface, parallelizer parallelizerutil.Parallelizer) *Reconciler {
+func NewReconciler(
+	hubClient client.Client,
+	hubDynamicClient dynamic.Interface,
+	allowedGVKs *gvkwhitelist.WhitelistedGVKs,
+	parallelizer parallelizerutil.Parallelizer,
+) *Reconciler {
 	if parallelizer == nil {
 		klog.V(2).InfoS("parallelizer is not set; using the default parallelizer with a worker count of 1")
 		parallelizer = parallelizerutil.NewParallelizer(1)
@@ -56,6 +76,7 @@ func NewReconciler(hubClient client.Client, hubDynamicClient dynamic.Interface, 
 	return &Reconciler{
 		hubClient:        hubClient,
 		hubDynamicClient: hubDynamicClient,
+		allowedGVKs:      allowedGVKs,
 		parallelizer:     parallelizer,
 	}
 }
@@ -137,6 +158,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 		// Note that applied resources should always have a valid identifier set; for simplicity reasons
 		// here the back-reporter will no longer perform any validation.
+
+		// Retrieve the GVR, namespace name, and object name for the resource.
 		gvr := schema.GroupVersionResource{
 			Group:    resIdentifier.Group,
 			Version:  resIdentifier.Version,
@@ -144,11 +167,50 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 		nsName := resIdentifier.Namespace
 		resName := resIdentifier.Name
+
+		// Retrieve the target resource.
 		unstructured, err := r.hubDynamicClient.Resource(gvr).Namespace(nsName).Get(ctx, resName, metav1.GetOptions{})
 		if err != nil {
 			wrappedErr := fmt.Errorf("failed to retrieve the target resource for status back-reporting: %w", err)
 			klog.ErrorS(err, "Failed to retrieve the target resource for status back-reporting", "work", workRef, "resourceIdentifier", resIdentifier)
 			errs[pieces] = wrappedErr
+			return
+		}
+
+		// Verify that the resource is of a GVK that can have its status mirrored to the original resource.
+		gvk := schema.GroupVersionKind{
+			Group:   resIdentifier.Group,
+			Version: resIdentifier.Version,
+			Kind:    resIdentifier.Kind,
+		}
+		if r.allowedGVKs == nil || !r.allowedGVKs.IsWhitelisted(gvk) {
+			// The GVK is not whitelisted for status back-reporting.
+			klog.V(2).InfoS("Skip status back-reporting for the resource; the GVK is not whitelisted for status back-reporting", "work", workRef, "resourceIdentifier", resIdentifier, "gvk", gvk)
+
+			if r.annotateOriginalResourcesSkippedForStatusReporting {
+				// Annotate the original resource to indicate that status back-reporting has been skipped for it.
+				//
+				// This is a test-only behavior; as a result no logic was added to remove the annotation once it is set.
+				updatedAnnotations := unstructured.GetAnnotations()
+				if updatedAnnotations == nil {
+					updatedAnnotations = make(map[string]string)
+				}
+				if _, exists := updatedAnnotations[statusBackReportingToOriginalResourceSkippedAnnotation]; exists {
+					// The annotation has already been set; skip.
+					return
+				}
+				updatedAnnotations[statusBackReportingToOriginalResourceSkippedAnnotation] = "true"
+				unstructured.SetAnnotations(updatedAnnotations)
+
+				_, err = r.hubDynamicClient.Resource(gvr).Namespace(nsName).Update(ctx, unstructured, metav1.UpdateOptions{})
+				if err != nil {
+					wrappedErr := fmt.Errorf("failed to patch the original resource to annotate status back-reporting skip: %w", err)
+					klog.ErrorS(err, "Failed to patch the original resource to annotate status back-reporting skip", "work", workRef, "resourceIdentifier", resIdentifier)
+					errs[pieces] = wrappedErr
+					return
+				}
+				klog.V(2).InfoS("Annotated the original resource to indicate that status back-reporting has been skipped for it", "work", workRef, "resourceIdentifier", resIdentifier, "resource", klog.KObj(unstructured))
+			}
 			return
 		}
 
