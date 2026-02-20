@@ -96,11 +96,17 @@ func (r *NamespaceReconciler) SetupWithManager(mgr ctrl.Manager, controllerName 
 			}
 
 			// Watch for namespace transitioning to terminating state
+			// because we want to stop tracking the namespace once it
+			// is marked for deletion, to prevent new workloads from being
+			// scheduled to the namespace.
 			if oldNs.DeletionTimestamp == nil && newNs.DeletionTimestamp != nil {
 				return true
 			}
 
-			// Watch for owner reference changes
+			// Watch for owner reference changes because the owner applied work name
+			// is part of the namespace information we track for namespace affinity.
+			// We want to keep the namespace information up to date in the tracker
+			// if the owner reference changes.
 			if !reflect.DeepEqual(oldNs.OwnerReferences, newNs.OwnerReferences) {
 				return true
 			}
