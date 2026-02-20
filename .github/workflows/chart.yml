@@ -59,7 +59,8 @@ jobs:
 
           RELEASE_VERSION="${{ needs.export-registry.outputs.version }}"
 
-          make helm-push REGISTRY="${{ env.REGISTRY }}" TAG="${RELEASE_VERSION}"
+          OCI_REGISTRY="${{ needs.export-registry.outputs.registry }}/charts"
+          make helm-push REGISTRY="${OCI_REGISTRY}" TAG="${RELEASE_VERSION}"
 
       - name: Verify chart appVersion matches release tag
         run: |
@@ -73,7 +74,7 @@ jobs:
           mkdir -p .helm-verify
 
           for chart in hub-agent member-agent; do
-            helm pull "oci://${{ env.REGISTRY }}/charts/${chart}" --version "${CHART_VERSION}" --destination .helm-verify >/dev/null
+            helm pull "oci://${{ needs.export-registry.outputs.registry }}/charts/${chart}" --version "${CHART_VERSION}" --destination .helm-verify >/dev/null
             packaged=".helm-verify/${chart}-${CHART_VERSION}.tgz"
             actual_app_version=$(tar -xOf "${packaged}" "${chart}/Chart.yaml" | awk -F': ' '/^appVersion:/ {gsub(/"/, "", $2); print $2}')
             if [[ "${actual_app_version}" != "${EXPECTED_APP_VERSION}" ]]; then
