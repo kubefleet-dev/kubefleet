@@ -552,3 +552,106 @@ func TestShouldUseForcedServerSideApply(t *testing.T) {
 		})
 	}
 }
+
+// TestLabelNamespaceWithParentCRP tests the labelNamespaceWithParentCRP function.
+func TestLabelNamespaceWithParentCRP(t *testing.T) {
+	testCases := []struct {
+		name          string
+		manifestObj   client.Object
+		parentCRPName string
+		wantLabels    map[string]string
+	}{
+		{
+			name: "namespace object with no existing labels",
+			manifestObj: &corev1.Namespace{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Namespace",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-namespace",
+				},
+			},
+			parentCRPName: "test-crp",
+			wantLabels: map[string]string{
+				fleetv1beta1.PlacementTrackingLabel: "test-crp",
+			},
+		},
+		{
+			name: "namespace object with existing labels",
+			manifestObj: &corev1.Namespace{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Namespace",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-namespace",
+					Labels: map[string]string{
+						"existing-label": "existing-value",
+					},
+				},
+			},
+			parentCRPName: "my-app-crp",
+			wantLabels: map[string]string{
+				"existing-label":                    "existing-value",
+				fleetv1beta1.PlacementTrackingLabel: "my-app-crp",
+			},
+		},
+		{
+			name: "non-namespace object should not be modified",
+			manifestObj: &appsv1.Deployment{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "apps/v1",
+					Kind:       "Deployment",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-deployment",
+					Labels: map[string]string{
+						"app": "test",
+					},
+				},
+			},
+			parentCRPName: "test-crp",
+			wantLabels: map[string]string{
+				"app": "test",
+			},
+		},
+		{
+			name: "empty parentCRPName should not add label",
+			manifestObj: &corev1.Namespace{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "v1",
+					Kind:       "Namespace",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-namespace",
+					Labels: map[string]string{
+						"existing": "label",
+					},
+				},
+			},
+			parentCRPName: "",
+			wantLabels: map[string]string{
+				"existing": "label",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Convert to unstructured and make a copy to avoid modifying the original test data
+			manifestCopy := toUnstructured(t, tc.manifestObj).DeepCopy()
+
+			// Call the function under test
+			labelNamespaceWithParentCRP(manifestCopy, tc.parentCRPName)
+
+			// Get the resulting labels
+			gotLabels := manifestCopy.GetLabels()
+
+			// Compare the labels
+			if diff := cmp.Diff(tc.wantLabels, gotLabels); diff != "" {
+				t.Errorf("labelNamespaceWithParentCRP() labels mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
