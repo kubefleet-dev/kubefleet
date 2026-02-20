@@ -70,6 +70,7 @@ func (r *Reconciler) apply(
 	manifestObj, inMemberClusterObj *unstructured.Unstructured,
 	applyStrategy *fleetv1beta1.ApplyStrategy,
 	expectedAppliedWorkOwnerRef *metav1.OwnerReference,
+	work *fleetv1beta1.Work,
 ) (*unstructured.Unstructured, error) {
 	// Create a sanitized copy of the manifest object.
 	//
@@ -95,6 +96,11 @@ func (r *Reconciler) apply(
 	// process.
 	if err := setManifestHashAnnotation(manifestObjCopy); err != nil {
 		return nil, fmt.Errorf("failed to set manifest hash annotation: %w", err)
+	}
+
+	// Add the source placement annotation to track the placement that created this resource.
+	if err := setSourcePlacementAnnotation(manifestObjCopy, work); err != nil {
+		return nil, fmt.Errorf("failed to set source placement annotation: %w", err)
 	}
 
 	// Validate owner references.
@@ -459,6 +465,40 @@ func setManifestHashAnnotation(manifestObj *unstructured.Unstructured) error {
 	}
 	annotations[fleetv1beta1.ManifestHashAnnotation] = manifestObjHash
 	manifestObj.SetAnnotations(annotations)
+	return nil
+}
+
+// setSourcePlacementAnnotation sets the source placement annotation on the provided unstructured object.
+func setSourcePlacementAnnotation(manifestObj *unstructured.Unstructured, work *fleetv1beta1.Work) error {
+	// Extract the placement name from the Work object's placement tracking label.
+	workLabels := work.GetLabels()
+	if workLabels == nil {
+		// If there are no labels, we cannot determine the source placement.
+		// This is not an error case as some Work objects might not have placement tracking.
+		klog.V(2).InfoS("Work object has no labels, skipping source placement annotation",
+			"work", klog.KObj(work))
+		return nil
+	}
+
+	placementName, exists := workLabels[fleetv1beta1.PlacementTrackingLabel]
+	if !exists || placementName == "" {
+		// If the placement tracking label is missing or empty, we cannot determine the source placement.
+		// This is not an error case as some Work objects might not be created by a placement.
+		klog.V(2).InfoS("Work object has no placement tracking label, skipping source placement annotation",
+			"work", klog.KObj(work))
+		return nil
+	}
+
+	// Set the source placement annotation on the manifest object.
+	annotations := manifestObj.GetAnnotations()
+	if annotations == nil {
+		annotations = map[string]string{}
+	}
+	annotations[fleetv1beta1.SourcePlacementAnnotation] = placementName
+	manifestObj.SetAnnotations(annotations)
+
+	klog.V(2).InfoS("Set source placement annotation on manifest",
+		"manifest", klog.KObj(manifestObj), "placement", placementName)
 	return nil
 }
 
