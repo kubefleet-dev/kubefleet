@@ -275,6 +275,7 @@ func (r *Reconciler) executeUpdatingStage(
 	}
 
 	if finishedClusterCount == len(updatingStageStatus.Clusters) {
+		recordStageClusterUpdatingDuration(updatingStageStatus, updateRun)
 		return r.handleStageCompletion(ctx, updatingStageIndex, updateRun, updatingStageStatus)
 	}
 
@@ -291,14 +292,6 @@ func (r *Reconciler) handleStageCompletion(
 	updatingStageStatus *placementv1beta1.StageUpdatingStatus,
 ) (time.Duration, error) {
 	updateRunRef := klog.KObj(updateRun)
-
-	// Only record metric the first time cluster updating completes in the stage (before marking as waiting).
-	progressingCond := meta.FindStatusCondition(updatingStageStatus.Conditions, string(placementv1beta1.StageUpdatingConditionProgressing))
-	if progressingCond != nil && (!condition.IsConditionStatusFalse(progressingCond, updateRun.GetGeneration()) &&
-		progressingCond.Reason != condition.StageUpdatingWaitingReason) {
-		// First time reaching completion - record the duration.
-		recordStageClusterUpdatingDuration(updatingStageStatus, updateRun)
-	}
 
 	// All the clusters in the stage have been updated.
 	markUpdateRunWaiting(updateRun, fmt.Sprintf(condition.UpdateRunWaitingMessageFmt, "after-stage", updatingStageStatus.StageName))
@@ -485,8 +478,7 @@ func (r *Reconciler) handleStageApprovalTask(
 				// Approved state should not change once the approval is accepted.
 				klog.V(2).InfoS("The approval request has been approval-accepted, ignoring changing back to unapproved", "approvalRequestTask", requestRef, "stage", updatingStage.Name, "updateRun", updateRunRef)
 			}
-			markStageTaskRequestApproved(stageTaskStatus, updateRun.GetGeneration())
-			recordApprovalRequestLatency(updatingStage, updateRun, stageTaskType)
+			markStageTaskRequestApproved(stageTaskStatus, updatingStage, updateRun, stageTaskType)
 		} else {
 			// retriable error
 			klog.ErrorS(err, "Failed to create the approval request", "approvalRequest", requestRef, "stage", updatingStage.Name, "updateRun", updateRunRef)
@@ -834,14 +826,21 @@ func markStageTaskRequestCreated(stageTaskStatus *placementv1beta1.StageTaskStat
 }
 
 // markStageTaskRequestApproved marks the Approval for the before or after stage task as Approved in memory.
-func markStageTaskRequestApproved(stageTaskStatus *placementv1beta1.StageTaskStatus, generation int64) {
+func markStageTaskRequestApproved(
+	stageTaskStatus *placementv1beta1.StageTaskStatus,
+	updatingStage *placementv1beta1.StageConfig,
+	updateRun placementv1beta1.UpdateRunObj,
+	stageTaskType string,
+) {
 	meta.SetStatusCondition(&stageTaskStatus.Conditions, metav1.Condition{
 		Type:               string(placementv1beta1.StageTaskConditionApprovalRequestApproved),
 		Status:             metav1.ConditionTrue,
-		ObservedGeneration: generation,
+		ObservedGeneration: updateRun.GetGeneration(),
 		Reason:             condition.StageTaskApprovalRequestApprovedReason,
 		Message:            "ApprovalRequest object is approved",
 	})
+
+	recordApprovalRequestLatency(updatingStage, updateRun, stageTaskType)
 }
 
 // markAfterStageWaitTimeElapsed marks the TimeWait after stage task as TimeElapsed in memory.
