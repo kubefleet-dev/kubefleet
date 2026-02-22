@@ -215,7 +215,8 @@ func TestTakeOverPreExistingObject(t *testing.T) {
 				tc.gvr,
 				tc.manifestObj, tc.inMemberClusterObj,
 				tc.applyStrategy,
-				tc.expectedAppliedWorkOwnerRef)
+				tc.expectedAppliedWorkOwnerRef,
+				"test-crp")
 			if tc.wantErred {
 				if err == nil {
 					t.Errorf("takeOverPreExistingObject() = nil, want erred")
