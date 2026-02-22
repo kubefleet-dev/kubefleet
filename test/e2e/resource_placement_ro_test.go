@@ -937,6 +937,7 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 					},
 				}
 				configMapActual := configMapPlacedOnClusterActual(cluster, wantConfigMap)
+				Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to verify configmap %s remains as expected", cmName)
 				Consistently(configMapActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "ConfigMap %s should remain unchanged", cmName)
 			}
 		})

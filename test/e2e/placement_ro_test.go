@@ -1041,6 +1041,7 @@ var _ = Context("creating resourceOverride with a templated rules with cluster l
 				},
 			}
 			configMapActual := configMapPlacedOnClusterActual(cluster, wantConfigMap)
+			Eventually(configMapActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to verify configmap %s remains as expected", cmName)
 			Consistently(configMapActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "ConfigMap %s should remain unchanged", cmName)
 		}
 	})
