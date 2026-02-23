@@ -26,6 +26,7 @@ import (
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/framework"
 )
 
@@ -93,7 +94,7 @@ func TestFilter(t *testing.T) {
 		wantStatus *framework.Status
 	}{
 		{
-			name: "no namespace info on cluster",
+			name: "namespace collection not enabled - should pass",
 			ps: &placementv1beta1.SchedulingPolicySnapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "test-namespace",
@@ -105,12 +106,59 @@ func TestFilter(t *testing.T) {
 				},
 				Status: clusterv1beta1.MemberClusterStatus{
 					Namespaces: nil,
+					Conditions: []metav1.Condition{},
+				},
+			},
+			wantStatus: nil,
+		},
+		{
+			name: "namespace collection condition false - should pass",
+			ps: &placementv1beta1.SchedulingPolicySnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-namespace",
+				},
+			},
+			cluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: clusterName1,
+				},
+				Status: clusterv1beta1.MemberClusterStatus{
+					Namespaces: nil,
+					Conditions: []metav1.Condition{
+						{
+							Type:   propertyprovider.NamespaceCollectionSucceededCondType,
+							Status: metav1.ConditionFalse,
+						},
+					},
+				},
+			},
+			wantStatus: nil,
+		},
+		{
+			name: "namespace collection enabled but no namespace info - should filter",
+			ps: &placementv1beta1.SchedulingPolicySnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-namespace",
+				},
+			},
+			cluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: clusterName1,
+				},
+				Status: clusterv1beta1.MemberClusterStatus{
+					Namespaces: nil,
+					Conditions: []metav1.Condition{
+						{
+							Type:   propertyprovider.NamespaceCollectionSucceededCondType,
+							Status: metav1.ConditionTrue,
+						},
+					},
 				},
 			},
 			wantStatus: framework.NewNonErrorStatus(framework.ClusterUnschedulable, pluginName, "cluster has no namespace information available"),
 		},
 		{
-			name: "namespace missing on cluster",
+			name: "namespace collection enabled, namespace missing - should filter",
 			ps: &placementv1beta1.SchedulingPolicySnapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "test-namespace",
@@ -124,12 +172,18 @@ func TestFilter(t *testing.T) {
 					Namespaces: map[string]string{
 						"other-namespace": "work-1",
 					},
+					Conditions: []metav1.Condition{
+						{
+							Type:   propertyprovider.NamespaceCollectionSucceededCondType,
+							Status: metav1.ConditionTrue,
+						},
+					},
 				},
 			},
 			wantStatus: framework.NewNonErrorStatus(framework.ClusterUnschedulable, pluginName, "target namespace does not exist on cluster"),
 		},
 		{
-			name: "namespace exists on cluster",
+			name: "namespace collection enabled, namespace exists - should pass",
 			ps: &placementv1beta1.SchedulingPolicySnapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "test-namespace",
@@ -144,12 +198,18 @@ func TestFilter(t *testing.T) {
 						"test-namespace":  "work-1",
 						"other-namespace": "work-2",
 					},
+					Conditions: []metav1.Condition{
+						{
+							Type:   propertyprovider.NamespaceCollectionSucceededCondType,
+							Status: metav1.ConditionTrue,
+						},
+					},
 				},
 			},
 			wantStatus: nil,
 		},
 		{
-			name: "namespace exists with empty work name",
+			name: "namespace collection enabled, namespace exists with empty work name - should pass",
 			ps: &placementv1beta1.SchedulingPolicySnapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "test-namespace",
@@ -162,6 +222,12 @@ func TestFilter(t *testing.T) {
 				Status: clusterv1beta1.MemberClusterStatus{
 					Namespaces: map[string]string{
 						"test-namespace": "",
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:   propertyprovider.NamespaceCollectionSucceededCondType,
+							Status: metav1.ConditionTrue,
+						},
 					},
 				},
 			},

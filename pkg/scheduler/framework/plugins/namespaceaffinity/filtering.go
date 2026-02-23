@@ -19,8 +19,11 @@ package namespaceaffinity
 import (
 	"context"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/framework"
 )
 
@@ -54,13 +57,27 @@ func (p *Plugin) Filter(
 	// Get the target namespace for this ResourcePlacement.
 	nsName := ps.GetNamespace()
 
+	// Check if namespace collection is enabled and ready for this cluster.
+	// This ensures backward compatibility - if namespace collection is not enabled,
+	// we skip filtering to avoid breaking existing deployments.
+	namespaceCollectionReady := false
+	for _, cond := range cluster.Status.Conditions {
+		if cond.Type == propertyprovider.NamespaceCollectionSucceededCondType && cond.Status == metav1.ConditionTrue {
+			namespaceCollectionReady = true
+			break
+		}
+	}
+
+	// If namespace collection is not enabled or not ready, skip filtering.
+	// This allows ResourcePlacements to work normally without namespace collection.
+	if !namespaceCollectionReady {
+		return nil
+	}
+
 	// Check if the cluster has namespace information available.
 	if cluster.Status.Namespaces == nil {
-		// No namespace information available for this cluster.
-		// This could mean:
-		// 1. The cluster hasn't reported namespace data yet
-		// 2. The property provider isn't configured to collect namespaces
-		// In either case, we cannot determine if the namespace exists, so we skip this cluster.
+		// Namespace collection is enabled but no data is available.
+		// This is unexpected, so we mark the cluster as unschedulable.
 		return framework.NewNonErrorStatus(framework.ClusterUnschedulable, p.Name(), "cluster has no namespace information available")
 	}
 
