@@ -307,7 +307,7 @@ func TestCreateOrUpdateEnvelopeCRWorkObj(t *testing.T) {
 	existingWork := &fleetv1beta1.Work{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      workNamePrefix,
-			Namespace: "test-app",
+			Namespace: "fleet-member-test-cluster-1",
 			Labels: map[string]string{
 				fleetv1beta1.ParentBindingLabel:     resourceBinding.Name,
 				fleetv1beta1.PlacementTrackingLabel: resourceBinding.Labels[fleetv1beta1.PlacementTrackingLabel],
@@ -388,7 +388,6 @@ func TestCreateOrUpdateEnvelopeCRWorkObj(t *testing.T) {
 						fleetv1beta1.ParentResourceSnapshotIndexLabel: resourceSnapshot.Labels[fleetv1beta1.ResourceIndexLabel],
 						fleetv1beta1.EnvelopeTypeLabel:                string(fleetv1beta1.ClusterResourceEnvelopeType),
 						fleetv1beta1.EnvelopeNameLabel:                clusterResourceEnvelope.Name,
-						fleetv1beta1.EnvelopeNamespaceLabel:           "",
 					},
 					Annotations: map[string]string{
 						fleetv1beta1.ParentResourceSnapshotNameAnnotation:                resourceBinding.Spec.ResourceSnapshotName,
@@ -416,7 +415,7 @@ func TestCreateOrUpdateEnvelopeCRWorkObj(t *testing.T) {
 			existingObjects:                     []client.Object{existingWork},
 			want: &fleetv1beta1.Work{
 				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "test-app", //copy from the existing work
+					Namespace: "fleet-member-test-cluster-1", //copy from the existing work
 					Labels: map[string]string{
 						fleetv1beta1.ParentBindingLabel:               resourceBinding.Name,
 						fleetv1beta1.PlacementTrackingLabel:           resourceBinding.Labels[fleetv1beta1.PlacementTrackingLabel],

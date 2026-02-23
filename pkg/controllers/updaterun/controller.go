@@ -47,6 +47,17 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
 )
 
+const (
+	// metricScrapeGracePeriod is the grace period to wait before deleting metrics on resource deletion.
+	// This ensures that external scrapers (e.g., vm-agent) have time to collect the final metrics
+	// before they are removed from prometheus.
+	metricScrapeGracePeriod = 30 * time.Second
+
+	// metricDeletionPendingAnnotation is the annotation key used to track when metric deletion was scheduled.
+	// The value is an RFC3339 timestamp indicating when the deletion process started.
+	metricDeletionPendingAnnotation = "fleet.azure.com/metric-deletion-pending-time"
+)
+
 var (
 	// errStagedUpdatedAborted is the error when the updateRun is aborted.
 	errStagedUpdatedAborted = fmt.Errorf("cannot continue the updateRun")
@@ -220,6 +231,7 @@ func (r *Reconciler) handleIncompleteUpdateRun(ctx context.Context, updateRun pl
 
 // handleDelete handles the deletion of the updateRun object.
 // We delete all the dependent resources, including approvalRequest objects, of the updateRun object.
+// The function delays metric deletion to ensure external scrapers have time to collect final metrics.
 func (r *Reconciler) handleDelete(ctx context.Context, updateRun placementv1beta1.UpdateRunObj) (bool, time.Duration, error) {
 	runObjRef := klog.KObj(updateRun)
 	// Delete all the associated approvalRequests.
@@ -237,7 +249,43 @@ func (r *Reconciler) handleDelete(ctx context.Context, updateRun placementv1beta
 	}
 	klog.V(2).InfoS("Deleted all approvalRequests associated with the updateRun", "updateRun", runObjRef)
 
-	// Delete the update run status metric.
+	// Check if metric deletion should be delayed to allow scrapers to collect final metrics.
+	annotations := updateRun.GetAnnotations()
+	if pendingTime, ok := annotations[metricDeletionPendingAnnotation]; ok {
+		// Annotation exists - check if grace period has elapsed.
+		parsedTime, parseErr := time.Parse(time.RFC3339, pendingTime)
+		if parseErr != nil {
+			// Invalid timestamp, log warning and proceed with deletion.
+			klog.V(2).InfoS("Invalid metric deletion pending timestamp, proceeding with deletion",
+				"updateRun", runObjRef, "annotation", pendingTime, "error", parseErr)
+		} else {
+			elapsed := time.Since(parsedTime)
+			if elapsed < metricScrapeGracePeriod {
+				// Grace period not yet elapsed, requeue.
+				remainingWait := metricScrapeGracePeriod - elapsed
+				klog.V(2).InfoS("Waiting for metric scrape grace period before deleting metrics",
+					"updateRun", runObjRef, "elapsed", elapsed, "remaining", remainingWait)
+				return false, remainingWait, nil
+			}
+		}
+	} else {
+		// Annotation does not exist - add it and requeue to allow scrapers to collect metrics.
+		if annotations == nil {
+			annotations = make(map[string]string)
+		}
+		annotations[metricDeletionPendingAnnotation] = time.Now().Format(time.RFC3339)
+		updateRun.SetAnnotations(annotations)
+		if err := r.Client.Update(ctx, updateRun); err != nil {
+			klog.ErrorS(err, "Failed to add metric deletion pending annotation", "updateRun", runObjRef)
+			return false, 0, controller.NewUpdateIgnoreConflictError(err)
+		}
+		klog.V(2).InfoS("Added metric deletion pending annotation, waiting for scrape grace period",
+			"updateRun", runObjRef, "gracePeriod", metricScrapeGracePeriod)
+		return false, metricScrapeGracePeriod, nil
+	}
+
+	// Grace period has elapsed - delete metrics and remove finalizer.
+	klog.V(2).InfoS("Metric scrape grace period elapsed, deleting metrics", "updateRun", runObjRef)
 	hubmetrics.FleetUpdateRunStatusLastTimestampSeconds.DeletePartialMatch(prometheus.Labels{"namespace": updateRun.GetNamespace(), "name": updateRun.GetName()})
 
 	controllerutil.RemoveFinalizer(updateRun, placementv1beta1.UpdateRunFinalizer)

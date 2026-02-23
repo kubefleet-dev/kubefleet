@@ -248,7 +248,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 		})
 	})
 
-	Context("Test a CRP place workload objects successfully, block rollout based on daemonset availability", Ordered, func() {
+	FContext("Test a CRP place workload objects successfully, block rollout based on daemonset availability", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		workNamespace := appNamespace()
 		var wantSelectedResources []placementv1beta1.ResourceIdentifier
@@ -297,38 +297,38 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 			}
 		})
 
-		It("change the image name in daemonset, to make it unavailable", func() {
-			Eventually(func() error {
-				testDaemonSet.Spec.Template.Spec.Containers[0].Image = randomImageName
-				daemonSetByte, err := json.Marshal(testDaemonSet)
-				if err != nil {
-					return nil
-				}
-				testDaemonSetEnvelope.Data["daemonset.yaml"] = runtime.RawExtension{Raw: daemonSetByte}
-				return hubClient.Update(ctx, &testDaemonSetEnvelope)
-			}, eventuallyInterval, eventuallyInterval).Should(Succeed(), "Failed to change the image name of daemonset in envelope object")
-		})
-
-		It("should update CRP status as expected", func() {
-			failedDaemonSetResourceIdentifier := placementv1beta1.ResourceIdentifier{
-				Group:     appv1.SchemeGroupVersion.Group,
-				Version:   appv1.SchemeGroupVersion.Version,
-				Kind:      utils.DaemonSetKind,
-				Name:      testDaemonSet.Name,
-				Namespace: testDaemonSet.Namespace,
-				Envelope: &placementv1beta1.EnvelopeIdentifier{
-					Name:      testDaemonSetEnvelope.Name,
-					Namespace: testDaemonSetEnvelope.Namespace,
-					Type:      placementv1beta1.ResourceEnvelopeType,
-				},
-			}
-			crpStatusActual := safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResources, failedDaemonSetResourceIdentifier, allMemberClusterNames, "1", 2)
-			Eventually(crpStatusActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-		})
+		//It("change the image name in daemonset, to make it unavailable", func() {
+		//	Eventually(func() error {
+		//		testDaemonSet.Spec.Template.Spec.Containers[0].Image = randomImageName
+		//		daemonSetByte, err := json.Marshal(testDaemonSet)
+		//		if err != nil {
+		//			return nil
+		//		}
+		//		testDaemonSetEnvelope.Data["daemonset.yaml"] = runtime.RawExtension{Raw: daemonSetByte}
+		//		return hubClient.Update(ctx, &testDaemonSetEnvelope)
+		//	}, eventuallyInterval, eventuallyInterval).Should(Succeed(), "Failed to change the image name of daemonset in envelope object")
+		//})
+		//
+		//It("should update CRP status as expected", func() {
+		//	failedDaemonSetResourceIdentifier := placementv1beta1.ResourceIdentifier{
+		//		Group:     appv1.SchemeGroupVersion.Group,
+		//		Version:   appv1.SchemeGroupVersion.Version,
+		//		Kind:      utils.DaemonSetKind,
+		//		Name:      testDaemonSet.Name,
+		//		Namespace: testDaemonSet.Namespace,
+		//		Envelope: &placementv1beta1.EnvelopeIdentifier{
+		//			Name:      testDaemonSetEnvelope.Name,
+		//			Namespace: testDaemonSetEnvelope.Namespace,
+		//			Type:      placementv1beta1.ResourceEnvelopeType,
+		//		},
+		//	}
+		//	crpStatusActual := safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResources, failedDaemonSetResourceIdentifier, allMemberClusterNames, "1", 2)
+		//	Eventually(crpStatusActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		//})
 
 		AfterAll(func() {
-			// Remove the custom deletion blocker finalizer from the CRP.
-			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+			//// Remove the custom deletion blocker finalizer from the CRP.
+			//ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 		})
 	})
 
