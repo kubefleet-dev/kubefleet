@@ -421,9 +421,9 @@ func beforeSuiteForProcess1() {
 var _ = SynchronizedBeforeSuite(beforeSuiteForProcess1, beforeSuiteForAllProcesses)
 
 var _ = SynchronizedAfterSuite(func() {}, func() {
-	//deleteResourcesForFleetGuardRail()
-	//deleteTestResourceCRD()
-	//setAllMemberClustersToLeave()
-	//checkIfAllMemberClustersHaveLeft()
-	//cleanupInvalidClusters()
+	deleteResourcesForFleetGuardRail()
+	deleteTestResourceCRD()
+	setAllMemberClustersToLeave()
+	checkIfAllMemberClustersHaveLeft()
+	cleanupInvalidClusters()
 })
