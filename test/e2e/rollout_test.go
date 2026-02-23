@@ -248,7 +248,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 		})
 	})
 
-	FContext("Test a CRP place workload objects successfully, block rollout based on daemonset availability", Ordered, func() {
+	Context("Test a CRP place workload objects successfully, block rollout based on daemonset availability", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		workNamespace := appNamespace()
 		var wantSelectedResources []placementv1beta1.ResourceIdentifier
