@@ -68,8 +68,9 @@ func (r *Reconciler) createOrUpdateEnvelopeCRWorkObj(
 		labelMatcher[fleetv1beta1.EnvelopeNamespaceLabel] = envelopeReader.GetNamespace()
 		labelMatcher[fleetv1beta1.ParentNamespaceLabel] = binding.GetNamespace()
 	}
+	namespaceMatcher := client.InNamespace(fmt.Sprintf(utils.NamespaceNameFormat, binding.GetBindingSpec().TargetCluster))
 	workList := &fleetv1beta1.WorkList{}
-	if err = r.Client.List(ctx, workList, labelMatcher); err != nil {
+	if err = r.Client.List(ctx, workList, labelMatcher, namespaceMatcher); err != nil {
 		klog.ErrorS(err, "Failed to list work objects when finding the work object for an envelope",
 			"resourceBinding", klog.KObj(binding),
 			"resourceSnapshot", klog.KObj(resourceSnapshot),
@@ -212,10 +213,10 @@ func buildNewWorkForEnvelopeCR(
 		fleetv1beta1.ParentResourceSnapshotIndexLabel: resourceSnapshot.GetLabels()[fleetv1beta1.ResourceIndexLabel],
 		fleetv1beta1.EnvelopeTypeLabel:                envelopeReader.GetEnvelopeType(),
 		fleetv1beta1.EnvelopeNameLabel:                envelopeReader.GetName(),
-		fleetv1beta1.EnvelopeNamespaceLabel:           envelopeReader.GetNamespace(),
 	}
 	// Add ParentNamespaceLabel if the binding is namespaced
 	if resourceBinding.GetNamespace() != "" {
+		labels[fleetv1beta1.EnvelopeNamespaceLabel] = envelopeReader.GetNamespace()
 		labels[fleetv1beta1.ParentNamespaceLabel] = resourceBinding.GetNamespace()
 	}
 
