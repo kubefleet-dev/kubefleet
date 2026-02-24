@@ -21,7 +21,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -69,16 +68,12 @@ func emitUpdateRunStatusMetric(updateRun placementv1beta1.UpdateRunObj) {
 
 // recordApprovalRequestLatency records the time from approval request creation to user approval.
 func recordApprovalRequestLatency(
-	updatingStage *placementv1beta1.StageConfig,
+	stageTaskStatus *placementv1beta1.StageTaskStatus,
 	updateRun placementv1beta1.UpdateRunObj,
 	taskType string,
 ) {
-	stageStatus := findStageStatus(updateRun, updatingStage.Name)
-	if stageStatus == nil {
-		return
-	}
-
-	approvalCreatedCond, approvalApprovedCond := findApprovalConditions(stageStatus, taskType)
+	approvalCreatedCond := meta.FindStatusCondition(stageTaskStatus.Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestCreated))
+	approvalApprovedCond := meta.FindStatusCondition(stageTaskStatus.Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestApproved))
 
 	// Only record latency when both approval request created and approved conditions are true,
 	// and their observed generation is the same as the update run generation to ensure the recorded latency is accurate.
@@ -92,37 +87,6 @@ func recordApprovalRequestLatency(
 		updateRun.GetName(),
 		taskType,
 	).Observe(latencySeconds)
-}
-
-// findStageStatus finds the stage status by name from the update run status.
-func findStageStatus(updateRun placementv1beta1.UpdateRunObj, stageName string) *placementv1beta1.StageUpdatingStatus {
-	for i := range updateRun.GetUpdateRunStatus().StagesStatus {
-		if updateRun.GetUpdateRunStatus().StagesStatus[i].StageName == stageName {
-			return &updateRun.GetUpdateRunStatus().StagesStatus[i]
-		}
-	}
-	return nil
-}
-
-// findApprovalConditions finds the approval created and approved conditions from the stage status.
-func findApprovalConditions(stageStatus *placementv1beta1.StageUpdatingStatus, taskType string) (*metav1.Condition, *metav1.Condition) {
-	var tasks []placementv1beta1.StageTaskStatus
-	switch taskType {
-	case placementv1beta1.BeforeStageTaskLabelValue:
-		tasks = stageStatus.BeforeStageTaskStatus
-	case placementv1beta1.AfterStageTaskLabelValue:
-		tasks = stageStatus.AfterStageTaskStatus
-	default:
-		return nil, nil
-	}
-
-	for i := range tasks {
-		if tasks[i].Type == placementv1beta1.StageTaskTypeApproval {
-			return meta.FindStatusCondition(tasks[i].Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestCreated)),
-				meta.FindStatusCondition(tasks[i].Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestApproved))
-		}
-	}
-	return nil, nil
 }
 
 // recordStageClusterUpdatingDuration records the time from stage start to when all clusters finish updating.
