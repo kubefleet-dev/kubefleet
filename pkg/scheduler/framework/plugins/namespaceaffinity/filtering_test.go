@@ -112,7 +112,7 @@ func TestFilter(t *testing.T) {
 			wantStatus: nil,
 		},
 		{
-			name: "namespace collection condition false - should pass",
+			name: "namespace collection condition false (degraded) but no namespace info - should filter",
 			ps: &placementv1beta1.SchedulingPolicySnapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "test-namespace",
@@ -124,6 +124,31 @@ func TestFilter(t *testing.T) {
 				},
 				Status: clusterv1beta1.MemberClusterStatus{
 					Namespaces: nil,
+					Conditions: []metav1.Condition{
+						{
+							Type:   propertyprovider.NamespaceCollectionSucceededCondType,
+							Status: metav1.ConditionFalse,
+						},
+					},
+				},
+			},
+			wantStatus: framework.NewNonErrorStatus(framework.ClusterUnschedulable, pluginName, "cluster has no namespace information available"),
+		},
+		{
+			name: "namespace collection condition false (degraded) with namespace exists - should pass",
+			ps: &placementv1beta1.SchedulingPolicySnapshot{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-namespace",
+				},
+			},
+			cluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: clusterName1,
+				},
+				Status: clusterv1beta1.MemberClusterStatus{
+					Namespaces: map[string]string{
+						"test-namespace": "work-1",
+					},
 					Conditions: []metav1.Condition{
 						{
 							Type:   propertyprovider.NamespaceCollectionSucceededCondType,

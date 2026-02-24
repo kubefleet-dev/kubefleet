@@ -45,6 +45,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/framework"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/framework/plugins/clusteraffinity"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/framework/plugins/clustereligibility"
+	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/framework/plugins/namespaceaffinity"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/framework/plugins/sameplacementaffinity"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/framework/plugins/tainttoleration"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/framework/plugins/topologyspreadconstraints"
@@ -137,6 +138,7 @@ func buildSchedulerFramework(ctrlMgr manager.Manager, clusterEligibilityChecker 
 	taintTolerationPlugin := tainttoleration.New()
 	samePlacementAffinityPlugin := sameplacementaffinity.New()
 	topologyspreadconstraintsPlugin := topologyspreadconstraints.New()
+	namespaceAffinityPlugin := namespaceaffinity.New()
 	profile.
 		// Register cluster affinity plugin.
 		WithPreFilterPlugin(&clusterAffinityPlugin).
@@ -150,6 +152,9 @@ func buildSchedulerFramework(ctrlMgr manager.Manager, clusterEligibilityChecker 
 		// Register same placement affinity plugin.
 		WithFilterPlugin(&samePlacementAffinityPlugin).
 		WithScorePlugin(&samePlacementAffinityPlugin).
+		// Register namespace affinity plugin.
+		WithPreFilterPlugin(&namespaceAffinityPlugin).
+		WithFilterPlugin(&namespaceAffinityPlugin).
 		// Register topology spread constraints plugin.
 		WithPostBatchPlugin(&topologyspreadconstraintsPlugin).
 		WithPreFilterPlugin(&topologyspreadconstraintsPlugin).

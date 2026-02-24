@@ -19,8 +19,6 @@ package namespaceaffinity
 import (
 	"context"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
@@ -57,20 +55,23 @@ func (p *Plugin) Filter(
 	// Get the target namespace for this ResourcePlacement.
 	nsName := ps.GetNamespace()
 
-	// Check if namespace collection is enabled and ready for this cluster.
-	// This ensures backward compatibility - if namespace collection is not enabled,
-	// we skip filtering to avoid breaking existing deployments.
-	namespaceCollectionReady := false
+	// Check if namespace collection is enabled for this cluster.
+	// The condition can have three states:
+	// 1. Missing: namespace collection is not enabled (backward compatibility - skip filtering)
+	// 2. True: namespace collection is working normally
+	// 3. False: namespace collection is enabled but degraded (limit reached - still use the data)
+	namespaceCollectionEnabled := false
 	for _, cond := range cluster.Status.Conditions {
-		if cond.Type == propertyprovider.NamespaceCollectionSucceededCondType && cond.Status == metav1.ConditionTrue {
-			namespaceCollectionReady = true
+		if cond.Type == propertyprovider.NamespaceCollectionSucceededCondType {
+			// Condition exists, so namespace collection is enabled (regardless of True/False)
+			namespaceCollectionEnabled = true
 			break
 		}
 	}
 
-	// If namespace collection is not enabled or not ready, skip filtering.
-	// This allows ResourcePlacements to work normally without namespace collection.
-	if !namespaceCollectionReady {
+	// If namespace collection is not enabled, skip filtering.
+	// This allows ResourcePlacements to work normally without namespace collection (backward compatibility).
+	if !namespaceCollectionEnabled {
 		return nil
 	}
 
