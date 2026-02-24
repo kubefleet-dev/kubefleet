@@ -148,6 +148,9 @@ var _ = BeforeSuite(func() {
 		err = mgr.Start(ctx)
 		Expect(err).Should(Succeed(), "failed to run manager")
 	}()
+	// ensure that the reconciler cache is synced before running tests to avoid cache related flakes
+	dynamicInformerManager.Start()
+	dynamicInformerManager.WaitForCacheSync()
 })
 
 var _ = AfterSuite(func() {

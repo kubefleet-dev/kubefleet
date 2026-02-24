@@ -313,7 +313,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 				Client:                   mgr.GetClient(),
 				InformerManager:          dynamicInformerManager,
 				ResourceSelectorResolver: resourceSelectorResolver,
-				ResourceSnapshotResolver: *controller.NewResourceSnapshotResolver(mgr.GetClient(), mgr.GetScheme()),
+				ResourceSnapshotResolver: *resourceSnapshotResolver,
 			}).SetupWithManagerForClusterStagedUpdateRun(mgr); err != nil {
 				klog.ErrorS(err, "Unable to set up clusterStagedUpdateRun controller")
 				return err
@@ -331,7 +331,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 					Client:                   mgr.GetClient(),
 					InformerManager:          dynamicInformerManager,
 					ResourceSelectorResolver: resourceSelectorResolver,
-					ResourceSnapshotResolver: *controller.NewResourceSnapshotResolver(mgr.GetClient(), mgr.GetScheme()),
+					ResourceSnapshotResolver: *resourceSnapshotResolver,
 				}).SetupWithManagerForStagedUpdateRun(mgr); err != nil {
 					klog.ErrorS(err, "Unable to set up stagedUpdateRun controller")
 					return err

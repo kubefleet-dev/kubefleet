@@ -35,6 +35,7 @@ import (
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 )
 
 var (
@@ -83,6 +84,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 		// Set smaller wait time for testing
 		stageUpdatingWaitTime = time.Second * 3
 		clusterUpdatingWaitTime = time.Second * 2
+
 	})
 
 	AfterEach(func() {
@@ -890,7 +892,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 				if initCond == nil {
 					return fmt.Errorf("initialization condition not found yet")
 				}
-				if initCond.Status != metav1.ConditionTrue {
+				if !condition.IsConditionStatusTrue(initCond, updateRun.GetGeneration()) {
 					return fmt.Errorf("initialization condition status = %v, want True, message = %s", initCond.Status, initCond.Message)
 				}
 				if updateRun.Status.ResourceSnapshotIndexUsed != "1" {
@@ -905,8 +907,11 @@ var _ = Describe("Updaterun initialization tests", func() {
 					return err
 				}
 				initCond := meta.FindStatusCondition(updateRun.Status.Conditions, string(placementv1beta1.StagedUpdateRunConditionInitialized))
-				if initCond == nil || initCond.Status != metav1.ConditionTrue {
+				if !condition.IsConditionStatusTrue(initCond, updateRun.GetGeneration()) {
 					return fmt.Errorf("initialization condition changed unexpectedly")
+				}
+				if updateRun.Status.ResourceSnapshotIndexUsed != "1" {
+					return fmt.Errorf("resourceSnapshotIndexUsed is not set correctly, got %s, want `1`", updateRun.Status.ResourceSnapshotIndexUsed)
 				}
 				return nil
 			}, duration, interval).Should(Succeed(), "initialization should remain successful")
@@ -971,7 +976,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 				if initCond == nil {
 					return fmt.Errorf("initialization condition not found yet")
 				}
-				if initCond.Status != metav1.ConditionTrue {
+				if !condition.IsConditionStatusTrue(initCond, updateRun.GetGeneration()) {
 					return fmt.Errorf("initialization condition status = %v, want True, message = %s", initCond.Status, initCond.Message)
 				}
 				if updateRun.Status.ResourceSnapshotIndexUsed != "3" {
@@ -986,8 +991,11 @@ var _ = Describe("Updaterun initialization tests", func() {
 					return err
 				}
 				initCond := meta.FindStatusCondition(updateRun.Status.Conditions, string(placementv1beta1.StagedUpdateRunConditionInitialized))
-				if initCond == nil || initCond.Status != metav1.ConditionTrue {
+				if !condition.IsConditionStatusTrue(initCond, updateRun.GetGeneration()) {
 					return fmt.Errorf("initialization condition changed unexpectedly")
+				}
+				if updateRun.Status.ResourceSnapshotIndexUsed != "3" {
+					return fmt.Errorf("resourceSnapshotIndexUsed is not set correctly, got %s, want `3`", updateRun.Status.ResourceSnapshotIndexUsed)
 				}
 				return nil
 			}, duration, interval).Should(Succeed(), "initialization should remain successful")
