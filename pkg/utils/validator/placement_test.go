@@ -42,6 +42,249 @@ var (
 	}
 )
 
+func TestHasNamespaceWithResourceSelectorsMode(t *testing.T) {
+	tests := map[string]struct {
+		resourceSelectors                     []placementv1beta1.ResourceSelectorTerm
+		wantHasNamespaceWithResourceSelectors bool
+	}{
+		"no namespace selectors": {
+			resourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+				{
+					Group:   "rbac.authorization.k8s.io",
+					Version: "v1",
+					Kind:    "ClusterRole",
+					Name:    "test-cluster-role",
+				},
+			},
+			wantHasNamespaceWithResourceSelectors: false,
+		},
+		"one namespace selector with NamespaceOnly mode": {
+			resourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+				{
+					Group:   "",
+					Version: "v1",
+					Kind:    "Namespace",
+					Name:    "test-namespace",
+				},
+			},
+			wantHasNamespaceWithResourceSelectors: false,
+		},
+		"one namespace selector with NamespaceWithResources mode": {
+			resourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+				{
+					Group:          "",
+					Version:        "v1",
+					Kind:           "Namespace",
+					Name:           "test-namespace",
+					SelectionScope: placementv1beta1.NamespaceWithResources,
+				},
+			},
+			wantHasNamespaceWithResourceSelectors: false,
+		},
+		"one namespace selector with NamespaceWithResourceSelectors mode": {
+			resourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+				{
+					Group:          "",
+					Version:        "v1",
+					Kind:           "Namespace",
+					Name:           "test-namespace",
+					SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+				},
+			},
+			wantHasNamespaceWithResourceSelectors: true,
+		},
+		"multiple namespace selectors": {
+			resourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+				{
+					Group:   "",
+					Version: "v1",
+					Kind:    "Namespace",
+					Name:    "namespace-1",
+				},
+				{
+					Group:          "",
+					Version:        "v1",
+					Kind:           "Namespace",
+					Name:           "namespace-2",
+					SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+				},
+			},
+			wantHasNamespaceWithResourceSelectors: true,
+		},
+		"mixed selectors with NamespaceWithResourceSelectors": {
+			resourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+				{
+					Group:          "",
+					Version:        "v1",
+					Kind:           "Namespace",
+					Name:           "test-namespace",
+					SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+				},
+				{
+					Group:   "",
+					Version: "v1",
+					Kind:    "ConfigMap",
+					Name:    "test-configmap",
+				},
+				{
+					Group:   "",
+					Version: "v1",
+					Kind:    "Secret",
+					Name:    "test-secret",
+				},
+			},
+			wantHasNamespaceWithResourceSelectors: true,
+		},
+		"empty resource selectors": {
+			resourceSelectors:                     []placementv1beta1.ResourceSelectorTerm{},
+			wantHasNamespaceWithResourceSelectors: false,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			gotHasMode := hasNamespaceWithResourceSelectorsMode(tc.resourceSelectors)
+			if gotHasMode != tc.wantHasNamespaceWithResourceSelectors {
+				t.Errorf("hasNamespaceWithResourceSelectorsMode() = %v, want %v", gotHasMode, tc.wantHasNamespaceWithResourceSelectors)
+			}
+		})
+	}
+}
+
+func TestValidateNamespaceWithResourceSelectorsMode(t *testing.T) {
+	tests := map[string]struct {
+		resourceSelectors []placementv1beta1.ResourceSelectorTerm
+		wantErr           bool
+		wantErrMsg        string
+	}{
+		"valid: no NamespaceWithResourceSelectors mode": {
+			resourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+				{
+					Group:   "apps",
+					Version: "v1",
+					Kind:    "Deployment",
+					Name:    "test-deployment",
+				},
+			},
+			wantErr: false,
+		},
+		"valid: one namespace selector with NamespaceWithResourceSelectors at first position": {
+			resourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+				{
+					Group:          "",
+					Version:        "v1",
+					Kind:           "Namespace",
+					Name:           "test-namespace",
+					SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+				},
+				{
+					Group:   "apps",
+					Version: "v1",
+					Kind:    "Deployment",
+					Name:    "test-deployment",
+				},
+			},
+			wantErr: false,
+		},
+		"valid: one namespace selector with NamespaceWithResourceSelectors and no additional selectors": {
+			resourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+				{
+					Group:          "",
+					Version:        "v1",
+					Kind:           "Namespace",
+					Name:           "test-namespace",
+					SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+				},
+			},
+			wantErr: false,
+		},
+		"invalid: multiple namespace selectors with NamespaceWithResourceSelectors mode": {
+			resourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+				{
+					Group:          "",
+					Version:        "v1",
+					Kind:           "Namespace",
+					Name:           "test-namespace-1",
+					SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+				},
+				{
+					Group:          "",
+					Version:        "v1",
+					Kind:           "Namespace",
+					Name:           "test-namespace-2",
+					SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+				},
+			},
+			wantErr:    true,
+			wantErrMsg: "exactly one namespace selector with this mode is required, but found 2",
+		},
+		"invalid: namespace selector not at first position": {
+			resourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+				{
+					Group:   "apps",
+					Version: "v1",
+					Kind:    "Deployment",
+					Name:    "test-deployment",
+				},
+				{
+					Group:          "",
+					Version:        "v1",
+					Kind:           "Namespace",
+					Name:           "test-namespace",
+					SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+				},
+			},
+			wantErr:    true,
+			wantErrMsg: "namespace selector must be the first selector (index 0), but found it at index 1",
+		},
+		"invalid: three namespace selectors with NamespaceWithResourceSelectors mode": {
+			resourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+				{
+					Group:          "",
+					Version:        "v1",
+					Kind:           "Namespace",
+					Name:           "test-namespace-1",
+					SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+				},
+				{
+					Group:   "apps",
+					Version: "v1",
+					Kind:    "Deployment",
+					Name:    "test-deployment",
+				},
+				{
+					Group:          "",
+					Version:        "v1",
+					Kind:           "Namespace",
+					Name:           "test-namespace-2",
+					SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+				},
+				{
+					Group:          "",
+					Version:        "v1",
+					Kind:           "Namespace",
+					Name:           "test-namespace-3",
+					SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+				},
+			},
+			wantErr:    true,
+			wantErrMsg: "exactly one namespace selector with this mode is required, but found 3",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			gotErr := validateNamespaceWithResourceSelectorsMode(tc.resourceSelectors)
+			if (gotErr != nil) != tc.wantErr {
+				t.Errorf("validateNamespaceWithResourceSelectorsMode() error = %v, wantErr %v", gotErr, tc.wantErr)
+			}
+			if tc.wantErr && !strings.Contains(gotErr.Error(), tc.wantErrMsg) {
+				t.Errorf("validateNamespaceWithResourceSelectorsMode() got %v, should contain %s", gotErr, tc.wantErrMsg)
+			}
+		})
+	}
+}
+
 func TestValidateClusterResourcePlacement(t *testing.T) {
 	tests := map[string]struct {
 		crp              *placementv1beta1.ClusterResourcePlacement
@@ -189,6 +432,148 @@ func TestValidateClusterResourcePlacement(t *testing.T) {
 			},
 			wantErr:    true,
 			wantErrMsg: "resource is not found in schema (please retry) or it is not a cluster scoped resource",
+		},
+		"valid CRP with NamespaceWithResourceSelectors and namespaced resources": {
+			crp: &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp",
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:          "",
+							Version:        "v1",
+							Kind:           "Namespace",
+							Name:           "test-namespace",
+							SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+						},
+						{
+							Group:   "apps",
+							Version: "v1",
+							Kind:    "Deployment",
+							Name:    "test-deployment",
+						},
+						{
+							Group:   "",
+							Version: "v1",
+							Kind:    "ConfigMap",
+							LabelSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"app": "test"},
+							},
+						},
+					},
+				},
+			},
+			resourceInformer: &testinformer.FakeManager{
+				APIResources: map[schema.GroupVersionKind]bool{
+					utils.NamespaceGVK:  true,
+					utils.DeploymentGVK: true,
+					utils.ConfigMapGVK:  true,
+				},
+			},
+			wantErr: false,
+		},
+		"valid CRP with NamespaceWithResourceSelectors and cluster-scoped resources": {
+			crp: &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp",
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:          "",
+							Version:        "v1",
+							Kind:           "Namespace",
+							Name:           "test-namespace",
+							SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+						},
+						{
+							Group:   "rbac.authorization.k8s.io",
+							Version: "v1",
+							Kind:    "ClusterRole",
+							Name:    "test-cluster-role",
+						},
+					},
+				},
+			},
+			resourceInformer: &testinformer.FakeManager{
+				APIResources: map[schema.GroupVersionKind]bool{
+					utils.NamespaceGVK:   true,
+					utils.ClusterRoleGVK: true,
+				},
+			},
+			wantErr: false,
+		},
+		"invalid CRP with multiple namespace selectors with NamespaceWithResourceSelectors mode": {
+			crp: &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp",
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:          "",
+							Version:        "v1",
+							Kind:           "Namespace",
+							Name:           "test-namespace-1",
+							SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+						},
+						{
+							Group:   "apps",
+							Version: "v1",
+							Kind:    "Deployment",
+							Name:    "test-deployment",
+						},
+						{
+							Group:          "",
+							Version:        "v1",
+							Kind:           "Namespace",
+							Name:           "test-namespace-2",
+							SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+						},
+					},
+				},
+			},
+			resourceInformer: &testinformer.FakeManager{
+				APIResources: map[schema.GroupVersionKind]bool{
+					utils.NamespaceGVK:  true,
+					utils.DeploymentGVK: true,
+				},
+			},
+			wantErr:    true,
+			wantErrMsg: "exactly one namespace selector with this mode is required, but found 2",
+		},
+		"invalid CRP with NamespaceWithResourceSelectors not at first position": {
+			crp: &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp",
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:   "apps",
+							Version: "v1",
+							Kind:    "Deployment",
+							Name:    "test-deployment",
+						},
+						{
+							Group:          "",
+							Version:        "v1",
+							Kind:           "Namespace",
+							Name:           "test-namespace",
+							SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+						},
+					},
+				},
+			},
+			resourceInformer: &testinformer.FakeManager{
+				APIResources: map[schema.GroupVersionKind]bool{
+					utils.NamespaceGVK:  true,
+					utils.DeploymentGVK: true,
+				},
+			},
+			wantErr:    true,
+			wantErrMsg: "namespace selector must be the first selector (index 0), but found it at index 1",
 		},
 	}
 	for testName, testCase := range tests {
