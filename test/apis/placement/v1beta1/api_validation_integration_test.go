@@ -794,6 +794,126 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			// Cleanup
 			Expect(hubClient.Delete(ctx, &crp)).Should(Succeed())
 		})
+
+		It("should deny creation of CRP with multiple namespace selectors with NamespaceWithResourceSelectors mode", func() {
+			crp = placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:          "",
+							Version:        "v1",
+							Kind:           "Namespace",
+							Name:           "prod-1",
+							SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+						},
+						{
+							Group:          "",
+							Version:        "v1",
+							Kind:           "Namespace",
+							Name:           "prod-2",
+							SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("only one namespace selector with NamespaceWithResourceSelectors mode is allowed"))
+		})
+
+		It("should deny creation of CRP with NamespaceWithResourceSelectors using label selector", func() {
+			crp = placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:   "",
+							Version: "v1",
+							Kind:    "Namespace",
+							LabelSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"env": "prod"},
+							},
+							SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("namespace selector with NamespaceWithResourceSelectors mode must select by name"))
+		})
+
+		It("should deny creation of CRP mixing NamespaceWithResourceSelectors with other namespace selectors", func() {
+			crp = placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:          "",
+							Version:        "v1",
+							Kind:           "Namespace",
+							Name:           "prod",
+							SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+						},
+						{
+							Group:   "",
+							Version: "v1",
+							Kind:    "Namespace",
+							Name:    "staging",
+							// Default SelectionScope is NamespaceWithResources
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("when using NamespaceWithResourceSelectors mode, only one namespace selector is allowed"))
+		})
+
+		It("should allow creation of CRP with NamespaceWithResourceSelectors selecting by name", func() {
+			crp = placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:          "",
+							Version:        "v1",
+							Kind:           "Namespace",
+							Name:           "prod",
+							SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+						},
+						{
+							Group:   "apps",
+							Version: "v1",
+							Kind:    "Deployment",
+							Name:    "frontend",
+						},
+						{
+							Group:   "rbac.authorization.k8s.io",
+							Version: "v1",
+							Kind:    "ClusterRole",
+							Name:    "test-cluster-role",
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, &crp)).Should(Succeed())
+
+			// Cleanup
+			Expect(hubClient.Delete(ctx, &crp)).Should(Succeed())
+		})
 	})
 
 	Context("Test ResourcePlacement API validation - invalid cases", func() {

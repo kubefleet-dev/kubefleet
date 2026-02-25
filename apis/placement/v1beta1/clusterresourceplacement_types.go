@@ -124,6 +124,9 @@ type ClusterResourcePlacement struct {
 }
 
 // PlacementSpec defines the desired state of ClusterResourcePlacement and ResourcePlacement.
+// +kubebuilder:validation:XValidation:rule="size(self.resourceSelectors.filter(x, x.kind == 'Namespace' && x.group == ” && x.version == 'v1' && has(x.selectionScope) && x.selectionScope == 'NamespaceWithResourceSelectors')) <= 1",message="only one namespace selector with NamespaceWithResourceSelectors mode is allowed"
+// +kubebuilder:validation:XValidation:rule="size(self.resourceSelectors.filter(x, x.kind == 'Namespace' && x.group == ” && x.version == 'v1' && has(x.selectionScope) && x.selectionScope == 'NamespaceWithResourceSelectors')) == 0 || (size(self.resourceSelectors.filter(x, x.kind == 'Namespace' && x.group == ” && x.version == 'v1' && has(x.selectionScope) && x.selectionScope == 'NamespaceWithResourceSelectors' && has(x.name) && size(x.name) > 0 && !has(x.labelSelector))) == 1)",message="namespace selector with NamespaceWithResourceSelectors mode must select by name (not by label)"
+// +kubebuilder:validation:XValidation:rule="size(self.resourceSelectors.filter(x, x.kind == 'Namespace' && x.group == ” && x.version == 'v1' && has(x.selectionScope) && x.selectionScope == 'NamespaceWithResourceSelectors')) == 0 || size(self.resourceSelectors.filter(x, x.kind == 'Namespace' && x.group == ” && x.version == 'v1')) == 1",message="when using NamespaceWithResourceSelectors mode, only one namespace selector is allowed (cannot mix with other namespace selectors)"
 type PlacementSpec struct {
 	// ResourceSelectors is an array of selectors used to select cluster scoped resources. The selectors are `ORed`.
 	// You can have 1-100 selectors.
@@ -200,8 +203,9 @@ type ResourceSelectorTerm struct {
 	//
 	// Important requirements for NamespaceWithResourceSelectors mode:
 	// - Exactly one namespace selector with this mode is allowed
-	// - Exactly one namespace must be selected (by name or label matching one namespace)
-	// - Both requirements are validated at webhook admission time
+	// - The namespace selector must select by name (not by label)
+	// - Only one namespace selector is allowed when using this mode (cannot mix with other namespace selectors)
+	// - All requirements are validated via CEL at API validation time
 	// - If the selected namespace is deleted after CRP creation, the controller will report an error condition
 	//
 	// Example using NamespaceWithResourceSelectors:
@@ -266,7 +270,7 @@ const (
 	//
 	// How "additional selectors" work:
 	// - Exactly one namespace selector with NamespaceWithResourceSelectors mode is required
-	// - This selector must select exactly one namespace (by name or label matching one namespace)
+	// - This selector must select a namespace by name (label selectors not allowed)
 	// - ADDITIONAL selectors specify which resources to include:
 	//   - Namespace-scoped resources are filtered to only those within the selected namespace
 	//   - Cluster-scoped resources are included as specified (not limited to the namespace)
@@ -291,8 +295,9 @@ const (
 	//
 	// Important constraints:
 	// - Exactly ONE namespace selector with NamespaceWithResourceSelectors mode is allowed
-	// - Exactly ONE namespace must be selected (controller will reject if 0 or multiple namespaces match)
-	// - Both constraints are enforced at webhook admission time and will result in validation errors if violated
+	// - The namespace selector must select by name (label selectors not allowed)
+	// - Only ONE namespace selector total is allowed when using this mode (cannot mix with other namespace selectors)
+	// - All constraints are enforced via CEL at API validation time
 	//
 	// Runtime behavior:
 	// - If the selected namespace is deleted after the CRP is created, the controller will detect this during

@@ -17,15 +17,12 @@ package e2e
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -110,74 +107,6 @@ var _ = Describe("CRP with NamespaceWithResourceSelectors selecting single names
 		checkNamespacePlacedOnClusters(testNamespace)
 		checkConfigMapPlacedOnClusters(testNamespace, configMapName)
 	})
-
-	It("can delete the CRP", func() {
-		deleteCRP(crpName)
-	})
-
-	It("should remove placed resources from all member clusters", checkIfRemovedWorkResourcesFromAllMemberClusters)
-
-	It("should remove controller finalizers from CRP", func() {
-		checkFinalizersRemoved(crpName)
-	})
-})
-
-var _ = Describe("CRP with NamespaceWithResourceSelectors selecting namespace by label and resources", Ordered, func() {
-	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
-	testNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
-	configMapName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
-
-	BeforeAll(func() {
-		By("creating test namespace and resources")
-		createWorkResources()
-	})
-
-	AfterAll(func() {
-		By(fmt.Sprintf("deleting CRP and related resources %s", crpName))
-		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
-	})
-
-	It("should create CRP with NamespaceWithResourceSelectors mode using label selector", func() {
-		createCRPWithSelectors(crpName, []placementv1beta1.ResourceSelectorTerm{
-			{
-				Group:          "",
-				Kind:           "Namespace",
-				Version:        "v1",
-				SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
-				LabelSelector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						workNamespaceLabelName: strconv.Itoa(GinkgoParallelProcess()),
-					},
-				},
-			},
-			{
-				Group:   "",
-				Kind:    "ConfigMap",
-				Version: "v1",
-				Name:    configMapName,
-			},
-		})
-	})
-
-	It("should update CRP status as expected", func() {
-		checkCRPStatusWithResources(crpName, []placementv1beta1.ResourceIdentifier{
-			{
-				Group:   "",
-				Kind:    "Namespace",
-				Version: "v1",
-				Name:    testNamespace,
-			},
-			{
-				Group:     "",
-				Kind:      "ConfigMap",
-				Version:   "v1",
-				Name:      configMapName,
-				Namespace: testNamespace,
-			},
-		})
-	})
-
-	It("should place the resources on member clusters", checkIfPlacedWorkResourcesOnAllMemberClusters)
 
 	It("can delete the CRP", func() {
 		deleteCRP(crpName)
@@ -301,78 +230,42 @@ var _ = Describe("CRP with NamespaceWithResourceSelectors with cluster-scoped re
 	})
 })
 
-// Negative test case: selecting multiple namespaces with NamespaceWithResourceSelectors should fail
-var _ = Describe("CRP with NamespaceWithResourceSelectors selecting multiple namespaces should fail", Ordered, func() {
+// Negative test case: selecting a non-existent namespace should show error in status
+var _ = Describe("CRP with NamespaceWithResourceSelectors selecting non-existent namespace", Ordered, func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
-	namespace1 := fmt.Sprintf("test-ns-multi-1-%d", GinkgoParallelProcess())
-	namespace2 := fmt.Sprintf("test-ns-multi-2-%d", GinkgoParallelProcess())
-	labelKey := fmt.Sprintf("test-label-%d", GinkgoParallelProcess())
-
-	BeforeAll(func() {
-		By("creating two namespaces with matching labels")
-		ns1 := &corev1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: namespace1,
-				Labels: map[string]string{
-					labelKey: "match",
-				},
-			},
-		}
-		Expect(hubClient.Create(ctx, ns1)).To(Succeed(), "Failed to create namespace %s", namespace1)
-
-		ns2 := &corev1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: namespace2,
-				Labels: map[string]string{
-					labelKey: "match",
-				},
-			},
-		}
-		Expect(hubClient.Create(ctx, ns2)).To(Succeed(), "Failed to create namespace %s", namespace2)
-	})
+	nonExistentNamespace := fmt.Sprintf("non-existent-ns-%d", GinkgoParallelProcess())
 
 	AfterAll(func() {
-		By("cleaning up test namespaces and CRP")
-		ns1 := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace1}}
-		Expect(client.IgnoreNotFound(hubClient.Delete(ctx, ns1))).To(Succeed())
-
-		ns2 := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace2}}
-		Expect(client.IgnoreNotFound(hubClient.Delete(ctx, ns2))).To(Succeed())
-
+		By("cleaning up CRP")
 		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 	})
 
-	It("should create CRP that selects multiple namespaces", func() {
+	It("should create CRP that selects a non-existent namespace by name", func() {
 		createCRPWithSelectors(crpName, []placementv1beta1.ResourceSelectorTerm{
 			{
 				Group:          "",
 				Kind:           "Namespace",
 				Version:        "v1",
+				Name:           nonExistentNamespace,
 				SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
-				LabelSelector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						labelKey: "match",
-					},
-				},
 			},
 		})
 	})
 
-	It("should show error in CRP status for selecting multiple namespaces", func() {
+	It("should show error in CRP status for non-existent namespace", func() {
 		Eventually(func() bool {
 			var crp placementv1beta1.ClusterResourcePlacement
 			if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &crp); err != nil {
 				return false
 			}
-			// Check if there's a condition indicating the error
+			// Check if there's a condition indicating the error about namespace not being selected
 			for _, cond := range crp.Status.Conditions {
-				if strings.Contains(cond.Message, "NamespaceWithResourceSelectors mode requires exactly one namespace") ||
-					strings.Contains(cond.Message, "namespaces were selected") {
+				if strings.Contains(cond.Message, "NamespaceWithResourceSelectors mode requires exactly one namespace, but no namespaces were selected") {
 					return true
 				}
 			}
 			return false
-		}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "CRP %s should have error condition for multiple namespaces", crpName)
+		}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "CRP %s should have error condition for non-existent namespace", crpName)
 	})
 
 	It("can delete the CRP", func() {

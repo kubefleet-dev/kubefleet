@@ -2043,8 +2043,9 @@ spec:
 
                         Important requirements for NamespaceWithResourceSelectors mode:
                         - Exactly one namespace selector with this mode is allowed
-                        - Exactly one namespace must be selected (by name or label matching one namespace)
-                        - Both requirements are validated at webhook admission time
+                        - The namespace selector must select by name (not by label)
+                        - Only one namespace selector is allowed when using this mode (cannot mix with other namespace selectors)
+                        - All requirements are validated via CEL at API validation time
                         - If the selected namespace is deleted after CRP creation, the controller will report an error condition
 
                         Example using NamespaceWithResourceSelectors:
@@ -2526,6 +2527,25 @@ spec:
             - message: statusReportingScope is immutable
               rule: '!has(oldSelf.statusReportingScope) || self.statusReportingScope
                 == oldSelf.statusReportingScope'
+            - message: only one namespace selector with NamespaceWithResourceSelectors
+                mode is allowed
+              rule: size(self.resourceSelectors.filter(x, x.kind == 'Namespace' &&
+                x.group == '' && x.version == 'v1' && has(x.selectionScope) && x.selectionScope
+                == 'NamespaceWithResourceSelectors')) <= 1
+            - message: namespace selector with NamespaceWithResourceSelectors mode
+                must select by name (not by label)
+              rule: size(self.resourceSelectors.filter(x, x.kind == 'Namespace' &&
+                x.group == '' && x.version == 'v1' && has(x.selectionScope) && x.selectionScope
+                == 'NamespaceWithResourceSelectors')) == 0 || (size(self.resourceSelectors.filter(x,
+                x.kind == 'Namespace' && x.group == '' && x.version == 'v1' && has(x.selectionScope)
+                && x.selectionScope == 'NamespaceWithResourceSelectors' && has(x.name)
+                && size(x.name) > 0 && !has(x.labelSelector))) == 1)
+            - message: when using NamespaceWithResourceSelectors mode, only one namespace
+                selector is allowed (cannot mix with other namespace selectors)
+              rule: size(self.resourceSelectors.filter(x, x.kind == 'Namespace' &&
+                x.group == '' && x.version == 'v1' && has(x.selectionScope) && x.selectionScope
+                == 'NamespaceWithResourceSelectors')) == 0 || size(self.resourceSelectors.filter(x,
+                x.kind == 'Namespace' && x.group == '' && x.version == 'v1')) == 1
           status:
             description: The observed status of ClusterResourcePlacement.
             properties:
