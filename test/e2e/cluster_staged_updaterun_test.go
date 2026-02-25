@@ -63,7 +63,7 @@ var (
 )
 
 // Note that this container will run in parallel with other containers.
-var _ = FDescribe("test CRP rollout with staged update run", func() {
+var _ = Describe("test CRP rollout with staged update run", func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	strategyName := fmt.Sprintf(clusterStagedUpdateRunStrategyNameTemplate, GinkgoParallelProcess())
 
@@ -1267,16 +1267,16 @@ var _ = FDescribe("test CRP rollout with staged update run", func() {
 			}
 		})
 
-		It("Should have the new resource snapshot but CRP status should remain completed with old snapshot", func() {
-			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex2nd)
+		It("Should NOT have a new resource snapshot and CRP status should remain completed with old snapshot", func() {
+			validateLatestClusterResourceSnapshot(crpName, resourceSnapshotIndex1st)
 
 			// CRP status should still show completed with old snapshot
 			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, resourceSnapshotIndex1st)
 			Consistently(crpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep CRP %s status as expected", crpName)
 		})
 
-		It("Create a staged update run with new resourceSnapshotIndex and verify rollout happens", func() {
-			createClusterStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex2nd, strategyName, placementv1beta1.StateRun)
+		It("Create a staged update run with auto-created snapshot and verify rollout happens", func() {
+			createClusterStagedUpdateRunWithAutoCreatedSnapshot(updateRunName, crpName, strategyName, placementv1beta1.StateRun)
 
 			// Verify rollout to canary cluster first
 			By("Verify that the new configmap is updated on member-cluster-2 during canary stage")
