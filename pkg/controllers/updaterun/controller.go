@@ -60,6 +60,12 @@ type Reconciler struct {
 	recorder record.EventRecorder
 	// the informer contains the cache for all the resources we need to check the resource scope.
 	InformerManager informer.Manager
+
+	// ResourceSelectorResolver selects resources for placement.
+	ResourceSelectorResolver controller.ResourceSelectorResolver
+
+	// ResourceSnapshotResolver gets or creates resource snapshots.
+	ResourceSnapshotResolver controller.ResourceSnapshotResolver
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtime.Result, error) {

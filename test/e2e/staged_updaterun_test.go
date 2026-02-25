@@ -60,7 +60,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 	})
 
-	Context("Test resource rollout with staged update run with latest resource snapshot when not specified", Ordered, func() {
+	Context("Test resource rollout with staged update run with auto-created resource snapshot when not specified", Ordered, func() {
 		updateRunNames := []string{}
 		var strategy *placementv1beta1.StagedUpdateStrategy
 		var oldConfigMap, newConfigMap corev1.ConfigMap
@@ -124,8 +124,8 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP %s/%s status as expected", testNamespace, rpName)
 		})
 
-		It("Should create a staged update run successfully", func() {
-			createStagedUpdateRunSucceedWithNoResourceSnapshotIndex(updateRunNames[0], testNamespace, rpName, strategyName)
+		It("Should create a staged update run successfully with auto-created resource snapshot", func() {
+			createStagedUpdateRunWithAutoCreatedSnapshot(updateRunNames[0], testNamespace, rpName, strategyName)
 		})
 
 		It("Should rollout resources to member-cluster-2 only and complete stage canary", func() {
@@ -188,8 +188,8 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed get the new latest resourcensnapshot")
 		})
 
-		It("Should create a new staged update run successfully", func() {
-			createStagedUpdateRunSucceedWithNoResourceSnapshotIndex(updateRunNames[1], testNamespace, rpName, strategyName)
+		It("Should create a new staged update run successfully and use the auto-created snapshot for updated resources", func() {
+			createStagedUpdateRunWithAutoCreatedSnapshot(updateRunNames[1], testNamespace, rpName, strategyName)
 		})
 
 		It("Should rollout resources to member-cluster-2 only and complete stage canary", func() {
@@ -1658,7 +1658,9 @@ func createStagedUpdateRunSucceed(updateRunName, namespace, rpName, resourceSnap
 	Expect(hubClient.Create(ctx, updateRun)).To(Succeed(), "Failed to create StagedUpdateRun %s", updateRunName)
 }
 
-func createStagedUpdateRunSucceedWithNoResourceSnapshotIndex(updateRunName, namespace, rpName, strategyName string) {
+// createStagedUpdateRunWithAutoCreatedSnapshot creates a StagedUpdateRun without specifying a
+// ResourceSnapshotIndex, triggering the controller to auto-create or reuse an existing resource snapshot.
+func createStagedUpdateRunWithAutoCreatedSnapshot(updateRunName, namespace, rpName, strategyName string) {
 	updateRun := &placementv1beta1.StagedUpdateRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      updateRunName,
