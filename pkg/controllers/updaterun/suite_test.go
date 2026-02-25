@@ -131,7 +131,7 @@ var _ = BeforeSuite(func() {
 		Client:                   k8sClient,
 		InformerManager:          dynamicInformerManager,
 		ResourceSelectorResolver: resourceSelectorResolver,
-		ResourceSnapshotResolver: *controller.NewResourceSnapshotResolver(mgr.GetClient(), mgr.GetScheme()),
+		ResourceSnapshotResolver: controller.NewResourceSnapshotResolver(mgr.GetClient(), mgr.GetScheme()),
 	}).SetupWithManagerForClusterStagedUpdateRun(mgr)
 	Expect(err).Should(Succeed())
 
@@ -148,9 +148,6 @@ var _ = BeforeSuite(func() {
 		err = mgr.Start(ctx)
 		Expect(err).Should(Succeed(), "failed to run manager")
 	}()
-	// ensure that the reconciler cache is synced before running tests to avoid cache related flakes
-	dynamicInformerManager.Start()
-	dynamicInformerManager.WaitForCacheSync()
 })
 
 var _ = AfterSuite(func() {

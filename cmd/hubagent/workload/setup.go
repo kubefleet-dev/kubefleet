@@ -172,7 +172,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		Scheme:                   mgr.GetScheme(),
 		UncachedReader:           mgr.GetAPIReader(),
 		ResourceSelectorResolver: resourceSelectorResolver,
-		ResourceSnapshotResolver: *resourceSnapshotResolver,
+		ResourceSnapshotResolver: resourceSnapshotResolver,
 	}
 
 	rateLimiter := options.DefaultControllerRateLimiter(opts.RateLimiterOpts)
@@ -313,7 +313,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 				Client:                   mgr.GetClient(),
 				InformerManager:          dynamicInformerManager,
 				ResourceSelectorResolver: resourceSelectorResolver,
-				ResourceSnapshotResolver: *resourceSnapshotResolver,
+				ResourceSnapshotResolver: resourceSnapshotResolver,
 			}).SetupWithManagerForClusterStagedUpdateRun(mgr); err != nil {
 				klog.ErrorS(err, "Unable to set up clusterStagedUpdateRun controller")
 				return err
@@ -331,7 +331,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 					Client:                   mgr.GetClient(),
 					InformerManager:          dynamicInformerManager,
 					ResourceSelectorResolver: resourceSelectorResolver,
-					ResourceSnapshotResolver: *resourceSnapshotResolver,
+					ResourceSnapshotResolver: resourceSnapshotResolver,
 				}).SetupWithManagerForStagedUpdateRun(mgr); err != nil {
 					klog.ErrorS(err, "Unable to set up stagedUpdateRun controller")
 					return err

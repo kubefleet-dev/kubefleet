@@ -56,8 +56,8 @@ type ResourceSnapshotResolver struct {
 }
 
 // NewResourceSnapshotResolver creates a new ResourceSnapshotResolver with the universal fields
-func NewResourceSnapshotResolver(client client.Client, scheme *runtime.Scheme) *ResourceSnapshotResolver {
-	return &ResourceSnapshotResolver{
+func NewResourceSnapshotResolver(client client.Client, scheme *runtime.Scheme) ResourceSnapshotResolver {
+	return ResourceSnapshotResolver{
 		Client: client,
 		Scheme: scheme,
 	}
