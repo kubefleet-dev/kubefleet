@@ -19,6 +19,8 @@ package namespaceaffinity
 import (
 	"context"
 
+	"k8s.io/apimachinery/pkg/api/meta"
+
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
@@ -60,18 +62,9 @@ func (p *Plugin) Filter(
 	// 1. Missing: namespace collection is not enabled (backward compatibility - skip filtering)
 	// 2. True: namespace collection is working normally
 	// 3. False: namespace collection is enabled but degraded (limit reached - still use the data)
-	namespaceCollectionEnabled := false
-	for _, cond := range cluster.Status.Conditions {
-		if cond.Type == propertyprovider.NamespaceCollectionSucceededCondType {
-			// Condition exists, so namespace collection is enabled (regardless of True/False)
-			namespaceCollectionEnabled = true
-			break
-		}
-	}
-
-	// If namespace collection is not enabled, skip filtering.
-	// This allows ResourcePlacements to work normally without namespace collection (backward compatibility).
-	if !namespaceCollectionEnabled {
+	cond := meta.FindStatusCondition(cluster.Status.Conditions, propertyprovider.NamespaceCollectionSucceededCondType)
+	if cond == nil {
+		// Namespace collection is not enabled, skip filtering for backward compatibility.
 		return nil
 	}
 

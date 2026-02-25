@@ -22,6 +22,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -274,36 +275,16 @@ func setNamespaceCollectionOnCluster(clusterName string, enabled bool, namespace
 		// Update condition based on whether namespace collection is enabled
 		if enabled {
 			// Add/update the NamespaceCollectionSucceeded condition to True
-			conditionExists := false
-			for i := range mc.Status.Conditions {
-				if mc.Status.Conditions[i].Type == propertyprovider.NamespaceCollectionSucceededCondType {
-					mc.Status.Conditions[i].Status = metav1.ConditionTrue
-					mc.Status.Conditions[i].Reason = propertyprovider.NamespaceCollectionSucceededReason
-					mc.Status.Conditions[i].Message = propertyprovider.NamespaceCollectionSucceededMsg
-					mc.Status.Conditions[i].LastTransitionTime = metav1.Now()
-					conditionExists = true
-					break
-				}
-			}
-			if !conditionExists {
-				mc.Status.Conditions = append(mc.Status.Conditions, metav1.Condition{
-					Type:               propertyprovider.NamespaceCollectionSucceededCondType,
-					Status:             metav1.ConditionTrue,
-					Reason:             propertyprovider.NamespaceCollectionSucceededReason,
-					Message:            propertyprovider.NamespaceCollectionSucceededMsg,
-					LastTransitionTime: metav1.Now(),
-				})
-			}
+			meta.SetStatusCondition(&mc.Status.Conditions, metav1.Condition{
+				Type:    propertyprovider.NamespaceCollectionSucceededCondType,
+				Status:  metav1.ConditionTrue,
+				Reason:  propertyprovider.NamespaceCollectionSucceededReason,
+				Message: propertyprovider.NamespaceCollectionSucceededMsg,
+			})
 		} else {
 			// Remove the condition entirely (namespace collection not enabled)
 			// This is different from ConditionFalse which means degraded/limit reached
-			filteredConditions := make([]metav1.Condition, 0)
-			for i := range mc.Status.Conditions {
-				if mc.Status.Conditions[i].Type != propertyprovider.NamespaceCollectionSucceededCondType {
-					filteredConditions = append(filteredConditions, mc.Status.Conditions[i])
-				}
-			}
-			mc.Status.Conditions = filteredConditions
+			meta.RemoveStatusCondition(&mc.Status.Conditions, propertyprovider.NamespaceCollectionSucceededCondType)
 		}
 
 		return hubClient.Status().Update(ctx, mc)
@@ -322,13 +303,7 @@ func clearNamespaceCollectionOnCluster(clusterName string) {
 		mc.Status.Namespaces = nil
 
 		// Remove the NamespaceCollectionSucceeded condition
-		filteredConditions := make([]metav1.Condition, 0)
-		for i := range mc.Status.Conditions {
-			if mc.Status.Conditions[i].Type != propertyprovider.NamespaceCollectionSucceededCondType {
-				filteredConditions = append(filteredConditions, mc.Status.Conditions[i])
-			}
-		}
-		mc.Status.Conditions = filteredConditions
+		meta.RemoveStatusCondition(&mc.Status.Conditions, propertyprovider.NamespaceCollectionSucceededCondType)
 
 		return hubClient.Status().Update(ctx, mc)
 	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to clear namespace collection on cluster %s", clusterName)
