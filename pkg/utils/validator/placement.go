@@ -103,11 +103,6 @@ func validateNamespaceWithResourceSelectorsMode(resourceSelectors []placementv1b
 		return fmt.Errorf("when using NamespaceWithResourceSelectors mode, exactly one namespace selector with this mode is required, but found %d namespace selectors at indices %v", namespaceSelectorsCount, namespaceSelectorIndices)
 	}
 
-	// Ensure the namespace selector is the first selector
-	if namespaceSelectorIndices[0] != 0 {
-		return fmt.Errorf("when using NamespaceWithResourceSelectors mode, the namespace selector must be the first selector (index 0), but found it at index %d", namespaceSelectorIndices[0])
-	}
-
 	return nil
 }
 

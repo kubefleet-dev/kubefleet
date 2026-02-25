@@ -199,14 +199,14 @@ type ResourceSelectorTerm struct {
 	// target both namespace-scoped resources (within the selected namespace) and cluster-scoped resources.
 	//
 	// Important requirements for NamespaceWithResourceSelectors mode:
-	// - The namespace selector MUST be the FIRST selector (index 0) in the ResourceSelectors array
+	// - Exactly one namespace selector with this mode is allowed
 	// - Exactly one namespace must be selected (by name or label matching one namespace)
 	// - Both requirements are validated at webhook admission time
 	// - If the selected namespace is deleted after CRP creation, the controller will report an error condition
 	//
 	// Example using NamespaceWithResourceSelectors:
-	// - First selector: {Group: "", Version: "v1", Kind: "Namespace", Name: "prod", SelectionScope: "NamespaceWithResourceSelectors"}
-	// - Second selector: {Group: "apps", Version: "v1", Kind: "Deployment", LabelSelector: {app: "frontend"}}
+	// - Namespace selector: {Group: "", Version: "v1", Kind: "Namespace", Name: "prod", SelectionScope: "NamespaceWithResourceSelectors"}
+	// - Additional selector: {Group: "apps", Version: "v1", Kind: "Deployment", LabelSelector: {app: "frontend"}}
 	// - Third selector: {Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole", Name: "admin"}
 	// This selects: the "prod" namespace, all Deployments with label app=frontend in "prod", and the "admin" ClusterRole.
 	//
@@ -265,9 +265,9 @@ const (
 	// 3. Include specific cluster-scoped resources along with namespace-scoped resources
 	//
 	// How "additional selectors" work:
-	// - The namespace selector with NamespaceWithResourceSelectors mode MUST BE the FIRST selector (index 0)
-	// - This first selector must select exactly one namespace (by name or label matching one namespace)
-	// - SUBSEQUENT selectors specify which resources to include:
+	// - Exactly one namespace selector with NamespaceWithResourceSelectors mode is required
+	// - This selector must select exactly one namespace (by name or label matching one namespace)
+	// - ADDITIONAL selectors specify which resources to include:
 	//   - Namespace-scoped resources are filtered to only those within the selected namespace
 	//   - Cluster-scoped resources are included as specified (not limited to the namespace)
 	// - If no additional selectors are provided, only the namespace object itself is selected
@@ -290,7 +290,7 @@ const (
 	//   Result: The "app" namespace + ALL Deployments in "app" + the "app-admin" ClusterRole
 	//
 	// Important constraints:
-	// - The namespace selector with this mode MUST be the first selector in the ResourceSelectors array
+	// - Exactly ONE namespace selector with NamespaceWithResourceSelectors mode is allowed
 	// - Exactly ONE namespace must be selected (controller will reject if 0 or multiple namespaces match)
 	// - Both constraints are enforced at webhook admission time and will result in validation errors if violated
 	//

@@ -218,25 +218,6 @@ func TestValidateNamespaceWithResourceSelectorsMode(t *testing.T) {
 			wantErr:    true,
 			wantErrMsg: "exactly one namespace selector with this mode is required, but found 2",
 		},
-		"invalid: namespace selector not at first position": {
-			resourceSelectors: []placementv1beta1.ResourceSelectorTerm{
-				{
-					Group:   "apps",
-					Version: "v1",
-					Kind:    "Deployment",
-					Name:    "test-deployment",
-				},
-				{
-					Group:          "",
-					Version:        "v1",
-					Kind:           "Namespace",
-					Name:           "test-namespace",
-					SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
-				},
-			},
-			wantErr:    true,
-			wantErrMsg: "namespace selector must be the first selector (index 0), but found it at index 1",
-		},
 		"invalid: three namespace selectors with NamespaceWithResourceSelectors mode": {
 			resourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 				{
@@ -542,38 +523,6 @@ func TestValidateClusterResourcePlacement(t *testing.T) {
 			},
 			wantErr:    true,
 			wantErrMsg: "exactly one namespace selector with this mode is required, but found 2",
-		},
-		"invalid CRP with NamespaceWithResourceSelectors not at first position": {
-			crp: &placementv1beta1.ClusterResourcePlacement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-crp",
-				},
-				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
-						{
-							Group:   "apps",
-							Version: "v1",
-							Kind:    "Deployment",
-							Name:    "test-deployment",
-						},
-						{
-							Group:          "",
-							Version:        "v1",
-							Kind:           "Namespace",
-							Name:           "test-namespace",
-							SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
-						},
-					},
-				},
-			},
-			resourceInformer: &testinformer.FakeManager{
-				APIResources: map[schema.GroupVersionKind]bool{
-					utils.NamespaceGVK:  true,
-					utils.DeploymentGVK: true,
-				},
-			},
-			wantErr:    true,
-			wantErrMsg: "namespace selector must be the first selector (index 0), but found it at index 1",
 		},
 	}
 	for testName, testCase := range tests {
