@@ -1033,22 +1033,22 @@ spec:
             - message: only one namespace selector with NamespaceWithResourceSelectors
                 mode is allowed
               rule: size(self.resourceSelectors.filter(x, x.kind == 'Namespace' &&
-                x.group == '' && x.version == 'v1' && has(x.selectionScope) && x.selectionScope
+                x.group == "" && x.version == 'v1' && has(x.selectionScope) && x.selectionScope
                 == 'NamespaceWithResourceSelectors')) <= 1
             - message: namespace selector with NamespaceWithResourceSelectors mode
                 must select by name (not by label)
               rule: size(self.resourceSelectors.filter(x, x.kind == 'Namespace' &&
-                x.group == '' && x.version == 'v1' && has(x.selectionScope) && x.selectionScope
+                x.group == "" && x.version == 'v1' && has(x.selectionScope) && x.selectionScope
                 == 'NamespaceWithResourceSelectors')) == 0 || (size(self.resourceSelectors.filter(x,
-                x.kind == 'Namespace' && x.group == '' && x.version == 'v1' && has(x.selectionScope)
+                x.kind == 'Namespace' && x.group == "" && x.version == 'v1' && has(x.selectionScope)
                 && x.selectionScope == 'NamespaceWithResourceSelectors' && has(x.name)
                 && size(x.name) > 0 && !has(x.labelSelector))) == 1)
             - message: when using NamespaceWithResourceSelectors mode, only one namespace
                 selector is allowed (cannot mix with other namespace selectors)
               rule: size(self.resourceSelectors.filter(x, x.kind == 'Namespace' &&
-                x.group == '' && x.version == 'v1' && has(x.selectionScope) && x.selectionScope
+                x.group == "" && x.version == 'v1' && has(x.selectionScope) && x.selectionScope
                 == 'NamespaceWithResourceSelectors')) == 0 || size(self.resourceSelectors.filter(x,
-                x.kind == 'Namespace' && x.group == '' && x.version == 'v1')) == 1
+                x.kind == 'Namespace' && x.group == "" && x.version == 'v1')) == 1
           status:
             description: The observed status of ResourcePlacement.
             properties:

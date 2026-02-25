@@ -850,6 +850,29 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("namespace selector with NamespaceWithResourceSelectors mode must select by name"))
 		})
 
+		It("should deny creation of CRP with NamespaceWithResourceSelectors using empty name", func() {
+			crp = placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:          "",
+							Version:        "v1",
+							Kind:           "Namespace",
+							Name:           "", // Empty name
+							SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("namespace selector with NamespaceWithResourceSelectors mode must select by name"))
+		})
+
 		It("should deny creation of CRP mixing NamespaceWithResourceSelectors with other namespace selectors", func() {
 			crp = placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
