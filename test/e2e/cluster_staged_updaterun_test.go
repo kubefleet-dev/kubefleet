@@ -67,7 +67,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	strategyName := fmt.Sprintf(clusterStagedUpdateRunStrategyNameTemplate, GinkgoParallelProcess())
 
-	Context("Test resource rollout with staged update run with latest resource snapshot when not specified", Ordered, func() {
+	Context("Test resource rollout with staged update run with auto-created resource snapshot when not specified", Ordered, func() {
 		updateRunNames := []string{}
 		var strategy *placementv1beta1.ClusterStagedUpdateStrategy
 		var oldConfigMap, newConfigMap corev1.ConfigMap
@@ -133,9 +133,9 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP %s status as expected", crpName)
 		})
 
-		It("Should create a cluster staged update run successfully", func() {
-			By("Create a cluster staged update run without specifying resource snapshot index")
-			createClusterStagedUpdateRunSucceedWithNoResourceSnapshotIndex(updateRunNames[0], crpName, strategyName)
+		It("Should create a cluster staged update run successfully with auto-created resource snapshot", func() {
+			By("Create a cluster staged update run without specifying resource snapshot index, triggering auto-creation")
+			createClusterStagedUpdateRunWithAutoCreatedSnapshot(updateRunNames[0], crpName, strategyName)
 		})
 
 		It("Should rollout resources to member-cluster-2 only and complete stage canary", func() {
@@ -198,9 +198,9 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed get the new latest resourcensnapshot")
 		})
 
-		It("Should create a new cluster staged update run successfully", func() {
-			By("Create a new cluster staged update run without specifying resource snapshot index")
-			createClusterStagedUpdateRunSucceedWithNoResourceSnapshotIndex(updateRunNames[1], crpName, strategyName)
+		It("Should create a new cluster staged update run successfully and use the auto-created snapshot for updated resources", func() {
+			By("Create a new cluster staged update run without specifying resource snapshot index, triggering auto-creation for updated resources")
+			createClusterStagedUpdateRunWithAutoCreatedSnapshot(updateRunNames[1], crpName, strategyName)
 		})
 
 		It("Should rollout resources to member-cluster-2 only and complete stage canary", func() {
@@ -2063,7 +2063,9 @@ func createClusterStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapsho
 	Expect(hubClient.Create(ctx, updateRun)).To(Succeed(), "Failed to create ClusterStagedUpdateRun %s", updateRunName)
 }
 
-func createClusterStagedUpdateRunSucceedWithNoResourceSnapshotIndex(updateRunName, crpName, strategyName string) {
+// createClusterStagedUpdateRunWithAutoCreatedSnapshot creates a ClusterStagedUpdateRun without specifying a
+// ResourceSnapshotIndex, triggering the controller to auto-create or reuse an existing resource snapshot.
+func createClusterStagedUpdateRunWithAutoCreatedSnapshot(updateRunName, crpName, strategyName string) {
 	updateRun := &placementv1beta1.ClusterStagedUpdateRun{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: updateRunName,

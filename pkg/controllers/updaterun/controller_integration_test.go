@@ -504,7 +504,7 @@ func generateTestClusterResourcePlacement() *placementv1beta1.ClusterResourcePla
 					Group:   "",
 					Version: "v1",
 					Kind:    "Namespace",
-					Name:    "test-namespace",
+					Name:    testNamespaceName,
 				},
 			},
 			Policy: &placementv1beta1.PlacementPolicy{
@@ -734,9 +734,9 @@ func generateTestClusterResourceSnapshot() *placementv1beta1.ClusterResourceSnap
 			Kind:       "Namespace",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-namespace",
+			Name: testNamespaceName,
 			Labels: map[string]string{
-				"fleet.azure.com/name": "test-namespace",
+				"fleet.azure.com/name": testNamespaceName,
 			},
 		},
 	})
@@ -780,7 +780,7 @@ func generateTestClusterResourceOverride() *placementv1beta1.ClusterResourceOver
 						Group:   "",
 						Version: "v1",
 						Kind:    "Namespace",
-						Name:    "test-namespace",
+						Name:    testNamespaceName,
 					},
 				},
 				Policy: &placementv1beta1.OverridePolicy{
