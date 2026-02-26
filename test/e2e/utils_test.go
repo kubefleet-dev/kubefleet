@@ -841,6 +841,42 @@ func createNamespace() {
 	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to create namespace %s", ns.Name)
 }
 
+// waitForNamespaceCollectionOnClusters waits for the specified namespace to appear in
+// MemberCluster.Status.Namespaces for all specified clusters. This ensures namespace collection
+// has synced before creating ResourcePlacements, avoiding race conditions where the scheduler
+// might filter out clusters before they report having the namespace.
+//
+// This is particularly important when:
+// - CRPs dynamically create namespaces on member clusters
+// - ResourcePlacements need to use those newly created namespaces
+// - Namespace affinity plugin filtering is enabled
+func waitForNamespaceCollectionOnClusters(namespaceName string, clusterNames []string) {
+	GinkgoHelper()
+
+	// Wait for the specific namespace to appear in the collection on every cluster.
+	for _, clusterName := range clusterNames {
+		Eventually(func() error {
+			mc := &clusterv1beta1.MemberCluster{}
+			if err := hubClient.Get(ctx, types.NamespacedName{Name: clusterName}, mc); err != nil {
+				return fmt.Errorf("failed to get member cluster %s: %w", clusterName, err)
+			}
+
+			// Check if the namespace exists in the status
+			if mc.Status.Namespaces == nil {
+				return fmt.Errorf("cluster %s has namespace collection enabled but Status.Namespaces is nil", clusterName)
+			}
+
+			if _, exists := mc.Status.Namespaces[namespaceName]; !exists {
+				return fmt.Errorf("namespace %s not yet collected on cluster %s (has %d namespaces)",
+					namespaceName, clusterName, len(mc.Status.Namespaces))
+			}
+
+			return nil
+		}, longEventuallyDuration, eventuallyInterval).Should(Succeed(),
+			"Failed to wait for namespace %s to be collected on cluster %s", namespaceName, clusterName)
+	}
+}
+
 func createConfigMap() {
 	configMap := appConfigMap()
 	Expect(hubClient.Create(ctx, &configMap)).To(Succeed(), "Failed to create config map %s", configMap.Name)

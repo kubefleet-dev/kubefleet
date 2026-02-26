@@ -254,6 +254,9 @@ var _ = Describe("Test member cluster join and leave flow", Label("joinleave"), 
 			crpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(types.NamespacedName{Name: crpName}, wantCRPSelectedResources, allMemberClusterNames, nil, "0", true)
 			Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 
+			By("waiting for namespace to be collected on all member clusters")
+			waitForNamespaceCollectionOnClusters(workNamespaceName, allMemberClusterNames)
+
 			wantRPSelectedResources = []placementv1beta1.ResourceIdentifier{
 				{
 					Kind:      "ConfigMap",

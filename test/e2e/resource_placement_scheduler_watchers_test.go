@@ -86,6 +86,9 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 		By("crp should propagate namespace to all clusters")
 		crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "0")
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Should select all clusters")
+
+		By("waiting for namespace to be collected on all member clusters")
+		waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
 	})
 
 	AfterEach(OncePerOrdered, func() {
