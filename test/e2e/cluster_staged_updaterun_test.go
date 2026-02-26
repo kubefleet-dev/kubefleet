@@ -1156,7 +1156,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 		})
 
 		It("Should create a cluster staged update run successfully", func() {
-			createClusterStagedUpdateRunSucceed(updateRunName, crpName, resourceSnapshotIndex1st, strategyName, placementv1beta1.StateRun)
+			createClusterStagedUpdateRunWithAutoCreatedSnapshot(updateRunName, crpName, strategyName, placementv1beta1.StateRun)
 		})
 
 		It("Should have the latest resource snapshot", func() {

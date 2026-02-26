@@ -1417,7 +1417,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		})
 
 		It("Should create a staged update run successfully", func() {
-			createStagedUpdateRunSucceed(updateRunName, testNamespace, rpName, resourceSnapshotIndex1st, strategyName, placementv1beta1.StateRun)
+			createStagedUpdateRunWithAutoCreatedSnapshot(updateRunName, testNamespace, rpName, strategyName, placementv1beta1.StateRun)
 		})
 
 		It("Should have the latest resource snapshot", func() {
