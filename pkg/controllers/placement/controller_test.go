@@ -2407,50 +2407,6 @@ func TestHandleResourceSnapshotByStrategy(t *testing.T) {
 		wantErr                 bool
 	}{
 		{
-			name: "External rollout strategy with existing snapshot",
-			crp: &fleetv1beta1.ClusterResourcePlacement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       testCRPName,
-					Generation: 1,
-				},
-				Spec: fleetv1beta1.PlacementSpec{
-					ResourceSelectors: []fleetv1beta1.ResourceSelectorTerm{
-						{
-							Group:   corev1.GroupName,
-							Version: "v1",
-							Kind:    "Namespace",
-						},
-					},
-					Strategy: fleetv1beta1.RolloutStrategy{
-						Type: fleetv1beta1.ExternalRolloutStrategyType,
-					},
-				},
-			},
-			existingSnapshots: []client.Object{
-				&fleetv1beta1.ClusterResourceSnapshot{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, testCRPName, 0),
-						Labels: map[string]string{
-							fleetv1beta1.PlacementTrackingLabel: testCRPName,
-							fleetv1beta1.IsLatestSnapshotLabel:  strconv.FormatBool(true),
-							fleetv1beta1.ResourceIndexLabel:     "0",
-						},
-						Annotations: map[string]string{
-							fleetv1beta1.ResourceGroupHashAnnotation:         "abc",
-							fleetv1beta1.NumberOfResourceSnapshotsAnnotation: "1",
-						},
-					},
-				},
-			},
-			selectedResources:       []fleetv1beta1.ResourceContent{},
-			selectedResourceIDs:     []fleetv1beta1.ResourceIdentifier{{Kind: "Namespace", Name: "test"}},
-			wantSnapshot:            true,
-			wantSnapshotName:        fmt.Sprintf(fleetv1beta1.ResourceSnapshotNameFmt, testCRPName, 0),
-			wantSelectedResourceIDs: []fleetv1beta1.ResourceIdentifier{{Kind: "Namespace", Name: "test"}},
-			wantRequeueAfter:        false,
-			wantErr:                 false,
-		},
-		{
 			name: "External rollout strategy with no existing snapshot",
 			crp: &fleetv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{

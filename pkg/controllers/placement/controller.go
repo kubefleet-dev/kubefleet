@@ -313,15 +313,9 @@ func (r *Reconciler) handleResourceSnapshotByStrategy(
 	// For External rollout strategy, the placement controller should not create new resource snapshots.
 	// The external controller (e.g., UpdateRun controller) is responsible for creating them.
 	if placementSpec.Strategy.Type == fleetv1beta1.ExternalRolloutStrategyType {
-		placementKey := types.NamespacedName{Name: placementObj.GetName(), Namespace: placementObj.GetNamespace()}
-		latestResourceSnapshot, err := controller.FetchLatestMasterResourceSnapshot(ctx, r.Client, placementKey)
-		if err != nil {
-			klog.ErrorS(err, "Failed to fetch the latest resource snapshot for external rollout strategy", "placement", placementKObj)
-			return ctrl.Result{}, nil, selectedResourceIDs, err
-		}
-		// latestResourceSnapshot can be nil for External strategy - the external controller will create it.
-		klog.V(2).InfoS("Using external rollout strategy, skipping resource snapshot creation", "placement", placementKObj, "latestResourceSnapshot", klog.KObj(latestResourceSnapshot))
-		return ctrl.Result{}, latestResourceSnapshot, selectedResourceIDs, nil
+		// latestResourceSnapshot is nil for External strategy - the external controller will create it.
+		klog.V(2).InfoS("Using external rollout strategy, skipping resource snapshot creation", "placement", placementKObj)
+		return ctrl.Result{}, nil, selectedResourceIDs, nil
 	}
 
 	createResourceSnapshotRes, latestResourceSnapshot, err := r.ResourceSnapshotResolver.GetOrCreateResourceSnapshot(ctx, placementObj, envelopeObjCount,
