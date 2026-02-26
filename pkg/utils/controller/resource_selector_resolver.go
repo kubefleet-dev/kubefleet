@@ -303,21 +303,15 @@ func (rs *ResourceSelectorResolver) gatherSelectedResource(placementKey types.Na
 			}
 		} else {
 			// Case 2: Non-namespace selector
-			if placementKey.Namespace != "" {
-				// RP: select resource with namespace from placementKey
-				objs, err = rs.fetchResources(selector, placementKey)
+			isNamespaceScoped := !rs.InformerManager.IsClusterScopedResources(gvk)
+			isCRP := placementKey.Namespace == ""
+			if isCRP && isNamespaceScoped {
+				// Special case when there is a namespaced resource with NamespaceWithResourceSelectors selection mode:
+				// Use selective namespace from 1st pass
+				namespacedKey := types.NamespacedName{Name: placementKey.Name, Namespace: selectedNamespace}
+				objs, err = rs.fetchResources(selector, namespacedKey)
 			} else {
-				// CRP: check if cluster-scoped or namespace-scoped
-				isClusterScoped := rs.InformerManager.IsClusterScopedResources(gvk)
-				if isClusterScoped {
-					// Cluster-scoped resource: select with selector only
-					objs, err = rs.fetchResources(selector, placementKey)
-				} else {
-					// Namespace-scoped resource: use selective namespace from 1st pass
-					// fetchResources will validate if namespace is required but not provided
-					namespacedKey := types.NamespacedName{Name: placementKey.Name, Namespace: selectedNamespace}
-					objs, err = rs.fetchResources(selector, namespacedKey)
-				}
+				objs, err = rs.fetchResources(selector, placementKey)
 			}
 		}
 

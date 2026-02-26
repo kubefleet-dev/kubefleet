@@ -736,6 +736,38 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			Expect(hubClient.Create(ctx, &crp)).Should(Succeed())
 			Expect(crp.Spec.ResourceSelectors[0].SelectionScope).Should(Equal(placementv1beta1.NamespaceWithResources))
 		})
+
+		It("should allow creation of CRP with NamespaceWithResourceSelectors selecting by name and additional resource selectors", func() {
+			crp = placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:          "",
+							Version:        "v1",
+							Kind:           "Namespace",
+							Name:           "prod",
+							SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+						},
+						{
+							Group:   "apps",
+							Version: "v1",
+							Kind:    "Deployment",
+							Name:    "frontend",
+						},
+						{
+							Group:   "rbac.authorization.k8s.io",
+							Version: "v1",
+							Kind:    "ClusterRole",
+							Name:    "test-cluster-role",
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, &crp)).Should(Succeed())
+		})
 	})
 
 	Context("Test ClusterResourcePlacement SelectionScope enum validation - deny cases", func() {
@@ -901,41 +933,6 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			var statusErr *k8sErrors.StatusError
 			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("when using NamespaceWithResourceSelectors mode, only one namespace selector is allowed"))
-		})
-
-		It("should allow creation of CRP with NamespaceWithResourceSelectors selecting by name", func() {
-			crp = placementv1beta1.ClusterResourcePlacement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: crpName,
-				},
-				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
-						{
-							Group:          "",
-							Version:        "v1",
-							Kind:           "Namespace",
-							Name:           "prod",
-							SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
-						},
-						{
-							Group:   "apps",
-							Version: "v1",
-							Kind:    "Deployment",
-							Name:    "frontend",
-						},
-						{
-							Group:   "rbac.authorization.k8s.io",
-							Version: "v1",
-							Kind:    "ClusterRole",
-							Name:    "test-cluster-role",
-						},
-					},
-				},
-			}
-			Expect(hubClient.Create(ctx, &crp)).Should(Succeed())
-
-			// Cleanup
-			Expect(hubClient.Delete(ctx, &crp)).Should(Succeed())
 		})
 	})
 
