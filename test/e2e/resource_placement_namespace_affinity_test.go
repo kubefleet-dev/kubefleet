@@ -29,16 +29,15 @@ import (
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
 )
 
-// The test suite below covers the namespace affinity scheduler plugin behavior.
+// The test suites below cover the namespace affinity scheduler plugin behavior.
 // The plugin ensures that an RP is only scheduled onto clusters where the target
 // namespace already exists (i.e. the namespace was placed there by a CRP).
-//
-// Test scenario:
+
+// Test scenario (PickAll):
 //   - A CRP with PickFixed policy places the namespace onto 2 out of 3 member clusters.
 //   - An RP with PickAll policy selects a ConfigMap in that namespace.
 //   - The namespace affinity plugin should restrict the RP to only the 2 clusters
 //     that actually have the namespace; the RP must still be considered successful.
-
 var _ = Describe("placing namespaced scoped resources using an RP with PickAll policy and namespace affinity", Label("resourceplacement", "namespaceaffinity"), func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
@@ -51,29 +50,7 @@ var _ = Describe("placing namespaced scoped resources using an RP with PickAll p
 		// Create a CRP with PickFixed policy that places the namespace on only 2 of the 3
 		// member clusters. The namespace affinity plugin will later use the namespace
 		// presence information propagated from these 2 clusters to filter RP scheduling.
-		crp := &placementv1beta1.ClusterResourcePlacement{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:       crpName,
-				Finalizers: []string{customDeletionBlockerFinalizer},
-			},
-			Spec: placementv1beta1.PlacementSpec{
-				ResourceSelectors: namespaceOnlySelector(),
-				Policy: &placementv1beta1.PlacementPolicy{
-					PlacementType: placementv1beta1.PickFixedPlacementType,
-					ClusterNames: []string{
-						memberCluster1EastProdName,
-						memberCluster2EastCanaryName,
-					},
-				},
-				Strategy: placementv1beta1.RolloutStrategy{
-					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
-					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
-					},
-				},
-			},
-		}
-		Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
+		createNamespaceOnlyCRPForTwoClusters(crpName)
 
 		// Wait until the CRP has placed the namespace on exactly the 2 fixed clusters.
 		// With PickFixed, non-targeted clusters are not listed as unselected — pass nil.
@@ -130,6 +107,91 @@ var _ = Describe("placing namespaced scoped resources using an RP with PickAll p
 		})
 
 		It("should place the ConfigMap on the clusters that have the namespace", func() {
+			for _, cluster := range []*framework.Cluster{memberCluster1EastProd, memberCluster2EastCanary} {
+				resourcePlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(cluster)
+				Eventually(resourcePlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place resources on cluster %s", cluster.ClusterName)
+			}
+		})
+
+		It("should not place the ConfigMap on the cluster without the namespace", func() {
+			checkIfRemovedConfigMapFromMemberClusters([]*framework.Cluster{memberCluster3WestProd})
+		})
+	})
+})
+
+// Test scenario (PickN):
+//   - A CRP with PickFixed policy places the namespace onto 2 out of 3 member clusters.
+//   - An RP with PickN=2 policy selects a ConfigMap in that namespace.
+//   - The namespace affinity plugin restricts eligible clusters to the 2 that have the namespace,
+//     and PickN=2 is exactly fulfilled — the RP is considered successful.
+var _ = Describe("placing namespaced scoped resources using an RP with PickN policy and namespace affinity", Label("resourceplacement", "namespaceaffinity"), func() {
+	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+	rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+	rpKey := types.NamespacedName{Name: rpName, Namespace: appNamespace().Name}
+
+	BeforeEach(OncePerOrdered, func() {
+		// Create the work resources (namespace + configmap) on the hub cluster.
+		createWorkResources()
+
+		// Create a CRP with PickFixed policy that places the namespace on only 2 of the 3
+		// member clusters. The namespace affinity plugin will later use the namespace
+		// presence information propagated from these 2 clusters to filter RP scheduling.
+		createNamespaceOnlyCRPForTwoClusters(crpName)
+
+		// Wait until the CRP has placed the namespace on exactly the 2 fixed clusters.
+		// With PickFixed, non-targeted clusters are not listed as unselected — pass nil.
+		crpStatusUpdatedActual := crpStatusUpdatedActual(
+			workNamespaceIdentifiers(),
+			[]string{memberCluster1EastProdName, memberCluster2EastCanaryName},
+			nil,
+			"0",
+		)
+		Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+	})
+
+	AfterEach(OncePerOrdered, func() {
+		ensureRPAndRelatedResourcesDeleted(rpKey, allMemberClusters)
+		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+	})
+
+	Context("PickN=2 is exactly fulfilled by the clusters that have the namespace", Ordered, func() {
+		It("should create RP with PickN=2 policy successfully", func() {
+			rp := &placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       rpName,
+					Namespace:  appNamespace().Name,
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: configMapSelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType:    placementv1beta1.PickNPlacementType,
+						NumberOfClusters: ptr.To(int32(2)),
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create RP")
+		})
+
+		It("should update RP status showing placement only on the 2 clusters with the namespace", func() {
+			// Namespace affinity restricts eligible clusters to only cluster-1 and cluster-2.
+			// PickN=2 is exactly fulfilled — Scheduled=True, no unselected entries.
+			rpStatusUpdatedActual := rpStatusUpdatedActual(
+				appConfigMapIdentifiers(),
+				[]string{memberCluster1EastProdName, memberCluster2EastCanaryName},
+				nil,
+				"0",
+			)
+			Eventually(rpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
+		})
+
+		It("should place the ConfigMap on the 2 clusters that have the namespace", func() {
 			for _, cluster := range []*framework.Cluster{memberCluster1EastProd, memberCluster2EastCanary} {
 				resourcePlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(cluster)
 				Eventually(resourcePlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place resources on cluster %s", cluster.ClusterName)

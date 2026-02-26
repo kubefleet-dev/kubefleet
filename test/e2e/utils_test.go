@@ -1733,6 +1733,35 @@ func createNamespaceOnlyCRP(crpName string) {
 	createCRPWithApplyStrategy(crpName, nil, namespaceOnlySelector())
 }
 
+// createNamespaceOnlyCRPForTwoClusters creates a CRP with PickFixed policy that places the
+// namespace on cluster-1 and cluster-2 only. Used by namespace affinity e2e tests to set up
+// a state where only 2 out of 3 member clusters have the target namespace.
+func createNamespaceOnlyCRPForTwoClusters(crpName string) {
+	crp := &placementv1beta1.ClusterResourcePlacement{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       crpName,
+			Finalizers: []string{customDeletionBlockerFinalizer},
+		},
+		Spec: placementv1beta1.PlacementSpec{
+			ResourceSelectors: namespaceOnlySelector(),
+			Policy: &placementv1beta1.PlacementPolicy{
+				PlacementType: placementv1beta1.PickFixedPlacementType,
+				ClusterNames: []string{
+					memberCluster1EastProdName,
+					memberCluster2EastCanaryName,
+				},
+			},
+			Strategy: placementv1beta1.RolloutStrategy{
+				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+				RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+					UnavailablePeriodSeconds: ptr.To(2),
+				},
+			},
+		},
+	}
+	Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
+}
+
 // ensureClusterStagedUpdateRunDeletion deletes the cluster staged update run with the given name and checks all related cluster approval requests are also deleted.
 func ensureClusterStagedUpdateRunDeletion(updateRunName string) {
 	updateRun := &placementv1beta1.ClusterStagedUpdateRun{
