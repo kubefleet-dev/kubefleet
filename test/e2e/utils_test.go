@@ -519,6 +519,11 @@ func summarizeAKSClusterProperties(memberCluster *framework.Cluster, mcObj *clus
 				Status:             metav1.ConditionTrue,
 				ObservedGeneration: mcObj.Generation,
 			},
+			{
+				Type:               propertyprovider.NamespaceCollectionSucceededCondType,
+				Status:             metav1.ConditionTrue,
+				ObservedGeneration: mcObj.Generation,
+			},
 		},
 	}
 
