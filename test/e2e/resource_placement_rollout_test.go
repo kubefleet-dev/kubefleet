@@ -99,9 +99,6 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 
 		crpStatusUpdatedActual := crpStatusUpdatedActual(nil, allMemberClusterNames, nil, "0") // nil as no resources created yet
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-
-		By("waiting for namespace to be collected on all member clusters")
-		waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
 	})
 
 	AfterEach(OncePerOrdered, func() {

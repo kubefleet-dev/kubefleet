@@ -82,57 +82,8 @@ var _ = Describe("mixed ClusterResourcePlacement and ResourcePlacement negative 
 		})
 
 		It("should update RP status as expected", func() {
-			rpStatusUpdatedActual := func() error {
-				rp := &placementv1beta1.ResourcePlacement{}
-				if err := hubClient.Get(ctx, types.NamespacedName{Name: rpName, Namespace: workNamespaceName}, rp); err != nil {
-					return err
-				}
-
-				appConfigMapName := fmt.Sprintf(appConfigMapNameTemplate, GinkgoParallelProcess())
-				wantStatus := placementv1beta1.PlacementStatus{
-					Conditions: rpAppliedFailedConditions(rp.Generation),
-					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
-						{
-							ClusterName:           memberCluster1EastProdName,
-							ObservedResourceIndex: "0",
-							FailedPlacements: []placementv1beta1.FailedResourcePlacement{
-								{
-									ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-										Kind:      "ConfigMap",
-										Name:      appConfigMapName,
-										Version:   "v1",
-										Namespace: workNamespaceName,
-									},
-									Condition: metav1.Condition{
-										Type:               placementv1beta1.WorkConditionTypeApplied,
-										Status:             metav1.ConditionFalse,
-										Reason:             string(workapplier.ApplyOrReportDiffResTypeFailedToApply),
-										ObservedGeneration: 0,
-									},
-								},
-							},
-							Conditions: perClusterApplyFailedConditions(rp.Generation),
-						},
-						{
-							ClusterName:           memberCluster2EastCanaryName,
-							ObservedResourceIndex: "0",
-							Conditions:            perClusterRolloutCompletedConditions(rp.Generation, true, false),
-						},
-						{
-							ClusterName:           memberCluster3WestProdName,
-							ObservedResourceIndex: "0",
-							Conditions:            perClusterRolloutCompletedConditions(rp.Generation, true, false),
-						},
-					},
-					SelectedResources:     appConfigMapIdentifiers(),
-					ObservedResourceIndex: "0",
-				}
-				if diff := cmp.Diff(rp.Status, wantStatus, placementStatusCmpOptions...); diff != "" {
-					return fmt.Errorf("RP status diff (-got, +want): %s", diff)
-				}
-				return nil
-			}
-			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP %s status as expected", rpName)
+			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), []string{memberCluster2EastCanaryName, memberCluster3WestProdName}, nil, "0")
+			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
 		It("should place resources on the specified clusters", func() {

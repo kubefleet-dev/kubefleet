@@ -841,10 +841,29 @@ func createNamespace() {
 	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to create namespace %s", ns.Name)
 }
 
+// isNamespaceCollectionEnabled checks (without waiting) whether namespace collection
+// is currently enabled on the given cluster. Returns false if the cluster cannot be
+// fetched or the condition is absent.
+func isNamespaceCollectionEnabled(clusterName string) bool {
+	mc := &clusterv1beta1.MemberCluster{}
+	if err := hubClient.Get(ctx, types.NamespacedName{Name: clusterName}, mc); err != nil {
+		return false
+	}
+	for _, cond := range mc.Status.Conditions {
+		if cond.Type == propertyprovider.NamespaceCollectionSucceededCondType {
+			return true
+		}
+	}
+	return false
+}
+
 // waitForNamespaceCollectionOnClusters waits for the specified namespace to appear in
 // MemberCluster.Status.Namespaces for all specified clusters. This ensures namespace collection
 // has synced before creating ResourcePlacements, avoiding race conditions where the scheduler
 // might filter out clusters before they report having the namespace.
+//
+// This is a no-op when namespace collection is not enabled (i.e. no property provider is
+// configured), preserving backward compatibility for tests that run without PROPERTY_PROVIDER=azure.
 //
 // This is particularly important when:
 // - CRPs dynamically create namespaces on member clusters
@@ -852,6 +871,13 @@ func createNamespace() {
 // - Namespace affinity plugin filtering is enabled
 func waitForNamespaceCollectionOnClusters(namespaceName string, clusterNames []string) {
 	GinkgoHelper()
+
+	// Skip waiting entirely when namespace collection is not enabled on any cluster.
+	// The namespace affinity plugin skips filtering in this case (backward compatibility),
+	// so there is no race to protect against.
+	if len(clusterNames) == 0 || !isNamespaceCollectionEnabled(clusterNames[0]) {
+		return
+	}
 
 	// Wait for the specific namespace to appear in the collection on every cluster.
 	for _, clusterName := range clusterNames {
