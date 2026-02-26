@@ -213,7 +213,7 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 		return ctrl.Result{}, err
 	}
 
-	createResourceSnapshotRes, latestResourceSnapshot, selectedResourceIDs, err := r.getOrFetchResourceSnapshot(
+	createResourceSnapshotRes, latestResourceSnapshot, selectedResourceIDs, err := r.handleResourceSnapshotByStrategy(
 		ctx, placementObj, envelopeObjCount, selectedResources, selectedResourceIDs, int(revisionLimit))
 	if err != nil {
 		return ctrl.Result{}, err
@@ -296,10 +296,10 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 	return ctrl.Result{RequeueAfter: controllerResyncPeriod}, nil
 }
 
-// getOrFetchResourceSnapshot handles resource snapshot creation or fetching based on rollout strategy.
+// handleResourceSnapshotByStrategy handles resource snapshot resolution based on rollout strategy.
 // For External rollout strategy, it only fetches the existing snapshot (can be nil).
 // For other strategies, it creates or gets a resource snapshot and may update selectedResourceIDs if requeue is needed.
-func (r *Reconciler) getOrFetchResourceSnapshot(
+func (r *Reconciler) handleResourceSnapshotByStrategy(
 	ctx context.Context,
 	placementObj fleetv1beta1.PlacementObj,
 	envelopeObjCount int,
