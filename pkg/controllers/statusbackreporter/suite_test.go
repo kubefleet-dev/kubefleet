@@ -38,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/gvkwhitelist"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/parallelizer"
 )
 
@@ -120,11 +121,19 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
+	// Allow any API resource under the apps/v1 API group/version for status back-reporting on
+	// the original resource.
+	allowedGVKs := gvkwhitelist.NewWhitelistedGVKs()
+	allowedGVKs.Register("apps", "v1", "*")
+
 	statusBackReporter = NewReconciler(
 		hubClient,
 		hubDynamicClient,
+		allowedGVKs,
 		parallelizer.NewParallelizer(defaultWorkerCount),
 	)
+	// Raise the test specific flag.
+	statusBackReporter.annotateOriginalResourcesSkippedForStatusReporting = true
 	Expect(statusBackReporter.SetupWithManager(hubMgr)).To(Succeed())
 
 	go func() {
