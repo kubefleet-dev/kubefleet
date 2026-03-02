@@ -363,6 +363,10 @@ spec:
                     - Never
                     type: string
                 type: object
+                x-kubernetes-validations:
+                - message: serverSideApplyConfig is only valid for ServerSideApply
+                    strategy type
+                  rule: self.type == 'ServerSideApply' || !has(self.serverSideApplyConfig)
               conditions:
                 description: |-
                   Conditions is an array of current observed conditions for StagedUpdateRun.
@@ -1706,6 +1710,10 @@ spec:
                     - Never
                     type: string
                 type: object
+                x-kubernetes-validations:
+                - message: serverSideApplyConfig is only valid for ServerSideApply
+                    strategy type
+                  rule: self.type == 'ServerSideApply' || !has(self.serverSideApplyConfig)
               conditions:
                 description: |-
                   Conditions is an array of current observed conditions for StagedUpdateRun.

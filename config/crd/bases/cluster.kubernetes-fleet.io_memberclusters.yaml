@@ -137,8 +137,18 @@ spec:
                   - effect
                   - key
                   type: object
+                  x-kubernetes-validations:
+                  - message: taint key must be a valid qualified name
+                    rule: self.key.matches('^([a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?[/])?[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$')
+                  - message: taint value must be a valid label value
+                    rule: size(self.value) == 0 || self.value.matches('^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$')
+                  - message: taint value must not exceed 63 characters
+                    rule: size(self.value) <= 63
                 maxItems: 100
                 type: array
+                x-kubernetes-validations:
+                - message: taints must be unique
+                  rule: self.all(t, self.filter(u, u == t).size() == 1)
             required:
             - identity
             type: object
@@ -509,8 +519,18 @@ spec:
                   - effect
                   - key
                   type: object
+                  x-kubernetes-validations:
+                  - message: taint key must be a valid qualified name
+                    rule: self.key.matches('^([a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?[/])?[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$')
+                  - message: taint value must be a valid label value
+                    rule: size(self.value) == 0 || self.value.matches('^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$')
+                  - message: taint value must not exceed 63 characters
+                    rule: size(self.value) <= 63
                 maxItems: 100
                 type: array
+                x-kubernetes-validations:
+                - message: taints must be unique
+                  rule: self.all(t, self.filter(u, u == t).size() == 1)
             required:
             - identity
             type: object

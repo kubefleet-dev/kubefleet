@@ -24,6 +24,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -2264,6 +2265,1186 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 
 				Expect(hubClient.Delete(ctx, &roWithNamespaceScope)).Should(Succeed())
 			})
+		})
+	})
+
+	// Tests for CRP PlacementPolicy CEL rules.
+	Context("Test ClusterResourcePlacement PlacementPolicy CEL validation - PickFixed", func() {
+		It("should deny creation of CRP with PickFixed and empty clusterNames", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickFixedPlacementType,
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("clusterNames cannot be empty for PickFixed placement type"))
+		})
+
+		It("should deny creation of CRP with PickFixed and numberOfClusters set", func() {
+			numClusters := int32(3)
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType:    placementv1beta1.PickFixedPlacementType,
+						ClusterNames:     []string{"cluster1"},
+						NumberOfClusters: &numClusters,
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("numberOfClusters must not be set for PickFixed placement type"))
+		})
+
+		It("should deny creation of CRP with PickFixed and affinity set", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickFixedPlacementType,
+						ClusterNames:  []string{"cluster1"},
+						Affinity: &placementv1beta1.Affinity{
+							ClusterAffinity: &placementv1beta1.ClusterAffinity{
+								RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
+									ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
+										{LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}}},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("affinity must not be set for PickFixed placement type"))
+		})
+
+		It("should deny creation of CRP with PickFixed and topologySpreadConstraints set", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickFixedPlacementType,
+						ClusterNames:  []string{"cluster1"},
+						TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
+							{TopologyKey: "region"},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("topologySpreadConstraints must be empty for PickFixed placement type"))
+		})
+
+		It("should deny creation of CRP with PickFixed and tolerations set", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickFixedPlacementType,
+						ClusterNames:  []string{"cluster1"},
+						Tolerations: []placementv1beta1.Toleration{
+							{Key: "key1", Value: "val1"},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("tolerations must be empty for PickFixed placement type"))
+		})
+	})
+
+	Context("Test ClusterResourcePlacement PlacementPolicy CEL validation - PickAll", func() {
+		It("should deny creation of CRP with PickAll and clusterNames set", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+						ClusterNames:  []string{"cluster1"},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("clusterNames must be empty for PickAll placement type"))
+		})
+
+		It("should deny creation of CRP with PickAll and numberOfClusters set", func() {
+			numClusters := int32(3)
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType:    placementv1beta1.PickAllPlacementType,
+						NumberOfClusters: &numClusters,
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("numberOfClusters must not be set for PickAll placement type"))
+		})
+
+		It("should deny creation of CRP with PickAll and topologySpreadConstraints set", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+						TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
+							{TopologyKey: "region"},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("topologySpreadConstraints must be empty for PickAll placement type"))
+		})
+
+		It("should deny creation of CRP with PickAll and preferredDuringScheduling set", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+						Affinity: &placementv1beta1.Affinity{
+							ClusterAffinity: &placementv1beta1.ClusterAffinity{
+								PreferredDuringSchedulingIgnoredDuringExecution: []placementv1beta1.PreferredClusterSelector{
+									{
+										Weight: 50,
+										Preference: placementv1beta1.ClusterSelectorTerm{
+											LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"env": "prod"}},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("preferredDuringSchedulingIgnoredDuringExecution is not allowed for PickAll placement type"))
+		})
+	})
+
+	Context("Test ClusterResourcePlacement PlacementPolicy CEL validation - PickN", func() {
+		It("should deny creation of CRP with PickN and clusterNames set", func() {
+			numClusters := int32(1)
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType:    placementv1beta1.PickNPlacementType,
+						NumberOfClusters: &numClusters,
+						ClusterNames:     []string{"cluster1"},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("clusterNames must be empty for PickN placement type"))
+		})
+
+		It("should deny creation of CRP with PickN and numberOfClusters not set", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickNPlacementType,
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("numberOfClusters must be set for PickN placement type"))
+		})
+
+		It("should allow creation of CRP with valid PickN policy", func() {
+			numClusters := int32(2)
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType:    placementv1beta1.PickNPlacementType,
+						NumberOfClusters: &numClusters,
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, &crp)).Should(Succeed())
+			Expect(hubClient.Delete(ctx, &crp)).Should(Succeed())
+		})
+	})
+
+	// Tests for ClusterSelector and PreferredClusterSelector CEL rules.
+	Context("Test ClusterResourcePlacement ClusterSelector CEL validation", func() {
+		It("should deny creation of CRP with propertySorter in requiredDuringScheduling affinity terms", func() {
+			numClusters := int32(1)
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType:    placementv1beta1.PickNPlacementType,
+						NumberOfClusters: &numClusters,
+						Affinity: &placementv1beta1.Affinity{
+							ClusterAffinity: &placementv1beta1.ClusterAffinity{
+								RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
+									ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
+										{
+											PropertySorter: &placementv1beta1.PropertySorter{
+												Name:      "cpu",
+												SortOrder: placementv1beta1.Descending,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("propertySorter is not allowed in requiredDuringSchedulingIgnoredDuringExecution affinity terms"))
+		})
+
+		It("should deny creation of CRP with propertySelector in preferredDuringScheduling affinity terms", func() {
+			numClusters := int32(1)
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType:    placementv1beta1.PickNPlacementType,
+						NumberOfClusters: &numClusters,
+						Affinity: &placementv1beta1.Affinity{
+							ClusterAffinity: &placementv1beta1.ClusterAffinity{
+								PreferredDuringSchedulingIgnoredDuringExecution: []placementv1beta1.PreferredClusterSelector{
+									{
+										Weight: 50,
+										Preference: placementv1beta1.ClusterSelectorTerm{
+											PropertySelector: &placementv1beta1.PropertySelector{
+												MatchExpressions: []placementv1beta1.PropertySelectorRequirement{
+													{Name: "cpu", Operator: placementv1beta1.PropertySelectorGreaterThan, Values: []string{"4"}},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("propertySelector is not allowed in preferredDuringSchedulingIgnoredDuringExecution affinity terms"))
+		})
+	})
+
+	// Tests for ResourceSelectorTerm labelSelector/name mutual exclusion.
+	Context("Test ResourceSelectorTerm CEL validation", func() {
+		It("should deny creation of CRP with both labelSelector and name set", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:         "",
+							Version:       "v1",
+							Kind:          "Namespace",
+							Name:          "test-ns",
+							LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test"}},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("labelSelector and name are mutually exclusive"))
+		})
+	})
+
+	// Tests for RolloutStrategy CEL rules.
+	Context("Test ClusterResourcePlacement RolloutStrategy CEL validation", func() {
+		It("should deny creation of CRP with External rollout type and rollingUpdate config", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.ExternalRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("rollingUpdate config is not valid for External rollout strategy type"))
+		})
+	})
+
+	// Tests for ApplyStrategy CEL rules.
+	Context("Test ClusterResourcePlacement ApplyStrategy CEL validation", func() {
+		It("should deny creation of CRP with non-ServerSideApply type and serverSideApplyConfig", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						ApplyStrategy: &placementv1beta1.ApplyStrategy{
+							Type: placementv1beta1.ApplyStrategyTypeClientSideApply,
+							ServerSideApplyConfig: &placementv1beta1.ServerSideApplyConfig{
+								ForceConflicts: true,
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("serverSideApplyConfig is only valid for ServerSideApply strategy type"))
+		})
+	})
+
+	// Tests for Toleration CEL rules.
+	Context("Test ClusterResourcePlacement Toleration CEL validation", func() {
+		It("should deny creation of CRP with Exists operator and non-empty value", func() {
+			numClusters := int32(1)
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType:    placementv1beta1.PickNPlacementType,
+						NumberOfClusters: &numClusters,
+						Tolerations: []placementv1beta1.Toleration{
+							{Key: "key1", Operator: corev1.TolerationOpExists, Value: "should-be-empty"},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("value must be empty when operator is Exists"))
+		})
+
+		It("should deny creation of CRP with Equal operator and empty key", func() {
+			numClusters := int32(1)
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType:    placementv1beta1.PickNPlacementType,
+						NumberOfClusters: &numClusters,
+						Tolerations: []placementv1beta1.Toleration{
+							{Operator: corev1.TolerationOpEqual, Value: "val1"},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("key must not be empty when operator is Equal"))
+		})
+	})
+
+	// Tests for CRP name length CEL rule.
+	Context("Test ClusterResourcePlacement name length CEL validation", func() {
+		It("should deny creation of CRP with name longer than 63 characters", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "this-name-is-way-too-long-and-exceeds-the-sixty-three-character-limit-for-crp",
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "Namespace", Name: "test-ns"},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("name must not exceed 63 characters"))
+		})
+	})
+
+	// Tests for RP name length CEL rule.
+	Context("Test ResourcePlacement name length CEL validation", func() {
+		It("should deny creation of RP with name longer than 63 characters", func() {
+			rp := placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "this-name-is-way-too-long-and-exceeds-the-sixty-three-character-limit-for-rp",
+					Namespace: testNamespace,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "ConfigMap", Name: "test-cm"},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &rp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create RP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("name must not exceed 63 characters"))
+		})
+	})
+
+	// Tests for ClusterResourceOverride override rule CEL rules.
+	Context("Test ClusterResourceOverride override rule CEL validation - deny cases", func() {
+		It("should deny creation of CRO with labelSelector on resource selectors", func() {
+			cro := placementv1beta1.ClusterResourceOverride{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.ClusterResourceOverrideSpec{
+					ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:         "",
+							Version:       "v1",
+							Kind:          "ConfigMap",
+							LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test"}},
+						},
+					},
+					Policy: &placementv1beta1.OverridePolicy{
+						OverrideRules: []placementv1beta1.OverrideRule{
+							{
+								OverrideType: placementv1beta1.JSONPatchOverrideType,
+								JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
+									{Operator: placementv1beta1.JSONPatchOverrideOpAdd, Path: "/metadata/labels/test", Value: apiextensionsv1.JSON{Raw: []byte(`"val"`)}},
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &cro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("labelSelector is not supported for ClusterResourceOverride resource selection"))
+		})
+
+		It("should deny creation of CRO with empty name on resource selectors", func() {
+			cro := placementv1beta1.ClusterResourceOverride{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.ClusterResourceOverrideSpec{
+					ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "ConfigMap"},
+					},
+					Policy: &placementv1beta1.OverridePolicy{
+						OverrideRules: []placementv1beta1.OverrideRule{
+							{
+								OverrideType: placementv1beta1.JSONPatchOverrideType,
+								JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
+									{Operator: placementv1beta1.JSONPatchOverrideOpAdd, Path: "/metadata/labels/test", Value: apiextensionsv1.JSON{Raw: []byte(`"val"`)}},
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &cro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("resource name is required for ClusterResourceOverride resource selection"))
+		})
+
+		It("should deny creation of CRO with Delete override type and jsonPatchOverrides set", func() {
+			cro := placementv1beta1.ClusterResourceOverride{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.ClusterResourceOverrideSpec{
+					ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "ConfigMap", Name: "test-cm"},
+					},
+					Policy: &placementv1beta1.OverridePolicy{
+						OverrideRules: []placementv1beta1.OverrideRule{
+							{
+								OverrideType: placementv1beta1.DeleteOverrideType,
+								JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
+									{Operator: placementv1beta1.JSONPatchOverrideOpAdd, Path: "/metadata/labels/test", Value: apiextensionsv1.JSON{Raw: []byte(`"val"`)}},
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &cro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("jsonPatchOverrides must be empty when overrideType is Delete"))
+		})
+
+		It("should deny creation of CRO with JSONPatch override type and empty jsonPatchOverrides", func() {
+			cro := placementv1beta1.ClusterResourceOverride{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.ClusterResourceOverrideSpec{
+					ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "ConfigMap", Name: "test-cm"},
+					},
+					Policy: &placementv1beta1.OverridePolicy{
+						OverrideRules: []placementv1beta1.OverrideRule{
+							{
+								OverrideType: placementv1beta1.JSONPatchOverrideType,
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &cro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("jsonPatchOverrides must not be empty when overrideType is JSONPatch"))
+		})
+
+		It("should deny creation of CRO with override clusterSelector using propertySelector", func() {
+			cro := placementv1beta1.ClusterResourceOverride{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.ClusterResourceOverrideSpec{
+					ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "ConfigMap", Name: "test-cm"},
+					},
+					Policy: &placementv1beta1.OverridePolicy{
+						OverrideRules: []placementv1beta1.OverrideRule{
+							{
+								ClusterSelector: &placementv1beta1.ClusterSelector{
+									ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
+										{
+											PropertySelector: &placementv1beta1.PropertySelector{
+												MatchExpressions: []placementv1beta1.PropertySelectorRequirement{
+													{Name: "cpu", Operator: placementv1beta1.PropertySelectorGreaterThan, Values: []string{"4"}},
+												},
+											},
+										},
+									},
+								},
+								OverrideType: placementv1beta1.JSONPatchOverrideType,
+								JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
+									{Operator: placementv1beta1.JSONPatchOverrideOpAdd, Path: "/metadata/labels/test", Value: apiextensionsv1.JSON{Raw: []byte(`"val"`)}},
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &cro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("only labelSelector is supported in override clusterSelector"))
+		})
+
+		It("should deny creation of CRO with override clusterSelector missing labelSelector", func() {
+			cro := placementv1beta1.ClusterResourceOverride{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.ClusterResourceOverrideSpec{
+					ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "ConfigMap", Name: "test-cm"},
+					},
+					Policy: &placementv1beta1.OverridePolicy{
+						OverrideRules: []placementv1beta1.OverrideRule{
+							{
+								ClusterSelector: &placementv1beta1.ClusterSelector{
+									ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
+										{},
+									},
+								},
+								OverrideType: placementv1beta1.JSONPatchOverrideType,
+								JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
+									{Operator: placementv1beta1.JSONPatchOverrideOpAdd, Path: "/metadata/labels/test", Value: apiextensionsv1.JSON{Raw: []byte(`"val"`)}},
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &cro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("labelSelector is required in override clusterSelector terms"))
+		})
+	})
+
+	// Tests for JSONPatchOverride CEL rules.
+	Context("Test JSONPatchOverride path restriction CEL validation", func() {
+		It("should deny creation of CRO with JSON patch overriding /kind", func() {
+			cro := createValidClusterResourceOverride(fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()), nil)
+			cro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = []placementv1beta1.JSONPatchOverride{
+				{Operator: placementv1beta1.JSONPatchOverrideOpReplace, Path: "/kind", Value: apiextensionsv1.JSON{Raw: []byte(`"Deployment"`)}},
+			}
+			err := hubClient.Create(ctx, &cro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("cannot override typeMeta field kind"))
+		})
+
+		It("should deny creation of CRO with JSON patch overriding /apiVersion", func() {
+			cro := createValidClusterResourceOverride(fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()), nil)
+			cro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = []placementv1beta1.JSONPatchOverride{
+				{Operator: placementv1beta1.JSONPatchOverrideOpReplace, Path: "/apiVersion", Value: apiextensionsv1.JSON{Raw: []byte(`"v2"`)}},
+			}
+			err := hubClient.Create(ctx, &cro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("cannot override typeMeta field apiVersion"))
+		})
+
+		It("should deny creation of CRO with JSON patch overriding /status", func() {
+			cro := createValidClusterResourceOverride(fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()), nil)
+			cro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = []placementv1beta1.JSONPatchOverride{
+				{Operator: placementv1beta1.JSONPatchOverrideOpReplace, Path: "/status/ready", Value: apiextensionsv1.JSON{Raw: []byte(`true`)}},
+			}
+			err := hubClient.Create(ctx, &cro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("cannot override status fields"))
+		})
+
+		It("should deny creation of CRO with JSON patch overriding /metadata/name", func() {
+			cro := createValidClusterResourceOverride(fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()), nil)
+			cro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = []placementv1beta1.JSONPatchOverride{
+				{Operator: placementv1beta1.JSONPatchOverrideOpReplace, Path: "/metadata/name", Value: apiextensionsv1.JSON{Raw: []byte(`"new-name"`)}},
+			}
+			err := hubClient.Create(ctx, &cro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("cannot override metadata fields except annotations and labels"))
+		})
+
+		It("should deny creation of CRO with JSON patch overriding /metadata/namespace", func() {
+			cro := createValidClusterResourceOverride(fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()), nil)
+			cro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = []placementv1beta1.JSONPatchOverride{
+				{Operator: placementv1beta1.JSONPatchOverrideOpReplace, Path: "/metadata/namespace", Value: apiextensionsv1.JSON{Raw: []byte(`"new-ns"`)}},
+			}
+			err := hubClient.Create(ctx, &cro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("cannot override metadata fields except annotations and labels"))
+		})
+
+		It("should allow creation of CRO with JSON patch overriding /metadata/annotations", func() {
+			cro := createValidClusterResourceOverride(fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()), nil)
+			cro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = []placementv1beta1.JSONPatchOverride{
+				{Operator: placementv1beta1.JSONPatchOverrideOpAdd, Path: "/metadata/annotations/test-key", Value: apiextensionsv1.JSON{Raw: []byte(`"test-value"`)}},
+			}
+			Expect(hubClient.Create(ctx, &cro)).Should(Succeed())
+			Expect(hubClient.Delete(ctx, &cro)).Should(Succeed())
+		})
+
+		It("should allow creation of CRO with JSON patch overriding /metadata/labels", func() {
+			cro := createValidClusterResourceOverride(fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()), nil)
+			cro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = []placementv1beta1.JSONPatchOverride{
+				{Operator: placementv1beta1.JSONPatchOverrideOpAdd, Path: "/metadata/labels/test-key", Value: apiextensionsv1.JSON{Raw: []byte(`"test-value"`)}},
+			}
+			Expect(hubClient.Create(ctx, &cro)).Should(Succeed())
+			Expect(hubClient.Delete(ctx, &cro)).Should(Succeed())
+		})
+
+		It("should deny creation of CRO with JSON patch path not starting with /", func() {
+			cro := createValidClusterResourceOverride(fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()), nil)
+			cro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = []placementv1beta1.JSONPatchOverride{
+				{Operator: placementv1beta1.JSONPatchOverrideOpAdd, Path: "spec/replica", Value: apiextensionsv1.JSON{Raw: []byte(`3`)}},
+			}
+			err := hubClient.Create(ctx, &cro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("should match"))
+		})
+
+		It("should deny creation of CRO with remove operator and a value set", func() {
+			cro := createValidClusterResourceOverride(fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()), nil)
+			cro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = []placementv1beta1.JSONPatchOverride{
+				{Operator: placementv1beta1.JSONPatchOverrideOpRemove, Path: "/spec/replica", Value: apiextensionsv1.JSON{Raw: []byte(`3`)}},
+			}
+			err := hubClient.Create(ctx, &cro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("remove operation cannot have a value"))
+		})
+
+		It("should deny creation of CRO with JSON patch path containing empty segments", func() {
+			cro := createValidClusterResourceOverride(fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()), nil)
+			cro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = []placementv1beta1.JSONPatchOverride{
+				{Operator: placementv1beta1.JSONPatchOverrideOpAdd, Path: "/spec//replica", Value: apiextensionsv1.JSON{Raw: []byte(`3`)}},
+			}
+			err := hubClient.Create(ctx, &cro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("path cannot contain empty segments"))
+		})
+	})
+
+	// Tests for ResourceOverride override rule CEL rules.
+	Context("Test ResourceOverride override rule CEL validation - deny cases", func() {
+		It("should deny creation of RO with Delete override type and jsonPatchOverrides set", func() {
+			ro := createValidResourceOverride(testNamespace, fmt.Sprintf(roNameTemplate, GinkgoParallelProcess()), nil)
+			ro.Spec.Policy.OverrideRules[0].OverrideType = placementv1beta1.DeleteOverrideType
+			err := hubClient.Create(ctx, &ro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("jsonPatchOverrides must be empty when overrideType is Delete"))
+		})
+
+		It("should deny creation of RO with JSONPatch override type and empty jsonPatchOverrides", func() {
+			ro := createValidResourceOverride(testNamespace, fmt.Sprintf(roNameTemplate, GinkgoParallelProcess()), nil)
+			ro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = nil
+			err := hubClient.Create(ctx, &ro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("jsonPatchOverrides must not be empty when overrideType is JSONPatch"))
+		})
+
+		It("should deny creation of RO with JSON patch overriding /kind", func() {
+			ro := createValidResourceOverride(testNamespace, fmt.Sprintf(roNameTemplate, GinkgoParallelProcess()), nil)
+			ro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = []placementv1beta1.JSONPatchOverride{
+				{Operator: placementv1beta1.JSONPatchOverrideOpReplace, Path: "/kind", Value: apiextensionsv1.JSON{Raw: []byte(`"Deployment"`)}},
+			}
+			err := hubClient.Create(ctx, &ro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("cannot override typeMeta field kind"))
+		})
+
+		It("should deny creation of RO with remove operator and a value set", func() {
+			ro := createValidResourceOverride(testNamespace, fmt.Sprintf(roNameTemplate, GinkgoParallelProcess()), nil)
+			ro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = []placementv1beta1.JSONPatchOverride{
+				{Operator: placementv1beta1.JSONPatchOverrideOpRemove, Path: "/spec/replica", Value: apiextensionsv1.JSON{Raw: []byte(`3`)}},
+			}
+			err := hubClient.Create(ctx, &ro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("remove operation cannot have a value"))
+		})
+
+		It("should deny creation of RO with JSON patch path containing empty segments", func() {
+			ro := createValidResourceOverride(testNamespace, fmt.Sprintf(roNameTemplate, GinkgoParallelProcess()), nil)
+			ro.Spec.Policy.OverrideRules[0].JSONPatchOverrides = []placementv1beta1.JSONPatchOverride{
+				{Operator: placementv1beta1.JSONPatchOverrideOpAdd, Path: "/spec//replica", Value: apiextensionsv1.JSON{Raw: []byte(`3`)}},
+			}
+			err := hubClient.Create(ctx, &ro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("path cannot contain empty segments"))
+		})
+	})
+
+	// Test for valid CRO with Delete override type (allow case).
+	Context("Test ClusterResourceOverride Delete override type - allow case", func() {
+		It("should allow creation of CRO with Delete override type and no jsonPatchOverrides", func() {
+			cro := placementv1beta1.ClusterResourceOverride{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.ClusterResourceOverrideSpec{
+					ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "ConfigMap", Name: "test-cm"},
+					},
+					Policy: &placementv1beta1.OverridePolicy{
+						OverrideRules: []placementv1beta1.OverrideRule{
+							{
+								OverrideType: placementv1beta1.DeleteOverrideType,
+							},
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, &cro)).Should(Succeed())
+			Expect(hubClient.Delete(ctx, &cro)).Should(Succeed())
+		})
+	})
+
+	// Item 1: JSON patch path trailing slash validation.
+	Context("Test JSON patch path trailing slash", func() {
+		It("should deny CRO with a path that has a trailing slash", func() {
+			cro := placementv1beta1.ClusterResourceOverride{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.ClusterResourceOverrideSpec{
+					ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "ConfigMap", Name: "test-cm"},
+					},
+					Policy: &placementv1beta1.OverridePolicy{
+						OverrideRules: []placementv1beta1.OverrideRule{
+							{
+								OverrideType: placementv1beta1.JSONPatchOverrideType,
+								JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
+									{Operator: placementv1beta1.JSONPatchOverrideOpAdd, Path: "/spec/foo/", Value: apiextensionsv1.JSON{Raw: []byte(`"bar"`)}},
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &cro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("path cannot have a trailing slash"))
+		})
+	})
+
+	// Item 2: PickFixed clusterNames semantic validation.
+	Context("Test PickFixed clusterNames validation", func() {
+		It("should deny CRP with PickFixed cluster name exceeding 63 chars", func() {
+			longName := "a234567890123456789012345678901234567890123456789012345678901234"
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{{Group: "", Version: "v1", Kind: "Namespace", Name: "test"}},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickFixedPlacementType,
+						ClusterNames:  []string{longName},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("must not exceed 63 characters"))
+		})
+
+		It("should deny CRP with PickFixed cluster name that is not a valid DNS subdomain", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{{Group: "", Version: "v1", Kind: "Namespace", Name: "test"}},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickFixedPlacementType,
+						ClusterNames:  []string{"INVALID_NAME"},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("must be a valid DNS subdomain"))
+		})
+
+		It("should deny CRP with duplicate PickFixed cluster names", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{{Group: "", Version: "v1", Kind: "Namespace", Name: "test"}},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickFixedPlacementType,
+						ClusterNames:  []string{"cluster-a", "cluster-a"},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("cluster names must be unique"))
+		})
+	})
+
+	// Item 3: Toleration key/value syntax + uniqueness.
+	Context("Test Toleration key/value format and uniqueness", func() {
+		It("should deny CRP with invalid toleration key format", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{{Group: "", Version: "v1", Kind: "Namespace", Name: "test"}},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+						Tolerations: []placementv1beta1.Toleration{
+							{Key: "invalid key!", Operator: corev1.TolerationOpEqual, Value: "v1"},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("toleration key must be a valid qualified name"))
+		})
+
+		It("should deny CRP with toleration value exceeding 63 characters", func() {
+			longVal := "a234567890123456789012345678901234567890123456789012345678901234"
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{{Group: "", Version: "v1", Kind: "Namespace", Name: "test"}},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+						Tolerations: []placementv1beta1.Toleration{
+							{Key: "mykey", Operator: corev1.TolerationOpEqual, Value: longVal},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("toleration value must not exceed 63 characters"))
+		})
+
+		It("should deny CRP with duplicate tolerations", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{{Group: "", Version: "v1", Kind: "Namespace", Name: "test"}},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+						Tolerations: []placementv1beta1.Toleration{
+							{Key: "mykey", Operator: corev1.TolerationOpEqual, Value: "v1"},
+							{Key: "mykey", Operator: corev1.TolerationOpEqual, Value: "v1"},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("tolerations must be unique"))
+		})
+	})
+
+	// Item 6: CRO/RO selector uniqueness.
+	Context("Test CRO/RO selector uniqueness", func() {
+		It("should deny CRO with duplicate clusterResourceSelectors", func() {
+			cro := placementv1beta1.ClusterResourceOverride{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(croNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.ClusterResourceOverrideSpec{
+					ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{Group: "", Version: "v1", Kind: "ConfigMap", Name: "test-cm"},
+						{Group: "", Version: "v1", Kind: "ConfigMap", Name: "test-cm"},
+					},
+					Policy: &placementv1beta1.OverridePolicy{
+						OverrideRules: []placementv1beta1.OverrideRule{
+							{OverrideType: placementv1beta1.DeleteOverrideType},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &cro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("clusterResourceSelectors must be unique"))
+		})
+
+		It("should deny RO with duplicate resourceSelectors", func() {
+			ro := placementv1beta1.ResourceOverride{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fmt.Sprintf(roNameTemplate, GinkgoParallelProcess()),
+					Namespace: testNamespace,
+				},
+				Spec: placementv1beta1.ResourceOverrideSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelector{
+						{Group: "", Version: "v1", Kind: "ConfigMap", Name: "test-cm"},
+						{Group: "", Version: "v1", Kind: "ConfigMap", Name: "test-cm"},
+					},
+					Policy: &placementv1beta1.OverridePolicy{
+						OverrideRules: []placementv1beta1.OverrideRule{
+							{OverrideType: placementv1beta1.DeleteOverrideType},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &ro)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("resourceSelectors must be unique"))
+		})
+	})
+
+	// Item 9: labelSelector matchExpressions operator-value consistency.
+	Context("Test labelSelector matchExpressions validation", func() {
+		It("should deny CRP with In operator and empty values in resource selector", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group: "", Version: "v1", Kind: "Namespace",
+							LabelSelector: &metav1.LabelSelector{
+								MatchExpressions: []metav1.LabelSelectorRequirement{
+									{Key: "env", Operator: metav1.LabelSelectorOpIn, Values: []string{}},
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("matchExpressions values must be non-empty when operator is In or NotIn"))
+		})
+
+		It("should deny CRP with Exists operator and non-empty values in cluster affinity", func() {
+			crp := placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{{Group: "", Version: "v1", Kind: "Namespace", Name: "test"}},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+						Affinity: &placementv1beta1.Affinity{
+							ClusterAffinity: &placementv1beta1.ClusterAffinity{
+								RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
+									ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
+										{
+											LabelSelector: &metav1.LabelSelector{
+												MatchExpressions: []metav1.LabelSelectorRequirement{
+													{Key: "region", Operator: metav1.LabelSelectorOpExists, Values: []string{"us-west"}},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &crp)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("matchExpressions values must be empty when operator is Exists or DoesNotExist"))
 		})
 	})
 })

@@ -42,6 +42,7 @@ func getResourceOverrideSpec() placementv1beta1.ResourceOverrideSpec {
 				Group:   "",
 				Version: "v1",
 				Kind:    "Pod",
+				Name:    "test-pod",
 			},
 		},
 		Policy: &placementv1beta1.OverridePolicy{
@@ -50,7 +51,7 @@ func getResourceOverrideSpec() placementv1beta1.ResourceOverrideSpec {
 					JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
 						{
 							Operator: placementv1beta1.JSONPatchOverrideOpReplace,
-							Path:     "spec.replica",
+							Path:     "/spec/replica",
 							Value:    apiextensionsv1.JSON{Raw: []byte("3")},
 						},
 					},
@@ -175,7 +176,7 @@ var _ = Describe("Test ResourceOverride controller logic", func() {
 					JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
 						{
 							Operator: placementv1beta1.JSONPatchOverrideOpRemove,
-							Path:     "spec.replica",
+							Path:     "/spec/replica",
 						},
 					},
 				},
@@ -228,7 +229,7 @@ var _ = Describe("Test ResourceOverride controller logic", func() {
 					JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
 						{
 							Operator: placementv1beta1.JSONPatchOverrideOpRemove,
-							Path:     "spec.replica",
+							Path:     "/spec/replica",
 						},
 					},
 				},

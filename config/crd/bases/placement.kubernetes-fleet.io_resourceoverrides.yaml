@@ -192,12 +192,25 @@ spec:
                                               items:
                                                 type: string
                                               maxItems: 1
+                                              minItems: 1
                                               type: array
                                           required:
                                           - name
                                           - operator
                                           - values
                                           type: object
+                                          x-kubernetes-validations:
+                                          - message: resource property name must have
+                                              format resources.kubernetes-fleet.io/CAPACITY_TYPE-RESOURCE_NAME
+                                              where CAPACITY_TYPE is one of allocatable,
+                                              available, total
+                                            rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                              || self.name.matches(''^resources\\.kubernetes-fleet\\.io/(allocatable|available|total)-[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'')'
+                                          - message: resource property name segment
+                                              after prefix must not exceed 63 characters
+                                            rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                              || size(self.name) - size(''resources.kubernetes-fleet.io/'')
+                                              <= 63'
                                         type: array
                                     required:
                                     - matchExpressions
@@ -221,17 +234,49 @@ spec:
                                         description: |-
                                           SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                           sort in ascending or descending order.
+                                        enum:
+                                        - Descending
+                                        - Ascending
                                         type: string
                                     required:
                                     - name
                                     - sortOrder
                                     type: object
+                                    x-kubernetes-validations:
+                                    - message: resource property name must have format
+                                        resources.kubernetes-fleet.io/CAPACITY_TYPE-RESOURCE_NAME
+                                        where CAPACITY_TYPE is one of allocatable,
+                                        available, total
+                                      rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                        || self.name.matches(''^resources\\.kubernetes-fleet\\.io/(allocatable|available|total)-[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'')'
+                                    - message: resource property name segment after
+                                        prefix must not exceed 63 characters
+                                      rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                        || size(self.name) - size(''resources.kubernetes-fleet.io/'')
+                                        <= 63'
                                 type: object
+                                x-kubernetes-validations:
+                                - message: matchExpressions values must be non-empty
+                                    when operator is In or NotIn
+                                  rule: '!has(self.labelSelector) || !has(self.labelSelector.matchExpressions)
+                                    || self.labelSelector.matchExpressions.all(e,
+                                    (e.operator == ''In'' || e.operator == ''NotIn'')
+                                    ? (has(e.values) && size(e.values) > 0) : true)'
+                                - message: matchExpressions values must be empty when
+                                    operator is Exists or DoesNotExist
+                                  rule: '!has(self.labelSelector) || !has(self.labelSelector.matchExpressions)
+                                    || self.labelSelector.matchExpressions.all(e,
+                                    (e.operator == ''Exists'' || e.operator == ''DoesNotExist'')
+                                    ? (!has(e.values) || size(e.values) == 0) : true)'
                               maxItems: 10
                               type: array
                           required:
                           - clusterSelectorTerms
                           type: object
+                          x-kubernetes-validations:
+                          - message: propertySorter is not allowed in requiredDuringSchedulingIgnoredDuringExecution
+                              affinity terms
+                            rule: self.clusterSelectorTerms.all(t, !has(t.propertySorter))
                         jsonPatchOverrides:
                           description: |-
                             JSONPatchOverrides defines a list of JSON patch override rules.
@@ -252,6 +297,7 @@ spec:
                                 description: |-
                                   Path defines the target location.
                                   Note: override will fail if the resource path does not exist.
+                                pattern: ^/.*
                                 type: string
                               value:
                                 description: |-
@@ -266,6 +312,24 @@ spec:
                             - op
                             - path
                             type: object
+                            x-kubernetes-validations:
+                            - message: cannot override typeMeta field kind
+                              rule: '!(self.path == ''/kind'' || self.path.startsWith(''/kind/''))'
+                            - message: cannot override typeMeta field apiVersion
+                              rule: '!(self.path == ''/apiVersion'' || self.path.startsWith(''/apiVersion/''))'
+                            - message: cannot override status fields
+                              rule: '!(self.path == ''/status'' || self.path.startsWith(''/status/''))'
+                            - message: cannot override metadata fields except annotations
+                                and labels
+                              rule: '!(self.path == ''/metadata'' || (self.path.startsWith(''/metadata/'')
+                                && !(self.path == ''/metadata/annotations'' || self.path.startsWith(''/metadata/annotations/''))
+                                && !(self.path == ''/metadata/labels'' || self.path.startsWith(''/metadata/labels/''))))'
+                            - message: remove operation cannot have a value
+                              rule: self.op != 'remove' || !has(self.value)
+                            - message: path cannot contain empty segments
+                              rule: '!self.path.contains(''//'')'
+                            - message: path cannot have a trailing slash
+                              rule: '!self.path.endsWith(''/'')'
                           maxItems: 20
                           minItems: 1
                           type: array
@@ -278,6 +342,22 @@ spec:
                           - Delete
                           type: string
                       type: object
+                      x-kubernetes-validations:
+                      - message: jsonPatchOverrides must be empty when overrideType
+                          is Delete
+                        rule: self.overrideType != 'Delete' || !has(self.jsonPatchOverrides)
+                          || size(self.jsonPatchOverrides) == 0
+                      - message: jsonPatchOverrides must not be empty when overrideType
+                          is JSONPatch
+                        rule: self.overrideType != 'JSONPatch' || (has(self.jsonPatchOverrides)
+                          && size(self.jsonPatchOverrides) > 0)
+                      - message: only labelSelector is supported in override clusterSelector
+                        rule: '!has(self.clusterSelector) || self.clusterSelector.clusterSelectorTerms.all(t,
+                          !has(t.propertySelector) && !has(t.propertySorter))'
+                      - message: labelSelector is required in override clusterSelector
+                          terms
+                        rule: '!has(self.clusterSelector) || self.clusterSelector.clusterSelectorTerms.all(t,
+                          has(t.labelSelector))'
                     maxItems: 20
                     minItems: 1
                     type: array
@@ -325,6 +405,9 @@ spec:
             - message: The placement field is immutable
               rule: (has(oldSelf.placement) && has(self.placement) && oldSelf.placement
                 == self.placement) || (!has(oldSelf.placement) && !has(self.placement))
+            - message: resourceSelectors must be unique
+              rule: self.resourceSelectors.all(s, self.resourceSelectors.filter(t,
+                t == s).size() == 1)
         required:
         - spec
         type: object
@@ -506,12 +589,25 @@ spec:
                                               items:
                                                 type: string
                                               maxItems: 1
+                                              minItems: 1
                                               type: array
                                           required:
                                           - name
                                           - operator
                                           - values
                                           type: object
+                                          x-kubernetes-validations:
+                                          - message: resource property name must have
+                                              format resources.kubernetes-fleet.io/CAPACITY_TYPE-RESOURCE_NAME
+                                              where CAPACITY_TYPE is one of allocatable,
+                                              available, total
+                                            rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                              || self.name.matches(''^resources\\.kubernetes-fleet\\.io/(allocatable|available|total)-[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'')'
+                                          - message: resource property name segment
+                                              after prefix must not exceed 63 characters
+                                            rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                              || size(self.name) - size(''resources.kubernetes-fleet.io/'')
+                                              <= 63'
                                         type: array
                                     required:
                                     - matchExpressions
@@ -535,17 +631,49 @@ spec:
                                         description: |-
                                           SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                           sort in ascending or descending order.
+                                        enum:
+                                        - Descending
+                                        - Ascending
                                         type: string
                                     required:
                                     - name
                                     - sortOrder
                                     type: object
+                                    x-kubernetes-validations:
+                                    - message: resource property name must have format
+                                        resources.kubernetes-fleet.io/CAPACITY_TYPE-RESOURCE_NAME
+                                        where CAPACITY_TYPE is one of allocatable,
+                                        available, total
+                                      rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                        || self.name.matches(''^resources\\.kubernetes-fleet\\.io/(allocatable|available|total)-[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'')'
+                                    - message: resource property name segment after
+                                        prefix must not exceed 63 characters
+                                      rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                        || size(self.name) - size(''resources.kubernetes-fleet.io/'')
+                                        <= 63'
                                 type: object
+                                x-kubernetes-validations:
+                                - message: matchExpressions values must be non-empty
+                                    when operator is In or NotIn
+                                  rule: '!has(self.labelSelector) || !has(self.labelSelector.matchExpressions)
+                                    || self.labelSelector.matchExpressions.all(e,
+                                    (e.operator == ''In'' || e.operator == ''NotIn'')
+                                    ? (has(e.values) && size(e.values) > 0) : true)'
+                                - message: matchExpressions values must be empty when
+                                    operator is Exists or DoesNotExist
+                                  rule: '!has(self.labelSelector) || !has(self.labelSelector.matchExpressions)
+                                    || self.labelSelector.matchExpressions.all(e,
+                                    (e.operator == ''Exists'' || e.operator == ''DoesNotExist'')
+                                    ? (!has(e.values) || size(e.values) == 0) : true)'
                               maxItems: 10
                               type: array
                           required:
                           - clusterSelectorTerms
                           type: object
+                          x-kubernetes-validations:
+                          - message: propertySorter is not allowed in requiredDuringSchedulingIgnoredDuringExecution
+                              affinity terms
+                            rule: self.clusterSelectorTerms.all(t, !has(t.propertySorter))
                         jsonPatchOverrides:
                           description: |-
                             JSONPatchOverrides defines a list of JSON patch override rules.
@@ -566,6 +694,7 @@ spec:
                                 description: |-
                                   Path defines the target location.
                                   Note: override will fail if the resource path does not exist.
+                                pattern: ^/.*
                                 type: string
                               value:
                                 description: |-
@@ -580,6 +709,24 @@ spec:
                             - op
                             - path
                             type: object
+                            x-kubernetes-validations:
+                            - message: cannot override typeMeta field kind
+                              rule: '!(self.path == ''/kind'' || self.path.startsWith(''/kind/''))'
+                            - message: cannot override typeMeta field apiVersion
+                              rule: '!(self.path == ''/apiVersion'' || self.path.startsWith(''/apiVersion/''))'
+                            - message: cannot override status fields
+                              rule: '!(self.path == ''/status'' || self.path.startsWith(''/status/''))'
+                            - message: cannot override metadata fields except annotations
+                                and labels
+                              rule: '!(self.path == ''/metadata'' || (self.path.startsWith(''/metadata/'')
+                                && !(self.path == ''/metadata/annotations'' || self.path.startsWith(''/metadata/annotations/''))
+                                && !(self.path == ''/metadata/labels'' || self.path.startsWith(''/metadata/labels/''))))'
+                            - message: remove operation cannot have a value
+                              rule: self.op != 'remove' || !has(self.value)
+                            - message: path cannot contain empty segments
+                              rule: '!self.path.contains(''//'')'
+                            - message: path cannot have a trailing slash
+                              rule: '!self.path.endsWith(''/'')'
                           maxItems: 20
                           minItems: 1
                           type: array
@@ -592,6 +739,22 @@ spec:
                           - Delete
                           type: string
                       type: object
+                      x-kubernetes-validations:
+                      - message: jsonPatchOverrides must be empty when overrideType
+                          is Delete
+                        rule: self.overrideType != 'Delete' || !has(self.jsonPatchOverrides)
+                          || size(self.jsonPatchOverrides) == 0
+                      - message: jsonPatchOverrides must not be empty when overrideType
+                          is JSONPatch
+                        rule: self.overrideType != 'JSONPatch' || (has(self.jsonPatchOverrides)
+                          && size(self.jsonPatchOverrides) > 0)
+                      - message: only labelSelector is supported in override clusterSelector
+                        rule: '!has(self.clusterSelector) || self.clusterSelector.clusterSelectorTerms.all(t,
+                          !has(t.propertySelector) && !has(t.propertySorter))'
+                      - message: labelSelector is required in override clusterSelector
+                          terms
+                        rule: '!has(self.clusterSelector) || self.clusterSelector.clusterSelectorTerms.all(t,
+                          has(t.labelSelector))'
                     maxItems: 20
                     minItems: 1
                     type: array
@@ -635,6 +798,13 @@ spec:
             - policy
             - resourceSelectors
             type: object
+            x-kubernetes-validations:
+            - message: The placement field is immutable
+              rule: (has(oldSelf.placement) && has(self.placement) && oldSelf.placement
+                == self.placement) || (!has(oldSelf.placement) && !has(self.placement))
+            - message: resourceSelectors must be unique
+              rule: self.resourceSelectors.all(s, self.resourceSelectors.filter(t,
+                t == s).size() == 1)
         required:
         - spec
         type: object
@@ -816,12 +986,25 @@ spec:
                                               items:
                                                 type: string
                                               maxItems: 1
+                                              minItems: 1
                                               type: array
                                           required:
                                           - name
                                           - operator
                                           - values
                                           type: object
+                                          x-kubernetes-validations:
+                                          - message: resource property name must have
+                                              format resources.kubernetes-fleet.io/CAPACITY_TYPE-RESOURCE_NAME
+                                              where CAPACITY_TYPE is one of allocatable,
+                                              available, total
+                                            rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                              || self.name.matches(''^resources\\.kubernetes-fleet\\.io/(allocatable|available|total)-[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'')'
+                                          - message: resource property name segment
+                                              after prefix must not exceed 63 characters
+                                            rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                              || size(self.name) - size(''resources.kubernetes-fleet.io/'')
+                                              <= 63'
                                         type: array
                                     required:
                                     - matchExpressions
@@ -845,17 +1028,49 @@ spec:
                                         description: |-
                                           SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                           sort in ascending or descending order.
+                                        enum:
+                                        - Descending
+                                        - Ascending
                                         type: string
                                     required:
                                     - name
                                     - sortOrder
                                     type: object
+                                    x-kubernetes-validations:
+                                    - message: resource property name must have format
+                                        resources.kubernetes-fleet.io/CAPACITY_TYPE-RESOURCE_NAME
+                                        where CAPACITY_TYPE is one of allocatable,
+                                        available, total
+                                      rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                        || self.name.matches(''^resources\\.kubernetes-fleet\\.io/(allocatable|available|total)-[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'')'
+                                    - message: resource property name segment after
+                                        prefix must not exceed 63 characters
+                                      rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                        || size(self.name) - size(''resources.kubernetes-fleet.io/'')
+                                        <= 63'
                                 type: object
+                                x-kubernetes-validations:
+                                - message: matchExpressions values must be non-empty
+                                    when operator is In or NotIn
+                                  rule: '!has(self.labelSelector) || !has(self.labelSelector.matchExpressions)
+                                    || self.labelSelector.matchExpressions.all(e,
+                                    (e.operator == ''In'' || e.operator == ''NotIn'')
+                                    ? (has(e.values) && size(e.values) > 0) : true)'
+                                - message: matchExpressions values must be empty when
+                                    operator is Exists or DoesNotExist
+                                  rule: '!has(self.labelSelector) || !has(self.labelSelector.matchExpressions)
+                                    || self.labelSelector.matchExpressions.all(e,
+                                    (e.operator == ''Exists'' || e.operator == ''DoesNotExist'')
+                                    ? (!has(e.values) || size(e.values) == 0) : true)'
                               maxItems: 10
                               type: array
                           required:
                           - clusterSelectorTerms
                           type: object
+                          x-kubernetes-validations:
+                          - message: propertySorter is not allowed in requiredDuringSchedulingIgnoredDuringExecution
+                              affinity terms
+                            rule: self.clusterSelectorTerms.all(t, !has(t.propertySorter))
                         jsonPatchOverrides:
                           description: |-
                             JSONPatchOverrides defines a list of JSON patch override rules.
@@ -876,6 +1091,7 @@ spec:
                                 description: |-
                                   Path defines the target location.
                                   Note: override will fail if the resource path does not exist.
+                                pattern: ^/.*
                                 type: string
                               value:
                                 description: |-
@@ -890,6 +1106,24 @@ spec:
                             - op
                             - path
                             type: object
+                            x-kubernetes-validations:
+                            - message: cannot override typeMeta field kind
+                              rule: '!(self.path == ''/kind'' || self.path.startsWith(''/kind/''))'
+                            - message: cannot override typeMeta field apiVersion
+                              rule: '!(self.path == ''/apiVersion'' || self.path.startsWith(''/apiVersion/''))'
+                            - message: cannot override status fields
+                              rule: '!(self.path == ''/status'' || self.path.startsWith(''/status/''))'
+                            - message: cannot override metadata fields except annotations
+                                and labels
+                              rule: '!(self.path == ''/metadata'' || (self.path.startsWith(''/metadata/'')
+                                && !(self.path == ''/metadata/annotations'' || self.path.startsWith(''/metadata/annotations/''))
+                                && !(self.path == ''/metadata/labels'' || self.path.startsWith(''/metadata/labels/''))))'
+                            - message: remove operation cannot have a value
+                              rule: self.op != 'remove' || !has(self.value)
+                            - message: path cannot contain empty segments
+                              rule: '!self.path.contains(''//'')'
+                            - message: path cannot have a trailing slash
+                              rule: '!self.path.endsWith(''/'')'
                           maxItems: 20
                           minItems: 1
                           type: array
@@ -902,6 +1136,22 @@ spec:
                           - Delete
                           type: string
                       type: object
+                      x-kubernetes-validations:
+                      - message: jsonPatchOverrides must be empty when overrideType
+                          is Delete
+                        rule: self.overrideType != 'Delete' || !has(self.jsonPatchOverrides)
+                          || size(self.jsonPatchOverrides) == 0
+                      - message: jsonPatchOverrides must not be empty when overrideType
+                          is JSONPatch
+                        rule: self.overrideType != 'JSONPatch' || (has(self.jsonPatchOverrides)
+                          && size(self.jsonPatchOverrides) > 0)
+                      - message: only labelSelector is supported in override clusterSelector
+                        rule: '!has(self.clusterSelector) || self.clusterSelector.clusterSelectorTerms.all(t,
+                          !has(t.propertySelector) && !has(t.propertySorter))'
+                      - message: labelSelector is required in override clusterSelector
+                          terms
+                        rule: '!has(self.clusterSelector) || self.clusterSelector.clusterSelectorTerms.all(t,
+                          has(t.labelSelector))'
                     maxItems: 20
                     minItems: 1
                     type: array
@@ -949,6 +1199,9 @@ spec:
             - message: The placement field is immutable
               rule: (has(oldSelf.placement) && has(self.placement) && oldSelf.placement
                 == self.placement) || (!has(oldSelf.placement) && !has(self.placement))
+            - message: resourceSelectors must be unique
+              rule: self.resourceSelectors.all(s, self.resourceSelectors.filter(t,
+                t == s).size() == 1)
         required:
         - spec
         type: object

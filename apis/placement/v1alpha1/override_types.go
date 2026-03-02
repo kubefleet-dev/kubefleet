@@ -45,6 +45,10 @@ type ClusterResourceOverride struct {
 // The ClusterResourceOverride create or update will fail when the resource has been selected by the existing ClusterResourceOverride.
 // If the resource is selected by both ClusterResourceOverride and ResourceOverride, ResourceOverride will win when resolving
 // conflicts.
+// +kubebuilder:validation:XValidation:rule="(has(oldSelf.placement) && has(self.placement) && oldSelf.placement == self.placement) || (!has(oldSelf.placement) && !has(self.placement))",message="The placement field is immutable"
+// +kubebuilder:validation:XValidation:rule="self.clusterResourceSelectors.all(s, !has(s.labelSelector))",message="labelSelector is not supported for ClusterResourceOverride resource selection"
+// +kubebuilder:validation:XValidation:rule="self.clusterResourceSelectors.all(s, has(s.name) && size(s.name) > 0)",message="resource name is required for ClusterResourceOverride resource selection"
+// +kubebuilder:validation:XValidation:rule="self.clusterResourceSelectors.all(s, self.clusterResourceSelectors.filter(t, t == s).size() == 1)",message="clusterResourceSelectors must be unique"
 type ClusterResourceOverrideSpec struct {
 	// Placement defines whether the override is applied to a specific placement or not.
 	// If set, the override will trigger the placement rollout immediately when the rollout strategy type is RollingUpdate.
@@ -112,6 +116,10 @@ type OverridePolicy struct {
 }
 
 // OverrideRule defines how to override the selected resources on the target clusters.
+// +kubebuilder:validation:XValidation:rule="self.overrideType != 'Delete' || !has(self.jsonPatchOverrides) || size(self.jsonPatchOverrides) == 0",message="jsonPatchOverrides must be empty when overrideType is Delete"
+// +kubebuilder:validation:XValidation:rule="self.overrideType != 'JSONPatch' || (has(self.jsonPatchOverrides) && size(self.jsonPatchOverrides) > 0)",message="jsonPatchOverrides must not be empty when overrideType is JSONPatch"
+// +kubebuilder:validation:XValidation:rule="!has(self.clusterSelector) || self.clusterSelector.clusterSelectorTerms.all(t, !has(t.propertySelector) && !has(t.propertySorter))",message="only labelSelector is supported in override clusterSelector"
+// +kubebuilder:validation:XValidation:rule="!has(self.clusterSelector) || self.clusterSelector.clusterSelectorTerms.all(t, has(t.labelSelector))",message="labelSelector is required in override clusterSelector terms"
 type OverrideRule struct {
 	// ClusterSelectors selects the target clusters.
 	// The resources will be overridden before applying to the matching clusters.
@@ -167,6 +175,8 @@ type ResourceOverride struct {
 // The ResourceOverride create or update will fail when the resource has been selected by the existing ResourceOverride.
 // If the resource is selected by both ClusterResourceOverride and ResourceOverride, ResourceOverride will win when resolving
 // conflicts.
+// +kubebuilder:validation:XValidation:rule="(has(oldSelf.placement) && has(self.placement) && oldSelf.placement == self.placement) || (!has(oldSelf.placement) && !has(self.placement))",message="The placement field is immutable"
+// +kubebuilder:validation:XValidation:rule="self.resourceSelectors.all(s, self.resourceSelectors.filter(t, t == s).size() == 1)",message="resourceSelectors must be unique"
 type ResourceOverrideSpec struct {
 	// Placement defines whether the override is applied to a specific placement or not.
 	// If set, the override will trigger the placement rollout immediately when the rollout strategy type is RollingUpdate.
@@ -211,6 +221,13 @@ type ResourceSelector struct {
 }
 
 // JSONPatchOverride applies a JSON patch on the selected resources following [RFC 6902](https://datatracker.ietf.org/doc/html/rfc6902).
+// +kubebuilder:validation:XValidation:rule="!(self.path == '/kind' || self.path.startsWith('/kind/'))",message="cannot override typeMeta field kind"
+// +kubebuilder:validation:XValidation:rule="!(self.path == '/apiVersion' || self.path.startsWith('/apiVersion/'))",message="cannot override typeMeta field apiVersion"
+// +kubebuilder:validation:XValidation:rule="!(self.path == '/status' || self.path.startsWith('/status/'))",message="cannot override status fields"
+// +kubebuilder:validation:XValidation:rule="!(self.path == '/metadata' || (self.path.startsWith('/metadata/') && !(self.path == '/metadata/annotations' || self.path.startsWith('/metadata/annotations/')) && !(self.path == '/metadata/labels' || self.path.startsWith('/metadata/labels/'))))",message="cannot override metadata fields except annotations and labels"
+// +kubebuilder:validation:XValidation:rule="self.op != 'remove' || !has(self.value)",message="remove operation cannot have a value"
+// +kubebuilder:validation:XValidation:rule="!self.path.contains('//')",message="path cannot contain empty segments"
+// +kubebuilder:validation:XValidation:rule="!self.path.endsWith('/')",message="path cannot have a trailing slash"
 type JSONPatchOverride struct {
 	// Operator defines the operation on the target field.
 	// +kubebuilder:validation:Enum=add;remove;replace
@@ -218,6 +235,7 @@ type JSONPatchOverride struct {
 	Operator JSONPatchOverrideOperator `json:"op"`
 	// Path defines the target location.
 	// Note: override will fail if the resource path does not exist.
+	// +kubebuilder:validation:Pattern="^/.*"
 	// +required
 	Path string `json:"path"`
 	// Value defines the content to be applied on the target location.

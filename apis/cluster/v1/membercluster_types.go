@@ -71,6 +71,7 @@ type MemberClusterSpec struct {
 	//
 	// This field is beta-level and is for the taints and tolerations feature.
 	// +kubebuilder:validation:MaxItems=100
+	// +kubebuilder:validation:XValidation:rule="self.all(t, self.filter(u, u == t).size() == 1)",message="taints must be unique"
 	// +optional
 	Taints []Taint `json:"taints,omitempty"`
 }
@@ -136,6 +137,9 @@ type MemberClusterStatus struct {
 
 // Taint attached to MemberCluster has the "effect" on
 // any ClusterResourcePlacement that does not tolerate the Taint.
+// +kubebuilder:validation:XValidation:rule="self.key.matches('^([a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?[/])?[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$')",message="taint key must be a valid qualified name"
+// +kubebuilder:validation:XValidation:rule="size(self.value) == 0 || self.value.matches('^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$')",message="taint value must be a valid label value"
+// +kubebuilder:validation:XValidation:rule="size(self.value) <= 63",message="taint value must not exceed 63 characters"
 type Taint struct {
 	// The taint key to be applied to a MemberCluster.
 	// +required

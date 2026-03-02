@@ -40,6 +40,7 @@ func getClusterResourceOverrideSpec() placementv1beta1.ClusterResourceOverrideSp
 				Group:   "",
 				Version: "v1",
 				Kind:    "Namespace",
+				Name:    "test-ns",
 			},
 		},
 		Policy: &placementv1beta1.OverridePolicy{
@@ -48,7 +49,7 @@ func getClusterResourceOverrideSpec() placementv1beta1.ClusterResourceOverrideSp
 					JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
 						{
 							Operator: placementv1beta1.JSONPatchOverrideOpReplace,
-							Path:     "spec.replica",
+							Path:     "/spec/replica",
 							Value:    apiextensionsv1.JSON{Raw: []byte("3")},
 						},
 					},
@@ -157,7 +158,7 @@ var _ = Describe("Test ClusterResourceOverride controller logic", func() {
 					JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
 						{
 							Operator: placementv1beta1.JSONPatchOverrideOpRemove,
-							Path:     "spec.replica",
+							Path:     "/spec/replica",
 						},
 					},
 				},
@@ -210,7 +211,7 @@ var _ = Describe("Test ClusterResourceOverride controller logic", func() {
 					JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
 						{
 							Operator: placementv1beta1.JSONPatchOverrideOpRemove,
-							Path:     "spec.replica",
+							Path:     "/spec/replica",
 						},
 					},
 				},

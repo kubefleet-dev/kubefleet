@@ -187,12 +187,25 @@ spec:
                                                 items:
                                                   type: string
                                                 maxItems: 1
+                                                minItems: 1
                                                 type: array
                                             required:
                                             - name
                                             - operator
                                             - values
                                             type: object
+                                            x-kubernetes-validations:
+                                            - message: resource property name must
+                                                have format resources.kubernetes-fleet.io/CAPACITY_TYPE-RESOURCE_NAME
+                                                where CAPACITY_TYPE is one of allocatable,
+                                                available, total
+                                              rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                                || self.name.matches(''^resources\\.kubernetes-fleet\\.io/(allocatable|available|total)-[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'')'
+                                            - message: resource property name segment
+                                                after prefix must not exceed 63 characters
+                                              rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                                || size(self.name) - size(''resources.kubernetes-fleet.io/'')
+                                                <= 63'
                                           type: array
                                       required:
                                       - matchExpressions
@@ -216,12 +229,41 @@ spec:
                                           description: |-
                                             SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                             sort in ascending or descending order.
+                                          enum:
+                                          - Descending
+                                          - Ascending
                                           type: string
                                       required:
                                       - name
                                       - sortOrder
                                       type: object
+                                      x-kubernetes-validations:
+                                      - message: resource property name must have
+                                          format resources.kubernetes-fleet.io/CAPACITY_TYPE-RESOURCE_NAME
+                                          where CAPACITY_TYPE is one of allocatable,
+                                          available, total
+                                        rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                          || self.name.matches(''^resources\\.kubernetes-fleet\\.io/(allocatable|available|total)-[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'')'
+                                      - message: resource property name segment after
+                                          prefix must not exceed 63 characters
+                                        rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                          || size(self.name) - size(''resources.kubernetes-fleet.io/'')
+                                          <= 63'
                                   type: object
+                                  x-kubernetes-validations:
+                                  - message: matchExpressions values must be non-empty
+                                      when operator is In or NotIn
+                                    rule: '!has(self.labelSelector) || !has(self.labelSelector.matchExpressions)
+                                      || self.labelSelector.matchExpressions.all(e,
+                                      (e.operator == ''In'' || e.operator == ''NotIn'')
+                                      ? (has(e.values) && size(e.values) > 0) : true)'
+                                  - message: matchExpressions values must be empty
+                                      when operator is Exists or DoesNotExist
+                                    rule: '!has(self.labelSelector) || !has(self.labelSelector.matchExpressions)
+                                      || self.labelSelector.matchExpressions.all(e,
+                                      (e.operator == ''Exists'' || e.operator == ''DoesNotExist'')
+                                      ? (!has(e.values) || size(e.values) == 0) :
+                                      true)'
                                 weight:
                                   description: Weight associated with matching the
                                     corresponding clusterSelectorTerm, in the range
@@ -234,6 +276,10 @@ spec:
                               - preference
                               - weight
                               type: object
+                              x-kubernetes-validations:
+                              - message: propertySelector is not allowed in preferredDuringSchedulingIgnoredDuringExecution
+                                  affinity terms
+                                rule: '!has(self.preference.propertySelector)'
                             type: array
                           requiredDuringSchedulingIgnoredDuringExecution:
                             description: |-
@@ -346,12 +392,25 @@ spec:
                                                 items:
                                                   type: string
                                                 maxItems: 1
+                                                minItems: 1
                                                 type: array
                                             required:
                                             - name
                                             - operator
                                             - values
                                             type: object
+                                            x-kubernetes-validations:
+                                            - message: resource property name must
+                                                have format resources.kubernetes-fleet.io/CAPACITY_TYPE-RESOURCE_NAME
+                                                where CAPACITY_TYPE is one of allocatable,
+                                                available, total
+                                              rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                                || self.name.matches(''^resources\\.kubernetes-fleet\\.io/(allocatable|available|total)-[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'')'
+                                            - message: resource property name segment
+                                                after prefix must not exceed 63 characters
+                                              rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                                || size(self.name) - size(''resources.kubernetes-fleet.io/'')
+                                                <= 63'
                                           type: array
                                       required:
                                       - matchExpressions
@@ -375,17 +434,50 @@ spec:
                                           description: |-
                                             SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                             sort in ascending or descending order.
+                                          enum:
+                                          - Descending
+                                          - Ascending
                                           type: string
                                       required:
                                       - name
                                       - sortOrder
                                       type: object
+                                      x-kubernetes-validations:
+                                      - message: resource property name must have
+                                          format resources.kubernetes-fleet.io/CAPACITY_TYPE-RESOURCE_NAME
+                                          where CAPACITY_TYPE is one of allocatable,
+                                          available, total
+                                        rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                          || self.name.matches(''^resources\\.kubernetes-fleet\\.io/(allocatable|available|total)-[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'')'
+                                      - message: resource property name segment after
+                                          prefix must not exceed 63 characters
+                                        rule: '!self.name.startsWith(''resources.kubernetes-fleet.io/'')
+                                          || size(self.name) - size(''resources.kubernetes-fleet.io/'')
+                                          <= 63'
                                   type: object
+                                  x-kubernetes-validations:
+                                  - message: matchExpressions values must be non-empty
+                                      when operator is In or NotIn
+                                    rule: '!has(self.labelSelector) || !has(self.labelSelector.matchExpressions)
+                                      || self.labelSelector.matchExpressions.all(e,
+                                      (e.operator == ''In'' || e.operator == ''NotIn'')
+                                      ? (has(e.values) && size(e.values) > 0) : true)'
+                                  - message: matchExpressions values must be empty
+                                      when operator is Exists or DoesNotExist
+                                    rule: '!has(self.labelSelector) || !has(self.labelSelector.matchExpressions)
+                                      || self.labelSelector.matchExpressions.all(e,
+                                      (e.operator == ''Exists'' || e.operator == ''DoesNotExist'')
+                                      ? (!has(e.values) || size(e.values) == 0) :
+                                      true)'
                                 maxItems: 10
                                 type: array
                             required:
                             - clusterSelectorTerms
                             type: object
+                            x-kubernetes-validations:
+                            - message: propertySorter is not allowed in requiredDuringSchedulingIgnoredDuringExecution
+                                affinity terms
+                              rule: self.clusterSelectorTerms.all(t, !has(t.propertySorter))
                         type: object
                     type: object
                   clusterNames:
@@ -451,8 +543,25 @@ spec:
                             If the operator is Exists, the value should be empty, otherwise just a regular string.
                           type: string
                       type: object
+                      x-kubernetes-validations:
+                      - message: value must be empty when operator is Exists
+                        rule: self.operator != 'Exists' || size(self.value) == 0
+                      - message: key must not be empty when operator is Equal
+                        rule: self.operator != 'Equal' || size(self.key) > 0
+                      - message: toleration key must be a valid qualified name
+                        rule: size(self.key) == 0 || self.key.matches('^([a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?[/])?[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$')
+                      - message: toleration value must be a valid label value
+                        rule: size(self.value) == 0 || self.value.matches('^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$')
+                      - message: toleration value must not exceed 63 characters
+                        rule: size(self.value) <= 63
                     maxItems: 100
                     type: array
+                    x-kubernetes-validations:
+                    - message: tolerations must be unique
+                      rule: self.all(t, self.filter(u, u == t).size() == 1)
+                    - message: tolerations cannot be updated or deleted, only additions
+                        are allowed
+                      rule: oldSelf.all(t, self.exists(u, u == t))
                   topologySpreadConstraints:
                     description: |-
                       TopologySpreadConstraints describes how a group of resources ought to spread across multiple topology
@@ -492,12 +601,62 @@ spec:
                             - ScheduleAnyway tells the scheduler to schedule the resource in any cluster,
                               but giving higher precedence to topologies that would help reduce the skew.
                             It's an optional field.
+                          enum:
+                          - DoNotSchedule
+                          - ScheduleAnyway
                           type: string
                       required:
                       - topologyKey
                       type: object
                     type: array
                 type: object
+                x-kubernetes-validations:
+                - message: clusterNames cannot be empty for PickFixed placement type
+                  rule: self.placementType != 'PickFixed' || (has(self.clusterNames)
+                    && size(self.clusterNames) > 0)
+                - message: numberOfClusters must not be set for PickFixed placement
+                    type
+                  rule: self.placementType != 'PickFixed' || !has(self.numberOfClusters)
+                - message: affinity must not be set for PickFixed placement type
+                  rule: self.placementType != 'PickFixed' || !has(self.affinity)
+                - message: topologySpreadConstraints must be empty for PickFixed placement
+                    type
+                  rule: self.placementType != 'PickFixed' || !has(self.topologySpreadConstraints)
+                    || size(self.topologySpreadConstraints) == 0
+                - message: tolerations must be empty for PickFixed placement type
+                  rule: self.placementType != 'PickFixed' || !has(self.tolerations)
+                    || size(self.tolerations) == 0
+                - message: clusterNames must be empty for PickAll placement type
+                  rule: self.placementType != 'PickAll' || !has(self.clusterNames)
+                    || size(self.clusterNames) == 0
+                - message: numberOfClusters must not be set for PickAll placement
+                    type
+                  rule: self.placementType != 'PickAll' || !has(self.numberOfClusters)
+                - message: topologySpreadConstraints must be empty for PickAll placement
+                    type
+                  rule: self.placementType != 'PickAll' || !has(self.topologySpreadConstraints)
+                    || size(self.topologySpreadConstraints) == 0
+                - message: preferredDuringSchedulingIgnoredDuringExecution is not
+                    allowed for PickAll placement type
+                  rule: self.placementType != 'PickAll' || !has(self.affinity) ||
+                    !has(self.affinity.clusterAffinity) || !has(self.affinity.clusterAffinity.preferredDuringSchedulingIgnoredDuringExecution)
+                    || size(self.affinity.clusterAffinity.preferredDuringSchedulingIgnoredDuringExecution)
+                    == 0
+                - message: clusterNames must be empty for PickN placement type
+                  rule: self.placementType != 'PickN' || !has(self.clusterNames) ||
+                    size(self.clusterNames) == 0
+                - message: numberOfClusters must be set for PickN placement type
+                  rule: self.placementType != 'PickN' || has(self.numberOfClusters)
+                - message: each PickFixed cluster name must not exceed 63 characters
+                  rule: self.placementType != 'PickFixed' || !has(self.clusterNames)
+                    || self.clusterNames.all(n, size(n) <= 63)
+                - message: each PickFixed cluster name must be a valid DNS subdomain
+                  rule: self.placementType != 'PickFixed' || !has(self.clusterNames)
+                    || self.clusterNames.all(n, n.matches('^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$'))
+                - message: PickFixed cluster names must be unique
+                  rule: self.placementType != 'PickFixed' || !has(self.clusterNames)
+                    || self.clusterNames.all(n, self.clusterNames.filter(m, m == n).size()
+                    == 1)
               policyHash:
                 description: PolicyHash is the sha-256 hash value of the Policy field.
                 format: byte
