@@ -137,7 +137,7 @@ func (v *LeaderElectionQPSValueWithValidation) Set(s string) error {
 		return fmt.Errorf("failed to parse float64 value: %w", err)
 	}
 
-	if qps < 0.0 {
+	if qps <= 0.0 {
 		// Disable client-side throttling.
 		*v = -1.0
 		return nil

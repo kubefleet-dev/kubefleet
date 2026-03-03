@@ -73,6 +73,62 @@ func TestLeaderElectionOpts(t *testing.T) {
 				LeaderElectionBurst: 1500,
 			},
 		},
+		{
+			name:        "negative leader election QPS value",
+			flagSetName: "qpsNegative",
+			args:        []string{"--leader-election-qps=-5"},
+			wantLeaderElectionOpts: LeaderElectionOptions{
+				LeaderElect:         false,
+				LeaseDuration:       metav1.Duration{Duration: 90 * time.Second},
+				RenewDeadline:       metav1.Duration{Duration: 75 * time.Second},
+				RetryPeriod:         metav1.Duration{Duration: 5 * time.Second},
+				ResourceNamespace:   utils.FleetSystemNamespace,
+				LeaderElectionQPS:   -1,
+				LeaderElectionBurst: 1000,
+			},
+		},
+		{
+			name:             "leader election QPS parse error",
+			flagSetName:      "qpsParseError",
+			args:             []string{"--leader-election-qps=abc"},
+			wantErred:        true,
+			wantErrMsgSubStr: "failed to parse float64 value",
+		},
+		{
+			name:             "leader election QPS out of range (too small)",
+			flagSetName:      "qpsOutOfRangeTooSmall",
+			args:             []string{"--leader-election-qps=9.9"},
+			wantErred:        true,
+			wantErrMsgSubStr: "QPS limit is set to an invalid value",
+		},
+		{
+			name:             "leader election QPS out of range (too large)",
+			flagSetName:      "qpsOutOfRangeTooLarge",
+			args:             []string{"--leader-election-qps=1000.1"},
+			wantErred:        true,
+			wantErrMsgSubStr: "QPS limit is set to an invalid value",
+		},
+		{
+			name:             "leader election burst parse error",
+			flagSetName:      "burstParseError",
+			args:             []string{"--leader-election-burst=abc"},
+			wantErred:        true,
+			wantErrMsgSubStr: "failed to parse int value",
+		},
+		{
+			name:             "leader election burst out of range (too small)",
+			flagSetName:      "burstOutOfRangeTooSmall",
+			args:             []string{"--leader-election-burst=9"},
+			wantErred:        true,
+			wantErrMsgSubStr: "burst limit is set to an invalid value",
+		},
+		{
+			name:             "leader election burst out of range (too large)",
+			flagSetName:      "burstOutOfRangeTooLarge",
+			args:             []string{"--leader-election-burst=2001"},
+			wantErred:        true,
+			wantErrMsgSubStr: "burst limit is set to an invalid value",
+		},
 	}
 
 	for _, tc := range testCases {
