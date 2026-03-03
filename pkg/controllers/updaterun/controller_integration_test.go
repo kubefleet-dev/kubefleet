@@ -234,6 +234,8 @@ var _ = Describe("Test the clusterStagedUpdateRun controller", func() {
 
 func resetUpdateRunMetrics() {
 	hubmetrics.FleetUpdateRunStatusLastTimestampSeconds.Reset()
+	hubmetrics.FleetUpdateRunStageClusterUpdatingDurationSeconds.Reset()
+	hubmetrics.FleetUpdateRunApprovalRequestLatencySeconds.Reset()
 }
 
 // validateUpdateRunMetricsEmitted validates the update run status metrics are emitted and are emitted in the correct order.
@@ -258,23 +260,138 @@ func validateUpdateRunMetricsEmitted(wantMetrics ...*prometheusclientmodel.Metri
 	}, timeout, interval).Should(Succeed(), "failed to validate the update run status metrics")
 }
 
+// validateUpdateRunApprovalStageTaskMetric validates the update run approval stage task metric by checking labels and count.
+func validateUpdateRunApprovalStageTaskMetric(wantMetrics ...*prometheusclientmodel.Metric) {
+	Eventually(func() error {
+		metricFamilies, err := ctrlmetrics.Registry.Gather()
+		if err != nil {
+			return fmt.Errorf("failed to gather metrics: %w", err)
+		}
+		var gotMetrics []*prometheusclientmodel.Metric
+		for _, mf := range metricFamilies {
+			if mf.GetName() == "fleet_workload_update_run_approval_request_latency_seconds" {
+				gotMetrics = mf.GetMetric()
+				break
+			}
+		}
+
+		if len(gotMetrics) != len(wantMetrics) {
+			return fmt.Errorf("metric count mismatch: got %d, want %d", len(gotMetrics), len(wantMetrics))
+		}
+
+		for i, m := range gotMetrics {
+			// Compare labels by extracting values (avoids protobuf unexported field issues).
+			gotLabels := make(map[string]string)
+			for _, l := range m.GetLabel() {
+				gotLabels[l.GetName()] = l.GetValue()
+			}
+			wantLabels := make(map[string]string)
+			for _, l := range wantMetrics[i].GetLabel() {
+				wantLabels[l.GetName()] = l.GetValue()
+			}
+			if diff := cmp.Diff(gotLabels, wantLabels); diff != "" {
+				return fmt.Errorf("metric labels mismatch (-got, +want):\n%s", diff)
+			}
+			if m.GetHistogram().GetSampleCount() != wantMetrics[i].GetHistogram().GetSampleCount() {
+				return fmt.Errorf("metric sample count mismatch: got %d, want %d", m.GetHistogram().GetSampleCount(), wantMetrics[i].GetHistogram().GetSampleCount())
+			}
+		}
+		return nil
+	}, timeout, interval).Should(Succeed(), "failed to validate the update run approval stage task metrics")
+}
+
+// validateUpdateRunStageMetricsEmitted validates the update run stage metrics by checking labels and count.
+func validateUpdateRunStageMetricsEmitted(wantMetrics ...*prometheusclientmodel.Metric) {
+	Eventually(func() error {
+		metricFamilies, err := ctrlmetrics.Registry.Gather()
+		if err != nil {
+			return fmt.Errorf("failed to gather metrics: %w", err)
+		}
+		var gotMetrics []*prometheusclientmodel.Metric
+		for _, mf := range metricFamilies {
+			if mf.GetName() == "fleet_workload_update_run_stage_cluster_updating_duration_seconds" {
+				gotMetrics = mf.GetMetric()
+				break
+			}
+		}
+
+		if len(gotMetrics) != len(wantMetrics) {
+			return fmt.Errorf("metric count mismatch: got %d, want %d", len(gotMetrics), len(wantMetrics))
+		}
+
+		for i, m := range gotMetrics {
+			// Compare labels by extracting values (avoids protobuf unexported field issues).
+			gotLabels := make(map[string]string)
+			for _, l := range m.GetLabel() {
+				gotLabels[l.GetName()] = l.GetValue()
+			}
+			wantLabels := make(map[string]string)
+			for _, l := range wantMetrics[i].GetLabel() {
+				wantLabels[l.GetName()] = l.GetValue()
+			}
+			if diff := cmp.Diff(gotLabels, wantLabels); diff != "" {
+				return fmt.Errorf("metric labels mismatch (-got, +want):\n%s", diff)
+			}
+			if m.GetHistogram().GetSampleCount() != wantMetrics[i].GetHistogram().GetSampleCount() {
+				return fmt.Errorf("metric sample count mismatch: got %d, want %d", m.GetHistogram().GetSampleCount(), wantMetrics[i].GetHistogram().GetSampleCount())
+			}
+		}
+		return nil
+	}, timeout, interval).Should(Succeed(), "failed to validate the update run stage metrics")
+}
+
+func generateStageClusterUpdatingMetric(
+	updateRun *placementv1beta1.ClusterStagedUpdateRun,
+) *prometheusclientmodel.Metric {
+	return &prometheusclientmodel.Metric{
+		Label: []*prometheusclientmodel.LabelPair{
+			{Name: ptr.To("namespace"), Value: &updateRun.Namespace},
+			{Name: ptr.To("name"), Value: &updateRun.Name},
+		},
+		Histogram: &prometheusclientmodel.Histogram{
+			SampleCount: ptr.To(uint64(len(updateRun.Status.StagesStatus))),
+		},
+	}
+}
+
+func generateApprovalStageTaskMetric(
+	updateRun *placementv1beta1.ClusterStagedUpdateRun,
+	stageTask string,
+	stageTaskCount uint64,
+) *prometheusclientmodel.Metric {
+	return &prometheusclientmodel.Metric{
+		Label: []*prometheusclientmodel.LabelPair{
+			{Name: ptr.To("namespace"), Value: &updateRun.Namespace},
+			{Name: ptr.To("name"), Value: &updateRun.Name},
+			{Name: ptr.To("taskType"), Value: ptr.To(stageTask)},
+		},
+		Histogram: &prometheusclientmodel.Histogram{
+			SampleCount: ptr.To(stageTaskCount),
+		},
+	}
+}
+
+// generateMetricsLabels generates the labels for the update run status metrics.
+// We pass the state explicitly instead of using updateRun.Spec.State because the metric
+// should reflect the state at the time the condition occurred, which may be different from
+// the current updateRun state if the updateRun has transitioned since then.
 func generateMetricsLabels(
 	updateRun *placementv1beta1.ClusterStagedUpdateRun,
-	condition, status, reason string,
+	state, condition, status, reason string,
 ) []*prometheusclientmodel.LabelPair {
 	return []*prometheusclientmodel.LabelPair{
 		{Name: ptr.To("namespace"), Value: &updateRun.Namespace},
 		{Name: ptr.To("name"), Value: &updateRun.Name},
-		{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(updateRun.Generation, 10))},
+		{Name: ptr.To("state"), Value: ptr.To(state)},
 		{Name: ptr.To("condition"), Value: ptr.To(condition)},
 		{Name: ptr.To("status"), Value: ptr.To(status)},
 		{Name: ptr.To("reason"), Value: ptr.To(reason)},
 	}
 }
 
-func generateInitializationSucceededMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateInitializationSucceededMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionInitialized),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionInitialized),
 			string(metav1.ConditionTrue), condition.UpdateRunInitializeSucceededReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -282,9 +399,9 @@ func generateInitializationSucceededMetric(updateRun *placementv1beta1.ClusterSt
 	}
 }
 
-func generateInitializationFailedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateInitializationFailedMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionInitialized),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionInitialized),
 			string(metav1.ConditionFalse), condition.UpdateRunInitializeFailedReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -292,9 +409,9 @@ func generateInitializationFailedMetric(updateRun *placementv1beta1.ClusterStage
 	}
 }
 
-func generateProgressingMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateProgressingMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionProgressing),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionProgressing),
 			string(metav1.ConditionTrue), condition.UpdateRunProgressingReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -302,9 +419,9 @@ func generateProgressingMetric(updateRun *placementv1beta1.ClusterStagedUpdateRu
 	}
 }
 
-func generateWaitingMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateWaitingMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionProgressing),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionProgressing),
 			string(metav1.ConditionFalse), condition.UpdateRunWaitingReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -312,9 +429,9 @@ func generateWaitingMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *
 	}
 }
 
-func generateStuckMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateStuckMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionProgressing),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionProgressing),
 			string(metav1.ConditionFalse), condition.UpdateRunStuckReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -322,9 +439,9 @@ func generateStuckMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *pr
 	}
 }
 
-func generateFailedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateFailedMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionSucceeded),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionSucceeded),
 			string(metav1.ConditionFalse), condition.UpdateRunFailedReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -332,9 +449,9 @@ func generateFailedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *p
 	}
 }
 
-func generateStoppingMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateStoppingMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionProgressing),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionProgressing),
 			string(metav1.ConditionUnknown), condition.UpdateRunStoppingReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -342,9 +459,9 @@ func generateStoppingMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) 
 	}
 }
 
-func generateStoppedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateStoppedMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionProgressing),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionProgressing),
 			string(metav1.ConditionFalse), condition.UpdateRunStoppedReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -352,9 +469,9 @@ func generateStoppedMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *
 	}
 }
 
-func generateSucceededMetric(updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
+func generateSucceededMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
-		Label: generateMetricsLabels(updateRun, string(placementv1beta1.StagedUpdateRunConditionSucceeded),
+		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionSucceeded),
 			string(metav1.ConditionTrue), condition.UpdateRunSucceededReason),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
@@ -387,7 +504,7 @@ func generateTestClusterResourcePlacement() *placementv1beta1.ClusterResourcePla
 					Group:   "",
 					Version: "v1",
 					Kind:    "Namespace",
-					Name:    "test-namespace",
+					Name:    testNamespaceName,
 				},
 			},
 			Policy: &placementv1beta1.PlacementPolicy{
@@ -617,9 +734,9 @@ func generateTestClusterResourceSnapshot() *placementv1beta1.ClusterResourceSnap
 			Kind:       "Namespace",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-namespace",
+			Name: testNamespaceName,
 			Labels: map[string]string{
-				"fleet.azure.com/name": "test-namespace",
+				"fleet.azure.com/name": testNamespaceName,
 			},
 		},
 	})
@@ -663,7 +780,7 @@ func generateTestClusterResourceOverride() *placementv1beta1.ClusterResourceOver
 						Group:   "",
 						Version: "v1",
 						Kind:    "Namespace",
-						Name:    "test-namespace",
+						Name:    testNamespaceName,
 					},
 				},
 				Policy: &placementv1beta1.OverridePolicy{

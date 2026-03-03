@@ -2,30 +2,86 @@ name: Helm Chart Publisher
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/chart.yaml"
-      - "charts/**"
-  create:
-    # Publish semver tags as releases.
-    tags: [ 'v*.*.*' ]
-
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g., v1.0.0)"
+        required: true
+        type: string
 permissions:
   contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
 
 jobs:
-  deploy:
+  export-registry:
+    uses: ./.github/workflows/setup-release.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
+
+  publish-github-pages:
+    needs: export-registry
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.1
+      - uses: actions/checkout@v6.0.2
         with:
           submodules: true
           fetch-depth: 0
-      - name: Publish Helm chart
+      - name: Publish Helm chart to GitHub Pages
         uses: stefanprodan/helm-gh-pages@v1.7.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           charts_dir: charts
           target_dir: charts
-          linting: off
+          linting: on
+
+  publish-oci:
+    needs: export-registry
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package and push Helm charts to GHCR via Makefile
+        run: |
+          set -euo pipefail
+
+          RELEASE_VERSION="${{ needs.export-registry.outputs.version }}"
+
+          OCI_REGISTRY="${{ needs.export-registry.outputs.registry }}/charts"
+          make helm-push REGISTRY="${OCI_REGISTRY}" TAG="${RELEASE_VERSION}"
+
+      - name: Verify chart appVersion matches release tag
+        run: |
+          set -euo pipefail
+
+          RELEASE_VERSION="${{ needs.export-registry.outputs.version }}"
+          CHART_VERSION="${RELEASE_VERSION}"
+          EXPECTED_APP_VERSION="${RELEASE_VERSION}"
+
+          rm -rf .helm-verify
+          mkdir -p .helm-verify
+
+          for chart in hub-agent member-agent; do
+            helm pull "oci://${{ needs.export-registry.outputs.registry }}/charts/${chart}" --version "${CHART_VERSION}" --destination .helm-verify >/dev/null
+            packaged=".helm-verify/${chart}-${CHART_VERSION}.tgz"
+            actual_app_version=$(tar -xOf "${packaged}" "${chart}/Chart.yaml" | awk -F': ' '/^appVersion:/ {gsub(/"/, "", $2); print $2}')
+            if [[ "${actual_app_version}" != "${EXPECTED_APP_VERSION}" ]]; then
+              echo "ERROR: ${chart} appVersion (${actual_app_version}) does not match release tag (${EXPECTED_APP_VERSION})"
+              exit 1
+            fi
+            echo "✅ ${chart} appVersion=${actual_app_version} matches release tag=${EXPECTED_APP_VERSION}"
+          done
+
+          rm -rf .helm-verify

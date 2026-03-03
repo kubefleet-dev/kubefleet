@@ -28,8 +28,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 )
 
 const (
@@ -61,6 +63,22 @@ var _ = Describe("Test ClusterProfile Controller", func() {
 	})
 
 	It("Should create a clusterProfile when a member cluster is created", func() {
+		By("Check the clusterProfile is not created")
+		Consistently(func() error {
+			return k8sClient.Get(ctx, types.NamespacedName{Namespace: clusterProfileNS, Name: testMCName}, &clusterProfile)
+		}, consistentlyDuration, interval).ShouldNot(Succeed(), "clusterProfile is created before member cluster is marked as join")
+		By("Mark the member cluster as joined")
+		mc.Status.Conditions = []metav1.Condition{
+			{
+				Type:               string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+				Status:             metav1.ConditionTrue,
+				Reason:             "Joined",
+				Message:            "Member cluster has joined",
+				LastTransitionTime: metav1.Time{Time: time.Now()},
+				ObservedGeneration: mc.Generation,
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, mc)).Should(Succeed(), "failed to update member cluster status")
 		By("Check the clusterProfile is created")
 		Eventually(func() error {
 			return k8sClient.Get(ctx, types.NamespacedName{Namespace: clusterProfileNS, Name: testMCName}, &clusterProfile)
@@ -78,6 +96,7 @@ var _ = Describe("Test ClusterProfile Controller", func() {
 						Reason:             "Healthy",
 						Message:            "Agent is healthy",
 						LastTransitionTime: metav1.Time{Time: time.Now()},
+						ObservedGeneration: mc.Generation,
 					},
 				},
 				LastReceivedHeartbeat: metav1.Time{Time: time.Now()},
@@ -88,12 +107,30 @@ var _ = Describe("Test ClusterProfile Controller", func() {
 			if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: clusterProfileNS, Name: testMCName}, &clusterProfile); err != nil {
 				return false
 			}
+			if clusterProfile.Spec.ClusterManager.Name != controller.ClusterManagerName {
+				return false
+			}
+			if clusterProfile.Spec.DisplayName != testMCName {
+				return false
+			}
 			cond := meta.FindStatusCondition(clusterProfile.Status.Conditions, clusterinventory.ClusterConditionControlPlaneHealthy)
 			return condition.IsConditionStatusTrue(cond, clusterProfile.Generation)
 		}, eventuallyTimeout, interval).Should(BeTrue(), "clusterProfile is not created")
 	})
 
-	It("Should recreate a clusterProfile when it is deleted by the user", func() {
+	It("Should recreate a clusterProfile when it is deleted by the user but properties should not show if MC property collection is not succeeded", func() {
+		By("Mark the member cluster as joined")
+		mc.Status.Conditions = []metav1.Condition{
+			{
+				Type:               string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+				Status:             metav1.ConditionTrue,
+				Reason:             "Joined",
+				Message:            "Member cluster has joined",
+				LastTransitionTime: metav1.Time{Time: time.Now()},
+				ObservedGeneration: mc.Generation,
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, mc)).Should(Succeed(), "failed to update member cluster status")
 		By("Check the clusterProfile is created")
 		Eventually(func() error {
 			return k8sClient.Get(ctx, types.NamespacedName{Namespace: clusterProfileNS, Name: testMCName}, &clusterProfile)
@@ -104,9 +141,78 @@ var _ = Describe("Test ClusterProfile Controller", func() {
 		Eventually(func() error {
 			return k8sClient.Get(ctx, types.NamespacedName{Namespace: clusterProfileNS, Name: testMCName}, &clusterProfile)
 		}, eventuallyTimeout, interval).Should(Succeed(), "clusterProfile is not created")
+		By("Check the properties are not created")
+		Consistently(func() bool {
+			if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: clusterProfileNS, Name: testMCName}, &clusterProfile); err != nil {
+				return false
+			}
+			return clusterProfile.Status.AccessProviders == nil || clusterProfile.Status.AccessProviders[0].Cluster.CertificateAuthorityData == nil
+		}, consistentlyDuration, interval).Should(BeTrue(), "ClusterCertificateAuthority property is created before member cluster is marked as collection succeeded")
+	})
+
+	It("Should have property filled in clusterProfile created from MemberCluster and reconcile the clusterProfile if changed", func() {
+		By("Mark the member cluster as joined")
+		mc.Status.Conditions = []metav1.Condition{
+			{
+				Type:               string(clusterv1beta1.ConditionTypeClusterPropertyCollectionSucceeded),
+				Status:             metav1.ConditionTrue,
+				Reason:             "CollectionSucceeded",
+				Message:            "Cluster property collection succeeded",
+				LastTransitionTime: metav1.Time{Time: time.Now()},
+				ObservedGeneration: mc.Generation,
+			},
+			{
+				Type:               string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+				Status:             metav1.ConditionTrue,
+				Reason:             "Joined",
+				Message:            "Member cluster has joined",
+				LastTransitionTime: metav1.Time{Time: time.Now()},
+				ObservedGeneration: mc.Generation,
+			},
+		}
+		mc.Status.Properties = map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue{
+			propertyprovider.ClusterCertificateAuthorityProperty: {
+				Value:           "dummy-ca-data",
+				ObservationTime: metav1.Time{Time: time.Now()},
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, mc)).Should(Succeed(), "failed to update member cluster status")
+		By("Check the clusterProfile is created")
+		Eventually(func() error {
+			return k8sClient.Get(ctx, types.NamespacedName{Namespace: clusterProfileNS, Name: testMCName}, &clusterProfile)
+		}, eventuallyTimeout, interval).Should(Succeed(), "clusterProfile is not created")
+		By("Check the properties in clusterProfile")
+		Eventually(func() bool {
+			if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: clusterProfileNS, Name: testMCName}, &clusterProfile); err != nil {
+				return false
+			}
+			return string(clusterProfile.Status.AccessProviders[0].Cluster.CertificateAuthorityData) == "dummy-ca-data"
+		}, eventuallyTimeout, interval).Should(BeTrue(), "ClusterCertificateAuthority property is not created")
+		By("Modifying the ClusterProfile")
+		clusterProfile.Spec.DisplayName = "ModifiedMCName"
+		Expect(k8sClient.Update(ctx, &clusterProfile)).Should(Succeed(), "failed to modify clusterProfile")
+		By("Check the clusterProfile is updated back to original state")
+		Eventually(func() bool {
+			if err := k8sClient.Get(ctx, types.NamespacedName{Namespace: clusterProfileNS, Name: testMCName}, &clusterProfile); err != nil {
+				return false
+			}
+			return clusterProfile.Spec.DisplayName == testMCName
+		}, eventuallyTimeout, interval).Should(BeTrue(), "clusterProfile is not updated back to original state")
 	})
 
 	It("Should delete the clusterProfile when the MemberCluster is deleted", func() {
+		By("Mark the member cluster as joined")
+		mc.Status.Conditions = []metav1.Condition{
+			{
+				Type:               string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+				Status:             metav1.ConditionTrue,
+				Reason:             "Joined",
+				Message:            "Member cluster has joined",
+				LastTransitionTime: metav1.Time{Time: time.Now()},
+				ObservedGeneration: mc.Generation,
+			},
+		}
+		Expect(k8sClient.Status().Update(ctx, mc)).Should(Succeed(), "failed to update member cluster status")
 		By("Check the clusterProfile is created")
 		Eventually(func() error {
 			return k8sClient.Get(ctx, types.NamespacedName{Namespace: clusterProfileNS, Name: testMCName}, &clusterProfile)

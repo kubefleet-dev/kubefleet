@@ -18,47 +18,52 @@ package options
 
 import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
-
-	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 )
 
-// TODO: Clean up the validations we don't need and add the ones we need
-
 // Validate checks Options and return a slice of found errs.
+//
+// Note: the logic here concerns primarily cross-option validation; for single-option validation,
+// consider adding the logic directly as part of the flag parsing function, for clarity reasons.
 func (o *Options) Validate() field.ErrorList {
 	errs := field.ErrorList{}
 	newPath := field.NewPath("Options")
 
-	if o.AllowedPropagatingAPIs != "" && o.SkippedPropagatingAPIs != "" {
-		errs = append(errs, field.Invalid(newPath.Child("AllowedPropagatingAPIs"), o.AllowedPropagatingAPIs, "AllowedPropagatingAPIs and SkippedPropagatingAPIs are mutually exclusive"))
+	// Cross-field validation for controller manager options.
+	if float64(o.CtrlMgrOpts.HubBurst) < float64(o.CtrlMgrOpts.HubQPS) {
+		errs = append(errs, field.Invalid(newPath.Child("HubBurst"), o.CtrlMgrOpts.HubBurst, "The burst limit for client-side throttling must be greater than or equal to its QPS limit"))
 	}
 
-	resourceConfig := utils.NewResourceConfig(o.AllowedPropagatingAPIs != "")
-	if err := resourceConfig.Parse(o.SkippedPropagatingAPIs); err != nil {
-		errs = append(errs, field.Invalid(newPath.Child("SkippedPropagatingAPIs"), o.SkippedPropagatingAPIs, "Invalid API string"))
-	}
-	if err := resourceConfig.Parse(o.AllowedPropagatingAPIs); err != nil {
-		errs = append(errs, field.Invalid(newPath.Child("AllowedPropagatingAPIs"), o.AllowedPropagatingAPIs, "Invalid API string"))
+	// Cross-field validation for leader election options.
+	if float64(o.LeaderElectionOpts.LeaderElectionBurst) < float64(o.LeaderElectionOpts.LeaderElectionQPS) {
+		errs = append(errs, field.Invalid(newPath.Child("LeaderElectionBurst"), o.LeaderElectionOpts.LeaderElectionBurst, "The burst limit for client-side throttling of leader election related operations must be greater than or equal to its QPS limit"))
 	}
 
-	if o.ClusterUnhealthyThreshold.Duration <= 0 {
-		errs = append(errs, field.Invalid(newPath.Child("ClusterUnhealthyThreshold"), o.ClusterUnhealthyThreshold, "Must be greater than 0"))
-	}
-	if o.WorkPendingGracePeriod.Duration <= 0 {
-		errs = append(errs, field.Invalid(newPath.Child("WorkPendingGracePeriod"), o.WorkPendingGracePeriod, "Must be greater than 0"))
+	// Cross-field validation for webhook options.
+
+	// Note: this validation logic is a bit weird in the sense that the system accepts
+	// either a URL-based connection or a service-based connection for webhook calls,
+	// but here the logic enforces that a service name must be provided. The way we handle
+	// URLs is also problematic as the code will always format a service-targeted URL using
+	// the input. We keep this logic for now for compatibility reasons.
+	if o.WebhookOpts.EnableWebhooks && o.WebhookOpts.ServiceName == "" {
+		errs = append(errs, field.Invalid(newPath.Child("WebhookServiceName"), o.WebhookOpts.ServiceName, "A webhook service name is required when webhooks are enabled"))
 	}
 
-	if o.EnableWebhook && o.WebhookServiceName == "" {
-		errs = append(errs, field.Invalid(newPath.Child("WebhookServiceName"), o.WebhookServiceName, "Webhook service name is required when webhook is enabled"))
+	if o.WebhookOpts.UseCertManager && !o.WebhookOpts.EnableWorkload {
+		errs = append(errs, field.Invalid(newPath.Child("UseCertManager"), o.WebhookOpts.UseCertManager, "If cert manager is used for securing webhook connections, the EnableWorkload option must be set to true, so that cert manager pods can run in the hub cluster."))
 	}
 
-	connectionType := o.WebhookClientConnectionType
-	if _, err := parseWebhookClientConnectionString(connectionType); err != nil {
-		errs = append(errs, field.Invalid(newPath.Child("WebhookClientConnectionType"), o.WebhookClientConnectionType, err.Error()))
+	if o.PlacementMgmtOpts.AllowedPropagatingAPIs != "" && o.PlacementMgmtOpts.SkippedPropagatingAPIs != "" {
+		errs = append(errs, field.Invalid(newPath.Child("AllowedPropagatingAPIs"), o.PlacementMgmtOpts.AllowedPropagatingAPIs, "AllowedPropagatingAPIs and SkippedPropagatingAPIs options are mutually exclusive"))
 	}
 
-	if !o.EnableV1Alpha1APIs && !o.EnableV1Beta1APIs {
-		errs = append(errs, field.Required(newPath.Child("EnableV1Alpha1APIs"), "Either EnableV1Alpha1APIs or EnableV1Beta1APIs is required"))
+	// Cross-field validation for placement management options.
+	if o.PlacementMgmtOpts.PlacementControllerWorkQueueRateLimiterOpts.RateLimiterBaseDelay >= o.PlacementMgmtOpts.PlacementControllerWorkQueueRateLimiterOpts.RateLimiterMaxDelay {
+		errs = append(errs, field.Invalid(newPath.Child("PlacementControllerWorkQueueRateLimiterOpts").Child("RateLimiterBaseDelay"), o.PlacementMgmtOpts.PlacementControllerWorkQueueRateLimiterOpts.RateLimiterBaseDelay, "the base delay for the placement controller set rate limiter must be less than its max delay"))
+	}
+
+	if o.PlacementMgmtOpts.PlacementControllerWorkQueueRateLimiterOpts.RateLimiterQPS > o.PlacementMgmtOpts.PlacementControllerWorkQueueRateLimiterOpts.RateLimiterBucketSize {
+		errs = append(errs, field.Invalid(newPath.Child("PlacementControllerWorkQueueRateLimiterOpts").Child("RateLimiterQPS"), o.PlacementMgmtOpts.PlacementControllerWorkQueueRateLimiterOpts.RateLimiterQPS, "the QPS for the placement controller set rate limiter must be less than its bucket size"))
 	}
 
 	return errs

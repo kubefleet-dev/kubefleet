@@ -20,8 +20,8 @@ import (
 	"flag"
 	"fmt"
 	"math"
+	"net/http"
 	"os"
-	"strings"
 	"sync"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -66,8 +66,7 @@ var (
 )
 
 const (
-	FleetWebhookCertDir = "/tmp/k8s-webhook-server/serving-certs"
-	FleetWebhookPort    = 9443
+	FleetWebhookPort = 9443
 )
 
 func init() {
@@ -113,45 +112,47 @@ func main() {
 	defaultCfg := ctrl.GetConfigOrDie()
 	leaderElectionCfg := rest.CopyConfig(defaultCfg)
 
-	defaultCfg.QPS, defaultCfg.Burst = float32(opts.HubQPS), opts.HubBurst
-	leaderElectionCfg.QPS, leaderElectionCfg.Burst = float32(opts.LeaderElectionQPS), opts.LeaderElectionBurst
+	defaultCfg.QPS, defaultCfg.Burst = float32(opts.CtrlMgrOpts.HubQPS), opts.CtrlMgrOpts.HubBurst
+	leaderElectionCfg.QPS, leaderElectionCfg.Burst = float32(opts.LeaderElectionOpts.LeaderElectionQPS), opts.LeaderElectionOpts.LeaderElectionBurst
 
 	mgrOpts := ctrl.Options{
 		Scheme: scheme,
 		Cache: cache.Options{
-			SyncPeriod:       &opts.ResyncPeriod.Duration,
+			SyncPeriod:       &opts.CtrlMgrOpts.ResyncPeriod.Duration,
 			DefaultTransform: cache.TransformStripManagedFields(),
 		},
-		LeaderElection:       opts.LeaderElection.LeaderElect,
+		LeaderElection:       opts.LeaderElectionOpts.LeaderElect,
 		LeaderElectionConfig: leaderElectionCfg,
 		// If leader election is enabled, the hub agent by default uses a setup
-		// with a lease duration of 180 secs, a renew deadline of 120 secs, and a retry period of 5 secs.
+		// with a lease duration of 90 secs, a renew deadline of 75 secs, and a retry period of 5 secs.
+		// This setup gives the hub agent up to 15 attempts/75 seconds to renew its leadership lease
+		// before it loses the leadership and restarts.
+		//
 		// These values are set significantly higher than the controller-runtime defaults
 		// (15 seconds, 10 seconds, and 2 seconds respectively), as under heavy loads the hub agent
 		// might have difficulty renewing its lease in time due to API server side latencies, which
-		// might further lead to the agent losing the leadership (even when it is the only candidate
-		// running) and restarting unexpectedly.
+		// might further lead to unexpected leadership losses (even when it is the only candidate
+		// running) and restarts.
 		//
 		// Note (chenyu1): a minor side effect with the higher values is that when the agent does restart,
 		// (or in the future when we do run multiple hub agent replicas), the new leader might have to wait a bit
-		// longer (up to 180 seconds) to acquire the leadership, which should still be acceptable in most scenarios.
-		LeaseDuration:              &opts.LeaderElection.LeaseDuration.Duration,
-		RenewDeadline:              &opts.LeaderElection.RenewDeadline.Duration,
-		RetryPeriod:                &opts.LeaderElection.RetryPeriod.Duration,
-		LeaderElectionID:           opts.LeaderElection.ResourceName,
-		LeaderElectionNamespace:    opts.LeaderElection.ResourceNamespace,
-		LeaderElectionResourceLock: opts.LeaderElection.ResourceLock,
-		HealthProbeBindAddress:     opts.HealthProbeAddress,
+		// longer (up to 90 seconds) to acquire the leadership, which should still be acceptable in most scenarios.
+		LeaseDuration:           &opts.LeaderElectionOpts.LeaseDuration.Duration,
+		RenewDeadline:           &opts.LeaderElectionOpts.RenewDeadline.Duration,
+		RetryPeriod:             &opts.LeaderElectionOpts.RetryPeriod.Duration,
+		LeaderElectionID:        "136224848560.hub.fleet.azure.com",
+		LeaderElectionNamespace: opts.LeaderElectionOpts.ResourceNamespace,
+		HealthProbeBindAddress:  opts.CtrlMgrOpts.HealthProbeBindAddress,
 		Metrics: metricsserver.Options{
-			BindAddress: opts.MetricsBindAddress,
+			BindAddress: opts.CtrlMgrOpts.MetricsBindAddress,
 		},
 		WebhookServer: ctrlwebhook.NewServer(ctrlwebhook.Options{
 			Port:    FleetWebhookPort,
-			CertDir: FleetWebhookCertDir,
+			CertDir: webhook.FleetWebhookCertDir,
 		}),
 	}
-	if opts.EnablePprof {
-		mgrOpts.PprofBindAddress = fmt.Sprintf(":%d", opts.PprofPort)
+	if opts.CtrlMgrOpts.EnablePprof {
+		mgrOpts.PprofBindAddress = fmt.Sprintf(":%d", opts.CtrlMgrOpts.PprofPort)
 	}
 	mgr, err := ctrl.NewManager(defaultCfg, mgrOpts)
 	if err != nil {
@@ -160,13 +161,13 @@ func main() {
 	}
 
 	klog.V(2).InfoS("starting hubagent")
-	if opts.EnableV1Beta1APIs {
+	if opts.FeatureFlags.EnableV1Beta1APIs {
 		klog.Info("Setting up memberCluster v1beta1 controller")
 		if err = (&mcv1beta1.Reconciler{
 			Client:                  mgr.GetClient(),
-			NetworkingAgentsEnabled: opts.NetworkingAgentsEnabled,
-			MaxConcurrentReconciles: int(math.Ceil(float64(opts.MaxFleetSizeSupported) / 100)), //one member cluster reconciler routine per 100 member clusters
-			ForceDeleteWaitTime:     opts.ForceDeleteWaitTime.Duration,
+			NetworkingAgentsEnabled: opts.ClusterMgmtOpts.NetworkingAgentsEnabled,
+			MaxConcurrentReconciles: int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxFleetSize) / 100)), //one member cluster reconciler routine per 100 member clusters
+			ForceDeleteWaitTime:     opts.ClusterMgmtOpts.ForceDeleteWaitTime.Duration,
 		}).SetupWithManager(mgr, "membercluster-controller"); err != nil {
 			klog.ErrorS(err, "unable to create v1beta1 controller", "controller", "MemberCluster")
 			exitWithErrorFunc()
@@ -182,12 +183,31 @@ func main() {
 		exitWithErrorFunc()
 	}
 
-	if opts.EnableWebhook {
-		whiteListedUsers := strings.Split(opts.WhiteListedUsers, ",")
-		if err := SetupWebhook(mgr, options.WebhookClientConnectionType(opts.WebhookClientConnectionType), opts.WebhookServiceName, whiteListedUsers,
-			opts.EnableGuardRail, opts.EnableV1Beta1APIs, opts.DenyModifyMemberClusterLabels, opts.EnableWorkload, opts.NetworkingAgentsEnabled); err != nil {
+	if opts.WebhookOpts.EnableWebhooks {
+		// Generate webhook configuration with certificates
+		webhookConfig, err := webhook.NewWebhookConfigFromOptions(mgr, opts, FleetWebhookPort)
+		if err != nil {
+			klog.ErrorS(err, "unable to create webhook config")
+			exitWithErrorFunc()
+		}
+
+		// Setup webhooks with the manager
+		if err := SetupWebhook(mgr, webhookConfig); err != nil {
 			klog.ErrorS(err, "unable to set up webhook")
 			exitWithErrorFunc()
+		}
+
+		// When using cert-manager, add a readiness check to ensure CA bundles are injected before marking ready.
+		// This prevents the pod from accepting traffic before cert-manager has populated the webhook CA bundles,
+		// which would cause webhook calls to fail.
+		if opts.WebhookOpts.UseCertManager {
+			if err := mgr.AddReadyzCheck("cert-manager-ca-injection", func(req *http.Request) error {
+				return webhookConfig.CheckCAInjection(req.Context())
+			}); err != nil {
+				klog.ErrorS(err, "unable to set up cert-manager CA injection readiness check")
+				exitWithErrorFunc()
+			}
+			klog.V(2).InfoS("Added cert-manager CA injection readiness check")
 		}
 	}
 
@@ -226,20 +246,13 @@ func main() {
 	wg.Wait()
 }
 
-// SetupWebhook generates the webhook cert and then set up the webhook configurator.
-func SetupWebhook(mgr manager.Manager, webhookClientConnectionType options.WebhookClientConnectionType, webhookServiceName string,
-	whiteListedUsers []string, enableGuardRail, isFleetV1Beta1API bool, denyModifyMemberClusterLabels bool, enableWorkload bool, networkingAgentsEnabled bool) error {
-	// Generate self-signed key and crt files in FleetWebhookCertDir for the webhook server to start.
-	w, err := webhook.NewWebhookConfig(mgr, webhookServiceName, FleetWebhookPort, &webhookClientConnectionType, FleetWebhookCertDir, enableGuardRail, denyModifyMemberClusterLabels, enableWorkload)
-	if err != nil {
-		klog.ErrorS(err, "fail to generate WebhookConfig")
-		return err
-	}
-	if err = mgr.Add(w); err != nil {
+// SetupWebhook registers the webhook config and webhook handlers with the manager.
+func SetupWebhook(mgr manager.Manager, webhookConfig *webhook.Config) error {
+	if err := mgr.Add(webhookConfig); err != nil {
 		klog.ErrorS(err, "unable to add WebhookConfig")
 		return err
 	}
-	if err = webhook.AddToManager(mgr, whiteListedUsers, denyModifyMemberClusterLabels, networkingAgentsEnabled); err != nil {
+	if err := webhook.AddToManager(mgr, webhookConfig); err != nil {
 		klog.ErrorS(err, "unable to register webhooks to the manager")
 		return err
 	}

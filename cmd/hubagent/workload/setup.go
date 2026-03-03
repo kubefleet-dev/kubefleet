@@ -130,12 +130,12 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	discoverClient := discovery.NewDiscoveryClientForConfigOrDie(config)
 	// AllowedPropagatingAPIs and SkippedPropagatingAPIs are mutually exclusive.
 	// If none of them are set, the resourceConfig by default stores a list of skipped propagation APIs.
-	resourceConfig := utils.NewResourceConfig(opts.AllowedPropagatingAPIs != "")
-	if err = resourceConfig.Parse(opts.AllowedPropagatingAPIs); err != nil {
+	resourceConfig := utils.NewResourceConfig(opts.PlacementMgmtOpts.AllowedPropagatingAPIs != "")
+	if err = resourceConfig.Parse(opts.PlacementMgmtOpts.AllowedPropagatingAPIs); err != nil {
 		// The program will never go here because the parameters have been checked.
 		return err
 	}
-	if err = resourceConfig.Parse(opts.SkippedPropagatingAPIs); err != nil {
+	if err = resourceConfig.Parse(opts.PlacementMgmtOpts.SkippedPropagatingAPIs); err != nil {
 		// The program will never go here because the parameters have been checked
 		return err
 	}
@@ -143,7 +143,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	// setup namespaces we skip propagation
 	skippedNamespaces := make(map[string]bool)
 	skippedNamespaces["default"] = true
-	optionalSkipNS := strings.Split(opts.SkippedPropagatingNamespaces, ";")
+	optionalSkipNS := strings.Split(opts.PlacementMgmtOpts.SkippedPropagatingNamespaces, ";")
 	for _, ns := range optionalSkipNS {
 		if len(ns) > 0 {
 			klog.InfoS("user specified a namespace to skip", "namespace", ns)
@@ -152,30 +152,34 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	}
 
 	// the manager for all the dynamically created informers
-	dynamicInformerManager := informer.NewInformerManager(dynamicClient, opts.ResyncPeriod.Duration, ctx.Done())
+	dynamicInformerManager := informer.NewInformerManager(dynamicClient, opts.CtrlMgrOpts.ResyncPeriod.Duration, ctx.Done())
 	validator.ResourceInformer = dynamicInformerManager // webhook needs this to check resource scope
 	validator.RestMapper = mgr.GetRESTMapper()          // webhook needs this to validate GVK of resource selector
 
 	// Set up  a custom controller to reconcile placement objects
+	resourceSelectorResolver := controller.ResourceSelectorResolver{
+		RestMapper:        mgr.GetRESTMapper(),
+		InformerManager:   dynamicInformerManager,
+		ResourceConfig:    resourceConfig,
+		SkippedNamespaces: skippedNamespaces,
+		EnableWorkload:    opts.WebhookOpts.EnableWorkload,
+	}
+	resourceSnapshotResolver := controller.NewResourceSnapshotResolver(mgr.GetClient(), mgr.GetScheme())
+	resourceSnapshotResolver.Config = controller.NewResourceSnapshotConfig(opts.PlacementMgmtOpts.ResourceSnapshotCreationMinimumInterval, opts.PlacementMgmtOpts.ResourceChangesCollectionDuration)
 	pc := &placement.Reconciler{
-		Client:                                  mgr.GetClient(),
-		Recorder:                                mgr.GetEventRecorderFor(placementControllerName),
-		RestMapper:                              mgr.GetRESTMapper(),
-		InformerManager:                         dynamicInformerManager,
-		ResourceConfig:                          resourceConfig,
-		SkippedNamespaces:                       skippedNamespaces,
-		Scheme:                                  mgr.GetScheme(),
-		UncachedReader:                          mgr.GetAPIReader(),
-		ResourceSnapshotCreationMinimumInterval: opts.ResourceSnapshotCreationMinimumInterval,
-		ResourceChangesCollectionDuration:       opts.ResourceChangesCollectionDuration,
-		EnableWorkload:                          opts.EnableWorkload,
+		Client:                   mgr.GetClient(),
+		Recorder:                 mgr.GetEventRecorderFor(placementControllerName),
+		Scheme:                   mgr.GetScheme(),
+		UncachedReader:           mgr.GetAPIReader(),
+		ResourceSelectorResolver: resourceSelectorResolver,
+		ResourceSnapshotResolver: resourceSnapshotResolver,
 	}
 
-	rateLimiter := options.DefaultControllerRateLimiter(opts.RateLimiterOpts)
+	rateLimiter := options.DefaultControllerRateLimiter(opts.PlacementMgmtOpts.PlacementControllerWorkQueueRateLimiterOpts)
 	var clusterResourcePlacementControllerV1Beta1 controller.Controller
 	var resourcePlacementController controller.Controller
 
-	if opts.EnableV1Beta1APIs {
+	if opts.FeatureFlags.EnableV1Beta1APIs {
 		for _, gvk := range v1Beta1RequiredGVKs {
 			if err = utils.CheckCRDInstalled(discoverClient, gvk); err != nil {
 				klog.ErrorS(err, "unable to find the required CRD", "GVK", gvk)
@@ -219,7 +223,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			return err
 		}
 
-		if opts.EnableResourcePlacement {
+		if opts.FeatureFlags.EnableResourcePlacementAPIs {
 			for _, gvk := range rpRequiredGVKs {
 				if err = utils.CheckCRDInstalled(discoverClient, gvk); err != nil {
 					klog.ErrorS(err, "unable to find the required CRD", "GVK", gvk)
@@ -260,18 +264,18 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		if err := (&rollout.Reconciler{
 			Client:                  mgr.GetClient(),
 			UncachedReader:          mgr.GetAPIReader(),
-			MaxConcurrentReconciles: int(math.Ceil(float64(opts.MaxFleetSizeSupported)/30) * math.Ceil(float64(opts.MaxConcurrentClusterPlacement)/10)),
+			MaxConcurrentReconciles: int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxFleetSize)/30) * math.Ceil(float64(opts.PlacementMgmtOpts.MaxConcurrentClusterPlacement)/10)),
 			InformerManager:         dynamicInformerManager,
 		}).SetupWithManagerForClusterResourcePlacement(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up rollout controller for clusterResourcePlacement")
 			return err
 		}
 
-		if opts.EnableResourcePlacement {
+		if opts.FeatureFlags.EnableResourcePlacementAPIs {
 			if err := (&rollout.Reconciler{
 				Client:                  mgr.GetClient(),
 				UncachedReader:          mgr.GetAPIReader(),
-				MaxConcurrentReconciles: int(math.Ceil(float64(opts.MaxFleetSizeSupported)/30) * math.Ceil(float64(opts.MaxConcurrentClusterPlacement)/10)),
+				MaxConcurrentReconciles: int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxFleetSize)/30) * math.Ceil(float64(opts.PlacementMgmtOpts.MaxConcurrentClusterPlacement)/10)),
 				InformerManager:         dynamicInformerManager,
 			}).SetupWithManagerForResourcePlacement(mgr); err != nil {
 				klog.ErrorS(err, "Unable to set up rollout controller for resourcePlacement")
@@ -279,7 +283,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			}
 		}
 
-		if opts.EnableEvictionAPIs {
+		if opts.FeatureFlags.EnableEvictionAPIs {
 			for _, gvk := range evictionGVKs {
 				if err = utils.CheckCRDInstalled(discoverClient, gvk); err != nil {
 					klog.ErrorS(err, "Unable to find the required CRD", "GVK", gvk)
@@ -297,7 +301,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		}
 
 		// Set up a controller to do staged update run, rolling out resources to clusters in a stage by stage manner.
-		if opts.EnableStagedUpdateRunAPIs {
+		if opts.FeatureFlags.EnableStagedUpdateRunAPIs {
 			for _, gvk := range clusterStagedUpdateRunGVKs {
 				if err = utils.CheckCRDInstalled(discoverClient, gvk); err != nil {
 					klog.ErrorS(err, "Unable to find the required CRD", "GVK", gvk)
@@ -306,14 +310,16 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			}
 			klog.Info("Setting up clusterStagedUpdateRun controller")
 			if err = (&updaterun.Reconciler{
-				Client:          mgr.GetClient(),
-				InformerManager: dynamicInformerManager,
+				Client:                   mgr.GetClient(),
+				InformerManager:          dynamicInformerManager,
+				ResourceSelectorResolver: resourceSelectorResolver,
+				ResourceSnapshotResolver: resourceSnapshotResolver,
 			}).SetupWithManagerForClusterStagedUpdateRun(mgr); err != nil {
 				klog.ErrorS(err, "Unable to set up clusterStagedUpdateRun controller")
 				return err
 			}
 
-			if opts.EnableResourcePlacement {
+			if opts.FeatureFlags.EnableResourcePlacementAPIs {
 				for _, gvk := range stagedUpdateRunGVKs {
 					if err = utils.CheckCRDInstalled(discoverClient, gvk); err != nil {
 						klog.ErrorS(err, "Unable to find the required CRD", "GVK", gvk)
@@ -322,8 +328,10 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 				}
 				klog.Info("Setting up stagedUpdateRun controller")
 				if err = (&updaterun.Reconciler{
-					Client:          mgr.GetClient(),
-					InformerManager: dynamicInformerManager,
+					Client:                   mgr.GetClient(),
+					InformerManager:          dynamicInformerManager,
+					ResourceSelectorResolver: resourceSelectorResolver,
+					ResourceSnapshotResolver: resourceSnapshotResolver,
 				}).SetupWithManagerForStagedUpdateRun(mgr); err != nil {
 					klog.ErrorS(err, "Unable to set up stagedUpdateRun controller")
 					return err
@@ -335,17 +343,17 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		klog.Info("Setting up work generator")
 		if err := (&workgenerator.Reconciler{
 			Client:                  mgr.GetClient(),
-			MaxConcurrentReconciles: int(math.Ceil(float64(opts.MaxFleetSizeSupported)/10) * math.Ceil(float64(opts.MaxConcurrentClusterPlacement)/10)),
+			MaxConcurrentReconciles: int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxFleetSize)/10) * math.Ceil(float64(opts.PlacementMgmtOpts.MaxConcurrentClusterPlacement)/10)),
 			InformerManager:         dynamicInformerManager,
 		}).SetupWithManagerForClusterResourceBinding(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up work generator for clusterResourceBinding")
 			return err
 		}
 
-		if opts.EnableResourcePlacement {
+		if opts.FeatureFlags.EnableResourcePlacementAPIs {
 			if err := (&workgenerator.Reconciler{
 				Client:                  mgr.GetClient(),
-				MaxConcurrentReconciles: int(math.Ceil(float64(opts.MaxFleetSizeSupported)/10) * math.Ceil(float64(opts.MaxConcurrentClusterPlacement)/10)),
+				MaxConcurrentReconciles: int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxFleetSize)/10) * math.Ceil(float64(opts.PlacementMgmtOpts.MaxConcurrentClusterPlacement)/10)),
 				InformerManager:         dynamicInformerManager,
 			}).SetupWithManagerForResourceBinding(mgr); err != nil {
 				klog.ErrorS(err, "Unable to set up work generator for resourceBinding")
@@ -362,7 +370,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		)
 		// we use one scheduler for every 10 concurrent placement
 		defaultScheduler := scheduler.NewScheduler("DefaultScheduler", defaultFramework, defaultSchedulingQueue, mgr,
-			int(math.Ceil(float64(opts.MaxFleetSizeSupported)/50)*math.Ceil(float64(opts.MaxConcurrentClusterPlacement)/10)))
+			int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxFleetSize)/50)*math.Ceil(float64(opts.PlacementMgmtOpts.MaxConcurrentClusterPlacement)/10)))
 		klog.Info("Starting the scheduler")
 		// Scheduler must run in a separate goroutine as Run() is a blocking call.
 		wg.Add(1)
@@ -403,7 +411,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			return err
 		}
 
-		if opts.EnableResourcePlacement {
+		if opts.FeatureFlags.EnableResourcePlacementAPIs {
 			klog.Info("Setting up the resourcePlacement watcher for scheduler")
 			if err := (&schedulerplacementwatcher.Reconciler{
 				Client:             mgr.GetClient(),
@@ -437,7 +445,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			Client:                    mgr.GetClient(),
 			SchedulerWorkQueue:        defaultSchedulingQueue,
 			ClusterEligibilityChecker: clustereligibilitychecker.New(),
-			EnableResourcePlacement:   opts.EnableResourcePlacement,
+			EnableResourcePlacement:   opts.FeatureFlags.EnableResourcePlacementAPIs,
 		}).SetupWithManager(mgr); err != nil {
 			klog.ErrorS(err, "Unable to set up memberCluster watcher for scheduler")
 			return err
@@ -465,7 +473,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		}
 
 		// Verify cluster inventory CRD installation status.
-		if opts.EnableClusterInventoryAPIs {
+		if opts.FeatureFlags.EnableClusterInventoryAPIs {
 			for _, gvk := range clusterInventoryGVKs {
 				if err = utils.CheckCRDInstalled(discoverClient, gvk); err != nil {
 					klog.ErrorS(err, "unable to find the required CRD", "GVK", gvk)
@@ -476,7 +484,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			if err = (&clusterprofile.Reconciler{
 				Client:                    mgr.GetClient(),
 				ClusterProfileNamespace:   utils.FleetSystemNamespace,
-				ClusterUnhealthyThreshold: opts.ClusterUnhealthyThreshold.Duration,
+				ClusterUnhealthyThreshold: opts.ClusterMgmtOpts.UnhealthyThreshold.Duration,
 			}).SetupWithManager(mgr); err != nil {
 				klog.ErrorS(err, "unable to set up ClusterProfile controller")
 				return err
@@ -522,9 +530,9 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		InformerManager:                           dynamicInformerManager,
 		ResourceConfig:                            resourceConfig,
 		SkippedNamespaces:                         skippedNamespaces,
-		ConcurrentPlacementWorker:                 int(math.Ceil(float64(opts.MaxConcurrentClusterPlacement) / 10)),
-		ConcurrentResourceChangeWorker:            opts.ConcurrentResourceChangeSyncs,
-		EnableWorkload:                            opts.EnableWorkload,
+		ConcurrentPlacementWorker:                 int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxConcurrentClusterPlacement) / 10)),
+		ConcurrentResourceChangeWorker:            opts.PlacementMgmtOpts.ConcurrentResourceChangeSyncs,
+		EnableWorkload:                            opts.WebhookOpts.EnableWorkload,
 	}
 
 	if err := mgr.Add(resourceChangeDetector); err != nil {
