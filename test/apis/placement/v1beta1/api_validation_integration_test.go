@@ -61,8 +61,8 @@ func createValidClusterResourceOverride(name string, placement *placementv1beta1
 				{
 					Group:   "",
 					Version: "v1",
-					Kind:    "ConfigMap",
-					Name:    "test-cm",
+					Kind:    "Namespace",
+					Name:    "test-ns",
 				},
 			},
 			Policy: &placementv1beta1.OverridePolicy{

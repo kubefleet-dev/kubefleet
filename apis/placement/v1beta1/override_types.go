@@ -112,6 +112,8 @@ type OverridePolicy struct {
 }
 
 // OverrideRule defines how to override the selected resources on the target clusters.
+// +kubebuilder:validation:XValidation:rule="self.overrideType != 'Delete' || !has(self.jsonPatchOverrides) || size(self.jsonPatchOverrides) == 0",message="jsonPatchOverrides must be empty when overrideType is Delete"
+// +kubebuilder:validation:XValidation:rule="self.overrideType != 'JSONPatch' || (has(self.jsonPatchOverrides) && size(self.jsonPatchOverrides) > 0)",message="jsonPatchOverrides must not be empty when overrideType is JSONPatch"
 type OverrideRule struct {
 	// ClusterSelectors selects the target clusters.
 	// The resources will be overridden before applying to the matching clusters.
@@ -213,6 +215,13 @@ type ResourceSelector struct {
 }
 
 // JSONPatchOverride applies a JSON patch on the selected resources following [RFC 6902](https://datatracker.ietf.org/doc/html/rfc6902).
+// +kubebuilder:validation:XValidation:rule="!(self.path == '/kind' || self.path.startsWith('/kind/'))",message="cannot override typeMeta field kind"
+// +kubebuilder:validation:XValidation:rule="!(self.path == '/apiVersion' || self.path.startsWith('/apiVersion/'))",message="cannot override typeMeta field apiVersion"
+// +kubebuilder:validation:XValidation:rule="!(self.path == '/status' || self.path.startsWith('/status/'))",message="cannot override status fields"
+// +kubebuilder:validation:XValidation:rule="!(self.path == '/metadata' || (self.path.startsWith('/metadata/') && !(self.path == '/metadata/annotations' || self.path.startsWith('/metadata/annotations/')) && !(self.path == '/metadata/labels' || self.path.startsWith('/metadata/labels/'))))",message="cannot override metadata fields except annotations and labels"
+// +kubebuilder:validation:XValidation:rule="!self.path.contains('//')",message="path cannot contain empty segments"
+// +kubebuilder:validation:XValidation:rule="!self.path.matches('(^|/)\\\\s+(/|$)')",message="path segment cannot contain only whitespace"
+// +kubebuilder:validation:XValidation:rule="!self.path.endsWith('/')",message="path cannot have a trailing slash"
 type JSONPatchOverride struct {
 	// Operator defines the operation on the target field.
 	// +kubebuilder:validation:Enum=add;remove;replace
@@ -220,6 +229,8 @@ type JSONPatchOverride struct {
 	Operator JSONPatchOverrideOperator `json:"op"`
 	// Path defines the target location.
 	// Note: override will fail if the resource path does not exist.
+	// +kubebuilder:validation:Pattern="^/.*"
+	// +kubebuilder:validation:MaxLength=512
 	// +required
 	Path string `json:"path"`
 	// Value defines the content to be applied on the target location.

@@ -50,7 +50,7 @@ func getResourceOverrideSpec() placementv1beta1.ResourceOverrideSpec {
 					JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
 						{
 							Operator: placementv1beta1.JSONPatchOverrideOpReplace,
-							Path:     "spec.replica",
+							Path:     "/spec/replicas",
 							Value:    apiextensionsv1.JSON{Raw: []byte("3")},
 						},
 					},
@@ -175,7 +175,7 @@ var _ = Describe("Test ResourceOverride controller logic", func() {
 					JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
 						{
 							Operator: placementv1beta1.JSONPatchOverrideOpRemove,
-							Path:     "spec.replica",
+							Path:     "/spec/replicas",
 						},
 					},
 				},
@@ -228,7 +228,7 @@ var _ = Describe("Test ResourceOverride controller logic", func() {
 					JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
 						{
 							Operator: placementv1beta1.JSONPatchOverrideOpRemove,
-							Path:     "spec.replica",
+							Path:     "/spec/replicas",
 						},
 					},
 				},

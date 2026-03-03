@@ -325,6 +325,27 @@ func TestValidateClusterResourceOverride(t *testing.T) {
 			croList:    &placementv1beta1.ClusterResourceOverrideList{},
 			wantErrMsg: nil,
 		},
+		"invalid cluster resource override - namespaced placement scope": {
+			cro: placementv1beta1.ClusterResourceOverride{
+				Spec: placementv1beta1.ClusterResourceOverrideSpec{
+					Placement: &placementv1beta1.PlacementRef{
+						Name:  "placement-1",
+						Scope: placementv1beta1.NamespaceScoped,
+					},
+					ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:   "rbac.authorization.k8s.io",
+							Version: "v1",
+							Kind:    "ClusterRole",
+							Name:    "test-cluster-role",
+						},
+					},
+					Policy: validPolicy,
+				},
+			},
+			croList:    &placementv1beta1.ClusterResourceOverrideList{},
+			wantErrMsg: errors.New("clusterResourceOverride placement reference cannot be Namespaced scope"),
+		},
 		"invalid cluster resource override - fail validateResourceSelector": {
 			cro: placementv1beta1.ClusterResourceOverride{
 				Spec: placementv1beta1.ClusterResourceOverrideSpec{

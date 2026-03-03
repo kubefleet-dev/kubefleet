@@ -903,6 +903,10 @@ func TestValidateJSONPatchOverridePath(t *testing.T) {
 			path:       "/apiVersionabc",
 			wantErrMsg: nil,
 		},
+		"invalid json patch override path - exceeds max length": {
+			path:       "/" + strings.Repeat("a", 512),
+			wantErrMsg: errors.New("path exceeds maximum length of 512"),
+		},
 		"invalid json patch override path - empty path": {
 			path:       "",
 			wantErrMsg: errors.New("path cannot be empty"),
