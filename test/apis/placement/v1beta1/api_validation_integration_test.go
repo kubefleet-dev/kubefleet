@@ -985,6 +985,38 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 		})
 	})
 
+	Context("Test ResourcePlacement API validation - allow cases", func() {
+		It("should allow update of ResourcePlacement removing PickAll policy", func() {
+			rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+			rp := placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      rpName,
+					Namespace: testNamespace,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:   "",
+							Version: "v1",
+							Kind:    "ConfigMap",
+							Name:    "test-cm",
+						},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+				},
+			}
+
+			Expect(hubClient.Create(ctx, &rp)).Should(Succeed())
+
+			rp.Spec.Policy = nil
+			Expect(hubClient.Update(ctx, &rp)).Should(Succeed())
+
+			Expect(hubClient.Delete(ctx, &rp)).Should(Succeed())
+		})
+	})
+
 	Context("Test ResourcePlacement StatusReportingScope validation, allow cases", func() {
 		var rp placementv1beta1.ResourcePlacement
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())

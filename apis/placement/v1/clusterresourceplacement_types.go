@@ -51,12 +51,15 @@ import (
 //
 // `ClusterSchedulingPolicySnapshot` and `ClusterResourceSnapshot` objects are created when there are changes in the
 // system to keep the history of the changes affecting a `ClusterResourcePlacement`.
+// +kubebuilder:validation:XValidation:rule="size(self.metadata.name) <= 63",message="name must not exceed 63 characters"
 type ClusterResourcePlacement struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// The desired state of ClusterResourcePlacement.
 	// +required
+	// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.policy) && !has(self.policy) && oldSelf.policy.placementType != 'PickAll')",message="policy cannot be removed once set"
+	// +kubebuilder:validation:XValidation:rule="has(oldSelf.policy) || !has(self.policy) || self.policy.placementType == 'PickAll'",message="placement type is immutable"
 	Spec ClusterResourcePlacementSpec `json:"spec"`
 
 	// The observed status of ClusterResourcePlacement.
@@ -77,6 +80,7 @@ type ClusterResourcePlacementSpec struct {
 	// Policy defines how to select member clusters to place the selected resources.
 	// If unspecified, all the joined member clusters are selected.
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self.placementType == oldSelf.placementType",message="placement type is immutable"
 	Policy *PlacementPolicy `json:"policy,omitempty"`
 
 	// The rollout strategy to use to replace existing placement with new ones.
@@ -97,6 +101,7 @@ type ClusterResourcePlacementSpec struct {
 // ClusterResourceSelector is used to select cluster scoped resources as the target resources to be placed.
 // If a namespace is selected, ALL the resources under the namespace are selected automatically.
 // All the fields are `ANDed`. In other words, a resource must match all the fields to be selected.
+// +kubebuilder:validation:XValidation:rule="!has(self.labelSelector) || !has(self.name) || size(self.name) == 0",message="labelSelector and name are mutually exclusive"
 type ClusterResourceSelector struct {
 	// Group name of the cluster-scoped resource.
 	// Use an empty string to select resources under the core API group (e.g., namespaces).
@@ -130,6 +135,19 @@ type ClusterResourceSelector struct {
 //
 // You can only specify at most one of the two fields: ClusterNames and Affinity.
 // If none is specified, all the joined clusters are selected.
+//
+// +kubebuilder:validation:XValidation:rule="self.placementType != 'PickFixed' || (has(self.clusterNames) && size(self.clusterNames) > 0)",message="clusterNames cannot be empty for PickFixed placement type"
+// +kubebuilder:validation:XValidation:rule="self.placementType != 'PickFixed' || !has(self.numberOfClusters)",message="numberOfClusters must not be set for PickFixed placement type"
+// +kubebuilder:validation:XValidation:rule="self.placementType != 'PickFixed' || !has(self.affinity)",message="affinity must not be set for PickFixed placement type"
+// +kubebuilder:validation:XValidation:rule="self.placementType != 'PickFixed' || !has(self.topologySpreadConstraints) || size(self.topologySpreadConstraints) == 0",message="topologySpreadConstraints must be empty for PickFixed placement type"
+// +kubebuilder:validation:XValidation:rule="self.placementType != 'PickFixed' || !has(self.tolerations) || size(self.tolerations) == 0",message="tolerations must be empty for PickFixed placement type"
+// +kubebuilder:validation:XValidation:rule="self.placementType != 'PickAll' || !has(self.clusterNames) || size(self.clusterNames) == 0",message="clusterNames must be empty for PickAll placement type"
+// +kubebuilder:validation:XValidation:rule="self.placementType != 'PickAll' || !has(self.numberOfClusters)",message="numberOfClusters must not be set for PickAll placement type"
+// +kubebuilder:validation:XValidation:rule="self.placementType != 'PickAll' || !has(self.topologySpreadConstraints) || size(self.topologySpreadConstraints) == 0",message="topologySpreadConstraints must be empty for PickAll placement type"
+// +kubebuilder:validation:XValidation:rule="self.placementType != 'PickAll' || !has(self.affinity) || !has(self.affinity.clusterAffinity) || !has(self.affinity.clusterAffinity.preferredDuringSchedulingIgnoredDuringExecution) || size(self.affinity.clusterAffinity.preferredDuringSchedulingIgnoredDuringExecution) == 0",message="preferredDuringSchedulingIgnoredDuringExecution is not allowed for PickAll placement type"
+// +kubebuilder:validation:XValidation:rule="self.placementType != 'PickN' || !has(self.clusterNames) || size(self.clusterNames) == 0",message="clusterNames must be empty for PickN placement type"
+// +kubebuilder:validation:XValidation:rule="self.placementType != 'PickN' || has(self.numberOfClusters)",message="numberOfClusters must be set for PickN placement type"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.tolerations) || oldSelf.tolerations.all(t, has(self.tolerations) && self.tolerations.exists(nt, nt == t))",message="tolerations have been updated/deleted, only additions to tolerations are allowed"
 type PlacementPolicy struct {
 	// Type of placement. Can be "PickAll", "PickN" or "PickFixed". Default is PickAll.
 	// +kubebuilder:validation:Enum=PickAll;PickN;PickFixed
@@ -138,6 +156,7 @@ type PlacementPolicy struct {
 	PlacementType PlacementType `json:"placementType,omitempty"`
 
 	// +kubebuilder:validation:MaxItems=100
+	// +kubebuilder:validation:items:MaxLength=63
 	// ClusterNames contains a list of names of MemberCluster to place the selected resources.
 	// Only valid if the placement type is "PickFixed"
 	// +optional
@@ -200,6 +219,7 @@ type ClusterAffinity struct {
 	PreferredDuringSchedulingIgnoredDuringExecution []PreferredClusterSelector `json:"preferredDuringSchedulingIgnoredDuringExecution,omitempty"`
 }
 
+// +kubebuilder:validation:XValidation:rule="self.clusterSelectorTerms.all(t, !has(t.propertySorter))",message="propertySorter is not allowed in requiredDuringSchedulingIgnoredDuringExecution affinity terms"
 type ClusterSelector struct {
 	// +kubebuilder:validation:MaxItems=10
 	// ClusterSelectorTerms is a list of cluster selector terms. The terms are `ORed`.
@@ -207,6 +227,7 @@ type ClusterSelector struct {
 	ClusterSelectorTerms []ClusterSelectorTerm `json:"clusterSelectorTerms"`
 }
 
+// +kubebuilder:validation:XValidation:rule="!has(self.preference.propertySelector)",message="propertySelector is not allowed in preferredDuringSchedulingIgnoredDuringExecution affinity terms"
 type PreferredClusterSelector struct {
 	// Weight associated with matching the corresponding clusterSelectorTerm, in the range [-100, 100].
 	// +required
@@ -286,6 +307,7 @@ const (
 type PropertySelectorRequirement struct {
 	// Name is the name of the property; it should be a Kubernetes label name.
 	// +required
+	// +kubebuilder:validation:MaxLength=317
 	Name string `json:"name"`
 
 	// Operator specifies the relationship between a cluster's observed value of the specified
@@ -304,6 +326,7 @@ type PropertySelectorRequirement struct {
 	// or `Le` (less than or equal to), Eq (equal to), or Ne (ne), exactly one value must be
 	// specified in the list.
 	//
+	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=1
 	// +required
 	Values []string `json:"values"`
@@ -321,10 +344,12 @@ type PropertySelector struct {
 type PropertySorter struct {
 	// Name is the name of the property which Fleet sorts clusters by.
 	// +required
+	// +kubebuilder:validation:MaxLength=317
 	Name string `json:"name"`
 
 	// SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
 	// sort in ascending or descending order.
+	// +kubebuilder:validation:Enum=Descending;Ascending
 	// +required
 	SortOrder PropertySortOrder `json:"sortOrder"`
 }
@@ -391,6 +416,7 @@ type TopologySpreadConstraint struct {
 	//   but giving higher precedence to topologies that would help reduce the skew.
 	// It's an optional field.
 	// +optional
+	// +kubebuilder:validation:Enum=DoNotSchedule;ScheduleAnyway
 	WhenUnsatisfiable UnsatisfiableConstraintAction `json:"whenUnsatisfiable,omitempty"`
 }
 
@@ -431,6 +457,7 @@ type RolloutStrategy struct {
 // and whether it's allowed to be co-owned by other non-fleet appliers.
 // Note: If multiple CRPs try to place the same resource with different apply strategy, the later ones will fail with the
 // reason ApplyConflictBetweenPlacements.
+// +kubebuilder:validation:XValidation:rule="self.type == 'ServerSideApply' || !has(self.serverSideApplyConfig)",message="serverSideApplyConfig is only valid for ServerSideApply strategy type"
 type ApplyStrategy struct {
 	// ComparisonOption controls how Fleet compares the desired state of a resource, as kept in
 	// a hub cluster manifest, with the current state of the resource (if applicable) in the
@@ -793,6 +820,7 @@ type RollingUpdateConfig struct {
 	// have passed since they were successfully applied to the target cluster.
 	// Default is 60.
 	// +kubebuilder:default=60
+	// +kubebuilder:validation:Minimum=0
 	// +optional
 	UnavailablePeriodSeconds *int `json:"unavailablePeriodSeconds,omitempty"`
 }
@@ -1052,9 +1080,15 @@ type DiffedResourcePlacement struct {
 
 // Toleration allows ClusterResourcePlacement to tolerate any taint that matches
 // the triple <key,value,effect> using the matching operator <operator>.
+// +kubebuilder:validation:XValidation:rule="self.operator != 'Exists' || !has(self.value) || size(self.value) == 0",message="value must be empty when operator is Exists"
+// +kubebuilder:validation:XValidation:rule="self.operator != 'Equal' || (has(self.key) && size(self.key) > 0)",message="key must not be empty when operator is Equal"
+// +kubebuilder:validation:XValidation:rule="!has(self.key) || size(self.key) == 0 || self.key.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*[/])?[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$')",message="toleration key must be a valid qualified name"
+// +kubebuilder:validation:XValidation:rule="!has(self.key) || size(self.key) == 0 || self.key.matches('^([^/]+/)?[a-zA-Z0-9]([a-zA-Z0-9._-]{0,61}[a-zA-Z0-9])?$')",message="toleration key name segment must not exceed 63 characters"
+// +kubebuilder:validation:XValidation:rule="!has(self.value) || size(self.value) == 0 || self.value.matches('^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$')",message="toleration value must be a valid label value"
 type Toleration struct {
 	// Key is the taint key that the toleration applies to. Empty means match all taint keys.
 	// If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+	// +kubebuilder:validation:MaxLength=317
 	// +optional
 	Key string `json:"key,omitempty"`
 
@@ -1069,6 +1103,7 @@ type Toleration struct {
 
 	// Value is the taint value the toleration matches to.
 	// If the operator is Exists, the value should be empty, otherwise just a regular string.
+	// +kubebuilder:validation:MaxLength=63
 	// +optional
 	Value string `json:"value,omitempty"`
 
