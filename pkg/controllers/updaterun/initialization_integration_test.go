@@ -27,8 +27,11 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -36,6 +39,7 @@ import (
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/resource"
 )
 
 var (
@@ -1002,6 +1006,108 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 			By("Cleaning up auto-created resource snapshots")
 			cleanupAutoCreatedResourceSnapshots(ctx)
+
+			By("Checking update run status metrics are emitted")
+			validateUpdateRunMetricsEmitted(generateInitializationSucceededMetric(placementv1beta1.StateInitialize, updateRun))
+		})
+
+		It("Should not create a new resource snapshot when latest snapshot hash matches and no index specified", func() {
+			By("Computing the resource hash for the current namespace")
+			// Get the namespace that the CRP selects and convert to unstructured,
+			// the same way the controller does via the dynamic informer.
+			var ns corev1.Namespace
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testNamespaceName}, &ns)).To(Succeed())
+			unstructuredMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&ns)
+			Expect(err).NotTo(HaveOccurred())
+			u := &unstructured.Unstructured{Object: unstructuredMap}
+
+			// Strip the same fields that generateRawContent strips.
+			u.SetResourceVersion("")
+			u.SetGeneration(0)
+			u.SetUID("")
+			u.SetSelfLink("")
+			u.SetDeletionTimestamp(nil)
+			u.SetManagedFields(nil)
+			u.SetOwnerReferences(nil)
+			annots := u.GetAnnotations()
+			if annots != nil {
+				delete(annots, corev1.LastAppliedConfigAnnotation)
+				if len(annots) == 0 {
+					u.SetAnnotations(nil)
+				} else {
+					u.SetAnnotations(annots)
+				}
+			}
+			unstructured.RemoveNestedField(u.Object, "metadata", "creationTimestamp")
+			unstructured.RemoveNestedField(u.Object, "status")
+
+			rawContent, err := u.MarshalJSON()
+			Expect(err).NotTo(HaveOccurred())
+
+			snapshotSpec := &placementv1beta1.ResourceSnapshotSpec{
+				SelectedResources: []placementv1beta1.ResourceContent{
+					{RawExtension: runtime.RawExtension{Raw: rawContent}},
+				},
+			}
+			resourceHash, err := resource.HashOf(snapshotSpec)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Creating a pre-existing resource snapshot at index 0")
+			resourceSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] = "false"
+			Expect(k8sClient.Create(ctx, resourceSnapshot)).To(Succeed())
+
+			By("Creating another pre-existing resource snapshot at index 1")
+			resourceSnapshot2.Name = testCRPName + "-1-snapshot"
+			resourceSnapshot2.Labels[placementv1beta1.IsLatestSnapshotLabel] = "false"
+			resourceSnapshot2.Labels[placementv1beta1.ResourceIndexLabel] = "1"
+			Expect(k8sClient.Create(ctx, resourceSnapshot2)).To(Succeed())
+
+			By("Creating a latest pre-existing resource snapshot at index 2 with matching hash")
+			resourceSnapshot3.Name = testCRPName + "-2-snapshot"
+			resourceSnapshot3.Labels[placementv1beta1.ResourceIndexLabel] = "2"
+			resourceSnapshot3.Annotations[placementv1beta1.ResourceGroupHashAnnotation] = resourceHash
+			resourceSnapshot3.Spec.SelectedResources = snapshotSpec.SelectedResources
+			Expect(k8sClient.Create(ctx, resourceSnapshot3)).To(Succeed())
+
+			By("Creating a new cluster resource override")
+			Expect(k8sClient.Create(ctx, clusterResourceOverride)).To(Succeed())
+
+			By("Creating a new clusterStagedUpdateRun without specifying resourceSnapshotIndex")
+			updateRun.Spec.ResourceSnapshotIndex = ""
+			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
+
+			By("Validating the initialization succeeded and reused the existing resource snapshot at index 2")
+			Eventually(func() error {
+				if err := k8sClient.Get(ctx, updateRunNamespacedName, updateRun); err != nil {
+					return err
+				}
+				initCond := meta.FindStatusCondition(updateRun.Status.Conditions, string(placementv1beta1.StagedUpdateRunConditionInitialized))
+				if initCond == nil {
+					return fmt.Errorf("initialization condition not found yet")
+				}
+				if !condition.IsConditionStatusTrue(initCond, updateRun.GetGeneration()) {
+					return fmt.Errorf("initialization condition status = %v, want True, message = %s", initCond.Status, initCond.Message)
+				}
+				if updateRun.Status.ResourceSnapshotIndexUsed != "2" {
+					return fmt.Errorf("resourceSnapshotIndexUsed = %s, want `2`", updateRun.Status.ResourceSnapshotIndexUsed)
+				}
+				return nil
+			}, timeout, interval).Should(Succeed(), "failed to validate initialization succeeded with existing snapshot")
+
+			By("Validating the clusterStagedUpdateRun initialized consistently")
+			Consistently(func() error {
+				if err := k8sClient.Get(ctx, updateRunNamespacedName, updateRun); err != nil {
+					return err
+				}
+				initCond := meta.FindStatusCondition(updateRun.Status.Conditions, string(placementv1beta1.StagedUpdateRunConditionInitialized))
+				if !condition.IsConditionStatusTrue(initCond, updateRun.GetGeneration()) {
+					return fmt.Errorf("initialization condition changed unexpectedly")
+				}
+				if updateRun.Status.ResourceSnapshotIndexUsed != "2" {
+					return fmt.Errorf("resourceSnapshotIndexUsed = %s, want `2`", updateRun.Status.ResourceSnapshotIndexUsed)
+				}
+				return nil
+			}, duration, interval).Should(Succeed(), "initialization should remain successful")
 
 			By("Checking update run status metrics are emitted")
 			validateUpdateRunMetricsEmitted(generateInitializationSucceededMetric(placementv1beta1.StateInitialize, updateRun))
