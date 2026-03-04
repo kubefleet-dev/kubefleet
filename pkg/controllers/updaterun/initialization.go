@@ -624,8 +624,7 @@ func (r *Reconciler) getResourceSnapshotObjs(ctx context.Context, placement plac
 
 	if latestResourceSnapshot == nil {
 		err := fmt.Errorf("no resource snapshot created for placement `%s` but there is no error returned by getOrCreate", placementKey)
-		controller.NewUnexpectedBehaviorError(err)
-		return nil, err
+		return nil, controller.NewUnexpectedBehaviorError(err)
 	}
 
 	// Return the master snapshot directly rather than listing from the cache, because

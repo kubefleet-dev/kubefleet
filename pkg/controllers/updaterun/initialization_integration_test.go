@@ -27,11 +27,8 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -53,6 +50,7 @@ var (
 const (
 	regionEastus = "eastus"
 	regionWestus = "westus"
+	falseString  = "false"
 )
 
 var _ = Describe("Updaterun initialization tests", func() {
@@ -950,12 +948,12 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 		It("Should create a new resource snapshot at next index even when multiple pre-existing snapshots exist and no index specified", func() {
 			By("Creating a pre-existing resource snapshot at index 0")
-			resourceSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] = "false"
+			resourceSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] = falseString
 			Expect(k8sClient.Create(ctx, resourceSnapshot)).To(Succeed())
 
 			By("Creating a another pre-existing resource snapshot at index 1")
 			resourceSnapshot2.Name = testCRPName + "-1-snapshot"
-			resourceSnapshot2.Labels[placementv1beta1.IsLatestSnapshotLabel] = "false"
+			resourceSnapshot2.Labels[placementv1beta1.IsLatestSnapshotLabel] = falseString
 			resourceSnapshot2.Labels[placementv1beta1.ResourceIndexLabel] = "1"
 			Expect(k8sClient.Create(ctx, resourceSnapshot2)).To(Succeed())
 
@@ -1012,53 +1010,20 @@ var _ = Describe("Updaterun initialization tests", func() {
 		})
 
 		It("Should not create a new resource snapshot when latest snapshot hash matches and no index specified", func() {
-			By("Computing the resource hash for the current namespace")
-			// Get the namespace that the CRP selects and convert to unstructured,
-			// the same way the controller does via the dynamic informer.
-			var ns corev1.Namespace
-			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: testNamespaceName}, &ns)).To(Succeed())
-			unstructuredMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&ns)
+			By("Computing the resource hash using the resource selector resolver")
+			_, selectedResources, _, err := resourceSelectorResolver.SelectResourcesForPlacement(crp)
 			Expect(err).NotTo(HaveOccurred())
-			u := &unstructured.Unstructured{Object: unstructuredMap}
-
-			// Strip the same fields that generateRawContent strips.
-			u.SetResourceVersion("")
-			u.SetGeneration(0)
-			u.SetUID("")
-			u.SetSelfLink("")
-			u.SetDeletionTimestamp(nil)
-			u.SetManagedFields(nil)
-			u.SetOwnerReferences(nil)
-			annots := u.GetAnnotations()
-			if annots != nil {
-				delete(annots, corev1.LastAppliedConfigAnnotation)
-				if len(annots) == 0 {
-					u.SetAnnotations(nil)
-				} else {
-					u.SetAnnotations(annots)
-				}
-			}
-			unstructured.RemoveNestedField(u.Object, "metadata", "creationTimestamp")
-			unstructured.RemoveNestedField(u.Object, "status")
-
-			rawContent, err := u.MarshalJSON()
-			Expect(err).NotTo(HaveOccurred())
-
-			snapshotSpec := &placementv1beta1.ResourceSnapshotSpec{
-				SelectedResources: []placementv1beta1.ResourceContent{
-					{RawExtension: runtime.RawExtension{Raw: rawContent}},
-				},
-			}
+			snapshotSpec := &placementv1beta1.ResourceSnapshotSpec{SelectedResources: selectedResources}
 			resourceHash, err := resource.HashOf(snapshotSpec)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Creating a pre-existing resource snapshot at index 0")
-			resourceSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] = "false"
+			resourceSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] = falseString
 			Expect(k8sClient.Create(ctx, resourceSnapshot)).To(Succeed())
 
 			By("Creating another pre-existing resource snapshot at index 1")
 			resourceSnapshot2.Name = testCRPName + "-1-snapshot"
-			resourceSnapshot2.Labels[placementv1beta1.IsLatestSnapshotLabel] = "false"
+			resourceSnapshot2.Labels[placementv1beta1.IsLatestSnapshotLabel] = falseString
 			resourceSnapshot2.Labels[placementv1beta1.ResourceIndexLabel] = "1"
 			Expect(k8sClient.Create(ctx, resourceSnapshot2)).To(Succeed())
 
