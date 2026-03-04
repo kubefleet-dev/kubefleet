@@ -82,7 +82,7 @@ func (o *LeaderElectionOptions) AddFlags(flags *flag.FlagSet) {
 	flags.DurationVar(
 		&o.LeaseDuration.Duration,
 		"leader-lease-duration",
-		90*time.Second,
+		60*time.Second,
 		"The duration of a leader election lease. This is the period where a non-leader candidate will wait after observing a leadership renewal before attempting to acquire leadership of the current leader. And it is also effectively the maximum duration that a leader can be stopped before it is replaced by another candidate. The option only applies if leader election is enabled.",
 	)
 
@@ -90,7 +90,7 @@ func (o *LeaderElectionOptions) AddFlags(flags *flag.FlagSet) {
 	flags.DurationVar(
 		&o.RenewDeadline.Duration,
 		"leader-renew-deadline",
-		75*time.Second,
+		45*time.Second,
 		"The interval between attempts by the acting master to renew a leadership slot before it stops leading. This must be less than or equal to the lease duration. The option only applies if leader election is enabled",
 	)
 

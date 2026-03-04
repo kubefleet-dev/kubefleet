@@ -43,8 +43,8 @@ func TestLeaderElectionOpts(t *testing.T) {
 			args:        []string{},
 			wantLeaderElectionOpts: LeaderElectionOptions{
 				LeaderElect:         false,
-				LeaseDuration:       metav1.Duration{Duration: 90 * time.Second},
-				RenewDeadline:       metav1.Duration{Duration: 75 * time.Second},
+				LeaseDuration:       metav1.Duration{Duration: 60 * time.Second},
+				RenewDeadline:       metav1.Duration{Duration: 45 * time.Second},
 				RetryPeriod:         metav1.Duration{Duration: 5 * time.Second},
 				ResourceNamespace:   utils.FleetSystemNamespace,
 				LeaderElectionQPS:   250.0,
@@ -79,8 +79,8 @@ func TestLeaderElectionOpts(t *testing.T) {
 			args:        []string{"--leader-election-qps=-5"},
 			wantLeaderElectionOpts: LeaderElectionOptions{
 				LeaderElect:         false,
-				LeaseDuration:       metav1.Duration{Duration: 90 * time.Second},
-				RenewDeadline:       metav1.Duration{Duration: 75 * time.Second},
+				LeaseDuration:       metav1.Duration{Duration: 60 * time.Second},
+				RenewDeadline:       metav1.Duration{Duration: 45 * time.Second},
 				RetryPeriod:         metav1.Duration{Duration: 5 * time.Second},
 				ResourceNamespace:   utils.FleetSystemNamespace,
 				LeaderElectionQPS:   -1,

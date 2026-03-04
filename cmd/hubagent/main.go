@@ -124,8 +124,8 @@ func main() {
 		LeaderElection:       opts.LeaderElectionOpts.LeaderElect,
 		LeaderElectionConfig: leaderElectionCfg,
 		// If leader election is enabled, the hub agent by default uses a setup
-		// with a lease duration of 90 secs, a renew deadline of 75 secs, and a retry period of 5 secs.
-		// This setup gives the hub agent up to 15 attempts/75 seconds to renew its leadership lease
+		// with a lease duration of 60 secs, a renew deadline of 45 secs, and a retry period of 5 secs.
+		// This setup gives the hub agent up to 9 attempts/45 seconds to renew its leadership lease
 		// before it loses the leadership and restarts.
 		//
 		// These values are set significantly higher than the controller-runtime defaults
@@ -136,7 +136,7 @@ func main() {
 		//
 		// Note (chenyu1): a minor side effect with the higher values is that when the agent does restart,
 		// (or in the future when we do run multiple hub agent replicas), the new leader might have to wait a bit
-		// longer (up to 90 seconds) to acquire the leadership, which should still be acceptable in most scenarios.
+		// longer (up to 60 seconds) to acquire the leadership, which should still be acceptable in most scenarios.
 		LeaseDuration:           &opts.LeaderElectionOpts.LeaseDuration.Duration,
 		RenewDeadline:           &opts.LeaderElectionOpts.RenewDeadline.Duration,
 		RetryPeriod:             &opts.LeaderElectionOpts.RetryPeriod.Duration,
