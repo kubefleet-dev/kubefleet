@@ -54,8 +54,9 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		By("should update CRP status as expected")
 		crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "0")
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+	})
 
-		By("waiting for namespace to be collected on all member clusters")
+	It("should wait for namespace collection to sync on all member clusters", func() {
 		waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
 	})
 

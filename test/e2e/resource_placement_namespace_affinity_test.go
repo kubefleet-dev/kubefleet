@@ -203,3 +203,88 @@ var _ = Describe("placing namespaced scoped resources using an RP with PickN pol
 		})
 	})
 })
+
+// Test scenario (PickN edge case):
+//   - A CRP with PickFixed policy places the namespace onto only 1 out of 3 member clusters.
+//   - An RP with PickN=2 policy selects a ConfigMap in that namespace.
+//   - The namespace affinity plugin restricts eligible clusters to only the 1 that has the namespace,
+//     but PickN=2 cannot be fulfilled — the RP should show Scheduled=False with insufficient clusters.
+var _ = Describe("placing namespaced scoped resources using an RP with PickN=2 but namespace only on 1 cluster", Label("resourceplacement", "namespaceaffinity"), func() {
+	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+	rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+	rpKey := types.NamespacedName{Name: rpName, Namespace: appNamespace().Name}
+
+	BeforeEach(OncePerOrdered, func() {
+		// Create the work resources (namespace + configmap) on the hub cluster.
+		createWorkResources()
+
+		// Create a CRP with PickFixed policy that places the namespace on only 1 of the 3
+		// member clusters. This creates a scenario where PickN=2 cannot be satisfied.
+		createNamespaceOnlyCRPForOneCluster(crpName)
+
+		// Wait until the CRP has placed the namespace on exactly the 1 fixed cluster.
+		crpStatusUpdatedActual := crpStatusUpdatedActual(
+			workNamespaceIdentifiers(),
+			[]string{memberCluster1EastProdName},
+			nil,
+			"0",
+		)
+		Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+	})
+
+	AfterEach(OncePerOrdered, func() {
+		ensureRPAndRelatedResourcesDeleted(rpKey, allMemberClusters)
+		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+	})
+
+	Context("PickN=2 cannot be fulfilled by only 1 eligible cluster", Ordered, func() {
+		It("should create RP with PickN=2 policy successfully", func() {
+			rp := &placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       rpName,
+					Namespace:  appNamespace().Name,
+					Finalizers: []string{customDeletionBlockerFinalizer},
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: configMapSelector(),
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType:    placementv1beta1.PickNPlacementType,
+						NumberOfClusters: ptr.To(int32(2)),
+					},
+					Strategy: placementv1beta1.RolloutStrategy{
+						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+							UnavailablePeriodSeconds: ptr.To(2),
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create RP")
+		})
+
+		It("should update RP status showing Scheduled=False due to insufficient clusters", func() {
+			// Namespace affinity restricts eligible clusters to only cluster-1.
+			// PickN=2 cannot be fulfilled with only 1 eligible cluster — Scheduled=False.
+			// The scheduler will still place on the 1 eligible cluster but mark the placement as not fully scheduled.
+
+			rpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(
+				rpKey,
+				appConfigMapIdentifiers(),
+				[]string{memberCluster1EastProdName}, // Only 1 cluster is eligible
+				[]string{memberCluster2EastCanaryName, memberCluster3WestProdName}, // These are unselected due to namespace affinity
+				"0",
+				true,
+			)
+			Eventually(rpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
+		})
+
+		It("should place the ConfigMap on the only 1 cluster that has the namespace", func() {
+			resourcePlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(memberCluster1EastProd)
+			Eventually(resourcePlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place resources on cluster %s", memberCluster1EastProd.ClusterName)
+		})
+
+		It("should not place the ConfigMap on the clusters without the namespace", func() {
+			checkIfRemovedConfigMapFromMemberClusters([]*framework.Cluster{memberCluster2EastCanary, memberCluster3WestProd})
+		})
+	})
+})

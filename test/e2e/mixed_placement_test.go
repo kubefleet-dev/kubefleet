@@ -69,9 +69,6 @@ var _ = Describe("mixed ClusterResourcePlacement and ResourcePlacement negative 
 			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), []string{memberCluster2EastCanaryName, memberCluster3WestProdName}, nil, "0")
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 
-			By("waiting for namespace to be collected on clusters where CRP placed it")
-			waitForNamespaceCollectionOnClusters(workNamespaceName, []string{memberCluster2EastCanaryName, memberCluster3WestProdName})
-
 			By("creating an RP that tries to place resources in the same namespace")
 			createRP(workNamespaceName, rpName)
 		})
@@ -79,6 +76,10 @@ var _ = Describe("mixed ClusterResourcePlacement and ResourcePlacement negative 
 		AfterAll(func() {
 			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: workNamespaceName}, allMemberClusters)
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+		})
+
+		It("should wait for namespace collection to sync on clusters where CRP placed it", func() {
+			waitForNamespaceCollectionOnClusters(workNamespaceName, []string{memberCluster2EastCanaryName, memberCluster3WestProdName})
 		})
 
 		It("should update RP status as expected", func() {
@@ -102,8 +103,9 @@ var _ = Describe("mixed ClusterResourcePlacement and ResourcePlacement negative 
 				return hubClient.Update(ctx, crp)
 			}
 			Eventually(updateFunc, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update the crp %s", crpName)
+		})
 
-			By("waiting for namespace to be collected on the newly added member cluster")
+		It("should wait for namespace collection to sync on the newly added member cluster", func() {
 			waitForNamespaceCollectionOnClusters(workNamespaceName, []string{memberCluster1EastProdName})
 		})
 
@@ -126,13 +128,14 @@ var _ = Describe("mixed ClusterResourcePlacement and ResourcePlacement negative 
 			By("should update CRP status as expected")
 			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0")
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-
-			By("waiting for namespace to be collected on all member clusters")
-			waitForNamespaceCollectionOnClusters(workNamespaceName, allMemberClusterNames)
 		})
 
 		AfterAll(func() {
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+		})
+
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(workNamespaceName, allMemberClusterNames)
 		})
 
 		It("creating an RP that uses PickAll strategy on the same namespace", func() {
@@ -231,9 +234,6 @@ var _ = Describe("mixed ClusterResourcePlacement and ResourcePlacement negative 
 				Expect(memberCluster.KubeClient.Create(ctx, &ns)).To(Succeed())
 			}
 
-			By("waiting for namespace to be collected on all member clusters")
-			waitForNamespaceCollectionOnClusters(workNamespaceName, allMemberClusterNames)
-
 			By("creating an RP")
 			createRP(workNamespaceName, rpName)
 
@@ -249,6 +249,10 @@ var _ = Describe("mixed ClusterResourcePlacement and ResourcePlacement negative 
 		AfterAll(func() {
 			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: workNamespaceName}, allMemberClusters)
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+		})
+
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(workNamespaceName, allMemberClusterNames)
 		})
 
 		It("should update CRP status as expected", func() {
@@ -403,8 +407,9 @@ var _ = Describe("mixed ClusterResourcePlacement and ResourcePlacement positive 
 		It("should update CRP status as expected", func() {
 			crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), wantSelectedClusters, nil, "0")
 			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
 
-			By("waiting for namespace to be collected on selected member clusters")
+		It("should wait for namespace collection to sync on selected member clusters", func() {
 			waitForNamespaceCollectionOnClusters(workNamespaceName, wantSelectedClusters)
 		})
 

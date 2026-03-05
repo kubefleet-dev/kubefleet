@@ -1126,17 +1126,11 @@ func checkIfRemovedConfigMapFromMemberClustersConsistently(clusters []*framework
 
 // createCRPWithSelectors creates a ClusterResourcePlacement with the given selectors.
 func createCRPWithSelectors(crpName string, selectors []placementv1beta1.ResourceSelectorTerm) {
-	crp := &placementv1beta1.ClusterResourcePlacement{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       crpName,
-			Finalizers: []string{customDeletionBlockerFinalizer},
-		},
-		Spec: placementv1beta1.PlacementSpec{
-			ResourceSelectors: selectors,
-		},
-	}
-	By(fmt.Sprintf("creating CRP %s", crpName))
-	Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP %s", crpName)
+	// Use default strategy (empty strategy will use API defaults)
+	defaultStrategy := placementv1beta1.RolloutStrategy{}
+
+	// Use the generic CRP creator with custom selectors, nil policy, and default strategy
+	createGenericCRP(crpName, selectors, nil, defaultStrategy)
 }
 
 // checkNamespacePlacedOnClusters verifies a namespace is placed on all member clusters.
@@ -1807,31 +1801,25 @@ func createRPWithApplyStrategy(rpNamespace, rpName string, applyStrategy *placem
 
 // createCRPWithApplyStrategy creates a ClusterResourcePlacement with the given name and apply strategy.
 func createCRPWithApplyStrategy(crpName string, applyStrategy *placementv1beta1.ApplyStrategy, resourceSelectors []placementv1beta1.ResourceSelectorTerm) {
-	crp := &placementv1beta1.ClusterResourcePlacement{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: crpName,
-			// Add a custom finalizer; this would allow us to better observe
-			// the behavior of the controllers.
-			Finalizers: []string{customDeletionBlockerFinalizer},
-		},
-		Spec: placementv1beta1.PlacementSpec{
-			ResourceSelectors: workResourceSelector(),
-			Strategy: placementv1beta1.RolloutStrategy{
-				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
-				RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-					UnavailablePeriodSeconds: ptr.To(2),
-				},
-			},
+	// Build the strategy with optional apply strategy
+	strategy := placementv1beta1.RolloutStrategy{
+		Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+		RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+			UnavailablePeriodSeconds: ptr.To(2),
 		},
 	}
 	if applyStrategy != nil {
-		crp.Spec.Strategy.ApplyStrategy = applyStrategy
+		strategy.ApplyStrategy = applyStrategy
 	}
+
+	// Use workResourceSelector as default if no selectors provided
+	selectors := workResourceSelector()
 	if resourceSelectors != nil {
-		crp.Spec.ResourceSelectors = resourceSelectors
+		selectors = resourceSelectors
 	}
-	By(fmt.Sprintf("creating placement %s", crpName))
-	Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP %s", crpName)
+
+	// Use the generic CRP creator with nil placement policy (defaults to PickAll)
+	createGenericCRP(crpName, selectors, nil, strategy)
 }
 
 // createRP creates a ResourcePlacement with the given name.
@@ -1849,33 +1837,54 @@ func createNamespaceOnlyCRP(crpName string) {
 	createCRPWithApplyStrategy(crpName, nil, namespaceOnlySelector())
 }
 
+// createGenericCRP creates a CRP with full customization as suggested by michaelawyu
+// This provides the most flexible CRP creation utility for E2E tests
+func createGenericCRP(name string, resourceSelectors []placementv1beta1.ResourceSelectorTerm, placementPolicy *placementv1beta1.PlacementPolicy, strategy placementv1beta1.RolloutStrategy) {
+	crp := &placementv1beta1.ClusterResourcePlacement{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       name,
+			Finalizers: []string{customDeletionBlockerFinalizer},
+		},
+		Spec: placementv1beta1.PlacementSpec{
+			ResourceSelectors: resourceSelectors,
+			Policy:            placementPolicy,
+			Strategy:          strategy,
+		},
+	}
+	By(fmt.Sprintf("creating placement %s", name))
+	Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP %s", name)
+}
+
+// createNamespaceOnlyCRPWithFixedClusters creates a CRP with PickFixed policy that places
+// the namespace on the specified clusters. Uses the new generic CRP creator.
+func createNamespaceOnlyCRPWithFixedClusters(crpName string, clusterNames []string) {
+	policy := &placementv1beta1.PlacementPolicy{
+		PlacementType: placementv1beta1.PickFixedPlacementType,
+		ClusterNames:  clusterNames,
+	}
+	strategy := placementv1beta1.RolloutStrategy{
+		Type: placementv1beta1.RollingUpdateRolloutStrategyType,
+		RollingUpdate: &placementv1beta1.RollingUpdateConfig{
+			UnavailablePeriodSeconds: ptr.To(2),
+		},
+	}
+	createGenericCRP(crpName, namespaceOnlySelector(), policy, strategy)
+}
+
 // createNamespaceOnlyCRPForTwoClusters creates a CRP with PickFixed policy that places the
 // namespace on cluster-1 and cluster-2 only. Used by namespace affinity e2e tests to set up
 // a state where only 2 out of 3 member clusters have the target namespace.
 func createNamespaceOnlyCRPForTwoClusters(crpName string) {
-	crp := &placementv1beta1.ClusterResourcePlacement{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:       crpName,
-			Finalizers: []string{customDeletionBlockerFinalizer},
-		},
-		Spec: placementv1beta1.PlacementSpec{
-			ResourceSelectors: namespaceOnlySelector(),
-			Policy: &placementv1beta1.PlacementPolicy{
-				PlacementType: placementv1beta1.PickFixedPlacementType,
-				ClusterNames: []string{
-					memberCluster1EastProdName,
-					memberCluster2EastCanaryName,
-				},
-			},
-			Strategy: placementv1beta1.RolloutStrategy{
-				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
-				RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-					UnavailablePeriodSeconds: ptr.To(2),
-				},
-			},
-		},
-	}
-	Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
+	createNamespaceOnlyCRPWithFixedClusters(crpName, []string{
+		memberCluster1EastProdName,
+		memberCluster2EastCanaryName,
+	})
+}
+
+func createNamespaceOnlyCRPForOneCluster(crpName string) {
+	createNamespaceOnlyCRPWithFixedClusters(crpName, []string{
+		memberCluster1EastProdName,
+	})
 }
 
 // ensureClusterStagedUpdateRunDeletion deletes the cluster staged update run with the given name and checks all related cluster approval requests are also deleted.

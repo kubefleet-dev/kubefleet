@@ -254,9 +254,6 @@ var _ = Describe("Test member cluster join and leave flow", Label("joinleave"), 
 			crpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(types.NamespacedName{Name: crpName}, wantCRPSelectedResources, allMemberClusterNames, nil, "0", true)
 			Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 
-			By("waiting for namespace to be collected on all member clusters")
-			waitForNamespaceCollectionOnClusters(workNamespaceName, allMemberClusterNames)
-
 			wantRPSelectedResources = []placementv1beta1.ResourceIdentifier{
 				{
 					Kind:      "ConfigMap",
@@ -275,6 +272,10 @@ var _ = Describe("Test member cluster join and leave flow", Label("joinleave"), 
 		})
 
 		Context("Test cluster join and leave flow with RP not deleted", Label("joinleave"), Ordered, Serial, func() {
+			It("should wait for namespace collection to sync on all member clusters", func() {
+				waitForNamespaceCollectionOnClusters(workNamespaceName, allMemberClusterNames)
+			})
+
 			It("Create the RP that select the config map and place it to all clusters", func() {
 				resourceSelectors := []placementv1beta1.ResourceSelectorTerm{
 					{

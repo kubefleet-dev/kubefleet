@@ -75,6 +75,10 @@ func TestNewDefaultProfile(t *testing.T) {
 }
 
 // TestNewProfileWithOptions tests the creation of a scheduling profile with custom options.
+// It verifies that:
+// 1. Profile is created successfully with both empty and custom options
+// 2. Profile name is set to the default value regardless of options
+// 3. Custom ClusterAffinityPlugin option is accepted
 func TestNewProfileWithOptions(t *testing.T) {
 	testCases := []struct {
 		name     string
