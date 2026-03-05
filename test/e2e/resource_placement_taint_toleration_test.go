@@ -43,6 +43,7 @@ var _ = Describe("validating RP for taint and toleration features", Label("resou
 		By("should update CRP status as expected")
 		crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "0")
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+
 	})
 
 	AfterEach(OncePerOrdered, func() {

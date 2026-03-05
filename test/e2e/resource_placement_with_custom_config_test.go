@@ -71,6 +71,9 @@ var _ = Describe("validating RP when using customized resourceSnapshotCreationMi
 		crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "0")
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 
+		By("waiting for namespace collection to sync on all member clusters")
+		waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+
 		By("creating RP")
 		rp := &placementv1beta1.ResourcePlacement{
 			ObjectMeta: metav1.ObjectMeta{
@@ -109,10 +112,6 @@ var _ = Describe("validating RP when using customized resourceSnapshotCreationMi
 	})
 
 	Context("validating RP status and should not update immediately", func() {
-		It("should wait for namespace collection to sync on all member clusters", func() {
-			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
-		})
-
 		It("should update RP status as expected", func() {
 			rpStatusUpdatedActual := rpStatusUpdatedActual([]placementv1beta1.ResourceIdentifier{}, allMemberClusterNames, nil, "0")
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP %s status as expected", rpName)
@@ -158,10 +157,6 @@ var _ = Describe("validating RP when using customized resourceSnapshotCreationMi
 	})
 
 	Context("validating that RP status can be updated after updating the resources", func() {
-		It("should wait for namespace collection to sync on all member clusters", func() {
-			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
-		})
-
 		It("validating the resourceSnapshots are created", func() {
 			Eventually(func() error {
 				var resourceSnapshotList placementv1beta1.ResourceSnapshotList
