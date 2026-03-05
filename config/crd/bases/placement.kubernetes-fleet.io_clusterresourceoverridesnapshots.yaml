@@ -67,7 +67,7 @@ spec:
                       We only support Name selector for now.
                     items:
                       description: |-
-                        ClusterResourceSelector is used to select cluster scoped resources as the target resources to be placed.
+                        ResourceSelectorTerm is used to select cluster scoped resources as the target resources to be placed.
                         If a namespace is selected, ALL the resources under the namespace are selected automatically.
                         All the fields are `ANDed`. In other words, a resource must match all the fields to be selected.
                       properties:
@@ -131,6 +131,14 @@ spec:
                           x-kubernetes-map-type: atomic
                         name:
                           description: Name of the cluster-scoped resource.
+                          type: string
+                        selectionScope:
+                          default: NamespaceWithResources
+                          description: SelectionScope defines the scope of resource
+                            selections when the Kind is `namespace`.
+                          enum:
+                          - NamespaceOnly
+                          - NamespaceWithResources
                           type: string
                         version:
                           description: Version of the cluster-scoped resource.
