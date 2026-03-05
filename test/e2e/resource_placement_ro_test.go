@@ -49,15 +49,15 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 	})
 
-	It("should wait for namespace collection to sync on all member clusters", func() {
-		waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
-	})
-
 	AfterEach(OncePerOrdered, func() {
 		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 	})
 
 	Context("creating resourceOverride (selecting all clusters) to override configMap for ResourcePlacement", Ordered, func() {
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+		})
+
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		roName := fmt.Sprintf(roNameTemplate, GinkgoParallelProcess())
 		workNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
@@ -226,6 +226,10 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 	})
 
 	Context("creating resourceOverride with multiple jsonPatchOverrides to override configMap for ResourcePlacement", Ordered, func() {
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+		})
+
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		roName := fmt.Sprintf(roNameTemplate, GinkgoParallelProcess())
 		workNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
@@ -302,6 +306,10 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 	})
 
 	Context("creating resourceOverride with different rules for each cluster to override configMap for ResourcePlacement", Ordered, func() {
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+		})
+
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		roName := fmt.Sprintf(roNameTemplate, GinkgoParallelProcess())
 		workNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
@@ -416,6 +424,10 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 	})
 
 	Context("creating resourceOverride with incorrect path for ResourcePlacement", Ordered, func() {
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+		})
+
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		roName := fmt.Sprintf(roNameTemplate, GinkgoParallelProcess())
 		workNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
@@ -487,6 +499,10 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 	})
 
 	Context("creating resourceOverride and resource becomes invalid after override for ResourcePlacement", Ordered, func() {
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+		})
+
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		roName := fmt.Sprintf(roNameTemplate, GinkgoParallelProcess())
 		workNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
@@ -584,6 +600,10 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 	})
 
 	Context("creating resourceOverride with templated rules with cluster name to override configMap for ResourcePlacement", Ordered, func() {
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+		})
+
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		roName := fmt.Sprintf(roNameTemplate, GinkgoParallelProcess())
 		workNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
@@ -682,6 +702,10 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 	})
 
 	Context("creating resourceOverride with delete configMap for ResourcePlacement", Ordered, func() {
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+		})
+
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		roName := fmt.Sprintf(roNameTemplate, GinkgoParallelProcess())
 		workNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
@@ -790,6 +814,10 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 	})
 
 	Context("creating resourceOverride with templated rules with cluster label key replacement for ResourcePlacement", Ordered, func() {
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+		})
+
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		roName := fmt.Sprintf(roNameTemplate, GinkgoParallelProcess())
 		workNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
@@ -947,6 +975,10 @@ var _ = Describe("placing namespaced scoped resources using a RP with ResourceOv
 	})
 
 	Context("creating resourceOverride with non-exist label for ResourcePlacement", Ordered, func() {
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+		})
+
 		rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 		roName := fmt.Sprintf(roNameTemplate, GinkgoParallelProcess())
 		workNamespace := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())

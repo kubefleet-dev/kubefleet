@@ -88,10 +88,6 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Should select all clusters")
 	})
 
-	It("should wait for namespace collection to sync on all member clusters", func() {
-		waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
-	})
-
 	AfterEach(OncePerOrdered, func() {
 		ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: nsName}, allMemberClusters)
 		ensureMemberClusterAndRelatedResourcesDeletion(fakeClusterName1ForWatcherTests)
@@ -125,6 +121,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 				},
 			}
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
+		})
+
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
 		})
 
 		It("should place resources on all member clusters", checkIfPlacedWorkResourcesOnAllMemberClusters)
@@ -203,6 +203,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 				},
 			}
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
+		})
+
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
 		})
 
 		It("should propagate works for the new cluster; can mark them as available", func() {
@@ -291,6 +295,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
 		})
 
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
+		})
+
 		It("rp should not select any clusters", func() {
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), nil, nil, "0")
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Should not select any cluster")
@@ -377,6 +385,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
 		})
 
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
+		})
+
 		It("should place resources on all member clusters", checkIfPlacedWorkResourcesOnAllMemberClusters)
 
 		It("rp should pick only healthy clusters in the system", func() {
@@ -455,6 +467,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
 		})
 
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
+		})
+
 		It("should propagate works for the new cluster; can mark them as applied", func() {
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, crpName, workNamespaceIdentifiers())
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
@@ -523,6 +539,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
 		})
 
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
+		})
+
 		It("should propagate works for the new cluster; can mark them as applied", func() {
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, crpName, workNamespaceIdentifiers())
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
@@ -580,6 +600,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 				},
 			}
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
+		})
+
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
 		})
 
 		It("rp should propagate works for the new cluster; can mark them as applied", func() {
@@ -667,6 +691,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
 		})
 
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
+		})
+
 		It("rp should pick all clusters", func() {
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), allMemberClusterNames, nil, "0")
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Should select all clusters")
@@ -748,6 +776,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
 		})
 
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
+		})
+
 		It("should report in RP status that the cluster is not available", func() {
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), nil, []string{fakeClusterName1ForWatcherTests}, "0")
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
@@ -809,6 +841,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
 		})
 
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
+		})
+
 		It("should report in RP status that the cluster is not available", func() {
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), nil, []string{fakeClusterName1ForWatcherTests}, "0")
 			Eventually(rpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
@@ -865,6 +901,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 				},
 			}
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
+		})
+
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
 		})
 
 		It("should propagate works for the new cluster; can mark them as applied", func() {
@@ -926,6 +966,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
 		})
 
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
+		})
+
 		It("should propagate works for the new cluster; can mark them as applied", func() {
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, crpName, workResourceIdentifiers())
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
@@ -977,6 +1021,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 				},
 			}
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
+		})
+
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
 		})
 
 		It("should place resources on all member clusters", checkIfPlacedWorkResourcesOnAllMemberClusters)
@@ -1056,6 +1104,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 				},
 			}
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
+		})
+
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
 		})
 
 		It("rp should not pick any cluster", func() {
@@ -1141,6 +1193,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
 		})
 
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
+		})
+
 		It("rp should not pick any cluster", func() {
 			rpStatusUpdatedActual := rpStatusUpdatedActual(appConfigMapIdentifiers(), nil, []string{fakeClusterName1ForWatcherTests}, "0")
 			Eventually(rpStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Should not select any cluster")
@@ -1199,6 +1255,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 				},
 			}
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
+		})
+
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
 		})
 
 		It("should place resources on all member clusters", checkIfPlacedWorkResourcesOnAllMemberClusters)
@@ -1296,6 +1356,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 				},
 			}
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
+		})
+
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
 		})
 
 		It("rp should not pick any cluster", func() {
@@ -1401,6 +1465,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
 		})
 
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
+		})
+
 		It("should place resources on all member clusters", checkIfPlacedWorkResourcesOnAllMemberClusters)
 
 		It("should pick only healthy clusters in the system", func() {
@@ -1454,6 +1522,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 				},
 			}
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
+		})
+
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
 		})
 
 		It("should propagate works for the new cluster; can mark them as applied", func() {
@@ -1541,6 +1613,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
 		})
 
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
+		})
+
 		It("should propagate works for the new cluster; can mark them as applied", func() {
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, crpName, workNamespaceIdentifiers())
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
@@ -1622,6 +1698,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
 		})
 
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
+		})
+
 		It("should propagate works for the new cluster; can mark them as applied", func() {
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, crpName, workNamespaceIdentifiers())
 			verifyWorkPropagationAndMarkAsAvailable(fakeClusterName1ForWatcherTests, rpName, appConfigMapIdentifiers())
@@ -1687,6 +1767,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 				},
 			}
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
+		})
+
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
 		})
 
 		It("should place resources on all real member clusters", checkIfPlacedWorkResourcesOnAllMemberClusters)
@@ -1782,6 +1866,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 				},
 			}
 			Expect(hubClient.Create(ctx, rp)).To(Succeed())
+		})
+
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(nsName, allMemberClusterNames)
 		})
 
 		It("rp should pick one cluster", func() {

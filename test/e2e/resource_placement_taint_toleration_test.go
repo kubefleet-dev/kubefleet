@@ -45,15 +45,15 @@ var _ = Describe("validating RP for taint and toleration features", Label("resou
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 	})
 
-	It("should wait for namespace collection to sync on all member clusters", func() {
-		waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
-	})
-
 	AfterEach(OncePerOrdered, func() {
 		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 	})
 
 	Describe("placing resource using a resource placement with pickFixed placement policy specified, taint clusters, pick all specified clusters", Serial, Ordered, func() {
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+		})
+
 		BeforeAll(func() {
 			// Create the resources.
 			createConfigMap()
@@ -103,6 +103,10 @@ var _ = Describe("validating RP for taint and toleration features", Label("resou
 	Describe("placing resources using a resource placement with no placement policy specified, taint clusters, update resource placement with tolerations", Serial, Ordered, func() {
 		var taintClusterNames, noTaintClusterNames []string
 		var taintClusters, noTaintClusters []*framework.Cluster
+
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+		})
 
 		BeforeAll(func() {
 			taintClusterNames = []string{memberCluster1EastProdName, memberCluster2EastCanaryName}
@@ -177,6 +181,10 @@ var _ = Describe("validating RP for taint and toleration features", Label("resou
 		var taintClusterNames, noTaintClusterNames []string
 		var taintClusters, noTaintClusters []*framework.Cluster
 
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+		})
+
 		BeforeAll(func() {
 			taintClusterNames = []string{memberCluster1EastProdName, memberCluster2EastCanaryName}
 			taintClusters = []*framework.Cluster{memberCluster1EastProd, memberCluster2EastCanary}
@@ -247,6 +255,10 @@ var _ = Describe("validating RP for taint and toleration features", Label("resou
 	Describe("picking N clusters with affinities and topology spread constraints, taint clusters, create resource placement with toleration for one cluster", Serial, Ordered, func() {
 		var taintClusterNames, tolerateClusterNames, unSelectedClusterNames []string
 		var tolerateClusters, unSelectedClusters []*framework.Cluster
+
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+		})
 
 		BeforeAll(func() {
 			taintClusterNames = []string{memberCluster1EastProdName, memberCluster2EastCanaryName}
@@ -343,6 +355,10 @@ var _ = Describe("validating RP for taint and toleration features", Label("resou
 
 	Describe("picking all clusters using pickAll placement policy, add taint to a cluster that's already selected", Serial, Ordered, func() {
 		taintClusterNames := []string{memberCluster1EastProdName}
+
+		It("should wait for namespace collection to sync on all member clusters", func() {
+			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+		})
 
 		BeforeAll(func() {
 			// Create the resources.

@@ -19,6 +19,7 @@ package e2e
 import (
 	"fmt"
 
+	"github.com/google/go-cmp/cmp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -207,8 +208,8 @@ var _ = Describe("placing namespaced scoped resources using an RP with PickN pol
 // Test scenario (PickN edge case):
 //   - A CRP with PickFixed policy places the namespace onto only 1 out of 3 member clusters.
 //   - An RP with PickN=2 policy selects a ConfigMap in that namespace.
-//   - The namespace affinity plugin restricts eligible clusters to only the 1 that has the namespace,
-//     but PickN=2 cannot be fulfilled — the RP should show Scheduled=False with insufficient clusters.
+//   - The namespace affinity plugin restricts eligible clusters to only the 1 that has the namespace.
+//   - PickN=2 cannot be fulfilled with only 1 eligible cluster, so Scheduled=False but resources are still placed on the eligible cluster.
 var _ = Describe("placing namespaced scoped resources using an RP with PickN=2 but namespace only on 1 cluster", Label("resourceplacement", "namespaceaffinity"), func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
@@ -265,16 +266,121 @@ var _ = Describe("placing namespaced scoped resources using an RP with PickN=2 b
 		It("should update RP status showing Scheduled=False due to insufficient clusters", func() {
 			// Namespace affinity restricts eligible clusters to only cluster-1.
 			// PickN=2 cannot be fulfilled with only 1 eligible cluster — Scheduled=False.
-			// The scheduler will still place on the 1 eligible cluster but mark the placement as not fully scheduled.
+			// The scheduler places on the 1 available cluster but reports the policy as unfulfilled.
 
-			rpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(
-				rpKey,
-				appConfigMapIdentifiers(),
-				[]string{memberCluster1EastProdName}, // Only 1 cluster is eligible
-				[]string{memberCluster2EastCanaryName, memberCluster3WestProdName}, // These are unselected due to namespace affinity
-				"0",
-				true,
-			)
+			rpStatusUpdatedActual := func() error {
+				placement, err := retrievePlacement(rpKey)
+				if err != nil {
+					return fmt.Errorf("failed to get placement %s: %w", rpKey, err)
+				}
+
+				// Build expected status to match actual scheduler behavior:
+				// - One selected cluster (kind-cluster-1)
+				// - One unselected entry (for PickN unfulfillment)
+				// - Overall Scheduled=False because PickN=2 cannot be satisfied
+				wantStatus := &placementv1beta1.PlacementStatus{
+					SelectedResources:     appConfigMapIdentifiers(),
+					ObservedResourceIndex: "0",
+					PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+						{
+							ClusterName:           memberCluster1EastProdName,
+							ObservedResourceIndex: "0",
+							Conditions: []metav1.Condition{
+								{
+									Type:               string(placementv1beta1.PerClusterAppliedConditionType),
+									Status:             metav1.ConditionTrue,
+									ObservedGeneration: placement.GetGeneration(),
+									Reason:             "AllWorkHaveBeenApplied",
+								},
+								{
+									Type:               string(placementv1beta1.PerClusterAvailableConditionType),
+									Status:             metav1.ConditionTrue,
+									ObservedGeneration: placement.GetGeneration(),
+									Reason:             "AllWorkAreAvailable",
+								},
+								{
+									Type:               string(placementv1beta1.PerClusterOverriddenConditionType),
+									Status:             metav1.ConditionTrue,
+									ObservedGeneration: placement.GetGeneration(),
+									Reason:             "NoOverrideSpecified",
+								},
+								{
+									Type:               string(placementv1beta1.PerClusterRolloutStartedConditionType),
+									Status:             metav1.ConditionTrue,
+									ObservedGeneration: placement.GetGeneration(),
+									Reason:             "RolloutStarted",
+								},
+								{
+									Type:               string(placementv1beta1.PerClusterScheduledConditionType),
+									Status:             metav1.ConditionTrue,
+									ObservedGeneration: placement.GetGeneration(),
+									Reason:             "Scheduled",
+								},
+								{
+									Type:               string(placementv1beta1.PerClusterWorkSynchronizedConditionType),
+									Status:             metav1.ConditionTrue,
+									ObservedGeneration: placement.GetGeneration(),
+									Reason:             "AllWorkSynced",
+								},
+							},
+						},
+						{
+							// Unselected entry for PickN policy unfulfillment
+							Conditions: []metav1.Condition{
+								{
+									Type:               string(placementv1beta1.PerClusterScheduledConditionType),
+									Status:             metav1.ConditionFalse,
+									ObservedGeneration: placement.GetGeneration(),
+									Reason:             "ScheduleFailed",
+								},
+							},
+						},
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:               string(placementv1beta1.ResourcePlacementAppliedConditionType),
+							Status:             metav1.ConditionTrue,
+							ObservedGeneration: placement.GetGeneration(),
+							Reason:             "ApplySucceeded",
+						},
+						{
+							Type:               string(placementv1beta1.ResourcePlacementAvailableConditionType),
+							Status:             metav1.ConditionTrue,
+							ObservedGeneration: placement.GetGeneration(),
+							Reason:             "ResourceAvailable",
+						},
+						{
+							Type:               string(placementv1beta1.ResourcePlacementOverriddenConditionType),
+							Status:             metav1.ConditionTrue,
+							ObservedGeneration: placement.GetGeneration(),
+							Reason:             "NoOverrideSpecified",
+						},
+						{
+							Type:               string(placementv1beta1.ResourcePlacementRolloutStartedConditionType),
+							Status:             metav1.ConditionTrue,
+							ObservedGeneration: placement.GetGeneration(),
+							Reason:             "RolloutStarted",
+						},
+						{
+							Type:               string(placementv1beta1.ResourcePlacementScheduledConditionType),
+							Status:             metav1.ConditionFalse,
+							ObservedGeneration: placement.GetGeneration(),
+							Reason:             "SchedulingPolicyUnfulfilled",
+						},
+						{
+							Type:               string(placementv1beta1.ResourcePlacementWorkSynchronizedConditionType),
+							Status:             metav1.ConditionTrue,
+							ObservedGeneration: placement.GetGeneration(),
+							Reason:             "WorkSynchronized",
+						},
+					},
+				}
+
+				if diff := cmp.Diff(placement.GetPlacementStatus(), wantStatus, placementStatusCmpOptionsOnCreate...); diff != "" {
+					return fmt.Errorf("Placement status diff (-got, +want): %s for placement %v", diff, rpKey)
+				}
+				return nil
+			}
 			Eventually(rpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 

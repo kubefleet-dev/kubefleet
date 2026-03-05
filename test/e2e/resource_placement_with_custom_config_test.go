@@ -70,9 +70,7 @@ var _ = Describe("validating RP when using customized resourceSnapshotCreationMi
 		By("should update CRP status as expected")
 		crpStatusUpdatedActual := crpStatusUpdatedActual(workNamespaceIdentifiers(), allMemberClusterNames, nil, "0")
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
-	})
 
-	It("should create RP and validate behavior", func() {
 		By("creating RP")
 		rp := &placementv1beta1.ResourcePlacement{
 			ObjectMeta: metav1.ObjectMeta{

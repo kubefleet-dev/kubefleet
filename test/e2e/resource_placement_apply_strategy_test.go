@@ -58,10 +58,6 @@ var _ = Describe("validating resource placement using different apply strategies
 		Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 	})
 
-	It("should wait for namespace collection to sync on all member clusters", func() {
-		waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
-	})
-
 	AfterEach(OncePerOrdered, func() {
 		ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
 	})
@@ -84,6 +80,10 @@ var _ = Describe("validating resource placement using different apply strategies
 		})
 
 		Context("Test a RP place objects successfully (client-side-apply and allow co-own)", Ordered, func() {
+			It("should wait for namespace collection to sync on all member clusters", func() {
+				waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+			})
+
 			BeforeAll(func() {
 				cm := appConfigMap()
 				cm.SetOwnerReferences([]metav1.OwnerReference{
@@ -147,6 +147,10 @@ var _ = Describe("validating resource placement using different apply strategies
 		})
 
 		Context("Test a RP place objects successfully (client-side-apply and disallow co-own) and existing resource has no owner reference", Ordered, func() {
+			It("should wait for namespace collection to sync on all member clusters", func() {
+				waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+			})
+
 			BeforeAll(func() {
 				cm := appConfigMap()
 				cm.Annotations = map[string]string{
@@ -198,6 +202,10 @@ var _ = Describe("validating resource placement using different apply strategies
 		})
 
 		Context("Test a RP place objects successfully (server-side-apply and disallow co-own) and existing resource has no owner reference", Ordered, func() {
+			It("should wait for namespace collection to sync on all member clusters", func() {
+				waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+			})
+
 			BeforeAll(func() {
 				cm := appConfigMap()
 				cm.Annotations = map[string]string{
@@ -252,6 +260,10 @@ var _ = Describe("validating resource placement using different apply strategies
 		})
 
 		Context("Test a RP fail to apply configmap (server-side-apply and disallow co-own) and existing resource is owned by others", Ordered, func() {
+			It("should wait for namespace collection to sync on all member clusters", func() {
+				waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+			})
+
 			BeforeAll(func() {
 				cm := appConfigMap()
 				cm.SetOwnerReferences([]metav1.OwnerReference{
@@ -357,6 +369,10 @@ var _ = Describe("validating resource placement using different apply strategies
 		})
 
 		Context("Test a RP able to apply configmap when the conflicted annotation is managed by others (force server-side-apply and allow co-own)", Ordered, func() {
+			It("should wait for namespace collection to sync on all member clusters", func() {
+				waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+			})
+
 			BeforeAll(func() {
 				cm := appConfigMap()
 				cm.SetOwnerReferences([]metav1.OwnerReference{
@@ -434,6 +450,10 @@ var _ = Describe("validating resource placement using different apply strategies
 		})
 
 		Context("no dual placement", Ordered, func() {
+			It("should wait for namespace collection to sync on all member clusters", func() {
+				waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+			})
+
 			rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
 			conflictedRPName := "rp-conflicted"
 			workNamespaceName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
@@ -610,6 +630,10 @@ var _ = Describe("validating resource placement using different apply strategies
 
 	Describe("SSA", Ordered, func() {
 		Context("use server-side apply to place resources (with changes)", func() {
+			It("should wait for namespace collection to sync on all member clusters", func() {
+				waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+			})
+
 			// The key here should match the one used in the default config map.
 			cmDataKey := "data"
 			cmDataVal1 := "foobar"
@@ -720,6 +744,10 @@ var _ = Describe("validating resource placement using different apply strategies
 		})
 
 		Context("fall back to server-side apply when client-side apply cannot be used", func() {
+			It("should wait for namespace collection to sync on all member clusters", func() {
+				waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+			})
+
 			cmDataKey := "randomBase64Str"
 
 			BeforeAll(func() {
@@ -905,6 +933,10 @@ var _ = Describe("validating resource placement using different apply strategies
 
 	Describe("switching apply strategies", func() {
 		Context("switch from client-side apply to report diff", Ordered, func() {
+			It("should wait for namespace collection to sync on all member clusters", func() {
+				waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+			})
+
 			anotherConfigMapName := types.NamespacedName{Name: fmt.Sprintf("another-config-map-%d", GinkgoParallelProcess()), Namespace: workNamespaceName}
 			selectedResources := []placementv1beta1.ResourceIdentifier{
 				{
@@ -1183,6 +1215,10 @@ var _ = Describe("validating resource placement using different apply strategies
 		})
 
 		Context("switch from report diff to server side apply", Ordered, func() {
+			It("should wait for namespace collection to sync on all member clusters", func() {
+				waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+			})
+
 			BeforeAll(func() {
 				createConfigMap()
 
