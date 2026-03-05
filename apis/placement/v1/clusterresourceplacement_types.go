@@ -470,14 +470,6 @@ type RolloutStrategy struct {
 	// ApplyStrategy describes when and how to apply the selected resources to the target cluster.
 	// +optional
 	ApplyStrategy *ApplyStrategy `json:"applyStrategy,omitempty"`
-
-	// DeleteStrategy configures the deletion behavior when the ClusterResourcePlacement is deleted.
-	// +optional
-	DeleteStrategy *DeleteStrategy `json:"deleteStrategy,omitempty"`
-
-	// ReportBackStrategy describes how to report back the status of applied resources on the member cluster.
-	// +optional
-	ReportBackStrategy *ReportBackStrategy `json:"reportBackStrategy,omitempty"`
 }
 
 // ApplyStrategy describes how to resolve the conflict if the resource to be placed already exists in the target cluster
@@ -1425,98 +1417,6 @@ const (
 	// PickFixedPlacementType picks a fixed set of clusters.
 	PickFixedPlacementType PlacementType = "PickFixed"
 )
-
-// DeleteStrategy configures the deletion behavior when a placement is deleted.
-type DeleteStrategy struct {
-	// PropagationPolicy controls whether to delete placed resources when placement is deleted.
-	//
-	// Available options:
-	//
-	// * Delete: all placed resources on member clusters will be deleted when
-	//   the placement is deleted. This is the default behavior.
-	//
-	// * Abandon: all placed resources on member clusters will be left intact (abandoned)
-	//   when the placement is deleted.
-	//
-	// +kubebuilder:validation:Enum=Abandon;Delete
-	// +kubebuilder:default=Delete
-	// +optional
-	PropagationPolicy DeletePropagationPolicy `json:"propagationPolicy,omitempty"`
-}
-
-// DeletePropagationPolicy identifies the propagation policy when a placement is deleted.
-// +enum
-type DeletePropagationPolicy string
-
-const (
-	// DeletePropagationPolicyAbandon instructs Fleet to leave (abandon) all placed resources on member
-	// clusters when the placement is deleted.
-	DeletePropagationPolicyAbandon DeletePropagationPolicy = "Abandon"
-
-	// DeletePropagationPolicyDelete instructs Fleet to delete all placed resources on member clusters
-	// when the placement is deleted. This is the default behavior.
-	DeletePropagationPolicyDelete DeletePropagationPolicy = "Delete"
-)
-
-type ReportBackStrategyType string
-
-const (
-	// ReportBackStrategyTypeDisabled disables status back-reporting from the member clusters.
-	ReportBackStrategyTypeDisabled ReportBackStrategyType = "Disabled"
-
-	// ReportBackStrategyTypeMirror enables status back-reporting by
-	// copying the status fields verbatim to some destination on the hub cluster side.
-	ReportBackStrategyTypeMirror ReportBackStrategyType = "Mirror"
-)
-
-type ReportBackDestination string
-
-const (
-	// ReportBackDestinationOriginalResource implies the status fields will be copied verbatim to the
-	// the original resource on the hub cluster side. This is only performed when the placement object has a
-	// scheduling policy that selects exactly one member cluster (i.e., a pickFixed scheduling policy with
-	// exactly one cluster name, or a pickN scheduling policy with the numberOfClusters field set to 1).
-	ReportBackDestinationOriginalResource ReportBackDestination = "OriginalResource"
-
-	// ReportBackDestinationWorkAPI implies the status fields will be copied verbatim via the Work API
-	// on the hub cluster side. Users may look up the status of a specific resource applied to a specific
-	// member cluster by inspecting the corresponding Work object on the hub cluster side.
-	ReportBackDestinationWorkAPI ReportBackDestination = "WorkAPI"
-)
-
-// ReportBackStrategy describes how to report back the resource status from member clusters.
-type ReportBackStrategy struct {
-	// Type dictates the type of the report back strategy to use.
-	//
-	// Available options include:
-	//
-	// * Disabled: status back-reporting is disabled. This is the default behavior.
-	//
-	// * Mirror: status back-reporting is enabled by copying the status fields verbatim to
-	//   a destination on the hub cluster side; see the Destination field for more information.
-	//
-	// +kubebuilder:default=Disabled
-	// +kubebuilder:validation:Enum=Disabled;Mirror
-	// +required
-	Type ReportBackStrategyType `json:"type"`
-
-	// Destination dictates where to copy the status fields to when the report back strategy type is Mirror.
-	//
-	// Available options include:
-	//
-	// * OriginalResource: the status fields will be copied verbatim to the original resource on the hub cluster side.
-	//   This is only performed when the placement object has a scheduling policy that selects exactly one member cluster
-	//   (i.e., a pickFixed scheduling policy with exactly one cluster name, or a pickN scheduling policy with the numberOfClusters
-	//   field set to 1).
-	//
-	// * WorkAPI: the status fields will be copied verbatim via the Work API on the hub cluster side. Users may look up
-	//   the status of a specific resource applied to a specific member cluster by inspecting the corresponding Work object
-	//   on the hub cluster side. This is the default behavior.
-	//
-	// +kubebuilder:validation:Enum=OriginalResource;WorkAPI
-	// +optional
-	Destination *ReportBackDestination `json:"destination,omitempty"`
-}
 
 // ClusterResourcePlacementList contains a list of ClusterResourcePlacement.
 // +kubebuilder:resource:scope="Cluster"
