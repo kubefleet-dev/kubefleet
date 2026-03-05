@@ -872,9 +872,11 @@ func isNamespaceCollectionEnabled(clusterName string) bool {
 func waitForNamespaceCollectionOnClusters(namespaceName string, clusterNames []string) {
 	GinkgoHelper()
 
-	// Skip waiting entirely when namespace collection is not enabled on any cluster.
+	// Skip waiting entirely when namespace collection is not  nabled on any cluster.
 	// The namespace affinity plugin skips filtering in this case (backward compatibility),
 	// so there is no race to protect against.
+	// Note: In the test environment, namespace collection is configured in an all-or-nothing
+	// manner across all clusters, so checking the first cluster is sufficient.
 	if len(clusterNames) == 0 || !isNamespaceCollectionEnabled(clusterNames[0]) {
 		return
 	}
