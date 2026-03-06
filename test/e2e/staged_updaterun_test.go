@@ -690,11 +690,13 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 		var strategy *placementv1beta1.StagedUpdateStrategy
 		updateRunNames := []string{}
 
-		It("should wait for namespace collection to sync on all member clusters", func() {
-			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
-		})
-
 		BeforeAll(func() {
+			// Ensure the namespace collection is synced on all member clusters before creating the RP.
+			// We expect kind-cluster-3 to be picked by PickN with N=1 policy due to the alphabetical order of cluster names.
+			// If kind-cluster-3 does not have namespace synced during schedule time, the RP might pick kind-cluster-1 or kind-cluster-2.
+			By("should wait for namespace collection to sync on all member clusters")
+			waitForNamespaceCollectionOnClusters(appNamespace().Name, allMemberClusterNames)
+
 			// Create the RP with external rollout strategy and pick N=1 policy.
 			rp := &placementv1beta1.ResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
