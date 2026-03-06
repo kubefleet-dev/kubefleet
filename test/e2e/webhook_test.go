@@ -805,7 +805,7 @@ var _ = Describe("webhook tests for MC taints", Ordered, func() {
 			}
 			var statusErr *k8sErrors.StatusError
 			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update MC call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-			g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("name part must consist of alphanumeric characters, '-', '_' or '.', and must start and end with an alphanumeric character"))
+			g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("taint key name segment must consist of alphanumeric characters, '-', '_' or '.', and must start and end with an alphanumeric character"))
 			return nil
 		}, eventuallyDuration, eventuallyInterval).Should(Succeed())
 	})

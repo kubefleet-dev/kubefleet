@@ -66,6 +66,21 @@ func TestValidateTaints(t *testing.T) {
 			wantErr:    true,
 			wantErrMsg: "taints must be unique",
 		},
+		"valid taints, same key and effect with different values": {
+			taints: []clusterv1beta1.Taint{
+				{
+					Key:    "key1",
+					Value:  "value1",
+					Effect: "NoSchedule",
+				},
+				{
+					Key:    "key1",
+					Value:  "value2",
+					Effect: "NoSchedule",
+				},
+			},
+			wantErr: false,
+		},
 		"valid taints": {
 			taints: []clusterv1beta1.Taint{
 				{
