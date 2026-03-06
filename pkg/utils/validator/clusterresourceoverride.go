@@ -29,6 +29,10 @@ import (
 func ValidateClusterResourceOverride(cro placementv1beta1.ClusterResourceOverride, croList *placementv1beta1.ClusterResourceOverrideList) error {
 	allErr := make([]error, 0)
 
+	if err := validateClusterResourceOverridePlacement(cro.Spec.Placement); err != nil {
+		allErr = append(allErr, err)
+	}
+
 	// Check if the resource is being selected by resource name
 	if err := validateClusterResourceSelectors(cro); err != nil {
 		// Skip other checks because the check is only valid if resource is selected by name
@@ -47,6 +51,14 @@ func ValidateClusterResourceOverride(cro placementv1beta1.ClusterResourceOverrid
 	}
 
 	return errors.NewAggregate(allErr)
+}
+
+func validateClusterResourceOverridePlacement(placement *placementv1beta1.PlacementRef) error {
+	if placement != nil && placement.Scope == placementv1beta1.NamespaceScoped {
+		return fmt.Errorf("clusterResourceOverride placement reference cannot be Namespaced scope")
+	}
+
+	return nil
 }
 
 // validateClusterResourceSelectors checks if override is selecting resource by name.

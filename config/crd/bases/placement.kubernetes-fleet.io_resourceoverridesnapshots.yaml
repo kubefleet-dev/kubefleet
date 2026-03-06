@@ -266,6 +266,8 @@ spec:
                                     description: |-
                                       Path defines the target location.
                                       Note: override will fail if the resource path does not exist.
+                                    maxLength: 512
+                                    pattern: ^/.*
                                     type: string
                                   value:
                                     description: |-
@@ -280,6 +282,25 @@ spec:
                                 - op
                                 - path
                                 type: object
+                                x-kubernetes-validations:
+                                - message: cannot override typeMeta field kind
+                                  rule: '!(self.path == ''/kind'' || self.path.startsWith(''/kind/''))'
+                                - message: cannot override typeMeta field apiVersion
+                                  rule: '!(self.path == ''/apiVersion'' || self.path.startsWith(''/apiVersion/''))'
+                                - message: cannot override status fields
+                                  rule: '!(self.path == ''/status'' || self.path.startsWith(''/status/''))'
+                                - message: cannot override metadata fields except
+                                    annotations and labels
+                                  rule: '!(self.path == ''/metadata'' || (self.path.startsWith(''/metadata/'')
+                                    && !(self.path == ''/metadata/annotations'' ||
+                                    self.path.startsWith(''/metadata/annotations/''))
+                                    && !(self.path == ''/metadata/labels'' || self.path.startsWith(''/metadata/labels/''))))'
+                                - message: path cannot contain empty segments
+                                  rule: '!self.path.contains(''//'')'
+                                - message: path segment cannot contain only whitespace
+                                  rule: '!self.path.matches(''(^|/)\\s+(/|$)'')'
+                                - message: path cannot have a trailing slash
+                                  rule: '!self.path.endsWith(''/'')'
                               maxItems: 20
                               minItems: 1
                               type: array
@@ -292,6 +313,15 @@ spec:
                               - Delete
                               type: string
                           type: object
+                          x-kubernetes-validations:
+                          - message: jsonPatchOverrides must be empty when overrideType
+                              is Delete
+                            rule: self.overrideType != 'Delete' || !has(self.jsonPatchOverrides)
+                              || size(self.jsonPatchOverrides) == 0
+                          - message: jsonPatchOverrides must not be empty when overrideType
+                              is JSONPatch
+                            rule: self.overrideType != 'JSONPatch' || (has(self.jsonPatchOverrides)
+                              && size(self.jsonPatchOverrides) > 0)
                         maxItems: 20
                         minItems: 1
                         type: array
@@ -926,6 +956,8 @@ spec:
                                     description: |-
                                       Path defines the target location.
                                       Note: override will fail if the resource path does not exist.
+                                    maxLength: 512
+                                    pattern: ^/.*
                                     type: string
                                   value:
                                     description: |-
@@ -940,6 +972,25 @@ spec:
                                 - op
                                 - path
                                 type: object
+                                x-kubernetes-validations:
+                                - message: cannot override typeMeta field kind
+                                  rule: '!(self.path == ''/kind'' || self.path.startsWith(''/kind/''))'
+                                - message: cannot override typeMeta field apiVersion
+                                  rule: '!(self.path == ''/apiVersion'' || self.path.startsWith(''/apiVersion/''))'
+                                - message: cannot override status fields
+                                  rule: '!(self.path == ''/status'' || self.path.startsWith(''/status/''))'
+                                - message: cannot override metadata fields except
+                                    annotations and labels
+                                  rule: '!(self.path == ''/metadata'' || (self.path.startsWith(''/metadata/'')
+                                    && !(self.path == ''/metadata/annotations'' ||
+                                    self.path.startsWith(''/metadata/annotations/''))
+                                    && !(self.path == ''/metadata/labels'' || self.path.startsWith(''/metadata/labels/''))))'
+                                - message: path cannot contain empty segments
+                                  rule: '!self.path.contains(''//'')'
+                                - message: path segment cannot contain only whitespace
+                                  rule: '!self.path.matches(''(^|/)\\s+(/|$)'')'
+                                - message: path cannot have a trailing slash
+                                  rule: '!self.path.endsWith(''/'')'
                               maxItems: 20
                               minItems: 1
                               type: array
@@ -952,6 +1003,15 @@ spec:
                               - Delete
                               type: string
                           type: object
+                          x-kubernetes-validations:
+                          - message: jsonPatchOverrides must be empty when overrideType
+                              is Delete
+                            rule: self.overrideType != 'Delete' || !has(self.jsonPatchOverrides)
+                              || size(self.jsonPatchOverrides) == 0
+                          - message: jsonPatchOverrides must not be empty when overrideType
+                              is JSONPatch
+                            rule: self.overrideType != 'JSONPatch' || (has(self.jsonPatchOverrides)
+                              && size(self.jsonPatchOverrides) > 0)
                         maxItems: 20
                         minItems: 1
                         type: array

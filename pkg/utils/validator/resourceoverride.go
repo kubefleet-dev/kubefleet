@@ -27,6 +27,8 @@ import (
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
+const maxJSONPatchOverridePathLength = 512
+
 // ValidateResourceOverride validates resource override fields and returns error.
 func ValidateResourceOverride(ro placementv1beta1.ResourceOverride, roList *placementv1beta1.ResourceOverrideList) error {
 	allErr := make([]error, 0)
@@ -150,6 +152,10 @@ func validateJSONPatchOverride(jsonPatchOverrides []placementv1beta1.JSONPatchOv
 func validateJSONPatchOverridePath(path string) error {
 	if path == "" {
 		return fmt.Errorf("path cannot be empty")
+	}
+
+	if len(path) > maxJSONPatchOverridePathLength {
+		return fmt.Errorf("path exceeds maximum length of %d", maxJSONPatchOverridePathLength)
 	}
 
 	if !strings.HasPrefix(path, "/") {

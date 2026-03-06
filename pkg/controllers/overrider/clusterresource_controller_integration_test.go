@@ -48,7 +48,7 @@ func getClusterResourceOverrideSpec() placementv1beta1.ClusterResourceOverrideSp
 					JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
 						{
 							Operator: placementv1beta1.JSONPatchOverrideOpReplace,
-							Path:     "spec.replica",
+							Path:     "/spec/replicas",
 							Value:    apiextensionsv1.JSON{Raw: []byte("3")},
 						},
 					},
@@ -157,7 +157,7 @@ var _ = Describe("Test ClusterResourceOverride controller logic", func() {
 					JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
 						{
 							Operator: placementv1beta1.JSONPatchOverrideOpRemove,
-							Path:     "spec.replica",
+							Path:     "/spec/replicas",
 						},
 					},
 				},
@@ -210,7 +210,7 @@ var _ = Describe("Test ClusterResourceOverride controller logic", func() {
 					JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
 						{
 							Operator: placementv1beta1.JSONPatchOverrideOpRemove,
-							Path:     "spec.replica",
+							Path:     "/spec/replicas",
 						},
 					},
 				},
