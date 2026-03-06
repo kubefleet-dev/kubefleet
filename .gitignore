@@ -38,3 +38,6 @@ ut-coverage.xml
 
 # Helm chart packaging
 .helm-packages/
+
+# K8s code gen related artifacts
+hack/codegen/k8s.io/
