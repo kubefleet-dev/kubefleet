@@ -234,6 +234,9 @@ var _ = Describe("mixed ClusterResourcePlacement and ResourcePlacement negative 
 				Expect(memberCluster.KubeClient.Create(ctx, &ns)).To(Succeed())
 			}
 
+			By("waiting for namespace to be collected on all member clusters")
+			waitForNamespaceCollectionOnClusters(workNamespaceName, allMemberClusterNames)
+
 			By("creating an RP")
 			createRP(workNamespaceName, rpName)
 
@@ -249,10 +252,6 @@ var _ = Describe("mixed ClusterResourcePlacement and ResourcePlacement negative 
 		AfterAll(func() {
 			ensureRPAndRelatedResourcesDeleted(types.NamespacedName{Name: rpName, Namespace: workNamespaceName}, allMemberClusters)
 			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
-		})
-
-		It("should wait for namespace collection to sync on all member clusters", func() {
-			waitForNamespaceCollectionOnClusters(workNamespaceName, allMemberClusterNames)
 		})
 
 		It("should update CRP status as expected", func() {
