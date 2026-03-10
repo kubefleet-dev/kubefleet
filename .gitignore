@@ -38,3 +38,10 @@ ut-coverage.xml
 
 # Helm chart packaging
 .helm-packages/
+
+# K8s code gen related artifacts
+hack/codegen/k8s.io/
+
+# On-demand generated certs and keys
+pkg/extapiserver/clusterproperties/test/integration/*/*.crt
+pkg/extapiserver/clusterproperties/test/integration/*/*.key
