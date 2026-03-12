@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strings"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/uuid"
@@ -87,19 +88,34 @@ func (r *Reconciler) createOrUpdateEnvelopeCRWorkObj(
 	var work *fleetv1beta1.Work
 	switch {
 	case len(workList.Items) > 1:
-		// Multiple matching work objects found; this should never occur under normal conditions.
-		wrappedErr := fmt.Errorf("%d work objects found for the same envelope %v, only one expected", len(workList.Items), envelopeReader.GetEnvelopeObjRef())
-		klog.ErrorS(wrappedErr, "Failed to create or update work object for envelope",
-			"resourceBinding", klog.KObj(binding),
-			"resourceSnapshot", klog.KObj(resourceSnapshot),
-			"envelope", envelopeReader.GetEnvelopeObjRef())
-		// Log the work object names to help debug.
+		// Multiple matching work objects found; this can occur transiently during cleanup
+		// of a previous placement (e.g. when the same CRP is deleted and recreated quickly).
+		// Sort by creation time and delete all but the most recent one to self-heal.
 		workNames := make([]string, len(workList.Items))
 		for i := range workList.Items {
 			workNames[i] = workList.Items[i].Name
 		}
-		klog.ErrorS(wrappedErr, "Duplicate work objects found", "works", workNames)
-		return nil, controller.NewUnexpectedBehaviorError(wrappedErr)
+		klog.V(2).InfoS("Multiple work objects found for the same envelope; removing duplicates and keeping the most recent",
+			"count", len(workList.Items),
+			"works", workNames,
+			"resourceBinding", klog.KObj(binding),
+			"resourceSnapshot", klog.KObj(resourceSnapshot),
+			"envelope", envelopeReader.GetEnvelopeObjRef())
+		// Sort ascending by creation timestamp; we'll keep the last one.
+		sort.Slice(workList.Items, func(i, j int) bool {
+			return workList.Items[i].CreationTimestamp.Before(&workList.Items[j].CreationTimestamp)
+		})
+		for i := 0; i < len(workList.Items)-1; i++ {
+			toDelete := &workList.Items[i]
+			if delErr := r.Client.Delete(ctx, toDelete); delErr != nil && !apierrors.IsNotFound(delErr) {
+				klog.ErrorS(delErr, "Failed to delete duplicate work object",
+					"work", klog.KObj(toDelete),
+					"resourceBinding", klog.KObj(binding),
+					"envelope", envelopeReader.GetEnvelopeObjRef())
+			}
+		}
+		work = &workList.Items[len(workList.Items)-1]
+		refreshWorkForEnvelopeCR(work, binding, resourceSnapshot, manifests, resourceOverrideSnapshotHash, clusterResourceOverrideSnapshotHash)
 	case len(workList.Items) == 1:
 		klog.V(2).InfoS("Found existing work object for the envelope; updating it",
 			"work", klog.KObj(&workList.Items[0]),
