@@ -57,6 +57,10 @@ type ClusterResourcePlacement struct {
 
 	// The desired state of ClusterResourcePlacement.
 	// +required
+	// +kubebuilder:validation:XValidation:rule="!(has(oldSelf.policy) && !has(self.policy))",message="policy cannot be removed once set"
+	// +kubebuilder:validation:XValidation:rule="!has(oldSelf.statusReportingScope) || self.statusReportingScope == oldSelf.statusReportingScope",message="statusReportingScope is immutable"
+	// +kubebuilder:validation:XValidation:rule="!has(oldSelf.policy) || !has(self.policy) || self.policy.placementType == oldSelf.policy.placementType",message="placement type is immutable"
+	// +kubebuilder:validation:XValidation:rule="!has(self.statusReportingScope) || self.statusReportingScope != 'NamespaceAccessible' || size(self.resourceSelectors.filter(x, x.kind == 'Namespace')) == 1",message="exactly one namespace resourceSelector is required when statusReportingScope is NamespaceAccessible"
 	Spec PlacementSpec `json:"spec"`
 
 	// The observed status of ClusterResourcePlacement.
@@ -1501,6 +1505,7 @@ type ResourcePlacement struct {
 }
 
 // ResourcePlacementList contains a list of ResourcePlacement.
+// +kubebuilder:object:root=true
 // +kubebuilder:resource:scope="Namespaced"
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type ResourcePlacementList struct {
@@ -1565,18 +1570,19 @@ type ClusterResourcePlacementStatus struct {
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// Source status copied from the corresponding ClusterResourcePlacement.
-	// +kubebuilder:validation:Required
+	// +optional
 	PlacementStatus `json:"sourceStatus,omitempty"`
 
 	// LastUpdatedTime is the timestamp when this object was last updated.
 	// This field is set to the current time whenever the object is created or modified.
-	// +kubebuilder:validation:Required
+	// +optional
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:Format=date-time
 	LastUpdatedTime metav1.Time `json:"lastUpdatedTime,omitempty"`
 }
 
 // ClusterResourcePlacementStatusList contains a list of ClusterResourcePlacementStatus.
+// +kubebuilder:object:root=true
 // +kubebuilder:resource:scope="Namespaced"
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type ClusterResourcePlacementStatusList struct {
