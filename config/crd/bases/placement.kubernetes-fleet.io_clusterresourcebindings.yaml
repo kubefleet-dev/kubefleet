@@ -480,6 +480,8 @@ spec:
                           description: Type of the envelope object.
                           enum:
                           - ConfigMap
+                          - ClusterResourceEnvelope
+                          - ResourceEnvelope
                           type: string
                       required:
                       - name
@@ -593,6 +595,8 @@ spec:
                           description: Type of the envelope object.
                           enum:
                           - ConfigMap
+                          - ClusterResourceEnvelope
+                          - ResourceEnvelope
                           type: string
                       required:
                       - name
@@ -756,6 +760,8 @@ spec:
                           description: Type of the envelope object.
                           enum:
                           - ConfigMap
+                          - ClusterResourceEnvelope
+                          - ResourceEnvelope
                           type: string
                       required:
                       - name
