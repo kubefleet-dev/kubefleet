@@ -16,6 +16,18 @@ spec:
     spec:
       restartPolicy: Always
       serviceAccountName: {{ include "member-agent.fullname" . }}-sa
+      {{- if not .Values.useCAAuth }}
+      initContainers:
+        - name: init-provider-token
+          image: "{{ .Values.refreshtoken.repository }}:{{ .Values.refreshtoken.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.refreshtoken.pullPolicy }}
+          command: ["sh", "-c", "echo 'Initializing provider token'"]
+          resources:
+            {{- toYaml .Values.initContainerResources | nindent 12 }}
+          volumeMounts:
+          - name: provider-token
+            mountPath: /config
+      {{- end }}
       containers:
         - name: {{ include "member-agent.fullname" . }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"

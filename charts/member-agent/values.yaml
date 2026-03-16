@@ -20,6 +20,15 @@ resources:
     cpu: 100m
     memory: 128Mi
 
+# initContainerResources defines the resource requests and limits for init containers
+initContainerResources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
 tolerations: []
 
 affinity: {}
