@@ -211,7 +211,6 @@ do
             --set config.memberClusterName="kind-${MEMBER_CLUSTERS[$i]}" \
             --set logVerbosity=5 \
             --set namespace=fleet-system \
-            --set enableV1Beta1APIs=true \
             --set priorityQueue.enabled=true \
             --set workApplierRequeueRateLimiterMaxSlowBackoffDelaySeconds=5 \
             --set workApplierRequeueRateLimiterMaxFastBackoffDelaySeconds=5 \
@@ -231,7 +230,6 @@ do
             --set config.memberClusterName="kind-${MEMBER_CLUSTERS[$i]}" \
             --set logVerbosity=5 \
             --set namespace=fleet-system \
-            --set enableV1Beta1APIs=true \
             --set priorityQueue.enabled=true \
             --set workApplierRequeueRateLimiterMaxSlowBackoffDelaySeconds=5 \
             --set workApplierRequeueRateLimiterMaxFastBackoffDelaySeconds=5 \
