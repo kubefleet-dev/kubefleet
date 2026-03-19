@@ -1,0 +1,252 @@
+name: Sync Issues to Azure DevOps
+
+on:
+  issues:
+    types:
+      # Note: 'edited' is intentionally excluded. It would allow the original issue author
+      # (any public GitHub user) to push content changes into ADO after the initial label
+      # approval, bypassing human review. Use workflow_dispatch to re-sync if needed.
+      - closed # Updates ADO work item state to Closed
+      - reopened # Updates ADO work item state back to New
+      - labeled # Triggers sync when maintainer applies ado-sync label
+
+  # [Workflow dispatch] Manual trigger for ad-hoc syncing of specific issues
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to sync"
+        required: true
+        type: number
+
+concurrency:
+  group: issue-${{ github.event.issue.number || inputs.issue_number }}
+  cancel-in-progress: false
+
+# [Least privilege permissions] Only issues permission needed (for commenting).
+# ADO authentication uses a PAT stored as a repo secret — OIDC is not viable because
+# kubefleet-dev is not in a Microsoft-governed GitHub enterprise (see: aka.ms/gim/oidc/tsg).
+permissions:
+  issues: write
+
+jobs:
+  # [Label gate] [Environment-level approval]
+  # The ado-sync label acts as a triage gate — only maintainer-approved issues reach ADO.
+  # Only users with write access can add labels, so labeling itself is the trust boundary.
+  # The "issues" environment requires reviewer approval before credentials are accessed.
+  sync:
+    # [Repo scoping] Only runs on the upstream repo, not on forks
+    if: >-
+      github.repository == 'kubefleet-dev/kubefleet'
+      && (
+        (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'ado-sync'))
+        || github.event_name == 'workflow_dispatch'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: issues
+    steps:
+      - name: Resolve issue details
+        id: issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # [Shell injection prevention] Pass inputs through env vars, not ${{ }} interpolation.
+          # While inputs.issue_number is typed as number, the API does not enforce this
+          # server-side — a malicious API caller with write access could pass arbitrary strings.
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_ISSUE_NUMBER: ${{ inputs.issue_number }}
+          EVENT_ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            ISSUE_NUMBER="${INPUT_ISSUE_NUMBER}"
+            # [Label gate] Validate label even on manual dispatch to prevent bypass
+            LABELS=$(gh issue view "${ISSUE_NUMBER}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json labels --jq '.labels[].name')
+            if ! echo "${LABELS}" | grep -q "^ado-sync$"; then
+              echo "::error::Issue #${ISSUE_NUMBER} does not have the 'ado-sync' label"
+              exit 1
+            fi
+          else
+            ISSUE_NUMBER="${EVENT_ISSUE_NUMBER}"
+          fi
+
+          # Validate issue number is strictly numeric to prevent injection downstream
+          if ! [[ "${ISSUE_NUMBER}" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid issue number: not a positive integer"
+            exit 1
+          fi
+
+          ISSUE_JSON=$(gh issue view "${ISSUE_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --json title,body,state,url)
+
+          echo "number=${ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
+
+          # [Script injection prevention] Heredoc with random delimiter prevents
+          # newline injection in GITHUB_OUTPUT from malicious issue content
+          EOF_MARKER=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          {
+            echo "json<<${EOF_MARKER}"
+            echo "${ISSUE_JSON}"
+            echo "${EOF_MARKER}"
+          } >> "$GITHUB_OUTPUT"
+
+      # [No third-party actions] Direct ADO REST API calls replace the third-party
+      # danhellem/github-actions-issue-to-work-item action, eliminating supply-chain risk.
+      # All API payloads are constructed with jq --arg for safe escaping.
+      - name: Sync Issue to Azure DevOps
+        id: sync
+        env:
+          ADO_PAT: ${{ secrets.ADO_PAT }}
+          ADO_ORG: ${{ secrets.ADO_ORGANIZATION }}
+          ADO_PROJECT: ${{ secrets.ADO_PROJECT }}
+          ADO_AREA_PATH: ${{ secrets.ADO_AREA_PATH }}
+          ADO_ITERATION_PATH: ${{ secrets.ADO_ITERATION_PATH }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          ISSUE_JSON: ${{ steps.issue.outputs.json }}
+        run: |
+          set -euo pipefail
+
+          ADO_BASE="https://dev.azure.com/${ADO_ORG}/${ADO_PROJECT}/_apis/wit"
+          ADO_API_VERSION="api-version=7.0"
+          # ADO PATs use Basic auth with an empty username and the PAT as the password.
+          # Mask the base64 form — GitHub only auto-masks the raw secret value.
+          B64_PAT=$(printf '%s' ":${ADO_PAT}" | base64 -w 0)
+          echo "::add-mask::${B64_PAT}"
+          AUTH_HEADER="Authorization: Basic ${B64_PAT}"
+          CONTENT_TYPE="Content-Type: application/json-patch+json"
+          GH_TAG="GitHub-Issue-${ISSUE_NUMBER}"
+
+          # Extract fields from the JSON blob
+          # Title is safe — ADO renders System.Title as plain text, not HTML
+          ISSUE_TITLE=$(echo "${ISSUE_JSON}" | jq -r '.title')
+          ISSUE_URL=$(echo "${ISSUE_JSON}" | jq -r '.url')
+          # [HTML injection prevention] HTML-escape the body to prevent injection into ADO's
+          # Description field. Issue body is untrusted, attacker-controlled content from any
+          # public GitHub user whose issue a maintainer labels ado-sync.
+          ISSUE_BODY=$(echo "${ISSUE_JSON}" | jq -r '.body // "" | @html')
+
+          # Map GitHub issue state to ADO work item state
+          ADO_STATE="New"
+          [ "$(echo "${ISSUE_JSON}" | jq -r '.state')" = "CLOSED" ] && ADO_STATE="Closed"
+
+          # [WIQL injection prevention] Check if a work item already exists for this issue.
+          # Tag and project are passed through jq --arg to prevent WIQL injection,
+          # even though current inputs are safe (integer issue number, secret project name).
+          WIQL_RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -H "${AUTH_HEADER}" \
+            -H "Content-Type: application/json" \
+            -X POST "${ADO_BASE}/wiql?${ADO_API_VERSION}" \
+            -d "$(jq -n --arg tag "${GH_TAG}" --arg proj "${ADO_PROJECT}" \
+              '{query: ("SELECT [System.Id] FROM WorkItems WHERE [System.Tags] CONTAINS \u0027" + $tag + "\u0027 AND [System.TeamProject] = \u0027" + $proj + "\u0027")}')")
+          WIQL_HTTP_CODE=$(echo "${WIQL_RESPONSE}" | tail -1)
+          WIQL_BODY=$(echo "${WIQL_RESPONSE}" | sed '$d')
+
+          if [ "${WIQL_HTTP_CODE}" -ne 200 ]; then
+            echo "::error::WIQL query failed (HTTP ${WIQL_HTTP_CODE}): ${WIQL_BODY}"
+            exit 1
+          fi
+
+          WORK_ITEM_ID=$(echo "${WIQL_BODY}" | jq -r '.workItems[0].id // empty')
+
+          # Build the description HTML with link back to GitHub
+          DESCRIPTION="<a href=\"${ISSUE_URL}\">GitHub Issue #${ISSUE_NUMBER}</a><br><br>${ISSUE_BODY}"
+
+          if [ -n "${WORK_ITEM_ID}" ]; then
+            echo "Updating existing work item #${WORK_ITEM_ID}"
+            PATCH_BODY=$(jq -n \
+              --arg title "${ISSUE_TITLE}" \
+              --arg desc "${DESCRIPTION}" \
+              --arg state "${ADO_STATE}" \
+              '[
+                { "op": "replace", "path": "/fields/System.Title", "value": $title },
+                { "op": "replace", "path": "/fields/System.Description", "value": $desc },
+                { "op": "replace", "path": "/fields/System.State", "value": $state }
+              ]')
+
+            RESPONSE=$(curl -s -w "\n%{http_code}" \
+              -H "${AUTH_HEADER}" \
+              -H "${CONTENT_TYPE}" \
+              -X PATCH "${ADO_BASE}/workitems/${WORK_ITEM_ID}?${ADO_API_VERSION}" \
+              -d "${PATCH_BODY}")
+          else
+            echo "Creating new work item for issue #${ISSUE_NUMBER}"
+            WIT_ENCODED=$(printf '%s' "GitHub Issue" | jq -sRr @uri)
+
+            PATCH_BODY=$(jq -n \
+              --arg title "${ISSUE_TITLE}" \
+              --arg desc "${DESCRIPTION}" \
+              --arg state "${ADO_STATE}" \
+              --arg area "${ADO_AREA_PATH}" \
+              --arg iteration "${ADO_ITERATION_PATH}" \
+              --arg tags "${GH_TAG}" \
+              '[
+                { "op": "add", "path": "/fields/System.Title", "value": $title },
+                { "op": "add", "path": "/fields/System.Description", "value": $desc },
+                { "op": "add", "path": "/fields/System.State", "value": $state },
+                { "op": "add", "path": "/fields/System.AreaPath", "value": $area },
+                { "op": "add", "path": "/fields/System.IterationPath", "value": $iteration },
+                { "op": "add", "path": "/fields/System.Tags", "value": $tags }
+              ]')
+
+            RESPONSE=$(curl -s -w "\n%{http_code}" \
+              -H "${AUTH_HEADER}" \
+              -H "${CONTENT_TYPE}" \
+              -X POST "${ADO_BASE}/workitems/\$${WIT_ENCODED}?${ADO_API_VERSION}" \
+              -d "${PATCH_BODY}")
+          fi
+
+          HTTP_CODE=$(echo "${RESPONSE}" | tail -1)
+          RESPONSE_BODY=$(echo "${RESPONSE}" | sed '$d')
+
+          if [ "${HTTP_CODE}" -lt 200 ] || [ "${HTTP_CODE}" -ge 300 ]; then
+            echo "::error::ADO API call failed (HTTP ${HTTP_CODE}): ${RESPONSE_BODY}"
+            exit 1
+          fi
+
+          WORK_ITEM_ID=$(echo "${RESPONSE_BODY}" | jq -r '.id')
+          echo "work_item_id=${WORK_ITEM_ID}" >> "$GITHUB_OUTPUT"
+          echo "Successfully synced to ADO work item #${WORK_ITEM_ID}"
+
+      # Note: The link-back comment intentionally discloses the ADO org/project in the URL.
+      # This is an accepted trade-off — the URL is useful for maintainers, and the ADO
+      # project requires authentication to access.
+      - name: Post Link-Back Comment
+        if: >-
+          steps.sync.outputs.work_item_id
+          && (github.event.action == 'labeled'
+          || github.event_name == 'workflow_dispatch')
+        # [Pinned action SHAs] Pinned to full commit SHA
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        env:
+          ADO_ORG: ${{ secrets.ADO_ORGANIZATION }}
+          ADO_PROJECT: ${{ secrets.ADO_PROJECT }}
+          WORK_ITEM_ID: ${{ steps.sync.outputs.work_item_id }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+        with:
+          script: |
+            const org = process.env.ADO_ORG;
+            const project = process.env.ADO_PROJECT;
+            const workItemId = process.env.WORK_ITEM_ID;
+            const issueNumber = parseInt(process.env.ISSUE_NUMBER, 10);
+            const adoUrl = `https://dev.azure.com/${org}/${project}/_workitems/edit/${workItemId}`;
+            const marker = `Linked Azure DevOps Work Item: [#${workItemId}]`;
+
+            // Check for existing link-back comment to avoid duplicates on re-runs
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+            });
+            if (comments.data.some(c => c.body.includes(marker))) {
+              core.info('Link-back comment already exists, skipping.');
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `${marker}(${adoUrl})`
+            });
