@@ -1,0 +1,99 @@
+name: Sync Issues to Azure DevOps
+
+on:
+  issues:
+    types:
+      - opened
+      - edited
+      - deleted
+      - closed
+      - reopened
+      - labeled
+      - unlabeled
+      - assigned
+
+concurrency:
+  group: issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  issues: write
+
+jobs:
+  sync:
+    if: github.repository == 'kubefleet-dev/kubefleet'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: issues
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          client-id: ${{ vars.AZURE_SP_DEVOPS_SYNC_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_SP_DEVOPS_SYNC_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Get Azure DevOps Access Token
+        id: ado-token
+        run: |
+          set -euo pipefail
+          # 499b84ac-1321-427f-aa17-267ca6975798 is the well-known Azure DevOps App ID in Entra ID
+          TOKEN=$(az account get-access-token \
+            --resource 499b84ac-1321-427f-aa17-267ca6975798 \
+            --query accessToken \
+            --output tsv)
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Failed to acquire ADO access token"
+            exit 1
+          fi
+          echo "::add-mask::${TOKEN}"
+          echo "token=${TOKEN}" >> "$GITHUB_OUTPUT"
+
+      - name: Sync Issue to Azure DevOps
+        id: sync
+        uses: danhellem/github-actions-issue-to-work-item@8d0ead9b49a65aa66dac6949b1ff149d7ef8b4de # v2.5
+        env:
+          ado_token: ${{ steps.ado-token.outputs.token }}
+          github_token: ${{ github.token }}
+          ado_organization: ${{ vars.ADO_ORGANIZATION }}
+          ado_project: ${{ vars.ADO_PROJECT }}
+          ado_area_path: ${{ vars.ADO_AREA_PATH }}
+          ado_iteration_path: ${{ vars.ADO_ITERATION_PATH }}
+          ado_wit: "GitHub Issue"
+          ado_new_state: "New"
+          ado_active_state: "Active"
+          ado_close_state: "Closed"
+
+      - name: Post Link-Back Comment
+        if: github.event.action == 'opened' && steps.sync.outputs.workItemId
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        env:
+          ADO_ORG: ${{ vars.ADO_ORGANIZATION }}
+          ADO_PROJECT: ${{ vars.ADO_PROJECT }}
+          WORK_ITEM_ID: ${{ steps.sync.outputs.workItemId }}
+        with:
+          script: |
+            const org = process.env.ADO_ORG;
+            const project = process.env.ADO_PROJECT;
+            const workItemId = process.env.WORK_ITEM_ID;
+            const adoUrl = `https://dev.azure.com/${org}/${project}/_workitems/edit/${workItemId}`;
+            const marker = `Linked Azure DevOps Work Item: [#${workItemId}]`;
+
+            // Check for existing link-back comment to avoid duplicates on re-runs
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            if (comments.data.some(c => c.body.includes(marker))) {
+              core.info('Link-back comment already exists, skipping.');
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `${marker}(${adoUrl})`
+            });
