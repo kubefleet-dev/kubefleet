@@ -245,6 +245,13 @@ func (r *ResourceConfig) Parse(c string) error {
 	return nil
 }
 
+// isVersion returns true if the given string looks like a Kubernetes API version
+// (e.g., "v1", "v2", "v1beta1", "v1alpha1"). Versions always start with 'v' followed
+// by a digit, which distinguishes them from kind names.
+func isVersion(s string) bool {
+	return len(s) > 1 && s[0] == 'v' && s[1] >= '0' && s[1] <= '9'
+}
+
 // TODO: reduce cyclo
 func (r *ResourceConfig) parseSingle(token string) error {
 	switch strings.Count(token, "/") {
@@ -252,7 +259,7 @@ func (r *ResourceConfig) parseSingle(token string) error {
 	// So, it should be the case "<group>".
 	case 0:
 		r.groups[token] = struct{}{}
-	// it should be the case "<group>/<version>"
+	// it should be the case "<group>/<version>" or "<group>/<kind>"
 	case 1:
 		// for core group which don't have the group name, the case should be "v1/<kind>" or "v1/<kind>,<kind>..."
 		if strings.HasPrefix(token, "v1") {
@@ -272,16 +279,26 @@ func (r *ResourceConfig) parseSingle(token string) error {
 				}
 				r.groupVersionKinds[gvk] = struct{}{}
 			}
-		} else { // case "<group>/<version>"
+		} else { // case "<group>/<version>" or "<group>/<kind>"
 			parts := strings.Split(token, "/")
 			if len(parts) != 2 {
 				return fmt.Errorf("invalid token: %s", token)
 			}
-			gv := schema.GroupVersion{
-				Group:   parts[0],
-				Version: parts[1],
+			// If the second part looks like a Kubernetes API version (e.g. v1, v1beta1, v2alpha1),
+			// treat it as group/version; otherwise treat it as group/kind.
+			if isVersion(parts[1]) {
+				gv := schema.GroupVersion{
+					Group:   parts[0],
+					Version: parts[1],
+				}
+				r.groupVersions[gv] = struct{}{}
+			} else {
+				gk := schema.GroupKind{
+					Group: parts[0],
+					Kind:  parts[1],
+				}
+				r.groupKinds[gk] = struct{}{}
 			}
-			r.groupVersions[gv] = struct{}{}
 		}
 	// parameter format: "<group>/<version>/<kind>" or "<group>/<version>/<kind>,<kind>..."
 	case 2:
