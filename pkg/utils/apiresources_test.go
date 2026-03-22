@@ -148,6 +148,122 @@ func TestResourceConfigGVParse(t *testing.T) {
 	}
 }
 
+func TestResourceConfigGKParse(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		disabled []schema.GroupVersionKind
+		enabled  []schema.GroupVersionKind
+	}{
+		{
+			name:  "multiple group/kind tokens",
+			input: "apps/Deployment;networking.k8s.io/Ingress",
+			disabled: []schema.GroupVersionKind{
+				{
+					Group:   "apps",
+					Version: "v1",
+					Kind:    "Deployment",
+				},
+				{
+					Group:   "apps",
+					Version: "v1beta2",
+					Kind:    "Deployment",
+				},
+				{
+					Group:   "networking.k8s.io",
+					Version: "v1",
+					Kind:    "Ingress",
+				},
+				{
+					Group:   "networking.k8s.io",
+					Version: "v1beta1",
+					Kind:    "Ingress",
+				},
+			},
+			enabled: []schema.GroupVersionKind{
+				{
+					Group:   "apps",
+					Version: "v1",
+					Kind:    "StatefulSet",
+				},
+				{
+					Group:   "networking.k8s.io",
+					Version: "v1",
+					Kind:    "IngressClass",
+				},
+			},
+		},
+		{
+			name:  "single group/kind token",
+			input: "apps/StatefulSet",
+			disabled: []schema.GroupVersionKind{
+				{
+					Group:   "apps",
+					Version: "v1",
+					Kind:    "StatefulSet",
+				},
+				{
+					Group:   "apps",
+					Version: "v1beta1",
+					Kind:    "StatefulSet",
+				},
+			},
+			enabled: []schema.GroupVersionKind{
+				{
+					Group:   "apps",
+					Version: "v1",
+					Kind:    "Deployment",
+				},
+			},
+		},
+		{
+			name:  "mixed group/version and group/kind tokens",
+			input: "apps/Deployment;networking.k8s.io/v1",
+			disabled: []schema.GroupVersionKind{
+				{
+					Group:   "apps",
+					Version: "v1",
+					Kind:    "Deployment",
+				},
+				{
+					Group:   "apps",
+					Version: "v1beta1",
+					Kind:    "Deployment",
+				},
+				{
+					Group:   "networking.k8s.io",
+					Version: "v1",
+					Kind:    "Ingress",
+				},
+				{
+					Group:   "networking.k8s.io",
+					Version: "v1",
+					Kind:    "IngressClass",
+				},
+			},
+			enabled: []schema.GroupVersionKind{
+				{
+					Group:   "apps",
+					Version: "v1",
+					Kind:    "StatefulSet",
+				},
+				{
+					Group:   "networking.k8s.io",
+					Version: "v1beta1",
+					Kind:    "Ingress",
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			r := newTestResourceConfig(t, false, test.input)
+			checkIfResourcesAreDisabledInConfig(t, r, test.disabled)
+			checkIfResourcesAreEnabledInConfig(t, r, test.enabled)
+		})
+	}
+}
+
 func TestResourceConfigGroupParse(t *testing.T) {
 	tests := []struct {
 		input    string
