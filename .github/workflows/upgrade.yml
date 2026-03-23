@@ -5,6 +5,11 @@ on:
     branches:
       - main
       - release-*
+    paths-ignore:
+      - ".github/**"
+      - ".pipeline/**"
+      - "screenshots/**"
+      - "examples/**"
   workflow_dispatch:
     inputs:
       beforeTagOrCommit:
@@ -14,7 +19,16 @@ on:
     branches:
       - main
       - release-*
-    paths-ignore: [docs/**, "**.md", "**.mdx", "**.png", "**.jpg"]
+    paths-ignore:
+      - docs/**
+      - "**.md"
+      - "**.mdx"
+      - "**.png"
+      - "**.jpg"
+      - ".github/**"
+      - ".pipeline/**"
+      - "screenshots/**"
+      - "examples/**"
 
 env:
   GO_VERSION: '1.24.13'
