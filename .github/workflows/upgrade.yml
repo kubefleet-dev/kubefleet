@@ -5,10 +5,18 @@ on:
     branches:
       - main
       - release-*
-    paths-ignore:
-      - ".pipeline/**"
-      - "screenshots/**"
-      - "examples/**"
+    paths:
+      - '**'
+      - '!.github/**'
+      - '.github/workflows/upgrade.yml'
+      - '!**.md'
+      - '!**.mdx'
+      - '!**.png'
+      - '!**.jpg'
+      - '!hack/**'
+      - '!.pipeline/**'
+      - '!screenshots/**'
+      - '!examples/**'
   workflow_dispatch:
     inputs:
       beforeTagOrCommit:
@@ -18,15 +26,18 @@ on:
     branches:
       - main
       - release-*
-    paths-ignore:
-      - docs/**
-      - "**.md"
-      - "**.mdx"
-      - "**.png"
-      - "**.jpg"
-      - ".pipeline/**"
-      - "screenshots/**"
-      - "examples/**"
+    paths:
+      - '**'
+      - '!.github/**'
+      - '.github/workflows/upgrade.yml'
+      - '!**.md'
+      - '!**.mdx'
+      - '!**.png'
+      - '!**.jpg'
+      - '!hack/**'
+      - '!.pipeline/**'
+      - '!screenshots/**'
+      - '!examples/**'
 
 env:
   GO_VERSION: '1.24.13'
