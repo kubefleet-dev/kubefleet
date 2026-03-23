@@ -2,7 +2,13 @@
 # https://github.com/codespell-project/actions-codespell
 # https://github.com/codespell-project/codespell
 name: Code Spelling Checker
-on: [pull_request]
+on:
+  pull_request:
+    paths-ignore:
+      - ".github/**"
+      - ".pipeline/**"
+      - "screenshots/**"
+      - "examples/**"
 permissions:
   contents: read
 
