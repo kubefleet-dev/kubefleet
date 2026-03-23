@@ -1,14 +1,14 @@
 # Note: you must have at least one hub cluster and one member cluster.
 
-# Example usage: ./join-member-clusters.sh demo-hub-01 0.2.2 member-cluster-1 [<member-cluster-name-2> ...]
+# Example usage: ./join-member-clusters.sh 0.2.2 demo-hub-01 member-cluster-1 [<member-cluster-name-2> ...]
 
 usage() {
     cat <<'EOF'
 Usage:
-    ./join-member-clusters.sh <hub-cluster-name> <kubefleet-version> <member-cluster-name-1> [<member-cluster-name-2> ...]
+    ./join-member-clusters.sh <kubefleet-version> <hub-cluster-name> <member-cluster-name-1> [<member-cluster-name-2> ...]
 
 Example:
-    ./join-member-clusters.sh demo-hub-01 0.2.2 member-cluster-1 member-cluster-2
+    ./join-member-clusters.sh 0.2.2 demo-hub-01 member-cluster-1 member-cluster-2
 
 Requirements:
     - kubectl and helm must be installed
@@ -40,15 +40,15 @@ if ! command -v helm >/dev/null 2>&1; then
     fail_with_help "helm is not installed or not available in PATH"
 fi
 
-export HUB_CLUSTER_NAME="$1"
-export KUBEFLEET_VERSION="$2"
-
-if [ -z "$HUB_CLUSTER_NAME" ]; then
-    fail_with_help "hub cluster name cannot be empty"
-fi
+export KUBEFLEET_VERSION="$1"
+export HUB_CLUSTER_NAME="$2"
 
 if [ -z "$KUBEFLEET_VERSION" ]; then
     fail_with_help "kubefleet version cannot be empty"
+fi
+
+if [ -z "$HUB_CLUSTER_NAME" ]; then
+    fail_with_help "hub cluster name cannot be empty"
 fi
 
 if ! kubectl config get-clusters 2>/dev/null | grep -Fxq "$HUB_CLUSTER_NAME"; then
