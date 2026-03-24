@@ -1,7 +1,14 @@
 # Note: you must have at least one hub cluster and one member cluster.
 #
+# The reason we require the hub cluster API URL as an argument is that, in some environments (e.g. kind), the URL cannot be derived from kubeconfig and needs to be explicitly provided by users.
+# 
+# For example, using Docker, you can get the right IP address for member clusters to use:
+#    docker inspect local-hub-01-control-plane --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'
+#
+#    You can assume port 6443 unless you have explicitly changed the API server port for your hub cluster. Don't use the mapped Docker port (i.e. 50063)
+#
 # Example usage:
-#   ./join-member-clusters.ps1 0.2.2 demo-hub-01 member-cluster-1 member-cluster-2
+#   ./join-member-clusters.ps1 0.2.2 demo-hub-01 https://172.18.0.2:6443 member-cluster-1 member-cluster-2
 
 [CmdletBinding()]
 param(
@@ -11,7 +18,10 @@ param(
     [Parameter(Position = 1)]
     [string]$HubClusterName,
 
-    [Parameter(Position = 2, ValueFromRemainingArguments = $true)]
+    [Parameter(Position = 2)]
+    [string]$HubControlPlaneURL,
+
+    [Parameter(Position = 3, ValueFromRemainingArguments = $true)]
     [string[]]$MemberClusterNames,
 
     [switch]$Help
@@ -20,10 +30,10 @@ param(
 function Show-Usage {
     @'
 Usage:
-    ./join-member-clusters.ps1 <kubefleet-version> <hub-cluster-name> <member-cluster-name-1> [<member-cluster-name-2> ...]
+    ./join-member-clusters.ps1 <kubefleet-version> <hub-cluster-name> <hub-control-plane-url> <member-cluster-name-1> [<member-cluster-name-2> ...]
 
 Example:
-    ./join-member-clusters.ps1 0.2.2 demo-hub-01 member-cluster-1 member-cluster-2
+    ./join-member-clusters.ps1 0.2.2 demo-hub-01 https://172.18.0.2:6443 member-cluster-1 member-cluster-2
 
 Requirements:
     - PowerShell 7, kubectl, and helm must be installed
@@ -71,7 +81,7 @@ if ($Help) {
     exit 0
 }
 
-if ([string]::IsNullOrWhiteSpace($KubefleetVersion) -or [string]::IsNullOrWhiteSpace($HubClusterName) -or $null -eq $MemberClusterNames -or $MemberClusterNames.Count -lt 1) {
+if ([string]::IsNullOrWhiteSpace($KubefleetVersion) -or [string]::IsNullOrWhiteSpace($HubClusterName) -or [string]::IsNullOrWhiteSpace($HubControlPlaneURL) -or $null -eq $MemberClusterNames -or $MemberClusterNames.Count -lt 1) {
     $argumentCount = 0
     if (-not [string]::IsNullOrWhiteSpace($KubefleetVersion)) {
         $argumentCount++
@@ -79,11 +89,14 @@ if ([string]::IsNullOrWhiteSpace($KubefleetVersion) -or [string]::IsNullOrWhiteS
     if (-not [string]::IsNullOrWhiteSpace($HubClusterName)) {
         $argumentCount++
     }
+    if (-not [string]::IsNullOrWhiteSpace($HubControlPlaneURL)) {
+        $argumentCount++
+    }
     if ($null -ne $MemberClusterNames) {
         $argumentCount += $MemberClusterNames.Count
     }
 
-    Fail-WithHelp "expected at least 3 arguments, got $argumentCount"
+    Fail-WithHelp "expected at least 4 arguments, got $argumentCount"
 }
 
 if (-not (Test-CommandExists -Name kubectl)) {
@@ -98,6 +111,15 @@ if (-not (Test-ClusterExists -Name $HubClusterName)) {
     Fail-WithHelp "hub cluster '$HubClusterName' was not found in kubeconfig"
 }
 
+[System.Uri]$parsedHubURL = $null
+if (-not [System.Uri]::TryCreate($HubControlPlaneURL, [System.UriKind]::Absolute, [ref]$parsedHubURL)) {
+    Fail-WithHelp "hub control plane URL '$HubControlPlaneURL' is not a valid absolute URL"
+}
+
+if ($parsedHubURL.Scheme -ne "https") {
+    Fail-WithHelp "hub control plane URL must use https"
+}
+
 foreach ($memberClusterName in $MemberClusterNames) {
     if ([string]::IsNullOrWhiteSpace($memberClusterName)) {
         Fail-WithHelp "member cluster name cannot be empty"
@@ -110,12 +132,6 @@ foreach ($memberClusterName in $MemberClusterNames) {
     if (-not (Test-ClusterExists -Name $memberClusterName)) {
         Fail-WithHelp "member cluster '$memberClusterName' was not found in kubeconfig"
     }
-}
-
-# Get the API server address of the hub cluster, which will be used by member clusters to connect to the hub cluster.
-$HubClusterAddress = kubectl config view -o jsonpath="{.clusters[?(@.name=='$HubClusterName')].cluster.server}"
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($HubClusterAddress)) {
-    Fail-WithHelp "unable to resolve API server address for hub cluster '$HubClusterName'"
 }
 
 foreach ($memberClusterName in $MemberClusterNames) {
@@ -179,7 +195,7 @@ spec:
     Write-Host "Installing member-agent..."
     helm install member-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/member-agent `
         --version $KubefleetVersion `
-        --set "config.hubURL=$HubClusterAddress" `
+        --set "config.hubURL=$HubControlPlaneURL" `
         --set "config.memberClusterName=$memberClusterName" `
         --set logFileMaxSize=100000 `
         --namespace fleet-system `
