@@ -1,14 +1,21 @@
 # Note: you must have at least one hub cluster and one member cluster.
-
-# Example usage: ./join-member-clusters.sh 0.2.2 demo-hub-01 member-cluster-1 [<member-cluster-name-2> ...]
+#
+# The reason we require the hub cluster API URL as an argument is that, in some environments (e.g. kind), the URL cannot be derived from kubeconfig and needs to be explicitly provided by users.
+#
+# For example, using Docker, you can get the right IP address for member clusters to use:
+#    docker inspect local-hub-01-control-plane --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'
+#
+#    You can assume port 6443 unless you have explicitly changed the API server port for your hub cluster. Don't use the mapped Docker port (i.e. 50063)
+#
+# Example usage: ./join-member-clusters.sh 0.2.2 demo-hub-01 https://172.18.0.2:6443 member-cluster-1 [<member-cluster-name-2> ...]
 
 usage() {
     cat <<'EOF'
 Usage:
-    ./join-member-clusters.sh <kubefleet-version> <hub-cluster-name> <member-cluster-name-1> [<member-cluster-name-2> ...]
+    ./join-member-clusters.sh <kubefleet-version> <hub-cluster-name> <hub-control-plane-url> <member-cluster-name-1> [<member-cluster-name-2> ...]
 
 Example:
-    ./join-member-clusters.sh 0.2.2 demo-hub-01 member-cluster-1 member-cluster-2
+    ./join-member-clusters.sh 0.2.2 demo-hub-01 https://172.18.0.2:6443 member-cluster-1 member-cluster-2
 
 Requirements:
     - kubectl and helm must be installed
@@ -28,8 +35,8 @@ if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
     exit 0
 fi
 
-if [ "$#" -lt 3 ]; then
-    fail_with_help "expected at least 3 arguments, got $#"
+if [ "$#" -lt 4 ]; then
+    fail_with_help "expected at least 4 arguments, got $#"
 fi
 
 if ! command -v kubectl >/dev/null 2>&1; then
@@ -42,6 +49,7 @@ fi
 
 export KUBEFLEET_VERSION="$1"
 export HUB_CLUSTER_NAME="$2"
+export HUB_CONTROL_PLANE_URL="$3"
 
 if [ -z "$KUBEFLEET_VERSION" ]; then
     fail_with_help "kubefleet version cannot be empty"
@@ -51,11 +59,20 @@ if [ -z "$HUB_CLUSTER_NAME" ]; then
     fail_with_help "hub cluster name cannot be empty"
 fi
 
+if [ -z "$HUB_CONTROL_PLANE_URL" ]; then
+    fail_with_help "hub control plane URL cannot be empty"
+fi
+
+case "$HUB_CONTROL_PLANE_URL" in
+    https://*) ;;
+    *) fail_with_help "hub control plane URL must use https" ;;
+esac
+
 if ! kubectl config get-clusters 2>/dev/null | grep -Fxq "$HUB_CLUSTER_NAME"; then
     fail_with_help "hub cluster '$HUB_CLUSTER_NAME' was not found in kubeconfig"
 fi
 
-for MC in "${@:3}"; do
+for MC in "${@:4}"; do
     if [ -z "$MC" ]; then
         fail_with_help "member cluster name cannot be empty"
     fi
@@ -69,14 +86,7 @@ for MC in "${@:3}"; do
     fi
 done
 
-# Get the API server address of the hub cluster, which will be used by member clusters to connect to the hub cluster.
-export HUB_CLUSTER_ADDRESS=$(kubectl config view -o jsonpath="{.clusters[?(@.name==\"$HUB_CLUSTER_NAME\")].cluster.server}")
-
-if [ -z "$HUB_CLUSTER_ADDRESS" ]; then
-    fail_with_help "unable to resolve API server address for hub cluster '$HUB_CLUSTER_NAME'"
-fi
-
-for MC in "${@:3}"; do
+for MC in "${@:4}"; do
 
 # Note that Fleet will recognize your cluster with this name once it joins.
 export MEMBER_CLUSTER_NAME=$MC
@@ -137,7 +147,7 @@ helm uninstall member-agent -n fleet-system --wait
 echo "Installing member-agent..."
 helm install member-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/member-agent \
   --version $KUBEFLEET_VERSION \
-  --set config.hubURL=$HUB_CLUSTER_ADDRESS  \
+  --set config.hubURL=$HUB_CONTROL_PLANE_URL \
   --set config.memberClusterName=$MEMBER_CLUSTER_NAME \
   --set logFileMaxSize=100000 \
   --namespace fleet-system \
