@@ -113,7 +113,7 @@ foreach ($memberClusterName in $MemberClusterNames) {
 }
 
 # Get the API server address of the hub cluster, which will be used by member clusters to connect to the hub cluster.
-$HubClusterAddress = kubectl config view -o "jsonpath={.clusters[?(@.name==\"$HubClusterName\")].cluster.server}"
+$HubClusterAddress = kubectl config view -o jsonpath="{.clusters[?(@.name=='$HubClusterName')].cluster.server}"
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($HubClusterAddress)) {
     Fail-WithHelp "unable to resolve API server address for hub cluster '$HubClusterName'"
 }
