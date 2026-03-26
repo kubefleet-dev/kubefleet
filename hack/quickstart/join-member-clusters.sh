@@ -1,3 +1,4 @@
+#!/bin/bash
 # Note: you must have at least one hub cluster and one member cluster.
 #
 # The reason we require the hub cluster API URL as an argument is that, in some environments (e.g. kind), the URL cannot be derived from kubeconfig and needs to be explicitly provided by users.
@@ -92,7 +93,7 @@ for MC in "${@:4}"; do
 export MEMBER_CLUSTER_NAME=$MC
 export SERVICE_ACCOUNT="$MEMBER_CLUSTER_NAME-hub-cluster-access"
 
-#echo "Switching into hub cluster context..."
+echo "Switching into hub cluster context..."
 kubectl config use $HUB_CLUSTER_NAME
 # The service account can, in theory, be created in any namespace; for simplicity reasons,
 # here you will use the namespace reserved by Fleet installation, `fleet-system`.
