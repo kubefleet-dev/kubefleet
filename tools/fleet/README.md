@@ -134,6 +134,7 @@ If the `cordon` taint is not present on the member cluster, the command will hav
 The `approve` subcommand uses the following flags:
 - `--hubClusterContext`: kubectl context for the hub cluster (required)
 - `--name`: name of the resource to approve (required)
+- `--namespace`: namespace of the resource to approve (optional)
 
 Both `draincluster` and `uncordoncluster` subcommands use the following flags:
 - `--hubClusterContext`: kubectl context for the hub cluster (required)
@@ -163,6 +164,9 @@ kubectl fleet uncordoncluster --hubClusterContext production-hub --clusterName w
 # Approve a ClusterApprovalRequest for staged updates
 kubectl fleet approve clusterapprovalrequest --hubClusterContext hub --name update-approval-stage-1
 
+# Approve a ApprovalRequest for staged updates
+kubectl fleet approve approvalrequest --hubClusterContext hub --name update-approval-stage-1 --namespace test-namespace
+
 # Drain multiple clusters (run separately for each cluster)
 kubectl fleet draincluster --hubClusterContext hub --clusterName east-cluster
 kubectl fleet draincluster --hubClusterContext hub --clusterName west-cluster
@@ -176,11 +180,23 @@ kubectl fleet uncordoncluster --hubClusterContext hub --clusterName west-cluster
 
 ### Verifying Approval Operation
 
+#### ClusterApprovalRequest (cluster-scope)
 After running the approval command, verify that the corresponding clusterApprovalRequest has been approved:
 
 1. Check that the clusterApprovalRequest has `APPROVED` set to true
    ```
    kubectl get clusterapprovalrequest example-run-staging
+   NAME                  UPDATE-RUN    STAGE     APPROVED   AGE
+   example-run-staging   example-run   staging   True       2m46s
+   ```
+2. Verify the updateRun is not blocked by the approval after-stage task
+
+#### ApprovalRequest (namespace-scope)
+After running the approval command, verify that the corresponding approvalRequest has been approved:
+
+1. Check that the clusterApprovalRequest has `APPROVED` set to true
+   ```
+   kubectl get approvalrequest example-run-staging -n test-namspace
    NAME                  UPDATE-RUN    STAGE     APPROVED   AGE
    example-run-staging   example-run   staging   True       2m46s
    ```
