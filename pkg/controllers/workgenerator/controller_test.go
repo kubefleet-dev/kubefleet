@@ -31,10 +31,15 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllertest"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
@@ -50,6 +55,136 @@ var statusCmpOptions = []cmp.Option{
 		// we're within the margin (1s) if x + margin >= y
 		return !t1.Time.Add(1 * time.Second).Before(t2.Time)
 	}),
+}
+
+func TestWorkHandlerCreateFunc(t *testing.T) {
+	tests := map[string]struct {
+		enqueueCRB      bool
+		work            *fleetv1beta1.Work
+		wantEnqueueKeys []reconcile.Request
+	}{
+		"enqueue a cluster-scoped work for a cluster resource binding": {
+			enqueueCRB: true,
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "cluster-work",
+					Labels: map[string]string{
+						fleetv1beta1.ParentBindingLabel: "cluster-binding",
+					},
+				},
+				Status: fleetv1beta1.WorkStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   fleetv1beta1.WorkConditionTypeApplied,
+							Status: metav1.ConditionTrue,
+						},
+					},
+				},
+			},
+			wantEnqueueKeys: []reconcile.Request{
+				{NamespacedName: types.NamespacedName{Name: "cluster-binding"}},
+			},
+		},
+		"ignore a namespaced work when handling cluster resource bindings": {
+			enqueueCRB: true,
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "resource-work",
+					Labels: map[string]string{
+						fleetv1beta1.ParentBindingLabel:   "resource-binding",
+						fleetv1beta1.ParentNamespaceLabel: "app-namespace",
+					},
+				},
+			},
+		},
+		"enqueue a namespaced work for a resource binding": {
+			enqueueCRB: false,
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "resource-work",
+					Labels: map[string]string{
+						fleetv1beta1.ParentBindingLabel:   "resource-binding",
+						fleetv1beta1.ParentNamespaceLabel: "app-namespace",
+					},
+				},
+				Status: fleetv1beta1.WorkStatus{
+					Conditions: []metav1.Condition{
+						{
+							Type:   fleetv1beta1.WorkConditionTypeApplied,
+							Status: metav1.ConditionTrue,
+						},
+					},
+				},
+			},
+			wantEnqueueKeys: []reconcile.Request{
+				{NamespacedName: types.NamespacedName{Name: "resource-binding", Namespace: "app-namespace"}},
+			},
+		},
+		"ignore a cluster-scoped work when handling resource bindings": {
+			enqueueCRB: false,
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "cluster-work",
+					Labels: map[string]string{
+						fleetv1beta1.ParentBindingLabel: "cluster-binding",
+					},
+				},
+			},
+		},
+		"ignore a work without a parent binding label": {
+			enqueueCRB: true,
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "invalid-work",
+				},
+			},
+		},
+		"ignore a work without reported status": {
+			enqueueCRB: true,
+			work: &fleetv1beta1.Work{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "pending-work",
+					Labels: map[string]string{
+						fleetv1beta1.ParentBindingLabel: "cluster-binding",
+					},
+				},
+			},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			queue := &controllertest.Queue{
+				TypedInterface: workqueue.NewTypedRateLimitingQueue[reconcile.Request](
+					workqueue.DefaultTypedItemBasedRateLimiter[reconcile.Request](),
+				),
+			}
+
+			workHandlerFuncs(tt.enqueueCRB).CreateFunc(context.Background(), event.CreateEvent{Object: tt.work}, queue)
+
+			validateEnqueueBehavior(t, queue, tt.wantEnqueueKeys)
+		})
+	}
+}
+
+func validateEnqueueBehavior(t *testing.T, queue *controllertest.Queue, wantEnqueueKeys []reconcile.Request) {
+	var queuedKeys []reconcile.Request
+	for i := 0; i < queue.Len(); i++ {
+		item, _ := queue.Get()
+		queuedKeys = append(queuedKeys, item)
+	}
+
+	cmpOptions := cmp.Options{
+		cmpopts.EquateEmpty(),
+		cmpopts.IgnoreUnexported(reconcile.Request{}),
+		cmpopts.SortSlices(func(r1, r2 reconcile.Request) bool {
+			return r1.String() < r2.String()
+		}),
+	}
+
+	if !cmp.Equal(queuedKeys, wantEnqueueKeys, cmpOptions...) {
+		t.Errorf("queued keys mismatch, want %v, got %v", wantEnqueueKeys, queuedKeys)
+	}
 }
 
 func TestGetWorkNamePrefixFromSnapshotName(t *testing.T) {

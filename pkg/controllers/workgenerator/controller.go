@@ -1470,7 +1470,7 @@ func extractDiffedResourcePlacementsFromWork(work *fleetv1beta1.Work) []fleetv1b
 }
 
 // SetupWithManagerForClusterResourceBinding sets up the controller with the Manager.
-// It watches clusterResourceBinding events and also update/delete events for work.
+// It watches clusterResourceBinding events and also create/update/delete events for work.
 func (r *Reconciler) SetupWithManagerForClusterResourceBinding(mgr controllerruntime.Manager) error {
 	r.recorder = mgr.GetEventRecorderFor("cluster resource binding work generator")
 	return controllerruntime.NewControllerManagedBy(mgr).Named("cluster-resource-binding-work-generator").
@@ -1481,7 +1481,7 @@ func (r *Reconciler) SetupWithManagerForClusterResourceBinding(mgr controllerrun
 }
 
 // SetupWithManagerForResourceBinding sets up the controller with the Manager.
-// It watches resourceBinding events and also update/delete events for work.
+// It watches resourceBinding events and also create/update/delete events for work.
 func (r *Reconciler) SetupWithManagerForResourceBinding(mgr controllerruntime.Manager) error {
 	r.recorder = mgr.GetEventRecorderFor("resource binding work generator")
 	return controllerruntime.NewControllerManagedBy(mgr).Named("resource-binding-work-generator").
@@ -1498,8 +1498,48 @@ func shouldIgnoreWork(enqueueCRB bool, parentNamespaceName string) bool {
 	return false
 }
 
+func hasReportedWorkStatus(work *fleetv1beta1.Work) bool {
+	return len(work.Status.Conditions) > 0 || len(work.Status.ManifestConditions) > 0
+}
+
 func workHandlerFuncs(enqueueCRB bool) handler.Funcs {
 	return handler.Funcs{
+		// we care about work create event as the cache may first observe a work object after the
+		// member side has already updated its status; in that case we still need to refresh the
+		// corresponding binding status.
+		CreateFunc: func(ctx context.Context, evt event.CreateEvent, queue workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			if evt.Object == nil {
+				klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("createEvent %v received with no metadata", evt)),
+					"Failed to process a create event for work object")
+				return
+			}
+			work, ok := evt.Object.(*fleetv1beta1.Work)
+			if !ok {
+				klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("received object %T not a work object", evt.Object)),
+					"Failed to process a create event for work object")
+				return
+			}
+			parentNamespaceName := evt.Object.GetLabels()[fleetv1beta1.ParentNamespaceLabel]
+			if shouldIgnoreWork(enqueueCRB, parentNamespaceName) {
+				klog.V(2).InfoS("Ignoring the work owned by different placement scope", "work", klog.KObj(evt.Object), "parentNamespaceName", parentNamespaceName, "enqueueCRP", enqueueCRB)
+				return
+			}
+			if !hasReportedWorkStatus(work) {
+				klog.V(5).InfoS("Ignoring the work create event as the work has no reported status yet", "work", klog.KObj(work))
+				return
+			}
+			parentBindingName, exist := evt.Object.GetLabels()[fleetv1beta1.ParentBindingLabel]
+			if !exist {
+				klog.ErrorS(controller.NewUnexpectedBehaviorError(fmt.Errorf("created work has no binding parent")),
+					"Could not find the parent binding label", "created work", evt.Object, "existing label", evt.Object.GetLabels())
+				return
+			}
+			klog.V(2).InfoS("Received a work create event", "work", klog.KObj(evt.Object), "parentBindingName", parentBindingName, "parentNamespaceName", parentNamespaceName)
+			queue.Add(reconcile.Request{NamespacedName: types.NamespacedName{
+				Name:      parentBindingName,
+				Namespace: parentNamespaceName,
+			}})
+		},
 		// we care about work delete event as we want to know when a work is deleted so that we can
 		// delete the corresponding resource binding fast.
 		DeleteFunc: func(ctx context.Context, evt event.DeleteEvent, queue workqueue.TypedRateLimitingInterface[reconcile.Request]) {
