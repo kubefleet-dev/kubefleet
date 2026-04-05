@@ -30,6 +30,10 @@ The KubeFleet project has adopted the CNCF Code of Conduct. Refer to our [Commun
 2. Fork the desired repository, then develop and test your code changes.
 3. Submit a pull request.
 
+## Releasing KubeFleet
+
+Project maintainers can follow the [release guide](RELEASE.md) to publish a GitHub release and verify the published images and Helm charts.
+
 ## Issue and pull request management
 
 Anyone can comment on issues and submit reviews for pull requests. In order to be assigned an issue or pull request, you can leave a `/assign <your Github ID>` comment on the issue or pull request.
