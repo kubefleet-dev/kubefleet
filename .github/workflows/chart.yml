@@ -29,8 +29,22 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
         with:
+          ref: ${{ needs.export-registry.outputs.tag }}
           submodules: true
           fetch-depth: 0
+      - name: Prepare release chart metadata
+        run: |
+          set -euo pipefail
+
+          RELEASE_TAG="${{ needs.export-registry.outputs.tag }}"
+          CHART_VERSION="${{ needs.export-registry.outputs.version }}"
+
+          for chart in hub-agent member-agent; do
+            chart_file="charts/${chart}/Chart.yaml"
+            sed -i.bak -E "s/^version: .*/version: ${CHART_VERSION}/" "${chart_file}"
+            sed -i.bak -E "s/^appVersion: .*/appVersion: \"${RELEASE_TAG}\"/" "${chart_file}"
+            rm -f "${chart_file}.bak"
+          done
       - name: Publish Helm chart to GitHub Pages
         uses: stefanprodan/helm-gh-pages@v1.7.0
         with:
@@ -45,6 +59,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ needs.export-registry.outputs.tag }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3.6.0

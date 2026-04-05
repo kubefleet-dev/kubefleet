@@ -11,10 +11,12 @@ Publishing a GitHub release with a semver tag publishes all of the following art
   - `ghcr.io/kubefleet-dev/kubefleet/hub-agent`
   - `ghcr.io/kubefleet-dev/kubefleet/member-agent`
   - `ghcr.io/kubefleet-dev/kubefleet/refresh-token`
-- Helm charts in both GHCR and GitHub Pages:
+- Helm charts in GHCR as OCI artifacts:
   - `oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent`
   - `oci://ghcr.io/kubefleet-dev/kubefleet/charts/member-agent`
-  - `https://kubefleet-dev.github.io/kubefleet/charts`
+- Helm chart repository content on the `gh-pages` branch under `charts/`
+
+If GitHub Pages is enabled for the repository's `gh-pages` branch, the traditional Helm repository is served from `https://kubefleet-dev.github.io/kubefleet/charts`.
 
 The release automation is defined in:
 
@@ -29,6 +31,7 @@ The release automation is defined in:
 - The commit you want to release is already merged and validated on `main` or the relevant `release-*` maintenance branch.
 - The required GitHub Actions workflows are green for the commit you intend to tag.
 - If you are using the CLI flow, `gh` is installed and authenticated.
+- If you want the traditional Helm repository URL to be publicly reachable, GitHub Pages must be enabled for the repository's `gh-pages` branch.
 
 ## Tag and Version Rules
 
@@ -41,7 +44,7 @@ The release automation is defined in:
   - `version: 0.2.3`
   - `appVersion: v0.2.3`
 
-Do not edit `charts/*/Chart.yaml` only to cut a release. The chart workflow injects the release `version` and `appVersion` during packaging, so the tag is the source of truth for published chart versions.
+Do not edit `charts/*/Chart.yaml` only to cut a release. The chart workflow prepares the release metadata from the tag before publishing OCI charts and the `gh-pages` chart repository content, so the tag is the source of truth for published chart versions.
 
 ## Create the GitHub Release
 
@@ -51,13 +54,15 @@ Create the release from the exact commit you want to ship.
 
 ```bash
 TAG=v0.2.3
-TARGET=origin/main
+TARGET_SHA=<full commit sha>
 
 gh release create "${TAG}" \
-  --target "${TARGET}" \
+  --target "${TARGET_SHA}" \
   --title "${TAG}" \
   --generate-notes
 ```
+
+Prefer using a full commit SHA so the release is pinned to the exact revision you intend to ship. If you intentionally want the current branch tip instead, pass the GitHub branch name such as `main` or `release-0.2`.
 
 For a prerelease, add `--prerelease`.
 
@@ -70,7 +75,7 @@ For a prerelease, add `--prerelease`.
 5. Mark the release as a prerelease if needed.
 6. Publish the release.
 
-Publishing the release creates or publishes the tag, which triggers the release automation.
+The release automation is triggered by creating and pushing the semver tag. Publishing a GitHub release usually does that as part of the release flow when you create a new tag from the UI or CLI. Publishing or editing a release page for an already-existing tag does not trigger the workflows again by itself.
 
 ## What the Automation Does
 
@@ -88,11 +93,13 @@ Publishing the release creates or publishes the tag, which triggers the release 
 `.github/workflows/chart.yml`:
 
 - validates the same tag via `.github/workflows/setup-release.yml`
+- checks out the tagged ref for both publication paths
+- prepares the chart metadata from the release tag before publishing
 - packages `charts/hub-agent` and `charts/member-agent`
 - sets chart `version` to `${TAG#v}`
 - sets chart `appVersion` to `${TAG}`
 - publishes the charts to GHCR as OCI artifacts
-- updates the GitHub Pages chart repository
+- updates the `gh-pages` chart repository content
 - verifies that the packaged chart `appVersion` matches the release tag
 
 The GitHub release page itself does not need binary assets attached to it; the release artifacts are the published images and charts above.
@@ -104,7 +111,9 @@ After publishing the release, watch these workflows in GitHub Actions:
 - `Release Images`
 - `Helm Chart Publisher`
 
-Both workflows also support `workflow_dispatch` with a `tag` input. Use that to rerun the release jobs for an existing tag when the tagged commit is already correct and you only need to retry the automation.
+Prefer rerunning the original tag-triggered workflow run from GitHub Actions when a release job needs to be retried.
+
+Both workflows also expose `workflow_dispatch` with a `tag` input. Because both workflows check out the tagged ref, a manual dispatch can safely rebuild the release artifacts for an existing tag when the tagged commit is already correct and you only need to retry the automation.
 
 If the tagged commit itself is wrong, do not force-move the release tag after artifacts have already been published. Fix the issue on a new commit and cut a new release tag instead.
 
@@ -148,7 +157,19 @@ Verify that the output reports:
 - `version: ${VERSION}`
 - `appVersion: ${TAG}`
 
-### 4. Verify the GitHub Pages Helm Repository
+### 4. Verify the `gh-pages` Chart Repository Content
+
+First verify that the `gh-pages` branch contains the expected chart metadata:
+
+```bash
+curl -sSfL https://raw.githubusercontent.com/kubefleet-dev/kubefleet/gh-pages/charts/index.yaml
+```
+
+Confirm that the new chart version appears in the generated index.
+
+### 5. Verify the Traditional Helm Repository URL
+
+If GitHub Pages is enabled for the repository, verify the public Helm repository endpoint:
 
 ```bash
 helm repo add kubefleet https://kubefleet-dev.github.io/kubefleet/charts
@@ -167,5 +188,5 @@ Confirm that the new chart version is visible for both `hub-agent` and `member-a
 - GHCR image tags exist with and without the `v` prefix.
 - OCI charts exist at version `${TAG#v}`.
 - Chart `appVersion` matches the full tag `${TAG}`.
-- The GitHub Pages chart repository shows the new chart version.
-
+- The `gh-pages` branch index shows the new chart version.
+- If GitHub Pages is enabled, the public Helm repository shows the new chart version.

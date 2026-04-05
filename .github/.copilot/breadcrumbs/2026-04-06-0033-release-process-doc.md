@@ -15,14 +15,15 @@
 1. Add a new top-level `RELEASE.md` instead of hiding the runbook inside chart consumer docs.
 2. Keep `CONTRIBUTING.md` lightweight and add a short pointer to `RELEASE.md`.
 3. Document the workflow-derived chart versioning explicitly so maintainers do not edit `Chart.yaml` only to cut a release.
-4. Treat the GitHub release page as the trigger point, while clarifying that the actual shipped artifacts live in GHCR and the chart repositories.
+4. Treat the semver tag as the actual automation trigger; the GitHub release page is the normal way to create that tag.
+5. Fix `chart.yml` so manual dispatch checks out the tagged ref and the `gh-pages` publication path uses tag-derived chart metadata too.
 
 ## Implementation Notes
 
 - `RELEASE.md` is grounded in `.github/workflows/release.yml`, `.github/workflows/chart.yml`, `.github/workflows/setup-release.yml`, and the `push` / `helm-push` Make targets.
+- `.github/workflows/chart.yml` is updated so both publication paths use the tagged ref, and the `gh-pages` publication path rewrites chart metadata to the release version before packaging.
 - The guide documents verification of:
   - GitHub release visibility
   - GHCR image tags with and without the `v` prefix
   - OCI Helm chart version and appVersion
   - GitHub Pages chart publication
-
