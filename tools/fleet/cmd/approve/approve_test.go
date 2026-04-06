@@ -30,82 +30,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	fleetcmd "github.com/kubefleet-dev/kubefleet/tools/fleet/cmd"
 )
-
-func TestNormalizeKind(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "clusterapprovalrequest lowercase",
-			input: "clusterapprovalrequest",
-			want:  "clusterapprovalrequest",
-		},
-		{
-			name:  "clusterapprovalrequest uppercase",
-			input: "CLUSTERAPPROVALREQUEST",
-			want:  "clusterapprovalrequest",
-		},
-		{
-			name:  "careq alias",
-			input: "careq",
-			want:  "clusterapprovalrequest",
-		},
-		{
-			name:  "CAREQ alias uppercase",
-			input: "CAREQ",
-			want:  "clusterapprovalrequest",
-		},
-		{
-			name:  "approvalrequest lowercase",
-			input: "approvalrequest",
-			want:  "approvalrequest",
-		},
-		{
-			name:  "approvalrequest uppercase",
-			input: "APPROVALREQUEST",
-			want:  "approvalrequest",
-		},
-		{
-			name:  "areq alias",
-			input: "areq",
-			want:  "approvalrequest",
-		},
-		{
-			name:  "AREQ alias uppercase",
-			input: "AREQ",
-			want:  "approvalrequest",
-		},
-		{
-			name:  "unknown kind preserved lowercase",
-			input: "SomeOtherKind",
-			want:  "someotherkind",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := normalizeKind(tc.input)
-			if got != tc.want {
-				t.Errorf("normalizeKind(%q) = %q, want %q", tc.input, got, tc.want)
-			}
-		})
-	}
-}
 
 func TestValidate(t *testing.T) {
 	tests := []struct {
 		name       string
+		kind       string
 		opts       approveOptions
 		wantErr    bool
 		wantErrMsg string
 	}{
 		{
-			name: "empty kind should fail",
+			name: "empty kind should fail in resolveKind",
+			kind: "",
 			opts: approveOptions{
-				kind: "",
 				name: "test-name",
 			},
 			wantErr:    true,
@@ -113,8 +52,8 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name: "empty name should fail",
+			kind: fleetcmd.KindClusterApprovalRequest,
 			opts: approveOptions{
-				kind: kindClusterApprovalRequest,
 				name: "",
 			},
 			wantErr:    true,
@@ -122,8 +61,8 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name: "unsupported kind should fail",
+			kind: "unsupported",
 			opts: approveOptions{
-				kind: "unsupported",
 				name: "test-name",
 			},
 			wantErr:    true,
@@ -131,25 +70,35 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name: "clusterapprovalrequest without namespace is valid",
+			kind: fleetcmd.KindClusterApprovalRequest,
 			opts: approveOptions{
-				kind: kindClusterApprovalRequest,
 				name: "test-name",
 			},
 			wantErr: false,
 		},
 		{
-			name: "approvalrequest without namespace should fail",
+			name: "clusterapprovalrequest with namespace should fail",
+			kind: fleetcmd.KindClusterApprovalRequest,
 			opts: approveOptions{
-				kind: kindApprovalRequest,
+				name:      "test-name",
+				namespace: "some-namespace",
+			},
+			wantErr:    true,
+			wantErrMsg: "does not accept a namespace",
+		},
+		{
+			name: "approvalrequest without namespace should fail",
+			kind: fleetcmd.KindApprovalRequest,
+			opts: approveOptions{
 				name: "test-name",
 			},
 			wantErr:    true,
-			wantErrMsg: "namespace is required for approvalrequest resources",
+			wantErrMsg: "namespace is required for",
 		},
 		{
 			name: "approvalrequest with namespace is valid",
+			kind: fleetcmd.KindApprovalRequest,
 			opts: approveOptions{
-				kind:      kindApprovalRequest,
 				name:      "test-name",
 				namespace: "test-namespace",
 			},
@@ -159,7 +108,16 @@ func TestValidate(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.opts.validate()
+			cfg, err := fleetcmd.ResolveKind(tc.kind, approveKinds)
+			if err != nil {
+				if tc.wantErr && strings.Contains(err.Error(), tc.wantErrMsg) {
+					return
+				}
+				t.Errorf("ResolveKind(%q) = %v, want nil", tc.kind, err)
+				return
+			}
+
+			err = tc.opts.validate(cfg)
 
 			if tc.wantErr {
 				if err == nil {
@@ -186,7 +144,6 @@ func TestApproveClusterApprovalRequest(t *testing.T) {
 
 	tests := []struct {
 		name                       string
-		kind                       string
 		requestName                string
 		existingClusterApprovalReq *placementv1beta1.ClusterApprovalRequest
 		wantCondition              *metav1.Condition
@@ -195,7 +152,6 @@ func TestApproveClusterApprovalRequest(t *testing.T) {
 	}{
 		{
 			name:        "successfully approve ClusterApprovalRequest",
-			kind:        kindClusterApprovalRequest,
 			requestName: "test-approval",
 			existingClusterApprovalReq: &placementv1beta1.ClusterApprovalRequest{
 				ObjectMeta: metav1.ObjectMeta{
@@ -214,28 +170,7 @@ func TestApproveClusterApprovalRequest(t *testing.T) {
 			wantErr:       false,
 		},
 		{
-			name:        "approve ClusterApprovalRequest using careq alias",
-			kind:        kindClusterApprovalRequest,
-			requestName: "test-approval-alias",
-			existingClusterApprovalReq: &placementv1beta1.ClusterApprovalRequest{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-approval-alias",
-					Generation: 1,
-				},
-				Spec: placementv1beta1.ApprovalRequestSpec{
-					TargetUpdateRun: "test-update-run",
-					TargetStage:     "test-stage",
-				},
-				Status: placementv1beta1.ApprovalRequestStatus{
-					Conditions: []metav1.Condition{},
-				},
-			},
-			wantCondition: &wantCondition,
-			wantErr:       false,
-		},
-		{
 			name:        "approve ClusterApprovalRequest with existing conditions",
-			kind:        kindClusterApprovalRequest,
 			requestName: "test-approval-existing",
 			existingClusterApprovalReq: &placementv1beta1.ClusterApprovalRequest{
 				ObjectMeta: metav1.ObjectMeta{
@@ -261,7 +196,6 @@ func TestApproveClusterApprovalRequest(t *testing.T) {
 		},
 		{
 			name:        "update existing Approved condition",
-			kind:        kindClusterApprovalRequest,
 			requestName: "test-approval-update",
 			existingClusterApprovalReq: &placementv1beta1.ClusterApprovalRequest{
 				ObjectMeta: metav1.ObjectMeta{
@@ -288,7 +222,6 @@ func TestApproveClusterApprovalRequest(t *testing.T) {
 		},
 		{
 			name:                       "ClusterApprovalRequest not found",
-			kind:                       kindClusterApprovalRequest,
 			requestName:                "non-existent-approval",
 			existingClusterApprovalReq: nil,
 			wantErr:                    true,
@@ -311,7 +244,6 @@ func TestApproveClusterApprovalRequest(t *testing.T) {
 				Build()
 
 			o := &approveOptions{
-				kind:      tc.kind,
 				name:      tc.requestName,
 				hubClient: fakeClient,
 			}
@@ -359,7 +291,6 @@ func TestApproveApprovalRequest(t *testing.T) {
 
 	tests := []struct {
 		name                string
-		kind                string
 		requestName         string
 		namespace           string
 		existingApprovalReq *placementv1beta1.ApprovalRequest
@@ -369,7 +300,6 @@ func TestApproveApprovalRequest(t *testing.T) {
 	}{
 		{
 			name:        "successfully approve ApprovalRequest",
-			kind:        kindApprovalRequest,
 			requestName: "test-approval",
 			namespace:   "test-namespace",
 			existingApprovalReq: &placementv1beta1.ApprovalRequest{
@@ -390,30 +320,7 @@ func TestApproveApprovalRequest(t *testing.T) {
 			wantErr:       false,
 		},
 		{
-			name:        "approve ApprovalRequest using areq alias",
-			kind:        kindApprovalRequest,
-			requestName: "test-approval-alias",
-			namespace:   "test-namespace",
-			existingApprovalReq: &placementv1beta1.ApprovalRequest{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-approval-alias",
-					Namespace:  "test-namespace",
-					Generation: 1,
-				},
-				Spec: placementv1beta1.ApprovalRequestSpec{
-					TargetUpdateRun: "test-update-run",
-					TargetStage:     "test-stage",
-				},
-				Status: placementv1beta1.ApprovalRequestStatus{
-					Conditions: []metav1.Condition{},
-				},
-			},
-			wantCondition: &wantCondition,
-			wantErr:       false,
-		},
-		{
 			name:        "approve ApprovalRequest with existing conditions",
-			kind:        kindApprovalRequest,
 			requestName: "test-approval-existing",
 			namespace:   "test-namespace",
 			existingApprovalReq: &placementv1beta1.ApprovalRequest{
@@ -441,7 +348,6 @@ func TestApproveApprovalRequest(t *testing.T) {
 		},
 		{
 			name:        "update existing Approved condition",
-			kind:        kindApprovalRequest,
 			requestName: "test-approval-update",
 			namespace:   "test-namespace",
 			existingApprovalReq: &placementv1beta1.ApprovalRequest{
@@ -470,7 +376,6 @@ func TestApproveApprovalRequest(t *testing.T) {
 		},
 		{
 			name:                "ApprovalRequest not found",
-			kind:                kindApprovalRequest,
 			requestName:         "non-existent-approval",
 			namespace:           "test-namespace",
 			existingApprovalReq: nil,
@@ -479,7 +384,6 @@ func TestApproveApprovalRequest(t *testing.T) {
 		},
 		{
 			name:        "ApprovalRequest in wrong namespace not found",
-			kind:        kindApprovalRequest,
 			requestName: "test-approval",
 			namespace:   "wrong-namespace",
 			existingApprovalReq: &placementv1beta1.ApprovalRequest{
@@ -513,7 +417,6 @@ func TestApproveApprovalRequest(t *testing.T) {
 				Build()
 
 			o := &approveOptions{
-				kind:      tc.kind,
 				name:      tc.requestName,
 				namespace: tc.namespace,
 				hubClient: fakeClient,
@@ -579,7 +482,7 @@ func TestRun(t *testing.T) {
 	}{
 		{
 			name:        "run dispatches to ClusterApprovalRequest",
-			kind:        kindClusterApprovalRequest,
+			kind:        fleetcmd.KindClusterApprovalRequest,
 			requestName: "test-approval",
 			existingClusterApprovalReq: &placementv1beta1.ClusterApprovalRequest{
 				ObjectMeta: metav1.ObjectMeta{
@@ -596,7 +499,7 @@ func TestRun(t *testing.T) {
 		},
 		{
 			name:        "run dispatches to ApprovalRequest",
-			kind:        kindApprovalRequest,
+			kind:        fleetcmd.KindApprovalRequest,
 			requestName: "test-approval",
 			namespace:   "test-namespace",
 			existingApprovalReq: &placementv1beta1.ApprovalRequest{
@@ -639,13 +542,21 @@ func TestRun(t *testing.T) {
 				WithStatusSubresource(&placementv1beta1.ClusterApprovalRequest{}, &placementv1beta1.ApprovalRequest{}).
 				Build()
 
+			cfg, err := fleetcmd.ResolveKind(tc.kind, approveKinds)
+			if err != nil {
+				if tc.wantErr && strings.Contains(err.Error(), tc.wantErrMsg) {
+					return
+				}
+				t.Errorf("ResolveKind(%q) = %v, want nil", tc.kind, err)
+				return
+			}
+
 			o := &approveOptions{
-				kind:      tc.kind,
 				name:      tc.requestName,
 				namespace: tc.namespace,
 				hubClient: fakeClient,
 			}
-			err := o.run(context.Background())
+			err = o.run(context.Background(), cfg)
 
 			if tc.wantErr {
 				if err == nil {
@@ -662,7 +573,7 @@ func TestRun(t *testing.T) {
 			}
 
 			// Verify the resource was updated correctly based on kind.
-			if tc.kind == kindClusterApprovalRequest {
+			if tc.kind == fleetcmd.KindClusterApprovalRequest {
 				var updatedCAR placementv1beta1.ClusterApprovalRequest
 				err = fakeClient.Get(context.Background(), client.ObjectKey{Name: tc.requestName}, &updatedCAR)
 				if err != nil {
@@ -674,7 +585,7 @@ func TestRun(t *testing.T) {
 					cmpopts.IgnoreFields(metav1.Condition{}, "LastTransitionTime", "ObservedGeneration")); diff != "" {
 					t.Errorf("condition mismatch (-want +got):\n%s", diff)
 				}
-			} else if tc.kind == kindApprovalRequest {
+			} else if tc.kind == fleetcmd.KindApprovalRequest {
 				var updatedAR placementv1beta1.ApprovalRequest
 				err = fakeClient.Get(context.Background(), client.ObjectKey{Name: tc.requestName, Namespace: tc.namespace}, &updatedAR)
 				if err != nil {
