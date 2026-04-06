@@ -33,6 +33,207 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 )
 
+func TestStop(t *testing.T) {
+	tests := []struct {
+		name                         string
+		updateRun                    *placementv1beta1.ClusterStagedUpdateRun
+		updatingStageIndex           int
+		toBeUpdatedBindings          []placementv1beta1.BindingObj
+		toBeDeletedBindings          []placementv1beta1.BindingObj
+		wantErr                      bool
+		wantFinished                 bool
+		wantStageSucceededCond       *metav1.Condition
+		wantDeleteStageSucceededCond *metav1.Condition
+	}{
+		{
+			name: "stop with errStagedUpdatedAborted marks stage as failed",
+			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-update-run",
+					Generation: 1,
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					PlacementName:         "test-placement",
+					ResourceSnapshotIndex: "1",
+				},
+				Status: placementv1beta1.UpdateRunStatus{
+					ResourceSnapshotIndexUsed: "1",
+					StagesStatus: []placementv1beta1.StageUpdatingStatus{
+						{
+							StageName: "test-stage",
+							Clusters: []placementv1beta1.ClusterUpdatingStatus{
+								{
+									ClusterName: "cluster-1",
+									Conditions: []metav1.Condition{
+										{
+											Type:               string(placementv1beta1.ClusterUpdatingConditionStarted),
+											Status:             metav1.ConditionTrue,
+											ObservedGeneration: 1,
+											Reason:             condition.ClusterUpdatingStartedReason,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			updatingStageIndex: 0,
+			// No bindings provided - this will trigger errStagedUpdatedAborted
+			// when the binding for cluster-1 is not found in the map.
+			toBeUpdatedBindings: nil,
+			toBeDeletedBindings: nil,
+			wantErr:             true,
+			wantFinished:        false,
+			// Verify the stage is marked as failed (this proves updatingStageStatus was set before defer).
+			wantStageSucceededCond: &metav1.Condition{
+				Type:               string(placementv1beta1.StageUpdatingConditionSucceeded),
+				Status:             metav1.ConditionFalse,
+				ObservedGeneration: 1,
+				Reason:             condition.StageUpdatingFailedReason,
+			},
+		},
+		{
+			name: "stop delete stage with no stages to update",
+			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-update-run",
+					Generation: 1,
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					PlacementName:         "test-placement",
+					ResourceSnapshotIndex: "1",
+				},
+				Status: placementv1beta1.UpdateRunStatus{
+					StagesStatus: []placementv1beta1.StageUpdatingStatus{},
+					DeletionStageStatus: &placementv1beta1.StageUpdatingStatus{
+						StageName: "deletion",
+						Clusters:  []placementv1beta1.ClusterUpdatingStatus{},
+					},
+				},
+			},
+			updatingStageIndex:     0,
+			toBeUpdatedBindings:    nil,
+			toBeDeletedBindings:    nil,
+			wantErr:                false,
+			wantFinished:           true,
+			wantStageSucceededCond: nil, // No stage to check since we're in delete stage path.
+		},
+		{
+			name: "stop delete stage with errStagedUpdatedAborted marks deletion stage as failed",
+			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-update-run",
+					Generation: 1,
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					PlacementName:         "test-placement",
+					ResourceSnapshotIndex: "1",
+				},
+				Status: placementv1beta1.UpdateRunStatus{
+					StagesStatus: []placementv1beta1.StageUpdatingStatus{}, // Empty - all stages done.
+					DeletionStageStatus: &placementv1beta1.StageUpdatingStatus{
+						StageName: "deletion",
+						Clusters: []placementv1beta1.ClusterUpdatingStatus{
+							{
+								ClusterName: "cluster-1",
+								Conditions: []metav1.Condition{
+									{
+										Type:               string(placementv1beta1.ClusterUpdatingConditionStarted),
+										Status:             metav1.ConditionTrue,
+										ObservedGeneration: 1,
+										Reason:             condition.ClusterUpdatingStartedReason,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			updatingStageIndex:  0, // >= len(StagesStatus), so delete stage path is taken.
+			toBeUpdatedBindings: nil,
+			// Binding not deleting (no DeletionTimestamp) but cluster is marked as started.
+			// This triggers errStagedUpdatedAborted.
+			toBeDeletedBindings: []placementv1beta1.BindingObj{
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "binding-1",
+						// No DeletionTimestamp - this causes the error.
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster: "cluster-1",
+					},
+				},
+			},
+			wantErr:                true,
+			wantFinished:           false,
+			wantStageSucceededCond: nil, // We check DeletionStageStatus separately for this case.
+			// Verify the deletion stage is marked as failed (this proves the defer handles deletion stage).
+			wantDeleteStageSucceededCond: &metav1.Condition{
+				Type:               string(placementv1beta1.StageUpdatingConditionSucceeded),
+				Status:             metav1.ConditionFalse,
+				ObservedGeneration: 1,
+				Reason:             condition.StageUpdatingFailedReason,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := runtime.NewScheme()
+			_ = placementv1beta1.AddToScheme(scheme)
+			objs := make([]client.Object, len(tt.toBeUpdatedBindings))
+			for i := range tt.toBeUpdatedBindings {
+				objs[i] = tt.toBeUpdatedBindings[i]
+			}
+			fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
+			r := &Reconciler{
+				Client: fakeClient,
+			}
+
+			finished, _, gotErr := r.stop(tt.updateRun, tt.updatingStageIndex, tt.toBeUpdatedBindings, tt.toBeDeletedBindings)
+
+			// Verify error expectation.
+			if (gotErr != nil) != tt.wantErr {
+				t.Fatalf("stop() error = %v, wantErr %v", gotErr, tt.wantErr)
+			}
+
+			// Verify finished result.
+			if finished != tt.wantFinished {
+				t.Fatalf("stop() finished = %v, want %v", finished, tt.wantFinished)
+			}
+
+			// Verify stage succeeded condition if expected.
+			if tt.wantStageSucceededCond != nil {
+				succeededCond := meta.FindStatusCondition(
+					tt.updateRun.Status.StagesStatus[tt.updatingStageIndex].Conditions,
+					string(placementv1beta1.StageUpdatingConditionSucceeded),
+				)
+				if succeededCond == nil {
+					t.Fatalf("stop() expected StageUpdatingConditionSucceeded condition to be set, got nil")
+				}
+				if diff := cmp.Diff(*tt.wantStageSucceededCond, *succeededCond, cmpOptions...); diff != "" {
+					t.Errorf("stop() StageUpdatingConditionSucceeded mismatch (-want +got):\n%s", diff)
+				}
+			}
+
+			// Verify deletion stage succeeded condition if expected.
+			if tt.wantDeleteStageSucceededCond != nil {
+				succeededCond := meta.FindStatusCondition(
+					tt.updateRun.Status.DeletionStageStatus.Conditions,
+					string(placementv1beta1.StageUpdatingConditionSucceeded),
+				)
+				if succeededCond == nil {
+					t.Fatalf("stop() expected DeletionStageStatus StageUpdatingConditionSucceeded condition to be set, got nil")
+				}
+				if diff := cmp.Diff(*tt.wantDeleteStageSucceededCond, *succeededCond, cmpOptions...); diff != "" {
+					t.Errorf("stop() DeletionStageStatus StageUpdatingConditionSucceeded mismatch (-want +got):\n%s", diff)
+				}
+			}
+		})
+	}
+}
+
 func TestStopUpdatingStage(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -223,7 +424,8 @@ func TestStopUpdatingStage(t *testing.T) {
 			}
 
 			// Stop the stage.
-			finished, waitTime, gotErr := r.stopUpdatingStage(tt.updateRun, 0, tt.bindings)
+			updatingStageStatus := &tt.updateRun.Status.StagesStatus[0]
+			finished, waitTime, gotErr := r.stopUpdatingStage(tt.updateRun, updatingStageStatus, tt.bindings)
 
 			// Verify error expectation.
 			if (tt.wantErr != nil) != (gotErr != nil) {
