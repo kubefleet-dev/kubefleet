@@ -35,15 +35,15 @@ import (
 
 func TestStop(t *testing.T) {
 	tests := []struct {
-		name                         string
-		updateRun                    *placementv1beta1.ClusterStagedUpdateRun
-		updatingStageIndex           int
-		toBeUpdatedBindings          []placementv1beta1.BindingObj
-		toBeDeletedBindings          []placementv1beta1.BindingObj
-		wantErr                      bool
-		wantFinished                 bool
-		wantStageSucceededCond       *metav1.Condition
-		wantDeleteStageSucceededCond *metav1.Condition
+		name                             string
+		updateRun                        *placementv1beta1.ClusterStagedUpdateRun
+		updatingStageIndex               int
+		toBeUpdatedBindings              []placementv1beta1.BindingObj
+		toBeDeletedBindings              []placementv1beta1.BindingObj
+		wantErr                          bool
+		wantFinished                     bool
+		wantStageSucceededCond           *metav1.Condition
+		wantDeletionStageConditionsEmpty bool
 	}{
 		{
 			name: "stop with errStagedUpdatedAborted marks stage as failed",
@@ -76,6 +76,15 @@ func TestStop(t *testing.T) {
 							},
 						},
 					},
+					// DeletionStageStatus exists but has no conditions set yet.
+					DeletionStageStatus: &placementv1beta1.StageUpdatingStatus{
+						StageName: "deletion",
+						Clusters: []placementv1beta1.ClusterUpdatingStatus{
+							{
+								ClusterName: "cluster-to-delete",
+							},
+						},
+					},
 				},
 			},
 			updatingStageIndex: 0,
@@ -92,32 +101,8 @@ func TestStop(t *testing.T) {
 				ObservedGeneration: 1,
 				Reason:             condition.StageUpdatingFailedReason,
 			},
-		},
-		{
-			name: "stop delete stage with no stages to update",
-			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-update-run",
-					Generation: 1,
-				},
-				Spec: placementv1beta1.UpdateRunSpec{
-					PlacementName:         "test-placement",
-					ResourceSnapshotIndex: "1",
-				},
-				Status: placementv1beta1.UpdateRunStatus{
-					StagesStatus: []placementv1beta1.StageUpdatingStatus{},
-					DeletionStageStatus: &placementv1beta1.StageUpdatingStatus{
-						StageName: "deletion",
-						Clusters:  []placementv1beta1.ClusterUpdatingStatus{},
-					},
-				},
-			},
-			updatingStageIndex:     0,
-			toBeUpdatedBindings:    nil,
-			toBeDeletedBindings:    nil,
-			wantErr:                false,
-			wantFinished:           true,
-			wantStageSucceededCond: nil, // No stage to check since we're in delete stage path.
+			// Verify DeletionStageStatus conditions are not incorrectly populated for updating stage errors.
+			wantDeletionStageConditionsEmpty: true,
 		},
 		{
 			name: "stop delete stage with errStagedUpdatedAborted marks deletion stage as failed",
@@ -131,7 +116,39 @@ func TestStop(t *testing.T) {
 					ResourceSnapshotIndex: "1",
 				},
 				Status: placementv1beta1.UpdateRunStatus{
-					StagesStatus: []placementv1beta1.StageUpdatingStatus{}, // Empty - all stages done.
+					// All updating stages have completed successfully.
+					StagesStatus: []placementv1beta1.StageUpdatingStatus{
+						{
+							StageName: "stage-1",
+							Clusters: []placementv1beta1.ClusterUpdatingStatus{
+								{
+									ClusterName: "cluster-0",
+									Conditions: []metav1.Condition{
+										{
+											Type:               string(placementv1beta1.ClusterUpdatingConditionStarted),
+											Status:             metav1.ConditionTrue,
+											ObservedGeneration: 1,
+											Reason:             condition.ClusterUpdatingStartedReason,
+										},
+										{
+											Type:               string(placementv1beta1.ClusterUpdatingConditionSucceeded),
+											Status:             metav1.ConditionTrue,
+											ObservedGeneration: 1,
+											Reason:             condition.ClusterUpdatingSucceededReason,
+										},
+									},
+								},
+							},
+							Conditions: []metav1.Condition{
+								{
+									Type:               string(placementv1beta1.StageUpdatingConditionSucceeded),
+									Status:             metav1.ConditionTrue,
+									ObservedGeneration: 1,
+									Reason:             condition.StageUpdatingSucceededReason,
+								},
+							},
+						},
+					},
 					DeletionStageStatus: &placementv1beta1.StageUpdatingStatus{
 						StageName: "deletion",
 						Clusters: []placementv1beta1.ClusterUpdatingStatus{
@@ -150,7 +167,8 @@ func TestStop(t *testing.T) {
 					},
 				},
 			},
-			updatingStageIndex:  0, // >= len(StagesStatus), so delete stage path is taken.
+			// updatingStageIndex >= len(StagesStatus) triggers the deletion stage code path.
+			updatingStageIndex:  1,
 			toBeUpdatedBindings: nil,
 			// Binding not deleting (no DeletionTimestamp) but cluster is marked as started.
 			// This triggers errStagedUpdatedAborted.
@@ -165,16 +183,16 @@ func TestStop(t *testing.T) {
 					},
 				},
 			},
-			wantErr:                true,
-			wantFinished:           false,
-			wantStageSucceededCond: nil, // We check DeletionStageStatus separately for this case.
-			// Verify the deletion stage is marked as failed (this proves the defer handles deletion stage).
-			wantDeleteStageSucceededCond: &metav1.Condition{
+			wantErr:      true,
+			wantFinished: false,
+			wantStageSucceededCond: &metav1.Condition{
 				Type:               string(placementv1beta1.StageUpdatingConditionSucceeded),
 				Status:             metav1.ConditionFalse,
 				ObservedGeneration: 1,
 				Reason:             condition.StageUpdatingFailedReason,
-			},
+			}, // We check DeletionStageStatus separately for this case.
+			// Verify the deletion stage is marked as failed (this proves the defer handles deletion stage).
+			wantDeletionStageConditionsEmpty: false,
 		},
 	}
 
@@ -204,7 +222,7 @@ func TestStop(t *testing.T) {
 			}
 
 			// Verify stage succeeded condition if expected.
-			if tt.wantStageSucceededCond != nil {
+			if tt.wantStageSucceededCond != nil && tt.wantDeletionStageConditionsEmpty {
 				succeededCond := meta.FindStatusCondition(
 					tt.updateRun.Status.StagesStatus[tt.updatingStageIndex].Conditions,
 					string(placementv1beta1.StageUpdatingConditionSucceeded),
@@ -215,10 +233,15 @@ func TestStop(t *testing.T) {
 				if diff := cmp.Diff(*tt.wantStageSucceededCond, *succeededCond, cmpOptions...); diff != "" {
 					t.Errorf("stop() StageUpdatingConditionSucceeded mismatch (-want +got):\n%s", diff)
 				}
+
+				// Verify DeletionStageStatus conditions are empty when expected.
+				if len(tt.updateRun.Status.DeletionStageStatus.Conditions) != 0 {
+					t.Errorf("stop() DeletionStageStatus.Conditions = %v, want empty", tt.updateRun.Status.DeletionStageStatus.Conditions)
+				}
 			}
 
 			// Verify deletion stage succeeded condition if expected.
-			if tt.wantDeleteStageSucceededCond != nil {
+			if tt.wantStageSucceededCond != nil && !tt.wantDeletionStageConditionsEmpty {
 				succeededCond := meta.FindStatusCondition(
 					tt.updateRun.Status.DeletionStageStatus.Conditions,
 					string(placementv1beta1.StageUpdatingConditionSucceeded),
@@ -226,7 +249,7 @@ func TestStop(t *testing.T) {
 				if succeededCond == nil {
 					t.Fatalf("stop() expected DeletionStageStatus StageUpdatingConditionSucceeded condition to be set, got nil")
 				}
-				if diff := cmp.Diff(*tt.wantDeleteStageSucceededCond, *succeededCond, cmpOptions...); diff != "" {
+				if diff := cmp.Diff(*tt.wantStageSucceededCond, *succeededCond, cmpOptions...); diff != "" {
 					t.Errorf("stop() DeletionStageStatus StageUpdatingConditionSucceeded mismatch (-want +got):\n%s", diff)
 				}
 			}
