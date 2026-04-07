@@ -868,6 +868,584 @@ func TestExecuteUpdatingStage_Error(t *testing.T) {
 	}
 }
 
+func TestExecuteUpdatingStage_ParallelWithinStage(t *testing.T) {
+	tests := []struct {
+		name                         string
+		updateRun                    *placementv1beta1.ClusterStagedUpdateRun
+		bindings                     []placementv1beta1.BindingObj
+		maxConcurrency               int
+		wantNewlyUpdatedBindings     []string // binding names that should be newly updated (from Scheduled to Bound)
+		wantNewlyStartedClusterNames []string // cluster names that should be newly started in this round
+		wantNotStartedClusterNames   []string // cluster names that should NOT be started due to maxConcurrency limit
+		wantWaitTime                 time.Duration
+		wantErr                      bool
+	}{
+		{
+			name: "should update multiple clusters in parallel when maxConcurrency allows",
+			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-update-run",
+					Generation: 1,
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					PlacementName:         "test-placement",
+					ResourceSnapshotIndex: "1",
+				},
+				Status: placementv1beta1.UpdateRunStatus{
+					ResourceSnapshotIndexUsed: "1",
+					StagesStatus: []placementv1beta1.StageUpdatingStatus{
+						{
+							StageName: "test-stage",
+							Clusters: []placementv1beta1.ClusterUpdatingStatus{
+								{ClusterName: "cluster-1"},
+								{ClusterName: "cluster-2"},
+								{ClusterName: "cluster-3"},
+							},
+						},
+					},
+					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
+						Stages: []placementv1beta1.StageConfig{
+							{
+								Name:           "test-stage",
+								MaxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 3},
+							},
+						},
+					},
+				},
+			},
+			bindings: []placementv1beta1.BindingObj{
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-1",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-1",
+						State:                placementv1beta1.BindingStateScheduled,
+						ResourceSnapshotName: "test-placement-1-snapshot",
+					},
+				},
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-2",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-2",
+						State:                placementv1beta1.BindingStateScheduled,
+						ResourceSnapshotName: "test-placement-1-snapshot",
+					},
+				},
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-3",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-3",
+						State:                placementv1beta1.BindingStateScheduled,
+						ResourceSnapshotName: "test-placement-1-snapshot",
+					},
+				},
+			},
+			maxConcurrency:               3,
+			wantNewlyUpdatedBindings:     []string{"binding-1", "binding-2", "binding-3"},
+			wantNewlyStartedClusterNames: []string{"cluster-1", "cluster-2", "cluster-3"},
+			wantNotStartedClusterNames:   []string{},
+			wantWaitTime:                 clusterUpdatingWaitTime,
+			wantErr:                      false,
+		},
+		{
+			name: "should respect maxConcurrency limit when fewer than total clusters",
+			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-update-run",
+					Generation: 1,
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					PlacementName:         "test-placement",
+					ResourceSnapshotIndex: "1",
+				},
+				Status: placementv1beta1.UpdateRunStatus{
+					ResourceSnapshotIndexUsed: "1",
+					StagesStatus: []placementv1beta1.StageUpdatingStatus{
+						{
+							StageName: "test-stage",
+							Clusters: []placementv1beta1.ClusterUpdatingStatus{
+								{ClusterName: "cluster-1"},
+								{ClusterName: "cluster-2"},
+								{ClusterName: "cluster-3"},
+								{ClusterName: "cluster-4"},
+								{ClusterName: "cluster-5"},
+							},
+						},
+					},
+					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
+						Stages: []placementv1beta1.StageConfig{
+							{
+								Name:           "test-stage",
+								MaxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 2},
+							},
+						},
+					},
+				},
+			},
+			bindings: []placementv1beta1.BindingObj{
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-1",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-1",
+						State:                placementv1beta1.BindingStateScheduled,
+						ResourceSnapshotName: "test-placement-1-snapshot",
+					},
+				},
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-2",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-2",
+						State:                placementv1beta1.BindingStateScheduled,
+						ResourceSnapshotName: "test-placement-1-snapshot",
+					},
+				},
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-3",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-3",
+						State:                placementv1beta1.BindingStateScheduled,
+						ResourceSnapshotName: "test-placement-1-snapshot",
+					},
+				},
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-4",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-4",
+						State:                placementv1beta1.BindingStateScheduled,
+						ResourceSnapshotName: "test-placement-1-snapshot",
+					},
+				},
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-5",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-5",
+						State:                placementv1beta1.BindingStateScheduled,
+						ResourceSnapshotName: "test-placement-1-snapshot",
+					},
+				},
+			},
+			maxConcurrency:               2,
+			wantNewlyUpdatedBindings:     []string{"binding-1", "binding-2"},
+			wantNewlyStartedClusterNames: []string{"cluster-1", "cluster-2"},
+			wantNotStartedClusterNames:   []string{"cluster-3", "cluster-4", "cluster-5"},
+			wantWaitTime:                 clusterUpdatingWaitTime,
+			wantErr:                      false,
+		},
+		{
+			name: "should process next batch after previous clusters succeed",
+			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-update-run",
+					Generation: 1,
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					PlacementName:         "test-placement",
+					ResourceSnapshotIndex: "1",
+				},
+				Status: placementv1beta1.UpdateRunStatus{
+					ResourceSnapshotIndexUsed: "1",
+					StagesStatus: []placementv1beta1.StageUpdatingStatus{
+						{
+							StageName: "test-stage",
+							Clusters: []placementv1beta1.ClusterUpdatingStatus{
+								{
+									ClusterName: "cluster-1",
+									Conditions: []metav1.Condition{
+										{
+											Type:               string(placementv1beta1.ClusterUpdatingConditionStarted),
+											Status:             metav1.ConditionTrue,
+											ObservedGeneration: 1,
+											Reason:             condition.ClusterUpdatingStartedReason,
+										},
+										{
+											Type:               string(placementv1beta1.ClusterUpdatingConditionSucceeded),
+											Status:             metav1.ConditionTrue,
+											ObservedGeneration: 1,
+											Reason:             condition.ClusterUpdatingSucceededReason,
+										},
+									},
+								},
+								{
+									ClusterName: "cluster-2",
+									Conditions: []metav1.Condition{
+										{
+											Type:               string(placementv1beta1.ClusterUpdatingConditionStarted),
+											Status:             metav1.ConditionTrue,
+											ObservedGeneration: 1,
+											Reason:             condition.ClusterUpdatingStartedReason,
+										},
+										{
+											Type:               string(placementv1beta1.ClusterUpdatingConditionSucceeded),
+											Status:             metav1.ConditionTrue,
+											ObservedGeneration: 1,
+											Reason:             condition.ClusterUpdatingSucceededReason,
+										},
+									},
+								},
+								{ClusterName: "cluster-3"},
+								{ClusterName: "cluster-4"},
+							},
+						},
+					},
+					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
+						Stages: []placementv1beta1.StageConfig{
+							{
+								Name:           "test-stage",
+								MaxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 2},
+							},
+						},
+					},
+				},
+			},
+			bindings: []placementv1beta1.BindingObj{
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-1",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-1",
+						ResourceSnapshotName: "test-placement-1-snapshot",
+						State:                placementv1beta1.BindingStateBound,
+					},
+					Status: placementv1beta1.ResourceBindingStatus{
+						Conditions: []metav1.Condition{
+							// Simulate an available binding (ignoring the rest of the conditions).
+							{
+								Type:               string(placementv1beta1.ResourceBindingAvailable),
+								Status:             metav1.ConditionTrue,
+								ObservedGeneration: 1,
+							},
+						},
+					},
+				},
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-2",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-2",
+						ResourceSnapshotName: "test-placement-1-snapshot",
+						State:                placementv1beta1.BindingStateBound,
+					},
+					Status: placementv1beta1.ResourceBindingStatus{
+						Conditions: []metav1.Condition{
+							// Simulate an available binding (ignoring the rest of the conditions).
+							{
+								Type:               string(placementv1beta1.ResourceBindingAvailable),
+								Status:             metav1.ConditionTrue,
+								ObservedGeneration: 1,
+							},
+						},
+					},
+				},
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-3",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-3",
+						State:                placementv1beta1.BindingStateScheduled,
+						ResourceSnapshotName: "test-placement-1-snapshot",
+					},
+				},
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-4",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-4",
+						State:                placementv1beta1.BindingStateScheduled,
+						ResourceSnapshotName: "test-placement-1-snapshot",
+					},
+				},
+			},
+			maxConcurrency:               2,
+			wantNewlyUpdatedBindings:     []string{"binding-3", "binding-4"}, // cluster-1 and cluster-2 already succeeded, now cluster-3 and cluster-4 can start
+			wantNewlyStartedClusterNames: []string{"cluster-3", "cluster-4"}, // only cluster-3 and cluster-4 are newly started (cluster-1 and cluster-2 were already started)
+			wantNotStartedClusterNames:   []string{},
+			wantWaitTime:                 clusterUpdatingWaitTime,
+			wantErr:                      false,
+		},
+		{
+			name: "should count in-progress clusters towards maxConcurrency limit",
+			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-update-run",
+					Generation: 1,
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					PlacementName:         "test-placement",
+					ResourceSnapshotIndex: "1",
+				},
+				Status: placementv1beta1.UpdateRunStatus{
+					ResourceSnapshotIndexUsed: "1",
+					StagesStatus: []placementv1beta1.StageUpdatingStatus{
+						{
+							StageName: "test-stage",
+							Clusters: []placementv1beta1.ClusterUpdatingStatus{
+								{
+									ClusterName: "cluster-1",
+									Conditions: []metav1.Condition{
+										{
+											Type:               string(placementv1beta1.ClusterUpdatingConditionStarted),
+											Status:             metav1.ConditionTrue,
+											ObservedGeneration: 1,
+											Reason:             condition.ClusterUpdatingStartedReason,
+											LastTransitionTime: metav1.Now(),
+										},
+									},
+								},
+								{ClusterName: "cluster-2"},
+								{ClusterName: "cluster-3"},
+							},
+						},
+					},
+					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
+						Stages: []placementv1beta1.StageConfig{
+							{
+								Name:           "test-stage",
+								MaxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 2},
+							},
+						},
+					},
+				},
+			},
+			bindings: []placementv1beta1.BindingObj{
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-1",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-1",
+						ResourceSnapshotName: "test-placement-1-snapshot",
+						State:                placementv1beta1.BindingStateBound,
+					},
+					Status: placementv1beta1.ResourceBindingStatus{
+						Conditions: []metav1.Condition{
+							// Simulate an in-progress binding.
+							{
+								Type:               string(placementv1beta1.ResourceBindingRolloutStarted),
+								Status:             metav1.ConditionTrue,
+								ObservedGeneration: 1,
+								Reason:             condition.RolloutStartedReason,
+							},
+						},
+					},
+				},
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-2",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-2",
+						State:                placementv1beta1.BindingStateScheduled,
+						ResourceSnapshotName: "test-placement-1-snapshot",
+					},
+				},
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-3",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-3",
+						State:                placementv1beta1.BindingStateScheduled,
+						ResourceSnapshotName: "test-placement-1-snapshot",
+					},
+				},
+			},
+			maxConcurrency:               2,
+			wantNewlyUpdatedBindings:     []string{"binding-2"}, // Only cluster-2 should be updated (cluster-1 is in-progress, cluster-3 exceeds limit)
+			wantNewlyStartedClusterNames: []string{"cluster-2"}, // Only cluster-2 is newly started (cluster-1 was already started)
+			wantNotStartedClusterNames:   []string{"cluster-3"}, // cluster-3 exceeds maxConcurrency limit
+			wantWaitTime:                 clusterUpdatingWaitTime,
+			wantErr:                      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			scheme := runtime.NewScheme()
+			_ = placementv1beta1.AddToScheme(scheme)
+
+			// Track original states before execution.
+			originalBindingStates := make(map[string]placementv1beta1.BindingState)
+			for i := range tt.bindings {
+				bindingSpec := tt.bindings[i].GetBindingSpec()
+				originalBindingStates[tt.bindings[i].GetName()] = bindingSpec.State
+			}
+			originalClusterStarted := make(map[string]bool)
+			for _, cluster := range tt.updateRun.Status.StagesStatus[0].Clusters {
+				startedCond := meta.FindStatusCondition(cluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
+				originalClusterStarted[cluster.ClusterName] = condition.IsConditionStatusTrue(startedCond, tt.updateRun.Generation)
+			}
+
+			// Set up fake client.
+			objs := make([]client.Object, len(tt.bindings))
+			for i := range tt.bindings {
+				objs[i] = tt.bindings[i]
+			}
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(scheme).
+				WithObjects(objs...).
+				WithStatusSubresource(objs...).
+				Build()
+
+			r := &Reconciler{
+				Client: fakeClient,
+			}
+
+			// Execute the stage.
+			waitTime, gotErr := r.executeUpdatingStage(ctx, tt.updateRun, 0, tt.bindings, tt.maxConcurrency)
+
+			// Verify error.
+			if (gotErr != nil) != tt.wantErr {
+				t.Fatalf("executeUpdatingStage() error = %v, wantErr %v", gotErr, tt.wantErr)
+			}
+
+			// Verify wait time.
+			if waitTime != tt.wantWaitTime {
+				t.Fatalf("executeUpdatingStage() waitTime = %v, want %v", waitTime, tt.wantWaitTime)
+			}
+
+			// Verify bindings: check which ones transitioned from Scheduled to Bound.
+			verifyNewlyUpdatedBindings(t, ctx, fakeClient, tt.bindings, originalBindingStates, tt.wantNewlyUpdatedBindings)
+
+			// Verify clusters: check which ones got Started condition added.
+			verifyNewlyStartedClusters(t, tt.updateRun, originalClusterStarted, tt.wantNewlyStartedClusterNames)
+
+			// Verify clusters that should NOT have Started condition.
+			verifyNotStartedClusters(t, tt.updateRun, tt.wantNotStartedClusterNames)
+		})
+	}
+}
+
+// verifyNewlyUpdatedBindings checks that exactly the expected bindings transitioned from Scheduled to Bound.
+func verifyNewlyUpdatedBindings(
+	t *testing.T,
+	ctx context.Context,
+	fakeClient client.Client,
+	bindings []placementv1beta1.BindingObj,
+	originalStates map[string]placementv1beta1.BindingState,
+	wantNewlyUpdated []string,
+) {
+	t.Helper()
+
+	wantSet := make(map[string]bool)
+	for _, name := range wantNewlyUpdated {
+		wantSet[name] = true
+	}
+
+	for _, binding := range bindings {
+		updatedBinding := &placementv1beta1.ClusterResourceBinding{}
+		if err := fakeClient.Get(ctx, client.ObjectKeyFromObject(binding), updatedBinding); err != nil {
+			t.Fatalf("Failed to get binding %s: %v", binding.GetName(), err)
+		}
+
+		name := binding.GetName()
+		wasScheduled := originalStates[name] == placementv1beta1.BindingStateScheduled
+		isNowBound := updatedBinding.Spec.State == placementv1beta1.BindingStateBound
+
+		if wasScheduled && isNowBound {
+			if !wantSet[name] {
+				t.Errorf("executeUpdatingStage() unexpectedly updated binding %s to Bound", name)
+			}
+			delete(wantSet, name)
+		}
+	}
+
+	for name := range wantSet {
+		t.Errorf("executeUpdatingStage() did not update binding %s to Bound", name)
+	}
+}
+
+// verifyNewlyStartedClusters checks that exactly the expected clusters got Started condition added.
+func verifyNewlyStartedClusters(
+	t *testing.T,
+	updateRun *placementv1beta1.ClusterStagedUpdateRun,
+	originalStarted map[string]bool,
+	wantNewlyStarted []string,
+) {
+	t.Helper()
+
+	wantSet := make(map[string]bool)
+	for _, name := range wantNewlyStarted {
+		wantSet[name] = true
+	}
+
+	for _, cluster := range updateRun.Status.StagesStatus[0].Clusters {
+		startedCond := meta.FindStatusCondition(cluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
+		isStartedNow := condition.IsConditionStatusTrue(startedCond, updateRun.Generation)
+		wasStartedBefore := originalStarted[cluster.ClusterName]
+
+		if isStartedNow && !wasStartedBefore {
+			// Cluster was newly started.
+			if !wantSet[cluster.ClusterName] {
+				t.Errorf("executeUpdatingStage() unexpectedly started cluster %s", cluster.ClusterName)
+			}
+			delete(wantSet, cluster.ClusterName)
+		}
+	}
+
+	for name := range wantSet {
+		t.Errorf("executeUpdatingStage() did not start cluster %s", name)
+	}
+}
+
+// verifyNotStartedClusters checks that the specified clusters do NOT have Started condition.
+func verifyNotStartedClusters(
+	t *testing.T,
+	updateRun *placementv1beta1.ClusterStagedUpdateRun,
+	wantNotStarted []string,
+) {
+	t.Helper()
+
+	notStartedSet := make(map[string]bool)
+	for _, name := range wantNotStarted {
+		notStartedSet[name] = true
+	}
+
+	for _, cluster := range updateRun.Status.StagesStatus[0].Clusters {
+		if !notStartedSet[cluster.ClusterName] {
+			continue
+		}
+		startedCond := meta.FindStatusCondition(cluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted))
+		if condition.IsConditionStatusTrue(startedCond, updateRun.Generation) {
+			t.Errorf("executeUpdatingStage() started cluster %s, want not started", cluster.ClusterName)
+		}
+	}
+}
+
 func TestCalculateMaxConcurrencyValue(t *testing.T) {
 	tests := []struct {
 		name           string
