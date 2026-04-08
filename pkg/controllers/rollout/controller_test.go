@@ -2647,8 +2647,9 @@ func TestPickBindingsToRoll(t *testing.T) {
 	}
 }
 
-// TestDetermineBindingsToUpdate tests the determineBindingsToUpdate function, focusing on the
-// scale-to-zero case where targetNumber == 0.
+// TestDetermineBindingsToUpdate tests the determineBindingsToUpdate function, covering the
+// scale-to-zero case (targetNumber == 0) and preservation of rolling update constraints for
+// targetNumber > 0.
 func TestDetermineBindingsToUpdate(t *testing.T) {
 	crb1 := &placementv1beta1.ClusterResourceBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: "binding-1"},
@@ -2688,7 +2689,7 @@ func TestDetermineBindingsToUpdate(t *testing.T) {
 		wantToBeUpdated         []toBeUpdatedBinding
 		wantStaleUnselected     []toBeUpdatedBinding
 	}{
-		"targetNumber=0 with no ready bindings: all remove and update candidates are returned": {
+		"targetNumber=0 with no ready bindings: all candidates are returned": {
 			placementObj: clusterResourcePlacementForTest(crpName,
 				createPlacementPolicyForTest(placementv1beta1.PickNPlacementType, 0),
 				createPlacementRolloutStrategyForTest(placementv1beta1.RollingUpdateRolloutStrategyType, generateDefaultRollingUpdateConfig(), nil)),
@@ -2703,7 +2704,7 @@ func TestDetermineBindingsToUpdate(t *testing.T) {
 			wantToBeUpdated:     []toBeUpdatedBinding{{currentBinding: crb1}, {currentBinding: crb2, desiredBinding: crb2.DeepCopy()}},
 			wantStaleUnselected: nil,
 		},
-		"targetNumber=0 with some ready bindings: all remove and update candidates are still returned": {
+		"targetNumber=0 with some ready bindings: all candidates are still returned": {
 			placementObj: clusterResourcePlacementForTest(crpName,
 				createPlacementPolicyForTest(placementv1beta1.PickNPlacementType, 0),
 				createPlacementRolloutStrategyForTest(placementv1beta1.RollingUpdateRolloutStrategyType, generateDefaultRollingUpdateConfig(), nil)),
