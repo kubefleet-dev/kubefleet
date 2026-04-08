@@ -169,7 +169,7 @@ helm install hub-agent kubefleet/hub-agent \
 ```
 
 The `webhookCertSecretName` parameter specifies the Secret name for the certificate:
-- Default: `fleet-webhook-server-cert`
+- No default; required when `useCertManager=true`
 - When using cert-manager, this is where cert-manager stores the certificate
 - Must match the secret name referenced in the deployment volume mount
 
