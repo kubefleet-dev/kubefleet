@@ -34,10 +34,7 @@ helm install member-agent kubefleet/member-agent --namespace fleet-system --crea
 ### From Local Source
 
 ```console
-# Go to `charts` folder inside the repo
-cd <REPO_DIRECTORY>/fleet/charts
-# Helm install
-helm install member-agent member-agent/
+helm install member-agent ./charts/member-agent/ --namespace fleet-system --create-namespace
 ```
 
 _See [helm install](https://helm.sh/docs/helm/helm_install/) for command documentation._
@@ -69,6 +66,7 @@ helm upgrade member-agent kubefleet/member-agent --namespace fleet-system
 | logVerbosity            | Log level. Uses V logs (klog)                                                                                                                                                                                                                  | `3`                                                  |
 | propertyProvider        | The property provider to use with the member agent; if none is specified, the Fleet member agent will start with no property provider (i.e., the agent will expose no cluster properties, and collect only limited resource usage information) | ``                                                   |
 | region                  | The region where the member cluster resides                                                                                                                                                                                                    | ``                                                   |
+| enableNamespaceCollectionInPropertyProvider | Enable namespace collection in the property provider; when enabled, the member agent will collect and report the list of namespaces present in the member cluster to the hub cluster for use in scheduling decisions | `false` |
 | workApplierRequeueRateLimiterAttemptsWithFixedDelay | This parameter is a set of values to control how frequent KubeFleet should reconcile (processed) manifests; it specifies then number of attempts to requeue with fixed delay before switching to exponential backoff | `1` |
 | workApplierRequeueRateLimiterFixedDelaySeconds | This parameter is a set of values to control how frequent KubeFleet should reconcile (process) manifests; it specifies the fixed delay in seconds for initial requeue attempts | `5` |
 | workApplierRequeueRateLimiterExponentialBaseForSlowBackoff | This parameter is a set of values to control how frequent KubeFleet should reconcile (process) manifests; it specifies the exponential base for the slow backoff stage | `1.2` |

@@ -133,6 +133,8 @@ helm install cert-manager jetstack/cert-manager \
 
 # Install the hub agent to the hub cluster
 helm install hub-agent ../../charts/hub-agent/ \
+    --namespace fleet-system \
+    --create-namespace \
     --set image.pullPolicy=Never \
     --set image.repository=$REGISTRY/$HUB_AGENT_IMAGE \
     --set image.tag=$TAG \
@@ -149,7 +151,9 @@ helm install hub-agent ../../charts/hub-agent/ \
     --set logFileMaxSize=100000 \
     --set MaxConcurrentClusterPlacement=200 \
     --set resourceSnapshotCreationMinimumInterval=$RESOURCE_SNAPSHOT_CREATION_MINIMUM_INTERVAL \
-    --set resourceChangesCollectionDuration=$RESOURCE_CHANGES_COLLECTION_DURATION
+    --set resourceChangesCollectionDuration=$RESOURCE_CHANGES_COLLECTION_DURATION \
+    --wait \
+    --timeout=2m
 
 # Download CRDs from Fleet networking repo
 export ENDPOINT_SLICE_EXPORT_CRD_URL=https://raw.githubusercontent.com/Azure/fleet-networking/v0.2.7/config/crd/bases/networking.fleet.azure.com_endpointsliceexports.yaml
@@ -201,6 +205,8 @@ do
     kind export kubeconfig --name "${MEMBER_CLUSTERS[$i]}"
     if [ "$i" -lt $RESERVED_CLUSTER_COUNT ]; then
         helm install member-agent ../../charts/member-agent/ \
+            --namespace fleet-system \
+            --create-namespace \
             --set config.hubURL=$HUB_SERVER_URL \
             --set image.repository=$REGISTRY/$MEMBER_AGENT_IMAGE \
             --set image.tag=$TAG \
@@ -216,9 +222,12 @@ do
             --set workApplierRequeueRateLimiterMaxFastBackoffDelaySeconds=5 \
             --set propertyProvider=$PROPERTY_PROVIDER \
             --set region=${REGIONS[$i]} \
+            --set enableNamespaceCollectionInPropertyProvider=true \
             $( [ "$PROPERTY_PROVIDER" = "azure" ] && echo "-f azure_valid_config.yaml" )
     else
         helm install member-agent ../../charts/member-agent/ \
+            --namespace fleet-system \
+            --create-namespace \
             --set config.hubURL=$HUB_SERVER_URL \
             --set image.repository=$REGISTRY/$MEMBER_AGENT_IMAGE \
             --set image.tag=$TAG \
@@ -233,6 +242,7 @@ do
             --set workApplierRequeueRateLimiterMaxSlowBackoffDelaySeconds=5 \
             --set workApplierRequeueRateLimiterMaxFastBackoffDelaySeconds=5 \
             --set propertyProvider=$PROPERTY_PROVIDER \
+            --set enableNamespaceCollectionInPropertyProvider=true \
             $( [ "$PROPERTY_PROVIDER" = "azure" ] && echo "-f azure_valid_config.yaml" )
     fi
 done
