@@ -76,6 +76,13 @@ func (r *Reconciler) execute(
 	markUpdateRunProgressingIfNotWaitingOrStuck(updateRun)
 	if updatingStageIndex < len(updateRunStatus.StagesStatus) {
 		updatingStageStatus = &updateRunStatus.StagesStatus[updatingStageIndex]
+		// Skip the entire stage when there are 0 clusters.
+		if len(updatingStageStatus.Clusters) == 0 {
+			klog.V(2).InfoS("The stage has 0 clusters, skipping the entire stage", "stage", updatingStageStatus.StageName, "updateRun", klog.KObj(updateRun))
+			markStageUpdatingSkippedNoClusters(updatingStageStatus, updateRun.GetGeneration())
+			// No need to wait to get to the next stage.
+			return false, 0, nil
+		}
 		approved, err := r.checkBeforeStageTasksStatus(ctx, updatingStageIndex, updateRun)
 		if err != nil {
 			return false, 0, err
@@ -770,6 +777,25 @@ func markStageUpdatingSucceeded(stageUpdatingStatus *placementv1beta1.StageUpdat
 		ObservedGeneration: generation,
 		Reason:             condition.StageUpdatingSucceededReason,
 		Message:            "Stage update completed successfully",
+	})
+}
+
+// markStageUpdatingSkippedNoClusters marks the stage updating status as skipped due to no clusters in memory.
+// Note: StartTime and EndTime are not set because the stage never actually ran.
+func markStageUpdatingSkippedNoClusters(stageUpdatingStatus *placementv1beta1.StageUpdatingStatus, generation int64) {
+	meta.SetStatusCondition(&stageUpdatingStatus.Conditions, metav1.Condition{
+		Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
+		Status:             metav1.ConditionFalse,
+		ObservedGeneration: generation,
+		Reason:             condition.StageUpdatingSkippedNoClustersReason,
+		Message:            "Stage skipped because it has no clusters",
+	})
+	meta.SetStatusCondition(&stageUpdatingStatus.Conditions, metav1.Condition{
+		Type:               string(placementv1beta1.StageUpdatingConditionSucceeded),
+		Status:             metav1.ConditionTrue,
+		ObservedGeneration: generation,
+		Reason:             condition.StageUpdatingSkippedNoClustersReason,
+		Message:            "Stage skipped because it has no clusters",
 	})
 }
 

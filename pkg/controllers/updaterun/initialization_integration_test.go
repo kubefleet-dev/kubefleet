@@ -1097,6 +1097,50 @@ func validateFailedInitCondition(ctx context.Context, updateRun *placementv1beta
 	}, timeout, interval).Should(Succeed(), "failed to validate the failed initialization condition")
 }
 
+// populateStageTaskStatuses populates the BeforeStageTaskStatus and AfterStageTaskStatus
+// for all stages in the status based on the strategy configuration.
+func populateStageTaskStatuses(
+	status *placementv1beta1.UpdateRunStatus,
+	updateRunName string,
+	stages []placementv1beta1.StageConfig,
+) {
+	for i := range status.StagesStatus {
+		status.StagesStatus[i].BeforeStageTaskStatus = buildTaskStatuses(
+			stages[i].BeforeStageTasks,
+			placementv1beta1.BeforeStageApprovalTaskNameFmt,
+			updateRunName,
+			status.StagesStatus[i].StageName,
+		)
+		status.StagesStatus[i].AfterStageTaskStatus = buildTaskStatuses(
+			stages[i].AfterStageTasks,
+			placementv1beta1.AfterStageApprovalTaskNameFmt,
+			updateRunName,
+			status.StagesStatus[i].StageName,
+		)
+	}
+}
+
+// buildTaskStatuses creates StageTaskStatus slice from StageTask configuration.
+func buildTaskStatuses(
+	tasks []placementv1beta1.StageTask,
+	approvalNameFmt string,
+	updateRunName string,
+	stageName string,
+) []placementv1beta1.StageTaskStatus {
+	if len(tasks) == 0 {
+		return nil
+	}
+	taskStatuses := make([]placementv1beta1.StageTaskStatus, 0, len(tasks))
+	for _, task := range tasks {
+		taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
+		if task.Type == placementv1beta1.StageTaskTypeApproval {
+			taskStatus.ApprovalRequestName = fmt.Sprintf(approvalNameFmt, updateRunName, stageName)
+		}
+		taskStatuses = append(taskStatuses, taskStatus)
+	}
+	return taskStatuses
+}
+
 func generateSucceededInitializationStatus(
 	crp *placementv1beta1.ClusterResourcePlacement,
 	updateRun *placementv1beta1.ClusterStagedUpdateRun,
@@ -1146,27 +1190,7 @@ func generateSucceededInitializationStatus(
 			generateTrueCondition(updateRun, placementv1beta1.StagedUpdateRunConditionInitialized),
 		},
 	}
-	for i := range status.StagesStatus {
-		var beforeTasks []placementv1beta1.StageTaskStatus
-		for _, task := range updateStrategy.Spec.Stages[i].BeforeStageTasks {
-			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
-			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				taskStatus.ApprovalRequestName = fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.Name, status.StagesStatus[i].StageName)
-			}
-			beforeTasks = append(beforeTasks, taskStatus)
-		}
-		status.StagesStatus[i].BeforeStageTaskStatus = beforeTasks
-
-		var afterTasks []placementv1beta1.StageTaskStatus
-		for _, task := range updateStrategy.Spec.Stages[i].AfterStageTasks {
-			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
-			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				taskStatus.ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.Name, status.StagesStatus[i].StageName)
-			}
-			afterTasks = append(afterTasks, taskStatus)
-		}
-		status.StagesStatus[i].AfterStageTaskStatus = afterTasks
-	}
+	populateStageTaskStatuses(status, updateRun.Name, updateStrategy.Spec.Stages)
 	return status
 }
 
@@ -1207,27 +1231,35 @@ func generateSucceededInitializationStatusForSmallClusters(
 		status.DeletionStageStatus.Clusters = append(status.DeletionStageStatus.Clusters,
 			placementv1beta1.ClusterUpdatingStatus{ClusterName: fmt.Sprintf("unscheduled-cluster-%d", i)})
 	}
-	for i := range status.StagesStatus {
-		var beforeTasks []placementv1beta1.StageTaskStatus
-		for _, task := range updateStrategy.Spec.Stages[i].BeforeStageTasks {
-			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
-			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				taskStatus.ApprovalRequestName = fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.Name, status.StagesStatus[i].StageName)
-			}
-			beforeTasks = append(beforeTasks, taskStatus)
-		}
-		status.StagesStatus[i].BeforeStageTaskStatus = beforeTasks
+	populateStageTaskStatuses(status, updateRun.Name, updateStrategy.Spec.Stages)
+	return status
+}
 
-		var afterTasks []placementv1beta1.StageTaskStatus
-		for _, task := range updateStrategy.Spec.Stages[i].AfterStageTasks {
-			taskStatus := placementv1beta1.StageTaskStatus{Type: task.Type}
-			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				taskStatus.ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.Name, status.StagesStatus[i].StageName)
-			}
-			afterTasks = append(afterTasks, taskStatus)
-		}
-		status.StagesStatus[i].AfterStageTaskStatus = afterTasks
+// generateInitializedStatusWithCustomStages creates an initialization status with custom stage configurations.
+// stagesStatus should contain the StageName and Clusters for each stage.
+// The BeforeStageTaskStatus and AfterStageTaskStatus are populated based on the updateStrategy stages.
+func generateInitializedStatusWithCustomStages(
+	crp *placementv1beta1.ClusterResourcePlacement,
+	updateRun *placementv1beta1.ClusterStagedUpdateRun,
+	resourceSnapshotIndex string,
+	policySnapshot *placementv1beta1.ClusterSchedulingPolicySnapshot,
+	updateStrategy *placementv1beta1.ClusterStagedUpdateStrategy,
+	stagesStatus []placementv1beta1.StageUpdatingStatus,
+	deletionStageStatus *placementv1beta1.StageUpdatingStatus,
+) *placementv1beta1.UpdateRunStatus {
+	status := &placementv1beta1.UpdateRunStatus{
+		PolicySnapshotIndexUsed:    policySnapshot.Labels[placementv1beta1.PolicyIndexLabel],
+		PolicyObservedClusterCount: 10,
+		ResourceSnapshotIndexUsed:  resourceSnapshotIndex,
+		ApplyStrategy:              crp.Spec.Strategy.ApplyStrategy.DeepCopy(),
+		UpdateStrategySnapshot:     &updateStrategy.Spec,
+		StagesStatus:               stagesStatus,
+		DeletionStageStatus:        deletionStageStatus,
+		Conditions: []metav1.Condition{
+			generateTrueCondition(updateRun, placementv1beta1.StagedUpdateRunConditionInitialized),
+		},
 	}
+	populateStageTaskStatuses(status, updateRun.Name, updateStrategy.Spec.Stages)
 	return status
 }
 
