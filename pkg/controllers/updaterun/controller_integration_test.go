@@ -976,9 +976,9 @@ func generateFalseConditionWithReason(obj client.Object, condType any, reason st
 }
 
 func generateTrueConditionWithReason(obj client.Object, condType any, reason string) metav1.Condition {
-	falseCond := generateTrueCondition(obj, condType)
-	falseCond.Reason = reason
-	return falseCond
+	trueCond := generateTrueCondition(obj, condType)
+	trueCond.Reason = reason
+	return trueCond
 }
 
 func generateProgressingUnknownConditionWithReason(obj client.Object, reason string) metav1.Condition {
