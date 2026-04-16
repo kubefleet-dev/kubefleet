@@ -660,7 +660,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			createStagedUpdateRunSucceed(updateRunNames[2], testNamespace, rpName, resourceSnapshotIndex1st, strategyName, placementv1beta1.StateRun)
 		})
 
-		It("Should still have resources on all member clusters and complete stage canary", func() {
+		It("Should still have resources on all member clusters and skip stage canary", func() {
 			checkIfPlacedWorkResourcesOnMemberClustersConsistently(allMemberClusters)
 
 			By("Validating rp status keeping as rollout pending with member-cluster-3 only")
@@ -670,10 +670,11 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			// Completes stage by skipping since there are 0 clusters.
 		})
 
-		It("Should remove resources on member-cluster-1 and member-cluster-2 after approval and complete the staged update run successfully", func() {
+		It("Should remove resources on member-cluster-1 and member-cluster-2 after before-stage task approval and complete the staged update run successfully", func() {
 			validateAndApproveNamespacedApprovalRequests(updateRunNames[2], testNamespace, envProd, placementv1beta1.BeforeStageApprovalTaskNameFmt, placementv1beta1.BeforeStageTaskLabelValue)
 
-			// need to go through two stages
+			// Need to go through two stages. The second stage takes care of member-cluster-3 and ensure the resource is rolled out to there.
+			// The deletion stage will remove the resources from member-cluster-1 and member-cluster-2.
 			surSucceededActual := testutilsupdaterun.StagedUpdateRunStatusSucceededActual(ctx, hubClient, updateRunNames[2], testNamespace, resourceSnapshotIndex1st, policySnapshotIndex3rd, 1, defaultApplyStrategy, &strategy.Spec, [][]string{{}, {allMemberClusterNames[2]}}, []string{allMemberClusterNames[0], allMemberClusterNames[1]}, nil, nil, true)
 			Eventually(surSucceededActual, 2*updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to validate updateRun %s/%s succeeded", testNamespace, updateRunNames[2])
 			checkIfRemovedConfigMapFromMemberClusters([]*framework.Cluster{allMemberClusters[0], allMemberClusters[1]})
@@ -763,7 +764,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			validateLatestResourceSnapshot(rpName, testNamespace, resourceSnapshotIndex1st)
 		})
 
-		It("Should not rollout any resources to member clusters and complete stage canary", func() {
+		It("Should not rollout any resources to member clusters and skip stage canary", func() {
 			checkIfRemovedConfigMapFromMemberClustersConsistently(allMemberClusters)
 
 			By("Validating rp status as pending rollout still")
@@ -777,7 +778,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			checkIfRemovedConfigMapFromMemberClustersConsistently([]*framework.Cluster{allMemberClusters[0], allMemberClusters[1]})
 		})
 
-		It("Should rollout resources to member-cluster-3 after approval and complete the cluster staged update run successfully", func() {
+		It("Should rollout resources to member-cluster-3 after before-stage task approval and complete the cluster staged update run successfully", func() {
 			validateAndApproveNamespacedApprovalRequests(updateRunNames[0], testNamespace, envProd, placementv1beta1.BeforeStageApprovalTaskNameFmt, placementv1beta1.BeforeStageTaskLabelValue)
 
 			surSucceededActual := testutilsupdaterun.StagedUpdateRunStatusSucceededActual(ctx, hubClient, updateRunNames[0], testNamespace, resourceSnapshotIndex1st, policySnapshotIndex1st, 1, defaultApplyStrategy, &strategy.Spec, [][]string{{}, {allMemberClusterNames[2]}}, nil, nil, nil, true)

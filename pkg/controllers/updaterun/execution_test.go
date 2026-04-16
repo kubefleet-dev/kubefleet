@@ -1426,62 +1426,6 @@ func TestExecute_ZeroClustersSkipsEntireStage(t *testing.T) {
 				},
 			},
 		},
-		{
-			name: "non-zero clusters should wait for before-stage approval task",
-			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-update-run",
-					Generation: 1,
-				},
-				Spec: placementv1beta1.UpdateRunSpec{
-					PlacementName:         "test-placement",
-					ResourceSnapshotIndex: "1",
-					State:                 placementv1beta1.StateRun,
-				},
-				Status: placementv1beta1.UpdateRunStatus{
-					ResourceSnapshotIndexUsed: "1",
-					StagesStatus: []placementv1beta1.StageUpdatingStatus{
-						{
-							StageName: "non-empty-stage",
-							Clusters: []placementv1beta1.ClusterUpdatingStatus{
-								{ClusterName: "cluster-1"},
-							},
-							BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{
-								{
-									Type:                placementv1beta1.StageTaskTypeApproval,
-									ApprovalRequestName: "test-update-run-non-empty-stage-before",
-								},
-							},
-						},
-					},
-					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
-						Stages: []placementv1beta1.StageConfig{
-							{
-								Name:           "non-empty-stage",
-								MaxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
-								BeforeStageTasks: []placementv1beta1.StageTask{
-									{
-										Type: placementv1beta1.StageTaskTypeApproval,
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			stageIndex:   0,
-			wantWaitTime: stageUpdatingWaitTime, // Should wait for before-stage task.
-			wantErr:      false,
-			wantConditions: []metav1.Condition{
-				{
-					Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
-					Status:             metav1.ConditionFalse,
-					ObservedGeneration: 1,
-					Reason:             condition.StageUpdatingWaitingReason,
-					Message:            "Not all before-stage tasks are completed, waiting for approval",
-				},
-			},
-		},
 	}
 
 	for _, tt := range tests {

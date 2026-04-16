@@ -79,7 +79,7 @@ func (r *Reconciler) execute(
 		// Skip the entire stage when there are 0 clusters.
 		if len(updatingStageStatus.Clusters) == 0 {
 			klog.V(2).InfoS("The stage has 0 clusters, skipping the entire stage", "stage", updatingStageStatus.StageName, "updateRun", klog.KObj(updateRun))
-			markStageUpdatingSkippedNoClusters(updatingStageStatus, updateRun.GetGeneration())
+			markStageUpdatingSkippedNoClusters(updatingStageStatus, updateRun.GetGeneration(), "Stage skipped because it has no clusters")
 			// No need to wait to get to the next stage.
 			return false, 0, nil
 		}
@@ -781,21 +781,26 @@ func markStageUpdatingSucceeded(stageUpdatingStatus *placementv1beta1.StageUpdat
 }
 
 // markStageUpdatingSkippedNoClusters marks the stage updating status as skipped due to no clusters in memory.
-// Note: StartTime and EndTime are not set because the stage never actually ran.
-func markStageUpdatingSkippedNoClusters(stageUpdatingStatus *placementv1beta1.StageUpdatingStatus, generation int64) {
+func markStageUpdatingSkippedNoClusters(stageUpdatingStatus *placementv1beta1.StageUpdatingStatus, generation int64, message string) {
+	if stageUpdatingStatus.StartTime == nil {
+		stageUpdatingStatus.StartTime = &metav1.Time{Time: time.Now()}
+	}
+	if stageUpdatingStatus.EndTime == nil {
+		stageUpdatingStatus.EndTime = &metav1.Time{Time: time.Now()}
+	}
 	meta.SetStatusCondition(&stageUpdatingStatus.Conditions, metav1.Condition{
 		Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
 		Status:             metav1.ConditionFalse,
 		ObservedGeneration: generation,
 		Reason:             condition.StageUpdatingSkippedNoClustersReason,
-		Message:            "Stage skipped because it has no clusters",
+		Message:            message,
 	})
 	meta.SetStatusCondition(&stageUpdatingStatus.Conditions, metav1.Condition{
 		Type:               string(placementv1beta1.StageUpdatingConditionSucceeded),
 		Status:             metav1.ConditionTrue,
 		ObservedGeneration: generation,
 		Reason:             condition.StageUpdatingSkippedNoClustersReason,
-		Message:            "Stage skipped because it has no clusters",
+		Message:            message,
 	})
 }
 
