@@ -1290,12 +1290,12 @@ func TestGenerateStuckClustersString(t *testing.T) {
 
 func TestExecute_ZeroClustersSkipsEntireStage(t *testing.T) {
 	tests := []struct {
-		name           string
-		updateRun      *placementv1beta1.ClusterStagedUpdateRun
-		stageIndex     int
-		wantWaitTime   time.Duration
-		wantErr        bool
-		wantConditions []metav1.Condition
+		name            string
+		updateRun       *placementv1beta1.ClusterStagedUpdateRun
+		stageIndex      int
+		wantWaitTime    time.Duration
+		wantErr         bool
+		wantStageStatus placementv1beta1.StageUpdatingStatus
 	}{
 		{
 			name: "zero clusters should skip entire stage including before-stage tasks",
@@ -1318,7 +1318,16 @@ func TestExecute_ZeroClustersSkipsEntireStage(t *testing.T) {
 							BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{
 								{
 									Type:                placementv1beta1.StageTaskTypeApproval,
-									ApprovalRequestName: "test-update-run-empty-stage-before",
+									ApprovalRequestName: "test-update-run-empty-before-stage",
+								},
+							},
+							AfterStageTaskStatus: []placementv1beta1.StageTaskStatus{
+								{
+									Type: placementv1beta1.StageTaskTypeTimedWait,
+								},
+								{
+									Type:                placementv1beta1.StageTaskTypeApproval,
+									ApprovalRequestName: "test-update-run-after-empty-stage",
 								},
 							},
 						},
@@ -1333,65 +1342,6 @@ func TestExecute_ZeroClustersSkipsEntireStage(t *testing.T) {
 										Type: placementv1beta1.StageTaskTypeApproval,
 									},
 								},
-							},
-						},
-					},
-				},
-			},
-			stageIndex:   0,
-			wantWaitTime: 0, // No wait time, stage is skipped.
-			wantErr:      false,
-			wantConditions: []metav1.Condition{
-				{
-					Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
-					Status:             metav1.ConditionFalse,
-					ObservedGeneration: 1,
-					Reason:             condition.StageUpdatingSkippedNoClustersReason,
-					Message:            "Stage skipped because it has no clusters",
-				},
-				{
-					Type:               string(placementv1beta1.StageUpdatingConditionSucceeded),
-					Status:             metav1.ConditionTrue,
-					ObservedGeneration: 1,
-					Reason:             condition.StageUpdatingSkippedNoClustersReason,
-					Message:            "Stage skipped because it has no clusters",
-				},
-			},
-		},
-		{
-			name: "zero clusters should skip entire stage including after-stage tasks",
-			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:       "test-update-run",
-					Generation: 1,
-				},
-				Spec: placementv1beta1.UpdateRunSpec{
-					PlacementName:         "test-placement",
-					ResourceSnapshotIndex: "1",
-					State:                 placementv1beta1.StateRun,
-				},
-				Status: placementv1beta1.UpdateRunStatus{
-					ResourceSnapshotIndexUsed: "1",
-					StagesStatus: []placementv1beta1.StageUpdatingStatus{
-						{
-							StageName: "empty-stage",
-							Clusters:  []placementv1beta1.ClusterUpdatingStatus{}, // Zero clusters.
-							AfterStageTaskStatus: []placementv1beta1.StageTaskStatus{
-								{
-									Type: placementv1beta1.StageTaskTypeTimedWait,
-								},
-								{
-									Type:                placementv1beta1.StageTaskTypeApproval,
-									ApprovalRequestName: "test-update-run-empty-stage-after",
-								},
-							},
-						},
-					},
-					UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
-						Stages: []placementv1beta1.StageConfig{
-							{
-								Name:           "empty-stage",
-								MaxConcurrency: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
 								AfterStageTasks: []placementv1beta1.StageTask{
 									{
 										Type:     placementv1beta1.StageTaskTypeTimedWait,
@@ -1409,20 +1359,41 @@ func TestExecute_ZeroClustersSkipsEntireStage(t *testing.T) {
 			stageIndex:   0,
 			wantWaitTime: 0, // No wait time, stage is skipped.
 			wantErr:      false,
-			wantConditions: []metav1.Condition{
-				{
-					Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
-					Status:             metav1.ConditionFalse,
-					ObservedGeneration: 1,
-					Reason:             condition.StageUpdatingSkippedNoClustersReason,
-					Message:            "Stage skipped because it has no clusters",
+			wantStageStatus: placementv1beta1.StageUpdatingStatus{
+				StageName: "empty-stage",
+				Clusters:  []placementv1beta1.ClusterUpdatingStatus{}, // Zero clusters.
+				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{
+					{
+						Type:                placementv1beta1.StageTaskTypeApproval,
+						ApprovalRequestName: "test-update-run-empty-before-stage",
+					},
 				},
-				{
-					Type:               string(placementv1beta1.StageUpdatingConditionSucceeded),
-					Status:             metav1.ConditionTrue,
-					ObservedGeneration: 1,
-					Reason:             condition.StageUpdatingSkippedNoClustersReason,
-					Message:            "Stage skipped because it has no clusters",
+				AfterStageTaskStatus: []placementv1beta1.StageTaskStatus{
+					{
+						Type: placementv1beta1.StageTaskTypeTimedWait,
+					},
+					{
+						Type:                placementv1beta1.StageTaskTypeApproval,
+						ApprovalRequestName: "test-update-run-after-empty-stage",
+					},
+				},
+				StartTime: &metav1.Time{Time: time.Now()},
+				EndTime:   &metav1.Time{Time: time.Now()},
+				Conditions: []metav1.Condition{
+					{
+						Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
+						Status:             metav1.ConditionFalse,
+						ObservedGeneration: 1,
+						Reason:             condition.StageUpdatingSkippedNoClustersReason,
+						Message:            "Stage skipped because it has no clusters",
+					},
+					{
+						Type:               string(placementv1beta1.StageUpdatingConditionSucceeded),
+						Status:             metav1.ConditionTrue,
+						ObservedGeneration: 1,
+						Reason:             condition.StageUpdatingSkippedNoClustersReason,
+						Message:            "Stage skipped because it has no clusters",
+					},
 				},
 			},
 		},
@@ -1452,10 +1423,22 @@ func TestExecute_ZeroClustersSkipsEntireStage(t *testing.T) {
 				t.Fatalf("execute() waitTime = %v, want %v", waitTime, tt.wantWaitTime)
 			}
 
-			// Compare conditions using cmp.Diff, ignoring LastTransitionTime.
-			gotConditions := tt.updateRun.Status.StagesStatus[tt.stageIndex].Conditions
-			if diff := cmp.Diff(tt.wantConditions, gotConditions, cmpopts.IgnoreFields(metav1.Condition{}, "LastTransitionTime")); diff != "" {
-				t.Fatalf("execute() conditions mismatch (-want +got):\n%s", diff)
+			gotStageStatus := tt.updateRun.Status.StagesStatus[tt.stageIndex]
+
+			// Verify StartTime and EndTime are set for skipped stages.
+			if gotStageStatus.StartTime == nil {
+				t.Fatal("execute() StartTime should be set for skipped stage")
+			}
+			if gotStageStatus.EndTime == nil {
+				t.Fatal("execute() EndTime should be set for skipped stage")
+			}
+
+			// Compare stage status using cmp.Diff, ignoring time fields.
+			if diff := cmp.Diff(tt.wantStageStatus, gotStageStatus,
+				cmpopts.IgnoreFields(metav1.Condition{}, "LastTransitionTime"),
+				cmpopts.IgnoreFields(placementv1beta1.StageUpdatingStatus{}, "StartTime", "EndTime"),
+			); diff != "" {
+				t.Fatalf("execute() stage status mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
