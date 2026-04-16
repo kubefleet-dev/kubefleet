@@ -837,6 +837,9 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 			// Approval task has been approved.
 			wantStatus.StagesStatus[0].AfterStageTaskStatus[0].Conditions = append(wantStatus.StagesStatus[0].AfterStageTaskStatus[0].Conditions,
 				generateTrueCondition(updateRun, placementv1beta1.StageTaskConditionApprovalRequestApproved))
+
+			By("Checking update run status metrics are emitted")
+			validateUpdateRunApprovalStageTaskMetric(generateApprovalStageTaskMetric(updateRun, placementv1beta1.AfterStageTaskLabelValue, 1))
 		})
 
 		It("Should skip the entire empty stage (stage2) and complete update run", func() {
@@ -872,6 +875,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 
 			By("Checking update run status metrics are emitted")
 			validateUpdateRunMetricsEmitted(generateWaitingMetric(placementv1beta1.StateRun, updateRun), generateProgressingMetric(placementv1beta1.StateRun, updateRun), generateSucceededMetric(placementv1beta1.StateRun, updateRun))
+			validateUpdateRunApprovalStageTaskMetric(generateApprovalStageTaskMetric(updateRun, placementv1beta1.AfterStageTaskLabelValue, 1))
 		})
 
 	})
