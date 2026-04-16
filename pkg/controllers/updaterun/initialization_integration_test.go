@@ -34,6 +34,7 @@ import (
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	hubmetrics "github.com/kubefleet-dev/kubefleet/pkg/metrics/hub"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/resource"
@@ -63,6 +64,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 	var unscheduledClusters []*clusterv1beta1.MemberCluster
 	var resourceSnapshot, resourceSnapshot2, resourceSnapshot3 *placementv1beta1.ClusterResourceSnapshot
 	var clusterResourceOverride *placementv1beta1.ClusterResourceOverrideSnapshot
+	var failureType hubmetrics.UpdateRunFailureType
 
 	BeforeEach(func() {
 		testUpdateRunName = "updaterun-" + utils.RandStr()
@@ -87,6 +89,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 		stageUpdatingWaitTime = time.Second * 3
 		clusterUpdatingWaitTime = time.Second * 2
 
+		failureType = hubmetrics.UpdateRunFailureTypeInternalError // All following tests will still fail due to not fully set up environment.
 	})
 
 	AfterEach(func() {
@@ -142,7 +145,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 	Context("Test validateCRP", func() {
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun, string(failureType)))
 		})
 
 		It("Should fail to initialize if CRP is not found", func() {
@@ -150,6 +153,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 			By("Validating the initialization failed")
+			failureType = hubmetrics.UpdateRunFailureTypeUserError
 			validateFailedInitCondition(ctx, updateRun, "parent placement not found")
 		})
 
@@ -162,6 +166,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 			By("Validating the initialization failed")
+			failureType = hubmetrics.UpdateRunFailureTypeUserError
 			validateFailedInitCondition(ctx, updateRun,
 				"parent placement does not have an external rollout strategy")
 		})
@@ -194,7 +199,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun, string(failureType)))
 		})
 
 		It("Should fail to initialize if the latest policy snapshot is not found", func() {
@@ -304,7 +309,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun, string(failureType)))
 		})
 		It("Should copy the latest policy snapshot details to the updateRun status -- pickFixed policy", func() {
 			By("Creating scheduling policy snapshot with pickFixed policy")
@@ -352,7 +357,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 		})
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun, string(failureType)))
 		})
 
 		It("Should copy the latest policy snapshot details to the updateRun status -- pickAll policy", func() {
@@ -410,7 +415,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun, string(failureType)))
 		})
 		It("Should fail to initialize if there is no selected or to-be-deleted cluster", func() {
 			By("Creating a new clusterStagedUpdateRun")
@@ -504,7 +509,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun, string(failureType)))
 		})
 
 		It("Should not report error if there are only to-be-deleted clusters", func() {
@@ -517,6 +522,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 			By("Validating the initialization not failed due to no selected cluster")
 			// it should fail due to strategy not found
+			failureType = hubmetrics.UpdateRunFailureTypeUserError
 			validateFailedInitCondition(ctx, updateRun, "referenced updateStrategy not found")
 		})
 
@@ -529,6 +535,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 			By("Validating the initialization not failed due to no selected cluster")
 			// it should fail due to strategy not found
+			failureType = hubmetrics.UpdateRunFailureTypeUserError
 			validateFailedInitCondition(ctx, updateRun, "referenced updateStrategy not found")
 
 			By("Validating the ObservedClusterCount is updated")
@@ -569,7 +576,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 		AfterEach(func() {
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun, string(failureType)))
 		})
 
 		It("fail the initialization if the clusterStagedUpdateStrategy is not found", func() {
@@ -577,6 +584,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 			By("Validating the initialization failed")
+			failureType = hubmetrics.UpdateRunFailureTypeUserError
 			validateFailedInitCondition(ctx, updateRun, "referenced updateStrategy not found")
 		})
 
@@ -594,6 +602,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 					Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 					By("Validating the initialization failed")
+					failureType = hubmetrics.UpdateRunFailureTypeUserError
 					validateFailedInitCondition(ctx, updateRun, "afterStageTasks cannot have two tasks of the same type")
 				})
 
@@ -608,6 +617,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 					Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 					By("Validating the initialization failed")
+					failureType = hubmetrics.UpdateRunFailureTypeUserError
 					validateFailedInitCondition(ctx, updateRun, "has wait duration <= 0")
 				})
 			})
@@ -622,6 +632,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 				Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 				By("Validating the initialization failed")
+				failureType = hubmetrics.UpdateRunFailureTypeUserError
 				validateFailedInitCondition(ctx, updateRun, "the sorting label `not-exist-label:`")
 			})
 
@@ -636,6 +647,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 				Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 				By("Validating the initialization failed")
+				failureType = hubmetrics.UpdateRunFailureTypeUserError
 				validateFailedInitCondition(ctx, updateRun, "appears in more than one stages")
 			})
 
@@ -648,6 +660,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 				Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
 				By("Validating the initialization failed")
+				failureType = hubmetrics.UpdateRunFailureTypeUserError
 				validateFailedInitCondition(ctx, updateRun, "some clusters are not placed in any stage, total 5, showing up to 10: cluster-0, cluster-2, cluster-4, cluster-6, cluster-8")
 			})
 
@@ -668,7 +681,8 @@ var _ = Describe("Updaterun initialization tests", func() {
 
 					// no resource snapshot created in this test
 					want := generateInitializedStatus(crp, updateRun, "", policySnapshot, updateStrategy, 10, generateTenClusterSingleStageStatus(nil), generateTenClusterDeletionStageStatus())
-					// initialization should fail due to resourceSnapshot not found.
+					// Initialization should fail due to resourceSnapshot not found.
+					failureType = hubmetrics.UpdateRunFailureTypeUserError
 					want.Conditions = []metav1.Condition{
 						generateFalseCondition(updateRun, placementv1beta1.StagedUpdateRunConditionInitialized),
 					}
@@ -697,7 +711,8 @@ var _ = Describe("Updaterun initialization tests", func() {
 				// no resource snapshot created in this test
 				stagesStatus := generateTenClusterStagesStatus(nil)
 				want := generateInitializedStatus(crp, updateRun, "", policySnapshot, updateStrategy, 10, stagesStatus, generateTenClusterDeletionStageStatus())
-				// initialization should fail due to resourceSnapshot not found.
+				// Initialization should fail due to resourceSnapshot not found.
+				failureType = hubmetrics.UpdateRunFailureTypeUserError
 				want.Conditions = []metav1.Condition{
 					generateFalseCondition(updateRun, placementv1beta1.StagedUpdateRunConditionInitialized),
 				}
@@ -758,7 +773,8 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "invalid resource snapshot index `invalid-index` provided")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
+			failureType = hubmetrics.UpdateRunFailureTypeUserError
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun, string(failureType)))
 		})
 
 		It("Should fail to initialize if the specified resource snapshot index is invalid - negative integer", func() {
@@ -770,7 +786,8 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "invalid resource snapshot index `-1` provided")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
+			failureType = hubmetrics.UpdateRunFailureTypeUserError
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun, string(failureType)))
 		})
 
 		It("Should fail to initialize if the specified resource snapshot is not found - no resourceSnapshots at all", func() {
@@ -781,7 +798,8 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "no resourceSnapshots with index `0` found")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
+			failureType = hubmetrics.UpdateRunFailureTypeUserError
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun, string(failureType)))
 		})
 
 		It("Should create a new resource snapshot and succeed initialization when no resource index specified - no resourceSnapshots at all", func() {
@@ -823,7 +841,8 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "no resourceSnapshots with index `0` found")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
+			failureType = hubmetrics.UpdateRunFailureTypeUserError
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun, string(failureType)))
 		})
 
 		It("Should fail to initialize if the specified resource snapshot is not found - no resource index label found", func() {
@@ -838,7 +857,8 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "no resourceSnapshots with index `0` found")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
+			failureType = hubmetrics.UpdateRunFailureTypeUserError
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun, string(failureType)))
 		})
 
 		It("Should fail to initialize if the specified resource snapshot is not master snapshot", func() {
@@ -853,7 +873,8 @@ var _ = Describe("Updaterun initialization tests", func() {
 			validateFailedInitCondition(ctx, updateRun, "no master resourceSnapshot found for placement")
 
 			By("Checking update run status metrics are emitted")
-			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun))
+			failureType = hubmetrics.UpdateRunFailureTypeInternalError
+			validateUpdateRunMetricsEmitted(generateInitializationFailedMetric(placementv1beta1.StateInitialize, updateRun, string(failureType)))
 		})
 
 		It("Should create a new resource snapshot when no resource index defined, previous snapshots hash does not match", func() {

@@ -17,15 +17,18 @@ limitations under the License.
 package updaterun
 
 import (
+	"errors"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	hubmetrics "github.com/kubefleet-dev/kubefleet/pkg/metrics/hub"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 )
 
 // deleteUpdateRunMetrics deletes the metrics related to the update run when the update run is deleted.
@@ -35,30 +38,60 @@ func deleteUpdateRunMetrics(updateRun placementv1beta1.UpdateRunObj) {
 	hubmetrics.FleetUpdateRunApprovalRequestLatencySeconds.DeletePartialMatch(prometheus.Labels{"namespace": updateRun.GetNamespace(), "name": updateRun.GetName()})
 }
 
+// determineFailureType determines the type of failure based on the condition status and error.
+// It returns:
+// - "none" for successful, in-progress, waiting, or stopping conditions
+// - "user_error" for known customer configuration errors (when err wraps controller.ErrUserError)
+// - "internal_error" for errors that require investigation
+func determineFailureType(cond *metav1.Condition, generation int64, err error) hubmetrics.UpdateRunFailureType {
+	klog.InfoS("Condition:", "type", cond.Type, "status", cond.Status, "reason", cond.Reason, "message", cond.Message)
+	// If the condition status is True (success) or Unknown (in-progress), there's no failure.
+	if !condition.IsConditionStatusFalse(cond, generation) {
+		return hubmetrics.UpdateRunFailureTypeNone
+	}
+
+	// For False status, check if the error is a user error.
+	if err != nil && errors.Is(err, controller.ErrUserError) {
+		return hubmetrics.UpdateRunFailureTypeUserError
+	}
+
+	// Failed condition that is not a user error is an internal error.
+	if err != nil {
+		return hubmetrics.UpdateRunFailureTypeInternalError
+	}
+
+	// For False, there are possible reasons that are not failures (i.e. "Waiting", "Stopped")
+	return hubmetrics.UpdateRunFailureTypeNone
+}
+
 // emitUpdateRunStatusMetric emits the update run status metric based on status conditions in the updateRun.
-func emitUpdateRunStatusMetric(updateRun placementv1beta1.UpdateRunObj) {
+// The err parameter is used to determine the failure type for failed conditions.
+func emitUpdateRunStatusMetric(updateRun placementv1beta1.UpdateRunObj, err error) {
 	generation := updateRun.GetGeneration()
 	state := updateRun.GetUpdateRunSpec().State
 
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	succeedCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionSucceeded))
 	if succeedCond != nil && succeedCond.ObservedGeneration == generation {
+		failureType := determineFailureType(succeedCond, generation, err)
 		hubmetrics.FleetUpdateRunStatusLastTimestampSeconds.WithLabelValues(updateRun.GetNamespace(), updateRun.GetName(), string(state),
-			string(placementv1beta1.StagedUpdateRunConditionSucceeded), string(succeedCond.Status), succeedCond.Reason).SetToCurrentTime()
+			string(placementv1beta1.StagedUpdateRunConditionSucceeded), string(succeedCond.Status), succeedCond.Reason, string(failureType)).SetToCurrentTime()
 		return
 	}
 
 	progressingCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionProgressing))
 	if progressingCond != nil && progressingCond.ObservedGeneration == generation {
+		failureType := determineFailureType(progressingCond, generation, err)
 		hubmetrics.FleetUpdateRunStatusLastTimestampSeconds.WithLabelValues(updateRun.GetNamespace(), updateRun.GetName(), string(state),
-			string(placementv1beta1.StagedUpdateRunConditionProgressing), string(progressingCond.Status), progressingCond.Reason).SetToCurrentTime()
+			string(placementv1beta1.StagedUpdateRunConditionProgressing), string(progressingCond.Status), progressingCond.Reason, string(failureType)).SetToCurrentTime()
 		return
 	}
 
 	initializedCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionInitialized))
 	if initializedCond != nil && initializedCond.ObservedGeneration == generation {
+		failureType := determineFailureType(initializedCond, generation, err)
 		hubmetrics.FleetUpdateRunStatusLastTimestampSeconds.WithLabelValues(updateRun.GetNamespace(), updateRun.GetName(), string(state),
-			string(placementv1beta1.StagedUpdateRunConditionInitialized), string(initializedCond.Status), initializedCond.Reason).SetToCurrentTime()
+			string(placementv1beta1.StagedUpdateRunConditionInitialized), string(initializedCond.Status), initializedCond.Reason, string(failureType)).SetToCurrentTime()
 		return
 	}
 

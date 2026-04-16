@@ -109,8 +109,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		return runtime.Result{}, err
 	}
 
+	// Track errors for metrics emission. The error is used to determine the failure type
+	// (user_error vs internal_error) in the emitted metrics.
+	var reconcileErr error
 	// Emit the update run status metric based on status conditions in the updateRun.
-	defer emitUpdateRunStatusMetric(updateRun)
+	defer func() { emitUpdateRunStatusMetric(updateRun, reconcileErr) }()
 
 	state := updateRun.GetUpdateRunSpec().State
 
@@ -131,6 +134,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 			klog.ErrorS(initErr, "Failed to initialize the updateRun", "updateRun", runObjRef)
 			// errStagedUpdatedAborted cannot be retried.
 			if errors.Is(initErr, errStagedUpdatedAborted) {
+				reconcileErr = initErr
 				return runtime.Result{}, r.recordInitializationFailed(ctx, updateRun, initErr.Error())
 			}
 			return runtime.Result{}, initErr
@@ -150,7 +154,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		if updatingStageIndex, toBeUpdatedBindings, toBeDeletedBindings, validateErr = r.validate(ctx, updateRun); validateErr != nil {
 			// errStagedUpdatedAborted cannot be retried.
 			if errors.Is(validateErr, errStagedUpdatedAborted) {
-				return runtime.Result{}, r.recordUpdateRunFailed(ctx, updateRun, validateErr.Error())
+				reconcileErr = validateErr
+				return runtime.Result{}, r.recordUpdateRunFailed(ctx, updateRun, validateErr)
 			}
 			return runtime.Result{}, validateErr
 		}
@@ -172,7 +177,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		finished, waitTime, execErr := r.execute(ctx, updateRun, updatingStageIndex, toBeUpdatedBindings, toBeDeletedBindings)
 		if errors.Is(execErr, errStagedUpdatedAborted) {
 			// errStagedUpdatedAborted cannot be retried.
-			return runtime.Result{}, r.recordUpdateRunFailed(ctx, updateRun, execErr.Error())
+			reconcileErr = execErr
+			return runtime.Result{}, r.recordUpdateRunFailed(ctx, updateRun, execErr)
 		}
 
 		if finished {
@@ -187,7 +193,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		finished, waitTime, stopErr := r.stop(updateRun, updatingStageIndex, toBeUpdatedBindings, toBeDeletedBindings)
 		if errors.Is(stopErr, errStagedUpdatedAborted) {
 			// errStagedUpdatedAborted cannot be retried.
-			return runtime.Result{}, r.recordUpdateRunFailed(ctx, updateRun, stopErr.Error())
+			reconcileErr = stopErr
+			return runtime.Result{}, r.recordUpdateRunFailed(ctx, updateRun, stopErr)
 		}
 
 		if finished {
@@ -201,7 +208,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		// Initialize, Run, or Stop are the only supported states.
 		unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("found unsupported updateRun state: %s", state))
 		klog.ErrorS(unexpectedErr, "Invalid updateRun state", "state", state, "updateRun", runObjRef)
-		return runtime.Result{}, r.recordUpdateRunFailed(ctx, updateRun, unexpectedErr.Error())
+		// This is an internal error - unsupported state should not happen
+		reconcileErr = unexpectedErr
+		return runtime.Result{}, r.recordUpdateRunFailed(ctx, updateRun, unexpectedErr)
 	}
 	return runtime.Result{}, nil
 }
@@ -288,7 +297,7 @@ func (r *Reconciler) recordUpdateRunSucceeded(ctx context.Context, updateRun pla
 }
 
 // recordUpdateRunFailed records the failed condition in the updateRun status.
-func (r *Reconciler) recordUpdateRunFailed(ctx context.Context, updateRun placementv1beta1.UpdateRunObj, message string) error {
+func (r *Reconciler) recordUpdateRunFailed(ctx context.Context, updateRun placementv1beta1.UpdateRunObj, err error) error {
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	meta.SetStatusCondition(&updateRunStatus.Conditions, metav1.Condition{
 		Type:               string(placementv1beta1.StagedUpdateRunConditionProgressing),
@@ -302,7 +311,7 @@ func (r *Reconciler) recordUpdateRunFailed(ctx context.Context, updateRun placem
 		Status:             metav1.ConditionFalse,
 		ObservedGeneration: updateRun.GetGeneration(),
 		Reason:             condition.UpdateRunFailedReason,
-		Message:            message,
+		Message:            err.Error(),
 	})
 	if updateErr := r.Client.Status().Update(ctx, updateRun); updateErr != nil {
 		klog.ErrorS(updateErr, "Failed to update the updateRun status as failed", "updateRun", klog.KObj(updateRun))
