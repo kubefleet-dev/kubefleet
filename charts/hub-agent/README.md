@@ -2,7 +2,7 @@
 
 ## Chart Versioning
 
-Chart versions match the KubeFleet release versions. For example, to install KubeFleet v0.2.1, use chart version `0.2.1`.
+Chart versions match the KubeFleet release versions. For example, to install KubeFleet v0.3.0, use chart version `0.3.0`.
 
 ## Install Chart
 
@@ -34,8 +34,7 @@ helm install hub-agent kubefleet/hub-agent --namespace fleet-system --create-nam
 ### Local Installation from Source
 
 ```console
-# Helm install with fleet-system namespace already created
-helm install hub-agent ./charts/hub-agent/
+helm install hub-agent ./charts/hub-agent/ --namespace fleet-system --create-namespace
 ```
 
 ### Installation with cert-manager
@@ -55,12 +54,16 @@ helm install cert-manager jetstack/cert-manager \
 # Then install hub-agent with cert-manager enabled (OCI, specify VERSION)
 helm install hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
   --version VERSION \
+  --namespace fleet-system \
+  --create-namespace \
   --set useCertManager=true \
   --set enableWorkload=true \
   --set enableWebhook=true
 
 # Or using traditional repository
 helm install hub-agent kubefleet/hub-agent \
+  --namespace fleet-system \
+  --create-namespace \
   --set useCertManager=true \
   --set enableWorkload=true \
   --set enableWebhook=true
@@ -157,12 +160,16 @@ helm install cert-manager jetstack/cert-manager \
 # Then install hub-agent with cert-manager enabled (OCI, specify VERSION)
 helm install hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
   --version VERSION \
+  --namespace fleet-system \
+  --create-namespace \
   --set useCertManager=true \
   --set enableWorkload=true \
   --set enableWebhook=true
 
 # Or using traditional repository
 helm install hub-agent kubefleet/hub-agent \
+  --namespace fleet-system \
+  --create-namespace \
   --set useCertManager=true \
   --set enableWorkload=true \
   --set enableWebhook=true
@@ -178,12 +185,16 @@ Example with custom secret name:
 # Using OCI registry (specify VERSION)
 helm install hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
   --version VERSION \
+  --namespace fleet-system \
+  --create-namespace \
   --set useCertManager=true \
   --set enableWorkload=true \
   --set webhookCertSecretName=my-webhook-secret
 
 # Using traditional repository
 helm install hub-agent kubefleet/hub-agent \
+  --namespace fleet-system \
+  --create-namespace \
   --set useCertManager=true \
   --set enableWorkload=true \
   --set webhookCertSecretName=my-webhook-secret

@@ -2,7 +2,7 @@
 
 ## Chart Versioning
 
-Chart versions match the KubeFleet release versions. For example, to install KubeFleet v0.2.1, use chart version `0.2.1`.
+Chart versions match the KubeFleet release versions. For example, to install KubeFleet v0.3.0, use chart version `0.3.0`.
 
 ## Install Chart
 
@@ -34,10 +34,7 @@ helm install member-agent kubefleet/member-agent --namespace fleet-system --crea
 ### From Local Source
 
 ```console
-# Go to `charts` folder inside the repo
-cd <REPO_DIRECTORY>/fleet/charts
-# Helm install
-helm install member-agent member-agent/
+helm install member-agent ./charts/member-agent/ --namespace fleet-system --create-namespace
 ```
 
 _See [helm install](https://helm.sh/docs/helm/helm_install/) for command documentation._
