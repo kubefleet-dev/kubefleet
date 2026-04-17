@@ -121,7 +121,8 @@ if ($parsedHubURL.Scheme -ne "https") {
 }
 
 # Extract the hub cluster CA for secure TLS verification
-$HubCA = kubectl config view --raw -o jsonpath="{.clusters[?(@.name=='$HubClusterName')].cluster.certificate-authority-data}"
+$jsonpath = "{.clusters[?(@.name==""$HubClusterName"")].cluster.certificate-authority-data}"
+$HubCA = kubectl config view --raw -o "jsonpath=$jsonpath"
 if ([string]::IsNullOrWhiteSpace($HubCA)) {
     Write-Error "Failed to extract certificate authority data from hub cluster '$HubClusterName'"
     exit 1
