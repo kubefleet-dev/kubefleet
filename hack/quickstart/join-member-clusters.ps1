@@ -120,6 +120,13 @@ if ($parsedHubURL.Scheme -ne "https") {
     Fail-WithHelp "hub control plane URL must use https"
 }
 
+# Extract the hub cluster CA for secure TLS verification
+$HubCA = kubectl config view --raw -o jsonpath="{.clusters[?(@.name=='$HubClusterName')].cluster.certificate-authority-data}"
+if ([string]::IsNullOrWhiteSpace($HubCA)) {
+    Write-Error "Failed to extract certificate authority data from hub cluster '$HubClusterName'"
+    exit 1
+}
+
 foreach ($memberClusterName in $MemberClusterNames) {
     if ([string]::IsNullOrWhiteSpace($memberClusterName)) {
         Fail-WithHelp "member cluster name cannot be empty"
@@ -196,6 +203,7 @@ spec:
     helm install member-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/member-agent `
         --version $KubefleetVersion `
         --set "config.hubURL=$HubControlPlaneURL" `
+        --set "config.hubCA=$HubCA" `
         --set "config.memberClusterName=$memberClusterName" `
         --set logFileMaxSize=100000 `
         --namespace fleet-system `
