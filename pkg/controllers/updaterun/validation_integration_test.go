@@ -117,6 +117,9 @@ var _ = Describe("UpdateRun validation tests", func() {
 			wantStatus = generateExecutionNotStartedStatus(updateRun, initialized)
 			validateClusterStagedUpdateRunStatus(ctx, updateRun, wantStatus, "")
 
+			// All following tests will report internal errors, if not user error, because only the updaterun controller
+			// is running in this test environment. Other controllers (e.g., rollout, work generator,
+			// binding controllers) are not set up, causing operations that depend on them to fail.
 			failureType = hubmetrics.UpdateRunFailureTypeInternalError
 		})
 

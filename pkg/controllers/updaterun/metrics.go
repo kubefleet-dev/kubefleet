@@ -22,7 +22,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -43,24 +42,17 @@ func deleteUpdateRunMetrics(updateRun placementv1beta1.UpdateRunObj) {
 // - "none" for successful, in-progress, waiting, or stopping conditions
 // - "user_error" for known customer configuration errors (when err wraps controller.ErrUserError)
 // - "internal_error" for errors that require investigation
-func determineFailureType(cond *metav1.Condition, generation int64, err error) hubmetrics.UpdateRunFailureType {
-	klog.InfoS("Condition:", "type", cond.Type, "status", cond.Status, "reason", cond.Reason, "message", cond.Message)
-	// If the condition status is True (success) or Unknown (in-progress), there's no failure.
-	if !condition.IsConditionStatusFalse(cond, generation) {
-		return hubmetrics.UpdateRunFailureTypeNone
-	}
-
-	// For False status, check if the error is a user error.
-	if err != nil && errors.Is(err, controller.ErrUserError) {
-		return hubmetrics.UpdateRunFailureTypeUserError
-	}
-
-	// Failed condition that is not a user error is an internal error.
+func determineFailureType(err error) hubmetrics.UpdateRunFailureType {
 	if err != nil {
+		// Check if error for the failed condition is a user error.
+		if errors.Is(err, controller.ErrUserError) {
+			return hubmetrics.UpdateRunFailureTypeUserError
+		}
+		// Failed condition that is not a user error is an internal error.
 		return hubmetrics.UpdateRunFailureTypeInternalError
 	}
 
-	// For False, there are possible reasons that are not failures (i.e. "Waiting", "Stopped")
+	// If there's no error, there's no failure to categorize.
 	return hubmetrics.UpdateRunFailureTypeNone
 }
 
@@ -73,7 +65,7 @@ func emitUpdateRunStatusMetric(updateRun placementv1beta1.UpdateRunObj, err erro
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	succeedCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionSucceeded))
 	if succeedCond != nil && succeedCond.ObservedGeneration == generation {
-		failureType := determineFailureType(succeedCond, generation, err)
+		failureType := determineFailureType(err)
 		hubmetrics.FleetUpdateRunStatusLastTimestampSeconds.WithLabelValues(updateRun.GetNamespace(), updateRun.GetName(), string(state),
 			string(placementv1beta1.StagedUpdateRunConditionSucceeded), string(succeedCond.Status), succeedCond.Reason, string(failureType)).SetToCurrentTime()
 		return
@@ -81,7 +73,7 @@ func emitUpdateRunStatusMetric(updateRun placementv1beta1.UpdateRunObj, err erro
 
 	progressingCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionProgressing))
 	if progressingCond != nil && progressingCond.ObservedGeneration == generation {
-		failureType := determineFailureType(progressingCond, generation, err)
+		failureType := determineFailureType(err)
 		hubmetrics.FleetUpdateRunStatusLastTimestampSeconds.WithLabelValues(updateRun.GetNamespace(), updateRun.GetName(), string(state),
 			string(placementv1beta1.StagedUpdateRunConditionProgressing), string(progressingCond.Status), progressingCond.Reason, string(failureType)).SetToCurrentTime()
 		return
@@ -89,7 +81,7 @@ func emitUpdateRunStatusMetric(updateRun placementv1beta1.UpdateRunObj, err erro
 
 	initializedCond := meta.FindStatusCondition(updateRunStatus.Conditions, string(placementv1beta1.StagedUpdateRunConditionInitialized))
 	if initializedCond != nil && initializedCond.ObservedGeneration == generation {
-		failureType := determineFailureType(initializedCond, generation, err)
+		failureType := determineFailureType(err)
 		hubmetrics.FleetUpdateRunStatusLastTimestampSeconds.WithLabelValues(updateRun.GetNamespace(), updateRun.GetName(), string(state),
 			string(placementv1beta1.StagedUpdateRunConditionInitialized), string(initializedCond.Status), initializedCond.Reason, string(failureType)).SetToCurrentTime()
 		return

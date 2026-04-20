@@ -89,7 +89,10 @@ var _ = Describe("Updaterun initialization tests", func() {
 		stageUpdatingWaitTime = time.Second * 3
 		clusterUpdatingWaitTime = time.Second * 2
 
-		failureType = hubmetrics.UpdateRunFailureTypeInternalError // All following tests will still fail due to not fully set up environment.
+		// All following tests will report internal errors, if not user error, because only the updaterun controller
+		// is running in this test environment. Other controllers (e.g., rollout, work generator,
+		// binding controllers) are not set up, causing operations that depend on them to fail.
+		failureType = hubmetrics.UpdateRunFailureTypeInternalError
 	})
 
 	AfterEach(func() {
@@ -520,8 +523,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			By("Creating a new clusterStagedUpdateRun")
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
-			By("Validating the initialization not failed due to no selected cluster")
-			// it should fail due to strategy not found
+			By("Validating initialization proceeds past cluster selection (fails later due to missing strategy)")
 			failureType = hubmetrics.UpdateRunFailureTypeUserError
 			validateFailedInitCondition(ctx, updateRun, "referenced updateStrategy not found")
 		})
@@ -533,8 +535,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 			By("Creating a new clusterStagedUpdateRun")
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
 
-			By("Validating the initialization not failed due to no selected cluster")
-			// it should fail due to strategy not found
+			By("Validating initialization proceeds past cluster selection (fails later due to missing strategy)")
 			failureType = hubmetrics.UpdateRunFailureTypeUserError
 			validateFailedInitCondition(ctx, updateRun, "referenced updateStrategy not found")
 
