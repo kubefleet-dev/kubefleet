@@ -89,7 +89,7 @@ var _ = Describe("Updaterun initialization tests", func() {
 		stageUpdatingWaitTime = time.Second * 3
 		clusterUpdatingWaitTime = time.Second * 2
 
-		// All following tests will report internal errors, if not user error, because only the updaterun controller
+		// Tests that fail below will report internal errors, if not user error, because only the updaterun controller
 		// is running in this test environment. Other controllers (e.g., rollout, work generator,
 		// binding controllers) are not set up, causing operations that depend on them to fail.
 		failureType = hubmetrics.UpdateRunFailureTypeInternalError
