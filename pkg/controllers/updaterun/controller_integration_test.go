@@ -433,7 +433,7 @@ func generateWaitingMetric(state placementv1beta1.State, updateRun *placementv1b
 func generateStuckMetric(state placementv1beta1.State, updateRun *placementv1beta1.ClusterStagedUpdateRun) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
 		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionProgressing),
-			string(metav1.ConditionFalse), condition.UpdateRunStuckReason, string(hubmetrics.UpdateRunFailureTypeNone)),
+			string(metav1.ConditionFalse), condition.UpdateRunStuckReason, string(hubmetrics.UpdateRunFailureTypeInternalError)),
 		Gauge: &prometheusclientmodel.Gauge{
 			Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
 		},
