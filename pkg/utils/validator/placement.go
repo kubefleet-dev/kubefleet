@@ -450,17 +450,22 @@ func validatePropertySelector(propertySelector *placementv1beta1.PropertySelecto
 
 func validatePropertySelectorRequirements(propertySelectorRequirements []placementv1beta1.PropertySelectorRequirement) error {
 	var allErr []error
+	// Group requirements by property name so we can also check cross-requirement
+	// contradictions (e.g., Eq 5 alongside Eq 10, or Gt 10 alongside Lt 5).
+	byName := make(map[string][]placementv1beta1.PropertySelectorRequirement, len(propertySelectorRequirements))
 	for _, req := range propertySelectorRequirements {
 		if err := validateName(req.Name); err != nil {
 			allErr = append(allErr, fmt.Errorf("invalid property name %s: %w", req.Name, err))
 		}
-		if err := validateOperator(req.Operator, req.Values); err != nil {
-			allErr = append(allErr, err)
+		if err := validateOperatorAndValues(req.Operator, req.Values); err != nil {
+			allErr = append(allErr, fmt.Errorf("invalid requirement on property %s: %w", req.Name, err))
 		}
-		if err := validateValues(req.Values); err != nil {
-			allErr = append(allErr, fmt.Errorf("invalid values for property %s: %w", req.Name, err))
+		byName[req.Name] = append(byName[req.Name], req)
+	}
+	for name, reqs := range byName {
+		if err := validateRequirementsConsistency(reqs); err != nil {
+			allErr = append(allErr, fmt.Errorf("inconsistent requirements on property %s: %w", name, err))
 		}
-		// TODO: Check for logical contradictions
 	}
 	return apiErrors.NewAggregate(allErr)
 }
@@ -530,26 +535,188 @@ func validateName(name string) error {
 	return nil
 }
 
-func validateOperator(op placementv1beta1.PropertySelectorOperator, values []string) error {
-	// TODO: Restructure for Eq (bundle operator and value validation logic)
-	validOperators := map[placementv1beta1.PropertySelectorOperator]bool{
-		placementv1beta1.PropertySelectorGreaterThan:          true,
-		placementv1beta1.PropertySelectorGreaterThanOrEqualTo: true,
-		placementv1beta1.PropertySelectorLessThan:             true,
-		placementv1beta1.PropertySelectorLessThanOrEqualTo:    true,
-		placementv1beta1.PropertySelectorEqualTo:              true,
-		placementv1beta1.PropertySelectorNotEqualTo:           true,
+// supportedPropertyOperators lists the operators recognised on a PropertySelectorRequirement.
+// All currently-supported operators take exactly one resource.Quantity value; this table is the
+// single source of truth for both the operator validity check and the per-operator value rules.
+var supportedPropertyOperators = map[placementv1beta1.PropertySelectorOperator]struct {
+	requiredValueCount int
+}{
+	placementv1beta1.PropertySelectorGreaterThan:          {requiredValueCount: 1},
+	placementv1beta1.PropertySelectorGreaterThanOrEqualTo: {requiredValueCount: 1},
+	placementv1beta1.PropertySelectorLessThan:             {requiredValueCount: 1},
+	placementv1beta1.PropertySelectorLessThanOrEqualTo:    {requiredValueCount: 1},
+	placementv1beta1.PropertySelectorEqualTo:              {requiredValueCount: 1},
+	placementv1beta1.PropertySelectorNotEqualTo:           {requiredValueCount: 1},
+}
+
+// validateOperatorAndValues bundles operator and value validation: the operator must be one we
+// recognise, the value count must match the per-operator spec, and every value must be a valid
+// resource.Quantity.
+func validateOperatorAndValues(op placementv1beta1.PropertySelectorOperator, values []string) error {
+	spec, ok := supportedPropertyOperators[op]
+	if !ok {
+		return fmt.Errorf("unsupported operator %s", op)
 	}
-	if validOperators[op] && len(values) != 1 {
-		return fmt.Errorf("operator %s requires exactly one value, got %d", op, len(values))
+	if len(values) != spec.requiredValueCount {
+		// Preserve the historical wording for the count==1 case (every supported operator today).
+		if spec.requiredValueCount == 1 {
+			return fmt.Errorf("operator %s requires exactly one value, got %d", op, len(values))
+		}
+		return fmt.Errorf("operator %s requires exactly %d values, got %d", op, spec.requiredValueCount, len(values))
+	}
+	for _, value := range values {
+		if _, err := resource.ParseQuantity(value); err != nil {
+			return fmt.Errorf("value %q is not a valid resource.Quantity: %w", value, err)
+		}
 	}
 	return nil
 }
 
-func validateValues(values []string) error {
-	for _, value := range values {
-		if _, err := resource.ParseQuantity(value); err != nil {
-			return fmt.Errorf("value %s is not a valid resource.Quantity: %w", value, err)
+// boundary represents a numeric bound on a property selector requirement. `strict` is true for
+// strict-inequality operators (Gt, Lt) and false for inclusive ones (Gte, Lte).
+type boundary struct {
+	q      resource.Quantity
+	strict bool
+}
+
+// requirementBounds is the parsed, normalised view of all requirements on a single property.
+// `lower` is the most-restrictive (largest) lower bound, `upper` the most-restrictive (smallest)
+// upper bound. `eqVal` is the unique Eq target if any. `neVals` collects all Ne values.
+type requirementBounds struct {
+	lower  *boundary
+	upper  *boundary
+	eqVal  *resource.Quantity
+	neVals []resource.Quantity
+}
+
+// validateRequirementsConsistency reports an error when a set of requirements on the same property
+// is logically unsatisfiable. Only requirements that pass validateOperatorAndValues are considered;
+// malformed inputs are skipped so callers see one error per requirement rather than cascades.
+//
+// Cases detected:
+//   - two Eq requirements with different values
+//   - Eq and Ne requirements with the same value
+//   - the most-restrictive lower bound exceeds the most-restrictive upper bound (empty interval),
+//     including boundary cases Gt x + Lt x, Gt x + Lte x, Gte x + Lt x
+//   - an Eq value that violates the most-restrictive lower or upper bound
+func validateRequirementsConsistency(reqs []placementv1beta1.PropertySelectorRequirement) error {
+	if len(reqs) < 2 {
+		return nil
+	}
+	bounds, err := collectRequirementBounds(reqs)
+	if err != nil {
+		return err
+	}
+	if err := bounds.checkEqVsNe(); err != nil {
+		return err
+	}
+	if err := bounds.checkInterval(); err != nil {
+		return err
+	}
+	return bounds.checkEqInsideBounds()
+}
+
+// collectRequirementBounds parses each well-formed requirement into the normalised bounds view.
+// It returns early with an error if it sees two Eq requirements with different values; this is
+// a first-error-wins design, consistent with the rest of validateRequirementsConsistency. Other
+// inconsistencies are reported by the bound-checking helpers.
+func collectRequirementBounds(reqs []placementv1beta1.PropertySelectorRequirement) (*requirementBounds, error) {
+	out := &requirementBounds{}
+	for _, req := range reqs {
+		if _, ok := supportedPropertyOperators[req.Operator]; !ok || len(req.Values) != 1 {
+			continue
+		}
+		q, err := resource.ParseQuantity(req.Values[0])
+		if err != nil {
+			continue
+		}
+		switch req.Operator {
+		case placementv1beta1.PropertySelectorEqualTo:
+			if out.eqVal != nil && out.eqVal.Cmp(q) != 0 {
+				return nil, fmt.Errorf("conflicting Eq values %s and %s", out.eqVal.String(), q.String())
+			}
+			out.eqVal = &q
+		case placementv1beta1.PropertySelectorNotEqualTo:
+			out.neVals = append(out.neVals, q)
+		case placementv1beta1.PropertySelectorGreaterThan:
+			out.tightenLower(boundary{q: q, strict: true})
+		case placementv1beta1.PropertySelectorGreaterThanOrEqualTo:
+			out.tightenLower(boundary{q: q, strict: false})
+		case placementv1beta1.PropertySelectorLessThan:
+			out.tightenUpper(boundary{q: q, strict: true})
+		case placementv1beta1.PropertySelectorLessThanOrEqualTo:
+			out.tightenUpper(boundary{q: q, strict: false})
+		}
+	}
+	return out, nil
+}
+
+// tightenLower keeps the most restrictive (largest, strict-preferred at ties) lower bound.
+func (rb *requirementBounds) tightenLower(b boundary) {
+	if rb.lower == nil || isMoreRestrictiveLower(b, *rb.lower) {
+		rb.lower = &b
+	}
+}
+
+// tightenUpper keeps the most restrictive (smallest, strict-preferred at ties) upper bound.
+func (rb *requirementBounds) tightenUpper(b boundary) {
+	if rb.upper == nil || isMoreRestrictiveUpper(b, *rb.upper) {
+		rb.upper = &b
+	}
+}
+
+func isMoreRestrictiveLower(a, b boundary) bool {
+	if c := a.q.Cmp(b.q); c != 0 {
+		return c > 0
+	}
+	return a.strict && !b.strict
+}
+
+func isMoreRestrictiveUpper(a, b boundary) bool {
+	if c := a.q.Cmp(b.q); c != 0 {
+		return c < 0
+	}
+	return a.strict && !b.strict
+}
+
+func (rb *requirementBounds) checkEqVsNe() error {
+	if rb.eqVal == nil {
+		return nil
+	}
+	for _, ne := range rb.neVals {
+		if rb.eqVal.Cmp(ne) == 0 {
+			return fmt.Errorf("conflicting Eq and Ne on same value %s", rb.eqVal.String())
+		}
+	}
+	return nil
+}
+
+func (rb *requirementBounds) checkInterval() error {
+	if rb.lower == nil || rb.upper == nil {
+		return nil
+	}
+	cmp := rb.lower.q.Cmp(rb.upper.q)
+	if cmp > 0 || (cmp == 0 && (rb.lower.strict || rb.upper.strict)) {
+		return fmt.Errorf("lower bound (%s) and upper bound (%s) exclude all values",
+			rb.lower.q.String(), rb.upper.q.String())
+	}
+	return nil
+}
+
+func (rb *requirementBounds) checkEqInsideBounds() error {
+	if rb.eqVal == nil {
+		return nil
+	}
+	if rb.lower != nil {
+		cmp := rb.eqVal.Cmp(rb.lower.q)
+		if cmp < 0 || (cmp == 0 && rb.lower.strict) {
+			return fmt.Errorf("eq value %s violates lower bound %s", rb.eqVal.String(), rb.lower.q.String())
+		}
+	}
+	if rb.upper != nil {
+		cmp := rb.eqVal.Cmp(rb.upper.q)
+		if cmp > 0 || (cmp == 0 && rb.upper.strict) {
+			return fmt.Errorf("eq value %s violates upper bound %s", rb.eqVal.String(), rb.upper.q.String())
 		}
 	}
 	return nil
