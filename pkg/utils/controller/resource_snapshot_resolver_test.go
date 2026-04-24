@@ -31,6 +31,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -1683,10 +1684,16 @@ func TestDeleteResourceSnapshots(t *testing.T) {
 	}
 
 	tests := []struct {
-		name          string
-		placementObj  fleetv1beta1.PlacementObj
-		objects       []client.Object
-		expectedError string
+		name         string
+		placementObj fleetv1beta1.PlacementObj
+		objects      []client.Object
+		// expectedSurvivors lists snapshots (by name + namespace) that must still exist after the
+		// delete call. Empty means everything in objects matching the placement scope should be
+		// deleted; entries here exercise cross-scope isolation (e.g. a ClusterResourceSnapshot
+		// that shares a placement name with a ResourceSnapshot must survive when only one scope
+		// is deleted).
+		expectedSurvivors []types.NamespacedName
+		expectedError     string
 	}{
 		{
 			name: "delete resource snapshots - namespaced",
@@ -1716,6 +1723,8 @@ func TestDeleteResourceSnapshots(t *testing.T) {
 					},
 				},
 			},
+			// No cross-scope objects seeded; the cross-scope survivor check is vacuous here.
+			// The "mixed environment" cases below exercise that path.
 		},
 		{
 			name: "delete resource snapshots - cluster-scoped",
@@ -1770,8 +1779,8 @@ func TestDeleteResourceSnapshots(t *testing.T) {
 						},
 					},
 				},
-				// Namespaced snapshots with same placement name (should NOT be deleted)
-				// TODO: find a way to test this
+				// Namespaced snapshot sharing the same placement name; cross-scope isolation
+				// requires it to survive a cluster-scoped delete.
 				&fleetv1beta1.ResourceSnapshot{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "test-namespaced-snapshot",
@@ -1781,6 +1790,9 @@ func TestDeleteResourceSnapshots(t *testing.T) {
 						},
 					},
 				},
+			},
+			expectedSurvivors: []types.NamespacedName{
+				{Namespace: "test-namespace", Name: "test-namespaced-snapshot"},
 			},
 		},
 		{
@@ -1792,8 +1804,8 @@ func TestDeleteResourceSnapshots(t *testing.T) {
 				},
 			},
 			objects: []client.Object{
-				// Cluster-scoped snapshots with same placement name (should NOT be deleted)
-				// TODO: find a way to test this
+				// Cluster-scoped snapshot sharing the same placement name; cross-scope isolation
+				// requires it to survive a namespaced delete.
 				&fleetv1beta1.ClusterResourceSnapshot{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "test-cluster-snapshot",
@@ -1832,6 +1844,12 @@ func TestDeleteResourceSnapshots(t *testing.T) {
 					},
 				},
 			},
+			expectedSurvivors: []types.NamespacedName{
+				// Cluster-scoped survivor (different scope, same placement name).
+				{Name: "test-cluster-snapshot"},
+				// Different-namespace survivor (same scope, different namespace).
+				{Namespace: "other-namespace", Name: "other-namespaced-snapshot"},
+			},
 		},
 	}
 
@@ -1855,7 +1873,8 @@ func TestDeleteResourceSnapshots(t *testing.T) {
 				t.Fatalf("Expected no error but got: %v", err)
 			}
 
-			// Verify snapshots were deleted by checking they no longer exist
+			// In-scope verification: every snapshot matching the placement's scope+name
+			// should be gone after the delete.
 			placementKey := types.NamespacedName{
 				Name:      tt.placementObj.GetName(),
 				Namespace: tt.placementObj.GetNamespace(),
@@ -1864,11 +1883,51 @@ func TestDeleteResourceSnapshots(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Expected no error when listing snapshots after deletion, but got: %v", err)
 			}
-
 			if len(result.GetResourceSnapshotObjs()) != 0 {
 				t.Errorf("Expected 0 resource snapshots after deletion, got %d", len(result.GetResourceSnapshotObjs()))
 			}
+
+			// Cross-scope verification: snapshots in expectedSurvivors must still exist.
+			// This catches the case where DeleteResourceSnapshots accidentally deletes the
+			// other scope (or a different namespace) when placement names collide.
+			for _, want := range tt.expectedSurvivors {
+				found, err := snapshotExists(context.Background(), k8Client, want)
+				if err != nil {
+					t.Errorf("Failed to look up survivor %s: %v", want, err)
+					continue
+				}
+				if !found {
+					t.Errorf("Expected survivor %s to still exist after delete, but it was gone", want)
+				}
+			}
 		})
+	}
+}
+
+// snapshotExists reports whether either a ClusterResourceSnapshot or a ResourceSnapshot exists
+// with the given name+namespace. Cluster-scoped snapshots have an empty namespace.
+func snapshotExists(ctx context.Context, k8Client client.Client, key types.NamespacedName) (bool, error) {
+	if key.Namespace == "" {
+		var s fleetv1beta1.ClusterResourceSnapshot
+		err := k8Client.Get(ctx, key, &s)
+		switch {
+		case err == nil:
+			return true, nil
+		case apierrors.IsNotFound(err):
+			return false, nil
+		default:
+			return false, err
+		}
+	}
+	var s fleetv1beta1.ResourceSnapshot
+	err := k8Client.Get(ctx, key, &s)
+	switch {
+	case err == nil:
+		return true, nil
+	case apierrors.IsNotFound(err):
+		return false, nil
+	default:
+		return false, err
 	}
 }
 
