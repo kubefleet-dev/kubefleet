@@ -31,8 +31,17 @@ func NewFactory(filePath string) Factory {
 	return Factory{filePath: filePath}
 }
 
+// Create opens the token file for writing with restricted permissions.
+//
+//   - O_WRONLY: write-only, since this process never reads the token back.
+//   - O_CREATE: creates the file if it does not exist.
+//   - O_TRUNC: empties the file before writing so that when the token is refreshed,
+//     no leftover bytes from a previous (possibly longer) token remain in the file.
+//   - 0600: owner read/write only, preventing other users from reading the bearer token.
+//     The member-agent container runs as the same UID and reads this file via client-go's
+//     BearerTokenFile (O_RDONLY), so owner permission is sufficient for both writer and reader.
 func (w Factory) Create() (io.WriteCloser, error) {
-	wc, err := os.Create(w.filePath)
+	wc, err := os.OpenFile(w.filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return nil, err
 	}
