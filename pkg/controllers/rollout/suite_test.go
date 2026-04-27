@@ -120,7 +120,7 @@ var _ = BeforeSuite(func() {
 	// setup informer manager for the reconciler
 	dynamicClient, err := dynamic.NewForConfig(cfg)
 	Expect(err).Should(Succeed())
-	dynamicInformerManager := informer.NewInformerManager(dynamicClient, 0, ctx.Done())
+	dynamicInformerManager := informer.NewInformerManager(ctx, dynamicClient, 0)
 	dynamicInformerManager.AddStaticResource(informer.APIResourceMeta{
 		GroupVersionKind:     utils.NamespaceGVK,
 		GroupVersionResource: utils.NamespaceGVR,
