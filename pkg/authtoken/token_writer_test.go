@@ -100,7 +100,9 @@ func TestFactoryCreate(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Factory.Create() returned error: %v", err)
 				}
-				io.WriteString(wc, token)
+				if _, err := io.WriteString(wc, token); err != nil {
+					t.Fatalf("io.WriteString() returned error: %v", err)
+				}
 				wc.Close()
 			}
 
