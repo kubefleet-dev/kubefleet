@@ -22,10 +22,13 @@ import (
 )
 
 // CreateSecureFile creates or truncates a file with owner-only permissions (0600).
-// The file is opened write-only since callers only need to write sensitive data
-// (e.g., tokens, certificates, private keys). The 0600 mode ensures that only the
-// file owner can read or write the file, preventing other users from accessing it.
 // The path is sanitized with filepath.Clean to resolve any relative or redundant elements.
+//
+//   - O_WRONLY: write-only, since callers only need to write sensitive data.
+//   - O_CREATE: creates the file if it does not exist.
+//   - O_TRUNC: empties the file before writing so that no leftover bytes from a
+//     previous (possibly longer) write remain in the file.
+//   - 0600: owner read/write only, preventing other users from accessing the file.
 func CreateSecureFile(path string) (*os.File, error) {
 	return os.OpenFile(filepath.Clean(path), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 }
