@@ -18,9 +18,10 @@ package authtoken
 import (
 	"fmt"
 	"io"
-	"os"
 
 	"k8s.io/klog/v2"
+
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/writefile"
 )
 
 type Factory struct {
@@ -41,7 +42,7 @@ func NewFactory(filePath string) Factory {
 //     The member-agent container runs as the same UID and reads this file via client-go's
 //     BearerTokenFile (O_RDONLY), so owner permission is sufficient for both writer and reader.
 func (w Factory) Create() (io.WriteCloser, error) {
-	wc, err := os.OpenFile(w.filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	wc, err := writefile.CreateSecureFile(w.filePath)
 	if err != nil {
 		return nil, err
 	}

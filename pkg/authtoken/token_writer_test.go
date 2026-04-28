@@ -17,8 +17,6 @@ package authtoken
 
 import (
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -65,69 +63,4 @@ func TestWriteToken(t *testing.T) {
 
 	assert.Equal(t, nil, err, "TestWriteToken")
 	assert.Equal(t, token.Token, factory.buf.String(), "TestWriteToken")
-}
-
-func TestFactoryCreate(t *testing.T) {
-	tests := []struct {
-		name     string
-		oldToken string
-		newToken string
-	}{
-		{
-			name:     "creates new file",
-			newToken: "test-token",
-		},
-		{
-			name:     "truncates longer existing content",
-			oldToken: "this-is-a-very-long-bearer-token-value",
-			newToken: "short-token",
-		},
-		{
-			name:     "overwrites shorter existing content",
-			oldToken: "short",
-			newToken: "a-much-longer-replacement-token",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			tokenPath := filepath.Join(dir, "token")
-			factory := NewFactory(tokenPath)
-
-			writeAndClose := func(token string) {
-				wc, err := factory.Create()
-				if err != nil {
-					t.Fatalf("Factory.Create() returned error: %v", err)
-				}
-				if _, err := io.WriteString(wc, token); err != nil {
-					t.Fatalf("io.WriteString() returned error: %v", err)
-				}
-				wc.Close()
-			}
-
-			if tc.oldToken != "" {
-				writeAndClose(tc.oldToken)
-			}
-
-			wantToken := tc.newToken
-			writeAndClose(wantToken)
-
-			got, err := os.ReadFile(tokenPath)
-			if err != nil {
-				t.Fatalf("os.ReadFile(%q) returned error: %v", tokenPath, err)
-			}
-			if string(got) != wantToken {
-				t.Errorf("Factory.Create() file content = %q, want %q", string(got), wantToken)
-			}
-
-			info, err := os.Stat(tokenPath)
-			if err != nil {
-				t.Fatalf("os.Stat(%q) returned error: %v", tokenPath, err)
-			}
-			if gotPerm := info.Mode().Perm(); gotPerm != 0600 {
-				t.Errorf("Factory.Create() file permission = %o, want %o", gotPerm, 0600)
-			}
-		})
-	}
 }

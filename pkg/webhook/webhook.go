@@ -55,6 +55,7 @@ import (
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/writefile"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceoverride"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/webhook/clusterresourceplacementdisruptionbudget"
@@ -942,7 +943,7 @@ func genCertAndKeyFile(certData, keyData []byte, certDir string) error {
 		return fmt.Errorf("could not create directory %q to store certificates: %w", certDir, err)
 	}
 	certPath := filepath.Join(certDir, fleetWebhookCertFileName)
-	f, err := os.OpenFile(filepath.Clean(certPath), os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0600)
+	f, err := writefile.CreateSecureFile(certPath)
 	if err != nil {
 		return fmt.Errorf("could not open %q: %w", certPath, err)
 	}
@@ -956,7 +957,7 @@ func genCertAndKeyFile(certData, keyData []byte, certDir string) error {
 	}
 
 	keyPath := filepath.Join(certDir, fleetWebhookKeyFileName)
-	kf, err := os.OpenFile(filepath.Clean(keyPath), os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0600)
+	kf, err := writefile.CreateSecureFile(keyPath)
 	if err != nil {
 		return fmt.Errorf("could not open %q: %w", keyPath, err)
 	}
