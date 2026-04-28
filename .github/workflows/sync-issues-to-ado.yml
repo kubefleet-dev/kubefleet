@@ -34,11 +34,20 @@ jobs:
   # Only users with write access can add labels, so labeling itself is the trust boundary.
   # The "issues" environment requires reviewer approval before credentials are accessed.
   sync:
-    # [Repo scoping] Only runs on the upstream repo, not on forks
+    # [Repo scoping] Only runs on the upstream repo, not on forks.
+    # The `labeled` event is gated on the specific label name so that adding any unrelated
+    # label to an issue that already carries `ado-sync` does not re-trigger a sync; closed and
+    # reopened still gate on label-presence because the action payload omits label.name there.
     if: >-
       github.repository == 'kubefleet-dev/kubefleet'
       && (
-        (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'ado-sync'))
+        (
+          github.event_name == 'issues'
+          && (
+            (github.event.action == 'labeled' && github.event.label.name == 'ado-sync')
+            || (github.event.action != 'labeled' && contains(github.event.issue.labels.*.name, 'ado-sync'))
+          )
+        )
         || github.event_name == 'workflow_dispatch'
       )
     runs-on: ubuntu-latest
@@ -59,7 +68,19 @@ jobs:
           set -euo pipefail
           if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
             ISSUE_NUMBER="${INPUT_ISSUE_NUMBER}"
-            # [Label gate] Validate label even on manual dispatch to prevent bypass
+          else
+            ISSUE_NUMBER="${EVENT_ISSUE_NUMBER}"
+          fi
+
+          # Validate issue number is strictly numeric BEFORE any downstream call,
+          # to prevent malformed input from reaching gh / curl / shell expansions.
+          if ! [[ "${ISSUE_NUMBER}" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid issue number: not a positive integer"
+            exit 1
+          fi
+
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            # [Label gate] Validate label even on manual dispatch to prevent bypass.
             LABELS=$(gh issue view "${ISSUE_NUMBER}" \
               --repo "${GITHUB_REPOSITORY}" \
               --json labels --jq '.labels[].name')
@@ -67,14 +88,6 @@ jobs:
               echo "::error::Issue #${ISSUE_NUMBER} does not have the 'ado-sync' label"
               exit 1
             fi
-          else
-            ISSUE_NUMBER="${EVENT_ISSUE_NUMBER}"
-          fi
-
-          # Validate issue number is strictly numeric to prevent injection downstream
-          if ! [[ "${ISSUE_NUMBER}" =~ ^[0-9]+$ ]]; then
-            echo "::error::Invalid issue number: not a positive integer"
-            exit 1
           fi
 
           ISSUE_JSON=$(gh issue view "${ISSUE_NUMBER}" \
@@ -108,7 +121,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          ADO_BASE="https://dev.azure.com/${ADO_ORG}/${ADO_PROJECT}/_apis/wit"
+          # URL-encode org/project: ADO project names commonly contain spaces or other
+          # reserved URL characters, which would produce malformed request URLs otherwise.
+          ADO_ORG_ENCODED=$(printf '%s' "${ADO_ORG}" | jq -sRr @uri)
+          ADO_PROJECT_ENCODED=$(printf '%s' "${ADO_PROJECT}" | jq -sRr @uri)
+          ADO_BASE="https://dev.azure.com/${ADO_ORG_ENCODED}/${ADO_PROJECT_ENCODED}/_apis/wit"
           ADO_API_VERSION="api-version=7.0"
           # ADO PATs use Basic auth with an empty username and the PAT as the password.
           # Mask the base64 form — GitHub only auto-masks the raw secret value.
@@ -226,20 +243,25 @@ jobs:
           ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
         with:
           script: |
-            const org = process.env.ADO_ORG;
-            const project = process.env.ADO_PROJECT;
+            const org = encodeURIComponent(process.env.ADO_ORG);
+            const project = encodeURIComponent(process.env.ADO_PROJECT);
             const workItemId = process.env.WORK_ITEM_ID;
             const issueNumber = parseInt(process.env.ISSUE_NUMBER, 10);
             const adoUrl = `https://dev.azure.com/${org}/${project}/_workitems/edit/${workItemId}`;
             const marker = `Linked Azure DevOps Work Item: [#${workItemId}]`;
 
-            // Check for existing link-back comment to avoid duplicates on re-runs
-            const comments = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber,
-            });
-            if (comments.data.some(c => c.body.includes(marker))) {
+            // Check for existing link-back comment to avoid duplicates on re-runs.
+            // Paginate so the marker is found even when the issue has >30 comments.
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                per_page: 100,
+              },
+            );
+            if (comments.some(c => c.body && c.body.includes(marker))) {
               core.info('Link-back comment already exists, skipping.');
               return;
             }
