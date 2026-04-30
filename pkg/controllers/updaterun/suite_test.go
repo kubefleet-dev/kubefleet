@@ -130,7 +130,7 @@ var _ = BeforeSuite(func() {
 		ResourceConfig:    utils.NewResourceConfig(false),
 		SkippedNamespaces: map[string]bool{},
 	}
-	reconciler := &Reconciler{
+	reconciler = &Reconciler{
 		Client:                   k8sClient,
 		InformerManager:          dynamicInformerManager,
 		ResourceSelectorResolver: resourceSelectorResolver,
