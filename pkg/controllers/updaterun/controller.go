@@ -66,6 +66,10 @@ type Reconciler struct {
 
 	// ResourceSnapshotResolver gets or creates resource snapshots.
 	ResourceSnapshotResolver controller.ResourceSnapshotResolver
+
+	// UpdateRunStuckThreshold is the time to wait on a single cluster update before marking update run as stuck.
+	// If not set, defaults to 5 minutes.
+	UpdateRunStuckThreshold time.Duration
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtime.Result, error) {

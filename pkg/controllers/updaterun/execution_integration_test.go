@@ -641,9 +641,9 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 	Context("Cluster staged update run should abort the execution within a failed updating stage", Ordered, func() {
 		var oldUpdateRunStuckThreshold time.Duration
 		BeforeAll(func() {
-			// Set the updateRunStuckThreshold to 1 second for this test.
-			oldUpdateRunStuckThreshold = updateRunStuckThreshold
-			updateRunStuckThreshold = 1 * time.Second
+			// Set the UpdateRunStuckThreshold to 1 second for this test.
+			oldUpdateRunStuckThreshold = reconciler.UpdateRunStuckThreshold
+			reconciler.UpdateRunStuckThreshold = 1 * time.Second
 
 			By("Creating a new clusterStagedUpdateRun")
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
@@ -658,8 +658,8 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 		})
 
 		AfterAll(func() {
-			// Restore the updateRunStuckThreshold to the original value.
-			updateRunStuckThreshold = oldUpdateRunStuckThreshold
+			// Restore the UpdateRunStuckThreshold to the original value.
+			reconciler.UpdateRunStuckThreshold = oldUpdateRunStuckThreshold
 		})
 
 		It("Should keep waiting for the 1st cluster while it's not available", func() {
@@ -1550,9 +1550,9 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 	Context("Cluster staged update run should be stuck in execution encountering diff reporting failure", Ordered, func() {
 		var oldUpdateRunStuckThreshold time.Duration
 		BeforeAll(func() {
-			// Set the updateRunStuckThreshold to 1 second for this test.
-			oldUpdateRunStuckThreshold = updateRunStuckThreshold
-			updateRunStuckThreshold = 1 * time.Second
+			// Set the UpdateRunStuckThreshold to 1 second for this test.
+			oldUpdateRunStuckThreshold = reconciler.UpdateRunStuckThreshold
+			reconciler.UpdateRunStuckThreshold = 1 * time.Second
 
 			By("Updating the crp to use report diff mode")
 			crp.Spec.Strategy.ApplyStrategy = &placementv1beta1.ApplyStrategy{Type: placementv1beta1.ApplyStrategyTypeReportDiff}
@@ -1571,8 +1571,8 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 		})
 
 		AfterAll(func() {
-			// Restore the updateRunStuckThreshold to the original value.
-			updateRunStuckThreshold = oldUpdateRunStuckThreshold
+			// Restore the UpdateRunStuckThreshold to the original value.
+			reconciler.UpdateRunStuckThreshold = oldUpdateRunStuckThreshold
 		})
 
 		It("Should become stuck if the binding diff reporting fails", func() {

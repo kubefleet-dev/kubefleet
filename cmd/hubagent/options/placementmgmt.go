@@ -115,6 +115,10 @@ type PlacementManagementOptions struct {
 	// if new changes are found, KubeFleet will build a new resource snapshot if there has not been any
 	// new snapshot built within the ResourceSnapshotCreationMinimumInterval.
 	ResourceChangesCollectionDuration time.Duration
+
+	// The duration to wait on a single cluster update before marking an update run as stuck.
+	// If a cluster update does not complete within this duration, the update run will be marked as stuck.
+	UpdateRunStuckThreshold time.Duration
 }
 
 // AddFlags adds flags for PlacementManagementOptions to the specified FlagSet.
@@ -174,6 +178,12 @@ func (o *PlacementManagementOptions) AddFlags(flags *flag.FlagSet) {
 		newResourceChangesCollectionDurationValueWithValidation(15*time.Second, &o.ResourceChangesCollectionDuration),
 		"resource-changes-collection-duration",
 		"The interval between resource change collection attempts. Default is 15 seconds. Must be a duration in the range [0s, 1m].",
+	)
+
+	flags.Var(
+		newUpdateRunStuckThresholdValueWithValidation(5*time.Minute, &o.UpdateRunStuckThreshold),
+		"update-run-stuck-threshold",
+		"The duration to wait on a single cluster update before marking an update run as stuck. Default is 5 minutes. Must be a duration in the range [1m, 1h].",
 	)
 }
 
@@ -349,4 +359,27 @@ func (v *ResourceChangesCollectionDurationValueWithValidation) Set(s string) err
 func newResourceChangesCollectionDurationValueWithValidation(defaultVal time.Duration, p *time.Duration) *ResourceChangesCollectionDurationValueWithValidation {
 	*p = defaultVal
 	return (*ResourceChangesCollectionDurationValueWithValidation)(p)
+}
+
+type UpdateRunStuckThresholdValueWithValidation time.Duration
+
+func (v *UpdateRunStuckThresholdValueWithValidation) String() string {
+	return time.Duration(*v).String()
+}
+
+func (v *UpdateRunStuckThresholdValueWithValidation) Set(s string) error {
+	duration, err := time.ParseDuration(s)
+	if err != nil {
+		return fmt.Errorf("failed to parse duration: %w", err)
+	}
+	if duration < time.Minute || duration > time.Hour {
+		return fmt.Errorf("duration must be in the range [1m, 1h]")
+	}
+	*v = UpdateRunStuckThresholdValueWithValidation(duration)
+	return nil
+}
+
+func newUpdateRunStuckThresholdValueWithValidation(defaultVal time.Duration, p *time.Duration) *UpdateRunStuckThresholdValueWithValidation {
+	*p = defaultVal
+	return (*UpdateRunStuckThresholdValueWithValidation)(p)
 }

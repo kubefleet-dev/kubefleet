@@ -536,6 +536,7 @@ func TestPlacementManagementOptions(t *testing.T) {
 				},
 				ResourceSnapshotCreationMinimumInterval: 30 * time.Second,
 				ResourceChangesCollectionDuration:       15 * time.Second,
+				UpdateRunStuckThreshold:                 5 * time.Minute,
 			},
 		},
 		{
@@ -568,6 +569,7 @@ func TestPlacementManagementOptions(t *testing.T) {
 				},
 				ResourceSnapshotCreationMinimumInterval: 45 * time.Second,
 				ResourceChangesCollectionDuration:       20 * time.Second,
+				UpdateRunStuckThreshold:                 5 * time.Minute,
 			},
 		},
 		{
@@ -674,6 +676,27 @@ func TestPlacementManagementOptions(t *testing.T) {
 			args:             []string{"--resource-changes-collection-duration=61s"},
 			wantErred:        true,
 			wantErrMsgSubStr: "duration must be in the range [0s, 1m]",
+		},
+		{
+			name:             "update run stuck threshold parse error",
+			flagSetName:      "updateRunStuckThresholdParseError",
+			args:             []string{"--update-run-stuck-threshold=abc"},
+			wantErred:        true,
+			wantErrMsgSubStr: "failed to parse duration",
+		},
+		{
+			name:             "update run stuck threshold out of range (too small)",
+			flagSetName:      "updateRunStuckThresholdOutOfRangeTooSmall",
+			args:             []string{"--update-run-stuck-threshold=59s"},
+			wantErred:        true,
+			wantErrMsgSubStr: "duration must be in the range [1m, 1h]",
+		},
+		{
+			name:             "update run stuck threshold out of range (too large)",
+			flagSetName:      "updateRunStuckThresholdOutOfRangeTooLarge",
+			args:             []string{"--update-run-stuck-threshold=61m"},
+			wantErred:        true,
+			wantErrMsgSubStr: "duration must be in the range [1m, 1h]",
 		},
 	}
 

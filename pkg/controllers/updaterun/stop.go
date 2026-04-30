@@ -106,10 +106,10 @@ func (r *Reconciler) stopUpdatingStage(
 			// The cluster has finished successfully, we can process another cluster in this round.
 			clusterUpdatingCount--
 		} else {
-			// If cluster update has been running for more than "updateRunStuckThreshold", mark the update run as stuck.
+			// If cluster update has been running for more than the stuck threshold, mark the update run as stuck.
 			timeElapsed := time.Since(clusterStartedCond.LastTransitionTime.Time)
-			if timeElapsed > updateRunStuckThreshold {
-				klog.V(2).InfoS("Time waiting for cluster update to finish passes threshold, mark the update run as stuck", "time elapsed", timeElapsed, "threshold", updateRunStuckThreshold, "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
+			if timeElapsed > r.UpdateRunStuckThreshold {
+				klog.V(2).InfoS("Time waiting for cluster update to finish passes threshold, mark the update run as stuck", "time elapsed", timeElapsed, "threshold", r.UpdateRunStuckThreshold, "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
 				stuckClusterNames = append(stuckClusterNames, clusterStatus.ClusterName)
 			}
 		}
