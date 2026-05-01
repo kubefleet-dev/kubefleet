@@ -194,6 +194,7 @@ spec:
                                                 description: Name is the name of the
                                                   property; it should be a Kubernetes
                                                   label name.
+                                                maxLength: 317
                                                 type: string
                                               operator:
                                                 description: |-
@@ -215,6 +216,7 @@ spec:
                                                 items:
                                                   type: string
                                                 maxItems: 1
+                                                minItems: 1
                                                 type: array
                                             required:
                                             - name
@@ -239,11 +241,15 @@ spec:
                                         name:
                                           description: Name is the name of the property
                                             which Fleet sorts clusters by.
+                                          maxLength: 317
                                           type: string
                                         sortOrder:
                                           description: |-
                                             SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                             sort in ascending or descending order.
+                                          enum:
+                                          - Descending
+                                          - Ascending
                                           type: string
                                       required:
                                       - name
@@ -262,6 +268,10 @@ spec:
                               - preference
                               - weight
                               type: object
+                              x-kubernetes-validations:
+                              - message: propertySelector is not allowed in preferredDuringSchedulingIgnoredDuringExecution
+                                  affinity terms
+                                rule: '!has(self.preference.propertySelector)'
                             type: array
                           requiredDuringSchedulingIgnoredDuringExecution:
                             description: |-
@@ -353,6 +363,7 @@ spec:
                                                 description: Name is the name of the
                                                   property; it should be a Kubernetes
                                                   label name.
+                                                maxLength: 317
                                                 type: string
                                               operator:
                                                 description: |-
@@ -374,6 +385,7 @@ spec:
                                                 items:
                                                   type: string
                                                 maxItems: 1
+                                                minItems: 1
                                                 type: array
                                             required:
                                             - name
@@ -398,11 +410,15 @@ spec:
                                         name:
                                           description: Name is the name of the property
                                             which Fleet sorts clusters by.
+                                          maxLength: 317
                                           type: string
                                         sortOrder:
                                           description: |-
                                             SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                             sort in ascending or descending order.
+                                          enum:
+                                          - Descending
+                                          - Ascending
                                           type: string
                                       required:
                                       - name
@@ -414,6 +430,10 @@ spec:
                             required:
                             - clusterSelectorTerms
                             type: object
+                            x-kubernetes-validations:
+                            - message: propertySorter is not allowed in requiredDuringSchedulingIgnoredDuringExecution
+                                affinity terms
+                              rule: self.clusterSelectorTerms.all(t, !has(t.propertySorter))
                         type: object
                     type: object
                   clusterNames:
@@ -421,6 +441,7 @@ spec:
                       ClusterNames contains a list of names of MemberCluster to place the selected resources.
                       Only valid if the placement type is "PickFixed"
                     items:
+                      maxLength: 63
                       type: string
                     maxItems: 100
                     type: array
@@ -461,6 +482,7 @@ spec:
                           description: |-
                             Key is the taint key that the toleration applies to. Empty means match all taint keys.
                             If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                          maxLength: 317
                           type: string
                         operator:
                           default: Equal
@@ -477,8 +499,22 @@ spec:
                           description: |-
                             Value is the taint value the toleration matches to.
                             If the operator is Exists, the value should be empty, otherwise just a regular string.
+                          maxLength: 63
                           type: string
                       type: object
+                      x-kubernetes-validations:
+                      - message: value must be empty when operator is Exists
+                        rule: self.operator != 'Exists' || !has(self.value) || size(self.value)
+                          == 0
+                      - message: key must not be empty when operator is Equal
+                        rule: self.operator != 'Equal' || (has(self.key) && size(self.key)
+                          > 0)
+                      - message: toleration key must be a valid qualified name
+                        rule: '!has(self.key) || size(self.key) == 0 || self.key.matches(''^([a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*[/])?[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'')'
+                      - message: toleration key name segment must not exceed 63 characters
+                        rule: '!has(self.key) || size(self.key) == 0 || self.key.matches(''^([^/]+/)?[a-zA-Z0-9]([a-zA-Z0-9._-]{0,61}[a-zA-Z0-9])?$'')'
+                      - message: toleration value must be a valid label value
+                        rule: '!has(self.value) || size(self.value) == 0 || self.value.matches(''^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'')'
                     maxItems: 100
                     type: array
                   topologySpreadConstraints:
@@ -520,6 +556,9 @@ spec:
                             - ScheduleAnyway tells the scheduler to schedule the resource in any cluster,
                               but giving higher precedence to topologies that would help reduce the skew.
                             It's an optional field.
+                          enum:
+                          - DoNotSchedule
+                          - ScheduleAnyway
                           type: string
                       required:
                       - topologyKey
@@ -527,8 +566,46 @@ spec:
                     type: array
                 type: object
                 x-kubernetes-validations:
-                - message: placement type is immutable
-                  rule: '!(self.placementType != oldSelf.placementType)'
+                - message: clusterNames cannot be empty for PickFixed placement type
+                  rule: self.placementType != 'PickFixed' || (has(self.clusterNames)
+                    && size(self.clusterNames) > 0)
+                - message: numberOfClusters must not be set for PickFixed placement
+                    type
+                  rule: self.placementType != 'PickFixed' || !has(self.numberOfClusters)
+                - message: affinity must not be set for PickFixed placement type
+                  rule: self.placementType != 'PickFixed' || !has(self.affinity)
+                - message: topologySpreadConstraints must be empty for PickFixed placement
+                    type
+                  rule: self.placementType != 'PickFixed' || !has(self.topologySpreadConstraints)
+                    || size(self.topologySpreadConstraints) == 0
+                - message: tolerations must be empty for PickFixed placement type
+                  rule: self.placementType != 'PickFixed' || !has(self.tolerations)
+                    || size(self.tolerations) == 0
+                - message: clusterNames must be empty for PickAll placement type
+                  rule: self.placementType != 'PickAll' || !has(self.clusterNames)
+                    || size(self.clusterNames) == 0
+                - message: numberOfClusters must not be set for PickAll placement
+                    type
+                  rule: self.placementType != 'PickAll' || !has(self.numberOfClusters)
+                - message: topologySpreadConstraints must be empty for PickAll placement
+                    type
+                  rule: self.placementType != 'PickAll' || !has(self.topologySpreadConstraints)
+                    || size(self.topologySpreadConstraints) == 0
+                - message: preferredDuringSchedulingIgnoredDuringExecution is not
+                    allowed for PickAll placement type
+                  rule: self.placementType != 'PickAll' || !has(self.affinity) ||
+                    !has(self.affinity.clusterAffinity) || !has(self.affinity.clusterAffinity.preferredDuringSchedulingIgnoredDuringExecution)
+                    || size(self.affinity.clusterAffinity.preferredDuringSchedulingIgnoredDuringExecution)
+                    == 0
+                - message: clusterNames must be empty for PickN placement type
+                  rule: self.placementType != 'PickN' || !has(self.clusterNames) ||
+                    size(self.clusterNames) == 0
+                - message: numberOfClusters must be set for PickN placement type
+                  rule: self.placementType != 'PickN' || has(self.numberOfClusters)
+                - message: tolerations have been updated/deleted, only additions to
+                    tolerations are allowed
+                  rule: '!has(oldSelf.tolerations) || oldSelf.tolerations.all(t, has(self.tolerations)
+                    && self.tolerations.exists(nt, nt == t))'
               resourceSelectors:
                 description: |-
                   ResourceSelectors is an array of selectors used to select cluster scoped resources. The selectors are `ORed`.
@@ -624,6 +701,10 @@ spec:
                   - kind
                   - version
                   type: object
+                  x-kubernetes-validations:
+                  - message: labelSelector and name are mutually exclusive
+                    rule: '!has(self.labelSelector) || !has(self.name) || size(self.name)
+                      == 0'
                 maxItems: 100
                 minItems: 1
                 type: array
@@ -881,6 +962,10 @@ spec:
                         - Never
                         type: string
                     type: object
+                    x-kubernetes-validations:
+                    - message: serverSideApplyConfig is only valid for ServerSideApply
+                        strategy type
+                      rule: self.type == 'ServerSideApply' || !has(self.serverSideApplyConfig)
                   rollingUpdate:
                     description: Rolling update config params. Present only if RolloutStrategyType
                       = RollingUpdate.
@@ -948,12 +1033,19 @@ spec:
                         to other types
                       rule: '!(self != ''External'' && oldSelf == ''External'')'
                 type: object
+                x-kubernetes-validations:
+                - message: rollingUpdate config is not valid for External rollout
+                    strategy type
+                  rule: self.type != 'External' || !has(self.rollingUpdate)
             required:
             - resourceSelectors
             type: object
             x-kubernetes-validations:
             - message: policy cannot be removed once set
               rule: '!(has(oldSelf.policy) && !has(self.policy))'
+            - message: placement type is immutable
+              rule: '(has(oldSelf.policy) ? oldSelf.policy.placementType : ''PickAll'')
+                == (has(self.policy) ? self.policy.placementType : ''PickAll'')'
             - message: when statusReportingScope is NamespaceAccessible, exactly one
                 resourceSelector with kind 'Namespace' is required
               rule: '!(self.statusReportingScope == ''NamespaceAccessible'' && size(self.resourceSelectors.filter(x,
@@ -1556,6 +1648,9 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: name must not exceed 63 characters
+          rule: size(self.metadata.name) <= 63
     served: true
     storage: false
     subresources:
@@ -1735,6 +1830,7 @@ spec:
                                                 description: Name is the name of the
                                                   property; it should be a Kubernetes
                                                   label name.
+                                                maxLength: 317
                                                 type: string
                                               operator:
                                                 description: |-
@@ -1756,6 +1852,7 @@ spec:
                                                 items:
                                                   type: string
                                                 maxItems: 1
+                                                minItems: 1
                                                 type: array
                                             required:
                                             - name
@@ -1780,11 +1877,15 @@ spec:
                                         name:
                                           description: Name is the name of the property
                                             which Fleet sorts clusters by.
+                                          maxLength: 317
                                           type: string
                                         sortOrder:
                                           description: |-
                                             SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                             sort in ascending or descending order.
+                                          enum:
+                                          - Descending
+                                          - Ascending
                                           type: string
                                       required:
                                       - name
@@ -1803,6 +1904,10 @@ spec:
                               - preference
                               - weight
                               type: object
+                              x-kubernetes-validations:
+                              - message: propertySelector is not allowed in preferredDuringSchedulingIgnoredDuringExecution
+                                  affinity terms
+                                rule: '!has(self.preference.propertySelector)'
                             type: array
                           requiredDuringSchedulingIgnoredDuringExecution:
                             description: |-
@@ -1894,6 +1999,7 @@ spec:
                                                 description: Name is the name of the
                                                   property; it should be a Kubernetes
                                                   label name.
+                                                maxLength: 317
                                                 type: string
                                               operator:
                                                 description: |-
@@ -1915,6 +2021,7 @@ spec:
                                                 items:
                                                   type: string
                                                 maxItems: 1
+                                                minItems: 1
                                                 type: array
                                             required:
                                             - name
@@ -1939,11 +2046,15 @@ spec:
                                         name:
                                           description: Name is the name of the property
                                             which Fleet sorts clusters by.
+                                          maxLength: 317
                                           type: string
                                         sortOrder:
                                           description: |-
                                             SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                             sort in ascending or descending order.
+                                          enum:
+                                          - Descending
+                                          - Ascending
                                           type: string
                                       required:
                                       - name
@@ -1955,6 +2066,10 @@ spec:
                             required:
                             - clusterSelectorTerms
                             type: object
+                            x-kubernetes-validations:
+                            - message: propertySorter is not allowed in requiredDuringSchedulingIgnoredDuringExecution
+                                affinity terms
+                              rule: self.clusterSelectorTerms.all(t, !has(t.propertySorter))
                         type: object
                     type: object
                   clusterNames:
@@ -1962,6 +2077,7 @@ spec:
                       ClusterNames contains a list of names of MemberCluster to place the selected resources.
                       Only valid if the placement type is "PickFixed"
                     items:
+                      maxLength: 63
                       type: string
                     maxItems: 100
                     type: array
@@ -2002,6 +2118,7 @@ spec:
                           description: |-
                             Key is the taint key that the toleration applies to. Empty means match all taint keys.
                             If the key is empty, operator must be Exists; this combination means to match all values and all keys.
+                          maxLength: 317
                           type: string
                         operator:
                           default: Equal
@@ -2018,8 +2135,22 @@ spec:
                           description: |-
                             Value is the taint value the toleration matches to.
                             If the operator is Exists, the value should be empty, otherwise just a regular string.
+                          maxLength: 63
                           type: string
                       type: object
+                      x-kubernetes-validations:
+                      - message: value must be empty when operator is Exists
+                        rule: self.operator != 'Exists' || !has(self.value) || size(self.value)
+                          == 0
+                      - message: key must not be empty when operator is Equal
+                        rule: self.operator != 'Equal' || (has(self.key) && size(self.key)
+                          > 0)
+                      - message: toleration key must be a valid qualified name
+                        rule: '!has(self.key) || size(self.key) == 0 || self.key.matches(''^([a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*[/])?[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'')'
+                      - message: toleration key name segment must not exceed 63 characters
+                        rule: '!has(self.key) || size(self.key) == 0 || self.key.matches(''^([^/]+/)?[a-zA-Z0-9]([a-zA-Z0-9._-]{0,61}[a-zA-Z0-9])?$'')'
+                      - message: toleration value must be a valid label value
+                        rule: '!has(self.value) || size(self.value) == 0 || self.value.matches(''^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'')'
                     maxItems: 100
                     type: array
                   topologySpreadConstraints:
@@ -2061,6 +2192,9 @@ spec:
                             - ScheduleAnyway tells the scheduler to schedule the resource in any cluster,
                               but giving higher precedence to topologies that would help reduce the skew.
                             It's an optional field.
+                          enum:
+                          - DoNotSchedule
+                          - ScheduleAnyway
                           type: string
                       required:
                       - topologyKey
@@ -2068,8 +2202,46 @@ spec:
                     type: array
                 type: object
                 x-kubernetes-validations:
-                - message: placement type is immutable
-                  rule: '!(self.placementType != oldSelf.placementType)'
+                - message: clusterNames cannot be empty for PickFixed placement type
+                  rule: self.placementType != 'PickFixed' || (has(self.clusterNames)
+                    && size(self.clusterNames) > 0)
+                - message: numberOfClusters must not be set for PickFixed placement
+                    type
+                  rule: self.placementType != 'PickFixed' || !has(self.numberOfClusters)
+                - message: affinity must not be set for PickFixed placement type
+                  rule: self.placementType != 'PickFixed' || !has(self.affinity)
+                - message: topologySpreadConstraints must be empty for PickFixed placement
+                    type
+                  rule: self.placementType != 'PickFixed' || !has(self.topologySpreadConstraints)
+                    || size(self.topologySpreadConstraints) == 0
+                - message: tolerations must be empty for PickFixed placement type
+                  rule: self.placementType != 'PickFixed' || !has(self.tolerations)
+                    || size(self.tolerations) == 0
+                - message: clusterNames must be empty for PickAll placement type
+                  rule: self.placementType != 'PickAll' || !has(self.clusterNames)
+                    || size(self.clusterNames) == 0
+                - message: numberOfClusters must not be set for PickAll placement
+                    type
+                  rule: self.placementType != 'PickAll' || !has(self.numberOfClusters)
+                - message: topologySpreadConstraints must be empty for PickAll placement
+                    type
+                  rule: self.placementType != 'PickAll' || !has(self.topologySpreadConstraints)
+                    || size(self.topologySpreadConstraints) == 0
+                - message: preferredDuringSchedulingIgnoredDuringExecution is not
+                    allowed for PickAll placement type
+                  rule: self.placementType != 'PickAll' || !has(self.affinity) ||
+                    !has(self.affinity.clusterAffinity) || !has(self.affinity.clusterAffinity.preferredDuringSchedulingIgnoredDuringExecution)
+                    || size(self.affinity.clusterAffinity.preferredDuringSchedulingIgnoredDuringExecution)
+                    == 0
+                - message: clusterNames must be empty for PickN placement type
+                  rule: self.placementType != 'PickN' || !has(self.clusterNames) ||
+                    size(self.clusterNames) == 0
+                - message: numberOfClusters must be set for PickN placement type
+                  rule: self.placementType != 'PickN' || has(self.numberOfClusters)
+                - message: tolerations have been updated/deleted, only additions to
+                    tolerations are allowed
+                  rule: '!has(oldSelf.tolerations) || oldSelf.tolerations.all(t, has(self.tolerations)
+                    && self.tolerations.exists(nt, nt == t))'
               resourceSelectors:
                 description: |-
                   ResourceSelectors is an array of selectors used to select cluster scoped resources. The selectors are `ORed`.
@@ -2183,6 +2355,10 @@ spec:
                   - kind
                   - version
                   type: object
+                  x-kubernetes-validations:
+                  - message: labelSelector and name are mutually exclusive
+                    rule: '!has(self.labelSelector) || !has(self.name) || size(self.name)
+                      == 0'
                 maxItems: 100
                 minItems: 1
                 type: array
@@ -2440,6 +2616,10 @@ spec:
                         - Never
                         type: string
                     type: object
+                    x-kubernetes-validations:
+                    - message: serverSideApplyConfig is only valid for ServerSideApply
+                        strategy type
+                      rule: self.type == 'ServerSideApply' || !has(self.serverSideApplyConfig)
                   deleteStrategy:
                     description: DeleteStrategy configures the deletion behavior when
                       the ClusterResourcePlacement is deleted.
@@ -2557,6 +2737,7 @@ spec:
                           For other types of resources, we consider them as available after `UnavailablePeriodSeconds` seconds
                           have passed since they were successfully applied to the target cluster.
                           Default is 60.
+                        minimum: 0
                         type: integer
                     type: object
                   type:
@@ -2573,12 +2754,19 @@ spec:
                         to other types
                       rule: '!(self != ''External'' && oldSelf == ''External'')'
                 type: object
+                x-kubernetes-validations:
+                - message: rollingUpdate config is not valid for External rollout
+                    strategy type
+                  rule: self.type != 'External' || !has(self.rollingUpdate)
             required:
             - resourceSelectors
             type: object
             x-kubernetes-validations:
             - message: policy cannot be removed once set
               rule: '!(has(oldSelf.policy) && !has(self.policy))'
+            - message: placement type is immutable
+              rule: '(has(oldSelf.policy) ? oldSelf.policy.placementType : ''PickAll'')
+                == (has(self.policy) ? self.policy.placementType : ''PickAll'')'
             - message: when statusReportingScope is NamespaceAccessible, exactly one
                 resourceSelector with kind 'Namespace' is required
               rule: '!(self.statusReportingScope == ''NamespaceAccessible'' && size(self.resourceSelectors.filter(x,
@@ -3208,6 +3396,9 @@ spec:
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: name must not exceed 63 characters
+          rule: size(self.metadata.name) <= 63
     served: true
     storage: true
     subresources:

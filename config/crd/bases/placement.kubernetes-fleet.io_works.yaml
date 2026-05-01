@@ -271,6 +271,10 @@ spec:
                     - Never
                     type: string
                 type: object
+                x-kubernetes-validations:
+                - message: serverSideApplyConfig is only valid for ServerSideApply
+                    strategy type
+                  rule: self.type == 'ServerSideApply' || !has(self.serverSideApplyConfig)
               workload:
                 description: Workload represents the manifest workload to be deployed
                   on spoke cluster
@@ -859,6 +863,10 @@ spec:
                     - Never
                     type: string
                 type: object
+                x-kubernetes-validations:
+                - message: serverSideApplyConfig is only valid for ServerSideApply
+                    strategy type
+                  rule: self.type == 'ServerSideApply' || !has(self.serverSideApplyConfig)
               reportBackStrategy:
                 description: ReportBackStrategy describes how to report back the status
                   of applied resources on the member cluster.

@@ -19,14 +19,12 @@ package validator
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"sort"
 	"strings"
 
 	admissionv1 "k8s.io/api/admission/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,10 +48,7 @@ var ResourceInformer informer.Manager
 var RestMapper meta.RESTMapper
 
 var (
-	invalidTolerationErrFmt      = "invalid toleration %+v: %s"
-	invalidTolerationKeyErrFmt   = "invalid toleration key %+v: %s"
-	invalidTolerationValueErrFmt = "invalid toleration value %+v: %s"
-	uniqueTolerationErrFmt       = "toleration %+v already exists, tolerations must be unique"
+	uniqueTolerationErrFmt = "toleration %+v already exists, tolerations must be unique"
 
 	// Webhook validation message format strings
 	AllowUpdateOldInvalidFmt   = "allow update on old invalid v1beta1 %s with DeletionTimestamp set"
@@ -79,20 +74,13 @@ func hasNamespaceWithResourceSelectorsMode(resourceSelectors []placementv1beta1.
 }
 
 // validatePlacement validates a placement object (either ClusterResourcePlacement or ResourcePlacement).
-func validatePlacement(name string, resourceSelectors []placementv1beta1.ResourceSelectorTerm, policy *placementv1beta1.PlacementPolicy, strategy placementv1beta1.RolloutStrategy, isClusterScoped bool) error {
+func validatePlacement(resourceSelectors []placementv1beta1.ResourceSelectorTerm, policy *placementv1beta1.PlacementPolicy, strategy placementv1beta1.RolloutStrategy, isClusterScoped bool) error {
 	allErr := make([]error, 0)
-
-	if len(name) > validation.DNS1035LabelMaxLength {
-		allErr = append(allErr, fmt.Errorf("the name field cannot have length exceeding %d", validation.DNS1035LabelMaxLength))
-	}
 
 	hasNsWithResourceSelectorsMode := hasNamespaceWithResourceSelectorsMode(resourceSelectors)
 
 	for _, selector := range resourceSelectors {
 		if selector.LabelSelector != nil {
-			if len(selector.Name) != 0 {
-				allErr = append(allErr, fmt.Errorf("the labelSelector and name fields are mutually exclusive in selector %+v", selector))
-			}
 			allErr = append(allErr, validateLabelSelector(selector.LabelSelector, "resource selector"))
 		}
 
@@ -144,7 +132,6 @@ func validatePlacement(name string, resourceSelectors []placementv1beta1.Resourc
 // ValidateClusterResourcePlacement validates a ClusterResourcePlacement object.
 func ValidateClusterResourcePlacement(clusterResourcePlacement *placementv1beta1.ClusterResourcePlacement) error {
 	return validatePlacement(
-		clusterResourcePlacement.Name,
 		clusterResourcePlacement.Spec.ResourceSelectors,
 		clusterResourcePlacement.Spec.Policy,
 		clusterResourcePlacement.Spec.Strategy,
@@ -155,28 +142,11 @@ func ValidateClusterResourcePlacement(clusterResourcePlacement *placementv1beta1
 // ValidateResourcePlacement validates a ResourcePlacement object.
 func ValidateResourcePlacement(resourcePlacement *placementv1beta1.ResourcePlacement) error {
 	return validatePlacement(
-		resourcePlacement.Name,
 		resourcePlacement.Spec.ResourceSelectors,
 		resourcePlacement.Spec.Policy,
 		resourcePlacement.Spec.Strategy,
 		false, // isClusterScoped
 	)
-}
-
-func IsPlacementPolicyTypeUpdated(oldPolicy, currentPolicy *placementv1beta1.PlacementPolicy) bool {
-	if oldPolicy == nil && currentPolicy != nil {
-		// if placement policy is left blank, by default PickAll is chosen.
-		return currentPolicy.PlacementType != placementv1beta1.PickAllPlacementType
-	}
-	// this case is essentially user trying to change placement type, if old placement type wasn't PickAll.
-	if oldPolicy != nil && currentPolicy == nil {
-		return oldPolicy.PlacementType != placementv1beta1.PickAllPlacementType
-	}
-	if oldPolicy != nil && currentPolicy != nil {
-		return currentPolicy.PlacementType != oldPolicy.PlacementType
-	}
-	// general case where placement type wasn't updated but other fields in placement policy might have changed.
-	return false
 }
 
 func validatePlacementPolicy(policy *placementv1beta1.PlacementPolicy) error {
@@ -199,19 +169,15 @@ func validatePlacementPolicy(policy *placementv1beta1.PlacementPolicy) error {
 	return apiErrors.NewAggregate(allErr)
 }
 
+// validatePolicyForPickFixedPlacementType validates PickFixed-specific fields that CEL cannot check
+// (DNS validation and uniqueness of cluster names).
 func validatePolicyForPickFixedPlacementType(policy *placementv1beta1.PlacementPolicy) error {
 	allErr := make([]error, 0)
-	if len(policy.ClusterNames) == 0 {
-		allErr = append(allErr, fmt.Errorf("cluster names cannot be empty for policy type %s", placementv1beta1.PickFixedPlacementType))
-	}
 	uniqueClusterNames := make(map[string]bool)
 	for _, name := range policy.ClusterNames {
 		nameErr := validation.IsDNS1123Subdomain(name)
 		if nameErr != nil {
 			allErr = append(allErr, fmt.Errorf("PickFixed cluster name %s is not a valid member name: %s", name, strings.Join(nameErr, "; ")))
-		}
-		if len(name) > validation.DNS1035LabelMaxLength {
-			allErr = append(allErr, fmt.Errorf("PickFixed cluster name %s cannot have length exceeding %d", name, validation.DNS1035LabelMaxLength))
 		}
 		if _, ok := uniqueClusterNames[name]; ok {
 			allErr = append(allErr, fmt.Errorf("cluster names must be unique for policy type %s", placementv1beta1.PickFixedPlacementType))
@@ -219,63 +185,28 @@ func validatePolicyForPickFixedPlacementType(policy *placementv1beta1.PlacementP
 		}
 		uniqueClusterNames[name] = true
 	}
-	if policy.NumberOfClusters != nil {
-		allErr = append(allErr, fmt.Errorf("number of clusters must be nil for policy type %s, only valid for PickN placement policy type", placementv1beta1.PickFixedPlacementType))
-	}
-	if policy.Affinity != nil {
-		allErr = append(allErr, fmt.Errorf("affinity must be nil for policy type %s, only valid for PickAll/PickN placement policy types", placementv1beta1.PickFixedPlacementType))
-	}
-	if len(policy.TopologySpreadConstraints) > 0 {
-		allErr = append(allErr, fmt.Errorf("topology spread constraints needs to be empty for policy type %s, only valid for PickN policy type", placementv1beta1.PickFixedPlacementType))
-	}
-	if policy.Tolerations != nil {
-		allErr = append(allErr, fmt.Errorf("tolerations needs to be empty for policy type %s, only valid for PickAll/PickN", placementv1beta1.PickFixedPlacementType))
-	}
-
 	return apiErrors.NewAggregate(allErr)
 }
 
+// validatePolicyForPickAllPlacementType validates PickAll-specific fields that CEL cannot check
+// (label selector parsing, property validation, unique tolerations).
 func validatePolicyForPickAllPlacementType(policy *placementv1beta1.PlacementPolicy) error {
 	allErr := make([]error, 0)
-	if len(policy.ClusterNames) > 0 {
-		allErr = append(allErr, fmt.Errorf("cluster names needs to be empty for policy type %s, only valid for PickFixed policy type", placementv1beta1.PickAllPlacementType))
-	}
-	if policy.NumberOfClusters != nil {
-		allErr = append(allErr, fmt.Errorf("number of clusters must be nil for policy type %s, only valid for PickN placement policy type", placementv1beta1.PickAllPlacementType))
-	}
-	// Allowing user to supply empty cluster affinity, only validating cluster affinity if non-nil
 	if policy.Affinity != nil && policy.Affinity.ClusterAffinity != nil {
 		allErr = append(allErr, validateClusterAffinity(policy.Affinity.ClusterAffinity, policy.PlacementType))
 	}
-	if len(policy.TopologySpreadConstraints) > 0 {
-		allErr = append(allErr, fmt.Errorf("topology spread constraints needs to be empty for policy type %s, only valid for PickN policy type", placementv1beta1.PickAllPlacementType))
-	}
 	allErr = append(allErr, validateTolerations(policy.Tolerations))
-
 	return apiErrors.NewAggregate(allErr)
 }
 
+// validatePolicyForPickNPolicyType validates PickN-specific fields that CEL cannot check
+// (label selector parsing, property validation, unique tolerations).
 func validatePolicyForPickNPolicyType(policy *placementv1beta1.PlacementPolicy) error {
 	allErr := make([]error, 0)
-	if len(policy.ClusterNames) > 0 {
-		allErr = append(allErr, fmt.Errorf("cluster names needs to be empty for policy type %s, only valid for PickFixed policy type", placementv1beta1.PickNPlacementType))
-	}
-	if policy.NumberOfClusters != nil {
-		if *policy.NumberOfClusters < 0 {
-			allErr = append(allErr, fmt.Errorf("number of clusters cannot be %d for policy type %s", *policy.NumberOfClusters, placementv1beta1.PickNPlacementType))
-		}
-	} else {
-		allErr = append(allErr, fmt.Errorf("number of cluster cannot be nil for policy type %s", placementv1beta1.PickNPlacementType))
-	}
-	// Allowing user to supply empty cluster affinity, only validating cluster affinity if non-nil
 	if policy.Affinity != nil && policy.Affinity.ClusterAffinity != nil {
 		allErr = append(allErr, validateClusterAffinity(policy.Affinity.ClusterAffinity, policy.PlacementType))
 	}
-	if len(policy.TopologySpreadConstraints) > 0 {
-		allErr = append(allErr, validateTopologySpreadConstraints(policy.TopologySpreadConstraints))
-	}
 	allErr = append(allErr, validateTolerations(policy.Tolerations))
-
 	return apiErrors.NewAggregate(allErr)
 }
 
@@ -301,28 +232,11 @@ func validateClusterAffinity(clusterAffinity *placementv1beta1.ClusterAffinity, 
 	return apiErrors.NewAggregate(allErr)
 }
 
+// validateTolerations validates that tolerations are unique.
 func validateTolerations(tolerations []placementv1beta1.Toleration) error {
 	allErr := make([]error, 0)
 	tolerationMap := make(map[placementv1beta1.Toleration]bool)
 	for _, toleration := range tolerations {
-		if toleration.Key != "" {
-			for _, msg := range validation.IsQualifiedName(toleration.Key) {
-				allErr = append(allErr, fmt.Errorf(invalidTolerationKeyErrFmt, toleration, msg))
-			}
-		}
-		switch toleration.Operator {
-		case corev1.TolerationOpExists:
-			if toleration.Value != "" {
-				allErr = append(allErr, fmt.Errorf(invalidTolerationErrFmt, toleration, "toleration value needs to be empty, when operator is Exists"))
-			}
-		case corev1.TolerationOpEqual:
-			if toleration.Key == "" {
-				allErr = append(allErr, fmt.Errorf(invalidTolerationErrFmt, toleration, "toleration key cannot be empty, when operator is Equal"))
-			}
-			for _, msg := range validation.IsValidLabelValue(toleration.Value) {
-				allErr = append(allErr, fmt.Errorf(invalidTolerationValueErrFmt, toleration, msg))
-			}
-		}
 		if tolerationMap[toleration] {
 			allErr = append(allErr, fmt.Errorf(uniqueTolerationErrFmt, toleration))
 		}
@@ -331,41 +245,11 @@ func validateTolerations(tolerations []placementv1beta1.Toleration) error {
 	return apiErrors.NewAggregate(allErr)
 }
 
-func IsTolerationsUpdatedOrDeleted(oldTolerations []placementv1beta1.Toleration, newTolerations []placementv1beta1.Toleration) bool {
-	newTolerationsMap := make(map[placementv1beta1.Toleration]bool)
-	for _, newToleration := range newTolerations {
-		newTolerationsMap[newToleration] = true
-	}
-	for _, oldToleration := range oldTolerations {
-		if !newTolerationsMap[oldToleration] {
-			return true
-		}
-	}
-	return false
-}
-
-func validateTopologySpreadConstraints(topologyConstraints []placementv1beta1.TopologySpreadConstraint) error {
-	allErr := make([]error, 0)
-	for _, tc := range topologyConstraints {
-		if len(tc.WhenUnsatisfiable) > 0 && tc.WhenUnsatisfiable != placementv1beta1.DoNotSchedule && tc.WhenUnsatisfiable != placementv1beta1.ScheduleAnyway {
-			allErr = append(allErr, fmt.Errorf("unknown unsatisfiable type %s", tc.WhenUnsatisfiable))
-		}
-	}
-	return apiErrors.NewAggregate(allErr)
-}
-
+// validateClusterSelector validates label selectors and property selectors that CEL cannot check.
 func validateClusterSelector(clusterSelector *placementv1beta1.ClusterSelector) error {
 	allErr := make([]error, 0)
 	for _, clusterSelectorTerm := range clusterSelector.ClusterSelectorTerms {
-		// Since label selector is a required field in ClusterSelectorTerm, not checking to see if it's an empty object.
 		allErr = append(allErr, validateLabelSelector(clusterSelectorTerm.LabelSelector, "cluster selector"))
-
-		// Affinity is RequiredDuringSchedulingIgnoredDuringExecution, so check that PropertySorter is nil.
-		if clusterSelectorTerm.PropertySorter != nil {
-			allErr = append(allErr, fmt.Errorf("PropertySorter is not allowed for RequiredDuringSchedulingIgnoredDuringExecution affinity"))
-		}
-
-		// Affinity is RequiredDuringSchedulingIgnoredDuringExecution, so validate PropertySelector if exists
 		if clusterSelectorTerm.PropertySelector != nil {
 			allErr = append(allErr, validatePropertySelector(clusterSelectorTerm.PropertySelector))
 		}
@@ -373,17 +257,11 @@ func validateClusterSelector(clusterSelector *placementv1beta1.ClusterSelector) 
 	return apiErrors.NewAggregate(allErr)
 }
 
+// validatePreferredClusterSelectors validates label selectors and property sorters that CEL cannot check.
 func validatePreferredClusterSelectors(preferredClusterSelectors []placementv1beta1.PreferredClusterSelector) error {
 	allErr := make([]error, 0)
 	for _, preferredClusterSelector := range preferredClusterSelectors {
-		// API server validation on object occurs before webhook is triggered hence not validating weight.
 		allErr = append(allErr, validateLabelSelector(preferredClusterSelector.Preference.LabelSelector, "preferred cluster selector"))
-
-		// Affinity is PreferredDuringSchedulingIgnoredDuringExecution, so check that PropertySelector is nil.
-		if preferredClusterSelector.Preference.PropertySelector != nil {
-			allErr = append(allErr, fmt.Errorf("PropertySelector is not allowed for PreferredDuringSchedulingIgnoredDuringExecution affinity"))
-		}
-
 		if preferredClusterSelector.Preference.PropertySorter != nil {
 			allErr = append(allErr, validatePropertySorter(preferredClusterSelector.Preference.PropertySorter))
 		}
@@ -398,21 +276,12 @@ func validateLabelSelector(labelSelector *metav1.LabelSelector, parent string) e
 	return nil
 }
 
+// validateRolloutStrategy validates rollout strategy fields that CEL cannot check
+// (IntOrPercent parsing for maxUnavailable/maxSurge).
 func validateRolloutStrategy(rolloutStrategy placementv1beta1.RolloutStrategy) error {
 	allErr := make([]error, 0)
 
-	if rolloutStrategy.Type != "" && rolloutStrategy.Type != placementv1beta1.RollingUpdateRolloutStrategyType &&
-		rolloutStrategy.Type != placementv1beta1.ExternalRolloutStrategyType {
-		allErr = append(allErr, fmt.Errorf("unsupported rollout strategy type `%s`", rolloutStrategy.Type))
-	}
-
 	if rolloutStrategy.RollingUpdate != nil {
-		if rolloutStrategy.Type == placementv1beta1.ExternalRolloutStrategyType {
-			allErr = append(allErr, fmt.Errorf("rollingUpdateConifg is not valid for ExternalRollout strategy type"))
-		}
-		if rolloutStrategy.RollingUpdate.UnavailablePeriodSeconds != nil && *rolloutStrategy.RollingUpdate.UnavailablePeriodSeconds < 0 {
-			allErr = append(allErr, fmt.Errorf("unavailablePeriodSeconds must be greater than or equal to 0, got %d", *rolloutStrategy.RollingUpdate.UnavailablePeriodSeconds))
-		}
 		if rolloutStrategy.RollingUpdate.MaxUnavailable != nil {
 			value, err := intstr.GetScaledValueFromIntOrPercent(rolloutStrategy.RollingUpdate.MaxUnavailable, 10, true)
 			if err != nil {
@@ -430,13 +299,6 @@ func validateRolloutStrategy(rolloutStrategy placementv1beta1.RolloutStrategy) e
 			if value < 0 {
 				allErr = append(allErr, fmt.Errorf("maxSurge must be greater than or equal to 0, got `%+v`", rolloutStrategy.RollingUpdate.MaxSurge))
 			}
-		}
-	}
-
-	// server-side apply strategy type is only valid for server-side apply strategy type
-	if rolloutStrategy.ApplyStrategy != nil {
-		if rolloutStrategy.ApplyStrategy.Type != placementv1beta1.ApplyStrategyTypeServerSideApply && rolloutStrategy.ApplyStrategy.ServerSideApplyConfig != nil {
-			allErr = append(allErr, errors.New("serverSideApplyConfig is only valid for ServerSideApply strategy type"))
 		}
 	}
 
@@ -465,15 +327,9 @@ func validatePropertySelectorRequirements(propertySelectorRequirements []placeme
 	return apiErrors.NewAggregate(allErr)
 }
 
+// validatePropertySorter validates property name format that CEL cannot check.
 func validatePropertySorter(propertySorter *placementv1beta1.PropertySorter) error {
-	var allErr []error
-	if err := validateName(propertySorter.Name); err != nil {
-		allErr = append(allErr, err)
-	}
-	if propertySorter.SortOrder != placementv1beta1.Descending && propertySorter.SortOrder != placementv1beta1.Ascending {
-		allErr = append(allErr, fmt.Errorf("invalid property sort order %s", propertySorter.SortOrder))
-	}
-	return apiErrors.NewAggregate(allErr)
+	return validateName(propertySorter.Name)
 }
 
 func validateName(name string) error {
@@ -599,16 +455,6 @@ func HandlePlacementValidation(
 					return admission.Allowed(fmt.Sprintf(AllowUpdateOldInvalidFmt, resourceType))
 				}
 				return admission.Denied(fmt.Sprintf(DenyUpdateOldInvalidFmt, resourceType, err))
-			}
-
-			// Handle update case where placement type should be immutable.
-			if IsPlacementPolicyTypeUpdated(oldPlacement.GetPlacementSpec().Policy, placement.GetPlacementSpec().Policy) {
-				return admission.Denied("placement type is immutable")
-			}
-
-			// Handle update case where existing tolerations were updated/deleted
-			if IsTolerationsUpdatedOrDeleted(oldPlacement.GetPlacementSpec().Tolerations(), placement.GetPlacementSpec().Tolerations()) {
-				return admission.Denied("tolerations have been updated/deleted, only additions to tolerations are allowed")
 			}
 		}
 

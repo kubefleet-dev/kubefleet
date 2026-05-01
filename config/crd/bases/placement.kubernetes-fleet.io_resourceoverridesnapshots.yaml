@@ -186,6 +186,7 @@ spec:
                                                   description: Name is the name of
                                                     the property; it should be a Kubernetes
                                                     label name.
+                                                  maxLength: 317
                                                   type: string
                                                 operator:
                                                   description: |-
@@ -207,6 +208,7 @@ spec:
                                                   items:
                                                     type: string
                                                   maxItems: 1
+                                                  minItems: 1
                                                   type: array
                                               required:
                                               - name
@@ -231,11 +233,15 @@ spec:
                                           name:
                                             description: Name is the name of the property
                                               which Fleet sorts clusters by.
+                                            maxLength: 317
                                             type: string
                                           sortOrder:
                                             description: |-
                                               SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                               sort in ascending or descending order.
+                                            enum:
+                                            - Descending
+                                            - Ascending
                                             type: string
                                         required:
                                         - name
@@ -247,6 +253,10 @@ spec:
                               required:
                               - clusterSelectorTerms
                               type: object
+                              x-kubernetes-validations:
+                              - message: propertySorter is not allowed in requiredDuringSchedulingIgnoredDuringExecution
+                                  affinity terms
+                                rule: self.clusterSelectorTerms.all(t, !has(t.propertySorter))
                             jsonPatchOverrides:
                               description: |-
                                 JSONPatchOverrides defines a list of JSON patch override rules.
@@ -518,6 +528,7 @@ spec:
                                                   description: Name is the name of
                                                     the property; it should be a Kubernetes
                                                     label name.
+                                                  maxLength: 317
                                                   type: string
                                                 operator:
                                                   description: |-
@@ -539,6 +550,7 @@ spec:
                                                   items:
                                                     type: string
                                                   maxItems: 1
+                                                  minItems: 1
                                                   type: array
                                               required:
                                               - name
@@ -563,11 +575,15 @@ spec:
                                           name:
                                             description: Name is the name of the property
                                               which Fleet sorts clusters by.
+                                            maxLength: 317
                                             type: string
                                           sortOrder:
                                             description: |-
                                               SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                               sort in ascending or descending order.
+                                            enum:
+                                            - Descending
+                                            - Ascending
                                             type: string
                                         required:
                                         - name
@@ -579,6 +595,10 @@ spec:
                               required:
                               - clusterSelectorTerms
                               type: object
+                              x-kubernetes-validations:
+                              - message: propertySorter is not allowed in requiredDuringSchedulingIgnoredDuringExecution
+                                  affinity terms
+                                rule: self.clusterSelectorTerms.all(t, !has(t.propertySorter))
                             jsonPatchOverrides:
                               description: |-
                                 JSONPatchOverrides defines a list of JSON patch override rules.
@@ -846,6 +866,7 @@ spec:
                                                   description: Name is the name of
                                                     the property; it should be a Kubernetes
                                                     label name.
+                                                  maxLength: 317
                                                   type: string
                                                 operator:
                                                   description: |-
@@ -867,6 +888,7 @@ spec:
                                                   items:
                                                     type: string
                                                   maxItems: 1
+                                                  minItems: 1
                                                   type: array
                                               required:
                                               - name
@@ -891,11 +913,15 @@ spec:
                                           name:
                                             description: Name is the name of the property
                                               which Fleet sorts clusters by.
+                                            maxLength: 317
                                             type: string
                                           sortOrder:
                                             description: |-
                                               SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                               sort in ascending or descending order.
+                                            enum:
+                                            - Descending
+                                            - Ascending
                                             type: string
                                         required:
                                         - name
@@ -907,6 +933,10 @@ spec:
                               required:
                               - clusterSelectorTerms
                               type: object
+                              x-kubernetes-validations:
+                              - message: propertySorter is not allowed in requiredDuringSchedulingIgnoredDuringExecution
+                                  affinity terms
+                                rule: self.clusterSelectorTerms.all(t, !has(t.propertySorter))
                             jsonPatchOverrides:
                               description: |-
                                 JSONPatchOverrides defines a list of JSON patch override rules.

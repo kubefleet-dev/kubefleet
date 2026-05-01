@@ -175,25 +175,7 @@ func TestValidateClusterResourcePlacement(t *testing.T) {
 				IsClusterScopedResource: true},
 			wantErr: false,
 		},
-		"CRP with invalid name": {
-			crp: &placementv1beta1.ClusterResourcePlacement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "test-crp-with-very-long-name-field-exceeding-DNS1035LabelMaxLength",
-				},
-				Spec: placementv1beta1.PlacementSpec{
-					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{resourceSelector},
-					Strategy: placementv1beta1.RolloutStrategy{
-						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
-					},
-				},
-			},
-			wantErr: true,
-			resourceInformer: &testinformer.FakeManager{
-				APIResources:            map[schema.GroupVersionKind]bool{utils.ClusterRoleGVK: true},
-				IsClusterScopedResource: true},
-			wantErrMsg: "the name field cannot have length exceeding 63",
-		},
-		"invalid Resource Selector with name & label selector": {
+		"valid CRP with name and label selector (CEL enforces mutual exclusivity)": {
 			crp: &placementv1beta1.ClusterResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-crp",
@@ -218,8 +200,7 @@ func TestValidateClusterResourcePlacement(t *testing.T) {
 			resourceInformer: &testinformer.FakeManager{
 				APIResources:            map[schema.GroupVersionKind]bool{utils.ClusterRoleGVK: true},
 				IsClusterScopedResource: true},
-			wantErr:    true,
-			wantErrMsg: "the labelSelector and name fields are mutually exclusive in selector",
+			wantErr: false,
 		},
 		"invalid Resource Selector with invalid GVK": {
 			crp: &placementv1beta1.ClusterResourcePlacement{
@@ -403,32 +384,29 @@ func TestValidateClusterResourcePlacement_RolloutStrategy(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		"invalid rollout strategy - External strategy with rollingUpdate config": {
+		"rollout strategy - External strategy with rollingUpdate config (CEL enforces exclusion)": {
 			strategy: placementv1beta1.RolloutStrategy{
 				Type: placementv1beta1.ExternalRolloutStrategyType,
 				RollingUpdate: &placementv1beta1.RollingUpdateConfig{
 					UnavailablePeriodSeconds: &unavailablePeriodSeconds,
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "rollingUpdateConifg is not valid for ExternalRollout strategy type",
+			wantErr: false,
 		},
-		"invalid rollout strategy": {
+		"rollout strategy - unknown type (CEL enforces enum)": {
 			strategy: placementv1beta1.RolloutStrategy{
 				Type: "random type",
 			},
-			wantErr:    true,
-			wantErrMsg: "unsupported rollout strategy type `random type`",
+			wantErr: false,
 		},
-		"invalid rollout strategy - UnavailablePeriodSeconds": {
+		"rollout strategy - negative UnavailablePeriodSeconds (CEL enforces minimum)": {
 			strategy: placementv1beta1.RolloutStrategy{
 				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 				RollingUpdate: &placementv1beta1.RollingUpdateConfig{
 					UnavailablePeriodSeconds: &unavailablePeriodSeconds,
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "unavailablePeriodSeconds must be greater than or equal to 0, got -10",
+			wantErr: false,
 		},
 		"invalid rollout strategy - % error MaxUnavailable": {
 			strategy: placementv1beta1.RolloutStrategy{
@@ -494,7 +472,7 @@ func TestValidateClusterResourcePlacement_RolloutStrategy(t *testing.T) {
 			wantErr:    true,
 			wantErrMsg: "maxSurge must be greater than or equal to 0, got `-10`",
 		},
-		"invalid rollout strategy - ServerSideApplyConfig not valid when type is not serversideApply": {
+		"rollout strategy - ServerSideApplyConfig with non-SSA type (CEL enforces exclusion)": {
 			strategy: placementv1beta1.RolloutStrategy{
 				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 				ApplyStrategy: &placementv1beta1.ApplyStrategy{
@@ -504,8 +482,7 @@ func TestValidateClusterResourcePlacement_RolloutStrategy(t *testing.T) {
 					},
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "serverSideApplyConfig is only valid for ServerSideApply strategy type",
+			wantErr: false,
 		},
 	}
 
@@ -535,12 +512,11 @@ func TestValidateClusterResourcePlacement_PickFixedPlacementPolicy(t *testing.T)
 			},
 			wantErr: false,
 		},
-		"invalid placement policy - PickFixed with empty cluster names": {
+		"placement policy - PickFixed with empty cluster names (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickFixedPlacementType,
 			},
-			wantErr:    true,
-			wantErrMsg: "cluster names cannot be empty for policy type PickFixed",
+			wantErr: false,
 		},
 		"invalid placement policy - PickFixed with non-unique cluster names": {
 			policy: &placementv1beta1.PlacementPolicy{
@@ -558,24 +534,22 @@ func TestValidateClusterResourcePlacement_PickFixedPlacementPolicy(t *testing.T)
 			wantErr:    true,
 			wantErrMsg: "PickFixed cluster name test@,cluster1 is not a valid member name: a lowercase RFC 1123 subdomain must consist of lower case alphanumeric characters, '-' or '.', and must start and end with an alphanumeric character (e.g. 'example.com', regex used for validation is '[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*')",
 		},
-		"invalid placement policy - PickFixed with too long cluster name": {
+		"placement policy - PickFixed with too long cluster name (CEL enforces length)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickFixedPlacementType,
 				ClusterNames:  []string{"this-is-a-very-long-cluster-name-that-exceeds-the-maximum-allowed-length-for-dns-labels"},
 			},
-			wantErr:    true,
-			wantErrMsg: "PickFixed cluster name this-is-a-very-long-cluster-name-that-exceeds-the-maximum-allowed-length-for-dns-labels cannot have length exceeding 63",
+			wantErr: false,
 		},
-		"invalid placement policy - PickFixed with non nil number of clusters": {
+		"placement policy - PickFixed with non nil number of clusters (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickFixedPlacementType,
 				ClusterNames:     []string{"test-cluster"},
 				NumberOfClusters: &positiveNumberOfClusters,
 			},
-			wantErr:    true,
-			wantErrMsg: "number of clusters must be nil for policy type PickFixed, only valid for PickN placement policy type",
+			wantErr: false,
 		},
-		"invalid placement policy - PickFixed with non nil affinity": {
+		"placement policy - PickFixed with non nil affinity (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickFixedPlacementType,
 				ClusterNames:  []string{"test-cluster"},
@@ -593,10 +567,9 @@ func TestValidateClusterResourcePlacement_PickFixedPlacementPolicy(t *testing.T)
 					},
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "affinity must be nil for policy type PickFixed, only valid for PickAll/PickN placement policy types",
+			wantErr: false,
 		},
-		"invalid placement policy - PickFixed with non empty topology constraints": {
+		"placement policy - PickFixed with non empty topology constraints (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickFixedPlacementType,
 				ClusterNames:  []string{"test-cluster"},
@@ -606,8 +579,7 @@ func TestValidateClusterResourcePlacement_PickFixedPlacementPolicy(t *testing.T)
 					},
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "topology spread constraints needs to be empty for policy type PickFixed, only valid for PickN policy type",
+			wantErr: false,
 		},
 		"valid placement policy, PickFixed placementType, empty toleration, nil error": {
 			policy: &placementv1beta1.PlacementPolicy{
@@ -616,7 +588,7 @@ func TestValidateClusterResourcePlacement_PickFixedPlacementPolicy(t *testing.T)
 			},
 			wantErr: false,
 		},
-		"invalid placement policy - PickFixed placementType, non empty valid tolerations, error": {
+		"placement policy - PickFixed with non empty tolerations (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickFixedPlacementType,
 				Tolerations: []placementv1beta1.Toleration{
@@ -636,8 +608,7 @@ func TestValidateClusterResourcePlacement_PickFixedPlacementPolicy(t *testing.T)
 					},
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "tolerations needs to be empty for policy type PickFixed, only valid for PickAll/PickN",
+			wantErr: false,
 		},
 	}
 
@@ -660,21 +631,19 @@ func TestValidateClusterResourcePlacement_PickAllPlacementPolicy(t *testing.T) {
 		wantErr    bool
 		wantErrMsg string
 	}{
-		"invalid placement policy - PickAll with non-empty cluster names": {
+		"placement policy - PickAll with non-empty cluster names (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickAllPlacementType,
 				ClusterNames:  []string{"test-cluster"},
 			},
-			wantErr:    true,
-			wantErrMsg: "cluster names needs to be empty for policy type PickAll, only valid for PickFixed policy type",
+			wantErr: false,
 		},
-		"invalid placement policy - PickAll with non nil number of clusters": {
+		"placement policy - PickAll with non nil number of clusters (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickAllPlacementType,
 				NumberOfClusters: &positiveNumberOfClusters,
 			},
-			wantErr:    true,
-			wantErrMsg: "number of clusters must be nil for policy type PickAll, only valid for PickN placement policy type",
+			wantErr: false,
 		},
 		"invalid placement policy - PickAll with invalid label selector terms in RequiredDuringSchedulingIgnoredDuringExecution in affinity": {
 			policy: &placementv1beta1.PlacementPolicy{
@@ -722,7 +691,7 @@ func TestValidateClusterResourcePlacement_PickAllPlacementPolicy(t *testing.T) {
 			wantErr:    true,
 			wantErrMsg: "PreferredDuringSchedulingIgnoredDuringExecution will be ignored for placement policy type PickAll",
 		},
-		"invalid placement policy - PickAll with non empty topology constraints": {
+		"placement policy - PickAll with non empty topology constraints (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickAllPlacementType,
 				TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
@@ -731,8 +700,7 @@ func TestValidateClusterResourcePlacement_PickAllPlacementPolicy(t *testing.T) {
 					},
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "topology spread constraints needs to be empty for policy type PickAll, only valid for PickN policy type",
+			wantErr: false,
 		},
 		"valid placement policy - PickAll with non nil affinity": {
 			policy: &placementv1beta1.PlacementPolicy{
@@ -759,7 +727,7 @@ func TestValidateClusterResourcePlacement_PickAllPlacementPolicy(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		"invalid placement policy - PickAll placementType, non empty invalid tolerations, error": {
+		"placement policy - PickAll with Exists operator and non-empty value (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickAllPlacementType,
 				Tolerations: []placementv1beta1.Toleration{
@@ -771,8 +739,7 @@ func TestValidateClusterResourcePlacement_PickAllPlacementPolicy(t *testing.T) {
 					},
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "toleration value needs to be empty, when operator is Exists",
+			wantErr: false,
 		},
 		"valid placement policy - PickAll with property selector in RequiredDuringSchedulingIgnoredDuringExecution affinity": {
 			policy: &placementv1beta1.PlacementPolicy{
@@ -942,29 +909,26 @@ func TestValidateClusterResourcePlacement_PickNPlacementPolicy(t *testing.T) {
 		wantErr    bool
 		wantErrMsg string
 	}{
-		"invalid placement policy - PickN with non-empty cluster names": {
+		"placement policy - PickN with non-empty cluster names (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
 				ClusterNames:     []string{"test-cluster"},
 				NumberOfClusters: &positiveNumberOfClusters,
 			},
-			wantErr:    true,
-			wantErrMsg: "cluster names needs to be empty for policy type PickN, only valid for PickFixed policy type",
+			wantErr: false,
 		},
-		"invalid placement policy - PickN with nil number of clusters": {
+		"placement policy - PickN with nil number of clusters (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickNPlacementType,
 			},
-			wantErr:    true,
-			wantErrMsg: "number of cluster cannot be nil for policy type PickN",
+			wantErr: false,
 		},
-		"invalid placement policy - PickN with negative number of clusters": {
+		"placement policy - PickN with negative number of clusters (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
 				NumberOfClusters: &negativeNumberOfClusters,
 			},
-			wantErr:    true,
-			wantErrMsg: "number of clusters cannot be -1 for policy type PickN",
+			wantErr: false,
 		},
 		"invalid placement policy - PickN with invalid label selector terms in RequiredDuringSchedulingIgnoredDuringExecution affinity": {
 			policy: &placementv1beta1.PlacementPolicy{
@@ -992,7 +956,7 @@ func TestValidateClusterResourcePlacement_PickNPlacementPolicy(t *testing.T) {
 			wantErr:    true,
 			wantErrMsg: "for 'in', 'notin' operators, values set can't be empty",
 		},
-		"invalid placement policy - PickN with non-nil property sorter in RequiredDuringSchedulingIgnoredDuringExecution affinity": {
+		"placement policy - PickN with property sorter in RequiredDuringScheduling (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
 				NumberOfClusters: &positiveNumberOfClusters,
@@ -1014,8 +978,7 @@ func TestValidateClusterResourcePlacement_PickNPlacementPolicy(t *testing.T) {
 					},
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "PropertySorter is not allowed for RequiredDuringSchedulingIgnoredDuringExecution affinity",
+			wantErr: false,
 		},
 		"invalid placement policy - PickN with invalid property selector in RequiredDuringSchedulingIgnoredDuringExecution affinity": {
 			policy: &placementv1beta1.PlacementPolicy{
@@ -1107,7 +1070,7 @@ func TestValidateClusterResourcePlacement_PickNPlacementPolicy(t *testing.T) {
 			wantErr:    true,
 			wantErrMsg: "for 'in', 'notin' operators, values set can't be empty",
 		},
-		"invalid placement policy - PickN with non-nil property selector in PreferredDuringSchedulingIgnoredDuringExecution affinity": {
+		"placement policy - PickN with property selector in PreferredDuringScheduling (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
 				NumberOfClusters: &positiveNumberOfClusters,
@@ -1134,10 +1097,9 @@ func TestValidateClusterResourcePlacement_PickNPlacementPolicy(t *testing.T) {
 					},
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "PropertySelector is not allowed for PreferredDuringSchedulingIgnoredDuringExecution affinity",
+			wantErr: false,
 		},
-		"invalid placement policy - PickN with invalid property sorter in PreferredDuringSchedulingIgnoredDuringExecution affinity": {
+		"placement policy - PickN with invalid sort order in property sorter (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
 				NumberOfClusters: &positiveNumberOfClusters,
@@ -1159,10 +1121,9 @@ func TestValidateClusterResourcePlacement_PickNPlacementPolicy(t *testing.T) {
 					},
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "invalid property sort order random-order",
+			wantErr: false,
 		},
-		"invalid placement policy - PickN with invalid topology constraint with unknown unsatisfiable type": {
+		"placement policy - PickN with unknown unsatisfiable type (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
 				NumberOfClusters: &positiveNumberOfClusters,
@@ -1173,8 +1134,7 @@ func TestValidateClusterResourcePlacement_PickNPlacementPolicy(t *testing.T) {
 					},
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "unknown unsatisfiable type random-type",
+			wantErr: false,
 		},
 		"valid placement policy - PickN with non nil affinity, non empty topology constraints": {
 			policy: &placementv1beta1.PlacementPolicy{
@@ -1218,7 +1178,7 @@ func TestValidateClusterResourcePlacement_PickNPlacementPolicy(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		"invalid placement policy - PickN placementType, non empty invalid tolerations, error": {
+		"placement policy - PickN with Equal operator and empty key (CEL enforces)": {
 			policy: &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickAllPlacementType,
 				NumberOfClusters: &positiveNumberOfClusters,
@@ -1230,8 +1190,7 @@ func TestValidateClusterResourcePlacement_PickNPlacementPolicy(t *testing.T) {
 					},
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "toleration key cannot be empty, when operator is Equal",
+			wantErr: false,
 		},
 		"invalid placement policy - PickN with invalid property selector name, invalid label name": {
 			policy: &placementv1beta1.PlacementPolicy{
@@ -1460,177 +1419,6 @@ func TestValidateClusterResourcePlacement_PickNPlacementPolicy(t *testing.T) {
 	}
 }
 
-func TestIsPlacementPolicyUpdateValid(t *testing.T) {
-	tests := map[string]struct {
-		oldPolicy     *placementv1beta1.PlacementPolicy
-		currentPolicy *placementv1beta1.PlacementPolicy
-		want          bool
-	}{
-		"old policy is nil, current policy is nil": {
-			oldPolicy:     nil,
-			currentPolicy: nil,
-			want:          false,
-		},
-		"old policy nil, current policy non nil, current placement type is PickAll": {
-			oldPolicy: nil,
-			currentPolicy: &placementv1beta1.PlacementPolicy{
-				PlacementType: placementv1beta1.PickAllPlacementType,
-				Affinity: &placementv1beta1.Affinity{
-					ClusterAffinity: &placementv1beta1.ClusterAffinity{
-						RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
-							ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
-								{
-									LabelSelector: &metav1.LabelSelector{
-										MatchLabels: map[string]string{"test-key1": "test-value1"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			want: false,
-		},
-		"old policy nil, current policy non nil, current placement type is PickN": {
-			oldPolicy: nil,
-			currentPolicy: &placementv1beta1.PlacementPolicy{
-				PlacementType: placementv1beta1.PickNPlacementType,
-				Affinity: &placementv1beta1.Affinity{
-					ClusterAffinity: &placementv1beta1.ClusterAffinity{
-						RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
-							ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
-								{
-									LabelSelector: &metav1.LabelSelector{
-										MatchLabels: map[string]string{"test-key1": "test-value1"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			want: true,
-		},
-		"old policy is non nil, current policy is nil, old placement type is PickAll": {
-			oldPolicy: &placementv1beta1.PlacementPolicy{
-				PlacementType: placementv1beta1.PickAllPlacementType,
-				Affinity: &placementv1beta1.Affinity{
-					ClusterAffinity: &placementv1beta1.ClusterAffinity{
-						RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
-							ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
-								{
-									LabelSelector: &metav1.LabelSelector{
-										MatchLabels: map[string]string{"test-key1": "test-value1"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			currentPolicy: nil,
-			want:          false,
-		},
-		"old policy is non nil, current policy is nil, old placement type is PickFixed": {
-			oldPolicy: &placementv1beta1.PlacementPolicy{
-				PlacementType: placementv1beta1.PickFixedPlacementType,
-				Affinity: &placementv1beta1.Affinity{
-					ClusterAffinity: &placementv1beta1.ClusterAffinity{
-						RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
-							ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
-								{
-									LabelSelector: &metav1.LabelSelector{
-										MatchLabels: map[string]string{"test-key1": "test-value1"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			currentPolicy: nil,
-			want:          true,
-		},
-		"old policy is non nil, current policy is non nil, placement type changed": {
-			oldPolicy: &placementv1beta1.PlacementPolicy{
-				PlacementType: placementv1beta1.PickNPlacementType,
-				Affinity: &placementv1beta1.Affinity{
-					ClusterAffinity: &placementv1beta1.ClusterAffinity{
-						RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
-							ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
-								{
-									LabelSelector: &metav1.LabelSelector{
-										MatchLabels: map[string]string{"test-key1": "test-value1"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			currentPolicy: &placementv1beta1.PlacementPolicy{
-				PlacementType: placementv1beta1.PickAllPlacementType,
-				Affinity: &placementv1beta1.Affinity{
-					ClusterAffinity: &placementv1beta1.ClusterAffinity{
-						RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
-							ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
-								{
-									LabelSelector: &metav1.LabelSelector{
-										MatchLabels: map[string]string{"test-key2": "test-value2"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			want: true,
-		},
-		"old policy is not nil, current policy is non nil, placement type unchanged": {
-			oldPolicy: &placementv1beta1.PlacementPolicy{
-				PlacementType: placementv1beta1.PickNPlacementType,
-				Affinity: &placementv1beta1.Affinity{
-					ClusterAffinity: &placementv1beta1.ClusterAffinity{
-						RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
-							ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
-								{
-									LabelSelector: &metav1.LabelSelector{
-										MatchLabels: map[string]string{"test-key1": "test-value1"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			currentPolicy: &placementv1beta1.PlacementPolicy{
-				PlacementType: placementv1beta1.PickNPlacementType,
-				Affinity: &placementv1beta1.Affinity{
-					ClusterAffinity: &placementv1beta1.ClusterAffinity{
-						RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
-							ClusterSelectorTerms: []placementv1beta1.ClusterSelectorTerm{
-								{
-									LabelSelector: &metav1.LabelSelector{
-										MatchLabels: map[string]string{"test-key2": "test-value2"},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			want: false,
-		},
-	}
-	for testName, testCase := range tests {
-		t.Run(testName, func(t *testing.T) {
-			if got := IsPlacementPolicyTypeUpdated(testCase.oldPolicy, testCase.currentPolicy); got != testCase.want {
-				t.Errorf("IsPlacementPolicyUpdateValid() got = %v, want %v", got, testCase.want)
-			}
-		})
-	}
-}
-
 func TestValidateTolerations(t *testing.T) {
 	tests := map[string]struct {
 		tolerations []placementv1beta1.Toleration
@@ -1666,7 +1454,7 @@ func TestValidateTolerations(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		"invalid toleration, key is empty, operator is Equal": {
+		"toleration with empty key and Equal operator (CEL enforces)": {
 			tolerations: []placementv1beta1.Toleration{
 				{
 					Operator: corev1.TolerationOpEqual,
@@ -1674,10 +1462,9 @@ func TestValidateTolerations(t *testing.T) {
 					Effect:   corev1.TaintEffectNoSchedule,
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "toleration key cannot be empty, when operator is Equal",
+			wantErr: false,
 		},
-		"invalid toleration, key is invalid, operator is Equal": {
+		"toleration with invalid key format (CEL enforces)": {
 			tolerations: []placementv1beta1.Toleration{
 				{
 					Key:      "key:123*",
@@ -1686,10 +1473,9 @@ func TestValidateTolerations(t *testing.T) {
 					Effect:   corev1.TaintEffectNoSchedule,
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "name part must consist of alphanumeric characters, '-', '_' or '.', and must start and end with an alphanumeric character",
+			wantErr: false,
 		},
-		"invalid toleration, value is invalid, operator is Equal": {
+		"toleration with invalid value format (CEL enforces)": {
 			tolerations: []placementv1beta1.Toleration{
 				{
 					Key:      "key1",
@@ -1698,10 +1484,9 @@ func TestValidateTolerations(t *testing.T) {
 					Effect:   corev1.TaintEffectNoSchedule,
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "a valid label must be an empty string or consist of alphanumeric characters, '-', '_' or '.', and must start and end with an alphanumeric character",
+			wantErr: false,
 		},
-		"invalid toleration, key is invalid, operator is Exists": {
+		"toleration with invalid key and Exists operator (CEL enforces)": {
 			tolerations: []placementv1beta1.Toleration{
 				{
 					Key:      "key:123*",
@@ -1709,10 +1494,9 @@ func TestValidateTolerations(t *testing.T) {
 					Effect:   corev1.TaintEffectNoSchedule,
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "name part must consist of alphanumeric characters, '-', '_' or '.', and must start and end with an alphanumeric character",
+			wantErr: false,
 		},
-		"invalid toleration, value is not empty, operator is Exists": {
+		"toleration with non-empty value and Exists operator (CEL enforces)": {
 			tolerations: []placementv1beta1.Toleration{
 				{
 					Key:      "key1",
@@ -1721,8 +1505,7 @@ func TestValidateTolerations(t *testing.T) {
 					Effect:   corev1.TaintEffectNoSchedule,
 				},
 			},
-			wantErr:    true,
-			wantErrMsg: "toleration value needs to be empty, when operator is Exists",
+			wantErr: false,
 		},
 		"invalid toleration, non-unique toleration": {
 			tolerations: []placementv1beta1.Toleration{
@@ -1761,168 +1544,6 @@ func TestValidateTolerations(t *testing.T) {
 	}
 }
 
-func TestIsTolerationsUpdatedOrDeleted(t *testing.T) {
-	tests := map[string]struct {
-		oldTolerations []placementv1beta1.Toleration
-		newTolerations []placementv1beta1.Toleration
-		want           bool
-	}{
-		"old tolerations is nil": {
-			newTolerations: []placementv1beta1.Toleration{
-				{
-					Key:      "key1",
-					Operator: corev1.TolerationOpEqual,
-					Value:    "value1",
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-				{
-					Key:      "key2",
-					Operator: corev1.TolerationOpExists,
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-			},
-			want: false,
-		},
-		"new tolerations is nil": {
-			oldTolerations: []placementv1beta1.Toleration{
-				{
-					Key:      "key1",
-					Operator: corev1.TolerationOpEqual,
-					Value:    "value1",
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-				{
-					Key:      "key2",
-					Operator: corev1.TolerationOpExists,
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-			},
-			want: true,
-		},
-		"one toleration was updated in new tolerations": {
-			oldTolerations: []placementv1beta1.Toleration{
-				{
-					Key:      "key1",
-					Operator: corev1.TolerationOpEqual,
-					Value:    "value1",
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-				{
-					Key:      "key2",
-					Operator: corev1.TolerationOpExists,
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-			},
-			newTolerations: []placementv1beta1.Toleration{
-				{
-					Key:      "key1",
-					Operator: corev1.TolerationOpEqual,
-					Value:    "value1",
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-				{
-					Key:      "key3",
-					Operator: corev1.TolerationOpExists,
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-			},
-			want: true,
-		},
-		"one toleration was deleted in new tolerations": {
-			oldTolerations: []placementv1beta1.Toleration{
-				{
-					Key:      "key1",
-					Operator: corev1.TolerationOpEqual,
-					Value:    "value1",
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-				{
-					Key:      "key2",
-					Operator: corev1.TolerationOpExists,
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-			},
-			newTolerations: []placementv1beta1.Toleration{
-				{
-					Key:      "key1",
-					Operator: corev1.TolerationOpEqual,
-					Value:    "value1",
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-			},
-			want: true,
-		},
-		"old tolerations, new tolerations are same": {
-			oldTolerations: []placementv1beta1.Toleration{
-				{
-					Key:      "key1",
-					Operator: corev1.TolerationOpEqual,
-					Value:    "value1",
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-				{
-					Key:      "key2",
-					Operator: corev1.TolerationOpExists,
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-			},
-			newTolerations: []placementv1beta1.Toleration{
-				{
-					Key:      "key1",
-					Operator: corev1.TolerationOpEqual,
-					Value:    "value1",
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-				{
-					Key:      "key2",
-					Operator: corev1.TolerationOpExists,
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-			},
-			want: false,
-		},
-		"a toleration was added to new tolerations": {
-			oldTolerations: []placementv1beta1.Toleration{
-				{
-					Key:      "key1",
-					Operator: corev1.TolerationOpEqual,
-					Value:    "value1",
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-				{
-					Key:      "key2",
-					Operator: corev1.TolerationOpExists,
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-			},
-			newTolerations: []placementv1beta1.Toleration{
-				{
-					Key:      "key1",
-					Operator: corev1.TolerationOpEqual,
-					Value:    "value1",
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-				{
-					Key:      "key2",
-					Operator: corev1.TolerationOpExists,
-					Effect:   corev1.TaintEffectNoSchedule,
-				},
-				{
-					Operator: corev1.TolerationOpExists,
-				},
-			},
-			want: false,
-		},
-	}
-	for testName, testCase := range tests {
-		t.Run(testName, func(t *testing.T) {
-			if got := IsTolerationsUpdatedOrDeleted(testCase.oldTolerations, testCase.newTolerations); got != testCase.want {
-				t.Errorf("IsTolerationsUpdatedOrDeleted() got = %v, want = %v", got, testCase.want)
-			}
-		})
-	}
-}
-
 func TestValidateResourcePlacement(t *testing.T) {
 	tests := map[string]struct {
 		rp               *placementv1beta1.ResourcePlacement
@@ -1930,7 +1551,7 @@ func TestValidateResourcePlacement(t *testing.T) {
 		wantErr          bool
 		wantErrMsg       string
 	}{
-		"RP with invalid placement policy": {
+		"RP with PickFixed and empty cluster names (CEL enforces)": {
 			rp: &placementv1beta1.ResourcePlacement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "test-rp",
@@ -1946,7 +1567,7 @@ func TestValidateResourcePlacement(t *testing.T) {
 					},
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType: placementv1beta1.PickFixedPlacementType,
-						ClusterNames:  []string{}, // Empty cluster names for PickFixed type
+						ClusterNames:  []string{},
 					},
 				},
 			},
@@ -1954,8 +1575,7 @@ func TestValidateResourcePlacement(t *testing.T) {
 				APIResources:            map[schema.GroupVersionKind]bool{utils.DeploymentGVK: true},
 				IsClusterScopedResource: false,
 			},
-			wantErr:    true,
-			wantErrMsg: "cluster names cannot be empty for policy type PickFixed",
+			wantErr: false,
 		},
 		"RP with invalid rollout strategy": {
 			rp: &placementv1beta1.ResourcePlacement{

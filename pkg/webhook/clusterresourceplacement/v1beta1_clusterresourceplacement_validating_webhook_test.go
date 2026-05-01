@@ -130,27 +130,6 @@ func TestHandle(t *testing.T) {
 		},
 	}
 
-	validCRPObjectWithTolerations := &placementv1beta1.ClusterResourcePlacement{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-crp",
-		},
-		Spec: placementv1beta1.PlacementSpec{
-			ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{resourceSelector},
-			Policy: &placementv1beta1.PlacementPolicy{
-				PlacementType: placementv1beta1.PickAllPlacementType,
-				Tolerations: []placementv1beta1.Toleration{
-					{
-						Key:   "key1",
-						Value: "value1",
-					},
-				},
-			},
-			Strategy: placementv1beta1.RolloutStrategy{
-				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
-			},
-		},
-	}
-
 	updatedValidSpecCRPObject := &placementv1beta1.ClusterResourcePlacement{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       "test-crp",
@@ -207,22 +186,6 @@ func TestHandle(t *testing.T) {
 		},
 	}
 
-	updatedPlacementTypeCRPObject := &placementv1beta1.ClusterResourcePlacement{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "test-crp",
-		},
-		Spec: placementv1beta1.PlacementSpec{
-			Policy: &placementv1beta1.PlacementPolicy{
-				PlacementType:    placementv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(2)),
-			},
-			ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{resourceSelector},
-			Strategy: placementv1beta1.RolloutStrategy{
-				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
-			},
-		},
-	}
-
 	validCRPObjectBytes, err := json.Marshal(validCRPObject)
 	assert.Nil(t, err)
 	invalidCRPObjectBytes, err := json.Marshal(invalidCRPObject)
@@ -238,10 +201,6 @@ func TestHandle(t *testing.T) {
 	updatedValidSpecCRPObjectDeletingFinalizerRemovedBytes, err := json.Marshal(updatedValidSpecCRPObjectDeletingFinalizerRemoved)
 	assert.Nil(t, err)
 	updatedLabelInvalidCRPObjectBytes, err := json.Marshal(updatedLabelInvalidCRPObject)
-	assert.Nil(t, err)
-	updatedPlacementTypeCRPObjectBytes, err := json.Marshal(updatedPlacementTypeCRPObject)
-	assert.Nil(t, err)
-	validCRPObjectWithTolerationsBytes, err := json.Marshal(validCRPObjectWithTolerations)
 	assert.Nil(t, err)
 
 	scheme := runtime.NewScheme()
@@ -537,64 +496,6 @@ func TestHandle(t *testing.T) {
 				decoder: decoder,
 			},
 			wantResponse: admission.Denied(fmt.Sprintf(validator.DenyCreateUpdateInvalidFmt, "CRP", errString)),
-		},
-		"deny CRP update - new CRP immutable placement type": {
-			req: admission.Request{
-				AdmissionRequest: admissionv1.AdmissionRequest{
-					Name: "test-crp",
-					OldObject: runtime.RawExtension{
-						Raw:    validCRPObjectBytes,
-						Object: validCRPObject,
-					},
-					Object: runtime.RawExtension{
-						Raw:    updatedPlacementTypeCRPObjectBytes,
-						Object: updatedPlacementTypeCRPObject,
-					},
-					UserInfo: authenticationv1.UserInfo{
-						Username: "test-user",
-						Groups:   []string{"system:masters"},
-					},
-					RequestKind: &utils.ClusterResourcePlacementMetaGVK,
-					Operation:   admissionv1.Update,
-				},
-			},
-			resourceInformer: &testinformer.FakeManager{
-				APIResources:            map[schema.GroupVersionKind]bool{utils.ClusterRoleGVK: true},
-				IsClusterScopedResource: true,
-			},
-			resourceValidator: clusterResourcePlacementValidator{
-				decoder: decoder,
-			},
-			wantResponse: admission.Denied("placement type is immutable"),
-		},
-		"deny CRP update - new CRP tolerations updated": {
-			req: admission.Request{
-				AdmissionRequest: admissionv1.AdmissionRequest{
-					Name: "test-crp",
-					OldObject: runtime.RawExtension{
-						Raw:    validCRPObjectWithTolerationsBytes,
-						Object: validCRPObjectWithTolerations,
-					},
-					Object: runtime.RawExtension{
-						Raw:    validCRPObjectBytes,
-						Object: validCRPObject,
-					},
-					UserInfo: authenticationv1.UserInfo{
-						Username: "test-user",
-						Groups:   []string{"system:masters"},
-					},
-					RequestKind: &utils.ClusterResourcePlacementMetaGVK,
-					Operation:   admissionv1.Update,
-				},
-			},
-			resourceInformer: &testinformer.FakeManager{
-				APIResources:            map[schema.GroupVersionKind]bool{utils.ClusterRoleGVK: true},
-				IsClusterScopedResource: true,
-			},
-			resourceValidator: clusterResourcePlacementValidator{
-				decoder: decoder,
-			},
-			wantResponse: admission.Denied("tolerations have been updated/deleted, only additions to tolerations are allowed"),
 		},
 	}
 

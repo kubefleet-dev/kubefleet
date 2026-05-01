@@ -289,6 +289,10 @@ spec:
                     - Never
                     type: string
                 type: object
+                x-kubernetes-validations:
+                - message: serverSideApplyConfig is only valid for ServerSideApply
+                    strategy type
+                  rule: self.type == 'ServerSideApply' || !has(self.serverSideApplyConfig)
               clusterDecision:
                 description: ClusterDecision explains why the scheduler selected this
                   cluster.
@@ -1061,6 +1065,10 @@ spec:
                     - Never
                     type: string
                 type: object
+                x-kubernetes-validations:
+                - message: serverSideApplyConfig is only valid for ServerSideApply
+                    strategy type
+                  rule: self.type == 'ServerSideApply' || !has(self.serverSideApplyConfig)
               clusterDecision:
                 description: ClusterDecision explains why the scheduler selected this
                   cluster.

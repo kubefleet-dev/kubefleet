@@ -28,6 +28,7 @@ import (
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -982,6 +983,45 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			var statusErr *k8sErrors.StatusError
 			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update RP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("placement type is immutable"))
+		})
+	})
+
+	Context("Test ResourcePlacement API validation - deny cases", func() {
+		It("should deny update of ResourcePlacement removing PickAll policy", func() {
+			rpName := fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess())
+			rp := placementv1beta1.ResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      rpName,
+					Namespace: testNamespace,
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:   "",
+							Version: "v1",
+							Kind:    "ConfigMap",
+							Name:    "test-cm",
+						},
+					},
+					Policy: &placementv1beta1.PlacementPolicy{
+						PlacementType: placementv1beta1.PickAllPlacementType,
+					},
+				},
+			}
+
+			Expect(hubClient.Create(ctx, &rp)).Should(Succeed())
+
+			// Fetch the latest version to get the correct resourceVersion.
+			var fetched placementv1beta1.ResourcePlacement
+			Expect(hubClient.Get(ctx, client.ObjectKeyFromObject(&rp), &fetched)).Should(Succeed())
+
+			fetched.Spec.Policy = nil
+			err := hubClient.Update(ctx, &fetched)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update RP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("policy cannot be removed once set"))
+
+			Expect(hubClient.Delete(ctx, &rp)).Should(Succeed())
 		})
 	})
 
