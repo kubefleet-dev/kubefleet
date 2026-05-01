@@ -171,10 +171,12 @@ type ResourceSelectorTerm struct {
 	// Group name of the resource to be selected.
 	// Use an empty string to select resources under the core API group (e.g., namespaces).
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=253
 	Group string `json:"group"`
 
 	// Version of the resource to be selected.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=63
 	Version string `json:"version"`
 
 	// Kind of the resource to be selected.
@@ -187,6 +189,7 @@ type ResourceSelectorTerm struct {
 	// - NamespaceWithResources: The namespace AND all resources within it (default)
 	//
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=63
 	Kind string `json:"kind"`
 
 	// You can only specify at most one of the following two fields: Name and LabelSelector.
@@ -194,6 +197,7 @@ type ResourceSelectorTerm struct {
 
 	// Name of the resource to be selected.
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxLength=253
 	Name string `json:"name,omitempty"`
 
 	// A label query over all the resources to be selected. Resources matching the query are selected.

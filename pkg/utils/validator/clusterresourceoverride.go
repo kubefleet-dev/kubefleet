@@ -26,14 +26,14 @@ import (
 )
 
 // ValidateClusterResourceOverride validates cluster resource override fields and returns error.
+// Note: Most field-level validations (placement scope, selector constraints, clusterSelector
+// constraints, overrideType/jsonPatchOverrides consistency, and JSON patch path restrictions)
+// are now enforced by CEL rules on the CRD.
+// This validator handles cross-object validations that CEL cannot perform, plus the
+// remove-op value check which CEL cannot enforce because the Value field uses
+// apiextensionsv1.JSON (x-kubernetes-preserve-unknown-fields, opaque to CEL).
 func ValidateClusterResourceOverride(cro placementv1beta1.ClusterResourceOverride, croList *placementv1beta1.ClusterResourceOverrideList) error {
 	allErr := make([]error, 0)
-
-	// Check if the resource is being selected by resource name
-	if err := validateClusterResourceSelectors(cro); err != nil {
-		// Skip other checks because the check is only valid if resource is selected by name
-		return err
-	}
 
 	// Check if the override count limit for the resources has been reached
 	if err := validateClusterResourceOverrideResourceLimit(cro, croList); err != nil {
@@ -41,34 +41,9 @@ func ValidateClusterResourceOverride(cro placementv1beta1.ClusterResourceOverrid
 	}
 
 	if cro.Spec.Policy != nil {
-		if err := validateOverridePolicy(cro.Spec.Policy); err != nil {
-			allErr = append(allErr, err)
-		}
+		allErr = append(allErr, validateOverridePolicy(cro.Spec.Policy)...)
 	}
 
-	return errors.NewAggregate(allErr)
-}
-
-// validateClusterResourceSelectors checks if override is selecting resource by name.
-func validateClusterResourceSelectors(cro placementv1beta1.ClusterResourceOverride) error {
-	selectorMap := make(map[placementv1beta1.ResourceSelectorTerm]bool)
-	allErr := make([]error, 0)
-	for _, selector := range cro.Spec.ClusterResourceSelectors {
-		// Check if the resource is not being selected by label selector
-		if selector.LabelSelector != nil {
-			allErr = append(allErr, fmt.Errorf("label selector is not supported for resource selection %+v", selector))
-			continue
-		} else if selector.Name == "" {
-			allErr = append(allErr, fmt.Errorf("resource name is required for resource selection %+v", selector))
-			continue
-		}
-
-		// Check if there are any duplicate selectors
-		if selectorMap[selector] {
-			allErr = append(allErr, fmt.Errorf("resource selector %+v already exists, and must be unique", selector))
-		}
-		selectorMap[selector] = true
-	}
 	return errors.NewAggregate(allErr)
 }
 

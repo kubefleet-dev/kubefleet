@@ -75,6 +75,7 @@ spec:
                           description: |-
                             Group name of the resource to be selected.
                             Use an empty string to select resources under the core API group (e.g., namespaces).
+                          maxLength: 253
                           type: string
                         kind:
                           description: |-
@@ -86,6 +87,7 @@ spec:
                             For ClusterResourcePlacement, you can use SelectionScope to control what gets selected:
                             - NamespaceOnly: Only the namespace object itself
                             - NamespaceWithResources: The namespace AND all resources within it (default)
+                          maxLength: 63
                           type: string
                         labelSelector:
                           description: |-
@@ -137,6 +139,7 @@ spec:
                           x-kubernetes-map-type: atomic
                         name:
                           description: Name of the resource to be selected.
+                          maxLength: 253
                           type: string
                         selectionScope:
                           default: NamespaceWithResources
@@ -150,6 +153,7 @@ spec:
                           type: string
                         version:
                           description: Version of the resource to be selected.
+                          maxLength: 63
                           type: string
                       required:
                       - group
@@ -368,6 +372,8 @@ spec:
                                     description: |-
                                       Path defines the target location.
                                       Note: override will fail if the resource path does not exist.
+                                    maxLength: 512
+                                    pattern: ^/.*
                                     type: string
                                   value:
                                     description: |-
@@ -382,8 +388,26 @@ spec:
                                 - op
                                 - path
                                 type: object
+                                x-kubernetes-validations:
+                                - message: cannot override typeMeta field kind
+                                  rule: '!(self.path == ''/kind'' || self.path.startsWith(''/kind/''))'
+                                - message: cannot override typeMeta field apiVersion
+                                  rule: '!(self.path == ''/apiVersion'' || self.path.startsWith(''/apiVersion/''))'
+                                - message: cannot override status fields
+                                  rule: '!(self.path == ''/status'' || self.path.startsWith(''/status/''))'
+                                - message: cannot override metadata fields except
+                                    annotations and labels
+                                  rule: '!(self.path == ''/metadata'' || (self.path.startsWith(''/metadata/'')
+                                    && !(self.path == ''/metadata/annotations'' ||
+                                    self.path.startsWith(''/metadata/annotations/''))
+                                    && !(self.path == ''/metadata/labels'' || self.path.startsWith(''/metadata/labels/''))))'
+                                - message: path cannot contain empty segments
+                                  rule: '!self.path.contains(''//'')'
+                                - message: path segment cannot contain only whitespace
+                                  rule: '!self.path.matches(''(^|/)\\s+(/|$)'')'
+                                - message: path cannot have a trailing slash
+                                  rule: '!self.path.endsWith(''/'')'
                               maxItems: 20
-                              minItems: 1
                               type: array
                             overrideType:
                               default: JSONPatch
@@ -394,6 +418,25 @@ spec:
                               - Delete
                               type: string
                           type: object
+                          x-kubernetes-validations:
+                          - message: jsonPatchOverrides must not be set when overrideType
+                              is Delete
+                            rule: self.overrideType != 'Delete' || !has(self.jsonPatchOverrides)
+                              || size(self.jsonPatchOverrides) == 0
+                          - message: jsonPatchOverrides must not be empty when overrideType
+                              is JSONPatch
+                            rule: self.overrideType != 'JSONPatch' || (has(self.jsonPatchOverrides)
+                              && size(self.jsonPatchOverrides) > 0)
+                          - message: only labelSelector is supported for override
+                              cluster selectors
+                            rule: '!has(self.clusterSelector) || !has(self.clusterSelector.clusterSelectorTerms)
+                              || self.clusterSelector.clusterSelectorTerms.all(t,
+                              !has(t.propertySelector) && !has(t.propertySorter))'
+                          - message: labelSelector is required for override cluster
+                              selector terms
+                            rule: '!has(self.clusterSelector) || !has(self.clusterSelector.clusterSelectorTerms)
+                              || self.clusterSelector.clusterSelectorTerms.all(t,
+                              has(t.labelSelector))'
                         maxItems: 20
                         minItems: 1
                         type: array
@@ -408,6 +451,18 @@ spec:
                 - message: The placement field is immutable
                   rule: (has(oldSelf.placement) && has(self.placement) && oldSelf.placement
                     == self.placement) || (!has(oldSelf.placement) && !has(self.placement))
+                - message: labelSelector is not supported for cluster resource override
+                    selectors
+                  rule: self.clusterResourceSelectors.all(s, !has(s.labelSelector))
+                - message: resource name is required for cluster resource override
+                    selectors
+                  rule: self.clusterResourceSelectors.all(s, has(s.name) && s.name.size()
+                    > 0)
+                - message: cluster resource override selectors must be unique
+                  rule: self.clusterResourceSelectors.all(x, self.clusterResourceSelectors.exists_one(y,
+                    x.group == y.group && x.version == y.version && x.kind == y.kind
+                    && ((!has(x.name) && !has(y.name)) || (has(x.name) && has(y.name)
+                    && x.name == y.name))))
             required:
             - overrideHash
             - overrideSpec
@@ -474,6 +529,7 @@ spec:
                           description: |-
                             Group name of the be selected resource.
                             Use an empty string to select resources under the core API group (e.g., namespaces).
+                          maxLength: 253
                           type: string
                         kind:
                           description: |-
@@ -503,6 +559,7 @@ spec:
                             - Additional selector: {Group: "apps", Version: "v1", Kind: "Deployment", LabelSelector: {app: "frontend"}}
                             - Third selector: {Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole", Name: "admin"}
                             This selects: the "prod" namespace, all Deployments with label app=frontend in "prod", and the "admin" ClusterRole.
+                          maxLength: 63
                           type: string
                         labelSelector:
                           description: |-
@@ -554,6 +611,7 @@ spec:
                           x-kubernetes-map-type: atomic
                         name:
                           description: Name of the be selected  resource.
+                          maxLength: 253
                           type: string
                         selectionScope:
                           default: NamespaceWithResources
@@ -568,6 +626,7 @@ spec:
                           type: string
                         version:
                           description: Version of the to be selected resource.
+                          maxLength: 63
                           type: string
                       required:
                       - group
@@ -888,6 +947,7 @@ spec:
                           description: |-
                             Group name of the be selected resource.
                             Use an empty string to select resources under the core API group (e.g., namespaces).
+                          maxLength: 253
                           type: string
                         kind:
                           description: |-
@@ -917,6 +977,7 @@ spec:
                             - Additional selector: {Group: "apps", Version: "v1", Kind: "Deployment", LabelSelector: {app: "frontend"}}
                             - Third selector: {Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole", Name: "admin"}
                             This selects: the "prod" namespace, all Deployments with label app=frontend in "prod", and the "admin" ClusterRole.
+                          maxLength: 63
                           type: string
                         labelSelector:
                           description: |-
@@ -968,6 +1029,7 @@ spec:
                           x-kubernetes-map-type: atomic
                         name:
                           description: Name of the be selected  resource.
+                          maxLength: 253
                           type: string
                         selectionScope:
                           default: NamespaceWithResources
@@ -982,6 +1044,7 @@ spec:
                           type: string
                         version:
                           description: Version of the to be selected resource.
+                          maxLength: 63
                           type: string
                       required:
                       - group
@@ -1200,6 +1263,8 @@ spec:
                                     description: |-
                                       Path defines the target location.
                                       Note: override will fail if the resource path does not exist.
+                                    maxLength: 512
+                                    pattern: ^/.*
                                     type: string
                                   value:
                                     description: |-
@@ -1214,8 +1279,26 @@ spec:
                                 - op
                                 - path
                                 type: object
+                                x-kubernetes-validations:
+                                - message: cannot override typeMeta field kind
+                                  rule: '!(self.path == ''/kind'' || self.path.startsWith(''/kind/''))'
+                                - message: cannot override typeMeta field apiVersion
+                                  rule: '!(self.path == ''/apiVersion'' || self.path.startsWith(''/apiVersion/''))'
+                                - message: cannot override status fields
+                                  rule: '!(self.path == ''/status'' || self.path.startsWith(''/status/''))'
+                                - message: cannot override metadata fields except
+                                    annotations and labels
+                                  rule: '!(self.path == ''/metadata'' || (self.path.startsWith(''/metadata/'')
+                                    && !(self.path == ''/metadata/annotations'' ||
+                                    self.path.startsWith(''/metadata/annotations/''))
+                                    && !(self.path == ''/metadata/labels'' || self.path.startsWith(''/metadata/labels/''))))'
+                                - message: path cannot contain empty segments
+                                  rule: '!self.path.contains(''//'')'
+                                - message: path segment cannot contain only whitespace
+                                  rule: '!self.path.matches(''(^|/)\\s+(/|$)'')'
+                                - message: path cannot have a trailing slash
+                                  rule: '!self.path.endsWith(''/'')'
                               maxItems: 20
-                              minItems: 1
                               type: array
                             overrideType:
                               default: JSONPatch
@@ -1226,6 +1309,25 @@ spec:
                               - Delete
                               type: string
                           type: object
+                          x-kubernetes-validations:
+                          - message: jsonPatchOverrides must not be set when overrideType
+                              is Delete
+                            rule: self.overrideType != 'Delete' || !has(self.jsonPatchOverrides)
+                              || size(self.jsonPatchOverrides) == 0
+                          - message: jsonPatchOverrides must not be empty when overrideType
+                              is JSONPatch
+                            rule: self.overrideType != 'JSONPatch' || (has(self.jsonPatchOverrides)
+                              && size(self.jsonPatchOverrides) > 0)
+                          - message: only labelSelector is supported for override
+                              cluster selectors
+                            rule: '!has(self.clusterSelector) || !has(self.clusterSelector.clusterSelectorTerms)
+                              || self.clusterSelector.clusterSelectorTerms.all(t,
+                              !has(t.propertySelector) && !has(t.propertySorter))'
+                          - message: labelSelector is required for override cluster
+                              selector terms
+                            rule: '!has(self.clusterSelector) || !has(self.clusterSelector.clusterSelectorTerms)
+                              || self.clusterSelector.clusterSelectorTerms.all(t,
+                              has(t.labelSelector))'
                         maxItems: 20
                         minItems: 1
                         type: array
@@ -1240,6 +1342,18 @@ spec:
                 - message: The placement field is immutable
                   rule: (has(oldSelf.placement) && has(self.placement) && oldSelf.placement
                     == self.placement) || (!has(oldSelf.placement) && !has(self.placement))
+                - message: labelSelector is not supported for cluster resource override
+                    selectors
+                  rule: self.clusterResourceSelectors.all(s, !has(s.labelSelector))
+                - message: resource name is required for cluster resource override
+                    selectors
+                  rule: self.clusterResourceSelectors.all(s, has(s.name) && s.name.size()
+                    > 0)
+                - message: cluster resource override selectors must be unique
+                  rule: self.clusterResourceSelectors.all(x, self.clusterResourceSelectors.exists_one(y,
+                    x.group == y.group && x.version == y.version && x.kind == y.kind
+                    && ((!has(x.name) && !has(y.name)) || (has(x.name) && has(y.name)
+                    && x.name == y.name))))
             required:
             - overrideHash
             - overrideSpec

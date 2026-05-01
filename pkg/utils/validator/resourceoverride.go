@@ -18,9 +18,7 @@ limitations under the License.
 package validator
 
 import (
-	"errors"
 	"fmt"
-	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/util/errors"
 
@@ -28,14 +26,14 @@ import (
 )
 
 // ValidateResourceOverride validates resource override fields and returns error.
+// Note: Most field-level validations (selector uniqueness, clusterSelector constraints,
+// overrideType/jsonPatchOverrides consistency, and JSON patch path restrictions)
+// are now enforced by CEL rules on the CRD.
+// This validator handles cross-object validations that CEL cannot perform, plus the
+// remove-op value check which CEL cannot enforce because the Value field uses
+// apiextensionsv1.JSON (x-kubernetes-preserve-unknown-fields, opaque to CEL).
 func ValidateResourceOverride(ro placementv1beta1.ResourceOverride, roList *placementv1beta1.ResourceOverrideList) error {
 	allErr := make([]error, 0)
-
-	// Check if the resource is being selected by resource name.
-	if err := validateResourceSelectors(ro); err != nil {
-		// Skip the resource limit check because the check is only valid if resource selectors are valid.
-		return err
-	}
 
 	// Check if the override count limit for the resources has been reached.
 	if err := validateResourceOverrideResourceLimit(ro, roList); err != nil {
@@ -43,25 +41,9 @@ func ValidateResourceOverride(ro placementv1beta1.ResourceOverride, roList *plac
 	}
 
 	if ro.Spec.Policy != nil {
-		if err := validateOverridePolicy(ro.Spec.Policy); err != nil {
-			allErr = append(allErr, err)
-		}
+		allErr = append(allErr, validateOverridePolicy(ro.Spec.Policy)...)
 	}
 
-	return apierrors.NewAggregate(allErr)
-}
-
-// validateResourceSelectors checks if override is selecting a unique resource.
-func validateResourceSelectors(ro placementv1beta1.ResourceOverride) error {
-	selectorMap := make(map[placementv1beta1.ResourceSelector]bool)
-	allErr := make([]error, 0)
-	for _, selector := range ro.Spec.ResourceSelectors {
-		// Check if there are any duplicate selectors.
-		if selectorMap[selector] {
-			allErr = append(allErr, fmt.Errorf("resource selector %+v already exists, and must be unique", selector))
-		}
-		selectorMap[selector] = true
-	}
 	return apierrors.NewAggregate(allErr)
 }
 
@@ -93,88 +75,4 @@ func validateResourceOverrideResourceLimit(ro placementv1beta1.ResourceOverride,
 		}
 	}
 	return apierrors.NewAggregate(allErr)
-}
-
-// validateOverridePolicy checks if override rule is selecting resource by name.
-func validateOverridePolicy(policy *placementv1beta1.OverridePolicy) error {
-	allErr := make([]error, 0)
-	for _, rule := range policy.OverrideRules {
-		if rule.ClusterSelector != nil {
-			for _, selector := range rule.ClusterSelector.ClusterSelectorTerms {
-				// Check that only label selector is supported
-				if selector.PropertySelector != nil || selector.PropertySorter != nil {
-					allErr = append(allErr, fmt.Errorf("invalid clusterSelector %+v: only labelSelector is supported", selector))
-					continue
-				}
-				if selector.LabelSelector == nil {
-					allErr = append(allErr, fmt.Errorf("invalid clusterSelector %+v: labelSelector is required", selector))
-				} else if err := validateLabelSelector(selector.LabelSelector, "cluster selector"); err != nil {
-					allErr = append(allErr, err)
-				}
-			}
-		}
-		switch rule.OverrideType {
-		case placementv1beta1.DeleteOverrideType:
-			if len(rule.JSONPatchOverrides) != 0 {
-				return errors.New("invalid JSONPatchOverrides: JSONPatchOverrides cannot be set when the override type is Delete")
-			}
-
-		case placementv1beta1.JSONPatchOverrideType:
-			if err := validateJSONPatchOverride(rule.JSONPatchOverrides); err != nil {
-				allErr = append(allErr, err)
-			}
-		}
-	}
-	return apierrors.NewAggregate(allErr)
-}
-
-// validateJSONPatchOverride checks if JSON patch override is valid.
-func validateJSONPatchOverride(jsonPatchOverrides []placementv1beta1.JSONPatchOverride) error {
-	if len(jsonPatchOverrides) == 0 {
-		return errors.New("invalid JSONPatchOverrides: JSONPatchOverrides cannot be empty")
-	}
-
-	allErr := make([]error, 0)
-	for _, patch := range jsonPatchOverrides {
-		if err := validateJSONPatchOverridePath(patch.Path); err != nil {
-			allErr = append(allErr, fmt.Errorf("invalid JSONPatchOverride %s: %w", patch, err))
-		}
-
-		if patch.Operator == placementv1beta1.JSONPatchOverrideOpRemove && len(patch.Value.Raw) != 0 {
-			allErr = append(allErr, fmt.Errorf("invalid JSONPatchOverride %s: remove operation cannot have value", patch))
-		}
-	}
-	return apierrors.NewAggregate(allErr)
-}
-
-func validateJSONPatchOverridePath(path string) error {
-	if path == "" {
-		return fmt.Errorf("path cannot be empty")
-	}
-
-	if !strings.HasPrefix(path, "/") {
-		return fmt.Errorf("path must start with /")
-	}
-
-	// The path begins with a slash, and at least there will be two elements.
-	parts := strings.Split(path, "/")[1:]
-	switch parts[0] {
-	case "kind", "apiVersion":
-		return fmt.Errorf("cannot override typeMeta fields")
-	case "metadata":
-		if len(parts) == 1 {
-			return fmt.Errorf("cannot override field metadata")
-		} else if parts[1] != "annotations" && parts[1] != "labels" {
-			return fmt.Errorf("cannot override metadata fields except annotations and labels")
-		}
-	case "status":
-		return fmt.Errorf("cannot override status fields")
-	}
-
-	for i := range parts {
-		if len(strings.TrimSpace(parts[i])) == 0 {
-			return fmt.Errorf("path cannot contain empty string")
-		}
-	}
-	return nil
 }

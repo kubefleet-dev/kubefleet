@@ -181,10 +181,12 @@ type ResourceSelectorTerm struct {
 	// Group name of the be selected resource.
 	// Use an empty string to select resources under the core API group (e.g., namespaces).
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=253
 	Group string `json:"group"`
 
 	// Version of the to be selected resource.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=63
 	Version string `json:"version"`
 
 	// Kind of the to be selected resource.
@@ -215,6 +217,7 @@ type ResourceSelectorTerm struct {
 	// This selects: the "prod" namespace, all Deployments with label app=frontend in "prod", and the "admin" ClusterRole.
 	//
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=63
 	Kind string `json:"kind"`
 
 	// You can only specify at most one of the following two fields: Name and LabelSelector.
@@ -222,6 +225,7 @@ type ResourceSelectorTerm struct {
 
 	// Name of the be selected  resource.
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxLength=253
 	Name string `json:"name,omitempty"`
 
 	// A label query over all the be selected  resources. Resources matching the query are selected.

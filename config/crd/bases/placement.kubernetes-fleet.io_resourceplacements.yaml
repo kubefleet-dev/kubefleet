@@ -535,6 +535,7 @@ spec:
                       description: |-
                         Group name of the resource to be selected.
                         Use an empty string to select resources under the core API group (e.g., namespaces).
+                      maxLength: 253
                       type: string
                     kind:
                       description: |-
@@ -546,6 +547,7 @@ spec:
                         For ClusterResourcePlacement, you can use SelectionScope to control what gets selected:
                         - NamespaceOnly: Only the namespace object itself
                         - NamespaceWithResources: The namespace AND all resources within it (default)
+                      maxLength: 63
                       type: string
                     labelSelector:
                       description: |-
@@ -597,6 +599,7 @@ spec:
                       x-kubernetes-map-type: atomic
                     name:
                       description: Name of the resource to be selected.
+                      maxLength: 253
                       type: string
                     selectionScope:
                       default: NamespaceWithResources
@@ -610,6 +613,7 @@ spec:
                       type: string
                     version:
                       description: Version of the resource to be selected.
+                      maxLength: 63
                       type: string
                   required:
                   - group
@@ -2060,6 +2064,7 @@ spec:
                       description: |-
                         Group name of the be selected resource.
                         Use an empty string to select resources under the core API group (e.g., namespaces).
+                      maxLength: 253
                       type: string
                     kind:
                       description: |-
@@ -2089,6 +2094,7 @@ spec:
                         - Additional selector: {Group: "apps", Version: "v1", Kind: "Deployment", LabelSelector: {app: "frontend"}}
                         - Third selector: {Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole", Name: "admin"}
                         This selects: the "prod" namespace, all Deployments with label app=frontend in "prod", and the "admin" ClusterRole.
+                      maxLength: 63
                       type: string
                     labelSelector:
                       description: |-
@@ -2140,6 +2146,7 @@ spec:
                       x-kubernetes-map-type: atomic
                     name:
                       description: Name of the be selected  resource.
+                      maxLength: 253
                       type: string
                     selectionScope:
                       default: NamespaceWithResources
@@ -2154,6 +2161,7 @@ spec:
                       type: string
                     version:
                       description: Version of the to be selected resource.
+                      maxLength: 63
                       type: string
                   required:
                   - group
