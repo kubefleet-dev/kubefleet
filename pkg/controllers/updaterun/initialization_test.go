@@ -169,3 +169,57 @@ func TestValidateAfterStageTask(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateStuckThreshold(t *testing.T) {
+	tests := map[string]struct {
+		stuckThreshold *metav1.Duration
+		wantErr        bool
+	}{
+		"nil stuckThreshold should pass validation": {
+			stuckThreshold: nil,
+			wantErr:        false,
+		},
+		"stuckThreshold of 1 second should pass validation": {
+			stuckThreshold: &metav1.Duration{Duration: 1 * time.Second},
+			wantErr:        false,
+		},
+		"stuckThreshold of 1 minute should pass validation": {
+			stuckThreshold: &metav1.Duration{Duration: 1 * time.Minute},
+			wantErr:        false,
+		},
+		"stuckThreshold of 5 minutes should pass validation": {
+			stuckThreshold: &metav1.Duration{Duration: 5 * time.Minute},
+			wantErr:        false,
+		},
+		"stuckThreshold of 1 hour should pass validation": {
+			stuckThreshold: &metav1.Duration{Duration: 1 * time.Hour},
+			wantErr:        false,
+		},
+		"stuckThreshold of 2 hours should pass validation": {
+			stuckThreshold: &metav1.Duration{Duration: 2 * time.Hour},
+			wantErr:        false,
+		},
+		"stuckThreshold zero should fail validation": {
+			stuckThreshold: &metav1.Duration{Duration: 0},
+			wantErr:        true,
+		},
+		"stuckThreshold negative should fail validation": {
+			stuckThreshold: &metav1.Duration{Duration: -1 * time.Minute},
+			wantErr:        true,
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			updateRun := &placementv1beta1.StagedUpdateRun{
+				Spec: placementv1beta1.UpdateRunSpec{
+					StuckThreshold: tt.stuckThreshold,
+				},
+			}
+			err := validateStuckThreshold(updateRun)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateStuckThreshold() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}

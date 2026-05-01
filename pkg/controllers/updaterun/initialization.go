@@ -639,6 +639,22 @@ func (r *Reconciler) getResourceSnapshotObjs(ctx context.Context, placement plac
 	return []placementv1beta1.ResourceSnapshotObj{latestResourceSnapshot}, nil
 }
 
+// validateStuckThreshold validates the stuck threshold specified in the update run spec.
+// Returns an error if the threshold is zero or negative.
+func validateStuckThreshold(updateRun placementv1beta1.UpdateRunObj) error {
+	spec := updateRun.GetUpdateRunSpec()
+	if spec == nil || spec.StuckThreshold == nil {
+		return nil
+	}
+	threshold := spec.StuckThreshold.Duration
+	if threshold <= 0 {
+		err := controller.NewUserError(fmt.Errorf("stuckThreshold must be a positive duration, got %s", threshold))
+		klog.Error(err, "The update run stuckThreshold must be a positive duration", "threshold", threshold, "updateRun", klog.KObj(updateRun))
+		return fmt.Errorf("%w: %w", errValidationFailed, err)
+	}
+	return nil
+}
+
 // recordInitializationSucceeded records the successful initialization condition in the UpdateRun status.
 func (r *Reconciler) recordInitializationSucceeded(ctx context.Context, updateRun placementv1beta1.UpdateRunObj) error {
 	updateRunStatus := updateRun.GetUpdateRunStatus()

@@ -47,7 +47,7 @@ func (r *Reconciler) validate(
 
 	// Validate the stuck threshold if specified.
 	if err := validateStuckThreshold(updateRun); err != nil {
-		return -1, nil, nil, fmt.Errorf("%w: %w", errValidationFailed, err)
+		return -1, nil, nil, err
 	}
 
 	// Validate the Placement object referenced by the UpdateRun.
@@ -329,19 +329,4 @@ func validateDeleteStageStatus(
 	}
 	// The delete stage is still updating or just to start.
 	return totalStages, nil
-}
-
-// validateStuckThreshold validates the stuck threshold specified in the update run spec.
-// Returns an error if the threshold is zero or negative.
-func validateStuckThreshold(updateRun placementv1beta1.UpdateRunObj) error {
-	spec := updateRun.GetUpdateRunSpec()
-	if spec == nil || spec.StuckThreshold == nil {
-		return nil
-	}
-	threshold := spec.StuckThreshold.Duration
-	if threshold <= 0 {
-		return fmt.Errorf("%w: %w", errValidationFailed,
-			controller.NewUserError(fmt.Errorf("stuckThreshold must be a positive duration, got %s", threshold)))
-	}
-	return nil
 }

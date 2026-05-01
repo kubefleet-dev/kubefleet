@@ -1449,6 +1449,35 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			Expect(hubClient.Create(ctx, &updateRun)).Should(Succeed())
 			Expect(hubClient.Delete(ctx, &updateRun)).Should(Succeed())
 		})
+
+		It("Should allow creation of ClusterStagedUpdateRun with stuckThreshold of 2 hours", func() {
+			updateRun := placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(validupdateRunNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					PlacementName:            "test-placement",
+					StagedUpdateStrategyName: "test-strategy",
+					StuckThreshold:           &metav1.Duration{Duration: 2 * time.Hour},
+				},
+			}
+			Expect(hubClient.Create(ctx, &updateRun)).Should(Succeed())
+			Expect(hubClient.Delete(ctx, &updateRun)).Should(Succeed())
+		})
+
+		It("Should allow creation of ClusterStagedUpdateRun without stuckThreshold (uses default)", func() {
+			updateRun := placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(validupdateRunNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					PlacementName:            "test-placement",
+					StagedUpdateStrategyName: "test-strategy",
+				},
+			}
+			Expect(hubClient.Create(ctx, &updateRun)).Should(Succeed())
+			Expect(hubClient.Delete(ctx, &updateRun)).Should(Succeed())
+		})
 	})
 
 	Context("Test ClusterStagedUpdateRun API validation - invalid cases", func() {
@@ -1565,37 +1594,6 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			var statusErr *k8sErrors.StatusError
 			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update updateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("stuckThreshold is immutable"))
-			Expect(hubClient.Delete(ctx, &updateRun)).Should(Succeed())
-		})
-	})
-
-	Context("Test ClusterStagedUpdateRun StuckThreshold API validation - valid cases", func() {
-		It("Should allow creation of ClusterStagedUpdateRun with stuckThreshold of 2 hours", func() {
-			updateRun := placementv1beta1.ClusterStagedUpdateRun{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: fmt.Sprintf(validupdateRunNameTemplate, GinkgoParallelProcess()),
-				},
-				Spec: placementv1beta1.UpdateRunSpec{
-					PlacementName:            "test-placement",
-					StagedUpdateStrategyName: "test-strategy",
-					StuckThreshold:           &metav1.Duration{Duration: 2 * time.Hour},
-				},
-			}
-			Expect(hubClient.Create(ctx, &updateRun)).Should(Succeed())
-			Expect(hubClient.Delete(ctx, &updateRun)).Should(Succeed())
-		})
-
-		It("Should allow creation of ClusterStagedUpdateRun without stuckThreshold (uses default)", func() {
-			updateRun := placementv1beta1.ClusterStagedUpdateRun{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: fmt.Sprintf(validupdateRunNameTemplate, GinkgoParallelProcess()),
-				},
-				Spec: placementv1beta1.UpdateRunSpec{
-					PlacementName:            "test-placement",
-					StagedUpdateStrategyName: "test-strategy",
-				},
-			}
-			Expect(hubClient.Create(ctx, &updateRun)).Should(Succeed())
 			Expect(hubClient.Delete(ctx, &updateRun)).Should(Succeed())
 		})
 	})
