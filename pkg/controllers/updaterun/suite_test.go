@@ -21,7 +21,6 @@ import (
 	"flag"
 	"path/filepath"
 	"testing"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -56,7 +55,6 @@ var (
 	ctx                      context.Context
 	cancel                   context.CancelFunc
 	resourceSelectorResolver controller.ResourceSelectorResolver
-	reconciler               *Reconciler
 )
 
 const (
@@ -130,14 +128,12 @@ var _ = BeforeSuite(func() {
 		ResourceConfig:    utils.NewResourceConfig(false),
 		SkippedNamespaces: map[string]bool{},
 	}
-	reconciler = &Reconciler{
+	err = (&Reconciler{
 		Client:                   k8sClient,
 		InformerManager:          dynamicInformerManager,
 		ResourceSelectorResolver: resourceSelectorResolver,
 		ResourceSnapshotResolver: controller.NewResourceSnapshotResolver(mgr.GetClient(), mgr.GetScheme()),
-		UpdateRunStuckThreshold:  5 * time.Minute,
-	}
-	err = reconciler.SetupWithManagerForClusterStagedUpdateRun(mgr)
+	}).SetupWithManagerForClusterStagedUpdateRun(mgr)
 	Expect(err).Should(Succeed())
 
 	// create the namespace for testing

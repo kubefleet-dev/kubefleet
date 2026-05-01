@@ -46,6 +46,10 @@ func (r *Reconciler) initialize(
 	ctx context.Context,
 	updateRun placementv1beta1.UpdateRunObj,
 ) ([]placementv1beta1.BindingObj, []placementv1beta1.BindingObj, error) {
+	// Validate the stuck threshold if specified.
+	if err := validateStuckThreshold(updateRun); err != nil {
+		return nil, nil, err
+	}
 	// Validate the Placement object referenced by the UpdateRun.
 	placement, placementNamespacedName, err := r.validatePlacement(ctx, updateRun)
 	if err != nil {

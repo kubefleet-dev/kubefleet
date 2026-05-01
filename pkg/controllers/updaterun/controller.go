@@ -66,10 +66,6 @@ type Reconciler struct {
 
 	// ResourceSnapshotResolver gets or creates resource snapshots.
 	ResourceSnapshotResolver controller.ResourceSnapshotResolver
-
-	// UpdateRunStuckThreshold is the time to wait on a single cluster update before marking update run as stuck.
-	// If not set, defaults to 5 minutes.
-	UpdateRunStuckThreshold time.Duration
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtime.Result, error) {
@@ -570,4 +566,14 @@ func updateAllStageStatusConditionsGeneration(stageStatus *placementv1beta1.Stag
 			stageStatus.Clusters[j].Conditions[k].ObservedGeneration = generation
 		}
 	}
+}
+
+// getStuckThreshold returns the stuck threshold for the given update run.
+// It first checks if the update run has a stuck threshold specified in its spec,
+// and falls back to the default threshold if not specified.
+func getStuckThreshold(updateRun placementv1beta1.UpdateRunObj) time.Duration {
+	if spec := updateRun.GetUpdateRunSpec(); spec != nil && spec.StuckThreshold != nil {
+		return spec.StuckThreshold.Duration
+	}
+	return defaultStuckThreshold
 }

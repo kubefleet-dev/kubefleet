@@ -202,6 +202,14 @@ type UpdateRunSpec struct {
 	// +kubebuilder:default=Initialize
 	// +kubebuilder:validation:Enum=Initialize;Run;Stop
 	State State `json:"state,omitempty"`
+
+	// StuckThreshold is the duration after which a cluster update is considered stuck if no progress is made.
+	// If not specified, the default stuck threshold of 5 minutes is used.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Format=duration
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="stuckThreshold is immutable"
+	StuckThreshold *metav1.Duration `json:"stuckThreshold,omitempty"`
 }
 
 // UpdateStrategySpecGetterSetter offers the functionality to work with UpdateStrategySpec.
