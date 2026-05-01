@@ -1463,7 +1463,6 @@ spec:
                 description: |-
                   StuckThreshold is the duration after which a cluster update is considered stuck if no progress is made.
                   If not specified, the default stuck threshold of 5 minutes is used.
-                  Must be a duration in the range [1m, 1h].
                 format: duration
                 type: string
                 x-kubernetes-validations:
