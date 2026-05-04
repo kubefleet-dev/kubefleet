@@ -55,6 +55,7 @@ func TestStop(t *testing.T) {
 				Spec: placementv1beta1.UpdateRunSpec{
 					PlacementName:         "test-placement",
 					ResourceSnapshotIndex: "1",
+					StuckThreshold:        &metav1.Duration{Duration: 5 * time.Minute},
 				},
 				Status: placementv1beta1.UpdateRunStatus{
 					ResourceSnapshotIndexUsed: "1",
@@ -114,6 +115,7 @@ func TestStop(t *testing.T) {
 				Spec: placementv1beta1.UpdateRunSpec{
 					PlacementName:         "test-placement",
 					ResourceSnapshotIndex: "1",
+					StuckThreshold:        &metav1.Duration{Duration: 5 * time.Minute},
 				},
 				Status: placementv1beta1.UpdateRunStatus{
 					// All updating stages have completed successfully.
@@ -277,6 +279,7 @@ func TestStopUpdatingStage(t *testing.T) {
 				Spec: placementv1beta1.UpdateRunSpec{
 					PlacementName:         "test-placement",
 					ResourceSnapshotIndex: "1",
+					StuckThreshold:        &metav1.Duration{Duration: 5 * time.Minute},
 				},
 				Status: placementv1beta1.UpdateRunStatus{
 					StagesStatus: []placementv1beta1.StageUpdatingStatus{
@@ -326,6 +329,7 @@ func TestStopUpdatingStage(t *testing.T) {
 				Spec: placementv1beta1.UpdateRunSpec{
 					PlacementName:         "test-placement",
 					ResourceSnapshotIndex: "1",
+					StuckThreshold:        &metav1.Duration{Duration: 5 * time.Minute},
 				},
 				Status: placementv1beta1.UpdateRunStatus{
 					StagesStatus: []placementv1beta1.StageUpdatingStatus{
@@ -369,6 +373,7 @@ func TestStopUpdatingStage(t *testing.T) {
 				Spec: placementv1beta1.UpdateRunSpec{
 					PlacementName:         "test-placement",
 					ResourceSnapshotIndex: "1",
+					StuckThreshold:        &metav1.Duration{Duration: 5 * time.Minute},
 				},
 				Status: placementv1beta1.UpdateRunStatus{
 					ResourceSnapshotIndexUsed: "1",
