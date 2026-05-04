@@ -1371,33 +1371,3 @@ func TestUpdateAllStatusConditionsGeneration(t *testing.T) {
 		})
 	}
 }
-
-func TestGetStuckThreshold(t *testing.T) {
-	tests := map[string]struct {
-		stuckThreshold *metav1.Duration
-		want           time.Duration
-	}{
-		"nil stuckThreshold should return default": {
-			stuckThreshold: nil,
-			want:           defaultStuckThreshold,
-		},
-		"specified stuckThreshold should return the specified value": {
-			stuckThreshold: &metav1.Duration{Duration: 10 * time.Minute},
-			want:           10 * time.Minute,
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			updateRun := &placementv1beta1.StagedUpdateRun{
-				Spec: placementv1beta1.UpdateRunSpec{
-					StuckThreshold: tt.stuckThreshold,
-				},
-			}
-			got := getStuckThreshold(updateRun)
-			if got != tt.want {
-				t.Errorf("getStuckThreshold() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}

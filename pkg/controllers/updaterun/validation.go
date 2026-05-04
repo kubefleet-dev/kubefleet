@@ -45,11 +45,6 @@ func (r *Reconciler) validate(
 	updateRunCopyStatus := updateRunCopy.GetUpdateRunStatus()
 	klog.V(2).InfoS("Start to validate the updateRun", "updateRun", updateRunRef)
 
-	// Validate the stuck threshold if specified.
-	if err := validateStuckThreshold(updateRun); err != nil {
-		return -1, nil, nil, err
-	}
-
 	// Validate the Placement object referenced by the UpdateRun.
 	_, placementNamespacedName, err := r.validatePlacement(ctx, updateRunCopy)
 	if err != nil {

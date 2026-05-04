@@ -567,13 +567,3 @@ func updateAllStageStatusConditionsGeneration(stageStatus *placementv1beta1.Stag
 		}
 	}
 }
-
-// getStuckThreshold returns the stuck threshold for the given update run.
-// It first checks if the update run has a stuck threshold specified in its spec,
-// and falls back to the default threshold if not specified.
-func getStuckThreshold(updateRun placementv1beta1.UpdateRunObj) time.Duration {
-	if spec := updateRun.GetUpdateRunSpec(); spec != nil && spec.StuckThreshold != nil {
-		return spec.StuckThreshold.Duration
-	}
-	return defaultStuckThreshold
-}

@@ -1493,6 +1493,24 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("metadata.name max length is 63"))
 		})
 
+		It("Should deny creation of ClusterStagedUpdateRun stuckThreshold field that is not s, m, or h", func() {
+			updateRun := placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(validupdateRunNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					PlacementName:            "test-placement",
+					ResourceSnapshotIndex:    "1",
+					StagedUpdateStrategyName: "test-strategy",
+					StuckThreshold:           &metav1.Duration{Duration: 5 * time.Nanosecond},
+				},
+			}
+			err := hubClient.Create(ctx, &updateRun)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("spec.stuckThreshold.*should match"))
+		})
+
 		It("Should deny update of ClusterStagedUpdateRun placementName field", func() {
 			updateRun := placementv1beta1.ClusterStagedUpdateRun{
 				ObjectMeta: metav1.ObjectMeta{

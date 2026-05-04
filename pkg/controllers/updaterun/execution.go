@@ -39,11 +39,6 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 )
 
-const (
-	// defaultStuckThreshold is the default duration after which a cluster update is considered stuck.
-	defaultStuckThreshold = 5 * time.Minute
-)
-
 var (
 	// clusterUpdatingWaitTime is the time to wait before rechecking the cluster update status.
 	// Put it as a variable for convenient testing.
@@ -272,7 +267,7 @@ func (r *Reconciler) executeUpdatingStage(
 		} else {
 			// If cluster update has been running for more than the stuck threshold, mark the update run as stuck.
 			timeElapsed := time.Since(clusterStartedCond.LastTransitionTime.Time)
-			stuckThreshold := getStuckThreshold(updateRun)
+			stuckThreshold := updateRun.GetUpdateRunSpec().StuckThreshold.Duration
 			if timeElapsed > stuckThreshold {
 				klog.V(2).InfoS("Time waiting for cluster update to finish passes threshold, mark the update run as stuck", "time elapsed", timeElapsed, "threshold", stuckThreshold, "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
 				stuckClusterNames = append(stuckClusterNames, clusterStatus.ClusterName)

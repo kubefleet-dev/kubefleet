@@ -46,10 +46,6 @@ func (r *Reconciler) initialize(
 	ctx context.Context,
 	updateRun placementv1beta1.UpdateRunObj,
 ) ([]placementv1beta1.BindingObj, []placementv1beta1.BindingObj, error) {
-	// Validate the stuck threshold if specified.
-	if err := validateStuckThreshold(updateRun); err != nil {
-		return nil, nil, err
-	}
 	// Validate the Placement object referenced by the UpdateRun.
 	placement, placementNamespacedName, err := r.validatePlacement(ctx, updateRun)
 	if err != nil {
@@ -637,22 +633,6 @@ func (r *Reconciler) getResourceSnapshotObjs(ctx context.Context, placement plac
 	klog.V(2).InfoS("Created/fetched resource snapshot for updateRun",
 		"placement", placementKey, "resourceSnapshot", klog.KObj(latestResourceSnapshot), "updateRun", updateRunRef)
 	return []placementv1beta1.ResourceSnapshotObj{latestResourceSnapshot}, nil
-}
-
-// validateStuckThreshold validates the stuck threshold specified in the update run spec.
-// Returns an error if the threshold is zero or negative.
-func validateStuckThreshold(updateRun placementv1beta1.UpdateRunObj) error {
-	spec := updateRun.GetUpdateRunSpec()
-	if spec == nil || spec.StuckThreshold == nil {
-		return nil
-	}
-	threshold := spec.StuckThreshold.Duration
-	if threshold <= 0 {
-		err := controller.NewUserError(fmt.Errorf("stuckThreshold must be a positive duration, got %s", threshold))
-		klog.Error(err, "The update run stuckThreshold must be a positive duration", "threshold", threshold, "updateRun", klog.KObj(updateRun))
-		return fmt.Errorf("%w: %w", errValidationFailed, err)
-	}
-	return nil
 }
 
 // recordInitializationSucceeded records the successful initialization condition in the UpdateRun status.
