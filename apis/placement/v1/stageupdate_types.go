@@ -210,7 +210,7 @@ type StageTask struct {
 
 	// The time to wait after all the clusters in the current stage complete the update before moving to the next stage.
 	// Only hours (h), minutes (m), and seconds (s) units are accepted.
-	// +kubebuilder:validation:Pattern="^(?:[0-9]+(\\.[0-9]+)?(?:s|m|h))+$"
+	// +kubebuilder:validation:Pattern="^(?:(?:0|[1-9][0-9]*)(\\.[0-9]+)?(?:s|m|h))+$"
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:Optional
 	WaitTime *metav1.Duration `json:"waitTime,omitempty"`
