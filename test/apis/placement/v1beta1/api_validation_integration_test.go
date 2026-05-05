@@ -27,6 +27,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -1529,6 +1530,50 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("spec.stuckThreshold.*should match"))
 		})
 
+		It("Should deny creation of ClusterStagedUpdateRun with stuckThreshold containing invalid suffix (e.g., '5abc')", func() {
+			// Use unstructured to bypass Go-side metav1.Duration parsing and send raw string to API server.
+			updateRun := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "placement.kubernetes-fleet.io/v1beta1",
+					"kind":       "ClusterStagedUpdateRun",
+					"metadata": map[string]interface{}{
+						"name": fmt.Sprintf(validupdateRunNameTemplate, GinkgoParallelProcess()),
+					},
+					"spec": map[string]interface{}{
+						"placementName":             "test-placement",
+						"stagedRolloutStrategyName": "test-strategy",
+						"stuckThreshold":            "5abc",
+					},
+				},
+			}
+			err := hubClient.Create(ctx, updateRun)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("spec.stuckThreshold.*should match"))
+		})
+
+		It("Should deny creation of ClusterStagedUpdateRun with stuckThreshold missing unit (e.g., '5')", func() {
+			// Use unstructured to bypass Go-side metav1.Duration parsing and send raw string to API server.
+			updateRun := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "placement.kubernetes-fleet.io/v1beta1",
+					"kind":       "ClusterStagedUpdateRun",
+					"metadata": map[string]interface{}{
+						"name": fmt.Sprintf(validupdateRunNameTemplate, GinkgoParallelProcess()),
+					},
+					"spec": map[string]interface{}{
+						"placementName":             "test-placement",
+						"stagedRolloutStrategyName": "test-strategy",
+						"stuckThreshold":            "5",
+					},
+				},
+			}
+			err := hubClient.Create(ctx, updateRun)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("spec.stuckThreshold.*should match"))
+		})
+
 		It("Should deny update of ClusterStagedUpdateRun placementName field", func() {
 			updateRun := placementv1beta1.ClusterStagedUpdateRun{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1621,6 +1666,27 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 					ResourceSnapshotIndex:    "1",
 					StagedUpdateStrategyName: "test-strategy",
 					StuckThreshold:           &metav1.Duration{Duration: 5 * time.Minute},
+				},
+			}
+			Expect(hubClient.Create(ctx, &updateRun)).Should(Succeed())
+
+			updateRun.Spec.StuckThreshold = &metav1.Duration{Duration: 10 * time.Minute}
+			err := hubClient.Update(ctx, &updateRun)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update updateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("stuckThreshold is immutable"))
+			Expect(hubClient.Delete(ctx, &updateRun)).Should(Succeed())
+		})
+
+		It("Should deny update of ClusterStagedUpdateRun stuckThreshold field when previously not defined", func() {
+			updateRun := placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(validupdateRunNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					PlacementName:            "test-placement",
+					ResourceSnapshotIndex:    "1",
+					StagedUpdateStrategyName: "test-strategy",
 				},
 			}
 			Expect(hubClient.Create(ctx, &updateRun)).Should(Succeed())

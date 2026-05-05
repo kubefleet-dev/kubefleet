@@ -1460,7 +1460,6 @@ spec:
                 - Stop
                 type: string
               stuckThreshold:
-                default: 5m
                 description: |-
                   StuckThreshold is the duration after which a cluster update is considered stuck if propagated resources are either not applied or available yet.
                   If not specified, the default stuck threshold of 5 minutes is used.

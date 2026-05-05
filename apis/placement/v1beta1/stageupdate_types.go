@@ -17,6 +17,8 @@ limitations under the License.
 package v1beta1
 
 import (
+	"time"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -166,6 +168,11 @@ const (
 	StateStop State = "Stop"
 )
 
+const (
+	// DefaultStuckThreshold is the default duration after which a cluster update is considered stuck.
+	DefaultStuckThreshold = 5 * time.Minute
+)
+
 // UpdateRunSpec defines the desired rollout strategy and the snapshot indices of the resources to be updated.
 // It specifies a stage-by-stage update process across selected clusters for the given ResourcePlacement object.
 // +kubebuilder:validation:XValidation:rule="!(has(oldSelf.state) && oldSelf.state == 'Initialize' && self.state == 'Stop')",message="invalid state transition: cannot transition from Initialize to Stop"
@@ -206,8 +213,7 @@ type UpdateRunSpec struct {
 	// StuckThreshold is the duration after which a cluster update is considered stuck if propagated resources are either not applied or available yet.
 	// If not specified, the default stuck threshold of 5 minutes is used.
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:default="5m"
-	// +kubebuilder:validation:Pattern="^0|([0-9]+(\\.[0-9]+)?(s|m|h))+$"
+	// +kubebuilder:validation:Pattern="^(?:[0-9]+(\\.[0-9]+)?(?:s|m|h))+$"
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="stuckThreshold is immutable"
 	StuckThreshold *metav1.Duration `json:"stuckThreshold,omitempty"`
