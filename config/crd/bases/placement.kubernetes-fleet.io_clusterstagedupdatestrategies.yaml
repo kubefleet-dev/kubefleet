@@ -70,14 +70,18 @@ spec:
                             - Approval
                             type: string
                           waitTime:
-                            description: The time to wait after all the clusters in
-                              the current stage complete the update before moving
-                              to the next stage.
-                            pattern: ^(?:0|(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+)$
+                            description: |-
+                              The time to wait after all the clusters in the current stage complete the update before moving to the next stage.
+                              Only hours (h), minutes (m), and seconds (s) units are accepted.
+                            pattern: ^(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+$
                             type: string
                         required:
                         - type
                         type: object
+                        x-kubernetes-validations:
+                        - message: waitTime must be a non-negative duration
+                          rule: '!has(self.waitTime) || duration(self.waitTime) >=
+                            duration(''0s'')'
                       maxItems: 2
                       type: array
                       x-kubernetes-validations:
@@ -101,14 +105,18 @@ spec:
                             - Approval
                             type: string
                           waitTime:
-                            description: The time to wait after all the clusters in
-                              the current stage complete the update before moving
-                              to the next stage.
-                            pattern: ^(?:0|(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+)$
+                            description: |-
+                              The time to wait after all the clusters in the current stage complete the update before moving to the next stage.
+                              Only hours (h), minutes (m), and seconds (s) units are accepted.
+                            pattern: ^(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+$
                             type: string
                         required:
                         - type
                         type: object
+                        x-kubernetes-validations:
+                        - message: waitTime must be a non-negative duration
+                          rule: '!has(self.waitTime) || duration(self.waitTime) >=
+                            duration(''0s'')'
                       maxItems: 1
                       type: array
                       x-kubernetes-validations:
@@ -399,14 +407,18 @@ spec:
                             - Approval
                             type: string
                           waitTime:
-                            description: The time to wait after all the clusters in
-                              the current stage complete the update before moving
-                              to the next stage.
-                            pattern: ^(?:0|(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+)$
+                            description: |-
+                              The time to wait after all the clusters in the current stage complete the update before moving to the next stage.
+                              Only hours (h), minutes (m), and seconds (s) units are accepted.
+                            pattern: ^(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+$
                             type: string
                         required:
                         - type
                         type: object
+                        x-kubernetes-validations:
+                        - message: waitTime must be a non-negative duration
+                          rule: '!has(self.waitTime) || duration(self.waitTime) >=
+                            duration(''0s'')'
                       maxItems: 2
                       type: array
                       x-kubernetes-validations:
@@ -430,14 +442,18 @@ spec:
                             - Approval
                             type: string
                           waitTime:
-                            description: The time to wait after all the clusters in
-                              the current stage complete the update before moving
-                              to the next stage.
-                            pattern: ^(?:0|(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+)$
+                            description: |-
+                              The time to wait after all the clusters in the current stage complete the update before moving to the next stage.
+                              Only hours (h), minutes (m), and seconds (s) units are accepted.
+                            pattern: ^(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+$
                             type: string
                         required:
                         - type
                         type: object
+                        x-kubernetes-validations:
+                        - message: waitTime must be a non-negative duration
+                          rule: '!has(self.waitTime) || duration(self.waitTime) >=
+                            duration(''0s'')'
                       maxItems: 1
                       type: array
                       x-kubernetes-validations:

@@ -1687,7 +1687,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			Expect(hubClient.Delete(ctx, &strategy)).Should(Succeed())
 		})
 
-		It("Should allow creation of ClusterStagedUpdateStrategy with waitTime set to '0'", func() {
+		It("Should allow creation of ClusterStagedUpdateStrategy with waitTime set to '0s'", func() {
 			obj := &unstructured.Unstructured{
 				Object: map[string]interface{}{
 					"apiVersion": "placement.kubernetes-fleet.io/v1beta1",
@@ -1702,7 +1702,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 								"afterStageTasks": []interface{}{
 									map[string]interface{}{
 										"type":     "TimedWait",
-										"waitTime": "0",
+										"waitTime": "0s",
 									},
 								},
 							},
@@ -2197,6 +2197,35 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 									map[string]interface{}{
 										"type":     "TimedWait",
 										"waitTime": "1",
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, obj)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("spec.stages\\[0\\].afterStageTasks\\[0\\].waitTime in body should match"))
+		})
+
+		It("Should deny creation of ClusterStagedUpdateStrategy with invalid waitTime '0' (bare zero without unit)", func() {
+			obj := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"apiVersion": "placement.kubernetes-fleet.io/v1beta1",
+					"kind":       "ClusterStagedUpdateStrategy",
+					"metadata": map[string]interface{}{
+						"name": fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
+					},
+					"spec": map[string]interface{}{
+						"stages": []interface{}{
+							map[string]interface{}{
+								"name": fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
+								"afterStageTasks": []interface{}{
+									map[string]interface{}{
+										"type":     "TimedWait",
+										"waitTime": "0",
 									},
 								},
 							},

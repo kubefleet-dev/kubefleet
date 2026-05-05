@@ -340,6 +340,7 @@ type StageConfig struct {
 }
 
 // StageTask is the pre or post stage task that needs to be completed before starting or moving to the next stage.
+// +kubebuilder:validation:XValidation:rule="!has(self.waitTime) || duration(self.waitTime) >= duration('0s')",message="waitTime must be a non-negative duration"
 type StageTask struct {
 	// The type of the before or after stage task.
 	// +kubebuilder:validation:Enum=TimedWait;Approval
@@ -347,7 +348,8 @@ type StageTask struct {
 	Type StageTaskType `json:"type"`
 
 	// The time to wait after all the clusters in the current stage complete the update before moving to the next stage.
-	// +kubebuilder:validation:Pattern="^(?:0|(?:[0-9]+(\\.[0-9]+)?(?:s|m|h))+)$"
+	// Only hours (h), minutes (m), and seconds (s) units are accepted.
+	// +kubebuilder:validation:Pattern="^(?:[0-9]+(\\.[0-9]+)?(?:s|m|h))+$"
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:Optional
 	WaitTime *metav1.Duration `json:"waitTime,omitempty"`
