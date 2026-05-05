@@ -75,13 +75,12 @@ spec:
                               Only hours (h), minutes (m), and seconds (s) units are accepted.
                             pattern: ^(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+$
                             type: string
+                            x-kubernetes-validations:
+                            - message: waitTime must be a valid duration
+                              rule: duration(self) >= duration('0s')
                         required:
                         - type
                         type: object
-                        x-kubernetes-validations:
-                        - message: waitTime must be a non-negative duration
-                          rule: '!has(self.waitTime) || duration(self.waitTime) >=
-                            duration(''0s'')'
                       maxItems: 2
                       type: array
                       x-kubernetes-validations:
@@ -110,13 +109,12 @@ spec:
                               Only hours (h), minutes (m), and seconds (s) units are accepted.
                             pattern: ^(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+$
                             type: string
+                            x-kubernetes-validations:
+                            - message: waitTime must be a valid duration
+                              rule: duration(self) >= duration('0s')
                         required:
                         - type
                         type: object
-                        x-kubernetes-validations:
-                        - message: waitTime must be a non-negative duration
-                          rule: '!has(self.waitTime) || duration(self.waitTime) >=
-                            duration(''0s'')'
                       maxItems: 1
                       type: array
                       x-kubernetes-validations:
@@ -272,13 +270,12 @@ spec:
                               Only hours (h), minutes (m), and seconds (s) units are accepted.
                             pattern: ^(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+$
                             type: string
+                            x-kubernetes-validations:
+                            - message: waitTime must be a valid duration
+                              rule: duration(self) >= duration('0s')
                         required:
                         - type
                         type: object
-                        x-kubernetes-validations:
-                        - message: waitTime must be a non-negative duration
-                          rule: '!has(self.waitTime) || duration(self.waitTime) >=
-                            duration(''0s'')'
                       maxItems: 2
                       type: array
                       x-kubernetes-validations:
@@ -307,13 +304,12 @@ spec:
                               Only hours (h), minutes (m), and seconds (s) units are accepted.
                             pattern: ^(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+$
                             type: string
+                            x-kubernetes-validations:
+                            - message: waitTime must be a valid duration
+                              rule: duration(self) >= duration('0s')
                         required:
                         - type
                         type: object
-                        x-kubernetes-validations:
-                        - message: waitTime must be a non-negative duration
-                          rule: '!has(self.waitTime) || duration(self.waitTime) >=
-                            duration(''0s'')'
                       maxItems: 1
                       type: array
                       x-kubernetes-validations:
