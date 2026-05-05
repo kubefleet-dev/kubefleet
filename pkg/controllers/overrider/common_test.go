@@ -383,6 +383,34 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot0.Name}, final0)).Should(Succeed())
 			Expect(final0.Labels[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("true"))
 		})
+
+		It("Should take the hash-match path and audit siblings when the latest snapshot's hash equals the CRO spec", func() {
+			// Pre-create snapshot 0 with a hash that matches the CRO's current spec. When the
+			// controller lists snapshots and inspects the highest-index one (this snapshot), the
+			// hash check at the top of ensureClusterResourceOverrideSnapshot will short-circuit:
+			// no new snapshot is created and ensureSnapshotLatest + cleanupStaleLatestSiblings run.
+			intendedHash, err := resource.HashOf(aeCRO.Spec)
+			Expect(err).Should(Succeed())
+			snapshot0 := getClusterResourceOverrideSnapshot(aeCROName, 0)
+			snapshot0.Spec.OverrideHash = []byte(intendedHash)
+			snapshot0.Spec.OverrideSpec = aeCRO.Spec
+			// ensureSnapshotLatest should flip this back to true on the hash-match path.
+			snapshot0.Labels[placementv1beta1.IsLatestSnapshotLabel] = strconv.FormatBool(false)
+			Expect(k8sClient.Create(ctx, snapshot0)).Should(Succeed())
+
+			Expect(aeReconciler.ensureClusterResourceOverrideSnapshot(ctx, aeCRO, 10)).Should(Succeed())
+
+			By("Verifying ensureSnapshotLatest flipped snapshot 0 back to latest=true")
+			final0 := &placementv1beta1.ClusterResourceOverrideSnapshot{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot0.Name}, final0)).Should(Succeed())
+			Expect(final0.Labels[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("true"))
+
+			By("Verifying no new snapshot at index 1 was created")
+			snapshot1 := getClusterResourceOverrideSnapshot(aeCROName, 1)
+			Expect(apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot1.Name}, snapshot1))).Should(BeTrue(),
+				"hash-match path must not create a new snapshot")
+		})
+
 	})
 })
 
@@ -683,6 +711,29 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 			final0 := &placementv1beta1.ResourceOverrideSnapshot{}
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot0.Name, Namespace: snapshot0.Namespace}, final0)).Should(Succeed())
 			Expect(final0.Labels[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("true"))
+		})
+
+		It("Should take the hash-match path and audit siblings when the latest snapshot's hash equals the RO spec", func() {
+			// Mirror of the CRO hash-match test for the namespaced controller.
+			intendedHash, err := resource.HashOf(aeRO.Spec)
+			Expect(err).Should(Succeed())
+			snapshot0 := getResourceOverrideSnapshot(aeROName, namespaceName, 0)
+			snapshot0.Spec.OverrideHash = []byte(intendedHash)
+			snapshot0.Spec.OverrideSpec = aeRO.Spec
+			snapshot0.Labels[placementv1beta1.IsLatestSnapshotLabel] = strconv.FormatBool(false)
+			Expect(k8sClient.Create(ctx, snapshot0)).Should(Succeed())
+
+			Expect(aeReconciler.ensureResourceOverrideSnapshot(ctx, aeRO, 10)).Should(Succeed())
+
+			By("Verifying ensureSnapshotLatest flipped snapshot 0 back to latest=true")
+			final0 := &placementv1beta1.ResourceOverrideSnapshot{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot0.Name, Namespace: snapshot0.Namespace}, final0)).Should(Succeed())
+			Expect(final0.Labels[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("true"))
+
+			By("Verifying no new snapshot at index 1 was created")
+			snapshot1 := getResourceOverrideSnapshot(aeROName, namespaceName, 1)
+			Expect(apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot1.Name, Namespace: snapshot1.Namespace}, snapshot1))).Should(BeTrue(),
+				"hash-match path must not create a new snapshot")
 		})
 	})
 })
