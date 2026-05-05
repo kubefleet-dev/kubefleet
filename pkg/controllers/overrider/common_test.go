@@ -37,6 +37,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/labels"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/resource"
 )
 
 const (
@@ -126,7 +127,7 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 	})
 
 	Context("Test remove extra cluster override snapshots", func() {
-		It("Should not remove any snapshots if we no snapshot", func() {
+		It("Should not remove any snapshots if we have no snapshots", func() {
 			snapshotList := &unstructured.UnstructuredList{
 				Items: []unstructured.Unstructured{},
 			}
@@ -150,7 +151,7 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			}
 		})
 
-		It("Should remove 1 extra snapshots if we just reach the limit", func() {
+		It("Should remove 1 extra snapshot if we just reach the limit", func() {
 			snapshotList, err := commonReconciler.listSortedOverrideSnapshots(ctx, cro)
 			Expect(err).Should(Succeed())
 			// we have 5 snapshots, and the limit is 5, so we should remove one. This is the base case.
@@ -191,7 +192,7 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 		})
 	})
 
-	Context("Test remove extra override snapshots", func() {
+	Context("Test ensureSnapshotLatest", func() {
 		It("Should keep the latest label as true if it's already true", func() {
 			snapshot := getClusterResourceOverrideSnapshot(testCROName, 0)
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot.GetName()}, snapshot)).Should(Succeed())
@@ -223,6 +224,146 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 				placementv1beta1.OverrideTrackingLabel: testCROName,
 			}, snapshot.GetLabels())
 			Expect(diff).Should(BeEmpty(), diff)
+		})
+	})
+
+	Context("Test cleanupStaleLatestSiblings on CRO snapshots", func() {
+		It("Should be a no-op when only one snapshot is latest=true", func() {
+			By("flipping all but the highest-index snapshot to latest=false")
+			for i := range 4 {
+				snapshot := getClusterResourceOverrideSnapshot(testCROName, i)
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot.GetName()}, snapshot)).Should(Succeed())
+				labels := snapshot.GetLabels()
+				labels[placementv1beta1.IsLatestSnapshotLabel] = "false"
+				snapshot.SetLabels(labels)
+				Expect(k8sClient.Update(ctx, snapshot)).Should(Succeed())
+			}
+
+			By("calling the audit on the freshly listed snapshots")
+			snapshotList, err := commonReconciler.listSortedOverrideSnapshots(ctx, cro)
+			Expect(err).Should(Succeed())
+			Expect(commonReconciler.cleanupStaleLatestSiblings(ctx, snapshotList)).Should(Succeed())
+
+			By("verifying that the highest-index snapshot is still latest=true")
+			highest := getClusterResourceOverrideSnapshot(testCROName, 4)
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: highest.GetName()}, highest)).Should(Succeed())
+			Expect(highest.GetLabels()[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("true"))
+
+			By("verifying that the older snapshots remain latest=false")
+			for i := range 4 {
+				snapshot := getClusterResourceOverrideSnapshot(testCROName, i)
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot.GetName()}, snapshot)).Should(Succeed())
+				Expect(snapshot.GetLabels()[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("false"))
+			}
+		})
+
+		It("Should flip every stale latest=true sibling to false", func() {
+			// BeforeEach creates 5 snapshots all with latest=true, simulating the post-crash
+			// state where Create-first succeeded several times but the demote step failed.
+			By("calling the audit on the freshly listed snapshots")
+			snapshotList, err := commonReconciler.listSortedOverrideSnapshots(ctx, cro)
+			Expect(err).Should(Succeed())
+			Expect(commonReconciler.cleanupStaleLatestSiblings(ctx, snapshotList)).Should(Succeed())
+
+			By("verifying that the highest-index snapshot keeps latest=true")
+			highest := getClusterResourceOverrideSnapshot(testCROName, 4)
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: highest.GetName()}, highest)).Should(Succeed())
+			Expect(highest.GetLabels()[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("true"))
+
+			By("verifying that the older snapshots are flipped to latest=false")
+			for i := range 4 {
+				snapshot := getClusterResourceOverrideSnapshot(testCROName, i)
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot.GetName()}, snapshot)).Should(Succeed())
+				Expect(snapshot.GetLabels()[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("false"))
+			}
+		})
+
+		It("Should be a no-op for empty or single-item lists", func() {
+			Expect(commonReconciler.cleanupStaleLatestSiblings(ctx, nil)).Should(Succeed())
+			Expect(commonReconciler.cleanupStaleLatestSiblings(ctx, &unstructured.UnstructuredList{})).Should(Succeed())
+		})
+	})
+
+	Context("Test ensureClusterResourceOverrideSnapshot AlreadyExists recovery", func() {
+		var aeReconciler *ClusterResourceReconciler
+		var aeCROName string
+		var aeCRO *placementv1beta1.ClusterResourceOverride
+
+		BeforeEach(func() {
+			// Use a dedicated CRO name so this Context's snapshots don't collide with the parent
+			// BeforeEach's snapshots (which all share testCROName at indices 0-4).
+			aeCROName = fmt.Sprintf("test-cro-already-exists-%s", utils.RandStr())
+			aeCRO = getClusterResourceOverride(aeCROName)
+			// We don't apply the CRO to the cluster (would trigger the real reconcile loop), but
+			// the snapshot Create inside ensureClusterResourceOverrideSnapshot adds an OwnerReference
+			// whose UID must be non-empty for API-server validation.
+			aeCRO.UID = "fake-uid-for-owner-ref"
+			aeReconciler = &ClusterResourceReconciler{Reconciler: commonReconciler}
+		})
+
+		AfterEach(func() {
+			// Clean up snapshots created in this Context. Both indices may or may not exist.
+			for i := 0; i < 2; i++ {
+				snap := getClusterResourceOverrideSnapshot(aeCROName, i)
+				Expect(k8sClient.Delete(ctx, snap)).Should(SatisfyAny(Succeed(), &utils.NotFoundMatcher{}))
+			}
+		})
+
+		It("Should treat AlreadyExists with matching hash as success and demote the previous snapshot", func() {
+			// Pre-create snapshot 0 fully tracked: this is the "previous latest" the controller
+			// will see via listSortedOverrideSnapshots.
+			snapshot0 := getClusterResourceOverrideSnapshot(aeCROName, 0)
+			snapshot0.Spec.OverrideHash = []byte("old-hash")
+			Expect(k8sClient.Create(ctx, snapshot0)).Should(Succeed())
+
+			// Pre-create snapshot 1 WITHOUT the OverrideTrackingLabel so listSortedOverrideSnapshots
+			// (which filters by tracking label) does not see it. The controller will compute a new
+			// snapshot at index 1 and hit AlreadyExists when it tries to Create.
+			//
+			// In production the real trigger for this branch is etcd restore from backup (a
+			// snapshot that exists in etcd but is invisible to the controller's listing pass),
+			// which envtest cannot simulate directly. Stripping the tracking label is the most
+			// faithful approximation available in an integration test.
+			intendedHash, err := resource.HashOf(aeCRO.Spec)
+			Expect(err).Should(Succeed())
+			invisibleSnapshot1 := getClusterResourceOverrideSnapshot(aeCROName, 1)
+			delete(invisibleSnapshot1.Labels, placementv1beta1.OverrideTrackingLabel)
+			invisibleSnapshot1.Spec.OverrideHash = []byte(intendedHash)
+			invisibleSnapshot1.Spec.OverrideSpec = aeCRO.Spec
+			Expect(k8sClient.Create(ctx, invisibleSnapshot1)).Should(Succeed())
+
+			Expect(aeReconciler.ensureClusterResourceOverrideSnapshot(ctx, aeCRO, 10)).Should(Succeed(),
+				"AlreadyExists with matching hash should be treated as success")
+
+			By("Verifying snapshot 0 was demoted to latest=false")
+			final0 := &placementv1beta1.ClusterResourceOverrideSnapshot{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot0.Name}, final0)).Should(Succeed())
+			Expect(final0.Labels[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("false"))
+		})
+
+		It("Should return ExpectedBehaviorError when AlreadyExists target has a mismatched hash", func() {
+			snapshot0 := getClusterResourceOverrideSnapshot(aeCROName, 0)
+			snapshot0.Spec.OverrideHash = []byte("old-hash")
+			Expect(k8sClient.Create(ctx, snapshot0)).Should(Succeed())
+
+			// Pre-create snapshot 1 invisibly with a hash that does NOT match the CRO's spec —
+			// simulating etcd restore from backup or a future hash-function change. The most
+			// likely real-world trigger is an etcd restore where retry will eventually converge,
+			// so the controller surfaces an expected-behavior error rather than a hard failure.
+			invisibleSnapshot1 := getClusterResourceOverrideSnapshot(aeCROName, 1)
+			delete(invisibleSnapshot1.Labels, placementv1beta1.OverrideTrackingLabel)
+			invisibleSnapshot1.Spec.OverrideHash = []byte("stale-hash-from-backup")
+			Expect(k8sClient.Create(ctx, invisibleSnapshot1)).Should(Succeed())
+
+			err := aeReconciler.ensureClusterResourceOverrideSnapshot(ctx, aeCRO, 10)
+			Expect(err).Should(HaveOccurred(), "mismatched hash should not silently succeed")
+			Expect(errors.Is(err, controller.ErrExpectedBehavior)).Should(BeTrue(),
+				"error should wrap ErrExpectedBehavior so retry runs without stack-trace floods, got %v", err)
+
+			By("Verifying snapshot 0 was NOT demoted (we abort before the demote step)")
+			final0 := &placementv1beta1.ClusterResourceOverrideSnapshot{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot0.Name}, final0)).Should(Succeed())
+			Expect(final0.Labels[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("true"))
 		})
 	})
 })
@@ -320,7 +461,7 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 	})
 
 	Context("Test remove extra cluster override snapshots", func() {
-		It("Should not remove any snapshots if we no snapshot", func() {
+		It("Should not remove any snapshots if we have no snapshots", func() {
 			snapshotList := &unstructured.UnstructuredList{
 				Items: []unstructured.Unstructured{},
 			}
@@ -344,14 +485,14 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 			}
 		})
 
-		It("Should remove 1 extra snapshots if we just reach the limit", func() {
+		It("Should remove 1 extra snapshot if we just reach the limit", func() {
 			snapshotList, err := commonReconciler.listSortedOverrideSnapshots(ctx, ro)
 			Expect(err).Should(Succeed())
 			// we have 7 snapshots, and the limit is 7, so we should remove one. This is the base case.
 			err = commonReconciler.removeExtraSnapshot(ctx, snapshotList, totalSnapshots)
 			Expect(err).Should(Succeed())
 			By("verifying that the oldest snapshot is removed")
-			snapshot := getClusterResourceOverrideSnapshot(testROName, 0)
+			snapshot := getResourceOverrideSnapshot(testROName, ro.Namespace, 0)
 			Eventually(func() bool {
 				return apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot.Name, Namespace: snapshot.Namespace}, snapshot))
 			}, eventuallyTimeout, interval).Should(BeTrue(), "snapshot should be deleted")
@@ -385,7 +526,7 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 		})
 	})
 
-	Context("Test remove extra override snapshots", func() {
+	Context("Test ensureSnapshotLatest", func() {
 		It("Should keep the latest label as true if it's already true", func() {
 			snapshot := getResourceOverrideSnapshot(testROName, ro.Namespace, 0)
 			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot.GetName(), Namespace: snapshot.Namespace}, snapshot)).Should(Succeed())
@@ -417,6 +558,28 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 				placementv1beta1.OverrideTrackingLabel: testROName,
 			}, snapshot.GetLabels())
 			Expect(diff).Should(BeEmpty(), diff)
+		})
+	})
+
+	Context("Test cleanupStaleLatestSiblings on RO snapshots", func() {
+		It("Should flip every stale latest=true sibling to false (post-crash recovery)", func() {
+			// BeforeEach creates 7 snapshots all with latest=true, simulating the post-crash state.
+			By("calling the audit on the freshly listed snapshots")
+			snapshotList, err := commonReconciler.listSortedOverrideSnapshots(ctx, ro)
+			Expect(err).Should(Succeed())
+			Expect(commonReconciler.cleanupStaleLatestSiblings(ctx, snapshotList)).Should(Succeed())
+
+			By("verifying that the highest-index snapshot keeps latest=true")
+			highest := getResourceOverrideSnapshot(testROName, ro.Namespace, totalSnapshots-1)
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: highest.GetName(), Namespace: highest.Namespace}, highest)).Should(Succeed())
+			Expect(highest.GetLabels()[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("true"))
+
+			By("verifying that the older snapshots are flipped to latest=false")
+			for i := 0; i < totalSnapshots-1; i++ {
+				snapshot := getResourceOverrideSnapshot(testROName, ro.Namespace, i)
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot.GetName(), Namespace: snapshot.Namespace}, snapshot)).Should(Succeed())
+				Expect(snapshot.GetLabels()[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("false"))
+			}
 		})
 	})
 })

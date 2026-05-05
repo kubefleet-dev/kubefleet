@@ -37,6 +37,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
+	fleetlabels "github.com/kubefleet-dev/kubefleet/pkg/utils/labels"
 )
 
 // FetchAllMatchingOverridesForResourceSnapshot fetches all the matching overrides which are attached to the selected resources.
@@ -66,6 +67,13 @@ func FetchAllMatchingOverridesForResourceSnapshot(
 	if len(croList.Items) == 0 && len(roList.Items) == 0 {
 		return nil, nil, nil // no overrides and nothing to do
 	}
+
+	// Dedup at read time. The override controllers create the new latest=true snapshot before
+	// flipping the previous one to false, so a brief window can leave more than one snapshot per
+	// parent carrying latest=true. We collapse each parent to its highest-OverrideIndexLabel
+	// snapshot, which is always the authoritative latest.
+	croList.Items = dedupLatestSnapshots(croList.Items, croDedupKey)
+	roList.Items = dedupLatestSnapshots(roList.Items, roDedupKey)
 
 	resourceSnapshots, err := controller.FetchAllResourceSnapshotsAlongWithMaster(ctx, c, placementKey, masterResourceSnapshot)
 	if err != nil {
@@ -246,6 +254,80 @@ func isClusterMatched(cluster *clusterv1beta1.MemberCluster, policy *placementv1
 		}
 	}
 	return false, nil
+}
+
+// dedupLatestSnapshots returns at most one snapshot per parent override, choosing the highest
+// OverrideIndexLabel as the winner. The dedup key is supplied by the caller: for cluster-scoped
+// overrides it is the OverrideTrackingLabel alone; for namespace-scoped overrides it must be a
+// (namespace, OverrideTrackingLabel) composite because RO names can collide across namespaces.
+//
+// A snapshot whose tracking label is missing/empty or whose OverrideIndexLabel is unparsable is
+// logged as an error and skipped: this fetch runs in the rollout hot path, so failing the entire
+// fetch over a single corrupt snapshot would block override application for every placement.
+// The error log is loud enough for operators to notice; the affected override loses one update
+// cycle until the snapshot's labels are repaired.
+//
+// PT is *T constrained to client.Object so we can extract metadata and labels without copying.
+func dedupLatestSnapshots[T any, PT interface {
+	*T
+	client.Object
+}](items []T, keyOf func(PT) string) []T {
+	if len(items) <= 1 {
+		return items
+	}
+	winners := make(map[string]int, len(items))
+	winnerIndex := make(map[string]int, len(items))
+	for i := range items {
+		ptr := PT(&items[i])
+		key := keyOf(ptr)
+		if key == "" {
+			klog.ErrorS(fmt.Errorf("snapshot %s is missing %s label", klog.KObj(ptr), placementv1beta1.OverrideTrackingLabel),
+				"Skipping malformed snapshot during dedup; operator action required to repair labels",
+				"snapshot", klog.KObj(ptr))
+			continue
+		}
+		index, err := fleetlabels.ExtractIndex(ptr, placementv1beta1.OverrideIndexLabel)
+		if err != nil {
+			klog.ErrorS(err, "Skipping snapshot with unparsable override index label during dedup; operator action required",
+				"snapshot", klog.KObj(ptr))
+			continue
+		}
+		if _, seen := winners[key]; !seen || index > winnerIndex[key] {
+			winners[key] = i
+			winnerIndex[key] = index
+		}
+	}
+	deduped := make([]T, 0, len(winners))
+	for _, idx := range winners {
+		deduped = append(deduped, items[idx])
+	}
+	// Map iteration order is non-deterministic; sort the result by namespace+name so callers
+	// (and tests) see a stable order. Cluster-scoped snapshots have an empty namespace, which
+	// sorts naturally before namespaced ones.
+	sort.SliceStable(deduped, func(i, j int) bool {
+		ai := PT(&deduped[i])
+		aj := PT(&deduped[j])
+		if ai.GetNamespace() != aj.GetNamespace() {
+			return ai.GetNamespace() < aj.GetNamespace()
+		}
+		return ai.GetName() < aj.GetName()
+	})
+	return deduped
+}
+
+// croDedupKey keys ClusterResourceOverrideSnapshots by OverrideTrackingLabel alone (cluster-scoped).
+func croDedupKey(s *placementv1beta1.ClusterResourceOverrideSnapshot) string {
+	return s.GetLabels()[placementv1beta1.OverrideTrackingLabel]
+}
+
+// roDedupKey keys ResourceOverrideSnapshots by (namespace, OverrideTrackingLabel) so identically
+// named ROs in different namespaces are not collapsed.
+func roDedupKey(s *placementv1beta1.ResourceOverrideSnapshot) string {
+	parent := s.GetLabels()[placementv1beta1.OverrideTrackingLabel]
+	if parent == "" {
+		return ""
+	}
+	return s.Namespace + "/" + parent
 }
 
 // IsClusterMatched checks if the cluster is matched with the override rules.

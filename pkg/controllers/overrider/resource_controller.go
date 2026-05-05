@@ -23,9 +23,11 @@ import (
 	"strconv"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -42,7 +44,7 @@ type ResourceReconciler struct {
 	Reconciler
 }
 
-// Reconcile triggers a single  reconcile round when scheduling policy has changed.
+// Reconcile triggers a single reconcile round when the override has changed.
 func (r *ResourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	name := req.NamespacedName
 	resourceOverride := placementv1beta1.ResourceOverride{}
@@ -82,54 +84,49 @@ func (r *ResourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 func (r *ResourceReconciler) ensureResourceOverrideSnapshot(ctx context.Context, ro *placementv1beta1.ResourceOverride, revisionHistoryLimit int) error {
-	croKObj := klog.KObj(ro)
+	roKObj := klog.KObj(ro)
 	overridePolicy := ro.Spec
 	overrideSpecHash, err := resource.HashOf(overridePolicy)
 	if err != nil {
-		klog.ErrorS(err, "Failed to generate policy hash of ResourceOverride", "ResourceOverride", croKObj)
+		klog.ErrorS(err, "Failed to generate policy hash of ResourceOverride", "resourceOverride", roKObj)
 		return controller.NewUnexpectedBehaviorError(err)
 	}
-	// we need to list the snapshots anyway since we need to remove the extra snapshots if there are too many of them.
+	// We always list the snapshots so we can prune any that exceed the revision history limit.
 	snapshotList, err := r.listSortedOverrideSnapshots(ctx, ro)
 	if err != nil {
 		return err
 	}
-	// delete redundant snapshot revisions before creating a new snapshot to guarantee that the number of snapshots won't exceed the limit.
 	if err = r.removeExtraSnapshot(ctx, snapshotList, revisionHistoryLimit); err != nil {
 		return err
 	}
 
 	latestSnapshotIndex := -1
+	var latestSnapshot *placementv1beta1.ResourceOverrideSnapshot
 	if len(snapshotList.Items) != 0 {
-		// convert the last unstructured snapshot to the typed object
-		latestSnapshot := &placementv1beta1.ResourceOverrideSnapshot{}
+		// Convert the last (highest-index) unstructured snapshot to the typed object.
+		latestSnapshot = &placementv1beta1.ResourceOverrideSnapshot{}
 		if err = runtime.DefaultUnstructuredConverter.FromUnstructured(snapshotList.Items[len(snapshotList.Items)-1].Object, latestSnapshot); err != nil {
-			klog.ErrorS(err, "Invalid overrideSnapshot", "ResourceOverride", croKObj, "overrideSnapshot", klog.KObj(&snapshotList.Items[len(snapshotList.Items)-1]))
+			klog.ErrorS(err, "Invalid overrideSnapshot", "resourceOverride", roKObj, "overrideSnapshot", klog.KObj(&snapshotList.Items[len(snapshotList.Items)-1]))
 			return controller.NewUnexpectedBehaviorError(err)
 		}
 		if string(latestSnapshot.Spec.OverrideHash) == overrideSpecHash {
-			// the content has not changed, so we don't need to create a new snapshot.
-			return r.ensureSnapshotLatest(ctx, latestSnapshot)
-		}
-		// mark the last policy snapshot as inactive if it is different from what we have now.
-		if latestSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] == strconv.FormatBool(true) {
-			// set the latest label to false first to make sure there is only one or none active policy snapshot
-			latestSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] = strconv.FormatBool(false)
-			if err := r.Client.Update(ctx, latestSnapshot); err != nil {
-				klog.ErrorS(err, "Failed to set the isLatestSnapshot label to false", "ResourceOverride", croKObj, "overrideSnapshot", klog.KObj(latestSnapshot))
-				return controller.NewUpdateIgnoreConflictError(err)
+			// The content has not changed; no new snapshot is needed. Ensure the highest-index
+			// snapshot is marked latest, then audit siblings to clean up any duplicate latest=true
+			// left by a prior partial run.
+			if err := r.ensureSnapshotLatest(ctx, latestSnapshot); err != nil {
+				return err
 			}
-			klog.V(2).InfoS("Marked the latest overrideSnapshot as inactive", "ResourceOverride", croKObj, "overrideSnapshot", klog.KObj(latestSnapshot))
+			return r.cleanupStaleLatestSiblings(ctx, snapshotList)
 		}
-		// we need to figure out the last snapshot index.
 		latestSnapshotIndex, err = labels.ExtractIndex(latestSnapshot, placementv1beta1.OverrideIndexLabel)
 		if err != nil {
-			klog.ErrorS(err, "Failed to parse the override index label", "ResourceOverride", croKObj, "overrideSnapshot", klog.KObj(latestSnapshot))
+			klog.ErrorS(err, "Failed to parse the override index label", "resourceOverride", roKObj, "overrideSnapshot", klog.KObj(latestSnapshot))
 			return controller.NewUnexpectedBehaviorError(err)
 		}
 	}
 
-	// Need to create new snapshot when 1) there is no snapshots or 2) the latest snapshot hash != current one.
+	// Create the new snapshot (latest=true) BEFORE flipping the old one to false. See the CRO
+	// controller for the rationale; this avoids a zero-latest window across crashes.
 	latestSnapshotIndex++
 	newSnapshot := &placementv1beta1.ResourceOverrideSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
@@ -150,15 +147,58 @@ func (r *ResourceReconciler) ensureResourceOverrideSnapshot(ctx context.Context,
 		},
 	}
 	if err = r.Client.Create(ctx, newSnapshot); err != nil {
-		klog.ErrorS(err, "Failed to create new overrideSnapshot", "newOverrideSnapshot", klog.KObj(newSnapshot))
-		return controller.NewAPIServerError(false, err)
+		if !errors.IsAlreadyExists(err) {
+			klog.ErrorS(err, "Failed to create new overrideSnapshot", "newOverrideSnapshot", klog.KObj(newSnapshot))
+			return controller.NewAPIServerError(false, err)
+		}
+		// AlreadyExists here normally means a prior reconcile succeeded the Create but failed to
+		// flip the old snapshot. Verify the existing object's hash before proceeding so we don't
+		// silently promote stale content (etcd restore from backup, manual edit, future hash bug).
+		// Read through the uncached client: the cached read can lag the just-Created object.
+		existing := &placementv1beta1.ResourceOverrideSnapshot{}
+		if getErr := r.UncachedReader.Get(ctx, types.NamespacedName{Name: newSnapshot.Name, Namespace: newSnapshot.Namespace}, existing); getErr != nil {
+			klog.ErrorS(getErr, "Failed to get existing overrideSnapshot for hash verification", "resourceOverride", roKObj, "newOverrideSnapshot", klog.KObj(newSnapshot))
+			return controller.NewAPIServerError(false, getErr)
+		}
+		if string(existing.Spec.OverrideHash) != overrideSpecHash {
+			mismatchErr := fmt.Errorf("existing overrideSnapshot %s/%s has hash %q, want %q", existing.Namespace, existing.Name, string(existing.Spec.OverrideHash), overrideSpecHash)
+			klog.ErrorS(mismatchErr, "Existing overrideSnapshot has different content than expected; will requeue and retry", "resourceOverride", roKObj)
+			// Surface to the operator via an Event on the parent RO; see CRO controller for rationale.
+			if r.recorder != nil {
+				r.recorder.Eventf(ro, corev1.EventTypeWarning, "OverrideSnapshotHashMismatch",
+					"existing snapshot %s/%s has a different hash than the current spec; retrying. If this persists, the snapshot needs operator inspection (etcd restore from backup, manual edit, or hash-function change).", newSnapshot.Namespace, newSnapshot.Name)
+			}
+			// Treat as expected-behavior so retries don't carry stack traces; see CRO controller
+			// for the rationale.
+			return controller.NewExpectedBehaviorError(mismatchErr)
+		}
+		klog.V(2).InfoS("Snapshot already exists with matching content; recovering from prior partial reconcile", "resourceOverride", roKObj, "newOverrideSnapshot", klog.KObj(newSnapshot))
+	} else {
+		klog.V(2).InfoS("Created new overrideSnapshot", "resourceOverride", roKObj, "newOverrideSnapshot", klog.KObj(newSnapshot))
 	}
-	klog.V(2).InfoS("Created a new overrideSnapshot", "ResourceOverride", croKObj, "newOverrideSnapshot", klog.KObj(newSnapshot))
-	return nil
+
+	// Demote the previous latest snapshot. Tolerate IsNotFound so we still reach the sibling audit.
+	if latestSnapshot != nil && latestSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] == strconv.FormatBool(true) {
+		latestSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] = strconv.FormatBool(false)
+		if err := r.Client.Update(ctx, latestSnapshot); err != nil {
+			if errors.IsNotFound(err) {
+				klog.V(2).InfoS("Old overrideSnapshot already gone; skipping demotion", "resourceOverride", roKObj, "overrideSnapshot", klog.KObj(latestSnapshot))
+			} else {
+				klog.ErrorS(err, "Failed to set the isLatestSnapshot label to false on previous snapshot", "resourceOverride", roKObj, "overrideSnapshot", klog.KObj(latestSnapshot))
+				return controller.NewUpdateIgnoreConflictError(err)
+			}
+		} else {
+			klog.V(2).InfoS("Marked previous overrideSnapshot as inactive", "resourceOverride", roKObj, "overrideSnapshot", klog.KObj(latestSnapshot))
+		}
+	}
+
+	// Audit older siblings for stale latest=true left by prior crashes.
+	return r.cleanupStaleLatestSiblings(ctx, snapshotList)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ResourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.recorder = mgr.GetEventRecorderFor("resourceoverride-controller")
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("resourceoverride-controller").
 		For(&placementv1beta1.ResourceOverride{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).

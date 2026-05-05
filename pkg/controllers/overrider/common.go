@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -38,8 +39,16 @@ import (
 
 // Reconciler reconciles a clusterResourceOverride object.
 type Reconciler struct {
-	// Client is used to update objects which goes to the api server directly.
+	// Client is the cached controller-runtime client used for routine reads/writes.
 	client.Client
+	// UncachedReader bypasses the informer cache. Use it for read-after-write verification
+	// (e.g. post-Create hash checks on the AlreadyExists path) where a cached read could see
+	// stale state and force unnecessary requeues.
+	UncachedReader client.Reader
+	// recorder emits events on the parent override (CRO/RO) when the controller hits a state
+	// that requires operator visibility — e.g. an existing snapshot whose hash doesn't match
+	// the current spec, which silently retries forever otherwise. Set by SetupWithManager.
+	recorder record.EventRecorder
 }
 
 // handleOverrideDeleting handles the delete event of an override object. We need to delete all the related override Snapshot.
@@ -111,16 +120,28 @@ func (r *Reconciler) listSortedOverrideSnapshots(ctx context.Context, parentOver
 	return snapshotList, nil
 }
 
+// removeExtraSnapshot deletes oldest snapshots from sortedSnapshotList until the in-memory slice
+// length is at most limit-1, mirroring the API-server state. The slice is trimmed in place so any
+// downstream caller that consults sortedSnapshotList (e.g. cleanupStaleLatestSiblings) sees only
+// snapshots that should still exist on the server. On error the list is still trimmed by the
+// number of items we successfully accounted for, so a caller that retries doesn't double-process.
 func (r *Reconciler) removeExtraSnapshot(ctx context.Context, sortedSnapshotList *unstructured.UnstructuredList, limit int) error {
 	// the list is sorted by the override index, so we can just remove from the beginning
+	deleted := 0
+	defer func() {
+		sortedSnapshotList.Items = sortedSnapshotList.Items[deleted:]
+	}()
 	for i := 0; i <= len(sortedSnapshotList.Items)-limit; i++ {
 		if err := r.Client.Delete(ctx, &sortedSnapshotList.Items[i]); err != nil {
 			if !apierrors.IsNotFound(err) {
 				klog.ErrorS(err, "Failed to delete the extra override snapshot", "overrideSnapshot", klog.KObj(&sortedSnapshotList.Items[i]))
 				return controller.NewAPIServerError(false, err)
 			}
+			klog.V(2).InfoS("Extra override snapshot already gone", "overrideSnapshot", klog.KObj(&sortedSnapshotList.Items[i]))
+		} else {
+			klog.V(2).InfoS("Deleted the extra override snapshot", "overrideSnapshot", klog.KObj(&sortedSnapshotList.Items[i]))
 		}
-		klog.V(2).InfoS("Deleted the extra override snapshot", "overrideSnapshot", klog.KObj(&sortedSnapshotList.Items[i]))
+		deleted++
 	}
 	return nil
 }
@@ -130,13 +151,51 @@ func (r *Reconciler) ensureSnapshotLatest(ctx context.Context, latestSnapshot cl
 		klog.V(2).InfoS("Policy has not changed", "overrideSnapshot", klog.KObj(latestSnapshot))
 		return nil
 	}
-	// set the latest label to be true first to make sure there is only one or none active policy snapshot.
 	labels := latestSnapshot.GetLabels()
 	labels[placementv1beta1.IsLatestSnapshotLabel] = strconv.FormatBool(true)
 	latestSnapshot.SetLabels(labels)
 	if err := r.Client.Update(ctx, latestSnapshot); err != nil {
-		klog.ErrorS(err, "Failed to set the isLatestSnapshot label to false", "overrideSnapshot", klog.KObj(latestSnapshot))
+		klog.ErrorS(err, "Failed to set the isLatestSnapshot label to true", "overrideSnapshot", klog.KObj(latestSnapshot))
 		return controller.NewUpdateIgnoreConflictError(err)
+	}
+	return nil
+}
+
+// cleanupStaleLatestSiblings flips the IsLatestSnapshotLabel to false on any snapshot in
+// sortedSnapshotList other than the highest-index one. The list is assumed to be sorted in
+// ascending order of OverrideIndexLabel; the last item is the authoritative latest snapshot.
+//
+// This handles two scenarios:
+//   - A prior reconcile crashed between Create(new) and Update(old, latest=false), leaving
+//     duplicate latest=true labels.
+//   - Any other source of inconsistency (manual edit, partial-state recovery) that leaves
+//     stale latest=true labels on older snapshots.
+//
+// IsNotFound on the per-snapshot Update is treated as success: a concurrent prune or parent
+// deletion may have removed the snapshot already, which is the desired end state.
+func (r *Reconciler) cleanupStaleLatestSiblings(ctx context.Context, sortedSnapshotList *unstructured.UnstructuredList) error {
+	if sortedSnapshotList == nil || len(sortedSnapshotList.Items) <= 1 {
+		return nil
+	}
+	// Iterate every snapshot except the last (highest-index) one.
+	siblings := sortedSnapshotList.Items[:len(sortedSnapshotList.Items)-1]
+	for i := range siblings {
+		snapshot := &siblings[i]
+		if snapshot.GetLabels()[placementv1beta1.IsLatestSnapshotLabel] != strconv.FormatBool(true) {
+			continue
+		}
+		labels := snapshot.GetLabels()
+		labels[placementv1beta1.IsLatestSnapshotLabel] = strconv.FormatBool(false)
+		snapshot.SetLabels(labels)
+		if err := r.Client.Update(ctx, snapshot); err != nil {
+			if apierrors.IsNotFound(err) {
+				klog.V(2).InfoS("Stale latest sibling already gone; skipping", "overrideSnapshot", klog.KObj(snapshot))
+				continue
+			}
+			klog.ErrorS(err, "Failed to flip stale latest sibling to false", "overrideSnapshot", klog.KObj(snapshot))
+			return controller.NewUpdateIgnoreConflictError(err)
+		}
+		klog.V(2).InfoS("Flipped stale latest sibling to false", "overrideSnapshot", klog.KObj(snapshot))
 	}
 	return nil
 }
