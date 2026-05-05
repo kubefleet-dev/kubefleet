@@ -52,12 +52,12 @@ func (r *Reconciler) initialize(
 		return nil, nil, err
 	}
 	// Record the latest policy snapshot associated with the placement.
-	latestPolicySnapshot, _, err := r.determinePolicySnapshot(ctx, placementNamespacedName, updateRun)
+	latestPolicySnapshot, clusterCount, err := r.determinePolicySnapshot(ctx, placementNamespacedName, updateRun)
 	if err != nil {
 		return nil, nil, err
 	}
 	// Collect the scheduled clusters by the corresponding placement with the latest policy snapshot.
-	scheduledBindings, toBeDeletedBindings, err := r.collectScheduledClusters(ctx, placementNamespacedName, latestPolicySnapshot, updateRun)
+	scheduledBindings, toBeDeletedBindings, err := r.collectScheduledClusters(ctx, placementNamespacedName, latestPolicySnapshot, updateRun, clusterCount)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -161,7 +161,7 @@ func (r *Reconciler) determinePolicySnapshot(
 	updateRunStatus.PolicySnapshotIndexUsed = policyIndex
 
 	// For pickAll policy, the observed cluster count is not included in the policy snapshot.
-	// We set it to -1. It will be validated in the binding stages.
+	// We set it to -1. It will be set to the actual binding count in collectScheduledClusters.
 	// If policy is nil, it's default to pickAll.
 	clusterCount := -1
 	policySnapshotSpec := latestPolicySnapshot.GetPolicySnapshotSpec()
@@ -179,8 +179,7 @@ func (r *Reconciler) determinePolicySnapshot(
 			clusterCount = len(policySnapshotSpec.Policy.ClusterNames)
 		}
 	}
-	updateRunStatus.PolicyObservedClusterCount = clusterCount
-	klog.V(2).InfoS("Found the latest policy snapshot", "policySnapshot", policySnapshotRef, "observedClusterCount", updateRunStatus.PolicyObservedClusterCount, "updateRun", updateRunRef)
+	klog.V(2).InfoS("Found the latest policy snapshot", "policySnapshot", policySnapshotRef, "observedClusterCount", clusterCount, "updateRun", updateRunRef)
 
 	if !condition.IsConditionStatusTrue(latestPolicySnapshot.GetCondition(string(placementv1beta1.PolicySnapshotScheduled)), latestPolicySnapshot.GetGeneration()) {
 		scheduleErr := fmt.Errorf("policy snapshot `%s` not fully scheduled yet", latestPolicySnapshot.GetName())
@@ -197,6 +196,7 @@ func (r *Reconciler) collectScheduledClusters(
 	placementKey types.NamespacedName,
 	latestPolicySnapshot placementv1beta1.PolicySnapshotObj,
 	updateRun placementv1beta1.UpdateRunObj,
+	clusterCount int,
 ) ([]placementv1beta1.BindingObj, []placementv1beta1.BindingObj, error) {
 	updateRunRef := klog.KObj(updateRun)
 	policySnapshotRef := klog.KObj(latestPolicySnapshot)
@@ -245,15 +245,16 @@ func (r *Reconciler) collectScheduledClusters(
 	}
 
 	updateRunStatus := updateRun.GetUpdateRunStatus()
-	if updateRunStatus.PolicyObservedClusterCount == -1 {
+	if clusterCount == -1 {
 		// For pickAll policy, the observed cluster count is not included in the policy snapshot. We set it to the number of selected bindings.
-		// TODO (wantjian): refactor this part to update PolicyObservedClusterCount in one place.
 		updateRunStatus.PolicyObservedClusterCount = len(selectedBindings)
-	} else if updateRunStatus.PolicyObservedClusterCount != len(selectedBindings) {
-		countErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the number of selected bindings %d is not equal to the observed cluster count %d", len(selectedBindings), updateRunStatus.PolicyObservedClusterCount))
+	} else if clusterCount != len(selectedBindings) {
+		countErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the number of selected bindings %d is not equal to the observed cluster count %d", len(selectedBindings), clusterCount))
 		klog.ErrorS(countErr, "Failed to collect bindings", "placement", placementKey, "policySnapshot", policySnapshotRef, "updateRun", updateRunRef)
 		// no more retries here.
 		return nil, nil, fmt.Errorf("%w: %s", errValidationFailed, countErr.Error())
+	} else {
+		updateRunStatus.PolicyObservedClusterCount = clusterCount
 	}
 	return selectedBindings, toBeDeletedBindings, nil
 }
