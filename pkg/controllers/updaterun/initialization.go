@@ -245,17 +245,16 @@ func (r *Reconciler) collectScheduledClusters(
 	}
 
 	updateRunStatus := updateRun.GetUpdateRunStatus()
-	if clusterCount == -1 {
-		// For pickAll policy, the observed cluster count is not included in the policy snapshot. We set it to the number of selected bindings.
-		updateRunStatus.PolicyObservedClusterCount = len(selectedBindings)
-	} else if clusterCount != len(selectedBindings) {
+	if clusterCount != -1 && clusterCount != len(selectedBindings) {
 		countErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the number of selected bindings %d is not equal to the observed cluster count %d", len(selectedBindings), clusterCount))
 		klog.ErrorS(countErr, "Failed to collect bindings", "placement", placementKey, "policySnapshot", policySnapshotRef, "updateRun", updateRunRef)
 		// no more retries here.
 		return nil, nil, fmt.Errorf("%w: %s", errValidationFailed, countErr.Error())
-	} else {
-		updateRunStatus.PolicyObservedClusterCount = clusterCount
 	}
+	// For pickAll policy (clusterCount == -1), the observed cluster count is not included in the policy snapshot.
+	// For all other policies, clusterCount == len(selectedBindings) has been validated above.
+	// In both cases, we set PolicyObservedClusterCount to the number of selected bindings.
+	updateRunStatus.PolicyObservedClusterCount = len(selectedBindings)
 	return selectedBindings, toBeDeletedBindings, nil
 }
 
