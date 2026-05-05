@@ -31,6 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -341,7 +342,13 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			Expect(final0.Labels[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("false"))
 		})
 
-		It("Should return ExpectedBehaviorError when AlreadyExists target has a mismatched hash", func() {
+		It("Should return ExpectedBehaviorError and emit a Warning event when AlreadyExists target has a mismatched hash", func() {
+			// Wire a fake recorder so we can assert the Warning event is actually emitted —
+			// production controllers set this in SetupWithManager, but this test constructs the
+			// reconciler manually.
+			fakeRecorder := record.NewFakeRecorder(10)
+			aeReconciler.recorder = fakeRecorder
+
 			snapshot0 := getClusterResourceOverrideSnapshot(aeCROName, 0)
 			snapshot0.Spec.OverrideHash = []byte("old-hash")
 			Expect(k8sClient.Create(ctx, snapshot0)).Should(Succeed())
@@ -359,6 +366,17 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			Expect(err).Should(HaveOccurred(), "mismatched hash should not silently succeed")
 			Expect(errors.Is(err, controller.ErrExpectedBehavior)).Should(BeTrue(),
 				"error should wrap ErrExpectedBehavior so retry runs without stack-trace floods, got %v", err)
+
+			By("Verifying a Warning event with reason OverrideSnapshotHashMismatch was emitted on the parent CRO")
+			select {
+			case ev := <-fakeRecorder.Events:
+				Expect(ev).Should(ContainSubstring("OverrideSnapshotHashMismatch"),
+					"event = %q, want reason OverrideSnapshotHashMismatch", ev)
+				Expect(ev).Should(ContainSubstring("Warning"),
+					"event should be a Warning, got %q", ev)
+			default:
+				Fail("expected a Warning event with reason OverrideSnapshotHashMismatch, got none")
+			}
 
 			By("Verifying snapshot 0 was NOT demoted (we abort before the demote step)")
 			final0 := &placementv1beta1.ClusterResourceOverrideSnapshot{}
@@ -580,6 +598,91 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot.GetName(), Namespace: snapshot.Namespace}, snapshot)).Should(Succeed())
 				Expect(snapshot.GetLabels()[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("false"))
 			}
+		})
+	})
+
+	Context("Test ensureResourceOverrideSnapshot AlreadyExists recovery", func() {
+		var aeReconciler *ResourceReconciler
+		var aeROName string
+		var aeRO *placementv1beta1.ResourceOverride
+
+		BeforeEach(func() {
+			// Use a dedicated RO so this Context's snapshots don't collide with the parent
+			// BeforeEach's snapshots (testROName at indices 0..totalSnapshots-1).
+			aeROName = fmt.Sprintf("test-ro-already-exists-%s", utils.RandStr())
+			aeRO = getResourceOverride(aeROName, namespaceName)
+			// Snapshot Create adds an OwnerReference whose UID must be non-empty for API-server
+			// validation; we don't apply the RO to the cluster (would trigger the real reconcile
+			// loop), so we synthesize a UID.
+			aeRO.UID = "fake-uid-for-owner-ref"
+			aeReconciler = &ResourceReconciler{Reconciler: commonReconciler}
+		})
+
+		AfterEach(func() {
+			for i := 0; i < 2; i++ {
+				snap := getResourceOverrideSnapshot(aeROName, namespaceName, i)
+				Expect(k8sClient.Delete(ctx, snap)).Should(SatisfyAny(Succeed(), &utils.NotFoundMatcher{}))
+			}
+		})
+
+		It("Should treat AlreadyExists with matching hash as success and demote the previous snapshot", func() {
+			snapshot0 := getResourceOverrideSnapshot(aeROName, namespaceName, 0)
+			snapshot0.Spec.OverrideHash = []byte("old-hash")
+			Expect(k8sClient.Create(ctx, snapshot0)).Should(Succeed())
+
+			// Pre-create snapshot 1 invisibly: stripping OverrideTrackingLabel hides it from
+			// listSortedOverrideSnapshots so the controller computes newIndex=1 and Create races
+			// into AlreadyExists. See the CRO test for the etcd-restore production rationale.
+			intendedHash, err := resource.HashOf(aeRO.Spec)
+			Expect(err).Should(Succeed())
+			invisibleSnapshot1 := getResourceOverrideSnapshot(aeROName, namespaceName, 1)
+			delete(invisibleSnapshot1.Labels, placementv1beta1.OverrideTrackingLabel)
+			invisibleSnapshot1.Spec.OverrideHash = []byte(intendedHash)
+			invisibleSnapshot1.Spec.OverrideSpec = aeRO.Spec
+			Expect(k8sClient.Create(ctx, invisibleSnapshot1)).Should(Succeed())
+
+			Expect(aeReconciler.ensureResourceOverrideSnapshot(ctx, aeRO, 10)).Should(Succeed(),
+				"AlreadyExists with matching hash should be treated as success")
+
+			By("Verifying snapshot 0 was demoted to latest=false")
+			final0 := &placementv1beta1.ResourceOverrideSnapshot{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot0.Name, Namespace: snapshot0.Namespace}, final0)).Should(Succeed())
+			Expect(final0.Labels[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("false"))
+		})
+
+		It("Should return ExpectedBehaviorError and emit a Warning event when AlreadyExists target has a mismatched hash", func() {
+			fakeRecorder := record.NewFakeRecorder(10)
+			aeReconciler.recorder = fakeRecorder
+
+			snapshot0 := getResourceOverrideSnapshot(aeROName, namespaceName, 0)
+			snapshot0.Spec.OverrideHash = []byte("old-hash")
+			Expect(k8sClient.Create(ctx, snapshot0)).Should(Succeed())
+
+			invisibleSnapshot1 := getResourceOverrideSnapshot(aeROName, namespaceName, 1)
+			delete(invisibleSnapshot1.Labels, placementv1beta1.OverrideTrackingLabel)
+			invisibleSnapshot1.Spec.OverrideHash = []byte("stale-hash-from-backup")
+			Expect(k8sClient.Create(ctx, invisibleSnapshot1)).Should(Succeed())
+
+			err := aeReconciler.ensureResourceOverrideSnapshot(ctx, aeRO, 10)
+			Expect(err).Should(HaveOccurred(), "mismatched hash should not silently succeed")
+			Expect(errors.Is(err, controller.ErrExpectedBehavior)).Should(BeTrue(),
+				"error should wrap ErrExpectedBehavior, got %v", err)
+
+			By("Verifying a Warning event with reason OverrideSnapshotHashMismatch was emitted on the parent RO")
+			select {
+			case ev := <-fakeRecorder.Events:
+				Expect(ev).Should(ContainSubstring("OverrideSnapshotHashMismatch"),
+					"event = %q, want reason OverrideSnapshotHashMismatch", ev)
+				Expect(ev).Should(ContainSubstring("Warning"),
+					"event should be a Warning, got %q", ev)
+			default:
+				Fail("expected a Warning event with reason OverrideSnapshotHashMismatch, got none")
+			}
+
+			By("Verifying snapshot 0 was NOT demoted (we abort before the demote step)")
+			final0 := &placementv1beta1.ResourceOverrideSnapshot{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot0.Name, Namespace: snapshot0.Namespace}, final0)).Should(Succeed())
+			Expect(final0.Labels[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("true"))
 		})
 	})
 })

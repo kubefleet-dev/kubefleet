@@ -1653,8 +1653,8 @@ func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
 			// Production-realistic labels: every override snapshot is created with
 			// OverrideTrackingLabel and OverrideIndexLabel by the override controllers. The
 			// fixtures only declare the latest-snapshot label they care about, so we inject the
-			// rest here. Without these the read-time dedup path correctly errors on malformed
-			// labels.
+			// rest here. Without these the read-time dedup path logs an error and skips the
+			// malformed snapshot, which would change the test's expected outputs.
 			for i := range tc.croList {
 				ensureSnapshotTrackingLabels(&tc.croList[i].ObjectMeta, tc.croList[i].Name, 0)
 				objects = append(objects, &tc.croList[i])
