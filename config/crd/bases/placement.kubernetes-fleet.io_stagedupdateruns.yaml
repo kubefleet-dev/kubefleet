@@ -848,7 +848,7 @@ spec:
                                 description: The time to wait after all the clusters
                                   in the current stage complete the update before
                                   moving to the next stage.
-                                pattern: ^0|([0-9]+(\.[0-9]+)?(s|m|h))+$
+                                pattern: ^(?:0|(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+)$
                                 type: string
                             required:
                             - type
@@ -882,7 +882,7 @@ spec:
                                 description: The time to wait after all the clusters
                                   in the current stage complete the update before
                                   moving to the next stage.
-                                pattern: ^0|([0-9]+(\.[0-9]+)?(s|m|h))+$
+                                pattern: ^(?:0|(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+)$
                                 type: string
                             required:
                             - type
@@ -2191,7 +2191,7 @@ spec:
                                 description: The time to wait after all the clusters
                                   in the current stage complete the update before
                                   moving to the next stage.
-                                pattern: ^0|([0-9]+(\.[0-9]+)?(s|m|h))+$
+                                pattern: ^(?:0|(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+)$
                                 type: string
                             required:
                             - type
@@ -2225,7 +2225,7 @@ spec:
                                 description: The time to wait after all the clusters
                                   in the current stage complete the update before
                                   moving to the next stage.
-                                pattern: ^0|([0-9]+(\.[0-9]+)?(s|m|h))+$
+                                pattern: ^(?:0|(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+)$
                                 type: string
                             required:
                             - type
