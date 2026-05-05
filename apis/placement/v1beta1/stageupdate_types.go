@@ -178,6 +178,7 @@ const (
 // +kubebuilder:validation:XValidation:rule="!(has(oldSelf.state) && oldSelf.state == 'Initialize' && self.state == 'Stop')",message="invalid state transition: cannot transition from Initialize to Stop"
 // +kubebuilder:validation:XValidation:rule="!(has(oldSelf.state) && oldSelf.state == 'Run' && self.state == 'Initialize')",message="invalid state transition: cannot transition from Run to Initialize"
 // +kubebuilder:validation:XValidation:rule="!(has(oldSelf.state) && oldSelf.state == 'Stop' && self.state == 'Initialize')",message="invalid state transition: cannot transition from Stop to Initialize"
+// +kubebuilder:validation:XValidation:rule="(has(oldSelf.stuckThreshold) && has(self.stuckThreshold) && oldSelf.stuckThreshold == self.stuckThreshold) || (!has(oldSelf.stuckThreshold) && !has(self.stuckThreshold))",message="stuckThreshold is immutable"
 type UpdateRunSpec struct {
 	// PlacementName is the name of placement that this update run is applied to.
 	// There can be multiple active update runs for each placement, but
@@ -213,9 +214,8 @@ type UpdateRunSpec struct {
 	// StuckThreshold is the duration after which a cluster update is considered stuck if propagated resources are either not applied or available yet.
 	// If not specified, the default stuck threshold of 5 minutes is used.
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:Pattern="^(?:[0-9]+(\\.[0-9]+)?(?:s|m|h))+$"
+	// +kubebuilder:validation:Pattern="^(?:(?:0|[1-9][0-9]*)(\\.[0-9]+)?(?:s|m|h))+$"
 	// +kubebuilder:validation:Type=string
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="stuckThreshold is immutable"
 	StuckThreshold *metav1.Duration `json:"stuckThreshold,omitempty"`
 }
 

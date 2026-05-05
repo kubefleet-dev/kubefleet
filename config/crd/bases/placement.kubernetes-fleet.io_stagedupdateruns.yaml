@@ -1463,11 +1463,8 @@ spec:
                 description: |-
                   StuckThreshold is the duration after which a cluster update is considered stuck if propagated resources are either not applied or available yet.
                   If not specified, the default stuck threshold of 5 minutes is used.
-                pattern: ^0|([0-9]+(\.[0-9]+)?(s|m|h))+$
+                pattern: ^(?:(?:0|[1-9][0-9]*)(\.[0-9]+)?(?:s|m|h))+$
                 type: string
-                x-kubernetes-validations:
-                - message: stuckThreshold is immutable
-                  rule: self == oldSelf
             required:
             - placementName
             - stagedRolloutStrategyName
@@ -1483,6 +1480,9 @@ spec:
             - message: 'invalid state transition: cannot transition from Stop to Initialize'
               rule: '!(has(oldSelf.state) && oldSelf.state == ''Stop'' && self.state
                 == ''Initialize'')'
+            - message: stuckThreshold is immutable
+              rule: (has(oldSelf.stuckThreshold) && has(self.stuckThreshold) && oldSelf.stuckThreshold
+                == self.stuckThreshold) || (!has(oldSelf.stuckThreshold) && !has(self.stuckThreshold))
           status:
             description: The observed status of StagedUpdateRun.
             properties:
