@@ -850,9 +850,6 @@ spec:
                                   Only hours (h), minutes (m), and seconds (s) units are accepted.
                                 pattern: ^(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+$
                                 type: string
-                                x-kubernetes-validations:
-                                - message: waitTime must be a valid duration
-                                  rule: duration(self) >= duration('0s')
                             required:
                             - type
                             type: object
@@ -887,9 +884,6 @@ spec:
                                   Only hours (h), minutes (m), and seconds (s) units are accepted.
                                 pattern: ^(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+$
                                 type: string
-                                x-kubernetes-validations:
-                                - message: waitTime must be a valid duration
-                                  rule: duration(self) >= duration('0s')
                             required:
                             - type
                             type: object
@@ -2199,9 +2193,6 @@ spec:
                                   Only hours (h), minutes (m), and seconds (s) units are accepted.
                                 pattern: ^(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+$
                                 type: string
-                                x-kubernetes-validations:
-                                - message: waitTime must be a valid duration
-                                  rule: duration(self) >= duration('0s')
                             required:
                             - type
                             type: object
@@ -2236,9 +2227,6 @@ spec:
                                   Only hours (h), minutes (m), and seconds (s) units are accepted.
                                 pattern: ^(?:[0-9]+(\.[0-9]+)?(?:s|m|h))+$
                                 type: string
-                                x-kubernetes-validations:
-                                - message: waitTime must be a valid duration
-                                  rule: duration(self) >= duration('0s')
                             required:
                             - type
                             type: object
