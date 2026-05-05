@@ -301,9 +301,8 @@ func dedupLatestSnapshots[T any, PT interface {
 	for _, idx := range winners {
 		deduped = append(deduped, items[idx])
 	}
-	// Map iteration order is non-deterministic; sort the result by namespace+name so callers
-	// (and tests) see a stable order. Cluster-scoped snapshots have an empty namespace, which
-	// sorts naturally before namespaced ones.
+	// Map iteration is non-deterministic; sort by (namespace, name) for stable output. All
+	// items in a single call share scope, so the namespace tier is just a defensive tie-breaker.
 	sort.SliceStable(deduped, func(i, j int) bool {
 		ai := PT(&deduped[i])
 		aj := PT(&deduped[j])

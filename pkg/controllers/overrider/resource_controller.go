@@ -91,7 +91,7 @@ func (r *ResourceReconciler) ensureResourceOverrideSnapshot(ctx context.Context,
 		klog.ErrorS(err, "Failed to generate policy hash of ResourceOverride", "resourceOverride", roKObj)
 		return controller.NewUnexpectedBehaviorError(err)
 	}
-	// We always list the snapshots so we can prune any that exceed the revision history limit.
+	// List snapshots so we can prune any beyond the revision history limit.
 	snapshotList, err := r.listSortedOverrideSnapshots(ctx, ro)
 	if err != nil {
 		return err
@@ -103,16 +103,13 @@ func (r *ResourceReconciler) ensureResourceOverrideSnapshot(ctx context.Context,
 	latestSnapshotIndex := -1
 	var latestSnapshot *placementv1beta1.ResourceOverrideSnapshot
 	if len(snapshotList.Items) != 0 {
-		// Convert the last (highest-index) unstructured snapshot to the typed object.
 		latestSnapshot = &placementv1beta1.ResourceOverrideSnapshot{}
 		if err = runtime.DefaultUnstructuredConverter.FromUnstructured(snapshotList.Items[len(snapshotList.Items)-1].Object, latestSnapshot); err != nil {
 			klog.ErrorS(err, "Invalid overrideSnapshot", "resourceOverride", roKObj, "overrideSnapshot", klog.KObj(&snapshotList.Items[len(snapshotList.Items)-1]))
 			return controller.NewUnexpectedBehaviorError(err)
 		}
 		if string(latestSnapshot.Spec.OverrideHash) == overrideSpecHash {
-			// The content has not changed; no new snapshot is needed. Ensure the highest-index
-			// snapshot is marked latest, then audit siblings to clean up any duplicate latest=true
-			// left by a prior partial run.
+			// Hash matches: re-mark this snapshot latest (idempotent) and audit siblings.
 			if err := r.ensureSnapshotLatest(ctx, latestSnapshot); err != nil {
 				return err
 			}
@@ -125,8 +122,7 @@ func (r *ResourceReconciler) ensureResourceOverrideSnapshot(ctx context.Context,
 		}
 	}
 
-	// Create the new snapshot (latest=true) BEFORE flipping the old one to false. See the CRO
-	// controller for the rationale; this avoids a zero-latest window across crashes.
+	// Create-then-demote; see the CRO controller for the rationale.
 	latestSnapshotIndex++
 	newSnapshot := &placementv1beta1.ResourceOverrideSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
@@ -151,25 +147,23 @@ func (r *ResourceReconciler) ensureResourceOverrideSnapshot(ctx context.Context,
 			klog.ErrorS(err, "Failed to create new overrideSnapshot", "newOverrideSnapshot", klog.KObj(newSnapshot))
 			return controller.NewAPIServerError(false, err)
 		}
-		// AlreadyExists here normally means a prior reconcile succeeded the Create but failed to
-		// flip the old snapshot. Verify the existing object's hash before proceeding so we don't
-		// silently promote stale content (etcd restore from backup, manual edit, future hash bug).
-		// Read through the uncached client: the cached read can lag the just-Created object.
+		// AlreadyExists path; see the CRO controller for the rationale.
 		existing := &placementv1beta1.ResourceOverrideSnapshot{}
 		if getErr := r.UncachedReader.Get(ctx, types.NamespacedName{Name: newSnapshot.Name, Namespace: newSnapshot.Namespace}, existing); getErr != nil {
 			klog.ErrorS(getErr, "Failed to get existing overrideSnapshot for hash verification", "resourceOverride", roKObj, "newOverrideSnapshot", klog.KObj(newSnapshot))
 			return controller.NewAPIServerError(false, getErr)
 		}
 		if string(existing.Spec.OverrideHash) != overrideSpecHash {
-			mismatchErr := fmt.Errorf("existing overrideSnapshot %s/%s has hash %q, want %q", existing.Namespace, existing.Name, string(existing.Spec.OverrideHash), overrideSpecHash)
-			klog.ErrorS(mismatchErr, "Existing overrideSnapshot has different content than expected; will requeue and retry", "resourceOverride", roKObj)
-			// Surface to the operator via an Event on the parent RO; see CRO controller for rationale.
+			mismatchErr := fmt.Errorf("existing overrideSnapshot %s/%s has stored hash %q, want %q", existing.Namespace, existing.Name, string(existing.Spec.OverrideHash), overrideSpecHash)
+			klog.ErrorS(mismatchErr, "Existing overrideSnapshot has different content than the current spec; deleting it so the next reconcile can recreate with correct content", "resourceOverride", roKObj)
 			if r.recorder != nil {
 				r.recorder.Eventf(ro, corev1.EventTypeWarning, "OverrideSnapshotHashMismatch",
-					"existing snapshot %s/%s has a different hash than the current spec; retrying. If this persists, the snapshot needs operator inspection (etcd restore from backup, manual edit, or hash-function change).", newSnapshot.Namespace, newSnapshot.Name)
+					"existing snapshot %s/%s has different content than the current spec; deleting it for the next reconcile to recreate. If this persists, investigate the snapshot for manual edits or a hash-function change between controller versions.", newSnapshot.Namespace, newSnapshot.Name)
 			}
-			// Treat as expected-behavior so retries don't carry stack traces; see CRO controller
-			// for the rationale.
+			if delErr := r.Client.Delete(ctx, existing); delErr != nil && !errors.IsNotFound(delErr) {
+				klog.ErrorS(delErr, "Failed to delete mismatched overrideSnapshot", "resourceOverride", roKObj, "overrideSnapshot", klog.KObj(existing))
+				return controller.NewAPIServerError(false, delErr)
+			}
 			return controller.NewExpectedBehaviorError(mismatchErr)
 		}
 		klog.V(2).InfoS("Snapshot already exists with matching content; recovering from prior partial reconcile", "resourceOverride", roKObj, "newOverrideSnapshot", klog.KObj(newSnapshot))

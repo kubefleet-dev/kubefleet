@@ -39,15 +39,10 @@ import (
 
 // Reconciler reconciles a clusterResourceOverride object.
 type Reconciler struct {
-	// Client is the cached controller-runtime client used for routine reads/writes.
 	client.Client
-	// UncachedReader bypasses the informer cache. Use it for read-after-write verification
-	// (e.g. post-Create hash checks on the AlreadyExists path) where a cached read could see
-	// stale state and force unnecessary requeues.
+	// UncachedReader bypasses the informer cache for read-after-write verification.
 	UncachedReader client.Reader
-	// recorder emits events on the parent override (CRO/RO) when the controller hits a state
-	// that requires operator visibility — e.g. an existing snapshot whose hash doesn't match
-	// the current spec, which silently retries forever otherwise. Set by SetupWithManager.
+	// recorder is set by SetupWithManager; used for operator-visible warnings.
 	recorder record.EventRecorder
 }
 
@@ -120,11 +115,9 @@ func (r *Reconciler) listSortedOverrideSnapshots(ctx context.Context, parentOver
 	return snapshotList, nil
 }
 
-// removeExtraSnapshot deletes oldest snapshots from sortedSnapshotList until the in-memory slice
-// length is at most limit-1, mirroring the API-server state. The slice is trimmed in place so any
-// downstream caller that consults sortedSnapshotList (e.g. cleanupStaleLatestSiblings) sees only
-// snapshots that should still exist on the server. On error the list is still trimmed by the
-// number of items we successfully accounted for, so a caller that retries doesn't double-process.
+// removeExtraSnapshot deletes the oldest snapshots beyond limit-1 and trims the in-memory slice
+// in place so downstream callers (e.g. cleanupStaleLatestSiblings) don't re-process deleted items.
+// The trim is deferred so it still runs on the error path.
 func (r *Reconciler) removeExtraSnapshot(ctx context.Context, sortedSnapshotList *unstructured.UnstructuredList, limit int) error {
 	// the list is sorted by the override index, so we can just remove from the beginning
 	deleted := 0
@@ -161,23 +154,14 @@ func (r *Reconciler) ensureSnapshotLatest(ctx context.Context, latestSnapshot cl
 	return nil
 }
 
-// cleanupStaleLatestSiblings flips the IsLatestSnapshotLabel to false on any snapshot in
-// sortedSnapshotList other than the highest-index one. The list is assumed to be sorted in
-// ascending order of OverrideIndexLabel; the last item is the authoritative latest snapshot.
-//
-// This handles two scenarios:
-//   - A prior reconcile crashed between Create(new) and Update(old, latest=false), leaving
-//     duplicate latest=true labels.
-//   - Any other source of inconsistency (manual edit, partial-state recovery) that leaves
-//     stale latest=true labels on older snapshots.
-//
-// IsNotFound on the per-snapshot Update is treated as success: a concurrent prune or parent
-// deletion may have removed the snapshot already, which is the desired end state.
+// cleanupStaleLatestSiblings flips IsLatestSnapshotLabel to false on every snapshot in the
+// (ascending-by-index) list except the highest. Cleans up duplicate latest=true left by a
+// crashed Create-then-demote sequence or any out-of-band edit. IsNotFound on the Update is
+// treated as success.
 func (r *Reconciler) cleanupStaleLatestSiblings(ctx context.Context, sortedSnapshotList *unstructured.UnstructuredList) error {
 	if sortedSnapshotList == nil || len(sortedSnapshotList.Items) <= 1 {
 		return nil
 	}
-	// Iterate every snapshot except the last (highest-index) one.
 	siblings := sortedSnapshotList.Items[:len(sortedSnapshotList.Items)-1]
 	for i := range siblings {
 		snapshot := &siblings[i]

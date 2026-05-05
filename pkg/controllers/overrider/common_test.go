@@ -342,7 +342,7 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			Expect(final0.Labels[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("false"))
 		})
 
-		It("Should return ExpectedBehaviorError and emit a Warning event when AlreadyExists target has a mismatched hash", func() {
+		It("Should delete the mismatched snapshot, return ExpectedBehaviorError, and emit a Warning event", func() {
 			// Wire a fake recorder so we can assert the Warning event is actually emitted —
 			// production controllers set this in SetupWithManager, but this test constructs the
 			// reconciler manually.
@@ -353,16 +353,31 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			snapshot0.Spec.OverrideHash = []byte("old-hash")
 			Expect(k8sClient.Create(ctx, snapshot0)).Should(Succeed())
 
-			// Pre-create snapshot 1 invisibly with a hash that does NOT match the CRO's spec —
-			// simulating etcd restore from backup or a future hash-function change. The most
-			// likely real-world trigger is an etcd restore where retry will eventually converge,
-			// so the controller surfaces an expected-behavior error rather than a hard failure.
+			// Pre-create snapshot 1 invisibly with a spec that produces a different hash than
+			// the current CRO. Simulates a manual edit or a hash-function change between
+			// controller versions. The reconciler should delete this snapshot to drive the
+			// system back toward desired state, then return ExpectedBehaviorError so the next
+			// reconcile recreates it correctly.
 			invisibleSnapshot1 := getClusterResourceOverrideSnapshot(aeCROName, 1)
 			delete(invisibleSnapshot1.Labels, placementv1beta1.OverrideTrackingLabel)
-			invisibleSnapshot1.Spec.OverrideHash = []byte("stale-hash-from-backup")
+			// Give the snapshot a spec whose computed hash will not match aeCRO's.
+			divergentSpec := getClusterResourceOverrideSpec()
+			divergentSpec.Policy = &placementv1beta1.OverridePolicy{
+				OverrideRules: []placementv1beta1.OverrideRule{
+					{
+						JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
+							{Operator: placementv1beta1.JSONPatchOverrideOpRemove, Path: "/metadata/labels/divergent-marker"},
+						},
+					},
+				},
+			}
+			invisibleSnapshot1.Spec.OverrideSpec = divergentSpec
+			divergentHash, err := resource.HashOf(divergentSpec)
+			Expect(err).Should(Succeed())
+			invisibleSnapshot1.Spec.OverrideHash = []byte(divergentHash)
 			Expect(k8sClient.Create(ctx, invisibleSnapshot1)).Should(Succeed())
 
-			err := aeReconciler.ensureClusterResourceOverrideSnapshot(ctx, aeCRO, 10)
+			err = aeReconciler.ensureClusterResourceOverrideSnapshot(ctx, aeCRO, 10)
 			Expect(err).Should(HaveOccurred(), "mismatched hash should not silently succeed")
 			Expect(errors.Is(err, controller.ErrExpectedBehavior)).Should(BeTrue(),
 				"error should wrap ErrExpectedBehavior so retry runs without stack-trace floods, got %v", err)
@@ -377,6 +392,11 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			default:
 				Fail("expected a Warning event with reason OverrideSnapshotHashMismatch, got none")
 			}
+
+			By("Verifying the mismatched snapshot was deleted (driving observed → desired)")
+			Eventually(func() bool {
+				return apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: invisibleSnapshot1.Name}, &placementv1beta1.ClusterResourceOverrideSnapshot{}))
+			}, eventuallyTimeout, interval).Should(BeTrue(), "mismatched snapshot should have been deleted")
 
 			By("Verifying snapshot 0 was NOT demoted (we abort before the demote step)")
 			final0 := &placementv1beta1.ClusterResourceOverrideSnapshot{}
@@ -678,7 +698,7 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 			Expect(final0.Labels[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("false"))
 		})
 
-		It("Should return ExpectedBehaviorError and emit a Warning event when AlreadyExists target has a mismatched hash", func() {
+		It("Should delete the mismatched snapshot, return ExpectedBehaviorError, and emit a Warning event", func() {
 			fakeRecorder := record.NewFakeRecorder(10)
 			aeReconciler.recorder = fakeRecorder
 
@@ -686,12 +706,28 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 			snapshot0.Spec.OverrideHash = []byte("old-hash")
 			Expect(k8sClient.Create(ctx, snapshot0)).Should(Succeed())
 
+			// Pre-create snapshot 1 invisibly with a divergent spec — the controller must
+			// recompute the hash from the spec (not trust the stored OverrideHash field) and
+			// then delete the snapshot to drive observed → desired state.
 			invisibleSnapshot1 := getResourceOverrideSnapshot(aeROName, namespaceName, 1)
 			delete(invisibleSnapshot1.Labels, placementv1beta1.OverrideTrackingLabel)
-			invisibleSnapshot1.Spec.OverrideHash = []byte("stale-hash-from-backup")
+			divergentSpec := getResourceOverrideSpec()
+			divergentSpec.Policy = &placementv1beta1.OverridePolicy{
+				OverrideRules: []placementv1beta1.OverrideRule{
+					{
+						JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{
+							{Operator: placementv1beta1.JSONPatchOverrideOpRemove, Path: "/metadata/labels/divergent-marker"},
+						},
+					},
+				},
+			}
+			invisibleSnapshot1.Spec.OverrideSpec = divergentSpec
+			divergentHash, err := resource.HashOf(divergentSpec)
+			Expect(err).Should(Succeed())
+			invisibleSnapshot1.Spec.OverrideHash = []byte(divergentHash)
 			Expect(k8sClient.Create(ctx, invisibleSnapshot1)).Should(Succeed())
 
-			err := aeReconciler.ensureResourceOverrideSnapshot(ctx, aeRO, 10)
+			err = aeReconciler.ensureResourceOverrideSnapshot(ctx, aeRO, 10)
 			Expect(err).Should(HaveOccurred(), "mismatched hash should not silently succeed")
 			Expect(errors.Is(err, controller.ErrExpectedBehavior)).Should(BeTrue(),
 				"error should wrap ErrExpectedBehavior, got %v", err)
@@ -706,6 +742,11 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 			default:
 				Fail("expected a Warning event with reason OverrideSnapshotHashMismatch, got none")
 			}
+
+			By("Verifying the mismatched snapshot was deleted (driving observed → desired)")
+			Eventually(func() bool {
+				return apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: invisibleSnapshot1.Name, Namespace: invisibleSnapshot1.Namespace}, &placementv1beta1.ResourceOverrideSnapshot{}))
+			}, eventuallyTimeout, interval).Should(BeTrue(), "mismatched snapshot should have been deleted")
 
 			By("Verifying snapshot 0 was NOT demoted (we abort before the demote step)")
 			final0 := &placementv1beta1.ResourceOverrideSnapshot{}
