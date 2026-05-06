@@ -156,10 +156,8 @@ func (r *ResourceReconciler) ensureResourceOverrideSnapshot(ctx context.Context,
 		if string(existing.Spec.OverrideHash) != overrideSpecHash {
 			mismatchErr := fmt.Errorf("existing overrideSnapshot %s/%s has stored hash %q, want %q", existing.Namespace, existing.Name, string(existing.Spec.OverrideHash), overrideSpecHash)
 			klog.ErrorS(mismatchErr, "Existing overrideSnapshot has different content than the current spec; deleting it so the next reconcile can recreate with correct content", "resourceOverride", roKObj)
-			if r.recorder != nil {
-				r.recorder.Eventf(ro, corev1.EventTypeWarning, "OverrideSnapshotHashMismatch",
-					"existing snapshot %s/%s has different content than the current spec; deleting it for the next reconcile to recreate. If this persists, investigate the snapshot for manual edits or a hash-function change between controller versions.", newSnapshot.Namespace, newSnapshot.Name)
-			}
+			r.recorder.Eventf(ro, corev1.EventTypeWarning, "OverrideSnapshotHashMismatch",
+				"existing snapshot %s/%s has different content than the current spec; deleting it for the next reconcile to recreate. If this persists, investigate the snapshot for manual edits or a hash-function change between controller versions.", newSnapshot.Namespace, newSnapshot.Name)
 			if delErr := r.Client.Delete(ctx, existing); delErr != nil && !errors.IsNotFound(delErr) {
 				klog.ErrorS(delErr, "Failed to delete mismatched overrideSnapshot", "resourceOverride", roKObj, "overrideSnapshot", klog.KObj(existing))
 				return controller.NewAPIServerError(false, delErr)

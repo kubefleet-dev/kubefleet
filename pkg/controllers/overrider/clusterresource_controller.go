@@ -164,10 +164,8 @@ func (r *ClusterResourceReconciler) ensureClusterResourceOverrideSnapshot(ctx co
 			mismatchErr := fmt.Errorf("existing overrideSnapshot %s has stored hash %q, want %q", newSnapshot.Name, string(existing.Spec.OverrideHash), overrideSpecHash)
 			klog.ErrorS(mismatchErr, "Existing overrideSnapshot has different content than the current spec; deleting it so the next reconcile can recreate with correct content", "clusterResourceOverride", croKObj)
 			// Event surfaces the recovery in `kubectl describe`.
-			if r.recorder != nil {
-				r.recorder.Eventf(cro, corev1.EventTypeWarning, "OverrideSnapshotHashMismatch",
-					"existing snapshot %s has different content than the current spec; deleting it for the next reconcile to recreate. If this persists, investigate the snapshot for manual edits or a hash-function change between controller versions.", newSnapshot.Name)
-			}
+			r.recorder.Eventf(cro, corev1.EventTypeWarning, "OverrideSnapshotHashMismatch",
+				"existing snapshot %s has different content than the current spec; deleting it for the next reconcile to recreate. If this persists, investigate the snapshot for manual edits or a hash-function change between controller versions.", newSnapshot.Name)
 			// Drive observed → desired: delete the mismatched snapshot so the next reconcile
 			// recreates it with the correct content.
 			if delErr := r.Client.Delete(ctx, existing); delErr != nil && !errors.IsNotFound(delErr) {

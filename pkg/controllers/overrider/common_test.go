@@ -286,26 +286,26 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 	})
 
 	Context("Test ensureClusterResourceOverrideSnapshot AlreadyExists recovery", func() {
-		var aeReconciler *ClusterResourceReconciler
-		var aeCROName string
-		var aeCRO *placementv1beta1.ClusterResourceOverride
+		var recoveryReconciler *ClusterResourceReconciler
+		var recoveryCROName string
+		var recoveryCRO *placementv1beta1.ClusterResourceOverride
 
 		BeforeEach(func() {
 			// Use a dedicated CRO name so this Context's snapshots don't collide with the parent
 			// BeforeEach's snapshots (which all share testCROName at indices 0-4).
-			aeCROName = fmt.Sprintf("test-cro-already-exists-%s", utils.RandStr())
-			aeCRO = getClusterResourceOverride(aeCROName)
+			recoveryCROName = fmt.Sprintf("test-cro-already-exists-%s", utils.RandStr())
+			recoveryCRO = getClusterResourceOverride(recoveryCROName)
 			// We don't apply the CRO to the cluster (would trigger the real reconcile loop), but
 			// the snapshot Create inside ensureClusterResourceOverrideSnapshot adds an OwnerReference
 			// whose UID must be non-empty for API-server validation.
-			aeCRO.UID = "fake-uid-for-owner-ref"
-			aeReconciler = &ClusterResourceReconciler{Reconciler: commonReconciler}
+			recoveryCRO.UID = "fake-uid-for-owner-ref"
+			recoveryReconciler = &ClusterResourceReconciler{Reconciler: commonReconciler}
 		})
 
 		AfterEach(func() {
 			// Clean up snapshots created in this Context. Both indices may or may not exist.
 			for i := 0; i < 2; i++ {
-				snap := getClusterResourceOverrideSnapshot(aeCROName, i)
+				snap := getClusterResourceOverrideSnapshot(recoveryCROName, i)
 				Expect(k8sClient.Delete(ctx, snap)).Should(SatisfyAny(Succeed(), &utils.NotFoundMatcher{}))
 			}
 		})
@@ -313,7 +313,7 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 		It("Should treat AlreadyExists with matching hash as success and demote the previous snapshot", func() {
 			// Pre-create snapshot 0 fully tracked: this is the "previous latest" the controller
 			// will see via listSortedOverrideSnapshots.
-			snapshot0 := getClusterResourceOverrideSnapshot(aeCROName, 0)
+			snapshot0 := getClusterResourceOverrideSnapshot(recoveryCROName, 0)
 			snapshot0.Spec.OverrideHash = []byte("old-hash")
 			Expect(k8sClient.Create(ctx, snapshot0)).Should(Succeed())
 
@@ -325,15 +325,15 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			// snapshot that exists in etcd but is invisible to the controller's listing pass),
 			// which envtest cannot simulate directly. Stripping the tracking label is the most
 			// faithful approximation available in an integration test.
-			intendedHash, err := resource.HashOf(aeCRO.Spec)
+			intendedHash, err := resource.HashOf(recoveryCRO.Spec)
 			Expect(err).Should(Succeed())
-			invisibleSnapshot1 := getClusterResourceOverrideSnapshot(aeCROName, 1)
+			invisibleSnapshot1 := getClusterResourceOverrideSnapshot(recoveryCROName, 1)
 			delete(invisibleSnapshot1.Labels, placementv1beta1.OverrideTrackingLabel)
 			invisibleSnapshot1.Spec.OverrideHash = []byte(intendedHash)
-			invisibleSnapshot1.Spec.OverrideSpec = aeCRO.Spec
+			invisibleSnapshot1.Spec.OverrideSpec = recoveryCRO.Spec
 			Expect(k8sClient.Create(ctx, invisibleSnapshot1)).Should(Succeed())
 
-			Expect(aeReconciler.ensureClusterResourceOverrideSnapshot(ctx, aeCRO, 10)).Should(Succeed(),
+			Expect(recoveryReconciler.ensureClusterResourceOverrideSnapshot(ctx, recoveryCRO, 10)).Should(Succeed(),
 				"AlreadyExists with matching hash should be treated as success")
 
 			By("Verifying snapshot 0 was demoted to latest=false")
@@ -347,9 +347,9 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			// production controllers set this in SetupWithManager, but this test constructs the
 			// reconciler manually.
 			fakeRecorder := record.NewFakeRecorder(10)
-			aeReconciler.recorder = fakeRecorder
+			recoveryReconciler.recorder = fakeRecorder
 
-			snapshot0 := getClusterResourceOverrideSnapshot(aeCROName, 0)
+			snapshot0 := getClusterResourceOverrideSnapshot(recoveryCROName, 0)
 			snapshot0.Spec.OverrideHash = []byte("old-hash")
 			Expect(k8sClient.Create(ctx, snapshot0)).Should(Succeed())
 
@@ -358,9 +358,9 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			// controller versions. The reconciler should delete this snapshot to drive the
 			// system back toward desired state, then return ExpectedBehaviorError so the next
 			// reconcile recreates it correctly.
-			invisibleSnapshot1 := getClusterResourceOverrideSnapshot(aeCROName, 1)
+			invisibleSnapshot1 := getClusterResourceOverrideSnapshot(recoveryCROName, 1)
 			delete(invisibleSnapshot1.Labels, placementv1beta1.OverrideTrackingLabel)
-			// Give the snapshot a spec whose computed hash will not match aeCRO's.
+			// Give the snapshot a spec whose computed hash will not match recoveryCRO's.
 			divergentSpec := getClusterResourceOverrideSpec()
 			divergentSpec.Policy = &placementv1beta1.OverridePolicy{
 				OverrideRules: []placementv1beta1.OverrideRule{
@@ -377,7 +377,7 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			invisibleSnapshot1.Spec.OverrideHash = []byte(divergentHash)
 			Expect(k8sClient.Create(ctx, invisibleSnapshot1)).Should(Succeed())
 
-			err = aeReconciler.ensureClusterResourceOverrideSnapshot(ctx, aeCRO, 10)
+			err = recoveryReconciler.ensureClusterResourceOverrideSnapshot(ctx, recoveryCRO, 10)
 			Expect(err).Should(HaveOccurred(), "mismatched hash should not silently succeed")
 			Expect(errors.Is(err, controller.ErrExpectedBehavior)).Should(BeTrue(),
 				"error should wrap ErrExpectedBehavior so retry runs without stack-trace floods, got %v", err)
@@ -409,16 +409,16 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			// controller lists snapshots and inspects the highest-index one (this snapshot), the
 			// hash check at the top of ensureClusterResourceOverrideSnapshot will short-circuit:
 			// no new snapshot is created and ensureSnapshotLatest + cleanupStaleLatestSiblings run.
-			intendedHash, err := resource.HashOf(aeCRO.Spec)
+			intendedHash, err := resource.HashOf(recoveryCRO.Spec)
 			Expect(err).Should(Succeed())
-			snapshot0 := getClusterResourceOverrideSnapshot(aeCROName, 0)
+			snapshot0 := getClusterResourceOverrideSnapshot(recoveryCROName, 0)
 			snapshot0.Spec.OverrideHash = []byte(intendedHash)
-			snapshot0.Spec.OverrideSpec = aeCRO.Spec
+			snapshot0.Spec.OverrideSpec = recoveryCRO.Spec
 			// ensureSnapshotLatest should flip this back to true on the hash-match path.
 			snapshot0.Labels[placementv1beta1.IsLatestSnapshotLabel] = strconv.FormatBool(false)
 			Expect(k8sClient.Create(ctx, snapshot0)).Should(Succeed())
 
-			Expect(aeReconciler.ensureClusterResourceOverrideSnapshot(ctx, aeCRO, 10)).Should(Succeed())
+			Expect(recoveryReconciler.ensureClusterResourceOverrideSnapshot(ctx, recoveryCRO, 10)).Should(Succeed())
 
 			By("Verifying ensureSnapshotLatest flipped snapshot 0 back to latest=true")
 			final0 := &placementv1beta1.ClusterResourceOverrideSnapshot{}
@@ -426,7 +426,7 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			Expect(final0.Labels[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("true"))
 
 			By("Verifying no new snapshot at index 1 was created")
-			snapshot1 := getClusterResourceOverrideSnapshot(aeCROName, 1)
+			snapshot1 := getClusterResourceOverrideSnapshot(recoveryCROName, 1)
 			Expect(apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot1.Name}, snapshot1))).Should(BeTrue(),
 				"hash-match path must not create a new snapshot")
 		})
@@ -650,46 +650,46 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 	})
 
 	Context("Test ensureResourceOverrideSnapshot AlreadyExists recovery", func() {
-		var aeReconciler *ResourceReconciler
-		var aeROName string
-		var aeRO *placementv1beta1.ResourceOverride
+		var recoveryReconciler *ResourceReconciler
+		var recoveryROName string
+		var recoveryRO *placementv1beta1.ResourceOverride
 
 		BeforeEach(func() {
 			// Use a dedicated RO so this Context's snapshots don't collide with the parent
 			// BeforeEach's snapshots (testROName at indices 0..totalSnapshots-1).
-			aeROName = fmt.Sprintf("test-ro-already-exists-%s", utils.RandStr())
-			aeRO = getResourceOverride(aeROName, namespaceName)
+			recoveryROName = fmt.Sprintf("test-ro-already-exists-%s", utils.RandStr())
+			recoveryRO = getResourceOverride(recoveryROName, namespaceName)
 			// Snapshot Create adds an OwnerReference whose UID must be non-empty for API-server
 			// validation; we don't apply the RO to the cluster (would trigger the real reconcile
 			// loop), so we synthesize a UID.
-			aeRO.UID = "fake-uid-for-owner-ref"
-			aeReconciler = &ResourceReconciler{Reconciler: commonReconciler}
+			recoveryRO.UID = "fake-uid-for-owner-ref"
+			recoveryReconciler = &ResourceReconciler{Reconciler: commonReconciler}
 		})
 
 		AfterEach(func() {
 			for i := 0; i < 2; i++ {
-				snap := getResourceOverrideSnapshot(aeROName, namespaceName, i)
+				snap := getResourceOverrideSnapshot(recoveryROName, namespaceName, i)
 				Expect(k8sClient.Delete(ctx, snap)).Should(SatisfyAny(Succeed(), &utils.NotFoundMatcher{}))
 			}
 		})
 
 		It("Should treat AlreadyExists with matching hash as success and demote the previous snapshot", func() {
-			snapshot0 := getResourceOverrideSnapshot(aeROName, namespaceName, 0)
+			snapshot0 := getResourceOverrideSnapshot(recoveryROName, namespaceName, 0)
 			snapshot0.Spec.OverrideHash = []byte("old-hash")
 			Expect(k8sClient.Create(ctx, snapshot0)).Should(Succeed())
 
 			// Pre-create snapshot 1 invisibly: stripping OverrideTrackingLabel hides it from
 			// listSortedOverrideSnapshots so the controller computes newIndex=1 and Create races
 			// into AlreadyExists. See the CRO test for the etcd-restore production rationale.
-			intendedHash, err := resource.HashOf(aeRO.Spec)
+			intendedHash, err := resource.HashOf(recoveryRO.Spec)
 			Expect(err).Should(Succeed())
-			invisibleSnapshot1 := getResourceOverrideSnapshot(aeROName, namespaceName, 1)
+			invisibleSnapshot1 := getResourceOverrideSnapshot(recoveryROName, namespaceName, 1)
 			delete(invisibleSnapshot1.Labels, placementv1beta1.OverrideTrackingLabel)
 			invisibleSnapshot1.Spec.OverrideHash = []byte(intendedHash)
-			invisibleSnapshot1.Spec.OverrideSpec = aeRO.Spec
+			invisibleSnapshot1.Spec.OverrideSpec = recoveryRO.Spec
 			Expect(k8sClient.Create(ctx, invisibleSnapshot1)).Should(Succeed())
 
-			Expect(aeReconciler.ensureResourceOverrideSnapshot(ctx, aeRO, 10)).Should(Succeed(),
+			Expect(recoveryReconciler.ensureResourceOverrideSnapshot(ctx, recoveryRO, 10)).Should(Succeed(),
 				"AlreadyExists with matching hash should be treated as success")
 
 			By("Verifying snapshot 0 was demoted to latest=false")
@@ -700,16 +700,16 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 
 		It("Should delete the mismatched snapshot, return ExpectedBehaviorError, and emit a Warning event", func() {
 			fakeRecorder := record.NewFakeRecorder(10)
-			aeReconciler.recorder = fakeRecorder
+			recoveryReconciler.recorder = fakeRecorder
 
-			snapshot0 := getResourceOverrideSnapshot(aeROName, namespaceName, 0)
+			snapshot0 := getResourceOverrideSnapshot(recoveryROName, namespaceName, 0)
 			snapshot0.Spec.OverrideHash = []byte("old-hash")
 			Expect(k8sClient.Create(ctx, snapshot0)).Should(Succeed())
 
 			// Pre-create snapshot 1 invisibly with a divergent spec — the controller must
 			// recompute the hash from the spec (not trust the stored OverrideHash field) and
 			// then delete the snapshot to drive observed → desired state.
-			invisibleSnapshot1 := getResourceOverrideSnapshot(aeROName, namespaceName, 1)
+			invisibleSnapshot1 := getResourceOverrideSnapshot(recoveryROName, namespaceName, 1)
 			delete(invisibleSnapshot1.Labels, placementv1beta1.OverrideTrackingLabel)
 			divergentSpec := getResourceOverrideSpec()
 			divergentSpec.Policy = &placementv1beta1.OverridePolicy{
@@ -727,7 +727,7 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 			invisibleSnapshot1.Spec.OverrideHash = []byte(divergentHash)
 			Expect(k8sClient.Create(ctx, invisibleSnapshot1)).Should(Succeed())
 
-			err = aeReconciler.ensureResourceOverrideSnapshot(ctx, aeRO, 10)
+			err = recoveryReconciler.ensureResourceOverrideSnapshot(ctx, recoveryRO, 10)
 			Expect(err).Should(HaveOccurred(), "mismatched hash should not silently succeed")
 			Expect(errors.Is(err, controller.ErrExpectedBehavior)).Should(BeTrue(),
 				"error should wrap ErrExpectedBehavior, got %v", err)
@@ -756,15 +756,15 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 
 		It("Should take the hash-match path and audit siblings when the latest snapshot's hash equals the RO spec", func() {
 			// Mirror of the CRO hash-match test for the namespaced controller.
-			intendedHash, err := resource.HashOf(aeRO.Spec)
+			intendedHash, err := resource.HashOf(recoveryRO.Spec)
 			Expect(err).Should(Succeed())
-			snapshot0 := getResourceOverrideSnapshot(aeROName, namespaceName, 0)
+			snapshot0 := getResourceOverrideSnapshot(recoveryROName, namespaceName, 0)
 			snapshot0.Spec.OverrideHash = []byte(intendedHash)
-			snapshot0.Spec.OverrideSpec = aeRO.Spec
+			snapshot0.Spec.OverrideSpec = recoveryRO.Spec
 			snapshot0.Labels[placementv1beta1.IsLatestSnapshotLabel] = strconv.FormatBool(false)
 			Expect(k8sClient.Create(ctx, snapshot0)).Should(Succeed())
 
-			Expect(aeReconciler.ensureResourceOverrideSnapshot(ctx, aeRO, 10)).Should(Succeed())
+			Expect(recoveryReconciler.ensureResourceOverrideSnapshot(ctx, recoveryRO, 10)).Should(Succeed())
 
 			By("Verifying ensureSnapshotLatest flipped snapshot 0 back to latest=true")
 			final0 := &placementv1beta1.ResourceOverrideSnapshot{}
@@ -772,7 +772,7 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 			Expect(final0.Labels[placementv1beta1.IsLatestSnapshotLabel]).Should(Equal("true"))
 
 			By("Verifying no new snapshot at index 1 was created")
-			snapshot1 := getResourceOverrideSnapshot(aeROName, namespaceName, 1)
+			snapshot1 := getResourceOverrideSnapshot(recoveryROName, namespaceName, 1)
 			Expect(apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot1.Name, Namespace: snapshot1.Namespace}, snapshot1))).Should(BeTrue(),
 				"hash-match path must not create a new snapshot")
 		})

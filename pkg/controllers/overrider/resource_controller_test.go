@@ -39,6 +39,7 @@ import (
 // TestEnsureResourceOverrideSnapshotAlreadyExistsDelete is the namespaced mirror of the CRO
 // AlreadyExists Delete-branch coverage; see clusterresource_controller_test.go for the rationale.
 func TestEnsureResourceOverrideSnapshotAlreadyExistsDelete(t *testing.T) {
+	t.Parallel()
 	s := runtime.NewScheme()
 	if err := placementv1beta1.AddToScheme(s); err != nil {
 		t.Fatalf("scheme: %v", err)
@@ -72,6 +73,7 @@ func TestEnsureResourceOverrideSnapshotAlreadyExistsDelete(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ns := "ae-ns"
 			ro := &placementv1beta1.ResourceOverride{
 				TypeMeta: metav1.TypeMeta{

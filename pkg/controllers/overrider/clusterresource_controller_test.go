@@ -45,6 +45,7 @@ import (
 // (no tracking label, divergent hash) so the controller hits the AlreadyExists path on Create
 // and then the hash-mismatch branch on the subsequent Get.
 func TestEnsureClusterResourceOverrideSnapshotAlreadyExistsDelete(t *testing.T) {
+	t.Parallel()
 	s := runtime.NewScheme()
 	if err := placementv1beta1.AddToScheme(s); err != nil {
 		t.Fatalf("scheme: %v", err)
@@ -71,14 +72,16 @@ func TestEnsureClusterResourceOverrideSnapshotAlreadyExistsDelete(t *testing.T) 
 			wantSnapDelete: true,
 		},
 		{
-			name:         "delete returning non-NotFound error returns API server error",
-			deleteErr:    apierrors.NewInternalError(fmt.Errorf("simulated transient")),
-			wantSentinel: controller.ErrAPIServerError,
+			name:           "delete returning non-NotFound error returns API server error",
+			deleteErr:      apierrors.NewInternalError(fmt.Errorf("simulated transient")),
+			wantSentinel:   controller.ErrAPIServerError,
+			wantSnapDelete: true,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			cro := &placementv1beta1.ClusterResourceOverride{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: placementv1beta1.GroupVersion.String(),
