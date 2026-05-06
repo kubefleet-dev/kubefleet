@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The KubeFleet Authors.
+Copyright 2026 The KubeFleet Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,8 +25,8 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -45,7 +45,8 @@ import (
 // (no tracking label, divergent hash) so the controller hits the AlreadyExists path on Create
 // and then the hash-mismatch branch on the subsequent Get.
 func TestEnsureClusterResourceOverrideSnapshotAlreadyExistsDelete(t *testing.T) {
-	if err := placementv1beta1.AddToScheme(scheme.Scheme); err != nil {
+	s := runtime.NewScheme()
+	if err := placementv1beta1.AddToScheme(s); err != nil {
 		t.Fatalf("scheme: %v", err)
 	}
 
@@ -136,7 +137,7 @@ func TestEnsureClusterResourceOverrideSnapshotAlreadyExistsDelete(t *testing.T) 
 			}
 
 			fakeClient := fake.NewClientBuilder().
-				WithScheme(scheme.Scheme).
+				WithScheme(s).
 				WithObjects(snap0, snap1).
 				WithInterceptorFuncs(interceptors).
 				Build()

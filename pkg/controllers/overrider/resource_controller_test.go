@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The KubeFleet Authors.
+Copyright 2026 The KubeFleet Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,8 +25,8 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -39,29 +39,34 @@ import (
 // TestEnsureResourceOverrideSnapshotAlreadyExistsDelete is the namespaced mirror of the CRO
 // AlreadyExists Delete-branch coverage; see clusterresource_controller_test.go for the rationale.
 func TestEnsureResourceOverrideSnapshotAlreadyExistsDelete(t *testing.T) {
-	if err := placementv1beta1.AddToScheme(scheme.Scheme); err != nil {
+	s := runtime.NewScheme()
+	if err := placementv1beta1.AddToScheme(s); err != nil {
 		t.Fatalf("scheme: %v", err)
 	}
 	tests := []struct {
-		name         string
-		deleteErr    error
-		wantSentinel error
+		name           string
+		deleteErr      error
+		wantSentinel   error
+		wantSnapDelete bool // whether the controller is expected to attempt a Delete on the mismatched snapshot
 	}{
 		{
-			name:         "delete succeeds returns expected-behavior error",
-			wantSentinel: controller.ErrExpectedBehavior,
+			name:           "delete succeeds returns expected-behavior error",
+			wantSentinel:   controller.ErrExpectedBehavior,
+			wantSnapDelete: true,
 		},
 		{
 			name: "delete returning IsNotFound is swallowed and still returns expected-behavior error",
 			deleteErr: apierrors.NewNotFound(
 				schema.GroupResource{Group: placementv1beta1.GroupVersion.Group, Resource: "resourceoverridesnapshots"},
 				"already-gone"),
-			wantSentinel: controller.ErrExpectedBehavior,
+			wantSentinel:   controller.ErrExpectedBehavior,
+			wantSnapDelete: true,
 		},
 		{
-			name:         "delete returning non-NotFound error returns API server error",
-			deleteErr:    apierrors.NewInternalError(fmt.Errorf("simulated transient")),
-			wantSentinel: controller.ErrAPIServerError,
+			name:           "delete returning non-NotFound error returns API server error",
+			deleteErr:      apierrors.NewInternalError(fmt.Errorf("simulated transient")),
+			wantSentinel:   controller.ErrAPIServerError,
+			wantSnapDelete: true,
 		},
 	}
 
@@ -110,9 +115,11 @@ func TestEnsureResourceOverrideSnapshotAlreadyExistsDelete(t *testing.T) {
 				},
 			}
 
+			deleteCalls := 0
 			interceptors := interceptor.Funcs{
 				Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
 					if _, ok := obj.(*placementv1beta1.ResourceOverrideSnapshot); ok && obj.GetName() == snap1.Name {
+						deleteCalls++
 						if tc.deleteErr != nil {
 							return tc.deleteErr
 						}
@@ -122,7 +129,7 @@ func TestEnsureResourceOverrideSnapshotAlreadyExistsDelete(t *testing.T) {
 			}
 
 			fakeClient := fake.NewClientBuilder().
-				WithScheme(scheme.Scheme).
+				WithScheme(s).
 				WithObjects(snap0, snap1).
 				WithInterceptorFuncs(interceptors).
 				Build()
@@ -141,6 +148,9 @@ func TestEnsureResourceOverrideSnapshotAlreadyExistsDelete(t *testing.T) {
 			}
 			if !stderrors.Is(err, tc.wantSentinel) {
 				t.Errorf("error = %v, want sentinel %v", err, tc.wantSentinel)
+			}
+			if tc.wantSnapDelete && deleteCalls == 0 {
+				t.Errorf("expected the controller to attempt deletion of the mismatched snapshot, but it didn't")
 			}
 		})
 	}
