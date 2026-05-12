@@ -2168,3 +2168,33 @@ func TestRequirementBoundsTighten(t *testing.T) {
 		}
 	})
 }
+
+// TestCollectRequirementBoundsUnhandledOperator guards the invariant that every operator listed
+// in supportedPropertyOperators has a matching arm in the collectRequirementBounds switch. A
+// future change that adds an operator to the map but forgets the switch arm must fail loudly.
+//
+// The test mutates the package-level supportedPropertyOperators map and restores it via
+// t.Cleanup. This is safe because no test in this package runs in parallel; introducing
+// t.Parallel() to any sibling test that touches the operator registry would require revisiting
+// this approach (e.g. dependency-injecting the operator set into collectRequirementBounds).
+func TestCollectRequirementBoundsUnhandledOperator(t *testing.T) {
+	const fakeOp placementv1beta1.PropertySelectorOperator = "FakeOpForTest"
+	supportedPropertyOperators[fakeOp] = struct{}{}
+	t.Cleanup(func() { delete(supportedPropertyOperators, fakeOp) })
+
+	reqs := []placementv1beta1.PropertySelectorRequirement{
+		{Name: "p", Operator: placementv1beta1.PropertySelectorEqualTo, Values: []string{"5"}},
+		{Name: "p", Operator: fakeOp, Values: []string{"7"}},
+	}
+	_, err := collectRequirementBounds(reqs)
+	if err == nil {
+		t.Fatalf("collectRequirementBounds(%v) error = nil, want non-nil for unhandled operator", reqs)
+	}
+	// Bind both to the error source ("internal:") and content ("no bounds handler") so the test
+	// fails distinctly from any other validation error that might surface from this function.
+	for _, wantSub := range []string{"internal:", "no bounds handler"} {
+		if !strings.Contains(err.Error(), wantSub) {
+			t.Errorf("collectRequirementBounds(%v) error = %q, want substring %q", reqs, err.Error(), wantSub)
+		}
+	}
+}

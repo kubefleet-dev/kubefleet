@@ -66,6 +66,23 @@ var (
 	resourceCapacityTypes             = supportedResourceCapacityTypes()
 )
 
+// singleValueRequired is the number of values every supported PropertySelector operator accepts
+// today. All operators in supportedPropertyOperators are single-value; revisit this and the
+// related error wording in validateOperatorAndValues when adding a multi-value operator.
+const singleValueRequired = 1
+
+// supportedPropertyOperators is the set of operators recognised on a PropertySelectorRequirement.
+// It is the single source of truth for which operators the validator accepts; per-operator
+// behaviour (bounds tightening, Eq/Ne handling) lives in collectRequirementBounds.
+var supportedPropertyOperators = map[placementv1beta1.PropertySelectorOperator]struct{}{
+	placementv1beta1.PropertySelectorGreaterThan:          {},
+	placementv1beta1.PropertySelectorGreaterThanOrEqualTo: {},
+	placementv1beta1.PropertySelectorLessThan:             {},
+	placementv1beta1.PropertySelectorLessThanOrEqualTo:    {},
+	placementv1beta1.PropertySelectorEqualTo:              {},
+	placementv1beta1.PropertySelectorNotEqualTo:           {},
+}
+
 // hasNamespaceWithResourceSelectorsMode checks if any namespace selector has NamespaceWithResourceSelectors mode.
 func hasNamespaceWithResourceSelectorsMode(resourceSelectors []placementv1beta1.ResourceSelectorTerm) bool {
 	for _, selector := range resourceSelectors {
@@ -535,34 +552,15 @@ func validateName(name string) error {
 	return nil
 }
 
-// supportedPropertyOperators lists the operators recognised on a PropertySelectorRequirement.
-// All currently-supported operators take exactly one resource.Quantity value; this table is the
-// single source of truth for both the operator validity check and the per-operator value rules.
-var supportedPropertyOperators = map[placementv1beta1.PropertySelectorOperator]struct {
-	requiredValueCount int
-}{
-	placementv1beta1.PropertySelectorGreaterThan:          {requiredValueCount: 1},
-	placementv1beta1.PropertySelectorGreaterThanOrEqualTo: {requiredValueCount: 1},
-	placementv1beta1.PropertySelectorLessThan:             {requiredValueCount: 1},
-	placementv1beta1.PropertySelectorLessThanOrEqualTo:    {requiredValueCount: 1},
-	placementv1beta1.PropertySelectorEqualTo:              {requiredValueCount: 1},
-	placementv1beta1.PropertySelectorNotEqualTo:           {requiredValueCount: 1},
-}
-
 // validateOperatorAndValues bundles operator and value validation: the operator must be one we
-// recognise, the value count must match the per-operator spec, and every value must be a valid
+// recognise, the value count must match singleValueRequired, and every value must be a valid
 // resource.Quantity.
 func validateOperatorAndValues(op placementv1beta1.PropertySelectorOperator, values []string) error {
-	spec, ok := supportedPropertyOperators[op]
-	if !ok {
+	if _, ok := supportedPropertyOperators[op]; !ok {
 		return fmt.Errorf("unsupported operator %s", op)
 	}
-	if len(values) != spec.requiredValueCount {
-		// Preserve the historical wording for the count==1 case (every supported operator today).
-		if spec.requiredValueCount == 1 {
-			return fmt.Errorf("operator %s requires exactly one value, got %d", op, len(values))
-		}
-		return fmt.Errorf("operator %s requires exactly %d values, got %d", op, spec.requiredValueCount, len(values))
+	if len(values) != singleValueRequired {
+		return fmt.Errorf("operator %s requires exactly one value, got %d", op, len(values))
 	}
 	for _, value := range values {
 		if _, err := resource.ParseQuantity(value); err != nil {
@@ -623,13 +621,16 @@ func validateRequirementsConsistency(reqs []placementv1beta1.PropertySelectorReq
 func collectRequirementBounds(reqs []placementv1beta1.PropertySelectorRequirement) (*requirementBounds, error) {
 	out := &requirementBounds{}
 	for _, req := range reqs {
-		if _, ok := supportedPropertyOperators[req.Operator]; !ok || len(req.Values) != 1 {
+		if _, ok := supportedPropertyOperators[req.Operator]; !ok || len(req.Values) != singleValueRequired {
 			continue
 		}
 		q, err := resource.ParseQuantity(req.Values[0])
 		if err != nil {
 			continue
 		}
+		// Each operator listed in supportedPropertyOperators must have a case below; the default
+		// arm fires only if an operator is added to the map without a matching case here (value-
+		// count and parse-quantity mismatches are already filtered out by the continue above).
 		switch req.Operator {
 		case placementv1beta1.PropertySelectorEqualTo:
 			if out.eqVal != nil && out.eqVal.Cmp(q) != 0 {
@@ -646,6 +647,8 @@ func collectRequirementBounds(reqs []placementv1beta1.PropertySelectorRequiremen
 			out.tightenUpper(boundary{q: q, strict: true})
 		case placementv1beta1.PropertySelectorLessThanOrEqualTo:
 			out.tightenUpper(boundary{q: q, strict: false})
+		default:
+			return nil, fmt.Errorf("internal: operator %s is in supportedPropertyOperators but has no bounds handler", req.Operator)
 		}
 	}
 	return out, nil
