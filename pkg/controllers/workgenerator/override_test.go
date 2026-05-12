@@ -429,10 +429,9 @@ func TestFetchResourceOverrideSnapshot(t *testing.T) {
 }
 
 func TestApplyOverrides_clusterScopedResource(t *testing.T) {
-	// FakeManager.IsClusterScopedResources returns (m.APIResources[gvk] == m.IsClusterScopedResource),
-	// so a `false` flag combined with a map of namespace-scoped GVKs makes any GVK NOT in the map
-	// (here: ClusterRole) correctly report as cluster-scoped, while listed GVKs (Deployment) report
-	// as namespace-scoped. Despite the field name, `false` is the right value for these tests.
+	// FakeManager.IsClusterScopedResources returns (APIResources[gvk] == IsClusterScopedResource).
+	// With the flag set to false and APIResources listing namespace-scoped GVKs, listed GVKs
+	// report as namespace-scoped and unlisted GVKs (ClusterRole) report as cluster-scoped.
 	fakeInformer := informer.FakeManager{
 		APIResources: map[schema.GroupVersionKind]bool{
 			{
@@ -455,8 +454,7 @@ func TestApplyOverrides_clusterScopedResource(t *testing.T) {
 		croMap          map[placementv1beta1.ResourceIdentifier][]*placementv1beta1.ClusterResourceOverrideSnapshot
 		wantClusterRole rbacv1.ClusterRole
 		wantErr         error
-		// wantErrSubstr asserts substrings in the returned error message — used to verify
-		// that the per-resource failure identifies the failing override snapshot and target object.
+		// wantErrSubstr asserts the failure message names the failing snapshot and target.
 		wantErrSubstr []string
 		wantDeleted   bool
 	}{
@@ -977,9 +975,8 @@ func TestApplyOverrides_clusterScopedResource(t *testing.T) {
 			},
 		},
 		{
-			// Covers the applyOverrideRules → IsClusterMatched error path. An invalid LabelSelector
-			// Operator causes metav1.LabelSelectorAsSelector to fail; applyOverrideRules returns
-			// the raw error, and applyOverrides wraps it with the snapshot/target identity.
+			// Invalid LabelSelector Operator makes IsClusterMatched fail — exercises the
+			// applyOverrideRules raw-error return that applyOverrides wraps.
 			name: "invalid cluster label selector in clusterResourceOverride",
 			clusterRole: rbacv1.ClusterRole{
 				TypeMeta: clusterRoleType,
@@ -1231,8 +1228,7 @@ func TestApplyOverrides_clusterScopedResource(t *testing.T) {
 }
 
 func TestApplyOverrides_namespaceScopedResource(t *testing.T) {
-	// See the same setup in TestApplyOverrides_clusterScopedResource above for the rationale
-	// behind IsClusterScopedResource: false combined with a map of namespace-scoped GVKs.
+	// See TestApplyOverrides_clusterScopedResource for the IsClusterScopedResource: false rationale.
 	fakeInformer := informer.FakeManager{
 		APIResources: map[schema.GroupVersionKind]bool{
 			{
@@ -1256,8 +1252,7 @@ func TestApplyOverrides_namespaceScopedResource(t *testing.T) {
 		roMap          map[placementv1beta1.ResourceIdentifier][]*placementv1beta1.ResourceOverrideSnapshot
 		wantDeployment appsv1.Deployment
 		wantErr        error
-		// wantErrSubstr asserts substrings in the returned error message — used to verify
-		// that the per-resource failure identifies the failing override snapshot and target object.
+		// wantErrSubstr asserts the failure message names the failing snapshot and target.
 		wantErrSubstr []string
 		wantDeleted   bool
 	}{
@@ -2999,6 +2994,48 @@ func TestReplaceClusterLabelKeyVariables(t *testing.T) {
 			}
 			if result != tc.want {
 				t.Errorf("replaceClusterLabelKeyVariables() = %v, want %v", result, tc.want)
+			}
+		})
+	}
+}
+
+func TestFormatOverrideTarget(t *testing.T) {
+	tests := map[string]struct {
+		kind      string
+		name      string
+		namespace string
+		want      string
+	}{
+		"namespaced resource": {
+			kind:      "Deployment",
+			name:      "my-app",
+			namespace: "default",
+			want:      `Deployment "my-app" in namespace "default"`,
+		},
+		"cluster-scoped resource": {
+			kind: "Namespace",
+			name: "app",
+			want: `Namespace "app"`,
+		},
+		"empty kind falls back to Unknown": {
+			name:      "my-app",
+			namespace: "default",
+			want:      `Unknown "my-app" in namespace "default"`,
+		},
+		"empty kind, cluster-scoped": {
+			name: "app",
+			want: `Unknown "app"`,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			target := &unstructured.Unstructured{}
+			target.SetGroupVersionKind(schema.GroupVersionKind{Kind: tc.kind})
+			target.SetName(tc.name)
+			target.SetNamespace(tc.namespace)
+			if got := formatOverrideTarget(target); got != tc.want {
+				t.Errorf("formatOverrideTarget() = %q, want %q", got, tc.want)
 			}
 		})
 	}

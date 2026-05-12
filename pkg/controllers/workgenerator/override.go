@@ -35,10 +35,9 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/overrider"
 )
 
-// fetchClusterResourceOverrideSnapshots returns the ClusterResourceOverrideSnapshots referenced
-// by the given binding, keyed by the ResourceIdentifier each snapshot's selectors target. The
-// returned map preserves the order in which the binding lists the snapshots, so the caller can
-// apply them in a deterministic sequence.
+// fetchClusterResourceOverrideSnapshots returns the binding's CRO snapshots keyed by the
+// ResourceIdentifier their selectors target. Order matches the binding's snapshot list so
+// callers can apply deterministically.
 //
 // TODO: combine the following two functions into one, as they are very similar.
 func (r *Reconciler) fetchClusterResourceOverrideSnapshots(ctx context.Context, resourceBinding placementv1beta1.BindingObj) (map[placementv1beta1.ResourceIdentifier][]*placementv1beta1.ClusterResourceOverrideSnapshot, error) {
@@ -75,10 +74,9 @@ func (r *Reconciler) fetchClusterResourceOverrideSnapshots(ctx context.Context, 
 	return croMap, nil
 }
 
-// fetchResourceOverrideSnapshots returns the ResourceOverrideSnapshots referenced by the given
-// binding, keyed by the ResourceIdentifier each snapshot's selectors target. The returned map
-// preserves the order in which the binding lists the snapshots, so the caller can apply them in
-// a deterministic sequence.
+// fetchResourceOverrideSnapshots returns the binding's RO snapshots keyed by the
+// ResourceIdentifier their selectors target. Order matches the binding's snapshot list so
+// callers can apply deterministically.
 func (r *Reconciler) fetchResourceOverrideSnapshots(ctx context.Context, resourceBinding placementv1beta1.BindingObj) (map[placementv1beta1.ResourceIdentifier][]*placementv1beta1.ResourceOverrideSnapshot, error) {
 	roMap := make(map[placementv1beta1.ResourceIdentifier][]*placementv1beta1.ResourceOverrideSnapshot)
 
@@ -158,8 +156,8 @@ func (r *Reconciler) applyOverrides(resource *placementv1beta1.ResourceContent, 
 		}
 		if err := applyOverrideRules(resource, cluster, snapshot.Spec.OverrideSpec.Policy.OverrideRules); err != nil {
 			klog.ErrorS(err, "Failed to apply the override rules", "clusterResourceOverrideSnapshot", klog.KObj(snapshot))
-			return false, fmt.Errorf("%w: ClusterResourceOverrideSnapshot %q failed to apply on %s: %s",
-				controller.ErrUserError, snapshot.Name, formatOverrideTarget(&uResource), err.Error())
+			return false, controller.NewUserError(fmt.Errorf("ClusterResourceOverrideSnapshot %q failed to apply on %s: %s",
+				snapshot.Name, formatOverrideTarget(&uResource), err.Error()))
 		}
 	}
 	klog.V(2).InfoS("Applied clusterResourceOverrideSnapshots", "resource", klog.KObj(&uResource), "numberOfOverrides", len(croMap[key]))
@@ -182,8 +180,8 @@ func (r *Reconciler) applyOverrides(resource *placementv1beta1.ResourceContent, 
 			}
 			if err := applyOverrideRules(resource, cluster, snapshot.Spec.OverrideSpec.Policy.OverrideRules); err != nil {
 				klog.ErrorS(err, "Failed to apply the override rules", "resourceOverrideSnapshot", klog.KObj(snapshot))
-				return false, fmt.Errorf("%w: ResourceOverrideSnapshot %q failed to apply on %s: %s",
-					controller.ErrUserError, snapshot.Name, formatOverrideTarget(&uResource), err.Error())
+				return false, controller.NewUserError(fmt.Errorf("ResourceOverrideSnapshot %q failed to apply on %s: %s",
+					snapshot.Name, formatOverrideTarget(&uResource), err.Error()))
 			}
 		}
 		klog.V(2).InfoS("Applied resourceOverrideSnapshots", "resource", klog.KObj(&uResource), "numberOfOverrides", len(roMap[key]))
@@ -191,27 +189,29 @@ func (r *Reconciler) applyOverrides(resource *placementv1beta1.ResourceContent, 
 	return resource.Raw == nil, nil
 }
 
-// formatOverrideTarget returns a human-readable identifier for the resource being overridden,
-// suitable for inclusion in a user-facing error message (e.g. `Deployment "my-app" in namespace "default"`).
+// formatOverrideTarget renders the target as e.g. `Deployment "my-app" in namespace "default"`
+// for inclusion in a user-facing error message.
 func formatOverrideTarget(target *unstructured.Unstructured) string {
+	// Fall back to "Unknown" so a snapshot missing `kind` doesn't render as `"" "name"`.
 	kind := target.GetObjectKind().GroupVersionKind().Kind
+	if kind == "" {
+		kind = "Unknown"
+	}
 	if ns := target.GetNamespace(); ns != "" {
 		return fmt.Sprintf("%s %q in namespace %q", kind, target.GetName(), ns)
 	}
 	return fmt.Sprintf("%s %q", kind, target.GetName())
 }
 
-// applyOverrideRules applies the given override rules to the resource for the cluster. Rules
-// whose cluster selector does not match the cluster are skipped. A DeleteOverrideType rule
-// clears the resource and ends rule application; otherwise the rule's JSON patches are applied
-// in order. The first rule that fails returns its raw error to the caller, which is responsible
-// for tagging the failure as a user error.
+// applyOverrideRules applies matching rules to the resource. A DeleteOverrideType rule clears
+// the resource and stops; otherwise JSON patches apply in order. Errors are returned raw — the
+// caller (applyOverrides) tags them as user errors so we don't double-wrap the sentinel.
 func applyOverrideRules(resource *placementv1beta1.ResourceContent, cluster *clusterv1beta1.MemberCluster, rules []placementv1beta1.OverrideRule) error {
 	for _, rule := range rules {
 		matched, err := overrider.IsClusterMatched(cluster, rule)
 		if err != nil {
-			klog.ErrorS(controller.NewUnexpectedBehaviorError(err), "Found an invalid override rule")
-			return err // should not happen though and should be rejected by the webhook
+			klog.ErrorS(err, "Found an invalid override rule")
+			return err
 		}
 		if !matched {
 			continue
