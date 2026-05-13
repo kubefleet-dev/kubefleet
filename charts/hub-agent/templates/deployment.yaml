@@ -26,15 +26,6 @@ spec:
         fsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
-      initContainers:
-        {{- if .Values.crdInstaller.enabled }}
-        - name: crd-installer
-          image: "{{ .Values.crdInstaller.image.repository }}:{{ .Values.crdInstaller.image.tag }}"
-          imagePullPolicy: {{ .Values.crdInstaller.image.pullPolicy }}
-          args:
-            - --mode=hub
-            - --v={{ .Values.crdInstaller.logVerbosity }}
-        {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
