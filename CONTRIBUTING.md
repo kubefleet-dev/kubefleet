@@ -57,7 +57,7 @@ Each PR should carry one base `release-note/*` label matching its title prefix; 
 
 Additive labels (stack on top of the above when applicable):
 
-- `release-note/breaking` — a change that requires user action to upgrade (manifest edit, CRD reapply, RBAC reapply, webhook config update, member-cluster re-join, etc.) **or** that alters scheduling, override, or apply semantics in a way that re-ranks or re-applies existing placements without a manifest change. Pre-1.0, internal refactors that touch `v1alpha1` shapes but don't require migration steps or change semantics do not qualify.
+- `release-note/breaking` — a change that requires user action to upgrade (manifest edit, CRD reapply, RBAC reapply, webhook config update, member-cluster re-join, etc.) **or** that alters scheduling, override, or apply semantics in a way that re-ranks or re-applies existing placements without a manifest change. Pre-1.0, internal refactors of any alpha or beta API shape that don't require migration steps or change observable semantics do not qualify.
 - `release-note/security` — security fixes or vulnerability disclosures
 - `release-note/none` — suppresses the entry in release notes but keeps the PR visible in GitHub's auto-notes drafter UI
 - `ignore-for-release` — hides the PR entirely from auto-generated notes. Default to this for CI-only or internal-cleanup PRs with no user impact.

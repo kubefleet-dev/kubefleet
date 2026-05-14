@@ -16,8 +16,8 @@ below to report it to the KubeFleet team.
 
 KubeFleet is pre-1.0 and *targets* an `N`/`N-1` support window: the latest minor release and
 the one immediately preceding it receive security patches. The project has maintained a roughly
-quarterly release cadence since `v0.1.0`, which gives approximately six months of patch coverage
-from the GA of any given minor. Minor cadence slippage is possible while we are pre-1.0.
+2–3 month minor-release cadence since `v0.2`, giving approximately four to six months of patch
+coverage from the GA of any given minor. Minor cadence slippage is possible while we are pre-1.0.
 
 | Version | Supported |
 | --- | --- |
