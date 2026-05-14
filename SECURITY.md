@@ -1,5 +1,11 @@
 # Security
 
+<!--
+TODO: The "Supported versions", "Response SLO", and "Coordinated disclosure" sections
+below are provisional pending maintainer agreement on kubefleet-dev/kubefleet#693 (Q3)
+and the discussion on PR #713. Update once those decisions land.
+-->
+
 The KubeFleet maintainers takes the security of the project very seriously; we greatly welcomes
 and appreciates any responsible disclosures of security vulnerabilities.
 
@@ -8,9 +14,10 @@ below to report it to the KubeFleet team.
 
 ## Supported versions
 
-KubeFleet is pre-1.0 and follows an `N`/`N-1` support window: only the latest minor release and
-the one immediately preceding it receive security patches. At the planned ~3-month minor-release
-cadence, that gives roughly six months of patch coverage from the GA of any given minor.
+KubeFleet is pre-1.0 and *targets* an `N`/`N-1` support window: the latest minor release and
+the one immediately preceding it receive security patches. The project has maintained a roughly
+quarterly release cadence since `v0.1.0`, which gives approximately six months of patch coverage
+from the GA of any given minor. Minor cadence slippage is possible while we are pre-1.0.
 
 | Version | Supported |
 | --- | --- |
@@ -19,7 +26,9 @@ cadence, that gives roughly six months of patch coverage from the GA of any give
 | Older minors | No |
 
 "Supported" here refers to security patch backports only. As a pre-1.0 project, KubeFleet does
-not guarantee API stability across minor releases.
+not guarantee API stability across minor releases. Users on unsupported minors should upgrade to
+a supported minor following the project's upgrade documentation; patches are not backported to
+EOL releases.
 
 ## Response SLO
 
@@ -34,6 +43,26 @@ the maintainers to the time a patched release is published across all supported 
 
 These targets are aspirational while we ramp up to consistent release cadence; we will revisit
 them after one full quarterly cycle.
+
+## Coordinated disclosure
+
+KubeFleet follows responsible-disclosure norms but the operational specifics below are still
+being finalized:
+
+- **Embargo window: TBD.** We have not yet committed to a fixed number of days between
+  vulnerability acknowledgement and public disclosure. At minimum, reporters will be notified
+  before public disclosure. The intent is to follow standard CNCF coordinated disclosure
+  practice (typically 1–7 days for downstream coordination).
+- **Vendor advance notification: TBD.** Projects with downstream consumers commonly operate
+  a distributors mailing list for embargo coordination with packagers and downstream forks
+  (see the [CNCF TAG-Security `SECURITY.md` template](https://github.com/cncf/tag-security/blob/main/project-resources/templates/SECURITY.md)
+  for the conventional `cncf-<project>-distributors-announce@lists.cncf.io` form). Whether
+  KubeFleet stands one up depends on demonstrated downstream demand.
+- **GitHub private vulnerability reporting:** to be enabled on this repository as the
+  preferred reporting channel; the maintainer mailing list (see below) remains the fallback
+  until it is.
+
+This section will be updated as each item is decided.
 
 ## Reporting Security Issues
 
