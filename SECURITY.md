@@ -6,6 +6,35 @@ and appreciates any responsible disclosures of security vulnerabilities.
 If you believe you have found a security vulnerability in the repository, please follow the steps
 below to report it to the KubeFleet team.
 
+## Supported versions
+
+KubeFleet is pre-1.0 and follows an `N`/`N-1` support window: only the latest minor release and
+the one immediately preceding it receive security patches. At the planned ~3-month minor-release
+cadence, that gives roughly six months of patch coverage from the GA of any given minor.
+
+| Version | Supported |
+| --- | --- |
+| Latest minor (e.g. `v0.Y.x`) | Yes |
+| Previous minor (e.g. `v0.Y-1.x`) | Yes |
+| Older minors | No |
+
+"Supported" here refers to security patch backports only. As a pre-1.0 project, KubeFleet does
+not guarantee API stability across minor releases.
+
+## Response SLO
+
+We commit to the following response targets, measured from the time a report is acknowledged by
+the maintainers to the time a patched release is published across all supported minors:
+
+| Severity (CVSS v3.1) | Target time-to-patch |
+| --- | --- |
+| Critical (9.0+) | 14 days |
+| High (7.0–8.9) | 45 days |
+| Medium / Low | Best-effort, no committed SLO |
+
+These targets are aspirational while we ramp up to consistent release cadence; we will revisit
+them after one full quarterly cycle.
+
 ## Reporting Security Issues
 
 **Please do not report security vulnerabilities through public GitHub issues.** Instead, 
