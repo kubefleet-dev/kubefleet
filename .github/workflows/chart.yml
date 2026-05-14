@@ -2,8 +2,13 @@ name: Helm Chart Publisher
 
 on:
   push:
+    # Pre-release tags (e.g. v0.4.0-rc.1) build images via release.yml but
+    # must not land in the public Helm index. The negative pattern below
+    # filters them out; workflow_dispatch can still publish a specific
+    # tag manually if ever needed.
     tags:
       - "v*.*.*"
+      - "!*-rc.*"
   workflow_dispatch:
     inputs:
       tag:
@@ -13,14 +18,6 @@ on:
 permissions:
   contents: write
   packages: write
-
-# Serialize chart publishes globally: the helm-gh-pages action always
-# rewrites the gh-pages branch, so concurrent runs for different tags
-# would race. cancel-in-progress: false — never abort a chart push
-# midway, even if a later tag arrives.
-concurrency:
-  group: helm-chart-publish
-  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
@@ -34,6 +31,13 @@ jobs:
   publish-github-pages:
     needs: export-registry
     runs-on: ubuntu-latest
+    # Only the gh-pages publish needs serialization: helm-gh-pages always
+    # rewrites the gh-pages branch, so concurrent runs for different tags
+    # would race. The OCI publish below pushes immutable per-tag blobs and
+    # is safe to run in parallel across tags, so it stays unguarded.
+    concurrency:
+      group: helm-chart-publish-gh-pages
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:

@@ -79,6 +79,7 @@ jobs:
         env:
           VERSION: ${{ needs.export-registry.outputs.version }}
         run: |
+          set -euo pipefail
           echo "✅ Published images:"
           echo "  - ${{ env.REGISTRY }}/${{ env.HUB_AGENT_IMAGE_NAME }}:${{ env.TAG }}"
           echo "  - ${{ env.REGISTRY }}/${{ env.HUB_AGENT_IMAGE_NAME }}:${VERSION}"
