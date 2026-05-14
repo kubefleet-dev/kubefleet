@@ -64,7 +64,14 @@ jobs:
         run: |
           make push
 
+      # The short-tag (e.g. ":0.4.0") aliases the long form for stable releases
+      # only. RC images are published under the long form (":v0.4.0-rc.1") for
+      # testers, but we deliberately do NOT alias them to a short tag - the
+      # short-tag namespace is reserved for stable releases that consumers can
+      # safely pin to (and "imagetools create" with an RC alias would publish
+      # "0.4.0-rc.1" into that namespace, muddying it).
       - name: Tag and push images without v prefix
+        if: ${{ !contains(needs.export-registry.outputs.tag, '-rc.') }}
         env:
           VERSION: ${{ needs.export-registry.outputs.version }}
         run: |
@@ -81,9 +88,9 @@ jobs:
         run: |
           set -euo pipefail
           echo "✅ Published images:"
-          echo "  - ${{ env.REGISTRY }}/${{ env.HUB_AGENT_IMAGE_NAME }}:${{ env.TAG }}"
-          echo "  - ${{ env.REGISTRY }}/${{ env.HUB_AGENT_IMAGE_NAME }}:${VERSION}"
-          echo "  - ${{ env.REGISTRY }}/${{ env.MEMBER_AGENT_IMAGE_NAME }}:${{ env.TAG }}"
-          echo "  - ${{ env.REGISTRY }}/${{ env.MEMBER_AGENT_IMAGE_NAME }}:${VERSION}"
-          echo "  - ${{ env.REGISTRY }}/${{ env.REFRESH_TOKEN_IMAGE_NAME }}:${{ env.TAG }}"
-          echo "  - ${{ env.REGISTRY }}/${{ env.REFRESH_TOKEN_IMAGE_NAME }}:${VERSION}"
+          for IMAGE in ${{ env.HUB_AGENT_IMAGE_NAME }} ${{ env.MEMBER_AGENT_IMAGE_NAME }} ${{ env.REFRESH_TOKEN_IMAGE_NAME }}; do
+            echo "  - ${{ env.REGISTRY }}/${IMAGE}:${{ env.TAG }}"
+            if [[ "${{ env.TAG }}" != *-rc.* ]]; then
+              echo "  - ${{ env.REGISTRY }}/${IMAGE}:${VERSION}"
+            fi
+          done

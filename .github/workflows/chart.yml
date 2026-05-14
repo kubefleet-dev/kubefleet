@@ -8,7 +8,7 @@ on:
     # tag manually if ever needed.
     tags:
       - "v*.*.*"
-      - "!*-rc.*"
+      - "!v*-rc.*"
   workflow_dispatch:
     inputs:
       tag:
