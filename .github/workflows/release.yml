@@ -15,6 +15,14 @@ permissions:
   contents: read
   packages: write
 
+# Serialize releases per ref so concurrent tag pushes can't race on image
+# pushes to the same ${REGISTRY}/${IMAGE}:${TAG}. Different tags can still
+# run in parallel. We never want cancel-in-progress here: aborting a
+# half-pushed image is worse than letting it finish.
+concurrency:
+  group: release-images-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   HUB_AGENT_IMAGE_NAME: hub-agent
@@ -60,6 +68,7 @@ jobs:
         env:
           VERSION: ${{ needs.export-registry.outputs.version }}
         run: |
+          set -euo pipefail
           for IMAGE in ${{ env.HUB_AGENT_IMAGE_NAME }} ${{ env.MEMBER_AGENT_IMAGE_NAME }} ${{ env.REFRESH_TOKEN_IMAGE_NAME }}; do
             docker buildx imagetools create \
               --tag "${{ env.REGISTRY }}/${IMAGE}:${VERSION}" \

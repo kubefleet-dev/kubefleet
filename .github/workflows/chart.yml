@@ -14,6 +14,14 @@ permissions:
   contents: write
   packages: write
 
+# Serialize chart publishes globally: the helm-gh-pages action always
+# rewrites the gh-pages branch, so concurrent runs for different tags
+# would race. cancel-in-progress: false — never abort a chart push
+# midway, even if a later tag arrives.
+concurrency:
+  group: helm-chart-publish
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
 
