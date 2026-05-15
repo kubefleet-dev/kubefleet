@@ -1,0 +1,21 @@
+apiVersion: placement.kubernetes-fleet.io/v1beta1
+kind: ClusterResourcePlacement
+metadata:
+  name: CRP_NAME
+spec:
+  policy:
+    placementType: PickAll
+  resourceSelectors:
+    - group: ''
+      kind: Namespace
+      version: v1
+      name: NS_NAME
+  strategy:
+    type: ROLLOUT_STRATEGY
+    applyStrategy:
+      type: APPLY_STRATEGY
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: NS_NAME
