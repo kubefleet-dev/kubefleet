@@ -646,7 +646,7 @@ func validateRequirementsConsistency(reqs []placementv1beta1.PropertySelectorReq
 
 // collectRequirementBounds parses each well-formed requirement into the normalised bounds view by
 // dispatching to the operator's applyToBounds. Malformed inputs (unknown operator, wrong value
-// count, unparseable quantity) are skipped so validateOperatorAndValues remains the sole source
+// count, unparsable quantity) are skipped so validateOperatorAndValues remains the sole source
 // of those errors.
 func collectRequirementBounds(reqs []placementv1beta1.PropertySelectorRequirement) (*requirementBounds, error) {
 	out := &requirementBounds{}
