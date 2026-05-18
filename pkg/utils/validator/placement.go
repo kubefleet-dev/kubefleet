@@ -66,21 +66,53 @@ var (
 	resourceCapacityTypes             = supportedResourceCapacityTypes()
 )
 
-// singleValueRequired is the number of values every supported PropertySelector operator accepts
-// today. All operators in supportedPropertyOperators are single-value; revisit this and the
-// related error wording in validateOperatorAndValues when adding a multi-value operator.
-const singleValueRequired = 1
+type operatorSpec struct {
+	requiredValueCount int
+	applyToBounds      func(*requirementBounds, resource.Quantity) error
+}
 
-// supportedPropertyOperators is the set of operators recognised on a PropertySelectorRequirement.
-// It is the single source of truth for which operators the validator accepts; per-operator
-// behaviour (bounds tightening, Eq/Ne handling) lives in collectRequirementBounds.
-var supportedPropertyOperators = map[placementv1beta1.PropertySelectorOperator]struct{}{
-	placementv1beta1.PropertySelectorGreaterThan:          {},
-	placementv1beta1.PropertySelectorGreaterThanOrEqualTo: {},
-	placementv1beta1.PropertySelectorLessThan:             {},
-	placementv1beta1.PropertySelectorLessThanOrEqualTo:    {},
-	placementv1beta1.PropertySelectorEqualTo:              {},
-	placementv1beta1.PropertySelectorNotEqualTo:           {},
+// supportedPropertyOperators is the single source of truth for which PropertySelector operators
+// are accepted and how each one folds into requirementBounds.
+var supportedPropertyOperators = map[placementv1beta1.PropertySelectorOperator]operatorSpec{
+	placementv1beta1.PropertySelectorGreaterThan: {
+		requiredValueCount: 1,
+		applyToBounds: func(rb *requirementBounds, q resource.Quantity) error {
+			rb.tightenLower(boundary{q: q, strict: true})
+			return nil
+		},
+	},
+	placementv1beta1.PropertySelectorGreaterThanOrEqualTo: {
+		requiredValueCount: 1,
+		applyToBounds: func(rb *requirementBounds, q resource.Quantity) error {
+			rb.tightenLower(boundary{q: q, strict: false})
+			return nil
+		},
+	},
+	placementv1beta1.PropertySelectorLessThan: {
+		requiredValueCount: 1,
+		applyToBounds: func(rb *requirementBounds, q resource.Quantity) error {
+			rb.tightenUpper(boundary{q: q, strict: true})
+			return nil
+		},
+	},
+	placementv1beta1.PropertySelectorLessThanOrEqualTo: {
+		requiredValueCount: 1,
+		applyToBounds: func(rb *requirementBounds, q resource.Quantity) error {
+			rb.tightenUpper(boundary{q: q, strict: false})
+			return nil
+		},
+	},
+	placementv1beta1.PropertySelectorEqualTo: {
+		requiredValueCount: 1,
+		applyToBounds:      (*requirementBounds).applyEq,
+	},
+	placementv1beta1.PropertySelectorNotEqualTo: {
+		requiredValueCount: 1,
+		applyToBounds: func(rb *requirementBounds, q resource.Quantity) error {
+			rb.neVals = append(rb.neVals, q)
+			return nil
+		},
+	},
 }
 
 // hasNamespaceWithResourceSelectorsMode checks if any namespace selector has NamespaceWithResourceSelectors mode.
@@ -552,14 +584,12 @@ func validateName(name string) error {
 	return nil
 }
 
-// validateOperatorAndValues bundles operator and value validation: the operator must be one we
-// recognise, the value count must match singleValueRequired, and every value must be a valid
-// resource.Quantity.
 func validateOperatorAndValues(op placementv1beta1.PropertySelectorOperator, values []string) error {
-	if _, ok := supportedPropertyOperators[op]; !ok {
+	spec, ok := supportedPropertyOperators[op]
+	if !ok {
 		return fmt.Errorf("unsupported operator %s", op)
 	}
-	if len(values) != singleValueRequired {
+	if len(values) != spec.requiredValueCount {
 		return fmt.Errorf("operator %s requires exactly one value, got %d", op, len(values))
 	}
 	for _, value := range values {
@@ -614,44 +644,39 @@ func validateRequirementsConsistency(reqs []placementv1beta1.PropertySelectorReq
 	return bounds.checkEqInsideBounds()
 }
 
-// collectRequirementBounds parses each well-formed requirement into the normalised bounds view.
-// It returns early with an error if it sees two Eq requirements with different values; this is
-// a first-error-wins design, consistent with the rest of validateRequirementsConsistency. Other
-// inconsistencies are reported by the bound-checking helpers.
+// collectRequirementBounds parses each well-formed requirement into the normalised bounds view by
+// dispatching to the operator's applyToBounds. Malformed inputs (unknown operator, wrong value
+// count, unparseable quantity) are skipped so validateOperatorAndValues remains the sole source
+// of those errors.
 func collectRequirementBounds(reqs []placementv1beta1.PropertySelectorRequirement) (*requirementBounds, error) {
 	out := &requirementBounds{}
 	for _, req := range reqs {
-		if _, ok := supportedPropertyOperators[req.Operator]; !ok || len(req.Values) != singleValueRequired {
+		spec, ok := supportedPropertyOperators[req.Operator]
+		if !ok || len(req.Values) != spec.requiredValueCount {
 			continue
 		}
 		q, err := resource.ParseQuantity(req.Values[0])
 		if err != nil {
 			continue
 		}
-		// Each operator listed in supportedPropertyOperators must have a case below; the default
-		// arm fires only if an operator is added to the map without a matching case here (value-
-		// count and parse-quantity mismatches are already filtered out by the continue above).
-		switch req.Operator {
-		case placementv1beta1.PropertySelectorEqualTo:
-			if out.eqVal != nil && out.eqVal.Cmp(q) != 0 {
-				return nil, fmt.Errorf("conflicting Eq values %s and %s", out.eqVal.String(), q.String())
-			}
-			out.eqVal = &q
-		case placementv1beta1.PropertySelectorNotEqualTo:
-			out.neVals = append(out.neVals, q)
-		case placementv1beta1.PropertySelectorGreaterThan:
-			out.tightenLower(boundary{q: q, strict: true})
-		case placementv1beta1.PropertySelectorGreaterThanOrEqualTo:
-			out.tightenLower(boundary{q: q, strict: false})
-		case placementv1beta1.PropertySelectorLessThan:
-			out.tightenUpper(boundary{q: q, strict: true})
-		case placementv1beta1.PropertySelectorLessThanOrEqualTo:
-			out.tightenUpper(boundary{q: q, strict: false})
-		default:
+		if spec.applyToBounds == nil {
 			return nil, fmt.Errorf("internal: operator %s is in supportedPropertyOperators but has no bounds handler", req.Operator)
+		}
+		if err := spec.applyToBounds(out, q); err != nil {
+			return nil, err
 		}
 	}
 	return out, nil
+}
+
+// applyEq is a method (not a closure) so the spec table can reference it as
+// (*requirementBounds).applyEq.
+func (rb *requirementBounds) applyEq(q resource.Quantity) error {
+	if rb.eqVal != nil && rb.eqVal.Cmp(q) != 0 {
+		return fmt.Errorf("conflicting Eq values %s and %s", rb.eqVal.String(), q.String())
+	}
+	rb.eqVal = &q
+	return nil
 }
 
 // tightenLower keeps the most restrictive (largest, strict-preferred at ties) lower bound.

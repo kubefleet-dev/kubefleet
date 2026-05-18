@@ -2116,6 +2116,11 @@ func TestValidateRequirementsConsistency(t *testing.T) {
 
 		// Malformed inputs are skipped, not surfaced — that's validateOperatorAndValues' job.
 		{name: "malformed value is ignored for consistency check", reqs: []placementv1beta1.PropertySelectorRequirement{req(placementv1beta1.PropertySelectorEqualTo, "not-a-number"), req(placementv1beta1.PropertySelectorEqualTo, "5")}, wantErr: false},
+
+		// checkEqVsNe and checkEqInsideBounds must use Quantity.Cmp, not string equality, so
+		// canonically-equal cross-format inputs still produce the right conflict verdict.
+		{name: "Eq + Ne with same canonical value but different format", reqs: []placementv1beta1.PropertySelectorRequirement{req(placementv1beta1.PropertySelectorEqualTo, "1000m"), req(placementv1beta1.PropertySelectorNotEqualTo, "1")}, wantErr: true, errSub: "conflicting Eq and Ne"},
+		{name: "Eq + Lt bound with same canonical value but different format", reqs: []placementv1beta1.PropertySelectorRequirement{req(placementv1beta1.PropertySelectorLessThan, "1024"), req(placementv1beta1.PropertySelectorEqualTo, "1Ki")}, wantErr: true, errSub: "violates upper bound"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2169,17 +2174,52 @@ func TestRequirementBoundsTighten(t *testing.T) {
 	})
 }
 
-// TestCollectRequirementBoundsUnhandledOperator guards the invariant that every operator listed
-// in supportedPropertyOperators has a matching arm in the collectRequirementBounds switch. A
-// future change that adds an operator to the map but forgets the switch arm must fail loudly.
-//
-// The test mutates the package-level supportedPropertyOperators map and restores it via
-// t.Cleanup. This is safe because no test in this package runs in parallel; introducing
-// t.Parallel() to any sibling test that touches the operator registry would require revisiting
-// this approach (e.g. dependency-injecting the operator set into collectRequirementBounds).
+func TestApplyEq(t *testing.T) {
+	q := func(s string) resource.Quantity { return resource.MustParse(s) }
+
+	t.Run("first call sets eqVal", func(t *testing.T) {
+		rb := &requirementBounds{}
+		if err := rb.applyEq(q("5")); err != nil {
+			t.Fatalf("applyEq(5) error = %v, want nil", err)
+		}
+		if rb.eqVal == nil || rb.eqVal.Cmp(q("5")) != 0 {
+			t.Errorf("eqVal = %v, want 5", rb.eqVal)
+		}
+	})
+	t.Run("second call with equal value returns nil", func(t *testing.T) {
+		rb := &requirementBounds{}
+		if err := rb.applyEq(q("1")); err != nil {
+			t.Fatalf("setup applyEq(1) error = %v, want nil", err)
+		}
+		if err := rb.applyEq(q("1000m")); err != nil {
+			t.Errorf("applyEq(1000m) on rb with eqVal=1 error = %v, want nil", err)
+		}
+		if rb.eqVal == nil || rb.eqVal.Cmp(q("1")) != 0 {
+			t.Errorf("eqVal = %v, want value equal to 1", rb.eqVal)
+		}
+	})
+	t.Run("second call with different value errors", func(t *testing.T) {
+		rb := &requirementBounds{}
+		if err := rb.applyEq(q("5")); err != nil {
+			t.Fatalf("setup applyEq(5) error = %v, want nil", err)
+		}
+		err := rb.applyEq(q("10"))
+		if err == nil || !strings.Contains(err.Error(), "conflicting Eq values") {
+			t.Errorf("applyEq(10) on rb with eqVal=5 error = %v, want 'conflicting Eq values'", err)
+		}
+		// eqVal must be preserved on the error path.
+		if rb.eqVal == nil || rb.eqVal.Cmp(q("5")) != 0 {
+			t.Errorf("eqVal after failed applyEq(10) = %v, want value equal to 5", rb.eqVal)
+		}
+	})
+}
+
+// TestCollectRequirementBoundsUnhandledOperator covers the nil-applyToBounds runtime guard.
+// Mutates the package-level registry, which is safe only because no test in this package runs
+// with t.Parallel().
 func TestCollectRequirementBoundsUnhandledOperator(t *testing.T) {
 	const fakeOp placementv1beta1.PropertySelectorOperator = "FakeOpForTest"
-	supportedPropertyOperators[fakeOp] = struct{}{}
+	supportedPropertyOperators[fakeOp] = operatorSpec{requiredValueCount: 1}
 	t.Cleanup(func() { delete(supportedPropertyOperators, fakeOp) })
 
 	reqs := []placementv1beta1.PropertySelectorRequirement{
@@ -2190,11 +2230,22 @@ func TestCollectRequirementBoundsUnhandledOperator(t *testing.T) {
 	if err == nil {
 		t.Fatalf("collectRequirementBounds(%v) error = nil, want non-nil for unhandled operator", reqs)
 	}
-	// Bind both to the error source ("internal:") and content ("no bounds handler") so the test
-	// fails distinctly from any other validation error that might surface from this function.
 	for _, wantSub := range []string{"internal:", "no bounds handler"} {
 		if !strings.Contains(err.Error(), wantSub) {
 			t.Errorf("collectRequirementBounds(%v) error = %q, want substring %q", reqs, err.Error(), wantSub)
+		}
+	}
+}
+
+// TestSupportedPropertyOperatorsRegistryComplete fails at test time if any spec has a
+// non-positive requiredValueCount or a nil applyToBounds.
+func TestSupportedPropertyOperatorsRegistryComplete(t *testing.T) {
+	for op, spec := range supportedPropertyOperators {
+		if spec.requiredValueCount <= 0 {
+			t.Errorf("supportedPropertyOperators[%s].requiredValueCount = %d, want > 0", op, spec.requiredValueCount)
+		}
+		if spec.applyToBounds == nil {
+			t.Errorf("supportedPropertyOperators[%s].applyToBounds is nil, want non-nil", op)
 		}
 	}
 }
