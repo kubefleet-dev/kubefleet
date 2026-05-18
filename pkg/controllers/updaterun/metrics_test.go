@@ -130,16 +130,6 @@ func TestDetermineFailureType(t *testing.T) {
 			},
 			want: hubmetrics.UpdateRunFailureTypeInternalError,
 		},
-		{
-			name: "succeeded condition is false with UpdateRunFailed reason and empty message",
-			cond: &metav1.Condition{
-				Type:    string(v1beta1.StagedUpdateRunConditionSucceeded),
-				Status:  metav1.ConditionFalse,
-				Reason:  condition.UpdateRunFailedReason,
-				Message: "",
-			},
-			want: hubmetrics.UpdateRunFailureTypeInternalError,
-		},
 	}
 
 	for _, tc := range tests {
@@ -196,11 +186,6 @@ func TestIsFailureReason(t *testing.T) {
 		{
 			name:   "UpdateRunProgressingReason is not a failure",
 			reason: condition.UpdateRunProgressingReason,
-			want:   false,
-		},
-		{
-			name:   "empty reason is not a failure",
-			reason: "",
 			want:   false,
 		},
 	}

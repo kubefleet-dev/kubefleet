@@ -111,7 +111,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 
 	// Emit the update run status metric based on status conditions in the updateRun.
 	// The failure type is derived from the condition message, not from the reconcile error.
-	defer func() { emitUpdateRunStatusMetric(updateRun) }()
+	defer emitUpdateRunStatusMetric(updateRun)
 
 	state := updateRun.GetUpdateRunSpec().State
 
