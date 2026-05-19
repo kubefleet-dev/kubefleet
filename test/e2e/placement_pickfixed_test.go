@@ -371,20 +371,12 @@ var _ = FDescribe("placing resources using a CRP of PickFixed placement type", f
 		It("should update CRP status as expected with no clusters selected", func() {
 			// The scheduler returns early when there are no target clusters,
 			// so the scheduling condition stays at SchedulePending (Unknown).
-			Eventually(func() error {
-				crp := &placementv1beta1.ClusterResourcePlacement{}
-				if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
-					return err
-				}
-				scheduledCond := crp.GetCondition(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))
-				if scheduledCond == nil {
-					return fmt.Errorf("scheduled condition not found")
-				}
-				if len(crp.Status.PerClusterPlacementStatuses) != 0 {
-					return fmt.Errorf("expected no per-cluster placement statuses, got %d", len(crp.Status.PerClusterPlacementStatuses))
-				}
-				return nil
-			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+			statusActual := crpStatusWithCustomConditionsUpdatedActual(
+				workResourceIdentifiers(),
+				crpSchedulePendingConditions(1),
+				"0",
+			)
+			Eventually(statusActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
 		It("should not place resources on any cluster", func() {
