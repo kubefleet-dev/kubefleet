@@ -31,7 +31,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
 )
 
-var _ = FDescribe("placing resources using a CRP of PickFixed placement type", func() {
+var _ = Describe("placing resources using a CRP of PickFixed placement type", func() {
 	Context("pick some clusters", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 
