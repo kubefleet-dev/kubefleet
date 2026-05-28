@@ -40,7 +40,7 @@ func deleteUpdateRunMetrics(updateRun placementv1beta1.UpdateRunObj) {
 
 // determineFailureType determines the type of failure based on the condition.
 // It returns:
-//   - "none" for successful, in-progress, waiting, stopping, or stopped conditions
+//   - "none" for successful, in-progress, waiting, stopping (unknown status), or stopped conditions
 //   - "user_error" for known customer configuration errors (when the condition message
 //     contains the user error marker)
 //   - "internal_error" for terminal failure conditions or stuck conditions that require investigation

@@ -71,10 +71,10 @@ func TestDetermineFailureType(t *testing.T) {
 			want: hubmetrics.UpdateRunFailureTypeNone,
 		},
 		{
-			name: "progressing condition is false but reason is stopping - not a failure",
+			name: "progressing condition is unknown but reason is stopping - not a failure",
 			cond: &metav1.Condition{
 				Type:    string(v1beta1.StagedUpdateRunConditionProgressing),
-				Status:  metav1.ConditionFalse,
+				Status:  metav1.ConditionUnknown,
 				Reason:  condition.UpdateRunStoppingReason,
 				Message: "stopping the update run",
 			},
@@ -96,7 +96,7 @@ func TestDetermineFailureType(t *testing.T) {
 				Type:    string(v1beta1.StagedUpdateRunConditionSucceeded),
 				Status:  metav1.ConditionFalse,
 				Reason:  condition.UpdateRunFailedReason,
-				Message: fmt.Sprintf("cannot continue the updateRun: %s: invalid CRP selector", controller.ErrUserError.Error()),
+				Message: controller.NewUserError(fmt.Errorf("invalid CRP selector")).Error(),
 			},
 			want: hubmetrics.UpdateRunFailureTypeUserError,
 		},
@@ -111,14 +111,14 @@ func TestDetermineFailureType(t *testing.T) {
 			want: hubmetrics.UpdateRunFailureTypeInternalError,
 		},
 		{
-			name: "initialized condition is false with UpdateRunInitializeFailed reason and user error in message",
+			name: "progressing condition is false with unexpected error in message",
 			cond: &metav1.Condition{
-				Type:    string(v1beta1.StagedUpdateRunConditionInitialized),
+				Type:    string(v1beta1.StagedUpdateRunConditionProgressing),
 				Status:  metav1.ConditionFalse,
-				Reason:  condition.UpdateRunInitializeFailedReason,
-				Message: fmt.Sprintf("failed to initialize: %s: CRP not found", controller.ErrUserError.Error()),
+				Reason:  condition.UpdateRunFailedReason,
+				Message: controller.NewUnexpectedBehaviorError(fmt.Errorf("found unsupported task type in before stage tasks: %s", v1beta1.StageTaskTypeTimedWait)).Error(),
 			},
-			want: hubmetrics.UpdateRunFailureTypeUserError,
+			want: hubmetrics.UpdateRunFailureTypeInternalError,
 		},
 		{
 			name: "initialized condition is false with UpdateRunInitializeFailed reason but no user error in message",
