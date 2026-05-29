@@ -133,6 +133,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 		t.Fatalf("failed to create the policy hash: %v", err)
 	}
 	unspecifiedPolicyHash := []byte(fmt.Sprintf("%x", sha256.Sum256(jsonBytes)))
+	stalePlacementGeneration := strconv.Itoa(placementGeneration - 1)
 	tests := []struct {
 		name                    string
 		policy                  *fleetv1beta1.PlacementPolicy
@@ -346,7 +347,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.NumberOfClustersAnnotation: strconv.Itoa(3),
-							fleetv1beta1.CRPGenerationAnnotation:    strconv.Itoa(placementGeneration - 1),
+							fleetv1beta1.CRPGenerationAnnotation:    stalePlacementGeneration,
 						},
 					},
 					Spec: fleetv1beta1.SchedulingPolicySnapshotSpec{
@@ -375,7 +376,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.NumberOfClustersAnnotation: strconv.Itoa(3),
-							fleetv1beta1.CRPGenerationAnnotation:    strconv.Itoa(placementGeneration - 1),
+							fleetv1beta1.CRPGenerationAnnotation:    stalePlacementGeneration,
 						},
 					},
 					Spec: fleetv1beta1.SchedulingPolicySnapshotSpec{
@@ -1067,6 +1068,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 			},
 		},
 		{
+			// This can happen for older snapshots created before the annotation existed; we now tolerate it
+			// because same-policy reconciles no longer require rewriting the CRP generation annotation.
 			name: "active policy snapshot exists and policySnapshot without crp generation annotation",
 			wantErr: false,
 			policySnapshots: []fleetv1beta1.ClusterSchedulingPolicySnapshot{
