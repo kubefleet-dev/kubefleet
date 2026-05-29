@@ -133,7 +133,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 		t.Fatalf("failed to create the policy hash: %v", err)
 	}
 	unspecifiedPolicyHash := []byte(fmt.Sprintf("%x", sha256.Sum256(jsonBytes)))
-	stalePlacementGeneration := strconv.Itoa(placementGeneration - 1)
+	previousPlacementGeneration := strconv.Itoa(placementGeneration - 1)
 	tests := []struct {
 		name                    string
 		policy                  *fleetv1beta1.PlacementPolicy
@@ -347,7 +347,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.NumberOfClustersAnnotation: strconv.Itoa(3),
-							fleetv1beta1.CRPGenerationAnnotation:    stalePlacementGeneration,
+							fleetv1beta1.CRPGenerationAnnotation:    previousPlacementGeneration,
 						},
 					},
 					Spec: fleetv1beta1.SchedulingPolicySnapshotSpec{
@@ -376,7 +376,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.NumberOfClustersAnnotation: strconv.Itoa(3),
-							fleetv1beta1.CRPGenerationAnnotation:    stalePlacementGeneration,
+							fleetv1beta1.CRPGenerationAnnotation:    previousPlacementGeneration,
 						},
 					},
 					Spec: fleetv1beta1.SchedulingPolicySnapshotSpec{
@@ -603,7 +603,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.NumberOfClustersAnnotation: strconv.Itoa(3),
-							fleetv1beta1.CRPGenerationAnnotation:    "2",
+							fleetv1beta1.CRPGenerationAnnotation:    previousPlacementGeneration,
 						},
 					},
 					Spec: fleetv1beta1.SchedulingPolicySnapshotSpec{
@@ -658,7 +658,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.NumberOfClustersAnnotation: strconv.Itoa(3),
-							fleetv1beta1.CRPGenerationAnnotation:    "2",
+							fleetv1beta1.CRPGenerationAnnotation:    previousPlacementGeneration,
 						},
 					},
 					Spec: fleetv1beta1.SchedulingPolicySnapshotSpec{
@@ -1120,7 +1120,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 				Scheme:   scheme,
 				Recorder: record.NewFakeRecorder(10),
 			}
-			_, err := r.getOrCreateSchedulingPolicySnapshot(ctx, crp, 1)
+			got, err := r.getOrCreateSchedulingPolicySnapshot(ctx, crp, 1)
 			if tc.wantErr {
 				if err == nil { // if error is nil
 					t.Fatal("getOrCreateClusterResourceSnapshot() = nil, want err")
@@ -1132,6 +1132,12 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("getOrCreateClusterResourceSnapshot() = %v, want nil", err)
+			}
+			if got == nil {
+				t.Fatal("getOrCreateClusterResourceSnapshot() = nil, want policy snapshot")
+			}
+			if got.GetLabels()[fleetv1beta1.IsLatestSnapshotLabel] != strconv.FormatBool(true) {
+				t.Fatalf("policy snapshot latest label = %q, want %q", got.GetLabels()[fleetv1beta1.IsLatestSnapshotLabel], strconv.FormatBool(true))
 			}
 		})
 	}
