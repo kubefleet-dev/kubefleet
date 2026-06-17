@@ -28,20 +28,20 @@ func TestCELExprTreeNode_Raw(t *testing.T) {
 	testCases := []struct {
 		name             string
 		expr             string
-		wantParsed       string
+		wantBuilt        string
 		wantErred        bool
 		wantErrSubstring string
 	}{
 		{
-			name:       "valid",
-			expr:       "x = y",
-			wantParsed: "x = y",
-			wantErred:  false,
+			name:      "valid",
+			expr:      "x = y",
+			wantBuilt: "x = y",
+			wantErred: false,
 		},
 		{
 			name:             "empty expression",
 			expr:             "",
-			wantParsed:       "",
+			wantBuilt:        "",
 			wantErred:        true,
 			wantErrSubstring: "raw CEL expression cannot be empty",
 		},
@@ -51,21 +51,21 @@ func TestCELExprTreeNode_Raw(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			node := RawCELExpr(tc.expr)
 
-			gotParsed, err := node.Parse()
+			gotBuilt, err := node.Build()
 			if tc.wantErred {
 				if err == nil {
-					t.Fatal("Parse() = nil, want erred")
+					t.Fatal("Build() = nil, want erred")
 				}
 				if !strings.Contains(err.Error(), tc.wantErrSubstring) {
-					t.Errorf("Parse() error = %v, want error with substring %s", err, tc.wantErrSubstring)
+					t.Errorf("Build() error = %v, want error with substring %s", err, tc.wantErrSubstring)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("Parse() = %v, want no error", err)
+				t.Fatalf("Build() = %v, want no error", err)
 			}
-			if !cmp.Equal(gotParsed, tc.wantParsed) {
-				t.Errorf("Parse() = %v, want %v", gotParsed, tc.wantParsed)
+			if !cmp.Equal(gotBuilt, tc.wantBuilt) {
+				t.Errorf("Build() = %v, want %v", gotBuilt, tc.wantBuilt)
 			}
 
 			gotChildren := node.Children()
@@ -82,13 +82,13 @@ func TestCELExprTreeNode_LogicalOr(t *testing.T) {
 	testCases := []struct {
 		name         string
 		children     []CELExprTreeNode
-		wantParsed   string
+		wantBuilt    string
 		wantChildren []CELExprTreeNode
 	}{
 		{
 			name:         "single child",
 			children:     []CELExprTreeNode{RawCELExpr("x = y")},
-			wantParsed:   "(x = y)",
+			wantBuilt:    "(x = y)",
 			wantChildren: []CELExprTreeNode{RawCELExpr("x = y")},
 		},
 		{
@@ -98,7 +98,7 @@ func TestCELExprTreeNode_LogicalOr(t *testing.T) {
 				RawCELExpr("y = z"),
 				RawCELExpr("z = a"),
 			},
-			wantParsed: "(x = y) || (y = z) || (z = a)",
+			wantBuilt: "(x = y) || (y = z) || (z = a)",
 			wantChildren: []CELExprTreeNode{
 				RawCELExpr("x = y"),
 				RawCELExpr("y = z"),
@@ -111,7 +111,7 @@ func TestCELExprTreeNode_LogicalOr(t *testing.T) {
 				RawCELExpr("x = y"),
 				LogicalAnd(RawCELExpr("y = z"), RawCELExpr("z = a")),
 			},
-			wantParsed: "(x = y) || ((y = z) && (z = a))",
+			wantBuilt: "(x = y) || ((y = z) && (z = a))",
 			wantChildren: []CELExprTreeNode{
 				RawCELExpr("x = y"),
 				LogicalAnd(RawCELExpr("y = z"), RawCELExpr("z = a")),
@@ -123,12 +123,12 @@ func TestCELExprTreeNode_LogicalOr(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			node := LogicalOr(tc.children...)
 
-			gotParsed, err := node.Parse()
+			gotBuilt, err := node.Build()
 			if err != nil {
-				t.Fatalf("Parse() = %v", err)
+				t.Fatalf("Build() = %v", err)
 			}
-			if !cmp.Equal(gotParsed, tc.wantParsed) {
-				t.Errorf("Parse() = %v, want %v", gotParsed, tc.wantParsed)
+			if !cmp.Equal(gotBuilt, tc.wantBuilt) {
+				t.Errorf("Build() = %v, want %v", gotBuilt, tc.wantBuilt)
 			}
 
 			gotChildren := node.Children()
@@ -164,7 +164,7 @@ func TestCELExprTreeNode_LogicalOr_Erred(t *testing.T) {
 		{
 			name:             "child parse error",
 			children:         []CELExprTreeNode{RawCELExpr("x = y"), RawCELExpr("")},
-			wantErrSubstring: "failed to parse child node: raw CEL expression cannot be empty",
+			wantErrSubstring: "failed to build child node: raw CEL expression cannot be empty",
 		},
 	}
 
@@ -172,15 +172,15 @@ func TestCELExprTreeNode_LogicalOr_Erred(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			node := LogicalOr(tc.children...)
 
-			gotParsed, err := node.Parse()
+			gotBuilt, err := node.Build()
 			if err == nil {
-				t.Fatalf("Parse() = nil, want error")
+				t.Fatalf("Build() = nil, want error")
 			}
 			if !strings.Contains(err.Error(), tc.wantErrSubstring) {
-				t.Errorf("Parse() error = %v, want error with substring %s", err, tc.wantErrSubstring)
+				t.Errorf("Build() error = %v, want error with substring %s", err, tc.wantErrSubstring)
 			}
-			if gotParsed != "" {
-				t.Errorf("Parse() = %v, want empty string on error", gotParsed)
+			if gotBuilt != "" {
+				t.Errorf("Build() = %v, want empty string on error", gotBuilt)
 			}
 		})
 	}
@@ -191,7 +191,7 @@ func TestCELExprTreeNode_LogicalOr_Add(t *testing.T) {
 	testCases := []struct {
 		name             string
 		childrenToAdd    []CELExprTreeNode
-		wantParsed       string
+		wantBuilt        string
 		wantChildren     []CELExprTreeNode
 		wantErred        bool
 		wantErrSubstring string
@@ -199,14 +199,14 @@ func TestCELExprTreeNode_LogicalOr_Add(t *testing.T) {
 		{
 			name:          "append valid children",
 			childrenToAdd: []CELExprTreeNode{RawCELExpr("x = y"), RawCELExpr("y = z")},
-			wantParsed:    "(x = y) || (y = z)",
+			wantBuilt:     "(x = y) || (y = z)",
 			wantChildren:  []CELExprTreeNode{RawCELExpr("x = y"), RawCELExpr("y = z")},
 			wantErred:     false,
 		},
 		{
 			name:             "append nil child",
 			childrenToAdd:    []CELExprTreeNode{RawCELExpr("x = y"), nil},
-			wantParsed:       "",
+			wantBuilt:        "",
 			wantChildren:     []CELExprTreeNode{RawCELExpr("x = y"), nil},
 			wantErred:        true,
 			wantErrSubstring: "a child node is nil",
@@ -214,10 +214,10 @@ func TestCELExprTreeNode_LogicalOr_Add(t *testing.T) {
 		{
 			name:             "append child that fails parse",
 			childrenToAdd:    []CELExprTreeNode{RawCELExpr("x = y"), RawCELExpr("")},
-			wantParsed:       "",
+			wantBuilt:        "",
 			wantChildren:     []CELExprTreeNode{RawCELExpr("x = y"), RawCELExpr("")},
 			wantErred:        true,
-			wantErrSubstring: "failed to parse child node: raw CEL expression cannot be empty",
+			wantErrSubstring: "failed to build child node: raw CEL expression cannot be empty",
 		},
 	}
 
@@ -229,20 +229,20 @@ func TestCELExprTreeNode_LogicalOr_Add(t *testing.T) {
 				orNode.Add(child)
 			}
 
-			gotParsed, err := orNode.Parse()
+			gotBuilt, err := orNode.Build()
 			if tc.wantErred {
 				if err == nil {
-					t.Fatal("Parse() = nil, want erred")
+					t.Fatal("Build() = nil, want erred")
 				}
 				if !strings.Contains(err.Error(), tc.wantErrSubstring) {
-					t.Errorf("Parse() error = %v, want error with substring %s", err, tc.wantErrSubstring)
+					t.Errorf("Build() error = %v, want error with substring %s", err, tc.wantErrSubstring)
 				}
 			} else {
 				if err != nil {
-					t.Fatalf("Parse() = %v, want no error", err)
+					t.Fatalf("Build() = %v, want no error", err)
 				}
-				if !cmp.Equal(gotParsed, tc.wantParsed) {
-					t.Errorf("Parse() = %v, want %v", gotParsed, tc.wantParsed)
+				if !cmp.Equal(gotBuilt, tc.wantBuilt) {
+					t.Errorf("Build() = %v, want %v", gotBuilt, tc.wantBuilt)
 				}
 			}
 
@@ -264,13 +264,13 @@ func TestCELExprTreeNode_LogicalAnd(t *testing.T) {
 	testCases := []struct {
 		name         string
 		children     []CELExprTreeNode
-		wantParsed   string
+		wantBuilt    string
 		wantChildren []CELExprTreeNode
 	}{
 		{
 			name:         "single child",
 			children:     []CELExprTreeNode{RawCELExpr("x = y")},
-			wantParsed:   "(x = y)",
+			wantBuilt:    "(x = y)",
 			wantChildren: []CELExprTreeNode{RawCELExpr("x = y")},
 		},
 		{
@@ -280,7 +280,7 @@ func TestCELExprTreeNode_LogicalAnd(t *testing.T) {
 				RawCELExpr("y = z"),
 				RawCELExpr("z = a"),
 			},
-			wantParsed: "(x = y) && (y = z) && (z = a)",
+			wantBuilt: "(x = y) && (y = z) && (z = a)",
 			wantChildren: []CELExprTreeNode{
 				RawCELExpr("x = y"),
 				RawCELExpr("y = z"),
@@ -293,7 +293,7 @@ func TestCELExprTreeNode_LogicalAnd(t *testing.T) {
 				RawCELExpr("x = y"),
 				LogicalOr(RawCELExpr("y = z"), RawCELExpr("z = a")),
 			},
-			wantParsed: "(x = y) && ((y = z) || (z = a))",
+			wantBuilt: "(x = y) && ((y = z) || (z = a))",
 			wantChildren: []CELExprTreeNode{
 				RawCELExpr("x = y"),
 				LogicalOr(RawCELExpr("y = z"), RawCELExpr("z = a")),
@@ -305,12 +305,12 @@ func TestCELExprTreeNode_LogicalAnd(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			node := LogicalAnd(tc.children...)
 
-			gotParsed, err := node.Parse()
+			gotBuilt, err := node.Build()
 			if err != nil {
-				t.Fatalf("Parse() = %v", err)
+				t.Fatalf("Build() = %v", err)
 			}
-			if !cmp.Equal(gotParsed, tc.wantParsed) {
-				t.Errorf("Parse() = %v, want %v", gotParsed, tc.wantParsed)
+			if !cmp.Equal(gotBuilt, tc.wantBuilt) {
+				t.Errorf("Build() = %v, want %v", gotBuilt, tc.wantBuilt)
 			}
 
 			gotChildren := node.Children()
@@ -346,7 +346,7 @@ func TestCELExprTreeNode_LogicalAnd_Erred(t *testing.T) {
 		{
 			name:             "child parse error",
 			children:         []CELExprTreeNode{RawCELExpr("x = y"), RawCELExpr("")},
-			wantErrSubstring: "failed to parse child node: raw CEL expression cannot be empty",
+			wantErrSubstring: "failed to build child node: raw CEL expression cannot be empty",
 		},
 	}
 
@@ -354,15 +354,15 @@ func TestCELExprTreeNode_LogicalAnd_Erred(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			node := LogicalAnd(tc.children...)
 
-			gotParsed, err := node.Parse()
+			gotBuilt, err := node.Build()
 			if err == nil {
-				t.Fatalf("Parse() = nil, want error")
+				t.Fatalf("Build() = nil, want error")
 			}
 			if !strings.Contains(err.Error(), tc.wantErrSubstring) {
-				t.Errorf("Parse() error = %v, want error with substring %s", err, tc.wantErrSubstring)
+				t.Errorf("Build() error = %v, want error with substring %s", err, tc.wantErrSubstring)
 			}
-			if gotParsed != "" {
-				t.Errorf("Parse() = %v, want empty string on error", gotParsed)
+			if gotBuilt != "" {
+				t.Errorf("Build() = %v, want empty string on error", gotBuilt)
 			}
 		})
 	}
@@ -373,7 +373,7 @@ func TestCELExprTreeNode_LogicalAnd_Add(t *testing.T) {
 	testCases := []struct {
 		name             string
 		childrenToAdd    []CELExprTreeNode
-		wantParsed       string
+		wantBuilt        string
 		wantChildren     []CELExprTreeNode
 		wantErred        bool
 		wantErrSubstring string
@@ -381,14 +381,14 @@ func TestCELExprTreeNode_LogicalAnd_Add(t *testing.T) {
 		{
 			name:          "append valid children",
 			childrenToAdd: []CELExprTreeNode{RawCELExpr("x = y"), RawCELExpr("y = z")},
-			wantParsed:    "(x = y) && (y = z)",
+			wantBuilt:     "(x = y) && (y = z)",
 			wantChildren:  []CELExprTreeNode{RawCELExpr("x = y"), RawCELExpr("y = z")},
 			wantErred:     false,
 		},
 		{
 			name:             "append nil child",
 			childrenToAdd:    []CELExprTreeNode{RawCELExpr("x = y"), nil},
-			wantParsed:       "",
+			wantBuilt:        "",
 			wantChildren:     []CELExprTreeNode{RawCELExpr("x = y"), nil},
 			wantErred:        true,
 			wantErrSubstring: "a child node is nil",
@@ -396,10 +396,10 @@ func TestCELExprTreeNode_LogicalAnd_Add(t *testing.T) {
 		{
 			name:             "append child that fails parse",
 			childrenToAdd:    []CELExprTreeNode{RawCELExpr("x = y"), RawCELExpr("")},
-			wantParsed:       "",
+			wantBuilt:        "",
 			wantChildren:     []CELExprTreeNode{RawCELExpr("x = y"), RawCELExpr("")},
 			wantErred:        true,
-			wantErrSubstring: "failed to parse child node: raw CEL expression cannot be empty",
+			wantErrSubstring: "failed to build child node: raw CEL expression cannot be empty",
 		},
 	}
 
@@ -411,20 +411,20 @@ func TestCELExprTreeNode_LogicalAnd_Add(t *testing.T) {
 				andNode.Add(child)
 			}
 
-			gotParsed, err := andNode.Parse()
+			gotBuilt, err := andNode.Build()
 			if tc.wantErred {
 				if err == nil {
-					t.Fatal("Parse() = nil, want erred")
+					t.Fatal("Build() = nil, want erred")
 				}
 				if !strings.Contains(err.Error(), tc.wantErrSubstring) {
-					t.Errorf("Parse() error = %v, want error with substring %s", err, tc.wantErrSubstring)
+					t.Errorf("Build() error = %v, want error with substring %s", err, tc.wantErrSubstring)
 				}
 			} else {
 				if err != nil {
-					t.Fatalf("Parse() = %v, want no error", err)
+					t.Fatalf("Build() = %v, want no error", err)
 				}
-				if !cmp.Equal(gotParsed, tc.wantParsed) {
-					t.Errorf("Parse() = %v, want %v", gotParsed, tc.wantParsed)
+				if !cmp.Equal(gotBuilt, tc.wantBuilt) {
+					t.Errorf("Build() = %v, want %v", gotBuilt, tc.wantBuilt)
 				}
 			}
 
@@ -446,25 +446,25 @@ func TestCELExprTreeNode_LogicalNot(t *testing.T) {
 	testCases := []struct {
 		name         string
 		child        CELExprTreeNode
-		wantParsed   string
+		wantBuilt    string
 		wantChildren []CELExprTreeNode
 	}{
 		{
 			name:         "raw child",
 			child:        RawCELExpr("x = y"),
-			wantParsed:   "!(x = y)",
+			wantBuilt:    "!(x = y)",
 			wantChildren: []CELExprTreeNode{RawCELExpr("x = y")},
 		},
 		{
 			name:         "and child",
 			child:        LogicalAnd(RawCELExpr("x = y"), RawCELExpr("y = z")),
-			wantParsed:   "!((x = y) && (y = z))",
+			wantBuilt:    "!((x = y) && (y = z))",
 			wantChildren: []CELExprTreeNode{LogicalAnd(RawCELExpr("x = y"), RawCELExpr("y = z"))},
 		},
 		{
 			name:         "or child",
 			child:        LogicalOr(RawCELExpr("x = y"), RawCELExpr("y = z")),
-			wantParsed:   "!((x = y) || (y = z))",
+			wantBuilt:    "!((x = y) || (y = z))",
 			wantChildren: []CELExprTreeNode{LogicalOr(RawCELExpr("x = y"), RawCELExpr("y = z"))},
 		},
 	}
@@ -473,12 +473,12 @@ func TestCELExprTreeNode_LogicalNot(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			node := LogicalNot(tc.child)
 
-			gotParsed, err := node.Parse()
+			gotBuilt, err := node.Build()
 			if err != nil {
-				t.Fatalf("Parse() = %v", err)
+				t.Fatalf("Build() = %v", err)
 			}
-			if !cmp.Equal(gotParsed, tc.wantParsed) {
-				t.Errorf("Parse() = %v, want %v", gotParsed, tc.wantParsed)
+			if !cmp.Equal(gotBuilt, tc.wantBuilt) {
+				t.Errorf("Build() = %v, want %v", gotBuilt, tc.wantBuilt)
 			}
 
 			gotChildren := node.Children()
@@ -509,7 +509,7 @@ func TestCELExprTreeNode_LogicalNot_Erred(t *testing.T) {
 		{
 			name:             "child parse error",
 			child:            RawCELExpr(""),
-			wantErrSubstring: "failed to parse child node: raw CEL expression cannot be empty",
+			wantErrSubstring: "failed to build child node: raw CEL expression cannot be empty",
 		},
 	}
 
@@ -517,15 +517,15 @@ func TestCELExprTreeNode_LogicalNot_Erred(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			node := LogicalNot(tc.child)
 
-			gotParsed, err := node.Parse()
+			gotBuilt, err := node.Build()
 			if err == nil {
-				t.Fatalf("Parse() = nil, want error")
+				t.Fatalf("Build() = nil, want error")
 			}
 			if !strings.Contains(err.Error(), tc.wantErrSubstring) {
-				t.Errorf("Parse() error = %v, want error with substring %s", err, tc.wantErrSubstring)
+				t.Errorf("Build() error = %v, want error with substring %s", err, tc.wantErrSubstring)
 			}
-			if gotParsed != "" {
-				t.Errorf("Parse() = %v, want empty string on error", gotParsed)
+			if gotBuilt != "" {
+				t.Errorf("Build() = %v, want empty string on error", gotBuilt)
 			}
 		})
 	}

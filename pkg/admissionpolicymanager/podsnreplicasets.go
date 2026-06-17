@@ -76,9 +76,9 @@ func (g *PodsAndReplicaSetsValidatingAdmissionPolicyGenerator) PoliciesWithBindi
 		isInReservedNamespaces.Add(isInNamespaceWithPrefix(prefix))
 	}
 
-	celExpr, err := isInReservedNamespaces.Parse()
+	celExpr, err := isInReservedNamespaces.Build()
 	if err != nil {
-		return nil, errors.Wraps(err, "failed to parse CEL expression tree")
+		return nil, errors.Wraps(err, "failed to build CEL expression")
 	}
 
 	policy := &admissionregistrationv1.ValidatingAdmissionPolicy{

@@ -24,8 +24,8 @@ import (
 // CELExprTreeNode is the interface for CEL tree nodes. It helps build CEL expressions in a
 // structured way.
 type CELExprTreeNode interface {
-	// Parse returns the CEL expression represented by the node and its children.
-	Parse() (string, error)
+	// Build returns the CEL expression represented by the node and its children.
+	Build() (string, error)
 	// Children returns the child nodes of the current node.
 	Children() []CELExprTreeNode
 }
@@ -55,8 +55,8 @@ type rawCELExprTreeNode struct {
 	expr string
 }
 
-// Parse returns the raw CEL expression.
-func (n *rawCELExprTreeNode) Parse() (string, error) {
+// Build returns the raw CEL expression.
+func (n *rawCELExprTreeNode) Build() (string, error) {
 	if len(n.expr) == 0 {
 		return "", fmt.Errorf("raw CEL expression cannot be empty")
 	}
@@ -80,26 +80,26 @@ type orCELExprTreeNode struct {
 	children []CELExprTreeNode
 }
 
-// Parse returns the CEL expression representing the logical OR of its child nodes' expressions.
-func (n *orCELExprTreeNode) Parse() (string, error) {
+// Build returns the CEL expression representing the logical OR of its child nodes' expressions.
+func (n *orCELExprTreeNode) Build() (string, error) {
 	exprs := make([]string, len(n.children))
 	for i, child := range n.children {
 		if child == nil {
 			return "", fmt.Errorf("a child node is nil")
 		}
-		expr, err := child.Parse()
+		expr, err := child.Build()
 		if err != nil {
-			return "", fmt.Errorf("failed to parse child node: %w", err)
+			return "", fmt.Errorf("failed to build child node: %w", err)
 		}
 		if len(expr) == 0 {
-			return "", fmt.Errorf("a child node parsed to an empty expression")
+			return "", fmt.Errorf("a child node built to an empty expression")
 		}
 		exprs[i] = fmt.Sprintf("(%s)", expr)
 	}
 
 	res := strings.Join(exprs, " || ")
 	if len(res) == 0 {
-		return "", fmt.Errorf("parsed to an empty expression")
+		return "", fmt.Errorf("built to an empty expression")
 	}
 	return res, nil
 }
@@ -124,26 +124,26 @@ type andCELExprTreeNode struct {
 	children []CELExprTreeNode
 }
 
-// Parse returns the CEL expression representing the logical AND of its child nodes' expressions.
-func (n *andCELExprTreeNode) Parse() (string, error) {
+// Build returns the CEL expression representing the logical AND of its child nodes' expressions.
+func (n *andCELExprTreeNode) Build() (string, error) {
 	exprs := make([]string, len(n.children))
 	for i, child := range n.children {
 		if child == nil {
 			return "", fmt.Errorf("a child node is nil")
 		}
-		expr, err := child.Parse()
+		expr, err := child.Build()
 		if err != nil {
-			return "", fmt.Errorf("failed to parse child node: %w", err)
+			return "", fmt.Errorf("failed to build child node: %w", err)
 		}
 		if len(expr) == 0 {
-			return "", fmt.Errorf("a child node parsed to an empty expression")
+			return "", fmt.Errorf("a child node built to an empty expression")
 		}
 		exprs[i] = fmt.Sprintf("(%s)", expr)
 	}
 
 	res := strings.Join(exprs, " && ")
 	if len(res) == 0 {
-		return "", fmt.Errorf("parsed to an empty expression")
+		return "", fmt.Errorf("built to an empty expression")
 	}
 	return res, nil
 }
@@ -168,17 +168,17 @@ type notCELExprTreeNode struct {
 	child CELExprTreeNode
 }
 
-// Parse returns the CEL expression representing the logical NOT of its child node's expression.
-func (n *notCELExprTreeNode) Parse() (string, error) {
+// Build returns the CEL expression representing the logical NOT of its child node's expression.
+func (n *notCELExprTreeNode) Build() (string, error) {
 	if n.child == nil {
 		return "", fmt.Errorf("child node is nil")
 	}
-	expr, err := n.child.Parse()
+	expr, err := n.child.Build()
 	if err != nil {
-		return "", fmt.Errorf("failed to parse child node: %w", err)
+		return "", fmt.Errorf("failed to build child node: %w", err)
 	}
 	if len(expr) == 0 {
-		return "", fmt.Errorf("child node parsed to an empty expression")
+		return "", fmt.Errorf("child node built to an empty expression")
 	}
 	return fmt.Sprintf("!(%s)", expr), nil
 }

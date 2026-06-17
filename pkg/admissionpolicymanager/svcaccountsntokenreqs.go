@@ -153,9 +153,9 @@ func (g *ServiceAccountsAndTokenRequestsValidatingAdmissionPolicyGenerator) Poli
 		),
 		isFromAllowedRequesters,
 	)
-	celExpr, err := celExprTree.Parse()
+	celExpr, err := celExprTree.Build()
 	if err != nil {
-		return nil, errors.Wraps(err, "failed to parse CEL expression tree")
+		return nil, errors.Wraps(err, "failed to build CEL expression")
 	}
 
 	policy := &admissionregistrationv1.ValidatingAdmissionPolicy{
