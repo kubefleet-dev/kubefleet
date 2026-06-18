@@ -154,7 +154,7 @@ func TestCELExprTreeNode_LogicalOr_Erred(t *testing.T) {
 		{
 			name:             "no children",
 			children:         nil,
-			wantErrSubstring: "parsed to an empty expression",
+			wantErrSubstring: "built to an empty expression",
 		},
 		{
 			name:             "nil child",
@@ -336,7 +336,7 @@ func TestCELExprTreeNode_LogicalAnd_Erred(t *testing.T) {
 		{
 			name:             "no children",
 			children:         nil,
-			wantErrSubstring: "parsed to an empty expression",
+			wantErrSubstring: "built to an empty expression",
 		},
 		{
 			name:             "nil child",
