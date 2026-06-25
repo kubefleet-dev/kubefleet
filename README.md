@@ -40,6 +40,8 @@ KubeFleet's scheduler evaluates member cluster properties, available capacity, a
 
 To learn more about KubeFleet go to the [KubeFleet documentation](https://kubefleet-dev.github.io/website/).
 
+For release versioning, supported agent version skew, and upgrade ordering, see [VERSIONING.md](VERSIONING.md).
+
 ## Community
 
 You can reach the KubeFleet community and developers via the following channels:
