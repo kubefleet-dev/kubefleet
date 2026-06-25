@@ -77,7 +77,7 @@ func (r *Reconciler) validate(
 	}
 
 	// Collect the clusters by the corresponding placement with the latest policy snapshot.
-	scheduledBindings, toBeDeletedBindings, err := r.collectScheduledClusters(ctx, placementNamespacedName, latestPolicySnapshot, updateRunCopy)
+	scheduledBindings, toBeDeletedBindings, err := r.collectScheduledClusters(ctx, placementNamespacedName, latestPolicySnapshot, updateRunCopy, clusterCount)
 	if err != nil {
 		return -1, nil, nil, err
 	}
