@@ -94,3 +94,49 @@ jobs:
               echo "  - ${{ env.REGISTRY }}/${IMAGE}:${VERSION}"
             fi
           done
+
+  # Publish the raw CRDs as a standalone release asset so consumers can install
+  # them without pulling a Helm chart. The bundle carries the unmodified CRDs the
+  # charts install (no downstream-specific labels), split into crds/hub and
+  # crds/member so each set can be applied to the right cluster. Runs after the
+  # images are published so a release is only created once the build succeeds.
+  publish-crds:
+    needs: [export-registry, build-and-publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.export-registry.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.export-registry.outputs.tag }}
+
+      - name: Package CRDs
+        run: make crd-package TAG="${TAG}"
+
+      - name: Create or update the release and upload the CRD bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          created_draft=""
+          if ! gh release view "${TAG}" >/dev/null 2>&1; then
+            # Any semver pre-release suffix (-rc.N, -alpha, -beta, ...) is a prerelease.
+            prerelease=""
+            case "${TAG}" in *-*) prerelease="--prerelease" ;; esac
+            # Create as a draft first so a partially uploaded release is never public.
+            gh release create "${TAG}" --title "${TAG}" --generate-notes --draft ${prerelease}
+            created_draft="true"
+          fi
+          gh release upload "${TAG}" \
+            "_crd-package/kubefleet-crds-${TAG}.tgz" \
+            "_crd-package/kubefleet-crds-${TAG}.tgz.sha256" \
+            --clobber
+          # Only publish releases this job created; never flip a maintainer's existing release.
+          if [ "${created_draft}" = "true" ]; then
+            gh release edit "${TAG}" --draft=false
+          elif [ "$(gh release view "${TAG}" --json isDraft --jq .isDraft)" = "true" ]; then
+            echo "::warning::Release ${TAG} already existed as a draft; the CRD bundle was uploaded but the release was left unpublished. Publish it manually."
+          fi
