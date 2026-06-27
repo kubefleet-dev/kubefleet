@@ -7,6 +7,12 @@ HUB_AGENT_IMAGE_VERSION ?= $(TAG)
 MEMBER_AGENT_IMAGE_VERSION ?= $(TAG)
 REFRESH_TOKEN_IMAGE_VERSION ?= $(TAG)
 
+# Optional additional tag applied to every image within the same `docker buildx
+# build` invocation. A stable release sets this to the short, v-less version
+# (e.g. "0.4.0") so both "v0.4.0" and "0.4.0" are published from one build,
+# which replaces a separate `docker buildx imagetools create` retag step.
+IMAGE_EXTRA_TAG ?=
+
 HUB_AGENT_IMAGE_NAME ?= hub-agent
 MEMBER_AGENT_IMAGE_NAME ?= member-agent
 REFRESH_TOKEN_IMAGE_NAME := refresh-token
@@ -243,9 +249,16 @@ BUILDX_BUILDER_NAME ?= img-builder
 QEMU_VERSION ?= 7.2.0-1
 BUILDKIT_VERSION ?= v0.18.1
 
+# Platforms to build container images for. Defaults to the host/target platform
+# so local single-arch builds (e.g. loading into kind, which cannot load a
+# multi-platform image) keep working unchanged; `push` overrides this to build a
+# multi-arch manifest for the release.
+PLATFORMS ?= $(TARGET_OS)/$(TARGET_ARCH)
+RELEASE_PLATFORMS ?= linux/amd64,linux/arm64
+
 .PHONY: push
-push: ## Build and push all Docker images
-	$(MAKE) OUTPUT_TYPE="type=registry" docker-build-hub-agent docker-build-member-agent docker-build-refresh-token
+push: ## Build and push all Docker images as multi-arch manifests
+	$(MAKE) OUTPUT_TYPE="type=registry" PLATFORMS="$(RELEASE_PLATFORMS)" docker-build-hub-agent docker-build-member-agent docker-build-refresh-token
 
 .PHONY: helm-push
 helm-push: ## Package and push Helm charts to OCI registry
@@ -255,25 +268,34 @@ helm-push: ## Package and push Helm charts to OCI registry
 	helm push .helm-packages/member-agent-$(CHART_VERSION).tgz oci://$(REGISTRY)
 	rm -rf .helm-packages
 
+# Register QEMU binfmt handlers so the host can build/run non-native binaries.
+# This must run for any multi-platform build regardless of whether the buildx
+# builder already exists (a pre-existing builder would otherwise skip emulation
+# setup and the foreign-arch build would fail with "exec format error"). The
+# registration is idempotent, so it is safe to re-run. It is skipped for
+# single-platform builds, which are native and never need emulation.
+#
+# On some systems the emulation setup might not work at all (e.g., macOS on Apple
+# Silicon -> Rosetta 2 will be used by Docker Desktop as the default emulation
+# option for AMD64 on ARM64 container compatibility).
+.PHONY: setup-qemu
+setup-qemu: ## Register QEMU emulation for multi-architecture image builds
+	$(info Auto-detected system architecture: $(TARGET_ARCH))
+	@case "$(PLATFORMS)" in \
+		*,*) \
+			echo "Multi-platform build ($(PLATFORMS)); registering QEMU emulation"; \
+			if [ "$(TARGET_ARCH)" = "amd64" ] ; then \
+				docker run --rm --privileged mcr.microsoft.com/mirror/docker/multiarch/qemu-user-static:$(QEMU_VERSION) --reset -p yes; \
+			else \
+				docker run --rm --privileged tonistiigi/binfmt --install all; \
+			fi ;; \
+		*) echo "Single-platform build ($(PLATFORMS)); skipping QEMU setup" ;; \
+	esac
+
 # By default, docker buildx create will pull image moby/buildkit:buildx-stable-1 and hit the too many requests error
 .PHONY: docker-buildx-builder
-# Note (chenyu1): the step below sets up emulation for building/running non-native binaries on the host. The original
-# setup assumes that the Makefile is always run on an x86_64 platform, and adds support for non-x86_64 hosts. Here
-# we keep the original setup if the build target is x86_64 platforms (default) for compatibility reasons, but will switch to
-# a more general setup for non-x86_64 hosts.
-#
-# On some systems the emulation setup might not work at all (e.g., macOS on Apple Silicon -> Rosetta 2 will be used 
-# by Docker Desktop as the default emulation option for AMD64 on ARM64 container compatibility).
-docker-buildx-builder:
-	$(info Auto-detected system architecture: $(TARGET_ARCH))
+docker-buildx-builder: setup-qemu
 	@if ! docker buildx ls | grep $(BUILDX_BUILDER_NAME); then \
-		if [ "$(TARGET_ARCH)" = "amd64" ] ; then \
-			echo "The target is an x86_64 platform; setting up emulation for other known architectures"; \
-			docker run --rm --privileged mcr.microsoft.com/mirror/docker/multiarch/qemu-user-static:$(QEMU_VERSION) --reset -p yes; \
-		else \
-			echo "Setting up emulation for known architectures"; \
-			docker run --rm --privileged tonistiigi/binfmt --install all; \
-		fi ;\
 		docker buildx create --driver-opt image=mcr.microsoft.com/oss/v2/moby/buildkit:$(BUILDKIT_VERSION) --name $(BUILDX_BUILDER_NAME) --use; \
 		docker buildx inspect $(BUILDX_BUILDER_NAME) --bootstrap; \
 	fi
@@ -283,36 +305,33 @@ docker-build-hub-agent: docker-buildx-builder ## Build hub-agent image
 	docker buildx build \
 		--file docker/$(HUB_AGENT_IMAGE_NAME).Dockerfile \
 		--output=$(OUTPUT_TYPE) \
-		--platform=$(TARGET_OS)/$(TARGET_ARCH) \
+		--platform=$(PLATFORMS) \
 		--pull \
 		--tag $(REGISTRY)/$(HUB_AGENT_IMAGE_NAME):$(HUB_AGENT_IMAGE_VERSION) \
-		--progress=$(BUILDKIT_PROGRESS_TYPE) \
-		--build-arg GOARCH=$(TARGET_ARCH) \
-		--build-arg GOOS=$(TARGET_OS) .
+		$(if $(IMAGE_EXTRA_TAG),--tag $(REGISTRY)/$(HUB_AGENT_IMAGE_NAME):$(IMAGE_EXTRA_TAG)) \
+		--progress=$(BUILDKIT_PROGRESS_TYPE) .
 
 .PHONY: docker-build-member-agent
 docker-build-member-agent: docker-buildx-builder ## Build member-agent image
 	docker buildx build \
 		--file docker/$(MEMBER_AGENT_IMAGE_NAME).Dockerfile \
 		--output=$(OUTPUT_TYPE) \
-		--platform=$(TARGET_OS)/$(TARGET_ARCH) \
+		--platform=$(PLATFORMS) \
 		--pull \
 		--tag $(REGISTRY)/$(MEMBER_AGENT_IMAGE_NAME):$(MEMBER_AGENT_IMAGE_VERSION) \
-		--progress=$(BUILDKIT_PROGRESS_TYPE) \
-		--build-arg GOARCH=$(TARGET_ARCH) \
-		--build-arg GOOS=$(TARGET_OS) .
+		$(if $(IMAGE_EXTRA_TAG),--tag $(REGISTRY)/$(MEMBER_AGENT_IMAGE_NAME):$(IMAGE_EXTRA_TAG)) \
+		--progress=$(BUILDKIT_PROGRESS_TYPE) .
 
 .PHONY: docker-build-refresh-token
 docker-build-refresh-token: docker-buildx-builder ## Build refresh-token image
 	docker buildx build \
 		--file docker/$(REFRESH_TOKEN_IMAGE_NAME).Dockerfile \
 		--output=$(OUTPUT_TYPE) \
-		--platform=$(TARGET_OS)/$(TARGET_ARCH) \
+		--platform=$(PLATFORMS) \
 		--pull \
 		--tag $(REGISTRY)/$(REFRESH_TOKEN_IMAGE_NAME):$(REFRESH_TOKEN_IMAGE_VERSION) \
-		--progress=$(BUILDKIT_PROGRESS_TYPE) \
-		--build-arg GOARCH=$(TARGET_ARCH) \
-		--build-arg GOOS=${TARGET_OS} .
+		$(if $(IMAGE_EXTRA_TAG),--tag $(REGISTRY)/$(REFRESH_TOKEN_IMAGE_NAME):$(IMAGE_EXTRA_TAG)) \
+		--progress=$(BUILDKIT_PROGRESS_TYPE) .
 
 ## -----------------------------------
 ## Cleanup
