@@ -21,6 +21,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
@@ -45,6 +46,11 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/schedulingpolicysnapshot"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/updaterun"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workgenerator"
+	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/deploymentwatcher"
+	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementbinding"
+	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementmigrationrequest"
+	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementpolicy"
+	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementresourcesnapshot"
 	"github.com/kubefleet-dev/kubefleet/pkg/resourcewatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/clustereligibilitychecker"
@@ -539,5 +545,58 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		klog.ErrorS(err, "Failed to setup resource detector")
 		return err
 	}
+
+	// Set up reimagined controllers.
+	snapshotMgr := placementresourcesnapshot.NewManager(mgr.GetClient(), dynamicClient, 100)
+	snapshotReqReconciler := placementresourcesnapshot.NewPlacementResourceSnapshotReqReconciler(
+		mgr.GetClient(), snapshotMgr, 30,
+	)
+	if err := snapshotReqReconciler.SetupWithManager(mgr); err != nil {
+		klog.ErrorS(err, "Failed to setup placement resource snapshot request reconciler")
+		return err
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := snapshotMgr.Start(ctx); err != nil {
+			klog.ErrorS(err, "Placement resource snapshot manager exited with error")
+		}
+	}()
+
+	placementReconciler := &placementpolicy.Reconciler{
+		HubClient:                        mgr.GetClient(),
+		PlacementResourceSnapshotManager: snapshotMgr,
+		MaxSnapshotCreationWaitTime:      30 * time.Second,
+	}
+	if err := placementReconciler.SetupWithManager(mgr); err != nil {
+		klog.ErrorS(err, "Failed to setup placement policy reconciler")
+		return err
+	}
+
+	bindingReconciler := &placementbinding.Reconciler{
+		HubClient: mgr.GetClient(),
+	}
+	if err := bindingReconciler.SetupWithManager(mgr); err != nil {
+		klog.ErrorS(err, "Failed to setup placement binding reconciler")
+		return err
+	}
+
+	migrationReconciler := &placementmigrationrequest.Reconciler{
+		HubClient:         mgr.GetClient(),
+		MaxWaitTimePerRun: 15 * time.Minute,
+	}
+	if err := migrationReconciler.SetupWithManager(mgr); err != nil {
+		klog.ErrorS(err, "Failed to setup placement migration request reconciler")
+		return err
+	}
+
+	deploymentWatcherReconciler := &deploymentwatcher.Reconciler{
+		HubClient: mgr.GetClient(),
+	}
+	if err := deploymentWatcherReconciler.SetupWithManager(mgr); err != nil {
+		klog.ErrorS(err, "Failed to setup deployment watcher reconciler")
+		return err
+	}
+
 	return nil
 }

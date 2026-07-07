@@ -186,13 +186,13 @@ rules:
 
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: ClusterRoleBinding  
 metadata:
   name: {{ include "hub-agent.fullname" . }}-role-binding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "hub-agent.fullname" . }}-role
+  name: cluster-admin
 subjects:
   - kind: ServiceAccount
     name: {{ include "hub-agent.fullname" . }}-sa

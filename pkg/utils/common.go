@@ -43,6 +43,7 @@ import (
 	fleetnetworkingv1alpha1 "go.goms.io/fleet-networking/api/v1alpha1"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	experimentalv1beta1 "github.com/kubefleet-dev/kubefleet/apis/experimental/v1beta1"
 	placementv1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
@@ -116,6 +117,11 @@ var (
 	FleetPlacementRule = rbacv1.PolicyRule{
 		Verbs:     []string{"*"},
 		APIGroups: []string{placementv1beta1.GroupVersion.Group},
+		Resources: []string{"*"},
+	}
+	FleetExperimentalRule = rbacv1.PolicyRule{
+		Verbs:     []string{"*"},
+		APIGroups: []string{experimentalv1beta1.GroupVersion.Group},
 		Resources: []string{"*"},
 	}
 	EventRule = rbacv1.PolicyRule{

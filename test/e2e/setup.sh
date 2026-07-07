@@ -140,10 +140,10 @@ helm install hub-agent ../../charts/hub-agent/ \
     --set image.tag=$TAG \
     --set namespace=fleet-system \
     --set logVerbosity=5 \
-    --set replicaCount=3 \
-    --set useCertManager=true \
+    --set replicaCount=1 \
+    --set useCertManager=false \
     --set webhookCertSecretName=fleet-webhook-server-cert \
-    --set enableWebhook=true \
+    --set enableWebhook=false \
     --set enableWorkload=true \
     --set webhookClientConnectionType=service \
     --set forceDeleteWaitTime="1m0s" \

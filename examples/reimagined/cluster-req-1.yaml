@@ -1,0 +1,7 @@
+apiVersion: experimental.kubefleet.dev/v1beta1
+kind: ClusterRequest
+metadata:
+  name: nginx
+spec:
+  clusterSelector:
+    topology.kubernetes.io/region: germanycentral

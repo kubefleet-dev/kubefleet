@@ -1,0 +1,10 @@
+apiVersion: cluster.kubernetes-fleet.io/v1beta1
+kind: MemberCluster
+metadata:
+  name: kind-cluster-3
+spec:
+  heartbeatPeriodSeconds: 15
+  identity:
+    kind: ServiceAccount
+    name: fleet-member-agent-cluster-3
+    namespace: fleet-system

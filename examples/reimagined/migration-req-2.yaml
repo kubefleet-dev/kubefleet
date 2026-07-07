@@ -1,0 +1,14 @@
+apiVersion: experimental.kubefleet.dev/v1beta1
+kind: WorkloadMigrationRequest
+metadata:
+  name: example-2
+spec:
+  workloadPlacementSelectors:
+    - foo: baz
+  fromClusterSelector:
+    topology.kubernetes.io/region: centralus
+  toClusterSelector:
+    topology.kubernetes.io/region: eastasia
+  failurePolicy:
+    maxFailureCount: 1
+  rollback: true

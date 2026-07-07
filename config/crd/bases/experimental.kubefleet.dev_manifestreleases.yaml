@@ -1,0 +1,146 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: manifestreleases.experimental.kubefleet.dev
+spec:
+  group: experimental.kubefleet.dev
+  names:
+    categories:
+    - kubefleet
+    - kubefleet-experimental
+    kind: ManifestRelease
+    listKind: ManifestReleaseList
+    plural: manifestreleases
+    singular: manifestrelease
+  scope: Namespaced
+  versions:
+  - name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          ManifestRelease is the KubeFleet API that represents a collection of manifests, as read
+          from an OCI artifact, for placement.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: The specification of the manifest release.
+            properties:
+              manifestArtifactRef:
+                description: The reference to the OCI artifact that contains the manifests.
+                properties:
+                  name:
+                    description: The name of the OCI artifact. The object must be
+                      in the same namespace as the helm release object.
+                    type: string
+                type: object
+              options:
+                description: The options for processing manifests from the OCI artifact.
+                properties:
+                  ignorePaths:
+                    description: |-
+                      A list of paths to ignore when processing manifests from the OCI artifact. You may use single asterisk
+                      (`*`) to match any sequence of characters in a path segment.
+
+                      For example, the setup [`foo/`, `bar/*-test.yaml`] will set KubeFleet to ignore all manifests under
+                      the `foo/` directory and any manifest file that ends with `-test.yaml` under the `bar/` directory.
+                    items:
+                      type: string
+                    type: array
+                  recursive:
+                    description: Whether to find and place manifests under the specified
+                      path recursively if the path is a directory.
+                    type: boolean
+                type: object
+              path:
+                description: |-
+                  The path to a file or a directory within the OCI artifact (after extraction) that contains the manifest(s)
+                  to be placed. If the path is a directory, all the manifests (YAML files) under the directory will be placed.
+
+                  The default is `.` (the root of the extracted OCI artifact).
+                type: string
+            type: object
+          status:
+            description: The observed status of the manifest release.
+            properties:
+              conditions:
+                description: A list of observed conditions of the manifest release.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

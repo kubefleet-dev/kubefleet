@@ -36,6 +36,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/retry"
@@ -49,12 +50,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	experimentalv1beta1 "github.com/kubefleet-dev/kubefleet/apis/experimental/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/cmd/memberagent/options"
 	imcv1beta1 "github.com/kubefleet-dev/kubefleet/pkg/controllers/internalmembercluster/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workapplier"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider/azure"
+	runcommandrequest "github.com/kubefleet-dev/kubefleet/pkg/reimagined/rungetrequest"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/httpclient"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/parallelizer"
@@ -76,6 +79,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(clusterv1beta1.AddToScheme(scheme))
 	utilruntime.Must(placementv1beta1.AddToScheme(scheme))
+	utilruntime.Must(experimentalv1beta1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -441,6 +445,17 @@ func Start(ctx context.Context, hubCfg, memberConfig *rest.Config, hubOpts, memb
 	if err := imcReconciler.SetupWithManager(hubMgr, "internalmembercluster-controller"); err != nil {
 		klog.ErrorS(err, "Failed to set up InternalMemberCluster v1beta1 controller with the controller manager")
 		return fmt.Errorf("failed to set up InternalMemberCluster v1beta1 controller with the controller manager: %w", err)
+	}
+
+	memberClientset, err := kubernetes.NewForConfig(memberConfig)
+	if err != nil {
+		klog.ErrorS(err, "Failed to create member cluster clientset")
+		return fmt.Errorf("failed to create member cluster clientset: %w", err)
+	}
+	runCommandReconciler := runcommandrequest.NewReconciler(hubMgr.GetClient(), memberClientset.CoreV1())
+	if err := runCommandReconciler.SetupWithManager(hubMgr); err != nil {
+		klog.ErrorS(err, "Failed to set up RunCommandRequest controller with the controller manager")
+		return fmt.Errorf("failed to set up RunCommandRequest controller with the controller manager: %w", err)
 	}
 
 	klog.InfoS("starting hub manager")

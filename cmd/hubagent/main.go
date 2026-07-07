@@ -44,6 +44,7 @@ import (
 	fleetnetworkingv1alpha1 "go.goms.io/fleet-networking/api/v1alpha1"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	experimentalv1beta1 "github.com/kubefleet-dev/kubefleet/apis/experimental/v1beta1"
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
@@ -80,6 +81,7 @@ func init() {
 	utilruntime.Must(fleetnetworkingv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(placementv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(clusterinventory.AddToScheme(scheme))
+	utilruntime.Must(experimentalv1beta1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 	klog.InitFlags(nil)
 }

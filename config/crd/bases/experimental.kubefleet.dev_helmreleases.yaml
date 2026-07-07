@@ -1,0 +1,242 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: helmreleases.experimental.kubefleet.dev
+spec:
+  group: experimental.kubefleet.dev
+  names:
+    categories:
+    - kubefleet
+    - kubefleet-experimental
+    kind: HelmRelease
+    listKind: HelmReleaseList
+    plural: helmreleases
+    singular: helmrelease
+  scope: Namespaced
+  versions:
+  - name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          HelmRelease is the KubeFleet API that represents a Helm chart for placement, as extracted from an
+          OCI artifact.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: The specification of the Helm release.
+            properties:
+              chartRef:
+                description: The reference to the OCI artifact that contains the Helm
+                  chart.
+                properties:
+                  name:
+                    description: The name of the OCI artifact. The object must be
+                      in the same namespace as the helm release object.
+                    type: string
+                type: object
+              helmOptions:
+                description: |-
+                  The options for rendering the manifests from the Helm chart via the Helm Go SDK.
+
+                  KubeFleet installs/upgrades a Helm chart by rendering the manifests from the chart (enabled by the Helm Go SDK
+                  in the same way as how `helm template` works) rather directly invoking the Helm framework to install/upgrade
+                  chart. This is a design choice so as to avoid the complication of distributing charts across cluster binaries
+                  and to keep the placement process neutral to manifests from all sources. In other words, the lifecycle of
+                  all manifests, installed from a Helm chart via KubeFleet, is managed by KubeFleet and not Helm.
+                  As a result, functionalities that are specific to the Helm-managed releases might not be available when a
+                  chart is placed via KubeFleet. Refer to the KubeFleet documentations for specifics on such limitations and
+                  how KubeFleet features can be used as workarounds.
+
+                  If not specified, the default options will be used.
+                properties:
+                  apiVersions:
+                    description: |-
+                      The API versions set in Helm chart capabilities when rendering the manifests. This is equivalent
+                      to the `--api-versions` option in the `helm template` command. See the Helm documentation for more information.
+                    items:
+                      type: string
+                    type: array
+                  kubeVersion:
+                    description: |-
+                      The Kubernetes version set in Helm chart capabilities when rendering the manifests. This is equivalent
+                      to the `--kube-version` option in the `helm template` command. See the Helm documentation for more information.
+                    type: string
+                  namespace:
+                    description: |-
+                      The namespace scope of the Helm release. This is equivalent to the `--namespace` option in the
+                      `helm template` command. See the Helm documentation for more information.
+
+                      The default value is the namespace of the HelmRelease object.
+                    type: string
+                  releaseName:
+                    description: |-
+                      The name of the Helm release. This is equivalent to the `--release-name` option in the
+                      `helm template` command. See the Helm documentation for more information.
+
+                      The default value is `[NAMESPACE-NAME]`, where `[NAMESPACE]` is the namespace of the
+                      HelmRelease object and `[NAME]` is the name of the HelmRelease object.
+                    type: string
+                  skipCRDs:
+                    description: |-
+                      Whether to skip CRDs when rendering the manifests. This is equivalent to the `--skip-crds` option
+                      in the `helm template` command. See the Helm documentation for more information.
+                    type: boolean
+                  skipSchemaValidation:
+                    description: |-
+                      Whether to skip JSON schema validation when rendering the manifests. This is equivalent to the
+                      `--skip-schema-validation` option in the `helm template` command. See the Helm documentation for more information.
+                    type: boolean
+                  skipTests:
+                    description: |-
+                      Whether to skip test resources when rendering the manifests. This is equivalent to the
+                      `--skip-tests` option in the `helm template` command. See the Helm documentation for more information.
+                    type: boolean
+                type: object
+              values:
+                description: |-
+                  The Helm chart values.
+
+                  You may also set values via ConfigMap or Secret objects by setting the `ValuesFrom` field below.
+                  KubeFleet will merge the values from all sources and apply them when templating the Helm chart. If a value
+                  is set in multiple sources, the value explicitly set here in the `Values` field will take precedence
+                  over those set in the `ValuesFrom` field.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              valuesFrom:
+                description: |-
+                  The Helm chart values, set via ConfigMap or Secret objects.
+
+                  You may also set values directly via the `Values` field above. KubeFleet will merge the values from all sources
+                  and apply them when templating the Helm chart. If a value is set in multiple sources, the value explicitly set
+                  in the `Values` field will take precedence over those set in this `ValuesFrom` field. If a value is set
+                  in multiple sources from this `ValuesFrom` field, the value from the last source in the list will take
+                  precedence over those from the previous sources in the list.
+                items:
+                  properties:
+                    dataKey:
+                      default: values.yaml
+                      description: |-
+                        The key in the `.data` field of the object that contains the Helm chart values.
+                        If not specified, the default value is `values.yaml`.
+                      type: string
+                    kind:
+                      description: |-
+                        The kind of the object that contains the Helm chart values.
+                        This can be either `ConfigMap` or `Secret`.
+                      enum:
+                      - ConfigMap
+                      - Secret
+                      type: string
+                    name:
+                      description: The name of the object that contains the Helm chart
+                        values.
+                      type: string
+                    setAsLiteral:
+                      description: |-
+                        Whether to treat the extracted data as a literal value. If set to `true`, the extracted data will be
+                        merged as a literal string value, rather than as an YAML object of its own.
+                      type: boolean
+                    valuesPath:
+                      description: |-
+                        The path in the values where the extracted data will be merged. The path should be a valid Go YAML path;
+                        see https://pkg.go.dev/github.com/goccy/go-yaml#PathString for more information.
+
+                        If not specified, the data will merged at the root level.
+                      type: string
+                  type: object
+                type: array
+            type: object
+          status:
+            description: The observed status of the Helm release.
+            properties:
+              conditions:
+                description: A list of observed conditions of the Helm release.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              valuesHash:
+                description: |-
+                  The hash of the Helm chart values, merged from all sources. This is a field kept for tracking
+                  changes in the Helm chart values.
+                type: string
+              valuesPath:
+                description: The path where the Helm chart values is kept, after merging
+                  the inputs from all sources.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

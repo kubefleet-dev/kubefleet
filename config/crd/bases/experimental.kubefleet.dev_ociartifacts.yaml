@@ -1,0 +1,340 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: ociartifacts.experimental.kubefleet.dev
+spec:
+  group: experimental.kubefleet.dev
+  names:
+    categories:
+    - kubefleet
+    - kubefleet-experimental
+    kind: OCIArtifact
+    listKind: OCIArtifactList
+    plural: ociartifacts
+    singular: ociartifact
+  scope: Namespaced
+  versions:
+  - name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          OCIArtifact is the KubeFleet API that represents an ORAS (OCI Registry as Storage)
+          artifact (e.g., a Helm chart, or a bundle of Kubernetes manifests), which can be deployed to
+          member clusters via KubeFleet's placement APIs.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: The specification of the OCI artifact.
+            properties:
+              authProvider:
+                description: |-
+                  The authentication provider to use when connecting to the OCI registry for artifact retrieval.
+
+                  If unset, KubeFleet will connect to the OCI registry directly (i.e., the registry is a public one).
+                properties:
+                  authProviderType:
+                    default: None
+                    description: |-
+                      The type of the authentication provider.
+
+                      Available options are:
+                      * None: Connect to the OCI registry directly with no authentication (i.e., the registry is a public one).
+                      * Generic: Connect to the OCI registry with an image pull secret. Set the `SecretRef` field below to
+                        specify the secret to use.
+                      * Azure: Connect to the registry with default Azure credentials. This option works only when KubeFleet is
+                        deployed in an Azure environment (e.g., Azure Kubernetes Service) and the environment has properly
+                        configured Azure credentials.
+
+                      The default value is `None`.
+                    type: string
+                  secretRef:
+                    description: |-
+                      An object reference to the Secret object that contains the credentials to use when connecting
+                      to the OCI registry. The Secret object must be an image pull secret; see the Kubernetes documentation
+                      for more information.
+                    properties:
+                      apiGroup:
+                        type: string
+                      apiVersion:
+                        type: string
+                      kind:
+                        type: string
+                      name:
+                        description: The name of the referenced object.
+                        type: string
+                      resource:
+                        type: string
+                    required:
+                    - apiVersion
+                    - kind
+                    - name
+                    - resource
+                    type: object
+                type: object
+                x-kubernetes-validations:
+                - message: secretRef must be set when authProviderType is Generic
+                  rule: self.authProviderType != 'Generic' || has(self.secretRef)
+              ref:
+                description: |-
+                  The version reference of the OCI artifact. KubeFleet can:
+
+                  * retrieve the artifact with a specific tag (e.g., `production`, `experimental`), or
+                  * retrieve the artifact with a tag that satisifies a semantic versioning (semver) constraint,
+                    e.g., `1.2 - 1.4`, `2.0.x`, `>=1.2.3, <2.0.0`. See the KubeFleet documentation for more details on the
+                    semver constraint syntax.
+                  * retrieve the artifact with a specific digest (e.g., `sha256:abcdef1234567890`).
+
+                  If unset, KubeFleet will attempt to retrieve the artifact with the `latest` tag.
+                properties:
+                  digest:
+                    description: |-
+                      The digest of the OCI artifact.
+
+                      The `tag`, `semVer`, and `digest` fields are mutually exclusive. You can set only one of them.
+                    type: string
+                  tag:
+                    description: |-
+                      The tag of the OCI artifact.
+
+                      The `tag`, `semVer`, and `digest` fields are mutually exclusive. You can set only one of them.
+                    type: string
+                type: object
+                x-kubernetes-validations:
+                - message: tag and digest are mutually exclusive; only one of them
+                    can be set
+                  rule: '!(has(self.tag) && has(self.digest))'
+              retrievalPolicy:
+                description: |-
+                  The retrieval policy for the OCI artifact. Set this field to control how often KubeFleet should
+                  check for updates to the artifact in the OCI registry, how long to wait for a response from the registry,
+                  and how to process the layers of the artifact.
+
+                  If unset, KubeFleet will use the default retrieval policy.
+                properties:
+                  intervalSeconds:
+                    default: 1800
+                    description: |-
+                      How often KubeFleet should check for updates to the OCI artifact in the registry, in seconds.
+
+                      If unset, KubeFleet will check for updates every 30 minutes (1800 seconds).
+                    format: int32
+                    type: integer
+                  layerSelectors:
+                    description: |-
+                      The layer to process from the OCI artifact. KubeFleet will untar (and unzip, if applicable)
+                      the selected layer and save the contents for placement.
+
+                      In many cases KubeFleet can auto-process OCI artifacts with no additional instructions needed.
+                      If the OCI artifact is:
+
+                      * a single-layer artifact packaged with Helm that contains a Helm chart (using the media type
+                      `application/vnd.cncf.helm.chart.content.v1.tar+gzip`); or
+                      * a single- or multi-layer artifact packaged with ORAS that contains a bundle of Kubernetes manifests
+                        (possibly organized in a hierarchy of directories) with proper media types (e.g.,
+                        `application/vnd.oci.image.layer.v1.tar`) and annotations (e.g., `org.opencontainers.image.title`),
+
+                      No configuration is needed for this field. However, if the you package your artifact with
+                      a custom tool that sets different media types/annotations, you might need to explicitly specify
+                      which layer to pick and process by setting this field.
+
+                      If this field is unset and KubeFleet cannot recognize the layers, an error will be raised.
+
+                      If there are multiple matching layers, the first one (as ordered in the OCI artifact manifest)
+                      will be selected.
+                    properties:
+                      mediaType:
+                        description: The media type of the layer to select. The layer
+                          must be a tarball (possibly gzipped).
+                        type: string
+                        x-kubernetes-validations:
+                        - message: mediaType must end with '.tar' or '.tar+gzip'
+                          rule: self.endsWith('.tar') || self.endsWith('.tar+gzip')
+                      path:
+                        default: app
+                        description: |-
+                          The (relative) path where the contents of the layer will be extracted.
+                          It must be a single-level directory or file name.
+
+                          The default value is `app`.
+                        type: string
+                        x-kubernetes-validations:
+                        - message: path must be a single-level directory or file name
+                            using only alphanumeric characters, underscores, or dashes,
+                            e.g., 'app', 'deploy.yaml'
+                          rule: self.matches('^[a-zA-Z0-9_-]+([.][a-zA-Z0-9]+)?$')
+                    required:
+                    - mediaType
+                    - path
+                    type: object
+                  timeoutSeconds:
+                    default: 60
+                    description: |-
+                      The maximum amount of time, in seconds, that KubeFleet should wait for a response from the OCI registry
+                      when checking for updates to the artifact.
+
+                      If unset, KubeFleet will use a default timeout of 60 seconds.
+                    format: int32
+                    type: integer
+                type: object
+              suspend:
+                default: false
+                description: |-
+                  Whether to suspend the retrieval of the OCI artifact. If set to true, KubeFleet will no longer
+                  attempt to check for updates to the artifact in the OCI registry; all placements that reference this artifact
+                  will use the last retrieved version of the artifact.
+                type: boolean
+              url:
+                description: |-
+                  The URL of the OCI artifact. It should be of the format `[REGISTRY]/[REPOSITORY]/[ARTIFACT]`,
+                  where `[REGISTRY]` is the OCI registry (e.g., `rpdstars.azurecr.io`), `[REPOSITORY]` is the repository in the
+                  registry (e.g., `alphateam`), and `[ARTIFACT]` is the artifact name (e.g., `webapp`).
+
+                  To retrieve a specific version of the artifact, set the `Ref` field below. By default KubeFleet
+                  will attempt to retrieve the artifact with the `latest` tag.
+                type: string
+            required:
+            - url
+            type: object
+          status:
+            description: The observed status of the OCI artifact.
+            properties:
+              artifact:
+                description: The details about the retrieved OCI artifact (if any).
+                properties:
+                  artifactType:
+                    description: The type of the OCI artifact.
+                    type: string
+                  digest:
+                    description: The digest of the OCI artifact.
+                    type: string
+                  layers:
+                    description: |-
+                      The details about individual layers of the OCI artifact. If a layer selector
+                      has been specified, only the selected layer will be included in this list.
+                    items:
+                      properties:
+                        digest:
+                          description: The digest of the layer.
+                          type: string
+                        mediaType:
+                          description: The media type of the layer.
+                          type: string
+                        metadata:
+                          additionalProperties:
+                            type: string
+                          description: The annotations of the layer.
+                          type: object
+                        path:
+                          description: The path where the contents of the layer are
+                            extracted.
+                          type: string
+                        size:
+                          description: The size of the layer in bytes.
+                          format: int64
+                          type: integer
+                      type: object
+                    type: array
+                  mediaType:
+                    description: The media type of the OCI artifact.
+                    type: string
+                  metadata:
+                    additionalProperties:
+                      type: string
+                    description: The annotations of the OCI artifact.
+                    type: object
+                  path:
+                    description: The path where the contents of the artifact are extracted.
+                    type: string
+                  size:
+                    description: The size of the OCI artifact in bytes.
+                    format: int64
+                    type: integer
+                  tag:
+                    description: The tag of the OCI artifact.
+                    type: string
+                  url:
+                    description: The full URL of the OCI artifact.
+                    type: string
+                type: object
+              conditions:
+                description: A list of observed conditions about the OCI artifact.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

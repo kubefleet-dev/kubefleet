@@ -18,6 +18,7 @@ limitations under the License.
 package resource
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -38,6 +39,11 @@ func HashOf(resource any) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("%x", sha256.Sum256(jsonBytes)), nil
+}
+
+func HashOfBytes(input []byte) string {
+	trimmed := bytes.TrimRight(input, "\n\r")
+	return fmt.Sprintf("%x", sha256.Sum256(trimmed))
 }
 
 // CalculateSizeDeltaOverLimitFor calculates the size delta in bytes of a given object

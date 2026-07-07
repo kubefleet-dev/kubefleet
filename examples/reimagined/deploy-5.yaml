@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pause-4
+  namespace: work
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: pause-4
+  template:
+    metadata:
+      labels:
+        app: pause-4
+    spec:
+      containers:
+        - name: pause
+          image: k8s.gcr.io/pause:3.2
+          ports:
+            - containerPort: 80

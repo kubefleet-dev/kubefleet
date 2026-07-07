@@ -1,0 +1,16 @@
+apiVersion: experimental.kubefleet.dev/v1beta1
+kind: WorkloadPlacement
+metadata:
+  name: nginx
+  namespace: work
+spec:
+  clusterSelectors:
+  - topology.kubernetes.io/region: eastus
+  - topology.kubernetes.io/region: westus2
+  revisionHistoryLimit: 3
+  workloadRef:
+    apiGroup: apps
+    apiVersion: v1
+    kind: Deployment
+    name: nginx
+    resource: deployments

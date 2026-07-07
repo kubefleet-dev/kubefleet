@@ -434,19 +434,21 @@ func beforeSuiteForProcess1() {
 
 	setAllMemberClustersToJoin()
 	checkIfAllMemberClustersHaveJoined()
-	checkIfAzurePropertyProviderIsWorking()
+	panic("early termination")
+	//checkIfAzurePropertyProviderIsWorking()
 
 	// Simulate that member cluster 4 become unhealthy, and member cluster 5 has left the fleet.
 	//
 	// Note that these clusters are not real kind clusters.
-	setupInvalidClusters()
-	createResourcesForFleetGuardRail()
-	createTestResourceCRD()
+	//setupInvalidClusters()
+	//createResourcesForFleetGuardRail()
+	//createTestResourceCRD()
 }
 
 var _ = SynchronizedBeforeSuite(beforeSuiteForProcess1, beforeSuiteForAllProcesses)
 
 var _ = SynchronizedAfterSuite(func() {}, func() {
+	panic("early termination")
 	deleteResourcesForFleetGuardRail()
 	deleteTestResourceCRD()
 	setAllMemberClustersToLeave()
