@@ -4,25 +4,26 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
-  name: rungetrequests.experimental.kubefleet.dev
+  name: placementresourcesnapshotrequests.experimental.kubefleet.dev
 spec:
   group: experimental.kubefleet.dev
   names:
     categories:
     - kubefleet
     - kubefleet-experimental
-    kind: RunGetRequest
-    listKind: RunGetRequestList
-    plural: rungetrequests
-    singular: rungetrequest
+    kind: PlacementResourceSnapshotRequest
+    listKind: PlacementResourceSnapshotRequestList
+    plural: placementresourcesnapshotrequests
+    singular: placementresourcesnapshotrequest
   scope: Namespaced
   versions:
   - name: v1beta1
     schema:
       openAPIV3Schema:
         description: |-
-          RunGetRequest is a KubeFleet API that allows users to run a GET request
-          on a member cluster.
+          PlacementResourceSnapshotRequest is the KubeFleet API that represents a request to
+          create a PlacementResourceSnapshot, or in other words, a new snapshot of resources
+          for a placement policy.
         properties:
           apiVersion:
             description: |-
@@ -42,47 +43,50 @@ spec:
           metadata:
             type: object
           spec:
-            description: The spec of a RunGetRequest object.
+            description: The spec of a placement resource snapshot request.
             properties:
-              apiGroup:
-                default: ""
-                description: The API group of the resource to get.
-                type: string
-              apiVersion:
-                default: v1
-                description: The API version of the resource to get.
-                type: string
-              labelMatchers:
-                additionalProperties:
-                  type: string
-                description: A list of label matchers to select the resource to get.
+              placementPolicyRef:
+                description: The reference to the placement policy for which a resource
+                  snapshot is requested.
+                properties:
+                  apiGroup:
+                    type: string
+                  apiVersion:
+                    type: string
+                  kind:
+                    type: string
+                  name:
+                    description: The name of the referenced object.
+                    type: string
+                  resource:
+                    type: string
+                required:
+                - apiVersion
+                - kind
+                - name
+                - resource
                 type: object
-              name:
-                description: The name of the resource to get.
-                type: string
-              namespace:
-                description: The namespace of the resource to get.
-                type: string
-              resource:
-                default: pods
-                description: The resource to get.
-                enum:
-                - pods
-                type: string
-              subResource:
-                default: ""
-                description: The subresource to get.
-                enum:
-                - logs
-                - ""
-                type: string
+              ttl:
+                default: 600
+                description: |-
+                  The TTL (time to live) of the request. KubeFleet will GC old requests that have outlived their TTL.
+
+                  The default is 10 minutes (600 seconds).
+
+                  Demo-only note: the field is not in use at the moment. No requests will be GC'd in the demo.
+                format: int32
+                maximum: 86400
+                minimum: 60
+                type: integer
             required:
-            - resource
+            - placementPolicyRef
             type: object
           status:
-            description: The status of a RunGetRequest object.
+            description: The status of a placement resource snapshot request.
             properties:
               conditions:
+                description: A list of observed conditions of this placement resource
+                  snapshot request.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -138,8 +142,9 @@ spec:
                   - type
                   type: object
                 type: array
-              result:
-                format: byte
+              placementResourceSnapshotName:
+                description: The name of the PlacementResourceSnapshot object created
+                  for this request.
                 type: string
             type: object
         type: object

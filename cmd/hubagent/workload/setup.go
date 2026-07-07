@@ -47,10 +47,10 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/updaterun"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workgenerator"
 	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/deploymentwatcher"
-	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/workloadmigrationrequest"
-	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/workloadplacement"
-	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/workloadresourceclusterbinding"
-	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/workloadresourcesnapshot"
+	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementbinding"
+	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementmigrationrequest"
+	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementpolicy"
+	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementresourcesnapshot"
 	"github.com/kubefleet-dev/kubefleet/pkg/resourcewatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/clustereligibilitychecker"
@@ -547,46 +547,46 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	}
 
 	// Set up reimagined controllers.
-	snapshotMgr := workloadresourcesnapshot.NewManager(mgr.GetClient(), dynamicClient, 100)
-	snapshotReqReconciler := workloadresourcesnapshot.NewWorkloadResourceSnapshotReqReconciler(
+	snapshotMgr := placementresourcesnapshot.NewManager(mgr.GetClient(), dynamicClient, 100)
+	snapshotReqReconciler := placementresourcesnapshot.NewPlacementResourceSnapshotReqReconciler(
 		mgr.GetClient(), snapshotMgr, 30,
 	)
 	if err := snapshotReqReconciler.SetupWithManager(mgr); err != nil {
-		klog.ErrorS(err, "Failed to setup workload resource snapshot request reconciler")
+		klog.ErrorS(err, "Failed to setup placement resource snapshot request reconciler")
 		return err
 	}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		if err := snapshotMgr.Start(ctx); err != nil {
-			klog.ErrorS(err, "Workload resource snapshot manager exited with error")
+			klog.ErrorS(err, "Placement resource snapshot manager exited with error")
 		}
 	}()
 
-	placementReconciler := &workloadplacement.Reconciler{
-		HubClient:                       mgr.GetClient(),
-		WorkloadResourceSnapshotManager: snapshotMgr,
-		MaxSnapshotCreationWaitTime:     30 * time.Second,
+	placementReconciler := &placementpolicy.Reconciler{
+		HubClient:                        mgr.GetClient(),
+		PlacementResourceSnapshotManager: snapshotMgr,
+		MaxSnapshotCreationWaitTime:      30 * time.Second,
 	}
 	if err := placementReconciler.SetupWithManager(mgr); err != nil {
-		klog.ErrorS(err, "Failed to setup workload placement reconciler")
+		klog.ErrorS(err, "Failed to setup placement policy reconciler")
 		return err
 	}
 
-	bindingReconciler := &workloadresourceclusterbinding.Reconciler{
+	bindingReconciler := &placementbinding.Reconciler{
 		HubClient: mgr.GetClient(),
 	}
 	if err := bindingReconciler.SetupWithManager(mgr); err != nil {
-		klog.ErrorS(err, "Failed to setup workload resource cluster binding reconciler")
+		klog.ErrorS(err, "Failed to setup placement binding reconciler")
 		return err
 	}
 
-	migrationReconciler := &workloadmigrationrequest.Reconciler{
+	migrationReconciler := &placementmigrationrequest.Reconciler{
 		HubClient:         mgr.GetClient(),
 		MaxWaitTimePerRun: 15 * time.Minute,
 	}
 	if err := migrationReconciler.SetupWithManager(mgr); err != nil {
-		klog.ErrorS(err, "Failed to setup workload migration request reconciler")
+		klog.ErrorS(err, "Failed to setup placement migration request reconciler")
 		return err
 	}
 

@@ -4,26 +4,24 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
-  name: clusterrequests.experimental.kubefleet.dev
+  name: placementbindings.experimental.kubefleet.dev
 spec:
   group: experimental.kubefleet.dev
   names:
     categories:
     - kubefleet
     - kubefleet-experimental
-    kind: ClusterRequest
-    listKind: ClusterRequestList
-    plural: clusterrequests
-    singular: clusterrequest
+    kind: PlacementBinding
+    listKind: PlacementBindingList
+    plural: placementbindings
+    singular: placementbinding
   scope: Namespaced
   versions:
   - name: v1beta1
     schema:
       openAPIV3Schema:
-        description: |-
-          ClusterRequest is a KubeFleet API that represents a request for a member cluster to be provisioned.
-          It is created by KubeFleet when it cannot find any existing member cluster that matches the placement
-          requirements specified in a WorkloadPlacement object.
+        description: PlacementBinding is the KubeFleet API that binds a placement
+          to a specific member cluster.
         properties:
           apiVersion:
             description: |-
@@ -43,15 +41,17 @@ spec:
           metadata:
             type: object
           spec:
-            description: The specification of the cluster request.
+            description: The specification of the binding.
             properties:
+              clusterName:
+                description: The name of the member cluster that this binding is associated
+                  with.
+                type: string
               clusterSelector:
                 description: |-
-                  The cluster selector the describes the requirements for the new member cluster to provision.
+                  The cluster selector associated with this binding.
 
-                  If not specified, any member cluster can satisfy the request.
-
-                  This field is immutable after creation.
+                  This field is added for informational purposes only.
                 properties:
                   count:
                     anyOf:
@@ -215,24 +215,35 @@ spec:
                       rule: size(self) <= 1 && (size(self) == 0 || (!has(self[0].matchLabelExpressions)
                         && !has(self[0].matchClusterPropertyExpressions)))
                 type: object
-                x-kubernetes-validations:
-                - message: the clusterSelector field is immutable
-                  rule: self == oldSelf
               clusterSelectorHash:
-                description: |-
-                  The hash of the cluster selector that describes the requirements for the new member cluster to provision.
-
-                  This field is immutable after creation.
+                description: The hash of the cluster selector associated with this
+                  binding.
                 type: string
-                x-kubernetes-validations:
-                - message: the clusterSelectorHash field is immutable
-                  rule: self == oldSelf
+              placementPolicyName:
+                description: The name of the placement policy that this binding is
+                  associated with.
+                type: string
+              resourceSnapshotName:
+                description: The name of the resource snapshot that this binding is
+                  associated with.
+                type: string
+              suspended:
+                default: false
+                description: |-
+                  Whether the binding is suspended. If true, KubeFleet will remove resources
+                  from the associated cluster.
+                type: boolean
+            required:
+            - clusterName
+            - clusterSelector
+            - clusterSelectorHash
+            - placementPolicyName
             type: object
           status:
-            description: The observed status of the cluster request.
+            description: The observed status of the binding.
             properties:
               conditions:
-                description: A list of observed conditions of the cluster request.
+                description: A list of observed conditions about the binding.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -288,19 +299,24 @@ spec:
                   - type
                   type: object
                 type: array
-              latestObservedClusterCreationTimestamp:
-                description: |-
-                  The latest observed creation timestamp across all the member clusters. This field is used
-                  as a expedient solution to verify if a cluster request is still valid for consideration, i.e.,
-                  if the current latest observed cluster creation timestamp is later than this timestamp in the
-                  the status, a new member cluster must have been created after the cluster request was created,
-                  and thus the cluster request should be considered stale and can be ignored.
-                format: date-time
+              failedToSyncResources:
+                description: The number of resources that cannot be synced to the
+                  target cluster.
+                format: int32
+                type: integer
+              lastSyncedResourceSnapshotName:
+                description: The name of the last synced resource snapshot.
                 type: string
-              provisionedClusterName:
-                description: The name of the cluster that has been provisioned for
-                  this cluster request, if any.
-                type: string
+              selectedResources:
+                description: The number of resources that are included in the last
+                  synced resource snapshot.
+                format: int32
+                type: integer
+              unavailableResources:
+                description: The number of resources that are not yet available in
+                  the target cluster.
+                format: int32
+                type: integer
             type: object
         type: object
     served: true

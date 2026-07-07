@@ -4,4 +4,4 @@ metadata:
   name: nginx
 spec:
   clusterSelector:
-    topology.kubernetes.io/region: uksouth
+    topology.kubernetes.io/region: germanycentral

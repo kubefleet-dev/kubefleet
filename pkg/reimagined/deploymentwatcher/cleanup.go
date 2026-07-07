@@ -29,17 +29,17 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
 )
 
-func (r *Reconciler) deleteWorkloadPlacementFor(ctx context.Context, deploy *appsv1.Deployment) error {
+func (r *Reconciler) deletePlacementPolicyFor(ctx context.Context, deploy *appsv1.Deployment) error {
 	if controllerutil.ContainsFinalizer(deploy, deploymentForPlacementFinalizer) {
 		// Delete the corresponding placement object (if any).
-		placement := experimentalv1beta1.WorkloadPlacement{
+		placement := experimentalv1beta1.PlacementPolicy{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf(workloadPlacementNameFmt, deploy.Name),
+				Name:      fmt.Sprintf(placementPolicyNameFmt, deploy.Name),
 				Namespace: deploy.Namespace,
 			},
 		}
 		if err := r.HubClient.Delete(ctx, &placement); err != nil && !apierrors.IsNotFound(err) {
-			return errors.NewAPIServerError(err, "failed to delete the workload placement for the deployment", false)
+			return errors.NewAPIServerError(err, "failed to delete the placement policy for the deployment", false)
 		}
 
 		// Remove the finalizer so that the deployment can be deleted.

@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package tests
+package placementbinding
 
 import (
 	"context"
@@ -22,13 +22,11 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
@@ -39,23 +37,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	experimentalv1beta1 "github.com/kubefleet-dev/kubefleet/apis/experimental/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/deploymentwatcher"
-	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementbinding"
-	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementmigrationrequest"
-	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementpolicy"
-	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementresourcesnapshot"
 )
 
 var (
-	cfg       *rest.Config
-	hubEnv    *envtest.Environment
-	hubClient client.Client
-	hubMgr    manager.Manager
-
-	snapshotMgr *placementresourcesnapshot.Manager
+	cfg        *rest.Config
+	hubEnv     *envtest.Environment
+	hubClient  client.Client
+	hubMgr     manager.Manager
+	reconciler *Reconciler
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -63,27 +54,29 @@ var (
 )
 
 const (
-	workNSName = "work"
+	workNSName                  = "work"
+	memberClusterReservedNSName = "fleet-member-bravelion"
 )
-
-func setupNamespaces() {
-	for _, name := range []string{
-		workNSName,
-		"fleet-member-cluster-1",
-		"fleet-member-cluster-2",
-	} {
-		ns := &corev1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: name,
-			},
-		}
-		Expect(hubClient.Create(ctx, ns)).To(Succeed())
-	}
-}
 
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Reimagined Controllers Integration Test Suite")
+	RunSpecs(t, "PlacementBinding Controller Integration Test Suite")
+}
+
+func setupNamespaces() {
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: workNSName,
+		},
+	}
+	Expect(hubClient.Create(ctx, ns)).To(Succeed())
+
+	memberNS := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: memberClusterReservedNSName,
+		},
+	}
+	Expect(hubClient.Create(ctx, memberNS)).To(Succeed())
 }
 
 var _ = BeforeSuite(func() {
@@ -110,22 +103,15 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 	Expect(cfg).ToNot(BeNil())
 
-	err = clusterv1beta1.AddToScheme(scheme.Scheme)
+	err = placementv1beta1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 	err = experimentalv1beta1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
-	err = placementv1beta1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	By("Building the Kubernetes client")
 	hubClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).ToNot(HaveOccurred())
 	Expect(hubClient).ToNot(BeNil())
-
-	By("Building the dynamic client")
-	dynamicClient, err := dynamic.NewForConfig(cfg)
-	Expect(err).ToNot(HaveOccurred())
-	Expect(dynamicClient).ToNot(BeNil())
 
 	By("Setting up test namespaces")
 	setupNamespaces()
@@ -139,39 +125,10 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	By("Wiring up the placement resource snapshot manager and controller")
-	snapshotMgr = placementresourcesnapshot.NewManager(hubMgr.GetClient(), dynamicClient, 100)
-	snapshotReconciler := placementresourcesnapshot.NewPlacementResourceSnapshotReqReconciler(
-		hubMgr.GetClient(), snapshotMgr, 30,
-	)
-	Expect(snapshotReconciler.SetupWithManager(hubMgr)).To(Succeed())
-
-	By("Wiring up the placement policy controller")
-	placementReconciler := &placementpolicy.Reconciler{
-		HubClient:                        hubMgr.GetClient(),
-		PlacementResourceSnapshotManager: snapshotMgr,
-		MaxSnapshotCreationWaitTime:      30 * time.Second,
-	}
-	Expect(placementReconciler.SetupWithManager(hubMgr)).To(Succeed())
-
-	By("Wiring up the placement binding controller")
-	bindingReconciler := &placementbinding.Reconciler{
+	reconciler = &Reconciler{
 		HubClient: hubMgr.GetClient(),
 	}
-	Expect(bindingReconciler.SetupWithManager(hubMgr)).To(Succeed())
-
-	By("Wiring up the placement migration request controller")
-	migrationReconciler := &placementmigrationrequest.Reconciler{
-		HubClient:         hubMgr.GetClient(),
-		MaxWaitTimePerRun: 15 * time.Minute,
-	}
-	Expect(migrationReconciler.SetupWithManager(hubMgr)).To(Succeed())
-
-	By("Wiring up the deployment watcher controller")
-	deploymentReconciler := &deploymentwatcher.Reconciler{
-		HubClient: hubMgr.GetClient(),
-	}
-	Expect(deploymentReconciler.SetupWithManager(hubMgr)).To(Succeed())
+	Expect(reconciler.SetupWithManager(hubMgr)).To(Succeed())
 
 	wg = sync.WaitGroup{}
 	wg.Add(1)
@@ -179,13 +136,6 @@ var _ = BeforeSuite(func() {
 		defer GinkgoRecover()
 		defer wg.Done()
 		Expect(hubMgr.Start(ctx)).To(Succeed())
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer GinkgoRecover()
-		defer wg.Done()
-		Expect(snapshotMgr.Start(ctx)).To(Succeed())
 	}()
 })
 

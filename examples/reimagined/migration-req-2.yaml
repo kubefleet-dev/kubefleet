@@ -11,3 +11,4 @@ spec:
     topology.kubernetes.io/region: eastasia
   failurePolicy:
     maxFailureCount: 1
+  rollback: true

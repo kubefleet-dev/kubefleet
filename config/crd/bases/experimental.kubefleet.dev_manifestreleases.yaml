@@ -4,25 +4,25 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
-  name: rungetrequests.experimental.kubefleet.dev
+  name: manifestreleases.experimental.kubefleet.dev
 spec:
   group: experimental.kubefleet.dev
   names:
     categories:
     - kubefleet
     - kubefleet-experimental
-    kind: RunGetRequest
-    listKind: RunGetRequestList
-    plural: rungetrequests
-    singular: rungetrequest
+    kind: ManifestRelease
+    listKind: ManifestReleaseList
+    plural: manifestreleases
+    singular: manifestrelease
   scope: Namespaced
   versions:
   - name: v1beta1
     schema:
       openAPIV3Schema:
         description: |-
-          RunGetRequest is a KubeFleet API that allows users to run a GET request
-          on a member cluster.
+          ManifestRelease is the KubeFleet API that represents a collection of manifests, as read
+          from an OCI artifact, for placement.
         properties:
           apiVersion:
             description: |-
@@ -42,47 +42,47 @@ spec:
           metadata:
             type: object
           spec:
-            description: The spec of a RunGetRequest object.
+            description: The specification of the manifest release.
             properties:
-              apiGroup:
-                default: ""
-                description: The API group of the resource to get.
-                type: string
-              apiVersion:
-                default: v1
-                description: The API version of the resource to get.
-                type: string
-              labelMatchers:
-                additionalProperties:
-                  type: string
-                description: A list of label matchers to select the resource to get.
+              manifestArtifactRef:
+                description: The reference to the OCI artifact that contains the manifests.
+                properties:
+                  name:
+                    description: The name of the OCI artifact. The object must be
+                      in the same namespace as the helm release object.
+                    type: string
                 type: object
-              name:
-                description: The name of the resource to get.
+              options:
+                description: The options for processing manifests from the OCI artifact.
+                properties:
+                  ignorePaths:
+                    description: |-
+                      A list of paths to ignore when processing manifests from the OCI artifact. You may use single asterisk
+                      (`*`) to match any sequence of characters in a path segment.
+
+                      For example, the setup [`foo/`, `bar/*-test.yaml`] will set KubeFleet to ignore all manifests under
+                      the `foo/` directory and any manifest file that ends with `-test.yaml` under the `bar/` directory.
+                    items:
+                      type: string
+                    type: array
+                  recursive:
+                    description: Whether to find and place manifests under the specified
+                      path recursively if the path is a directory.
+                    type: boolean
+                type: object
+              path:
+                description: |-
+                  The path to a file or a directory within the OCI artifact (after extraction) that contains the manifest(s)
+                  to be placed. If the path is a directory, all the manifests (YAML files) under the directory will be placed.
+
+                  The default is `.` (the root of the extracted OCI artifact).
                 type: string
-              namespace:
-                description: The namespace of the resource to get.
-                type: string
-              resource:
-                default: pods
-                description: The resource to get.
-                enum:
-                - pods
-                type: string
-              subResource:
-                default: ""
-                description: The subresource to get.
-                enum:
-                - logs
-                - ""
-                type: string
-            required:
-            - resource
             type: object
           status:
-            description: The status of a RunGetRequest object.
+            description: The observed status of the manifest release.
             properties:
               conditions:
+                description: A list of observed conditions of the manifest release.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -138,9 +138,6 @@ spec:
                   - type
                   type: object
                 type: array
-              result:
-                format: byte
-                type: string
             type: object
         type: object
     served: true

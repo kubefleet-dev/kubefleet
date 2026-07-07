@@ -33,7 +33,7 @@ const (
 // +genclient
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,shortName=rcreq,categories={kubefleet, kubefleet-experimental}
+// +kubebuilder:resource:scope=Namespaced,categories={kubefleet, kubefleet-experimental}
 // +kubebuilder:storageversion
 type RunGetRequest struct {
 	metav1.TypeMeta   `json:",inline"`

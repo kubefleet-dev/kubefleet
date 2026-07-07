@@ -160,8 +160,24 @@ func processClusterRequests(ctx context.Context) {
 		}
 	}
 
+	// TO-DO: mark the cluster request as failed if it cannot be fulfilled given the state of the cluster selector.
+	wantLabels := map[string]string{}
+	if len(targetClusterRequest.Spec.ClusterSelector.Terms) != 1 {
+		klog.Errorf("🛑 The cluster request %q cannot be fulfilled by the virtual helper (too many terms)", targetClusterRequest.Name)
+		return
+	}
+	firstTerm := targetClusterRequest.Spec.ClusterSelector.Terms[0]
+	if len(firstTerm.MatchLabelExpressions) > 0 {
+		klog.Errorf("🛑 The cluster request %q cannot be fulfilled by the virtual helper (matchLabelExpressions are not supported)", targetClusterRequest.Name)
+		return
+	}
+	if len(firstTerm.MatchClusterPropertyExpressions) > 0 {
+		klog.Errorf("🛑 The cluster request %q cannot be fulfilled by the virtual helper (matchClusterPropertyExpressions are not supported)", targetClusterRequest.Name)
+		return
+	}
+	wantLabels = firstTerm.MatchLabels
+
 	if memberCluster == nil {
-		wantLabels := targetClusterRequest.Spec.ClusterSelector
 		// The provisioned member cluster does not exist, create it.
 		memberCluster = &clusterv1beta1.MemberCluster{
 			ObjectMeta: metav1.ObjectMeta{

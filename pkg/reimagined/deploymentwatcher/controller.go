@@ -42,7 +42,7 @@ const (
 
 	deploymentForPlacementAnnotationKey = "experimental.kubefleet.dev/place-to-regions"
 
-	workloadPlacementNameFmt = "%s"
+	placementPolicyNameFmt = "%s"
 )
 
 type Reconciler struct {
@@ -74,8 +74,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	if !deploy.DeletionTimestamp.IsZero() {
-		if err := r.deleteWorkloadPlacementFor(ctx, deploy); err != nil {
-			klog.ErrorS(err, "Failed to delete workload placement for the deployment", append(errors.Args(err), "deployment", req.NamespacedName, "controller", controllerName)...)
+		if err := r.deletePlacementPolicyFor(ctx, deploy); err != nil {
+			klog.ErrorS(err, "Failed to delete placement policy for the deployment", append(errors.Args(err), "deployment", req.NamespacedName, "controller", controllerName)...)
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
@@ -88,8 +88,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 		// In case the deployment was previously marked for placement but now is not,
 		// delete the corresponding placement object (if any) and remove the finalizer from the deployment.
-		if err := r.deleteWorkloadPlacementFor(ctx, deploy); err != nil {
-			klog.ErrorS(err, "Failed to delete workload placement for the deployment that is no longer marked for placement", append(errors.Args(err), "deployment", req.NamespacedName, "controller", controllerName)...)
+		if err := r.deletePlacementPolicyFor(ctx, deploy); err != nil {
+			klog.ErrorS(err, "Failed to delete placement policy for the deployment that is no longer marked for placement", append(errors.Args(err), "deployment", req.NamespacedName, "controller", controllerName)...)
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
@@ -118,41 +118,48 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, wrappedErr
 	}
 
-	placement := &experimentalv1beta1.WorkloadPlacement{
+	placement := &experimentalv1beta1.PlacementPolicy{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf(workloadPlacementNameFmt, deploy.Name),
+			Name:      fmt.Sprintf(placementPolicyNameFmt, deploy.Name),
 			Namespace: deploy.Namespace,
 		},
 	}
 	resOp, err := ctrl.CreateOrUpdate(ctx, r.HubClient, placement, func() error {
 		// Add the cluster by region selector.
-		clusterByRegionSelectors := make([]map[string]string, 0, len(placeTos))
+		clusterByRegionSelectors := make([]experimentalv1beta1.ClusterSelector, 0, len(placeTos))
 		for _, placeTo := range placeTos {
-			clusterByRegionSelectors = append(clusterByRegionSelectors, map[string]string{
-				"topology.kubernetes.io/region": placeTo,
+			clusterByRegionSelectors = append(clusterByRegionSelectors, experimentalv1beta1.ClusterSelector{
+				Terms: []experimentalv1beta1.LabelAndClusterPropertySelectorTerm{
+					{
+						MatchLabels: map[string]string{
+							"topology.kubernetes.io/region": placeTo,
+						},
+					},
+				},
 			})
 		}
 		placement.Spec.ClusterSelectors = clusterByRegionSelectors
 
-		// Add the workload reference.
-		placement.Spec.WorkloadRef = experimentalv1beta1.SameNamespacedObjectReference{
+		// Add the resource selectors, starting with the workload (the Deployment itself) followed by
+		// any additional resources it references.
+		resourceSelectors := make([]experimentalv1beta1.SameNamespacedObjectReference, 0, len(additionalResRefs)+1)
+		resourceSelectors = append(resourceSelectors, experimentalv1beta1.SameNamespacedObjectReference{
 			Kind:       "Deployment",
 			APIGroup:   "apps",
 			APIVersion: "v1",
 			Resource:   "deployments",
 			Name:       deploy.Name,
-		}
-
-		// Add the additional resource references.
-		placement.Spec.AdditionalResourceRefs = additionalResRefs
+		})
+		resourceSelectors = append(resourceSelectors, additionalResRefs...)
+		placement.Spec.ResourceSelectors = resourceSelectors
 		return nil
 	})
 	if err != nil {
-		wrappedErr := errors.NewAPIServerError(err, "", false, "deployment", req.NamespacedName, "workloadPlacement", client.ObjectKeyFromObject(placement), "op", resOp, "controller", controllerName)
-		klog.ErrorS(wrappedErr, "Failed to create or update workload placement for the deployment", errors.Args(wrappedErr)...)
+		wrappedErr := errors.NewAPIServerError(err, "", false, "deployment", req.NamespacedName, "placementPolicy", client.ObjectKeyFromObject(placement), "op", resOp, "controller", controllerName)
+		klog.ErrorS(wrappedErr, "Failed to create or update placement policy for the deployment", errors.Args(wrappedErr)...)
 		return ctrl.Result{}, wrappedErr
 	}
-	klog.V(2).InfoS("Created or updated workload placement for the deployment", "deployment", req.NamespacedName, "workloadPlacement", client.ObjectKeyFromObject(placement), "op", resOp, "controller", controllerName)
+	klog.V(2).InfoS("Created or updated placement policy for the deployment", "deployment", req.NamespacedName, "placementPolicy", client.ObjectKeyFromObject(placement), "op", resOp, "controller", controllerName)
 	return ctrl.Result{}, nil
 }
 

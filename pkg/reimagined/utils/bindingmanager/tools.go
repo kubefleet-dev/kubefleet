@@ -21,7 +21,6 @@ import (
 	"reflect"
 
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	experimentalv1beta1 "github.com/kubefleet-dev/kubefleet/apis/experimental/v1beta1"
@@ -31,76 +30,61 @@ import (
 func ClaimAsBindingManager(
 	ctx context.Context,
 	hubClient client.Client,
-	placement *experimentalv1beta1.WorkloadPlacement,
-	wantBindingManager *experimentalv1beta1.PlacementBindingManager,
+	placement *experimentalv1beta1.PlacementPolicy,
+	wantBindingManager *experimentalv1beta1.BindingManager,
 ) (bool, error) {
 	if wantBindingManager == nil {
 		return false, errors.Wraps(nil, "cannot make a claim with an empty binding manager")
 	}
 
 	// Should apply anyway to ensure that the change is always respected.
-	bindingManagers := placement.Status.BindingManagers
-	var alreadyClaimedByOthers bool
-	switch {
-	case wantBindingManager.Mode == experimentalv1beta1.BindingManagerModeExclusive && wantBindingManager.ControllerName != nil:
-		// The caller would like to claim the binding manager role exclusively with a controller
-		// name.
-		for idx := range bindingManagers {
-			// The list of binding managers should be empty or should contain only the current controller.
-			bindingManager := bindingManagers[idx]
-			if bindingManager.ControllerName == nil || *bindingManager.ControllerName != *wantBindingManager.ControllerName {
-				alreadyClaimedByOthers = true
-				break
-			}
-		}
-	case wantBindingManager.Mode == experimentalv1beta1.BindingManagerModeExclusive:
-		// The caller would like to claim the binding manager role exclusively with an object reference.
-		for idx := range bindingManagers {
-			// The list of binding managers should be empty or should contain only the current object reference.
-			bindingManager := bindingManagers[idx]
-			if bindingManager.ObjectRef == nil || !reflect.DeepEqual(bindingManager.ObjectRef, wantBindingManager.ObjectRef) {
-				alreadyClaimedByOthers = true
-				break
-			}
-		}
-	default:
-		// No need to implement the support for shared mode at this moment. Simply return an error.
-		return false, errors.Wraps(nil, "unsupported binding manager claim mode; only exclusive mode with a controller name or an object reference is supported", "mode", wantBindingManager.Mode)
-	}
-
-	if alreadyClaimedByOthers {
-		// The binding manager role has already been claimed by another controller; in this case, give up the
-		// scheduling attempt and requeue after some time.
-		return false, nil
-	}
-
-	if len(bindingManagers) == 0 {
+	bindingManager := placement.Status.BindingManager
+	if bindingManager == nil {
 		// There is no active binding manager; claim the role.
 		//
 		// The request would fail if the list of binding managers has been updated by another agent.
-		bindingManagers = append(bindingManagers, *wantBindingManager)
-		placement.Status.BindingManagers = bindingManagers
+		placement.Status.BindingManager = wantBindingManager
 		if err := hubClient.Status().Update(ctx, placement); err != nil {
-			wrappedErr := errors.NewAPIServerError(err, "", false, "workloadPlacement", klog.KObj(placement))
+			wrappedErr := errors.NewAPIServerError(err, "", false)
 			return false, wrappedErr
 		}
 		return true, nil
 	}
 
-	// The current controller has already claimed the binding manager role.
+	if bindingManager.ControllerName != wantBindingManager.ControllerName {
+		// The binding manager role has already been claimed by another controller; in this case, give up the
+		// current attempt and retry after soem time.
+		return false, nil
+	}
+
+	// The current controller has already claimed the binding manager role. It might want to add a new
+	// object reference to the manager claim, or want to check if the claim is still valid.
+
+	if reflect.DeepEqual(bindingManager, wantBindingManager) {
+		// The expected claim is consistent with the observed claim. Verify if the view is still up-to-date
+		// by submitting a dry-run patch to the status.
+		placementToPatch := placement.DeepCopy()
+		placementToPatch.Status.BindingManager = nil
+
+		if err := hubClient.Status().Patch(
+			ctx,
+			placementToPatch,
+			client.MergeFromWithOptions(placement, client.MergeFromWithOptimisticLock{}),
+			client.DryRunAll,
+		); err != nil {
+			wrappedErr := errors.NewAPIServerError(err, "", false)
+			klog.ErrorS(wrappedErr, "The current view of binding managers might be stale, or the freshness verification attempt has failed", errors.Args(wrappedErr)...)
+			return false, wrappedErr
+		}
+		return true, nil
+	}
+
+	// The controller requests a new claim; update the status.
 	//
-	// The current view might be stale; to avoid this complication, do a dry-run to check if the view is still
-	// up-to-date.
-	placementToPatch := placement.DeepCopy()
-	placementToPatch.Status.BindingManagers = []experimentalv1beta1.PlacementBindingManager{}
-	if err := hubClient.Status().Patch(
-		ctx,
-		placementToPatch,
-		client.MergeFromWithOptions(placement, client.MergeFromWithOptimisticLock{}),
-		client.DryRunAll,
-	); err != nil {
-		wrappedErr := errors.NewAPIServerError(err, "", false, "workloadPlacement", klog.KObj(placement))
-		klog.ErrorS(wrappedErr, "The current view of binding managers might be stale, or the freshness verification attempt has failed", errors.Args(wrappedErr)...)
+	// Note that this request would fail if the binding manager view is stale.
+	placement.Status.BindingManager = wantBindingManager
+	if err := hubClient.Status().Update(ctx, placement); err != nil {
+		wrappedErr := errors.NewAPIServerError(err, "", false)
 		return false, wrappedErr
 	}
 	return true, nil
@@ -109,50 +93,41 @@ func ClaimAsBindingManager(
 func RelinquishBindingManagerRoleAnyway(
 	ctx context.Context,
 	hubClient client.Client,
-	placement *experimentalv1beta1.WorkloadPlacement,
-	wantBindingManager *experimentalv1beta1.PlacementBindingManager,
+	placement *experimentalv1beta1.PlacementPolicy,
+	wantBindingManager *experimentalv1beta1.BindingManager,
 ) error {
 	if wantBindingManager == nil {
-		return errors.Wraps(nil, "cannot relinquish with an empty binding manager")
+		return errors.Wraps(nil, "cannot relinquish the binding manager role from an empty claim")
 	}
 
-	bindingManagers := placement.Status.BindingManagers
-	updatedBindingManagers := make([]experimentalv1beta1.PlacementBindingManager, 0, len(bindingManagers))
-	for idx := range bindingManagers {
-		bindingManager := bindingManagers[idx]
-		if !reflect.DeepEqual(bindingManager, *wantBindingManager) {
-			updatedBindingManagers = append(updatedBindingManagers, bindingManager)
-		}
-	}
-
-	if len(updatedBindingManagers) == len(bindingManagers) {
-		// No removal is needed; the current view might be stale. To avoid this complication, do a dry-run to check if the view is still up-to-date.
+	if placement.Status.BindingManager == nil || !reflect.DeepEqual(placement.Status.BindingManager, wantBindingManager) {
+		// The current controller no longer holds the binding manager role based on the current view
+		// of the placement object. However, the view might be stale; do a dry-run patch to the status to verify
+		// its freshness.
 		placementToPatch := placement.DeepCopy()
-		placementToPatch.Status.BindingManagers = []experimentalv1beta1.PlacementBindingManager{
-			{
-				Mode:           experimentalv1beta1.BindingManagerModeExclusive,
-				ControllerName: ptr.To(""),
-			},
-		}
+		placementToPatch.Status.BindingManager = nil
 		if err := hubClient.Status().Patch(
 			ctx,
 			placementToPatch,
 			client.MergeFromWithOptions(placement, client.MergeFromWithOptimisticLock{}),
 			client.DryRunAll,
 		); err != nil {
-			wrappedErr := errors.NewAPIServerError(err, "", false, "workloadPlacement", klog.KObj(placement))
+			wrappedErr := errors.NewAPIServerError(err, "", false)
 			klog.ErrorS(wrappedErr, "The current view of binding managers might be stale, or the freshness verification attempt has failed", errors.Args(wrappedErr)...)
 			return wrappedErr
 		}
-		return nil
-	} else {
-		// Update the list of binding managers by removing the current controller;
-		// the request would fail if the list has been updated by another agent.
-		placement.Status.BindingManagers = updatedBindingManagers
-		if err := hubClient.Status().Update(ctx, placement); err != nil {
-			wrappedErr := errors.NewAPIServerError(err, "", false, "workloadPlacement", klog.KObj(placement))
-			return wrappedErr
-		}
+		// The view is up-to-date; the current controller no longer holds the binding manager role. No further action is needed.
 		return nil
 	}
+
+	// The current controller still holds the binding manager role based on the current view of the placement object.
+	// Remove the claim.
+	//
+	// Note that this request would fail if the binding manager view is stale.
+	placement.Status.BindingManager = nil
+	if err := hubClient.Status().Update(ctx, placement); err != nil {
+		wrappedErr := errors.NewAPIServerError(err, "", false)
+		return wrappedErr
+	}
+	return nil
 }

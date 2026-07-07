@@ -22,8 +22,6 @@ import (
 
 const (
 	ClusterRequestManagedByLabelKey = "experimental.kubefleet.dev/cluster-request-managed-by"
-
-	ClusterRequestSelectorHashAnnotationKey = WorkloadResourceClusterBindingSelectorHashAnnotationKey
 )
 
 const (
@@ -38,7 +36,7 @@ const (
 // +genclient
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,categories={kubefleet, kubefleet-experimental}
+// +kubebuilder:resource:scope=Namespaced,categories={kubefleet, kubefleet-experimental}
 // +kubebuilder:storageversion
 type ClusterRequest struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -54,7 +52,7 @@ type ClusterRequest struct {
 }
 
 type ClusterRequestSpec struct {
-	// The label selector the describes the requirements for the new member cluster to provision.
+	// The cluster selector the describes the requirements for the new member cluster to provision.
 	//
 	// If not specified, any member cluster can satisfy the request.
 	//
@@ -62,7 +60,15 @@ type ClusterRequestSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="the clusterSelector field is immutable"
-	ClusterSelector map[string]string `json:"clusterSelector,omitempty"`
+	ClusterSelector ClusterSelector `json:"clusterSelector,omitempty"`
+
+	// The hash of the cluster selector that describes the requirements for the new member cluster to provision.
+	//
+	// This field is immutable after creation.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="the clusterSelectorHash field is immutable"
+	ClusterSelectorHash string `json:"clusterSelectorHash"`
 }
 
 type ClusterRequestStatus struct {
