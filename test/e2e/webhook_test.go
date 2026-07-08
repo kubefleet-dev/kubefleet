@@ -41,7 +41,6 @@ import (
 var _ = Describe("webhook tests for CRP CREATE operations", func() {
 	crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 	Context("validation webhooks tests", func() {
-
 		It("should deny create on CRP with invalid label selector", func() {
 			selector := invalidWorkResourceSelector()
 			// Create the CRP.
@@ -57,7 +56,11 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 			err := hubClient.Create(ctx, crp)
 			var statusErr *k8sErrors.StatusError
 			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-			Expect(statusErr.Status().Message).Should(ContainSubstring("the labelSelector and name fields are mutually exclusive in selector"))
+			// The API new features CEL-based validation, which is typically triggered before the webhook runs.
+			// As a result, we no longer check the error message here any more, as the message would be formatted
+			// based on the CEL validation rule, not the webhook logic.
+			//
+			// TO-DO (chenyu1): drop this test case once the migration to CEL-based validation is complete.
 		})
 
 		It("should deny create on CRP with invalid placement policy for PickFixed", func() {
@@ -78,12 +81,16 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				err := hubClient.Create(ctx, &crp)
 				var statusErr *k8sErrors.StatusError
 				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("number of clusters must be nil for policy type PickFixed"))
+				// The API new features CEL-based validation, which is typically triggered before the webhook runs.
+				// As a result, we no longer check the error message here any more, as the message would be formatted
+				// based on the CEL validation rule, not the webhook logic.
+				//
+				// TO-DO (chenyu1): drop this test case once the migration to CEL-based validation is complete.
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed())
 		})
 
-		It("should deny create on CRP with invalid placement policy for PickN", func() {
+		It("should deny create on CRP with invalid placement policy for PickN (ill-formed label selector)", func() {
 			Eventually(func(g Gomega) error {
 				crp := placementv1beta1.ClusterResourcePlacement{
 					ObjectMeta: metav1.ObjectMeta{
@@ -92,7 +99,8 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 					Spec: placementv1beta1.PlacementSpec{
 						ResourceSelectors: workResourceSelector(),
 						Policy: &placementv1beta1.PlacementPolicy{
-							PlacementType: placementv1beta1.PickNPlacementType,
+							PlacementType:    placementv1beta1.PickNPlacementType,
+							NumberOfClusters: ptr.To(int32(1)),
 							Affinity: &placementv1beta1.Affinity{
 								ClusterAffinity: &placementv1beta1.ClusterAffinity{
 									PreferredDuringSchedulingIgnoredDuringExecution: []placementv1beta1.PreferredClusterSelector{
@@ -114,7 +122,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 							TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 								{
 									TopologyKey:       "test-key",
-									WhenUnsatisfiable: "random-type",
+									WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
 								},
 							},
 						},
@@ -124,8 +132,6 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				var statusErr *k8sErrors.StatusError
 				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
 				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta(fmt.Sprintf("the labelSelector in preferred cluster selector %+v is invalid:", crp.Spec.Policy.Affinity.ClusterAffinity.PreferredDuringSchedulingIgnoredDuringExecution[0].Preference.LabelSelector))))
-				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("unknown unsatisfiable type random-type"))
-				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("number of cluster cannot be nil for policy type PickN"))
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed())
 		})
@@ -439,7 +445,11 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 				}
 				var statusErr *k8sErrors.StatusError
 				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("the labelSelector and name fields are mutually exclusive"))
+				// The API new features CEL-based validation, which is typically triggered before the webhook runs.
+				// As a result, we no longer check the error message here any more, as the message would be formatted
+				// based on the CEL validation rule, not the webhook logic.
+				//
+				// TO-DO (chenyu1): drop this test case once the migration to CEL-based validation is complete.
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed())
 		})
@@ -468,11 +478,6 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 							},
 						},
 					},
-					TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
-						{
-							TopologyKey: "test-key",
-						},
-					},
 				}
 				err := hubClient.Update(ctx, &crp)
 				if k8sErrors.IsConflict(err) {
@@ -481,7 +486,6 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 				var statusErr *k8sErrors.StatusError
 				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
 				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta(fmt.Sprintf("the labelSelector in cluster selector %+v is invalid:", crp.Spec.Policy.Affinity.ClusterAffinity.RequiredDuringSchedulingIgnoredDuringExecution.ClusterSelectorTerms[0].LabelSelector))))
-				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("topology spread constraints needs to be empty for policy type PickAll"))
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed())
 		})
@@ -729,7 +733,11 @@ var _ = Describe("webhook tests for CRP tolerations", Ordered, func() {
 			}
 			var statusErr *k8sErrors.StatusError
 			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
-			g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(fmt.Sprintf("invalid toleration %+v: %s", invalidToleration, "toleration key cannot be empty, when operator is Equal")))
+			// The API new features CEL-based validation, which is typically triggered before the webhook runs.
+			// As a result, we no longer check the error message here any more, as the message would be formatted
+			// based on the CEL validation rule, not the webhook logic.
+			//
+			// TO-DO (chenyu1): drop this test case once the migration to CEL-based validation is complete.
 			return nil
 		}, eventuallyDuration, eventuallyInterval).Should(Succeed())
 	})
