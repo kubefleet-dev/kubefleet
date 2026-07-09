@@ -133,12 +133,16 @@ type PlacementSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=100
+	// +kubebuilder:validation:XValidation:rule="self.all(x, !(has(x.name) && size(x.name) > 0 && has(x.labelSelector)))",message="name and labelSelector are mutually exclusive in a resource selector"
 	ResourceSelectors []ResourceSelectorTerm `json:"resourceSelectors"`
 
 	// Policy defines how to select member clusters to place the selected resources.
 	// If unspecified, all the joined member clusters are selected.
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="!(self.placementType != oldSelf.placementType)",message="placement type is immutable"
+	// +kubebuilder:validation:XValidation:rule="self.placementType != 'PickFixed' || (!has(self.affinity) && !has(self.numberOfClusters) && !has(self.topologySpreadConstraints) && !has(self.tolerations))",message="affinity, numberOfClusters, topologySpreadConstraints, and tolerations cannot be set when placementType is PickFixed"
+	// +kubebuilder:validation:XValidation:rule="self.placementType != 'PickAll' || (!has(self.clusterNames) && !has(self.numberOfClusters) && !has(self.topologySpreadConstraints))",message="clusterNames, numberOfClusters, and topologySpreadConstraints cannot be set when placementType is PickAll"
+	// +kubebuilder:validation:XValidation:rule="self.placementType != 'PickN' || (!has(self.clusterNames) && has(self.numberOfClusters))",message="clusterNames cannot be set and numberOfClusters must be set when placementType is PickN"
 	Policy *PlacementPolicy `json:"policy,omitempty"`
 
 	// The rollout strategy to use to replace existing placement with new ones.
@@ -349,6 +353,8 @@ type PlacementPolicy struct {
 	// This field is beta-level and is for the taints and tolerations feature.
 	// +kubebuilder:validation:MaxItems=100
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:XValidation:rule="self.all(x, x.operator != 'Exists' || !has(x.value) || size(x.value) == 0)",message="value must be empty when operator is Exists"
+	// +kubebuilder:validation:XValidation:rule="self.all(x, (has(x.key) && size(x.key) > 0) || x.operator == 'Exists')",message="operator must be Exists when key is empty"
 	Tolerations []Toleration `json:"tolerations,omitempty"`
 }
 
@@ -507,6 +513,7 @@ type PropertySorter struct {
 	// SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
 	// sort in ascending or descending order.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=Ascending;Descending
 	SortOrder PropertySortOrder `json:"sortOrder"`
 }
 
@@ -572,6 +579,8 @@ type TopologySpreadConstraint struct {
 	//   but giving higher precedence to topologies that would help reduce the skew.
 	// It's an optional field.
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=DoNotSchedule
+	// +kubebuilder:validation:Enum=DoNotSchedule;ScheduleAnyway
 	WhenUnsatisfiable UnsatisfiableConstraintAction `json:"whenUnsatisfiable,omitempty"`
 }
 
@@ -1004,6 +1013,7 @@ type RollingUpdateConfig struct {
 	// Default is 60.
 	// +kubebuilder:default=60
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=0
 	UnavailablePeriodSeconds *int `json:"unavailablePeriodSeconds,omitempty"`
 }
 
