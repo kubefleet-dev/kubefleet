@@ -26,7 +26,7 @@ RUN CGO_ENABLED=1 GOOS=$GOOS GOARCH=$GOARCH GOEXPERIMENT=systemcrypto GO111MODUL
 
 # Use distroless as minimal base image to package the refreshtoken binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM gcr.io/distroless/base:nonroot@sha256:ab7554b6d07ad354fad31957f8a1a813e65dfb93a8ad160568c79c3f2be6884f
+FROM gcr.io/distroless/base:nonroot@sha256:b78832f41c8128046807c24840ebee4f1c18ba7870eed423d8750c272c15e147
 WORKDIR /
 COPY --from=builder /workspace/refreshtoken .
 USER 65532:65532
