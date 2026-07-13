@@ -1,6 +1,6 @@
 run:
   timeout: 15m
-  go: '1.25.11'
+  go: '1.25.12'
 
 linters-settings:
   stylecheck:
