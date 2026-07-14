@@ -14,9 +14,17 @@ name: "CodeQL"
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - ".pipeline/**"
+      - "screenshots/**"
+      - "examples/**"
   pull_request:
     # The branches below must be a subset of the branches above
     branches: [ "main" ]
+    paths-ignore:
+      - ".pipeline/**"
+      - "screenshots/**"
+      - "examples/**"
   schedule:
     - cron: '0 1 * * 1'
 

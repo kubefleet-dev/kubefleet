@@ -5,12 +5,35 @@ on:
     branches:
       - main
       - release-*
+    paths:
+      - '**'
+      - '!.github/**'
+      - '.github/workflows/code-lint.yml'
+      - '!**.md'
+      - '!**.mdx'
+      - '!**.png'
+      - '!**.jpg'
+      - '!hack/**'
+      - '!.pipeline/**'
+      - '!screenshots/**'
+      - '!examples/**'
   workflow_dispatch: {}
   pull_request:
     branches:
       - main
       - release-*
-    paths-ignore: [docs/**, "**.md", "**.mdx", "**.png", "**.jpg"]
+    paths:
+      - '**'
+      - '!.github/**'
+      - '.github/workflows/code-lint.yml'
+      - '!**.md'
+      - '!**.mdx'
+      - '!**.png'
+      - '!**.jpg'
+      - '!hack/**'
+      - '!.pipeline/**'
+      - '!screenshots/**'
+      - '!examples/**'
 
 env:
   # Common versions

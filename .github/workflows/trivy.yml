@@ -3,6 +3,11 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - ".github/**"
+      - ".pipeline/**"
+      - "screenshots/**"
+      - "examples/**"
   create:
     # Publish semver tags as releases.
     tags: [ 'v*.*.*' ]
