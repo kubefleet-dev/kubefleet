@@ -1,0 +1,45 @@
+name: Workflow Lint
+
+on:
+  push:
+    branches: [main, "release-*"]
+    paths:
+      - ".github/workflows/**"
+      - ".github/release.yml"
+  pull_request:
+    branches: [main, "release-*"]
+    paths:
+      - ".github/workflows/**"
+      - ".github/release.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: actionlint + shellcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@9ca718d3bf646d6534007c269a635b3e54cadf99 # v2.19.2
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Verify shellcheck is available
+        run: shellcheck --version
+
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+        run: |
+          curl -sSfL "https://raw.githubusercontent.com/rhysd/actionlint/v${ACTIONLINT_VERSION}/scripts/download-actionlint.bash" -o download-actionlint.bash
+          bash download-actionlint.bash "${ACTIONLINT_VERSION}"
+          rm -f download-actionlint.bash
+          echo "${PWD}" >> "${GITHUB_PATH}"
+
+      - name: Run actionlint
+        run: actionlint -color

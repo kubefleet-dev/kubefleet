@@ -69,7 +69,7 @@ jobs:
               echo "Fetch all tags..."
 
               git fetch --all
-              GIT_TAG=$(git describe --tags --exclude='*-rc.*' $(git rev-list --tags --exclude='*-rc.*' --max-count=1))
+              GIT_TAG=$(git describe --tags --exclude='*-rc.*' "$(git rev-list --tags --exclude='*-rc.*' --max-count=1)")
           else
               echo "A tag is specified; go back to the state tracked by the specified tag."
               echo "Fetch all tags..."
@@ -77,7 +77,7 @@ jobs:
               git fetch --all
           fi
 
-          git checkout $GIT_TAG
+          git checkout "$GIT_TAG"
           echo "Checked out source code at $GIT_TAG."
 
       - name: Prepare the fleet using the before upgrade version
@@ -86,7 +86,7 @@ jobs:
         # Note that the `git checkout` command below only checks out the `test/upgrade` directory (at
         # the current commit); the rest of the source code is still at the before-upgrade version.
         run: |
-          git checkout $CURRENT_BRANCH -- test/upgrade
+          git checkout "$CURRENT_BRANCH" -- test/upgrade
           cd test/upgrade && chmod +x setup.sh && cd -
           ./test/upgrade/setup.sh 3
         env:
@@ -96,7 +96,7 @@ jobs:
       - name: Travel to the current state
         # Run the test suite from the current version, i.e., the commit that triggered the workflow.
         run: |
-          git checkout $CURRENT_BRANCH
+          git checkout "$CURRENT_BRANCH"
           echo "Checked out source code at $CURRENT_BRANCH."
 
       - name: Run the Before suite
@@ -152,7 +152,7 @@ jobs:
               echo "Fetch all tags..."
 
               git fetch --all
-              GIT_TAG=$(git describe --tags --exclude='*-rc.*' $(git rev-list --tags --exclude='*-rc.*' --max-count=1)) 
+              GIT_TAG=$(git describe --tags --exclude='*-rc.*' "$(git rev-list --tags --exclude='*-rc.*' --max-count=1)") 
           else
               echo "A tag is specified; go back to the state tracked by the specified tag."
               echo "Fetch all tags..."
@@ -160,7 +160,7 @@ jobs:
               git fetch --all
           fi
 
-          git checkout $GIT_TAG
+          git checkout "$GIT_TAG"
           echo "Checked out source code at $GIT_TAG."
 
       - name: Prepare the fleet using the before upgrade version
@@ -169,7 +169,7 @@ jobs:
         # Note that the `git checkout` command below only checks out the `test/upgrade` directory (at
         # the current commit); the rest of the source code is still at the before-upgrade version.
         run: |
-          git checkout $CURRENT_BRANCH -- test/upgrade
+          git checkout "$CURRENT_BRANCH" -- test/upgrade
           cd test/upgrade && chmod +x setup.sh && cd -
           ./test/upgrade/setup.sh 3
         env:
@@ -179,7 +179,7 @@ jobs:
       - name: Travel to the current state
         # Run the test suite from the current version, i.e., the commit that triggered the workflow.
         run: |
-          git checkout $CURRENT_BRANCH
+          git checkout "$CURRENT_BRANCH"
           echo "Checked out source code at $CURRENT_BRANCH."
 
       - name: Run the Before suite
@@ -235,7 +235,7 @@ jobs:
               echo "Fetch all tags..."
 
               git fetch --all
-              GIT_TAG=$(git describe --tags --exclude='*-rc.*' $(git rev-list --tags --exclude='*-rc.*' --max-count=1)) 
+              GIT_TAG=$(git describe --tags --exclude='*-rc.*' "$(git rev-list --tags --exclude='*-rc.*' --max-count=1)") 
           else
               echo "A tag is specified; go back to the state tracked by the specified tag."
               echo "Fetch all tags..."
@@ -243,7 +243,7 @@ jobs:
               git fetch --all
           fi
 
-          git checkout $GIT_TAG
+          git checkout "$GIT_TAG"
           echo "Checked out source code at $GIT_TAG."
 
       - name: Prepare the fleet using the before upgrade version
@@ -252,7 +252,7 @@ jobs:
         # Note that the `git checkout` command below only checks out the `test/upgrade` directory (at
         # the current commit); the rest of the source code is still at the before-upgrade version.
         run: |
-          git checkout $CURRENT_BRANCH -- test/upgrade
+          git checkout "$CURRENT_BRANCH" -- test/upgrade
           cd test/upgrade && chmod +x setup.sh && cd -
           ./test/upgrade/setup.sh 3
         env:
@@ -262,7 +262,7 @@ jobs:
       - name: Travel to the current state
         # Run the test suite from the current version, i.e., the commit that triggered the workflow.
         run: |
-          git checkout $CURRENT_BRANCH
+          git checkout "$CURRENT_BRANCH"
           echo "Checked out source code at $CURRENT_BRANCH."
 
       - name: Run the Before suite

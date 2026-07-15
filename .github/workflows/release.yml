@@ -90,7 +90,7 @@ jobs:
           echo "✅ Published images:"
           for IMAGE in ${{ env.HUB_AGENT_IMAGE_NAME }} ${{ env.MEMBER_AGENT_IMAGE_NAME }} ${{ env.REFRESH_TOKEN_IMAGE_NAME }}; do
             echo "  - ${{ env.REGISTRY }}/${IMAGE}:${{ env.TAG }}"
-            if [[ "${{ env.TAG }}" != *-rc.* ]]; then
+            if [[ "${TAG}" != *-rc.* ]]; then
               echo "  - ${{ env.REGISTRY }}/${IMAGE}:${VERSION}"
             fi
           done

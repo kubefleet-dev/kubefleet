@@ -3,9 +3,9 @@ on:
   push:
     branches:
       - main
-  create:
     # Publish semver tags as releases.
-    tags: [ 'v*.*.*' ]
+    tags:
+      - 'v*.*.*'
   workflow_dispatch: {}
 
 permissions:
@@ -31,7 +31,7 @@ jobs:
           # registry must be in lowercase
           # store the images under dev
           # TODO: need to cleanup dev images periodically 
-          echo "registry=$(echo "${{ env.REGISTRY }}/${{ github.repository }}" | tr [:upper:] [:lower:])"  >> $GITHUB_OUTPUT
+          echo "registry=$(echo "${{ env.REGISTRY }}/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
   scan-images:
     needs: export-registry
     env:
@@ -54,7 +54,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: generate image version
-        run: echo IMAGE_VERSION=$(git rev-parse --short=7 HEAD) >> $GITHUB_ENV
+        run: echo "IMAGE_VERSION=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
 
       - name: Build and push images to registry with tag ${{ env.IMAGE_VERSION }}
         run: |
