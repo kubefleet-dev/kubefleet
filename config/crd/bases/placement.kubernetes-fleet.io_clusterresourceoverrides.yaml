@@ -342,6 +342,9 @@ spec:
                                         description: |-
                                           SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                           sort in ascending or descending order.
+                                        enum:
+                                        - Ascending
+                                        - Descending
                                         type: string
                                     required:
                                     - name
@@ -746,6 +749,9 @@ spec:
                                         description: |-
                                           SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                           sort in ascending or descending order.
+                                        enum:
+                                        - Ascending
+                                        - Descending
                                         type: string
                                     required:
                                     - name
@@ -1146,6 +1152,9 @@ spec:
                                         description: |-
                                           SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                           sort in ascending or descending order.
+                                        enum:
+                                        - Ascending
+                                        - Descending
                                         type: string
                                     required:
                                     - name
