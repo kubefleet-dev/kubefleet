@@ -38,6 +38,10 @@ ut-coverage.xml
 
 # Helm chart packaging
 .helm-packages/
+
+# CRD release bundle
+_crd-package/
+
 # Squad: ignore runtime state (logs, inbox, sessions)
 .squad/orchestration-log/
 .squad/log/
