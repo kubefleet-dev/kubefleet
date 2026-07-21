@@ -89,7 +89,7 @@ jobs:
               | .Vulnerabilities[]?
               | select(.FixedVersion != null and .FixedVersion != "")
               | {id: .VulnerabilityID, pkg: .PkgName, installed: .InstalledVersion, fixed: .FixedVersion, severity: .Severity}
-            ] | unique_by(.pkg)' trivy-results.json 2>/dev/null || echo '[]')
+            ] | group_by(.pkg) | map(sort_by(.fixed | ltrimstr("v") | split(".") | map(tonumber)) | last)' trivy-results.json 2>/dev/null || echo '[]')
 
           echo "Found Go library vulnerabilities:"
           echo "$VULNS" | jq -r '.[] | "  \(.severity) \(.id): \(.pkg) \(.installed) -> \(.fixed)"'
