@@ -53,7 +53,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate image version
-        run: echo "IMAGE_VERSION=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
+        id: generate-image-version
+        run: |
+          image_version="$(git rev-parse --short=7 HEAD)"
+          echo "IMAGE_VERSION=${image_version}" >> "$GITHUB_ENV"
+          echo "image_version=${image_version}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push images to registry with tag ${{ env.IMAGE_VERSION }}
         run: make push
@@ -62,7 +66,7 @@ jobs:
           TAG: ${{ env.IMAGE_VERSION }}
 
     outputs:
-      image_version: ${{ env.IMAGE_VERSION }}
+      image_version: ${{ steps.generate-image-version.outputs.image_version }}
 
   scan-image:
     needs: [export-registry, build-images]
