@@ -108,11 +108,15 @@ jobs:
             _jq() { echo "$row" | base64 --decode | jq -r "$1"; }
             PKG=$(_jq '.pkg')
             FIXED=$(_jq '.fixed')
+            FIXED="${FIXED#v}"
             ID=$(_jq '.id')
             SEVERITY=$(_jq '.severity')
-            echo "Upgrading $PKG to $FIXED (fixes $ID)"
-            go get "$PKG@v$FIXED" || echo "Warning: failed to upgrade $PKG"
-            UPGRADED="$UPGRADED- **$SEVERITY**: \`$ID\` — upgraded \`$PKG\` to v$FIXED\n"
+            echo "Upgrading $PKG to v$FIXED (fixes $ID)"
+            if go get "$PKG@v$FIXED"; then
+              UPGRADED="$UPGRADED- **$SEVERITY**: \`$ID\` — upgraded \`$PKG\` to v$FIXED\n"
+            else
+              echo "Warning: failed to upgrade $PKG to v$FIXED"
+            fi
           done
 
           go mod tidy
