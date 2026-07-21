@@ -95,9 +95,9 @@ jobs:
           echo "$VULNS" | jq -r '.[] | "  \(.severity) \(.id): \(.pkg) \(.installed) -> \(.fixed)"'
 
           COUNT=$(echo "$VULNS" | jq 'length')
-          echo "vuln_count=$COUNT" >> "$GITHUB_OUTPUT"
 
           if [ "$COUNT" -eq 0 ]; then
+            echo "vuln_count=0" >> "$GITHUB_OUTPUT"
             echo "No fixable Go library vulnerabilities found for ${{ matrix.image }}."
             exit 0
           fi
@@ -117,9 +117,12 @@ jobs:
 
           go mod tidy
 
-          echo "upgraded_list<<EOF" >> "$GITHUB_OUTPUT"
-          echo -e "$UPGRADED" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          {
+            echo "vuln_count=$COUNT"
+            echo "upgraded_list<<EOF"
+            echo -e "$UPGRADED"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Check for changes
         id: changes
