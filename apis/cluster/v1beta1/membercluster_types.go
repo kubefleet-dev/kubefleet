@@ -72,6 +72,7 @@ type MemberClusterSpec struct {
 	//
 	// This field is beta-level and is for the taints and tolerations feature.
 	// +kubebuilder:validation:MaxItems=100
+	// +kubebuilder:validation:XValidation:rule="self.all(t, self.filter(u, u.key == t.key && (has(u.value) ? u.value : '') == (has(t.value) ? t.value : '') && u.effect == t.effect).size() == 1)",message="taints must be unique"
 	// +optional
 	Taints []Taint `json:"taints,omitempty"`
 
@@ -156,12 +157,21 @@ type MemberClusterStatus struct {
 
 // Taint attached to MemberCluster has the "effect" on
 // any ClusterResourcePlacement that does not tolerate the Taint.
+// +kubebuilder:validation:XValidation:rule="(self.key.contains('/') ? self.key.substring(self.key.indexOf('/') + 1) : self.key).matches('^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$')",message="taint key name segment must consist of alphanumeric characters, '-', '_' or '.', and must start and end with an alphanumeric character"
+// +kubebuilder:validation:XValidation:rule="!self.key.contains('/') || self.key.substring(0, self.key.indexOf('/')).matches('^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$')",message="taint key prefix must be a lowercase DNS subdomain"
+// +kubebuilder:validation:XValidation:rule="(self.key.contains('/') ? self.key.size() - self.key.indexOf('/') - 1 : self.key.size()) <= 63",message="taint key name segment must be 63 characters or less"
+// +kubebuilder:validation:XValidation:rule="!self.key.contains('/') || self.key.indexOf('/') <= 253",message="taint key prefix must be 253 characters or less"
+// +kubebuilder:validation:XValidation:rule="!has(self.value) || size(self.value) == 0 || self.value.matches('^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$')",message="taint value must be a valid label value"
 type Taint struct {
 	// The taint key to be applied to a MemberCluster.
+	// MaxLength is 253 (prefix) + 1 (slash) + 63 (name segment) = 317.
+	// +kubebuilder:validation:MaxLength=317
+	// +kubebuilder:validation:MinLength=1
 	// +required
 	Key string `json:"key"`
 
 	// The taint value corresponding to the taint key.
+	// +kubebuilder:validation:MaxLength=63
 	// +optional
 	Value string `json:"value,omitempty"`
 

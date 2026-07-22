@@ -15,7 +15,6 @@ import (
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
 
 	fleetnetworkingv1alpha1 "go.goms.io/fleet-networking/api/v1alpha1"
 )
@@ -78,14 +77,8 @@ func (v *memberClusterValidator) Handle(ctx context.Context, req admission.Reque
 		return admission.Allowed("Member cluster is ready to leave")
 	}
 
-	if err := v.decoder.Decode(req, &mc); err != nil {
-		klog.ErrorS(err, "Failed to decode member cluster object for validating fields", "userName", req.UserInfo.Username, "groups", req.UserInfo.Groups)
-		return admission.Errored(http.StatusBadRequest, err)
-	}
-
-	if err := validator.ValidateMemberCluster(mc); err != nil {
-		klog.V(2).ErrorS(err, "Member cluster has invalid fields, request is denied", "operation", req.Operation, "memberCluster", mcObjectName)
-		return admission.Denied(err.Error())
-	}
+	// Taint validation is now handled by CRD-level CEL validation rules.
+	// CREATE/UPDATE requests with invalid taints are rejected at schema
+	// validation time before reaching this webhook.
 	return admission.Allowed("Member cluster has valid fields")
 }
