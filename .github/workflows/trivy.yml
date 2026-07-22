@@ -6,37 +6,36 @@ on:
     # Publish semver tags as releases.
     tags:
       - 'v*.*.*'
+  schedule:
+    # Run weekly on Monday at 09:00 UTC
+    - cron: '0 9 * * 1'
   workflow_dispatch: {}
 
 permissions:
   contents: read
   packages: write
+  security-events: write
 
 env:
   REGISTRY: ghcr.io
-  HUB_AGENT_IMAGE_NAME: hub-agent
-  MEMBER_AGENT_IMAGE_NAME: member-agent
-  REFRESH_TOKEN_IMAGE_NAME: refresh-token
-
   GO_VERSION: '1.25.12'
 
 jobs:
   export-registry:
-    runs-on: ubuntu-latest #Latest tag points to the latest LTS release of Ubuntu per docker hub
+    runs-on: ubuntu-latest
     outputs:
       registry: ${{ steps.export.outputs.registry }}
     steps:
       - id: export
         run: |
           # registry must be in lowercase
-          # store the images under dev
-          # TODO: need to cleanup dev images periodically 
           echo "registry=$(echo "${{ env.REGISTRY }}/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
-  scan-images:
+
+  build-images:
     needs: export-registry
+    runs-on: ubuntu-latest
     env:
       REGISTRY: ${{ needs.export-registry.outputs.registry }}
-    runs-on: ubuntu-latest #Latest tag points to the latest LTS release of Ubuntu per docker hub
     steps:
       - name: Set up Go ${{ env.GO_VERSION }}
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
@@ -46,27 +45,47 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - name: Login to ${{ env.REGISTRY }}
+      - name: Login to GHCR
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: generate image version
-        run: echo "IMAGE_VERSION=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
+      - name: Generate image version
+        id: generate-image-version
+        run: |
+          image_version="$(git rev-parse --short=7 HEAD)"
+          echo "IMAGE_VERSION=${image_version}" >> "$GITHUB_ENV"
+          echo "image_version=${image_version}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push images to registry with tag ${{ env.IMAGE_VERSION }}
-        run: |
-          make push
+        run: make push
         env:
-          REGISTRY: ${{ env.REGISTRY}}
+          REGISTRY: ${{ env.REGISTRY }}
           TAG: ${{ env.IMAGE_VERSION }}
 
-      - name: Scan ${{ env.REGISTRY }}/${{ env.HUB_AGENT_IMAGE_NAME }}:${{ env.IMAGE_VERSION }}
+    outputs:
+      image_version: ${{ steps.generate-image-version.outputs.image_version }}
+
+  scan-image:
+    needs: [export-registry, build-images]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - hub-agent
+          - member-agent
+          - refresh-token
+    env:
+      REGISTRY: ${{ needs.export-registry.outputs.registry }}
+      IMAGE_VERSION: ${{ needs.build-images.outputs.image_version }}
+    steps:
+      - name: Scan ${{ matrix.image }} (table)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.HUB_AGENT_IMAGE_NAME }}:${{ env.IMAGE_VERSION }}
+          image-ref: ${{ env.REGISTRY }}/${{ matrix.image }}:${{ env.IMAGE_VERSION }}
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
@@ -76,15 +95,15 @@ jobs:
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-          TRIVY_DB_REPOSITORY: mcr.microsoft.com/mirror/ghcr/aquasecurity/trivy-db 
+          TRIVY_DB_REPOSITORY: mcr.microsoft.com/mirror/ghcr/aquasecurity/trivy-db
 
-
-      - name: Scan ${{ env.REGISTRY }}/${{ env.MEMBER_AGENT_IMAGE_NAME }}:${{ env.IMAGE_VERSION }}
+      - name: Scan ${{ matrix.image }} (SARIF)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        if: always()
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.MEMBER_AGENT_IMAGE_NAME }}:${{ env.IMAGE_VERSION }}
-          format: 'table'
-          exit-code: '1'
+          image-ref: ${{ env.REGISTRY }}/${{ matrix.image }}:${{ env.IMAGE_VERSION }}
+          format: 'sarif'
+          output: '${{ matrix.image }}-trivy-results.sarif'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
@@ -92,19 +111,11 @@ jobs:
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-          TRIVY_DB_REPOSITORY: mcr.microsoft.com/mirror/ghcr/aquasecurity/trivy-db 
+          TRIVY_DB_REPOSITORY: mcr.microsoft.com/mirror/ghcr/aquasecurity/trivy-db
 
-      - name: Scan ${{ env.REGISTRY }}/${{ env.REFRESH_TOKEN_IMAGE_NAME }}:${{ env.IMAGE_VERSION }}
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      - name: Upload SARIF results for ${{ matrix.image }}
+        uses: github/codeql-action/upload-sarif@f0489ab2491a550e4f630e9e22e15062d8e4d227 # v4
+        if: always()
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.REFRESH_TOKEN_IMAGE_NAME }}:${{ env.IMAGE_VERSION }}
-          format: 'table'
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-          timeout: '5m0s'
-        env:
-          TRIVY_USERNAME: ${{ github.actor }}
-          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-          TRIVY_DB_REPOSITORY: mcr.microsoft.com/mirror/ghcr/aquasecurity/trivy-db 
+          sarif_file: '${{ matrix.image }}-trivy-results.sarif'
+          category: 'trivy-${{ matrix.image }}'

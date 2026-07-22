@@ -1,0 +1,171 @@
+name: Trivy CVE Remediation
+on:
+  schedule:
+    # Run weekly on Wednesday at 09:00 UTC
+    - cron: '0 9 * * 3'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+
+env:
+  REGISTRY: ghcr.io
+  GO_VERSION: '1.25.12'
+
+jobs:
+  export-registry:
+    runs-on: ubuntu-latest
+    outputs:
+      registry: ${{ steps.export.outputs.registry }}
+    steps:
+      - id: export
+        run: |
+          echo "registry=$(echo "${{ env.REGISTRY }}/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+  scan-and-remediate:
+    needs: export-registry
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: ${{ needs.export-registry.outputs.registry }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - hub-agent
+          - member-agent
+          - refresh-token
+    steps:
+      - name: Set up Go ${{ env.GO_VERSION }}
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Login to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image version
+        run: echo "IMAGE_VERSION=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
+
+      - name: Build and push ${{ matrix.image }}
+        run: make docker-build-${{ matrix.image }}
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          TAG: ${{ env.IMAGE_VERSION }}
+          OUTPUT_TYPE: type=registry
+
+      - name: Scan ${{ matrix.image }} (JSON)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ matrix.image }}:${{ env.IMAGE_VERSION }}
+          format: 'json'
+          output: 'trivy-results.json'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          timeout: '5m0s'
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          TRIVY_DB_REPOSITORY: mcr.microsoft.com/mirror/ghcr/aquasecurity/trivy-db
+
+      - name: Parse vulnerabilities and upgrade Go dependencies
+        id: remediate
+        run: |
+          set -euo pipefail
+
+          # Extract Go library CVEs with fix versions from Trivy JSON
+          VULNS=$(jq -r '
+            [.Results[]?
+              | select(.Class == "lang-pkgs" and .Type == "gomod")
+              | .Vulnerabilities[]?
+              | select(.FixedVersion != null and .FixedVersion != "")
+              | {id: .VulnerabilityID, pkg: .PkgName, installed: .InstalledVersion, fixed: .FixedVersion, severity: .Severity}
+            ] | group_by(.pkg) | map(sort_by(.fixed | ltrimstr("v") | split(".") | map(tonumber)) | last)' trivy-results.json 2>/dev/null || echo '[]')
+
+          echo "Found Go library vulnerabilities:"
+          echo "$VULNS" | jq -r '.[] | "  \(.severity) \(.id): \(.pkg) \(.installed) -> \(.fixed)"'
+
+          COUNT=$(echo "$VULNS" | jq 'length')
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "vuln_count=0" >> "$GITHUB_OUTPUT"
+            echo "No fixable Go library vulnerabilities found for ${{ matrix.image }}."
+            exit 0
+          fi
+
+          # Upgrade each vulnerable package to its fix version
+          UPGRADED=""
+          for row in $(echo "$VULNS" | jq -r '.[] | @base64'); do
+            _jq() { echo "$row" | base64 --decode | jq -r "$1"; }
+            PKG=$(_jq '.pkg')
+            FIXED=$(_jq '.fixed')
+            FIXED="${FIXED#v}"
+            ID=$(_jq '.id')
+            SEVERITY=$(_jq '.severity')
+            echo "Upgrading $PKG to v$FIXED (fixes $ID)"
+            if go get "$PKG@v$FIXED"; then
+              UPGRADED="$UPGRADED- **$SEVERITY**: \`$ID\` — upgraded \`$PKG\` to v$FIXED\n"
+            else
+              echo "Warning: failed to upgrade $PKG to v$FIXED"
+            fi
+          done
+
+          go mod tidy
+
+          {
+            echo "vuln_count=$COUNT"
+            echo "upgraded_list<<EOF"
+            echo -e "$UPGRADED"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet go.mod go.sum; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Pull Request
+        if: steps.changes.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@5f6978feb637d0d40460b08e3626d77b938b046f # v8.1.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "fix: remediate CVEs in ${{ matrix.image }} image"
+          branch: "trivy-cve-fix/${{ matrix.image }}"
+          delete-branch: true
+          title: "fix: remediate CVEs found in ${{ matrix.image }}"
+          body: |
+            ## Automated CVE Remediation — `${{ matrix.image }}`
+
+            Trivy scan detected fixable Go dependency vulnerabilities. This PR upgrades the affected packages.
+
+            ### Upgraded dependencies
+
+            ${{ steps.remediate.outputs.upgraded_list }}
+
+            ---
+            _Generated by the [Trivy CVE Remediation](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) workflow._
+          labels: |
+            security
+            dependencies
+            automated
+
+      - name: Upload scan results
+        if: always()
+        uses: actions/upload-artifact@043fb46e7a57af58e954e936061a1f93f05906ca # v7.0.1
+        with:
+          name: trivy-${{ matrix.image }}-results
+          path: trivy-results.json
+          retention-days: 30
