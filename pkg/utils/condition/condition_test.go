@@ -21,6 +21,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
 const (
@@ -335,6 +337,51 @@ func TestIsConditionStatusFalse(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if got := IsConditionStatusFalse(tt.cond, tt.latestGeneration); got != tt.want {
 				t.Errorf("IsConditionStatusFalse() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTrueWorkSynchronizedConditionMessage(t *testing.T) {
+	const (
+		generation   int64 = 3
+		clusterCount       = 2
+		wantMessage        = "Work(s) are successfully created or updated in 2 target cluster(s)' namespaces"
+	)
+
+	tests := []struct {
+		name string
+		got  metav1.Condition
+		want metav1.Condition
+	}{
+		{
+			name: "cluster resource placement",
+			got:  WorkSynchronizedCondition.TrueClusterResourcePlacementCondition(generation, clusterCount),
+			want: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType),
+				Reason:             WorkSynchronizedReason,
+				Message:            wantMessage,
+				ObservedGeneration: generation,
+			},
+		},
+		{
+			name: "resource placement",
+			got:  WorkSynchronizedCondition.TrueResourcePlacementCondition(generation, clusterCount),
+			want: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ResourcePlacementWorkSynchronizedConditionType),
+				Reason:             WorkSynchronizedReason,
+				Message:            wantMessage,
+				ObservedGeneration: generation,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if diff := cmp.Diff(tc.want, tc.got); diff != "" {
+				t.Fatalf("True WorkSynchronized condition mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
