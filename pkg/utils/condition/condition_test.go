@@ -386,3 +386,179 @@ func TestTrueWorkSynchronizedConditionMessage(t *testing.T) {
 		})
 	}
 }
+
+func TestTrueClusterResourcePlacementCondition(t *testing.T) {
+	const (
+		generation   = int64(3)
+		clusterCount = 2
+	)
+	tests := []struct {
+		name      string
+		condition ResourceCondition
+		want      metav1.Condition
+	}{
+		{
+			name:      "rollout started",
+			condition: RolloutStartedCondition,
+			want: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ClusterResourcePlacementRolloutStartedConditionType),
+				Reason:             RolloutStartedReason,
+				Message:            "All 2 cluster(s) start rolling out the latest resource",
+				ObservedGeneration: generation,
+			},
+		},
+		{
+			name:      "overridden",
+			condition: OverriddenCondition,
+			want: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ClusterResourcePlacementOverriddenConditionType),
+				Reason:             OverriddenSucceededReason,
+				Message:            "The selected resources are successfully overridden in 2 cluster(s)",
+				ObservedGeneration: generation,
+			},
+		},
+		{
+			name:      "work synchronized",
+			condition: WorkSynchronizedCondition,
+			want: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType),
+				Reason:             WorkSynchronizedReason,
+				Message:            "Work(s) are successfully created or updated in 2 target cluster(s)' namespaces",
+				ObservedGeneration: generation,
+			},
+		},
+		{
+			name:      "applied",
+			condition: AppliedCondition,
+			want: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ClusterResourcePlacementAppliedConditionType),
+				Reason:             ApplySucceededReason,
+				Message:            "The selected resources are successfully applied to 2 cluster(s)",
+				ObservedGeneration: generation,
+			},
+		},
+		{
+			name:      "available",
+			condition: AvailableCondition,
+			want: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ClusterResourcePlacementAvailableConditionType),
+				Reason:             AvailableReason,
+				Message:            "The selected resources in 2 cluster(s) are available now",
+				ObservedGeneration: generation,
+			},
+		},
+		{
+			name:      "diff reported",
+			condition: DiffReportedCondition,
+			want: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ClusterResourcePlacementDiffReportedConditionType),
+				Reason:             DiffReportedStatusTrueReason,
+				Message:            "Diff reporting in 2 cluster(s) has been completed",
+				ObservedGeneration: generation,
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.condition.TrueClusterResourcePlacementCondition(generation, clusterCount)
+			if diff := cmp.Diff(got, tc.want); diff != "" {
+				t.Errorf("TrueClusterResourcePlacementCondition(%d, %d) mismatch (-got, +want):\n%s",
+					generation, clusterCount, diff)
+			}
+		})
+	}
+}
+
+func TestTrueResourcePlacementCondition(t *testing.T) {
+	const (
+		generation   = int64(3)
+		clusterCount = 2
+	)
+	tests := []struct {
+		name      string
+		condition ResourceCondition
+		want      metav1.Condition
+	}{
+		{
+			name:      "rollout started",
+			condition: RolloutStartedCondition,
+			want: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ResourcePlacementRolloutStartedConditionType),
+				Reason:             RolloutStartedReason,
+				Message:            "All 2 cluster(s) start rolling out the latest resource",
+				ObservedGeneration: generation,
+			},
+		},
+		{
+			name:      "overridden",
+			condition: OverriddenCondition,
+			want: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ResourcePlacementOverriddenConditionType),
+				Reason:             OverriddenSucceededReason,
+				Message:            "The selected resources are successfully overridden in 2 cluster(s)",
+				ObservedGeneration: generation,
+			},
+		},
+		{
+			name:      "work synchronized",
+			condition: WorkSynchronizedCondition,
+			want: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ResourcePlacementWorkSynchronizedConditionType),
+				Reason:             WorkSynchronizedReason,
+				Message:            "Work(s) are successfully created or updated in 2 target cluster(s)' namespaces",
+				ObservedGeneration: generation,
+			},
+		},
+		{
+			name:      "applied",
+			condition: AppliedCondition,
+			want: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ResourcePlacementAppliedConditionType),
+				Reason:             ApplySucceededReason,
+				Message:            "The selected resources are successfully applied to 2 cluster(s)",
+				ObservedGeneration: generation,
+			},
+		},
+		{
+			name:      "available",
+			condition: AvailableCondition,
+			want: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ResourcePlacementAvailableConditionType),
+				Reason:             AvailableReason,
+				Message:            "The selected resources in 2 cluster(s) are available now",
+				ObservedGeneration: generation,
+			},
+		},
+		{
+			name:      "diff reported",
+			condition: DiffReportedCondition,
+			want: metav1.Condition{
+				Status:             metav1.ConditionTrue,
+				Type:               string(fleetv1beta1.ResourcePlacementDiffReportedConditionType),
+				Reason:             DiffReportedStatusTrueReason,
+				Message:            "Diff reporting in 2 cluster(s) has been completed",
+				ObservedGeneration: generation,
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.condition.TrueResourcePlacementCondition(generation, clusterCount)
+			if diff := cmp.Diff(got, tc.want); diff != "" {
+				t.Errorf("TrueResourcePlacementCondition(%d, %d) mismatch (-got, +want):\n%s",
+					generation, clusterCount, diff)
+			}
+		})
+	}
+}
