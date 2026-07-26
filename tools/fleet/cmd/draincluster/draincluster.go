@@ -186,9 +186,16 @@ func (o *drainOptions) drain(ctx context.Context) (bool, error) {
 			return false, fmt.Errorf("failed to wait for eviction %s for CRP %s targeting member cluster %s to reach terminal state: %w", evictionName, crpName, o.clusterName, err)
 		}
 
-		// TODO: add safeguards to check if eviction conditions are set to unknown.
 		validCondition := eviction.GetCondition(string(placementv1beta1.PlacementEvictionConditionTypeValid))
-		if validCondition != nil && validCondition.Status == metav1.ConditionFalse {
+		// Safeguard against an eviction whose Valid condition never resolved: a
+		// missing or Unknown Valid condition means we cannot tell whether the
+		// eviction was legitimate, so surface it instead of silently proceeding.
+		if validCondition == nil || validCondition.Status == metav1.ConditionUnknown {
+			isDrainSuccessful = false
+			log.Printf("eviction %s has a missing or unknown Valid condition for CRP %s targeting member cluster %s; cannot confirm drain", evictionName, crpName, o.clusterName)
+			continue
+		}
+		if validCondition.Status == metav1.ConditionFalse {
 			// check to see if CRP is missing or CRP is being deleted or CRB is missing.
 			if validCondition.Reason == condition.EvictionInvalidMissingCRPMessage ||
 				validCondition.Reason == condition.EvictionInvalidDeletingCRPMessage ||
@@ -198,7 +205,14 @@ func (o *drainOptions) drain(ctx context.Context) (bool, error) {
 			}
 		}
 		executedCondition := eviction.GetCondition(string(placementv1beta1.PlacementEvictionConditionTypeExecuted))
-		if executedCondition == nil || executedCondition.Status == metav1.ConditionFalse {
+		// A missing or Unknown Executed condition must not be treated as success:
+		// surface it so an uncertain eviction is not reported as a completed drain.
+		if executedCondition == nil || executedCondition.Status == metav1.ConditionUnknown {
+			isDrainSuccessful = false
+			log.Printf("eviction %s has a missing or unknown Executed condition for CRP %s targeting member cluster %s; cannot confirm drain", evictionName, crpName, o.clusterName)
+			continue
+		}
+		if executedCondition.Status == metav1.ConditionFalse {
 			isDrainSuccessful = false
 			log.Printf("eviction %s was not executed successfully for CRP %s targeting member cluster %s", evictionName, crpName, o.clusterName)
 			continue
