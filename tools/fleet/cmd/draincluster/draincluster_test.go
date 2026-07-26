@@ -32,6 +32,7 @@ import (
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
 	toolsutils "github.com/kubefleet-dev/kubefleet/tools/utils"
 )
 
@@ -509,4 +510,106 @@ func serviceScheme(t *testing.T) *runtime.Scheme {
 		t.Fatalf("failed to add placement v1beta1 scheme: %v", err)
 	}
 	return scheme
+}
+
+func TestEvaluateEviction(t *testing.T) {
+	validType := string(placementv1beta1.PlacementEvictionConditionTypeValid)
+	executedType := string(placementv1beta1.PlacementEvictionConditionTypeExecuted)
+
+	tests := []struct {
+		name       string
+		conditions []metav1.Condition
+		want       evictionResult
+	}{
+		{
+			name: "valid true, executed true",
+			conditions: []metav1.Condition{
+				{Type: validType, Status: metav1.ConditionTrue, Reason: "Valid"},
+				{Type: executedType, Status: metav1.ConditionTrue, Reason: "Executed"},
+			},
+			want: evictionResultExecuted,
+		},
+		{
+			name: "valid true, executed false",
+			conditions: []metav1.Condition{
+				{Type: validType, Status: metav1.ConditionTrue, Reason: "Valid"},
+				{Type: executedType, Status: metav1.ConditionFalse, Reason: "NotExecuted"},
+			},
+			want: evictionResultNotExecuted,
+		},
+		{
+			name: "valid true, executed unknown",
+			conditions: []metav1.Condition{
+				{Type: validType, Status: metav1.ConditionTrue, Reason: "Valid"},
+				{Type: executedType, Status: metav1.ConditionUnknown, Reason: "Unknown"},
+			},
+			want: evictionResultIndeterminate,
+		},
+		{
+			name: "valid true, executed missing",
+			conditions: []metav1.Condition{
+				{Type: validType, Status: metav1.ConditionTrue, Reason: "Valid"},
+			},
+			want: evictionResultIndeterminate,
+		},
+		{
+			name: "valid unknown",
+			conditions: []metav1.Condition{
+				{Type: validType, Status: metav1.ConditionUnknown, Reason: "Unknown"},
+			},
+			want: evictionResultIndeterminate,
+		},
+		{
+			name:       "valid missing",
+			conditions: nil,
+			want:       evictionResultIndeterminate,
+		},
+		{
+			name: "valid false, reason missing CRP",
+			conditions: []metav1.Condition{
+				{Type: validType, Status: metav1.ConditionFalse, Reason: condition.EvictionInvalidMissingCRPMessage},
+			},
+			want: evictionResultInvalidButDrained,
+		},
+		{
+			name: "valid false, reason deleting CRP",
+			conditions: []metav1.Condition{
+				{Type: validType, Status: metav1.ConditionFalse, Reason: condition.EvictionInvalidDeletingCRPMessage},
+			},
+			want: evictionResultInvalidButDrained,
+		},
+		{
+			name: "valid false, reason missing CRB",
+			conditions: []metav1.Condition{
+				{Type: validType, Status: metav1.ConditionFalse, Reason: condition.EvictionInvalidMissingCRBMessage},
+			},
+			want: evictionResultInvalidButDrained,
+		},
+		{
+			name: "valid false with unrecognized reason, executed true",
+			conditions: []metav1.Condition{
+				{Type: validType, Status: metav1.ConditionFalse, Reason: "SomeOtherReason"},
+				{Type: executedType, Status: metav1.ConditionTrue, Reason: "Executed"},
+			},
+			want: evictionResultExecuted,
+		},
+		{
+			name: "valid false with unrecognized reason, executed unknown",
+			conditions: []metav1.Condition{
+				{Type: validType, Status: metav1.ConditionFalse, Reason: "SomeOtherReason"},
+				{Type: executedType, Status: metav1.ConditionUnknown, Reason: "Unknown"},
+			},
+			want: evictionResultIndeterminate,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			eviction := &placementv1beta1.ClusterResourcePlacementEviction{}
+			eviction.SetConditions(tc.conditions...)
+			if got := evaluateEviction(eviction); got != tc.want {
+				t.Errorf("evaluateEviction() = %v, want %v", got, tc.want)
+			}
+		})
+	}
 }
