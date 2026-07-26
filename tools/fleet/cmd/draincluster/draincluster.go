@@ -202,16 +202,23 @@ func (o *drainOptions) drain(ctx context.Context) (bool, error) {
 			isDrainSuccessful = false
 			log.Printf("eviction %s was not executed successfully for CRP %s targeting member cluster %s", evictionName, crpName, o.clusterName)
 			continue
-		}
-		log.Printf("eviction %s was executed successfully for CRP %s targeting member cluster %s", evictionName, crpName, o.clusterName)
-		// log each cluster scoped resource evicted for CRP.
-		clusterScopedResourceIdentifiers, err := o.collectClusterScopedResourcesSelectedByCRP(ctx, crpName)
-		if err != nil {
-			log.Printf("failed to collect cluster scoped resources selected by CRP %s: %v", crpName, err)
+		case evictionResultExecuted:
+			log.Printf("eviction %s was executed successfully for CRP %s targeting member cluster %s", evictionName, crpName, o.clusterName)
+			// log each cluster scoped resource evicted for CRP.
+			clusterScopedResourceIdentifiers, err := o.collectClusterScopedResourcesSelectedByCRP(ctx, crpName)
+			if err != nil {
+				log.Printf("failed to collect cluster scoped resources selected by CRP %s: %v", crpName, err)
+				continue
+			}
+			for _, resourceIdentifier := range clusterScopedResourceIdentifiers {
+				log.Printf("evicted resource %s propagated by CRP %s targeting member cluster %s", generateResourceIdentifierKey(resourceIdentifier), crpName, o.clusterName)
+			}
+		default:
+			// Any unexpected classification is treated as unconfirmed rather than
+			// success, so a future evictionResult value can never silently pass a drain.
+			isDrainSuccessful = false
+			log.Printf("eviction %s returned an unexpected evaluation result for CRP %s targeting member cluster %s; cannot confirm drain", evictionName, crpName, o.clusterName)
 			continue
-		}
-		for _, resourceIdentifier := range clusterScopedResourceIdentifiers {
-			log.Printf("evicted resource %s propagated by CRP %s targeting member cluster %s", generateResourceIdentifierKey(resourceIdentifier), crpName, o.clusterName)
 		}
 	}
 
@@ -236,28 +243,41 @@ const (
 )
 
 // evaluateEviction inspects a terminal eviction's Valid and Executed conditions and
-// classifies the outcome. A missing or Unknown condition is never treated as success.
+// classifies the outcome. Only an explicit "True"/"False" status is treated as
+// definitive; a missing, Unknown, or otherwise unexpected status is never treated as
+// a successful drain.
 func evaluateEviction(eviction *placementv1beta1.ClusterResourcePlacementEviction) evictionResult {
 	validCondition := eviction.GetCondition(string(placementv1beta1.PlacementEvictionConditionTypeValid))
-	if validCondition == nil || validCondition.Status == metav1.ConditionUnknown {
+	if validCondition == nil {
 		return evictionResultIndeterminate
 	}
-	// An invalid eviction whose reason is a missing/deleting CRP or a missing CRB
-	// still means the cluster is drained.
-	if validCondition.Status == metav1.ConditionFalse &&
-		(validCondition.Reason == condition.EvictionInvalidMissingCRPMessage ||
+	if validCondition.Status == metav1.ConditionFalse {
+		// An invalid eviction whose reason is a missing/deleting CRP or a missing
+		// CRB still means the cluster is drained.
+		if validCondition.Reason == condition.EvictionInvalidMissingCRPMessage ||
 			validCondition.Reason == condition.EvictionInvalidDeletingCRPMessage ||
-			validCondition.Reason == condition.EvictionInvalidMissingCRBMessage) {
-		return evictionResultInvalidButDrained
-	}
-	executedCondition := eviction.GetCondition(string(placementv1beta1.PlacementEvictionConditionTypeExecuted))
-	if executedCondition == nil || executedCondition.Status == metav1.ConditionUnknown {
+			validCondition.Reason == condition.EvictionInvalidMissingCRBMessage {
+			return evictionResultInvalidButDrained
+		}
+		// Any other invalid reason falls through to the Executed check.
+	} else if validCondition.Status != metav1.ConditionTrue {
+		// Unknown, empty, or any unexpected status: the drain cannot be confirmed.
 		return evictionResultIndeterminate
 	}
-	if executedCondition.Status == metav1.ConditionFalse {
-		return evictionResultNotExecuted
+
+	executedCondition := eviction.GetCondition(string(placementv1beta1.PlacementEvictionConditionTypeExecuted))
+	if executedCondition == nil {
+		return evictionResultIndeterminate
 	}
-	return evictionResultExecuted
+	switch executedCondition.Status {
+	case metav1.ConditionTrue:
+		return evictionResultExecuted
+	case metav1.ConditionFalse:
+		return evictionResultNotExecuted
+	default:
+		// Unknown, empty, or any unexpected status: the drain cannot be confirmed.
+		return evictionResultIndeterminate
+	}
 }
 
 func (o *drainOptions) cordon(ctx context.Context) error {

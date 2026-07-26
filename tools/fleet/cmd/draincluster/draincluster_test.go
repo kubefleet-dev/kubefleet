@@ -546,6 +546,14 @@ func TestEvaluateEviction(t *testing.T) {
 			want: evictionResultIndeterminate,
 		},
 		{
+			name: "valid true, executed empty/invalid status",
+			conditions: []metav1.Condition{
+				{Type: validType, Status: metav1.ConditionTrue, Reason: "Valid"},
+				{Type: executedType, Status: "", Reason: "EmptyStatus"},
+			},
+			want: evictionResultIndeterminate,
+		},
+		{
 			name: "valid true, executed missing",
 			conditions: []metav1.Condition{
 				{Type: validType, Status: metav1.ConditionTrue, Reason: "Valid"},
