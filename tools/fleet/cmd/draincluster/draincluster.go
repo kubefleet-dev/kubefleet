@@ -192,7 +192,7 @@ func (o *drainOptions) drain(ctx context.Context) (bool, error) {
 		switch evaluateEviction(&eviction) {
 		case evictionResultInvalidButDrained:
 			validCondition := eviction.GetCondition(string(placementv1beta1.PlacementEvictionConditionTypeValid))
-			log.Printf("eviction %s is invalid with reason %s for CRP %s targeting member cluster %s, but drain will succeed", evictionName, validCondition.Reason, crpName, o.clusterName)
+			log.Printf("eviction %s is invalid: %s for CRP %s targeting member cluster %s, but drain will succeed", evictionName, validCondition.Message, crpName, o.clusterName)
 			continue
 		case evictionResultIndeterminate:
 			isDrainSuccessful = false
@@ -252,14 +252,15 @@ func evaluateEviction(eviction *placementv1beta1.ClusterResourcePlacementEvictio
 		return evictionResultIndeterminate
 	}
 	if validCondition.Status == metav1.ConditionFalse {
-		// An invalid eviction whose reason is a missing/deleting CRP or a missing
-		// CRB still means the cluster is drained.
-		if validCondition.Reason == condition.EvictionInvalidMissingCRPMessage ||
-			validCondition.Reason == condition.EvictionInvalidDeletingCRPMessage ||
-			validCondition.Reason == condition.EvictionInvalidMissingCRBMessage {
+		// An invalid eviction whose detail indicates a missing/deleting CRP or a
+		// missing CRB still means the cluster is drained. markEvictionInvalid stores
+		// that detail in the condition Message (Reason is a generic invalid reason).
+		if validCondition.Message == condition.EvictionInvalidMissingCRPMessage ||
+			validCondition.Message == condition.EvictionInvalidDeletingCRPMessage ||
+			validCondition.Message == condition.EvictionInvalidMissingCRBMessage {
 			return evictionResultInvalidButDrained
 		}
-		// Any other invalid reason falls through to the Executed check.
+		// Any other invalid eviction falls through to the Executed check.
 	} else if validCondition.Status != metav1.ConditionTrue {
 		// Unknown, empty, or any unexpected status: the drain cannot be confirmed.
 		return evictionResultIndeterminate

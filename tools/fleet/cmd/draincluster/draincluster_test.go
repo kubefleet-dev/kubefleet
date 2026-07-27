@@ -573,38 +573,38 @@ func TestEvaluateEviction(t *testing.T) {
 			want:       evictionResultIndeterminate,
 		},
 		{
-			name: "valid false, reason missing CRP",
+			name: "valid false, message missing CRP",
 			conditions: []metav1.Condition{
-				{Type: validType, Status: metav1.ConditionFalse, Reason: condition.EvictionInvalidMissingCRPMessage},
+				{Type: validType, Status: metav1.ConditionFalse, Reason: condition.ClusterResourcePlacementEvictionInvalidReason, Message: condition.EvictionInvalidMissingCRPMessage},
 			},
 			want: evictionResultInvalidButDrained,
 		},
 		{
-			name: "valid false, reason deleting CRP",
+			name: "valid false, message deleting CRP",
 			conditions: []metav1.Condition{
-				{Type: validType, Status: metav1.ConditionFalse, Reason: condition.EvictionInvalidDeletingCRPMessage},
+				{Type: validType, Status: metav1.ConditionFalse, Reason: condition.ClusterResourcePlacementEvictionInvalidReason, Message: condition.EvictionInvalidDeletingCRPMessage},
 			},
 			want: evictionResultInvalidButDrained,
 		},
 		{
-			name: "valid false, reason missing CRB",
+			name: "valid false, message missing CRB",
 			conditions: []metav1.Condition{
-				{Type: validType, Status: metav1.ConditionFalse, Reason: condition.EvictionInvalidMissingCRBMessage},
+				{Type: validType, Status: metav1.ConditionFalse, Reason: condition.ClusterResourcePlacementEvictionInvalidReason, Message: condition.EvictionInvalidMissingCRBMessage},
 			},
 			want: evictionResultInvalidButDrained,
 		},
 		{
-			name: "valid false with unrecognized reason, executed true",
+			name: "valid false with unrecognized message, executed true",
 			conditions: []metav1.Condition{
-				{Type: validType, Status: metav1.ConditionFalse, Reason: "SomeOtherReason"},
+				{Type: validType, Status: metav1.ConditionFalse, Reason: condition.ClusterResourcePlacementEvictionInvalidReason, Message: "some other invalid detail"},
 				{Type: executedType, Status: metav1.ConditionTrue, Reason: "Executed"},
 			},
 			want: evictionResultExecuted,
 		},
 		{
-			name: "valid false with unrecognized reason, executed unknown",
+			name: "valid false with unrecognized message, executed unknown",
 			conditions: []metav1.Condition{
-				{Type: validType, Status: metav1.ConditionFalse, Reason: "SomeOtherReason"},
+				{Type: validType, Status: metav1.ConditionFalse, Reason: condition.ClusterResourcePlacementEvictionInvalidReason, Message: "some other invalid detail"},
 				{Type: executedType, Status: metav1.ConditionUnknown, Reason: "Unknown"},
 			},
 			want: evictionResultIndeterminate,
