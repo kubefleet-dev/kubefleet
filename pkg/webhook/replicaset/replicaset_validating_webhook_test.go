@@ -164,7 +164,7 @@ func TestHandle(t *testing.T) {
 			},
 			// The exact error message from the decoder is implementation-defined,
 			// so it is excluded from the comparison; the status code and
-			// allowed=false still are not.
+			// allowed=false are still compared.
 			wantResponse: admission.Errored(http.StatusBadRequest, errors.New("")),
 			cmpOpts:      []cmp.Option{cmpopts.IgnoreFields(metav1.Status{}, "Message")},
 		},
