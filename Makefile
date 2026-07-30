@@ -246,8 +246,17 @@ run-memberagent: manifests generate fmt vet ## Run member-agent from your host
 
 OUTPUT_TYPE ?= type=registry
 BUILDX_BUILDER_NAME ?= img-builder
-QEMU_VERSION ?= 7.2.0-1
 BUILDKIT_VERSION ?= v0.18.1
+
+# QEMU binfmt registration images (see setup-qemu). Both run --privileged, so
+# they come from the Microsoft-vetted MCR mirrors (no direct third-party pulls)
+# and are pinned by digest as well as tag: a floating reference on a privileged
+# release-path container is a supply-chain risk. The binfmt mirror digest is
+# byte-identical to the upstream docker.io/tonistiigi/binfmt tag it mirrors.
+QEMU_VERSION ?= 7.2.0-1
+QEMU_IMAGE ?= mcr.microsoft.com/mirror/docker/multiarch/qemu-user-static:$(QEMU_VERSION)@sha256:cb0dff994856c640b6080bfbd5983352e7856221a989625ea3e232cb7eff4507
+BINFMT_VERSION ?= qemu-v9.2.2-52
+BINFMT_IMAGE ?= mcr.microsoft.com/mirror/docker/tonistiigi/binfmt:$(BINFMT_VERSION)@sha256:1b804311fe87047a4c96d38b4b3ef6f62fca8cd125265917a9e3dc3c996c39e6
 
 # Platforms to build container images for. Defaults to the host/target platform
 # so local single-arch builds (e.g. loading into kind, which cannot load a
@@ -325,20 +334,25 @@ setup-qemu: ## Register QEMU emulation for multi-architecture image builds
 		*,*) \
 			echo "Multi-platform build ($(PLATFORMS)); registering QEMU emulation"; \
 			if [ "$(TARGET_ARCH)" = "amd64" ] ; then \
-				docker run --rm --privileged mcr.microsoft.com/mirror/docker/multiarch/qemu-user-static:$(QEMU_VERSION) --reset -p yes; \
+				docker run --rm --privileged $(QEMU_IMAGE) --reset -p yes; \
 			else \
-				docker run --rm --privileged tonistiigi/binfmt --install all; \
+				docker run --rm --privileged $(BINFMT_IMAGE) --install all; \
 			fi ;; \
 		*) echo "Single-platform build ($(PLATFORMS)); skipping QEMU setup" ;; \
 	esac
 
 # By default, docker buildx create will pull image moby/buildkit:buildx-stable-1 and hit the too many requests error
+# Always select and bootstrap the named builder, not only on creation: if the
+# builder already exists but another builder is current, the subsequent
+# `docker buildx build` would silently run on the wrong builder (potentially a
+# docker-driver one with no multi-platform support).
 .PHONY: docker-buildx-builder
 docker-buildx-builder: setup-qemu
-	@if ! docker buildx ls | grep $(BUILDX_BUILDER_NAME); then \
-		docker buildx create --driver-opt image=mcr.microsoft.com/oss/v2/moby/buildkit:$(BUILDKIT_VERSION) --name $(BUILDX_BUILDER_NAME) --use; \
-		docker buildx inspect $(BUILDX_BUILDER_NAME) --bootstrap; \
+	@if ! docker buildx ls | grep -q "$(BUILDX_BUILDER_NAME)"; then \
+		docker buildx create --driver-opt image=mcr.microsoft.com/oss/v2/moby/buildkit:$(BUILDKIT_VERSION) --name $(BUILDX_BUILDER_NAME); \
 	fi
+	docker buildx use $(BUILDX_BUILDER_NAME)
+	docker buildx inspect $(BUILDX_BUILDER_NAME) --bootstrap
 
 .PHONY: docker-build-hub-agent
 docker-build-hub-agent: docker-buildx-builder ## Build hub-agent image
