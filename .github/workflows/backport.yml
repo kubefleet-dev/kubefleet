@@ -79,8 +79,19 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Commit as the github-actions[bot] app user so backport commits are
+          # attributed to the automation (the original author and their DCO
+          # sign-off are preserved by the cherry-pick). The user ID is resolved
+          # from the API so the noreply address is provably correct; on API
+          # failure fall back to the app user's long-stable known ID. Note that
+          # gh prints the error body to stdout on failure, hence the numeric
+          # guard rather than a plain `|| echo`.
+          bot_id="$(gh api 'users/github-actions%5Bbot%5D' --jq .id 2>/dev/null || true)"
+          case "${bot_id}" in
+            ''|*[!0-9]*) bot_id=41898282 ;;
+          esac
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "${bot_id}+github-actions[bot]@users.noreply.github.com"
 
           # Collect the cherry-pick labels to act on: just the added label for
           # a `labeled` event, every cherry-pick label on the PR for `closed`.
