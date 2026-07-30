@@ -57,10 +57,12 @@ A KubeFleet deployment runs two agents:
 | **hub-agent** | Runs on the hub cluster; owns scheduling, placement, and the source of truth for desired state | Control plane |
 | **member-agent** | Runs on each member cluster; applies workloads and reports status and health back to the hub | kubelet |
 
-**Supported skew: the hub-agent and member-agent may differ by at most one
-minor version (`N`/`N-1`).** Within that window either agent may be the newer
-one — KubeFleet does not require the hub to be upgraded before the members for
-correctness, only that the two stay within one minor of each other.
+**Supported skew: the hub-agent and member-agent may run adjacent minor
+versions — at most one minor apart, in either direction.** For example, a
+`v0.5.z` hub-agent is supported with `v0.4.z` or `v0.6.z` member-agents (and
+vice versa), but not with `v0.3.z` ones. KubeFleet does not require the hub to
+be upgraded before the members for correctness, only that the two stay within
+one minor of each other.
 
 This deliberately differs from the Kubernetes kubelet skew policy that inspired
 the control-plane/kubelet analogy above. That policy is *asymmetric* (the kubelet
