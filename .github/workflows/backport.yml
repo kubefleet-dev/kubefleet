@@ -130,9 +130,11 @@ jobs:
             target="release-${minor}"
             bot_branch="cherry-pick/${minor}/pr-${PR_NUMBER}"
 
+            # Soft-fail (comment, but keep the run green): labels may
+            # legitimately be applied before the release branch is cut; the
+            # backport is picked up by re-adding the label once it exists.
             if ! git rev-parse --verify --quiet "origin/${target}" >/dev/null; then
               comment ":no_entry: Backport to \`${target}\` skipped: the branch does not exist. If the \`${label}\` label is correct, create the release branch first and re-add the label to retry."
-              failed="true"
               continue
             fi
 
@@ -168,8 +170,9 @@ jobs:
               continue
             fi
 
-            # Keep the conventional-prefix subject (PR-title lint runs on
-            # backport PRs too) and prefix the target for reviewers.
+            # Suffix the target rather than prefixing it: PR-title lint runs on
+            # backport PRs too and requires the conventional prefix (feat:,
+            # fix:, ...) at the start of the title.
             title="$(gh pr view "${PR_NUMBER}" --repo "${REPO}" --json title --jq .title)"
             url="$(gh pr create --repo "${REPO}" \
               --base "${target}" --head "${bot_branch}" \
