@@ -30,6 +30,17 @@ The KubeFleet project has adopted the CNCF Code of Conduct. Refer to our [Commun
 2. Fork the desired repository, then develop and test your code changes.
 3. Submit a pull request.
 
+## Error handling convention
+
+**Log errors where they are handled, not at each return. Wrap otherwise.**
+
+- Intermediate layers wrap with `controller.WithValues(err, "key", value)` to attach structured
+  context while bubbling the error up the call stack.
+- The handler — the site that recovers from or discards the error — calls
+  `controller.LogAndUnwrap(err, "descriptive message")` to emit exactly one `klog.ErrorS` line
+  with all accumulated key-value pairs and return the unwrapped inner error.
+- Avoid calling `klog.ErrorS` at every return point. One failure should produce one log line.
+
 ## Issue and pull request management
 
 Anyone can comment on issues and submit reviews for pull requests. In order to be assigned an issue or pull request, you can leave a `/assign <your Github ID>` comment on the issue or pull request.
