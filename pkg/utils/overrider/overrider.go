@@ -117,7 +117,7 @@ func FetchAllMatchingOverridesForResourceSnapshot(
 			}
 		}
 		if !matched {
-			klog.Warningf("ClusterResourceOverrideSnapshot %s has no selector that matches a selected resource or inner envelope resource in placement %s; selectors=%+v", klog.KObj(&croList.Items[i]), placementKey, croList.Items[i].Spec.OverrideSpec.ClusterResourceSelectors)
+			klog.V(2).InfoS("ClusterResourceOverrideSnapshot has no selector that matches a selected resource or inner envelope resource in this placement", "clusterResourceOverride", klog.KObj(&croList.Items[i]), "placement", placementKey, "selectors", croList.Items[i].Spec.OverrideSpec.ClusterResourceSelectors)
 		}
 	}
 	for i := range roList.Items {
@@ -149,7 +149,7 @@ func FetchAllMatchingOverridesForResourceSnapshot(
 			}
 		}
 		if !matched {
-			klog.Warningf("ResourceOverrideSnapshot %s has no selector that matches a selected resource or inner envelope resource in placement %s; selectors=%+v", klog.KObj(&roList.Items[i]), placementKey, roList.Items[i].Spec.OverrideSpec.ResourceSelectors)
+			klog.V(2).InfoS("ResourceOverrideSnapshot has no selector that matches a selected resource or inner envelope resource in this placement", "resourceOverride", klog.KObj(&roList.Items[i]), "placement", placementKey, "selectors", roList.Items[i].Spec.OverrideSpec.ResourceSelectors)
 		}
 	}
 	return filteredCRO, filteredRO, nil
