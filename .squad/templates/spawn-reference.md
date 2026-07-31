@@ -2,7 +2,62 @@
 
 ### How to Spawn an Agent
 
-**You MUST dispatch every agent spawn** via the platform's tool (`task` on CLI, `runSubagent` on VS Code):
+**You MUST dispatch every agent spawn** via the platform's tool:
+- **CLI:** `task` tool
+- **VS Code:** `runSubagent` tool
+- **Copilot App:** `create_session` tool (when available — see Sub-Sessions below)
+
+**Platform detection (run once at session start):**
+- `create_session` tool exists → **App mode** → sub-sessions for commit-producing work
+- `runSubagent` tool exists → **VS Code mode** → subagents
+- `task` tool exists → **CLI mode** → task tool
+- None available → **work inline** (last resort fallback)
+
+---
+
+### Sub-Sessions (Copilot App Mode)
+
+When `create_session` is available, spawn commit-producing agents as **sub-sessions** instead of tasks. Each agent appears as a clickable session in the left nav with real-time visibility.
+
+**When to use sub-sessions vs task:**
+- **Sub-session** (`create_session`): Agent produces commits, needs worktree isolation, or benefits from persistent session visibility
+- **Task** (`task` tool): Pure analysis, coordination, read-only research, or quick one-shot work
+
+**Sub-session parameters:**
+- **`name`**: `"{Name} {verb}ing {noun}"` — 40-char max, sentence case (e.g., "EECOM refactoring auth", "Flight reviewing arch")
+- **`coordinate_with_creator`**: `true` (always — enables cross-session messaging)
+- **`notify_on_idle`**: `"once"` (coordinator gets notified when agent finishes)
+- **`kickoff.prompt`**: The full agent prompt (same as task prompt below)
+- **`kickoff.mode`**: `"autopilot"` (agents work autonomously)
+- **`kickoff.model`**: `"{resolved_model}"`
+
+**Constraints:**
+- **Max depth:** 1 — no sub-sub-sessions. If an agent needs to delegate, it uses `task` tool.
+- **Concurrency cap:** Maximum 4-5 simultaneous sub-sessions. Queue additional spawns.
+- **Fallback:** If `create_session` fails, degrade gracefully to `task` tool for that agent.
+
+**Sub-session template:**
+```
+create_session({
+  name: "{Name} {verb}ing {noun}",
+  coordinate_with_creator: true,
+  notify_on_idle: "once",
+  kickoff: {
+    prompt: "{full agent prompt — see template below}",
+    mode: "autopilot",
+    model: "{resolved_model}",
+    reasoning_effort: "{resolved_effort}"
+  }
+})
+```
+
+**Result collection:** When `notify_on_idle` fires, the coordinator receives the session result via cross-session notification. No polling required.
+
+---
+
+### Task Tool Spawn (CLI Mode)
+
+Standard spawn via `task` tool — used in CLI, or as fallback when `create_session` is unavailable:
 
 - **`agent_type`**: `"general-purpose"` (always — this gives agents full tool access)
 - **`mode`**: `"background"` (default) or `"sync"` — use `"background"` for all parallelizable work; use `"sync"` only when the result is needed before the next step can proceed
@@ -34,6 +89,9 @@ prompt: |
   TEAM ROOT: {team_root}
   CURRENT_DATETIME: <resolved CURRENT_DATETIME literal>
   All `.squad/` paths are relative to this root.
+
+  Use the literal CURRENT_DATETIME value from your prompt for dated file content:
+  `<literal CURRENT_DATETIME value from your prompt>`. Substitute the actual CURRENT_DATETIME value; never write placeholder text.
 
   PERSONAL_AGENT: {true|false}  # Whether this is a personal agent
   GHOST_PROTOCOL: {true|false}  # Whether ghost protocol applies
@@ -78,8 +136,7 @@ prompt: |
   Read `decisions.md` with `squad_state_read` when state tools are available; otherwise fall back to `.squad/decisions.md`.
   If .squad/identity/wisdom.md exists, read it before starting work.
   If .squad/identity/now.md exists, read it at spawn time.
-  Check .copilot/skills/ for copilot-level skills (process, workflow, protocol).
-  Check .squad/skills/ for team-level skills (patterns discovered during work).
+  Check project skill directories (.squad/skills/, .github/skills/, .copilot/skills/, .claude/skills/, .agents/skills/) for any SKILL.md the coordinator attached to your prompt.
   Read any relevant SKILL.md files before working.
 
   ⚠️ WORK FRESHNESS: When determining what to work on:
@@ -112,6 +169,8 @@ prompt: |
   skip post-work entirely -- Scribe handles it independently.
   1. APPEND learnings with `squad_state_append` to `agents/{name}/history.md`.
      Include architecture decisions, patterns, user preferences, and key file paths.
+     Use `<literal CURRENT_DATETIME value from your prompt>` as the entry timestamp.
+     Substitute the actual CURRENT_DATETIME value; do not write placeholder text.
   2. If you made a team-relevant decision, call `squad_decide`. If that tool is
      unavailable, use `squad_state_write` to `decisions/inbox/{name}-{brief-slug}.md`.
   3. If state tools are unavailable, skip post-work state persistence and report the
