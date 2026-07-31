@@ -59,6 +59,8 @@ jobs:
       - name: generate image version
         run: echo "IMAGE_VERSION=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
 
+      # Note: scheduled runs rebuild images to scan the latest code on main.
+      # This ensures we catch newly disclosed CVEs against the current source.
       - name: Build and push images to registry with tag ${{ env.IMAGE_VERSION }}
         run: |
           make push
@@ -143,15 +145,14 @@ jobs:
             echo "## Trivy CVE Scan - $(date -u +%Y-%m-%d)"
             echo ""
             echo "The daily vulnerability scan found **HIGH/CRITICAL** CVEs in our container images."
-            echo "Please update the affected Go dependencies in \`go.mod\` to the fixed versions listed below,"
-            echo "then run \`go mod tidy\` and verify the build passes with \`make build\`."
+            echo "Please remediate the vulnerabilities listed below."
             echo ""
             echo "### Vulnerabilities"
             echo ""
             echo "| CVE | Severity | Package | Installed | Fixed | Image |"
             echo "|-----|----------|---------|-----------|-------|-------|"
             for file in trivy-hub-agent.json trivy-member-agent.json trivy-refresh-token.json; do
-              image=$(echo "$file" | sed 's/trivy-//;s/.json//')
+              image=$(echo "$file" | sed 's/trivy-//;s/\.json//')
               jq -r --arg img "$image" \
                 '.Results[]? | .Vulnerabilities[]? | "| \(.VulnerabilityID) | \(.Severity) | \(.PkgName) | \(.InstalledVersion) | \(.FixedVersion) | \($img) |"' \
                 "$file"
@@ -159,10 +160,18 @@ jobs:
             echo ""
             echo "### Instructions"
             echo ""
-            echo "1. For each Go library CVE, run: \`go get <package>@<fixed_version>\`"
+            echo "**Go library CVEs:**"
+            echo "1. Run: \`go get <package>@<fixed_version>\`"
             echo "2. Run \`go mod tidy\` to clean up dependencies."
-            echo "3. Run \`make build\` to verify the build passes."
-            echo "4. Run \`make test\` to verify tests pass."
+            echo ""
+            echo "**OS / base-image CVEs:**"
+            echo "1. Update the base image in the relevant \`Dockerfile\` under \`docker/\`."
+            echo ""
+            echo "**Then verify:**"
+            echo "1. Run \`make build\` to verify the build passes."
+            echo "2. Run \`make test\` to verify tests pass."
+            echo ""
+            echo "**Review:** Request review from \`@kubefleet-dev/kubefleet-secops\` on the resulting PR."
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
@@ -180,7 +189,7 @@ jobs:
               repo: context.repo.repo,
               state: 'open',
               labels: 'security,trivy',
-              per_page: 10
+              per_page: 100
             });
             const alreadyExists = existing.data.some(i => i.title === title);
             if (alreadyExists) {
@@ -189,14 +198,15 @@ jobs:
             }
 
             const body = process.env.ISSUE_BODY;
-            await github.rest.issues.create({
+            const issue = await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: title,
-              body: body,
+              body: body + '\n\n/cc @kubefleet-dev/kubefleet-secops',
               labels: ['security', 'trivy'],
-              assignees: ['copilot']
+              assignees: ['copilot'],
             });
+            console.log(`Created issue #${issue.data.number}`);
         env:
           ISSUE_BODY: ${{ steps.vuln-summary.outputs.body }}
 
