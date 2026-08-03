@@ -1,5 +1,5 @@
 # Build the hubagent binary
-FROM mcr.microsoft.com/oss/go/microsoft/golang:1.25.10 AS builder
+FROM mcr.microsoft.com/oss/go/microsoft/golang:1.26.5 AS builder
 
 ARG GOOS=linux
 ARG GOARCH=amd64
@@ -23,7 +23,7 @@ RUN CGO_ENABLED=1 GOOS=$GOOS GOARCH=$GOARCH GOEXPERIMENT=systemcrypto GO111MODUL
 
 # Use distroless as minimal base image to package the hubagent binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM gcr.io/distroless/base:nonroot@sha256:a557d784ac275c287d2bdf3172f47bece8d2a0ef3c0fdefb712e95084a04a562
+FROM gcr.io/distroless/base:nonroot@sha256:97b9d04bed1c754b756c3c4b6a04915c22fb0b5d96a59944eb3bf78c26e6e157
 WORKDIR /
 COPY --from=builder /workspace/hubagent .
 USER 65532:65532

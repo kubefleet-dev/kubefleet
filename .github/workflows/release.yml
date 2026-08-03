@@ -15,12 +15,20 @@ permissions:
   contents: read
   packages: write
 
+# Serialize releases per ref so concurrent tag pushes can't race on image
+# pushes to the same ${REGISTRY}/${IMAGE}:${TAG}. Different tags can still
+# run in parallel. We never want cancel-in-progress here: aborting a
+# half-pushed image is worse than letting it finish.
+concurrency:
+  group: release-images-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   REGISTRY: ghcr.io
   HUB_AGENT_IMAGE_NAME: hub-agent
   MEMBER_AGENT_IMAGE_NAME: member-agent
   REFRESH_TOKEN_IMAGE_NAME: refresh-token
-  GO_VERSION: "1.25.10"
+  GO_VERSION: "1.25.12"
 
 jobs:
   export-registry:
@@ -41,7 +49,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ needs.export-registry.outputs.tag }}
 
@@ -56,10 +64,18 @@ jobs:
         run: |
           make push
 
+      # The short-tag (e.g. ":0.4.0") aliases the long form for stable releases
+      # only. RC images are published under the long form (":v0.4.0-rc.1") for
+      # testers, but we deliberately do NOT alias them to a short tag - the
+      # short-tag namespace is reserved for stable releases that consumers can
+      # safely pin to (and "imagetools create" with an RC alias would publish
+      # "0.4.0-rc.1" into that namespace, muddying it).
       - name: Tag and push images without v prefix
+        if: ${{ !contains(needs.export-registry.outputs.tag, '-rc.') }}
         env:
           VERSION: ${{ needs.export-registry.outputs.version }}
         run: |
+          set -euo pipefail
           for IMAGE in ${{ env.HUB_AGENT_IMAGE_NAME }} ${{ env.MEMBER_AGENT_IMAGE_NAME }} ${{ env.REFRESH_TOKEN_IMAGE_NAME }}; do
             docker buildx imagetools create \
               --tag "${{ env.REGISTRY }}/${IMAGE}:${VERSION}" \
@@ -70,10 +86,57 @@ jobs:
         env:
           VERSION: ${{ needs.export-registry.outputs.version }}
         run: |
+          set -euo pipefail
           echo "✅ Published images:"
-          echo "  - ${{ env.REGISTRY }}/${{ env.HUB_AGENT_IMAGE_NAME }}:${{ env.TAG }}"
-          echo "  - ${{ env.REGISTRY }}/${{ env.HUB_AGENT_IMAGE_NAME }}:${VERSION}"
-          echo "  - ${{ env.REGISTRY }}/${{ env.MEMBER_AGENT_IMAGE_NAME }}:${{ env.TAG }}"
-          echo "  - ${{ env.REGISTRY }}/${{ env.MEMBER_AGENT_IMAGE_NAME }}:${VERSION}"
-          echo "  - ${{ env.REGISTRY }}/${{ env.REFRESH_TOKEN_IMAGE_NAME }}:${{ env.TAG }}"
-          echo "  - ${{ env.REGISTRY }}/${{ env.REFRESH_TOKEN_IMAGE_NAME }}:${VERSION}"
+          for IMAGE in ${{ env.HUB_AGENT_IMAGE_NAME }} ${{ env.MEMBER_AGENT_IMAGE_NAME }} ${{ env.REFRESH_TOKEN_IMAGE_NAME }}; do
+            echo "  - ${{ env.REGISTRY }}/${IMAGE}:${{ env.TAG }}"
+            if [[ "${TAG}" != *-rc.* ]]; then
+              echo "  - ${{ env.REGISTRY }}/${IMAGE}:${VERSION}"
+            fi
+          done
+
+  # Publish the raw CRDs as a standalone release asset so consumers can install
+  # them without pulling a Helm chart. The bundle carries the unmodified CRDs the
+  # charts install (no downstream-specific labels), split into crds/hub and
+  # crds/member so each set can be applied to the right cluster. Runs after the
+  # images are published so a release is only created once the build succeeds.
+  publish-crds:
+    needs: [export-registry, build-and-publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.export-registry.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.export-registry.outputs.tag }}
+
+      - name: Package CRDs
+        run: make crd-package TAG="${TAG}"
+
+      - name: Create or update the release and upload the CRD bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          created_draft=""
+          if ! gh release view "${TAG}" >/dev/null 2>&1; then
+            # Any semver pre-release suffix (-rc.N, -alpha, -beta, ...) is a prerelease.
+            prerelease=""
+            case "${TAG}" in *-*) prerelease="--prerelease" ;; esac
+            # Create as a draft first so a partially uploaded release is never public.
+            gh release create "${TAG}" --title "${TAG}" --generate-notes --draft ${prerelease}
+            created_draft="true"
+          fi
+          gh release upload "${TAG}" \
+            "_crd-package/kubefleet-crds-${TAG}.tgz" \
+            "_crd-package/kubefleet-crds-${TAG}.tgz.sha256" \
+            --clobber
+          # Only publish releases this job created; never flip a maintainer's existing release.
+          if [ "${created_draft}" = "true" ]; then
+            gh release edit "${TAG}" --draft=false
+          elif [ "$(gh release view "${TAG}" --json isDraft --jq .isDraft)" = "true" ]; then
+            echo "::warning::Release ${TAG} already existed as a draft; the CRD bundle was uploaded but the release was left unpublished. Publish it manually."
+          fi

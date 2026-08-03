@@ -216,6 +216,9 @@ spec:
                                           description: |-
                                             SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                             sort in ascending or descending order.
+                                          enum:
+                                          - Ascending
+                                          - Descending
                                           type: string
                                       required:
                                       - name
@@ -375,6 +378,9 @@ spec:
                                           description: |-
                                             SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                             sort in ascending or descending order.
+                                          enum:
+                                          - Ascending
+                                          - Descending
                                           type: string
                                       required:
                                       - name
@@ -453,6 +459,13 @@ spec:
                       type: object
                     maxItems: 100
                     type: array
+                    x-kubernetes-validations:
+                    - message: value must be empty when operator is Exists
+                      rule: self.all(x, x.operator != 'Exists' || !has(x.value) ||
+                        size(x.value) == 0)
+                    - message: operator must be Exists when key is empty
+                      rule: self.all(x, (has(x.key) && size(x.key) > 0) || x.operator
+                        == 'Exists')
                   topologySpreadConstraints:
                     description: |-
                       TopologySpreadConstraints describes how a group of resources ought to spread across multiple topology
@@ -485,6 +498,7 @@ spec:
                             It's a required field.
                           type: string
                         whenUnsatisfiable:
+                          default: DoNotSchedule
                           description: |-
                             WhenUnsatisfiable indicates how to deal with the resource if it doesn't satisfy
                             the spread constraint.
@@ -492,6 +506,9 @@ spec:
                             - ScheduleAnyway tells the scheduler to schedule the resource in any cluster,
                               but giving higher precedence to topologies that would help reduce the skew.
                             It's an optional field.
+                          enum:
+                          - DoNotSchedule
+                          - ScheduleAnyway
                           type: string
                       required:
                       - topologyKey
@@ -832,6 +849,9 @@ spec:
                                           description: |-
                                             SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                             sort in ascending or descending order.
+                                          enum:
+                                          - Ascending
+                                          - Descending
                                           type: string
                                       required:
                                       - name
@@ -991,6 +1011,9 @@ spec:
                                           description: |-
                                             SortOrder explains how Fleet should perform the sort; specifically, whether Fleet should
                                             sort in ascending or descending order.
+                                          enum:
+                                          - Ascending
+                                          - Descending
                                           type: string
                                       required:
                                       - name
@@ -1069,6 +1092,13 @@ spec:
                       type: object
                     maxItems: 100
                     type: array
+                    x-kubernetes-validations:
+                    - message: value must be empty when operator is Exists
+                      rule: self.all(x, x.operator != 'Exists' || !has(x.value) ||
+                        size(x.value) == 0)
+                    - message: operator must be Exists when key is empty
+                      rule: self.all(x, (has(x.key) && size(x.key) > 0) || x.operator
+                        == 'Exists')
                   topologySpreadConstraints:
                     description: |-
                       TopologySpreadConstraints describes how a group of resources ought to spread across multiple topology
@@ -1101,6 +1131,7 @@ spec:
                             It's a required field.
                           type: string
                         whenUnsatisfiable:
+                          default: DoNotSchedule
                           description: |-
                             WhenUnsatisfiable indicates how to deal with the resource if it doesn't satisfy
                             the spread constraint.
@@ -1108,6 +1139,9 @@ spec:
                             - ScheduleAnyway tells the scheduler to schedule the resource in any cluster,
                               but giving higher precedence to topologies that would help reduce the skew.
                             It's an optional field.
+                          enum:
+                          - DoNotSchedule
+                          - ScheduleAnyway
                           type: string
                       required:
                       - topologyKey

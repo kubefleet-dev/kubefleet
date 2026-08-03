@@ -13,7 +13,7 @@ on:
     paths-ignore: [docs/**, "**.md", "**.mdx", "**.png", "**.jpg"]
 
 env:
-  GO_VERSION: '1.25.10'
+  GO_VERSION: '1.25.12'
   CERT_MANAGER_VERSION: 'v1.16.2'
 
 jobs:
@@ -42,17 +42,17 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
               
       - name: Set up Ginkgo CLI
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@v2.19.1
+          go install github.com/onsi/ginkgo/v2/ginkgo@v2.23.4
       
       - name: Prepare necessary environment variables
         run: |
-          echo "CGO_ENABLED=1" >> $GITHUB_ENV
+          echo "CGO_ENABLED=1" >> "$GITHUB_ENV"
           KUBEBUILDER_ASSETS=$(make --silent kubebuilder-assets-path)
-          echo "KUBEBUILDER_ASSETS="$KUBEBUILDER_ASSETS"" >> $GITHUB_ENV
+          echo "KUBEBUILDER_ASSETS=$KUBEBUILDER_ASSETS" >> "$GITHUB_ENV"
 
       # Certain tests that require special setup (e.g., those that should be run with Ginkgo CLI only) will
       # be skipped in this step.
@@ -118,7 +118,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       
       - name: Install Ginkgo CLI
         run: |
