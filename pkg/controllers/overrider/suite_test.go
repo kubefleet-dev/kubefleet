@@ -97,7 +97,8 @@ var _ = BeforeSuite(func() {
 	Expect(err).Should(Succeed())
 	// we want to test this controller alone
 	commonReconciler = Reconciler{
-		Client: mgr.GetClient(),
+		Client:         mgr.GetClient(),
+		UncachedReader: mgr.GetAPIReader(),
 	}
 	// setup the clusterResourceReconciler
 	err = (&ClusterResourceReconciler{

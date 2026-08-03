@@ -23,9 +23,11 @@ import (
 	"strconv"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -42,7 +44,7 @@ type ClusterResourceReconciler struct {
 	Reconciler
 }
 
-// Reconcile triggers a single  reconcile round when scheduling policy has changed.
+// Reconcile triggers a single reconcile round when the override has changed.
 func (r *ClusterResourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	name := req.NamespacedName
 	clusterOverride := placementv1beta1.ClusterResourceOverride{}
@@ -99,29 +101,21 @@ func (r *ClusterResourceReconciler) ensureClusterResourceOverrideSnapshot(ctx co
 		return err
 	}
 
-	latestSnapshotIndex := -1 //so index start at 0
+	latestSnapshotIndex := -1 // index starts at 0
+	var latestSnapshot *placementv1beta1.ClusterResourceOverrideSnapshot
 	if len(snapshotList.Items) != 0 {
-		// convert the last unstructured snapshot to the typed object
-		latestSnapshot := &placementv1beta1.ClusterResourceOverrideSnapshot{}
+		latestSnapshot = &placementv1beta1.ClusterResourceOverrideSnapshot{}
 		if err = runtime.DefaultUnstructuredConverter.FromUnstructured(snapshotList.Items[len(snapshotList.Items)-1].Object, latestSnapshot); err != nil {
 			klog.ErrorS(err, "Invalid overrideSnapshot", "clusterResourceOverride", croKObj, "overrideSnapshot", klog.KObj(&snapshotList.Items[len(snapshotList.Items)-1]))
 			return controller.NewUnexpectedBehaviorError(err)
 		}
 		if string(latestSnapshot.Spec.OverrideHash) == overrideSpecHash {
-			// the content has not changed, so we don't need to create a new snapshot.
-			return r.ensureSnapshotLatest(ctx, latestSnapshot)
-		}
-		// mark the last policy snapshot as inactive if it is different from what we have now.
-		if latestSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] == strconv.FormatBool(true) {
-			// set the latest label to false first to make sure there is only one or none active policy snapshot
-			latestSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] = strconv.FormatBool(false)
-			if err := r.Client.Update(ctx, latestSnapshot); err != nil {
-				klog.ErrorS(err, "Failed to set the isLatestSnapshot label to false", "clusterResourceOverride", croKObj, "overrideSnapshot", klog.KObj(latestSnapshot))
-				return controller.NewUpdateIgnoreConflictError(err)
+			// Hash matches: re-mark this snapshot latest (idempotent) and audit siblings.
+			if err := r.ensureSnapshotLatest(ctx, latestSnapshot); err != nil {
+				return err
 			}
-			klog.V(2).InfoS("Marked the latest overrideSnapshot as inactive", "clusterResourceOverride", croKObj, "overrideSnapshot", klog.KObj(latestSnapshot))
+			return r.cleanupStaleLatestSiblings(ctx, snapshotList)
 		}
-		// we need to figure out the last snapshot index.
 		latestSnapshotIndex, err = labels.ExtractIndex(latestSnapshot, placementv1beta1.OverrideIndexLabel)
 		if err != nil {
 			klog.ErrorS(err, "Failed to parse the override index label", "clusterResourceOverride", croKObj, "overrideSnapshot", klog.KObj(latestSnapshot))
@@ -129,7 +123,8 @@ func (r *ClusterResourceReconciler) ensureClusterResourceOverrideSnapshot(ctx co
 		}
 	}
 
-	// Need to create new snapshot when 1) there is no snapshots or 2) the latest snapshot hash != current one.
+	// Create-then-demote: avoids a zero-latest window across crashes. Any transient duplicate
+	// is resolved by read-time dedup and the sibling audit on the next reconcile.
 	latestSnapshotIndex++
 	newSnapshot := &placementv1beta1.ClusterResourceOverrideSnapshot{
 		ObjectMeta: metav1.ObjectMeta{
@@ -149,15 +144,64 @@ func (r *ClusterResourceReconciler) ensureClusterResourceOverrideSnapshot(ctx co
 		},
 	}
 	if err := r.Client.Create(ctx, newSnapshot); err != nil {
-		klog.ErrorS(err, "Failed to create new overrideSnapshot", "newOverrideSnapshot", klog.KObj(newSnapshot))
-		return controller.NewAPIServerError(false, err)
+		if !errors.IsAlreadyExists(err) {
+			klog.ErrorS(err, "Failed to create new overrideSnapshot", "newOverrideSnapshot", klog.KObj(newSnapshot))
+			return controller.NewAPIServerError(false, err)
+		}
+		// AlreadyExists usually means a prior reconcile created this snapshot but didn't flip
+		// the old one. Verify content matches before proceeding; the realistic drift sources
+		// are manual edits or a hash-function change between controller versions. Use the
+		// uncached reader — the cache can lag the just-Created object.
+		existing := &placementv1beta1.ClusterResourceOverrideSnapshot{}
+		if getErr := r.UncachedReader.Get(ctx, types.NamespacedName{Name: newSnapshot.Name}, existing); getErr != nil {
+			klog.ErrorS(getErr, "Failed to get existing overrideSnapshot for hash verification", "clusterResourceOverride", croKObj, "newOverrideSnapshot", klog.KObj(newSnapshot))
+			return controller.NewAPIServerError(false, getErr)
+		}
+		// Compare stored OverrideHash, not a re-hash of existing.Spec.OverrideSpec: API-server
+		// defaulting on Create (selectionScope, scope, overrideType) makes the read-back spec
+		// differ from the input, so a recompute would never match.
+		if string(existing.Spec.OverrideHash) != overrideSpecHash {
+			mismatchErr := fmt.Errorf("existing overrideSnapshot %s has stored hash %q, want %q", newSnapshot.Name, string(existing.Spec.OverrideHash), overrideSpecHash)
+			klog.ErrorS(mismatchErr, "Existing overrideSnapshot has different content than the current spec; deleting it so the next reconcile can recreate with correct content", "clusterResourceOverride", croKObj)
+			// Event surfaces the recovery in `kubectl describe`.
+			r.recorder.Eventf(cro, corev1.EventTypeWarning, "OverrideSnapshotHashMismatch",
+				"existing snapshot %s has different content than the current spec; deleting it for the next reconcile to recreate. If this persists, investigate the snapshot for manual edits or a hash-function change between controller versions.", newSnapshot.Name)
+			// Drive observed → desired: delete the mismatched snapshot so the next reconcile
+			// recreates it with the correct content.
+			if delErr := r.Client.Delete(ctx, existing); delErr != nil && !errors.IsNotFound(delErr) {
+				klog.ErrorS(delErr, "Failed to delete mismatched overrideSnapshot", "clusterResourceOverride", croKObj, "overrideSnapshot", klog.KObj(existing))
+				return controller.NewAPIServerError(false, delErr)
+			}
+			return controller.NewExpectedBehaviorError(mismatchErr)
+		}
+		klog.V(2).InfoS("Snapshot already exists with matching content; recovering from prior partial reconcile", "clusterResourceOverride", croKObj, "newOverrideSnapshot", klog.KObj(newSnapshot))
+	} else {
+		klog.V(2).InfoS("Created new overrideSnapshot", "clusterResourceOverride", croKObj, "newOverrideSnapshot", klog.KObj(newSnapshot))
 	}
-	klog.V(2).InfoS("Created new overrideSnapshot", "clusterResourceOverride", croKObj, "newOverrideSnapshot", klog.KObj(newSnapshot))
-	return nil
+
+	// Demote the previous latest. IsNotFound is fine — there's nothing to demote, but we still
+	// want to run the sibling audit below.
+	if latestSnapshot != nil && latestSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] == strconv.FormatBool(true) {
+		latestSnapshot.Labels[placementv1beta1.IsLatestSnapshotLabel] = strconv.FormatBool(false)
+		if err := r.Client.Update(ctx, latestSnapshot); err != nil {
+			if errors.IsNotFound(err) {
+				klog.V(2).InfoS("Old overrideSnapshot already gone; skipping demotion", "clusterResourceOverride", croKObj, "overrideSnapshot", klog.KObj(latestSnapshot))
+			} else {
+				klog.ErrorS(err, "Failed to set the isLatestSnapshot label to false on previous snapshot", "clusterResourceOverride", croKObj, "overrideSnapshot", klog.KObj(latestSnapshot))
+				return controller.NewUpdateIgnoreConflictError(err)
+			}
+		} else {
+			klog.V(2).InfoS("Marked previous overrideSnapshot as inactive", "clusterResourceOverride", croKObj, "overrideSnapshot", klog.KObj(latestSnapshot))
+		}
+	}
+
+	// Audit older siblings; cleanupStaleLatestSiblings preserves the last (just-demoted) item.
+	return r.cleanupStaleLatestSiblings(ctx, snapshotList)
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ClusterResourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.recorder = mgr.GetEventRecorderFor("clusterresourceoverride-controller")
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("clusterresourceoverride-controller").
 		For(&placementv1beta1.ClusterResourceOverride{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
