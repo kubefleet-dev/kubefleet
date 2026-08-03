@@ -31,7 +31,7 @@ import (
 )
 
 func (r *Reconciler) extractManifestsFrom(ctx context.Context, snapshot *experimentalv1beta1.PlacementResourceSnapshot) ([]placementv1beta1.Manifest, error) {
-	snapshotRevision, found := snapshot.Annotations[experimentalv1beta1.ResourceSnapshotRevisionLabelKey]
+	snapshotRevision, found := snapshot.Labels[experimentalv1beta1.ResourceSnapshotRevisionLabelKey]
 	if !found {
 		// Do a sanity check.
 		return nil, errors.NewUnexpectedError(nil, "the placement resource snapshot does not have an annotated revision")

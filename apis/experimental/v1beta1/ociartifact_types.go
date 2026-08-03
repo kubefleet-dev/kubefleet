@@ -150,7 +150,11 @@ type OCIArtifactLayerSelector struct {
 	MediaType string `json:"mediaType,omitempty"`
 
 	// The (relative) path where the contents of the layer will be extracted.
-	// It must be a single-level directory or file name.
+	// It must be a single-level directory.
+	//
+	// If the directory contains a Kustomize file (`kustomization.yaml`, `kustomization.yml`, or `kustomization`), KubeFleet
+	// will run Kustomize to generate the manifests to place. Otherwise, KubeFleet will walk the directory and its children,
+	// collect all YAML files, and place them as they are.
 	//
 	// The default value is `app`.
 	//

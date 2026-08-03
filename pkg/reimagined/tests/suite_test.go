@@ -19,6 +19,8 @@ package tests
 import (
 	"context"
 	"flag"
+	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -27,6 +29,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -43,10 +46,14 @@ import (
 	experimentalv1beta1 "github.com/kubefleet-dev/kubefleet/apis/experimental/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/deploymentwatcher"
+	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/ociartifactcachedlocalfsstore"
+	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/orasmanifests"
+	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/orasmanifestswatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementbinding"
 	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementmigrationrequest"
 	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementpolicy"
 	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementresourcesnapshot"
+	localregistry "github.com/kubefleet-dev/kubefleet/test/oci"
 )
 
 var (
@@ -57,6 +64,8 @@ var (
 
 	snapshotMgr *placementresourcesnapshot.Manager
 
+	ociOutputDir string
+
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -64,13 +73,21 @@ var (
 
 const (
 	workNSName = "work"
+
+	clusterName1 = "cluster-1"
+	clusterName2 = "cluster-2"
 )
 
-func setupNamespaces() {
+const (
+	fleetMemberClusterReservedNSNameFmt = "fleet-member-%s"
+)
+
+func setupResources() {
+	// Create namespaces used by Work objects and tests.
 	for _, name := range []string{
 		workNSName,
-		"fleet-member-cluster-1",
-		"fleet-member-cluster-2",
+		fmt.Sprintf(fleetMemberClusterReservedNSNameFmt, clusterName1),
+		fmt.Sprintf(fleetMemberClusterReservedNSNameFmt, clusterName2),
 	} {
 		ns := &corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{
@@ -78,6 +95,31 @@ func setupNamespaces() {
 			},
 		}
 		Expect(hubClient.Create(ctx, ns)).To(Succeed())
+	}
+
+	// Pre-create member clusters used by this suite.
+	for _, cluster := range []struct {
+		name   string
+		region string
+	}{
+		{name: clusterName1, region: "eastus"},
+		{name: clusterName2, region: "centralus"},
+	} {
+		mc := &clusterv1beta1.MemberCluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: cluster.name,
+				Labels: map[string]string{
+					"topology.kubernetes.io/region": cluster.region,
+				},
+			},
+			Spec: clusterv1beta1.MemberClusterSpec{
+				Identity: rbacv1.Subject{
+					Kind: rbacv1.ServiceAccountKind,
+					Name: "hub-access",
+				},
+			},
+		}
+		Expect(hubClient.Create(ctx, mc)).To(Succeed())
 	}
 }
 
@@ -97,6 +139,9 @@ var _ = BeforeSuite(func() {
 	logger := zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true))
 	klog.SetLogger(logger)
 	ctrl.SetLogger(logger)
+
+	By("Bootstrapping the local OCI registry")
+	Expect(localregistry.BootstrapLocalRegistry()).To(Succeed())
 
 	By("Bootstrapping the test environment")
 	hubEnv = &envtest.Environment{
@@ -128,7 +173,7 @@ var _ = BeforeSuite(func() {
 	Expect(dynamicClient).ToNot(BeNil())
 
 	By("Setting up test namespaces")
-	setupNamespaces()
+	setupResources()
 
 	By("Setting up the controller manager")
 	hubMgr, err = ctrl.NewManager(cfg, ctrl.Options{
@@ -155,10 +200,27 @@ var _ = BeforeSuite(func() {
 	Expect(placementReconciler.SetupWithManager(hubMgr)).To(Succeed())
 
 	By("Wiring up the placement binding controller")
+	ociOutputDir, err = os.MkdirTemp("", "reimagined-tests-oci-store-*")
+	Expect(err).ToNot(HaveOccurred())
 	bindingReconciler := &placementbinding.Reconciler{
-		HubClient: hubMgr.GetClient(),
+		HubClient:                     hubMgr.GetClient(),
+		OCIArtifactCachedStoreManager: ociartifactcachedlocalfsstore.NewManager(ociOutputDir),
+		UseHTTPToConnectToOCIRegistry: true,
 	}
 	Expect(bindingReconciler.SetupWithManager(hubMgr)).To(Succeed())
+
+	By("Wiring up the ORAS manifests controller")
+	orasManifestsReconciler := &orasmanifests.Reconciler{
+		HubClient:                     hubMgr.GetClient(),
+		UseHTTPToConnectToOCIRegistry: true,
+	}
+	Expect(orasManifestsReconciler.SetupWithManager(hubMgr)).To(Succeed())
+
+	By("Wiring up the ORAS manifests watcher controller")
+	orasManifestsWatcherReconciler := &orasmanifestswatcher.Reconciler{
+		HubClient: hubMgr.GetClient(),
+	}
+	Expect(orasManifestsWatcherReconciler.SetupWithManager(hubMgr)).To(Succeed())
 
 	By("Wiring up the placement migration request controller")
 	migrationReconciler := &placementmigrationrequest.Reconciler{
@@ -196,4 +258,10 @@ var _ = AfterSuite(func() {
 	wg.Wait()
 	By("Tearing down the test environment")
 	Expect(hubEnv.Stop()).To(Succeed())
+
+	By("Cleaning up the OCI artifact cached store work directory")
+	Expect(os.RemoveAll(ociOutputDir)).To(Succeed())
+
+	By("Tearing down the local OCI registry")
+	Expect(localregistry.TearDownLocalRegistry()).To(Succeed())
 })

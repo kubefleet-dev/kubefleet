@@ -32,7 +32,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
+            readOnlyRootFilesystem: false
             capabilities:
               drop:
                 - ALL
@@ -103,6 +103,8 @@ spec:
             # This path must match FleetWebhookCertDir in pkg/webhook/webhook.go
             mountPath: /tmp/k8s-webhook-server/serving-certs
             readOnly: true
+          - name: output
+            mountPath: /tmp/output
           {{- if .Values.additionalConfigData }}
           - name: additional-config
             mountPath: {{ .Values.additionalConfigDataMountPath }}
@@ -116,6 +118,8 @@ spec:
             # the read only root filesystem setup would block the agent from attempting to
             # clear the directory.
             mountPath: /tmp/k8s-webhook-server/
+          - name: output
+            mountPath: /tmp/output
           {{- if .Values.additionalConfigData }}
           - name: additional-config
             mountPath: {{ .Values.additionalConfigDataMountPath }}
@@ -133,6 +137,8 @@ spec:
         {{- else }}
         emptyDir: {}
         {{- end }}
+      - name: output
+        emptyDir: {}
       {{- if .Values.additionalConfigData }}
       - name: additional-config
         configMap:

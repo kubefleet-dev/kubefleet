@@ -1,0 +1,30 @@
+apiVersion: experimental.kubefleet.dev/v1beta1
+kind: ORASManifests
+metadata:
+  name: k2
+  namespace: work
+spec:
+  # The OCI artifact that contains the Kubernetes manifests.
+  ociArtifactRef:
+    # The URL of the OCI artifact, in the format [REGISTRY]/[REPOSITORY]/[ARTIFACT].
+    url: kubefleetocidemo.azurecr.io/testdata/kustomize
+    # The version reference of the OCI artifact.
+    # Only one of tag, semVer, or digest may be set.
+    ref:
+      tag: latest
+    # The authentication provider to use when connecting to the OCI registry.
+    authProvider:
+      # Options: None, Generic, Azure.
+      authProviderType: Generic
+      # Required when authProviderType is Generic; references an image pull secret.
+      secretRef:
+        apiVersion: v1
+        kind: Secret
+        namespace: work
+        name: acr-access
+    # Controls how often KubeFleet checks for updates and how long it waits for the registry.
+    retrievalPolicy:
+      intervalSeconds: 1800
+      timeoutSeconds: 60
+  # The path to a file or directory within the extracted OCI artifact that contains the manifests.
+  path: "./overlays/team-blue"

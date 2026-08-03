@@ -47,6 +47,9 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/updaterun"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workgenerator"
 	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/deploymentwatcher"
+	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/ociartifactcachedlocalfsstore"
+	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/orasmanifests"
+	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/orasmanifestswatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementbinding"
 	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementmigrationrequest"
 	"github.com/kubefleet-dev/kubefleet/pkg/reimagined/placementpolicy"
@@ -573,8 +576,10 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		return err
 	}
 
+	ociArtifactManager := ociartifactcachedlocalfsstore.NewManager("/tmp/output")
 	bindingReconciler := &placementbinding.Reconciler{
-		HubClient: mgr.GetClient(),
+		HubClient:                     mgr.GetClient(),
+		OCIArtifactCachedStoreManager: ociArtifactManager,
 	}
 	if err := bindingReconciler.SetupWithManager(mgr); err != nil {
 		klog.ErrorS(err, "Failed to setup placement binding reconciler")
@@ -595,6 +600,22 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	}
 	if err := deploymentWatcherReconciler.SetupWithManager(mgr); err != nil {
 		klog.ErrorS(err, "Failed to setup deployment watcher reconciler")
+		return err
+	}
+
+	orasManifestsWatcherReconciler := &orasmanifestswatcher.Reconciler{
+		HubClient: mgr.GetClient(),
+	}
+	if err := orasManifestsWatcherReconciler.SetupWithManager(mgr); err != nil {
+		klog.ErrorS(err, "Failed to setup ORAS manifests watcher reconciler")
+		return err
+	}
+
+	orasManifestsReconciler := &orasmanifests.Reconciler{
+		HubClient: mgr.GetClient(),
+	}
+	if err := orasManifestsReconciler.SetupWithManager(mgr); err != nil {
+		klog.ErrorS(err, "Failed to setup ORAS manifests reconciler")
 		return err
 	}
 

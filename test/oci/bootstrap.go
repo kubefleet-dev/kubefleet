@@ -32,6 +32,9 @@ const (
 
 	RawManifestsArtifactURL = "localhost:9000/testdata/manifests"
 	RawManifestsArtifactTag = "latest"
+
+	KustomizeArtifactURL = "localhost:9000/testdata/kustomize"
+	KustomizeArtifactTag = "latest"
 )
 
 func BootstrapLocalRegistry() error {

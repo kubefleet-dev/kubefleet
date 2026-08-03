@@ -13,8 +13,10 @@ AUTH_DIR="${SCRIPT_DIR}/auth"
 HTPASSWD_FILE="${AUTH_DIR}/htpasswd"
 OUTPUT_DIR="${SCRIPT_DIR}/output/."
 RAW_MANIFESTS_DIR="${SCRIPT_DIR}/testdata/raw"
+KUSTOMIZE_DIR="${SCRIPT_DIR}/testdata/kustomize"
 REGISTRY_HOST="localhost:${PORT}"
-ORAS_REF="${REGISTRY_HOST}/testdata/manifests:latest"
+RAW_ORAS_REF="${REGISTRY_HOST}/testdata/manifests:latest"
+KUSTOMIZE_ORAS_REF="${REGISTRY_HOST}/testdata/kustomize:latest"
 ORAS_ARTIFACT_TYPE="kubernetes/objects"
 
 mkdir -p "${AUTH_DIR}"
@@ -68,12 +70,22 @@ oras login "${REGISTRY_HOST}" \
 pushd "${RAW_MANIFESTS_DIR}" >/dev/null
 oras push --plain-http \
 	--artifact-type "${ORAS_ARTIFACT_TYPE}" \
-	"${ORAS_REF}" \
+	"${RAW_ORAS_REF}" \
 	"${ARTIFACT_PATHS[@]}"
+popd >/dev/null
+
+pushd "${KUSTOMIZE_DIR}" >/dev/null
+oras push --plain-http \
+	--artifact-type "${ORAS_ARTIFACT_TYPE}" \
+	"${KUSTOMIZE_ORAS_REF}" \
+	"base" \
+	"overlays" \
+	"README.md"
 popd >/dev/null
 
 echo "Local registry is running at http://localhost:${PORT}"
 echo "Username: ${USERNAME}"
 echo "Password: ${PASSWORD}"
-echo "Pushed OCI artifact: ${ORAS_REF}"
+echo "Pushed OCI artifact: ${RAW_ORAS_REF}"
+echo "Pushed OCI artifact: ${KUSTOMIZE_ORAS_REF}"
 

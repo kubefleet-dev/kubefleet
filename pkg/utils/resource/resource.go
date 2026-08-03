@@ -47,11 +47,6 @@ func HashOfBytes(input []byte) string {
 	return fmt.Sprintf("%x", sha256.Sum256(trimmed))
 }
 
-func HashOfBytes(input []byte) string {
-	trimmed := bytes.TrimRight(input, "\n\r")
-	return fmt.Sprintf("%x", sha256.Sum256(trimmed))
-}
-
 // CalculateSizeDeltaOverLimitFor calculates the size delta in bytes of a given object
 // over a specified size limit. It returns a positive value if the object size exceeds
 // the limit or a negative value if the object size is below the limit.

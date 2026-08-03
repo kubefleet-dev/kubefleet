@@ -123,7 +123,7 @@ var _ = Describe("binding operations", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      snapshotName,
 					Namespace: workNSName,
-					Annotations: map[string]string{
+					Labels: map[string]string{
 						experimentalv1beta1.ResourceSnapshotRevisionLabelKey: "1",
 					},
 				},
@@ -435,7 +435,7 @@ var _ = Describe("binding operations", func() {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      snapshotName,
 					Namespace: workNSName,
-					Annotations: map[string]string{
+					Labels: map[string]string{
 						experimentalv1beta1.ResourceSnapshotRevisionLabelKey: "1",
 					},
 				},
