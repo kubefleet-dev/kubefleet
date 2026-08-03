@@ -269,7 +269,7 @@ type SyncStrategy struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Enum=ClientSideApply;ServerSideApply
 	// +kubebuilder:default=ClientSideApply
-	ApplyMethod ApplyMethod `json:"applyMethod"`
+	ApplyMethod ApplyMethod `json:"applyMethod,omitempty"`
 
 	// The options for running server-side apply ops. This field takes effect only if the apply method is
 	// set to ServerSideApply.

@@ -26,7 +26,7 @@ const (
 
 // ClusterRequest is a KubeFleet API that represents a request for a member cluster to be provisioned.
 // It is created by KubeFleet when it fails to find a member cluster that can fulfill some scheduling
-// requirements as specified in a PlacementPolicy or ClusterPlacementPolicy object,
+// requirements as specified in a PlacementPolicy or ClusterPlacementPolicy object.
 //
 // +genclient
 // +kubebuilder:object:root=true
