@@ -29,7 +29,7 @@ type ObjectReference struct {
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 
-	// The API group, version, kind, and resource of the referenced object.
+	// The API group, version, and kind of the referenced object.
 
 	// +kubebuilder:validation:Optional
 	APIGroup string `json:"apiGroup,omitempty"`
