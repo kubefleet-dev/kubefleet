@@ -53,7 +53,6 @@ const (
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,categories={kubefleet, kubefleet-placement}
 // +kubebuilder:storageversion
-// +kubebuilder:validation:XValidation:rule="!has(self.spec.resourceSelectors) || self.spec.resourceSelectors.all(s, size(s.namespace) == 0 || s.namespace == self.metadata.namespace)",message="PlacementPolicy is namespace-scoped and it may only select resources within the same namespace as the PlacementPolicy itself; leave the namespace field empty or set it to the PlacementPolicy namespace in the resource selectors"
 type PlacementPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -66,6 +65,9 @@ type PlacementPolicy struct {
 	// +kubebuilder:validation:Optional
 	Status PlacementPolicyStatus `json:"status,omitempty"`
 }
+
+// Note (chenyu1): some validations are moved as VAPs, as they involve information that is only available at runtime (e.g.,
+// the namespace of the current object).
 
 // ClusterPlacementPolicy is the KubeFleet API that enables users to place namespaced and cluster-scoped resources across
 // member clusters.
@@ -98,7 +100,7 @@ type PlacementPolicySpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=20
+	// +kubebuilder:validation:MaxItems=10
 	ClusterSelectors []ClusterSelector `json:"clusterSelectors,omitempty"`
 
 	// A list of resource selectors that specifies the resources that KubeFleet should place across
@@ -106,7 +108,7 @@ type PlacementPolicySpec struct {
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=20
+	// +kubebuilder:validation:MaxItems=10
 	// +kubebuilder:validation:XValidation:rule="self.all(x, !(has(x.name) && size(x.name) > 0 && has(x.labelSelector)))",message="name and labelSelector are mutually exclusive in a resource selector"
 	ResourceSelectors []ResourceSelector `json:"resourceSelectors,omitempty"`
 
@@ -141,12 +143,13 @@ type PlacementPolicySpec struct {
 	// clusters.
 	//
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=10
 	// +kubebuilder:validation:XValidation:rule="self.all(t, t.key != '' || (t.operator == 'Exists' && t.value == ''))",message="operator must be Exists and value must be empty when key is empty"
 	// +kubebuilder:validation:XValidation:rule="self.all(t, t.operator != 'Exists' || t.value == '')",message="value must be empty when operator is Exists"
 	Tolerations []Toleration `json:"tolerations,omitempty"`
 }
 
-// +kubebuilder:validation:XValidation:rule="!has(self.minCount) || !has(self.count) || (type(self.count) == string && self.count == 'All') || (type(self.count) == int && self.minCount <= self.count) || (type(self.count) == string && self.count.matches('^[1-9][0-9]{0,2}$') && self.minCount <= int(self.count))",message="minCount must be less than or equal to count when count is not All"
+// +kubebuilder:validation:XValidation:rule="!has(self.minCount) || !has(self.count) || (type(self.count) == string && self.count == 'All') || (type(self.count) == int && self.minCount <= self.count) || (type(self.count) == string && self.count.matches('^[0-9]+$') && self.minCount <= int(self.count))",message="minCount must be less than or equal to count when count is not All"
 type ClusterSelector struct {
 	// A list of terms that form the selector. The terms are ORed, i.e., a cluster would match the selector
 	// if it matches any of the terms.

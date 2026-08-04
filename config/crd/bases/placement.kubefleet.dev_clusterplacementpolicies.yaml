@@ -234,9 +234,9 @@ spec:
                     rule: '!has(self.minCount) || !has(self.count) || (type(self.count)
                       == string && self.count == ''All'') || (type(self.count) ==
                       int && self.minCount <= self.count) || (type(self.count) ==
-                      string && self.count.matches(''^[1-9][0-9]{0,2}$'') && self.minCount
+                      string && self.count.matches(''^[0-9]+$'') && self.minCount
                       <= int(self.count))'
-                maxItems: 20
+                maxItems: 10
                 minItems: 1
                 type: array
               resourceRevisionHistoryLimit:
@@ -342,7 +342,7 @@ spec:
                   - apiVersion
                   - kind
                   type: object
-                maxItems: 20
+                maxItems: 10
                 minItems: 1
                 type: array
                 x-kubernetes-validations:
@@ -525,6 +525,7 @@ spec:
                         If the Operator field is set to Exists, this field must be left empty.
                       type: string
                   type: object
+                maxItems: 10
                 type: array
                 x-kubernetes-validations:
                 - message: operator must be Exists and value must be empty when key
