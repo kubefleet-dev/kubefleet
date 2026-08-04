@@ -283,9 +283,9 @@ spec:
               lastObservedMostRecentClusterCreationTimestamp:
                 description: |-
                   The last observed most recent creation timestamp across all the member clusters. This field is used
-                  as a expedient solution to verify if a cluster request is still valid for consideration, i.e.,
+                  as an expedient solution to verify if a cluster request is still valid for consideration, i.e.,
                   if the currently observed most recent cluster creation timestamp is later than this timestamp in the
-                  the status, a new member cluster must have been created after the cluster request was created,
+                  status, a new member cluster must have been created after the cluster request was created,
                   and thus the cluster request should be considered stale and can be ignored.
                 format: date-time
                 type: string
