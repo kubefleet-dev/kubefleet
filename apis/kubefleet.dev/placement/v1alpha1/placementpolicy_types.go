@@ -107,6 +107,7 @@ type PlacementPolicySpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=20
+	// +kubebuilder:validation:XValidation:rule="self.all(x, !(has(x.name) && size(x.name) > 0 && has(x.labelSelector)))",message="name and labelSelector are mutually exclusive in a resource selector"
 	ResourceSelectors []ResourceSelector `json:"resourceSelectors,omitempty"`
 
 	// The resource revision history limit for this placement policy.

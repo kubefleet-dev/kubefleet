@@ -38,7 +38,7 @@ type ClusterRequest struct {
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// The specification of the cluster request.
-	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Required
 	Spec ClusterRequestSpec `json:"spec,omitempty"`
 
 	// The observed status of the cluster request.

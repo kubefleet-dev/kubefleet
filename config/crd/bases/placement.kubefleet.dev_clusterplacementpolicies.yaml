@@ -345,6 +345,10 @@ spec:
                 maxItems: 20
                 minItems: 1
                 type: array
+                x-kubernetes-validations:
+                - message: name and labelSelector are mutually exclusive in a resource
+                    selector
+                  rule: self.all(x, !(has(x.name) && size(x.name) > 0 && has(x.labelSelector)))
               syncStrategy:
                 description: |-
                   The strategy that KubeFleet uses to synchronize the selected resources to the target clusters.
