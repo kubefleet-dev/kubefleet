@@ -242,8 +242,8 @@ func (in *ClusterRequestStatus) DeepCopyInto(out *ClusterRequestStatus) {
 		*out = new(string)
 		**out = **in
 	}
-	if in.LatestObservedClusterCreationTimestamp != nil {
-		in, out := &in.LatestObservedClusterCreationTimestamp, &out.LatestObservedClusterCreationTimestamp
+	if in.LastObservedMostRecentClusterCreationTimestamp != nil {
+		in, out := &in.LastObservedMostRecentClusterCreationTimestamp, &out.LastObservedMostRecentClusterCreationTimestamp
 		*out = (*in).DeepCopy()
 	}
 }

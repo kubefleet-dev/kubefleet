@@ -75,13 +75,13 @@ type ClusterRequestStatus struct {
 	// +kubebuilder:validation:Optional
 	ProvisionedClusterName *string `json:"provisionedClusterName,omitempty"`
 
-	// The latest observed creation timestamp across all the member clusters. This field is used
+	// The last observed most recent creation timestamp across all the member clusters. This field is used
 	// as a expedient solution to verify if a cluster request is still valid for consideration, i.e.,
-	// if the current latest observed cluster creation timestamp is later than this timestamp in the
+	// if the currently observed most recent cluster creation timestamp is later than this timestamp in the
 	// the status, a new member cluster must have been created after the cluster request was created,
 	// and thus the cluster request should be considered stale and can be ignored.
 	// +kubebuilder:validation:Optional
-	LatestObservedClusterCreationTimestamp *metav1.Time `json:"latestObservedClusterCreationTimestamp,omitempty"`
+	LastObservedMostRecentClusterCreationTimestamp *metav1.Time `json:"lastObservedMostRecentClusterCreationTimestamp,omitempty"`
 }
 
 // ClusterRequestList contains a list of ClusterRequest.
