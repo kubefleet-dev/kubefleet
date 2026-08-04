@@ -23,7 +23,7 @@ spec:
         description: |-
           ClusterRequest is a KubeFleet API that represents a request for a member cluster to be provisioned.
           It is created by KubeFleet when it fails to find a member cluster that can fulfill some scheduling
-          requirements as specified in a PlacementPolicy or ClusterPlacementPolicy object,
+          requirements as specified in a PlacementPolicy or ClusterPlacementPolicy object.
         properties:
           apiVersion:
             description: |-
@@ -113,7 +113,7 @@ spec:
                             || self.operator == ''Ge'' || self.operator == ''Le''
                             || self.operator == ''Eq'' || self.operator == ''Ne'')
                             ? (has(self.values) && size(self.values) == 1) : true'
-                      maxItems: 5
+                      maxItems: 10
                       type: array
                     matchLabelExpressions:
                       description: A list of label expressions that a cluster must
@@ -174,20 +174,51 @@ spec:
                             || self.operator == ''Ge'' || self.operator == ''Le''
                             || self.operator == ''Eq'' || self.operator == ''Ne'')
                             ? (has(self.values) && size(self.values) == 1) : true'
-                      maxItems: 5
+                      maxItems: 10
                       type: array
                     matchLabels:
                       additionalProperties:
                         type: string
                       description: A list of label key-value pairs that a cluster
                         must have to match this selector term.
-                      maxProperties: 5
+                      maxProperties: 10
                       type: object
                   type: object
                 type: array
                 x-kubernetes-validations:
                 - message: the clusterSelectorTerms field is immutable
                   rule: self == oldSelf
+              placementPolicyRef:
+                description: |-
+                  The reference to the placement policy that submits the cluster request.
+
+                  This field is immutable after creation.
+                properties:
+                  apiGroup:
+                    type: string
+                  apiVersion:
+                    type: string
+                  kind:
+                    type: string
+                  name:
+                    description: The name of the referenced object.
+                    type: string
+                  namespace:
+                    description: |-
+                      The namespace of the referenced object.
+
+                      If the object is cluster-scoped, this field should be left empty.
+                    type: string
+                required:
+                - apiVersion
+                - kind
+                - name
+                type: object
+                x-kubernetes-validations:
+                - message: the placementPolicyRef field is immutable
+                  rule: self == oldSelf
+            required:
+            - placementPolicyRef
             type: object
           status:
             description: The observed status of the cluster request.

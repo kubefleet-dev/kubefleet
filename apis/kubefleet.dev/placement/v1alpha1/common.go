@@ -18,9 +18,14 @@ package v1alpha1
 
 type ObjectReference struct {
 	// The namespace of the referenced object.
+	//
+	// If the object is cluster-scoped, this field should be left empty.
+	//
+	// +kubebuilder:validation:Optional
 	Namespace string `json:"namespace"`
 
 	// The name of the referenced object.
+	//
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 

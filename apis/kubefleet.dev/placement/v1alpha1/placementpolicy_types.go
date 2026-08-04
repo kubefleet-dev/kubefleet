@@ -32,11 +32,11 @@ const (
 
 // The reasons for each condition type of PlacementPolicy and ClusterPlacementPolicy API objects.
 const (
-	PlacementPolicyResourceCollectedCondReasonResourceCollected            = "AllResourceCollected"
+	PlacementPolicyResourceCollectedCondReasonAllResourcesCollected        = "AllResourcesCollected"
 	PlacementPolicyResourceCollectedCondReasonFailedToCollectSomeResources = "FailedToCollectSomeResources"
 
-	PlacementPolicyScheduledCondReasonFoundAllClusters             = "FoundAllRequiredClusters"
-	PlacementPolicyScheduledCondReasonFailedToScheduleSomeClusters = "FailedToFindSomeRequiredClusters"
+	PlacementPolicyScheduledCondReasonFoundAllClusters         = "FoundAllRequiredClusters"
+	PlacementPolicyScheduledCondReasonFailedToFindSomeClusters = "FailedToFindSomeRequiredClusters"
 
 	PlacementPolicySynchronizedCondReasonAllClustersSynchronized         = "AllClustersSynchronized"
 	PlacementPolicySynchronizedCondReasonFailedToSynchronizeSomeClusters = "FailedToSynchronizeSomeClusters"
@@ -98,7 +98,7 @@ type PlacementPolicySpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=5
+	// +kubebuilder:validation:MaxItems=20
 	ClusterSelectors []ClusterSelector `json:"clusterSelectors,omitempty"`
 
 	// A list of resource selectors that specifies the resources that KubeFleet should place across
@@ -107,7 +107,7 @@ type PlacementPolicySpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=20
-	ResourceSelectors []ObjectReference `json:"resourceSelectors,omitempty"`
+	ResourceSelectors []ResourceSelector `json:"resourceSelectors,omitempty"`
 
 	// The resource revision history limit for this placement policy.
 	//
@@ -140,6 +140,8 @@ type PlacementPolicySpec struct {
 	// clusters.
 	//
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:XValidation:rule="self.all(t, t.key != '' || (t.operator == 'Exists' && t.value == ''))",message="operator must be Exists and value must be empty when key is empty"
+	// +kubebuilder:validation:XValidation:rule="self.all(t, t.operator != 'Exists' || t.value == '')",message="value must be empty when operator is Exists"
 	Tolerations []Toleration `json:"tolerations,omitempty"`
 }
 
@@ -152,7 +154,7 @@ type ClusterSelector struct {
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=5
-	Terms []LabelAndClusterPropertySelectorTerm `json:"terms,omitempty"`
+	Terms []ClusterLabelAndPropertySelectorTerm `json:"terms,omitempty"`
 
 	// The desired number of clusters that KubeFleet should select based on the given terms.
 	//
@@ -175,16 +177,16 @@ type ClusterSelector struct {
 	// +kubebuilder:validation:Maximum=999
 	MinCount *int32 `json:"minCount,omitempty"`
 
-	// Whether to submit a cluster request if the cluster selector cannot be fulfilled.
+	// Whether to submit a cluster request when the cluster selector cannot be fulfilled.
 	//
 	// The default value is true. Note that this field takes effect if and only if cluster requests are enabled in KubeFleet.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=true
-	RequestClusterIfUnfulfilled *bool `json:"requestClusterIfUnfulfilled,omitempty"`
+	RequestCluster *bool `json:"requestCluster,omitempty"`
 }
 
-type LabelAndClusterPropertySelectorTerm struct {
+type ClusterLabelAndPropertySelectorTerm struct {
 	// One can mix and match `MatchLabels`, `MatchLabelExpressions`, and `MatchClusterPropertyExpressions`
 	// in a selector term as needed. The requirements/constraints will be ANDed.
 	//
@@ -193,19 +195,19 @@ type LabelAndClusterPropertySelectorTerm struct {
 	// A list of label key-value pairs that a cluster must have to match this selector term.
 	//
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:MaxProperties=5
+	// +kubebuilder:validation:MaxProperties=10
 	MatchLabels map[string]string `json:"matchLabels,omitempty"`
 
 	// A list of label expressions that a cluster must all satisfy to match this selector term.
 	//
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:MaxItems=5
+	// +kubebuilder:validation:MaxItems=10
 	MatchLabelExpressions []LabelClusterPropertyExpression `json:"matchLabelExpressions,omitempty"`
 
 	// A list of cluster property expressions that a cluster must all satisfy to match this selector term.
 	//
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:MaxItems=5
+	// +kubebuilder:validation:MaxItems=10
 	MatchClusterPropertyExpressions []LabelClusterPropertyExpression `json:"matchClusterPropertyExpressions,omitempty"`
 }
 
@@ -254,6 +256,50 @@ const (
 	LabelClusterPropertyExpressionOperatorEq LabelClusterPropertyExpressionOperator = "Eq"
 	LabelClusterPropertyExpressionOperatorNe LabelClusterPropertyExpressionOperator = "Ne"
 )
+
+type ResourceSelector struct {
+	// The API group, version, and kind of the resource(s) to select.
+	//
+	// For resources in the core API group, set the APIGroup field to an empty string (""), in consistency
+	// with common Kubernetes practices.
+
+	// +kubebuilder:validation:Optional
+	APIGroup string `json:"apiGroup,omitempty"`
+
+	// +kubebuilder:validation:Required
+	APIVersion string `json:"apiVersion,omitempty"`
+
+	// +kubebuilder:validation:Required
+	Kind string `json:"kind,omitempty"`
+
+	// The name of the resource to select.
+	//
+	// Alternatively, one can use the LabelSelector field to select multiple resources by their labels.
+	//
+	// This field is mutually exclusive with the LabelSelector field.
+	//
+	// +kubebuilder:validation:Optional
+	Name string `json:"name"`
+
+	// The label selector that selects multiple resources for placement.
+	//
+	// Alternatively, one can use the Name field to select a single resource by its name.
+	//
+	// This field is mutually exclusive with the Name field.
+	//
+	// +kubebuilder:validation:Optional
+	LabelSelector *metav1.LabelSelector `json:"labelSelector,omitempty"`
+
+	// The namespace of the resource to select.
+	//
+	// This field applies only when selecting namespaced resources using the ClusterPlacementPolicy API.
+	//
+	// For usage with the PlacementPolicy API, this field must be set empty or use the same value of the PlacementPolicy's
+	// namespace itself.
+	//
+	// +kubebuilder:validation:Optional
+	Namespace string `json:"namespace,omitempty"`
+}
 
 type SyncStrategy struct {
 	// The method KubeFleet uses to apply resources to target clusters.

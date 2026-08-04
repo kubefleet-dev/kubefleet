@@ -47,6 +47,14 @@ type ClusterRequest struct {
 }
 
 type ClusterRequestSpec struct {
+	// The reference to the placement policy that submits the cluster request.
+	//
+	// This field is immutable after creation.
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="the placementPolicyRef field is immutable"
+	PlacementPolicyRef *ObjectReference `json:"placementPolicyRef"`
+
 	// The cluster selector terms that describe the requirements for a new member cluster.
 	//
 	// If not specified, any member cluster can satisfy the request.
@@ -55,7 +63,7 @@ type ClusterRequestSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="the clusterSelectorTerms field is immutable"
-	ClusterSelectorTerms []LabelAndClusterPropertySelectorTerm `json:"clusterSelectorTerms,omitempty"`
+	ClusterSelectorTerms []ClusterLabelAndPropertySelectorTerm `json:"clusterSelectorTerms,omitempty"`
 }
 
 type ClusterRequestStatus struct {

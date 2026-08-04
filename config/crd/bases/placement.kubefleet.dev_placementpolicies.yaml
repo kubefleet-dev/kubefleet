@@ -76,10 +76,10 @@ spec:
                       maximum: 999
                       minimum: 0
                       type: integer
-                    requestClusterIfUnfulfilled:
+                    requestCluster:
                       default: true
                       description: |-
-                        Whether to submit a cluster request if the cluster selector cannot be fulfilled.
+                        Whether to submit a cluster request when the cluster selector cannot be fulfilled.
 
                         The default value is true. Note that this field takes effect if and only if cluster requests are enabled in KubeFleet.
                       type: boolean
@@ -152,7 +152,7 @@ spec:
                                   == ''Le'' || self.operator == ''Eq'' || self.operator
                                   == ''Ne'') ? (has(self.values) && size(self.values)
                                   == 1) : true'
-                            maxItems: 5
+                            maxItems: 10
                             type: array
                           matchLabelExpressions:
                             description: A list of label expressions that a cluster
@@ -215,14 +215,14 @@ spec:
                                   == ''Le'' || self.operator == ''Eq'' || self.operator
                                   == ''Ne'') ? (has(self.values) && size(self.values)
                                   == 1) : true'
-                            maxItems: 5
+                            maxItems: 10
                             type: array
                           matchLabels:
                             additionalProperties:
                               type: string
                             description: A list of label key-value pairs that a cluster
                               must have to match this selector term.
-                            maxProperties: 5
+                            maxProperties: 10
                             type: object
                         type: object
                       maxItems: 5
@@ -236,7 +236,7 @@ spec:
                       int && self.minCount <= self.count) || (type(self.count) ==
                       string && self.count.matches(''^[1-9][0-9]{0,2}$'') && self.minCount
                       <= int(self.count))'
-                maxItems: 5
+                maxItems: 20
                 minItems: 1
                 type: array
               resourceRevisionHistoryLimit:
@@ -270,17 +270,77 @@ spec:
                       type: string
                     kind:
                       type: string
+                    labelSelector:
+                      description: |-
+                        The label selector that selects multiple resources for placement.
+
+                        Alternatively, one can use the Name field to select a single resource by its name.
+
+                        This field is mutually exclusive with the Name field.
+                      properties:
+                        matchExpressions:
+                          description: matchExpressions is a list of label selector
+                            requirements. The requirements are ANDed.
+                          items:
+                            description: |-
+                              A label selector requirement is a selector that contains values, a key, and an operator that
+                              relates the key and values.
+                            properties:
+                              key:
+                                description: key is the label key that the selector
+                                  applies to.
+                                type: string
+                              operator:
+                                description: |-
+                                  operator represents a key's relationship to a set of values.
+                                  Valid operators are In, NotIn, Exists and DoesNotExist.
+                                type: string
+                              values:
+                                description: |-
+                                  values is an array of string values. If the operator is In or NotIn,
+                                  the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                  the values array must be empty. This array is replaced during a strategic
+                                  merge patch.
+                                items:
+                                  type: string
+                                type: array
+                                x-kubernetes-list-type: atomic
+                            required:
+                            - key
+                            - operator
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        matchLabels:
+                          additionalProperties:
+                            type: string
+                          description: |-
+                            matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                            map is equivalent to an element of matchExpressions, whose key field is "key", the
+                            operator is "In", and the values array contains only "value". The requirements are ANDed.
+                          type: object
+                      type: object
+                      x-kubernetes-map-type: atomic
                     name:
-                      description: The name of the referenced object.
+                      description: |-
+                        The name of the resource to select.
+
+                        Alternatively, one can use the LabelSelector field to select multiple resources by their labels.
+
+                        This field is mutually exclusive with the LabelSelector field.
                       type: string
                     namespace:
-                      description: The namespace of the referenced object.
+                      description: |-
+                        The namespace of the resource to select.
+
+                        This field applies only when selecting namespaced resources using the ClusterPlacementPolicy API.
+
+                        For usage with the PlacementPolicy API, this field must be set empty or use the same value of the PlacementPolicy's
+                        namespace itself.
                       type: string
                   required:
                   - apiVersion
                   - kind
-                  - name
-                  - namespace
                   type: object
                 maxItems: 20
                 minItems: 1
@@ -462,6 +522,13 @@ spec:
                       type: string
                   type: object
                 type: array
+                x-kubernetes-validations:
+                - message: operator must be Exists and value must be empty when key
+                    is empty
+                  rule: self.all(t, t.key != '' || (t.operator == 'Exists' && t.value
+                    == ''))
+                - message: value must be empty when operator is Exists
+                  rule: self.all(t, t.operator != 'Exists' || t.value == '')
             required:
             - resourceSelectors
             type: object
@@ -492,13 +559,15 @@ spec:
                           description: The name of the referenced object.
                           type: string
                         namespace:
-                          description: The namespace of the referenced object.
+                          description: |-
+                            The namespace of the referenced object.
+
+                            If the object is cluster-scoped, this field should be left empty.
                           type: string
                       required:
                       - apiVersion
                       - kind
                       - name
-                      - namespace
                       type: object
                     type: array
                 required:
