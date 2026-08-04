@@ -22,7 +22,7 @@ type ObjectReference struct {
 	// If the object is cluster-scoped, this field should be left empty.
 	//
 	// +kubebuilder:validation:Optional
-	Namespace string `json:"namespace"`
+	Namespace string `json:"namespace,omitempty"`
 
 	// The name of the referenced object.
 	//
