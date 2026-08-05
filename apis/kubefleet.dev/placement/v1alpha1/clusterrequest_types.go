@@ -68,10 +68,12 @@ type ClusterRequestSpec struct {
 
 type ClusterRequestStatus struct {
 	// A list of observed conditions of the cluster request.
+	//
 	// +kubebuilder:validation:Optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// The name of the cluster that has been provisioned for this cluster request, if any.
+	//
 	// +kubebuilder:validation:Optional
 	ProvisionedClusterName *string `json:"provisionedClusterName,omitempty"`
 
@@ -79,7 +81,11 @@ type ClusterRequestStatus struct {
 	// as an expedient solution to verify if a cluster request is still valid for consideration, i.e.,
 	// if the currently observed most recent cluster creation timestamp is later than this timestamp in the
 	// status, a new member cluster must have been created after the cluster request was created,
-	// and thus the cluster request should be considered stale and can be ignored.
+	// and thus the cluster request should be considered stale and can be ignored. The placement policy
+	// that submits the cluster request is responsible for updating this field if the new cluster does not
+	// meet the need of the associated cluster selector, so that the cluster request can be re-evaluated again;
+	// it may instead withdraw the cluster request if the new cluster has fulfilled the associated cluster selector.
+	//
 	// +kubebuilder:validation:Optional
 	LastObservedMostRecentClusterCreationTimestamp *metav1.Time `json:"lastObservedMostRecentClusterCreationTimestamp,omitempty"`
 }

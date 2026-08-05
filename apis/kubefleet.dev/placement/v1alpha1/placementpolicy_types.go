@@ -171,7 +171,7 @@ type ClusterSelector struct {
 	Count *intstr.IntOrString `json:"count,omitempty"`
 
 	// The minimum number of clusters that KubeFleet should select based on the given terms, when KubeFleet is not able
-	// find the desired number of clusters.
+	// to find the desired number of clusters.
 	//
 	// The default value is set to the same value of `count`, if `count` is an integer. If `count` is set to "All", the
 	// default value of `minCount` is 1.
