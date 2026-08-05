@@ -76,13 +76,6 @@ spec:
                       maximum: 999
                       minimum: 0
                       type: integer
-                    requestCluster:
-                      default: true
-                      description: |-
-                        Whether to submit a cluster request when the cluster selector cannot be fulfilled.
-
-                        The default value is true. Note that this field takes effect if and only if cluster requests are enabled in KubeFleet.
-                      type: boolean
                     terms:
                       description: |-
                         A list of terms that form the selector. The terms are ORed, i.e., a cluster would match the selector
@@ -227,6 +220,22 @@ spec:
                         type: object
                       maxItems: 5
                       type: array
+                    whenUnfulfilled:
+                      default: RequestCluster
+                      description: |-
+                        The action to take when KubeFleet is not able to find the desired (minimum) number of clusters based on the given terms.
+
+                        Available options are:
+                        * RequestCluster: KubeFleet will submit a cluster request to signal that a new cluster is needed to complete the placement.
+                          It is up to the platform/cloud provider to fulfill the request.
+                        * KeepSearching: KubeFleet will keep searching for clusters that match the given terms silently; no cluster request will be
+                          submitted.
+
+                        This field takes effect only cluster requests are enabled in KubeFleet.
+                      enum:
+                      - RequestCluster
+                      - KeepSearching
+                      type: string
                   type: object
                   x-kubernetes-validations:
                   - message: minCount must be less than or equal to count when count

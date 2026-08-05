@@ -181,13 +181,20 @@ type ClusterSelector struct {
 	// +kubebuilder:validation:Maximum=999
 	MinCount *int32 `json:"minCount,omitempty"`
 
-	// Whether to submit a cluster request when the cluster selector cannot be fulfilled.
+	// The action to take when KubeFleet is not able to find the desired (minimum) number of clusters based on the given terms.
 	//
-	// The default value is true. Note that this field takes effect if and only if cluster requests are enabled in KubeFleet.
+	// Available options are:
+	// * RequestCluster: KubeFleet will submit a cluster request to signal that a new cluster is needed to complete the placement.
+	//   It is up to the platform/cloud provider to fulfill the request.
+	// * KeepSearching: KubeFleet will keep searching for clusters that match the given terms silently; no cluster request will be
+	//   submitted.
+	//
+	// This field takes effect only cluster requests are enabled in KubeFleet.
 	//
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:default=true
-	RequestCluster *bool `json:"requestCluster,omitempty"`
+	// +kubebuilder:default=RequestCluster
+	// +kubebuilder:validation:Enum=RequestCluster;KeepSearching
+	WhenUnfulfilled WhenUnfulfilledOption `json:"whenUnfulfilled,omitempty"`
 }
 
 type ClusterLabelAndPropertySelectorTerm struct {
@@ -259,6 +266,13 @@ const (
 	LabelClusterPropertyExpressionOperatorLe LabelClusterPropertyExpressionOperator = "Le"
 	LabelClusterPropertyExpressionOperatorEq LabelClusterPropertyExpressionOperator = "Eq"
 	LabelClusterPropertyExpressionOperatorNe LabelClusterPropertyExpressionOperator = "Ne"
+)
+
+type WhenUnfulfilledOption string
+
+const (
+	WhenUnfulfilledOptionRequestCluster WhenUnfulfilledOption = "RequestCluster"
+	WhenUnfulfilledOptionKeepSearching  WhenUnfulfilledOption = "KeepSearching"
 )
 
 type ResourceSelector struct {
