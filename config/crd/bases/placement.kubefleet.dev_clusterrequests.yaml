@@ -65,7 +65,7 @@ spec:
                             type: string
                           operator:
                             description: |-
-                              The operator that specifies the relational between the current value under the key and the given values.
+                              The operator that specifies the relationship between the current value under the key and the given values.
 
                               If the operation is In, NotIn, Exists, or DoesNotExist, the key must be one referring to a label, or to a string-based
                               cluster property.
@@ -126,7 +126,7 @@ spec:
                             type: string
                           operator:
                             description: |-
-                              The operator that specifies the relational between the current value under the key and the given values.
+                              The operator that specifies the relationship between the current value under the key and the given values.
 
                               If the operation is In, NotIn, Exists, or DoesNotExist, the key must be one referring to a label, or to a string-based
                               cluster property.

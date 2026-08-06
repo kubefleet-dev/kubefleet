@@ -189,7 +189,7 @@ type ClusterSelector struct {
 	// * KeepSearching: KubeFleet will keep searching for clusters that match the given terms silently; no cluster request will be
 	//   submitted.
 	//
-	// This field takes effect only cluster requests are enabled in KubeFleet.
+	// This field takes effect only when cluster requests are enabled in KubeFleet.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=RequestCluster
@@ -230,7 +230,7 @@ type LabelClusterPropertyExpression struct {
 	// +kubebuilder:validation:Required
 	Key string `json:"key"`
 
-	// The operator that specifies the relational between the current value under the key and the given values.
+	// The operator that specifies the relationship between the current value under the key and the given values.
 	//
 	// If the operation is In, NotIn, Exists, or DoesNotExist, the key must be one referring to a label, or to a string-based
 	// cluster property.
