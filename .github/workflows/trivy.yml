@@ -177,7 +177,7 @@ jobs:
 
       - name: Create issue for Copilot
         if: steps.check-vulns.outputs.has_vulns == 'true' && github.event_name == 'schedule'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const today = new Date().toISOString().split('T')[0];
