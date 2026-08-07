@@ -113,7 +113,7 @@ var _ = BeforeSuite(func() {
 
 	resourceSelectorResolver := controller.ResourceSelectorResolver{
 		RestMapper:      mgr.GetRESTMapper(),
-		InformerManager: informer.NewInformerManager(dynamicClient, 5*time.Minute, ctx.Done()),
+		InformerManager: informer.NewInformerManager(ctx, dynamicClient, 5*time.Minute),
 		ResourceConfig:  utils.NewResourceConfig(false),
 		SkippedNamespaces: map[string]bool{
 			"default": true,

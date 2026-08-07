@@ -30,8 +30,8 @@ import (
 	ctrlcache "sigs.k8s.io/controller-runtime/pkg/cache"
 )
 
-// InformerManager manages dynamic shared informer for all resources, include Kubernetes resource and
-// custom resources defined by CustomResourceDefinition.
+// Manager manages dynamic shared informers for all resources, including Kubernetes
+// resources and custom resources defined by CustomResourceDefinition.
 type Manager interface {
 	// AddStaticResource creates a dynamicInformer for the static 'resource' and set its event handler.
 	// A resource is static if its definition is pre-determined and immutable during runtime.
@@ -46,7 +46,7 @@ type Manager interface {
 	// It is intended to be called after create new informer(s), and it's safe to call multi times.
 	Start()
 
-	// Stop stops all informers of in this manager. Once it is stopped, it will be not able to Start again.
+	// Stop stops all informers in this manager. Once stopped, it cannot be started again.
 	Stop()
 
 	// Lister returns a generic lister used to get 'resource' from informer's store.
@@ -80,13 +80,13 @@ type Manager interface {
 }
 
 // NewInformerManager constructs a new instance of informerManagerImpl.
+// The manager runs until either the parent context is cancelled or Stop is called.
 // defaultResync with value '0' means no re-sync.
-func NewInformerManager(client dynamic.Interface, defaultResync time.Duration, parentCh <-chan struct{}) Manager {
-	// TODO: replace this with plain context
-	ctx, cancel := ContextForChannel(parentCh)
+func NewInformerManager(ctx context.Context, client dynamic.Interface, defaultResync time.Duration) Manager {
+	mgrCtx, cancel := context.WithCancel(ctx)
 	return &informerManagerImpl{
 		dynamicClient:      client,
-		ctx:                ctx,
+		ctx:                mgrCtx,
 		cancel:             cancel,
 		informerFactory:    dynamicinformer.NewDynamicSharedInformerFactory(client, defaultResync),
 		apiResources:       make(map[schema.GroupVersionKind]*APIResourceMeta),
@@ -132,6 +132,12 @@ type informerManagerImpl struct {
 	// registeredHandlers tracks which GVRs already have event handlers registered
 	// to prevent duplicate registrations and goroutine leaks
 	registeredHandlers map[schema.GroupVersionResource]bool
+
+	// syncedInformers caches GVRs whose informers have already reported HasSynced==true.
+	// HasSynced is monotonic for the life of an informer (once true, it stays true), so a
+	// presence-only set is sufficient: we never need to invalidate entries. The cache lets
+	// hot callers (e.g. webhook scope checks) skip the factory mutex on subsequent lookups.
+	syncedInformers sync.Map
 }
 
 func (s *informerManagerImpl) AddStaticResource(resource APIResourceMeta, handler cache.ResourceEventHandler) {
@@ -149,8 +155,14 @@ func (s *informerManagerImpl) AddStaticResource(resource APIResourceMeta, handle
 }
 
 func (s *informerManagerImpl) IsInformerSynced(resource schema.GroupVersionResource) bool {
-	// TODO: use a lazy initialized sync map to reduce the number of informer sync look ups
-	return s.informerFactory.ForResource(resource).Informer().HasSynced()
+	if _, cached := s.syncedInformers.Load(resource); cached {
+		return true
+	}
+	if s.informerFactory.ForResource(resource).Informer().HasSynced() {
+		s.syncedInformers.Store(resource, struct{}{})
+		return true
+	}
+	return false
 }
 
 func (s *informerManagerImpl) Lister(resource schema.GroupVersionResource) cache.GenericLister {
@@ -258,25 +270,6 @@ func (s *informerManagerImpl) CreateInformerForResource(resource APIResourceMeta
 		dynRes.isPresent = true
 		klog.V(3).InfoS("Reactivated informer for reappeared resource", "res", dynRes)
 	}
-}
-
-// ContextForChannel derives a child context from a parent channel.
-//
-// The derived context's Done channel is closed when the returned cancel function
-// is called or when the parent channel is closed, whichever happens first.
-//
-// Note the caller must *always* call the CancelFunc, otherwise resources may be leaked.
-func ContextForChannel(parentCh <-chan struct{}) (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithCancel(context.Background())
-
-	go func() {
-		select {
-		case <-parentCh:
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
-	return ctx, cancel
 }
 
 // getOrCreateInformerWithTransform gets or creates an informer for the given resource and ensures

@@ -103,10 +103,7 @@ func TestGetAllResources(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a fake dynamic client
 			fakeClient := fake.NewSimpleDynamicClient(scheme.Scheme)
-			stopCh := make(chan struct{})
-			defer close(stopCh)
-
-			mgr := NewInformerManager(fakeClient, 0, stopCh)
+			mgr := NewInformerManager(t.Context(), fakeClient, 0)
 			implMgr := mgr.(*informerManagerImpl)
 
 			// Add namespace-scoped resources
@@ -194,10 +191,7 @@ func TestGetAllResources(t *testing.T) {
 func TestGetAllResources_NotPresent(t *testing.T) {
 	// Test that resources marked as not present are excluded
 	fakeClient := fake.NewSimpleDynamicClient(scheme.Scheme)
-	stopCh := make(chan struct{})
-	defer close(stopCh)
-
-	mgr := NewInformerManager(fakeClient, 0, stopCh)
+	mgr := NewInformerManager(t.Context(), fakeClient, 0)
 	implMgr := mgr.(*informerManagerImpl)
 
 	// Add a resource that is present
@@ -248,10 +242,7 @@ func TestAddEventHandlerToInformer(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fakeClient := fake.NewSimpleDynamicClient(scheme.Scheme)
-			stopCh := make(chan struct{})
-			defer close(stopCh)
-
-			mgr := NewInformerManager(fakeClient, 0, stopCh)
+			mgr := NewInformerManager(t.Context(), fakeClient, 0)
 			implMgr := mgr.(*informerManagerImpl)
 
 			handler := &testhandler.TestHandler{
@@ -262,9 +253,7 @@ func TestAddEventHandlerToInformer(t *testing.T) {
 			mgr.AddEventHandlerToInformer(tt.gvr, handler)
 
 			// Verify handler is tracked as registered
-			implMgr.resourcesLock.RLock()
 			checkHandler(t, implMgr, tt.gvr)
-			implMgr.resourcesLock.RUnlock()
 
 			if tt.callMultipleTimes {
 				// Call again with same GVR - should be idempotent
@@ -328,10 +317,7 @@ func TestCreateInformerForResource(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fakeClient := fake.NewSimpleDynamicClient(scheme.Scheme)
-			stopCh := make(chan struct{})
-			defer close(stopCh)
-
-			mgr := NewInformerManager(fakeClient, 0, stopCh)
+			mgr := NewInformerManager(t.Context(), fakeClient, 0)
 			implMgr := mgr.(*informerManagerImpl)
 
 			// Create the informer
@@ -380,10 +366,7 @@ func TestCreateInformerForResource_IsIdempotent(t *testing.T) {
 
 	// Test that creating the same informer multiple times doesn't cause issues
 	fakeClient := fake.NewSimpleDynamicClient(scheme.Scheme)
-	stopCh := make(chan struct{})
-	defer close(stopCh)
-
-	mgr := NewInformerManager(fakeClient, 0, stopCh)
+	mgr := NewInformerManager(t.Context(), fakeClient, 0)
 	implMgr := mgr.(*informerManagerImpl)
 
 	resource := APIResourceMeta{
@@ -393,7 +376,7 @@ func TestCreateInformerForResource_IsIdempotent(t *testing.T) {
 	}
 
 	// Create multiple times
-	for i := 0; i < createAttempts; i++ {
+	for range createAttempts {
 		mgr.CreateInformerForResource(resource)
 	}
 
@@ -410,5 +393,54 @@ func TestCreateInformerForResource_IsIdempotent(t *testing.T) {
 	}
 	if !resMeta.isPresent {
 		t.Error("Expected resource to be marked as present")
+	}
+}
+
+func TestIsInformerSynced_CachesSyncedResult(t *testing.T) {
+	// Verify that once IsInformerSynced reports true for a GVR, the result is cached in
+	// syncedInformers. The cache lets hot callers (e.g. webhook scope checks) skip the
+	// factory mutex on subsequent calls without changing observable behaviour.
+	fakeClient := fake.NewSimpleDynamicClient(scheme.Scheme)
+	mgr := NewInformerManager(t.Context(), fakeClient, 0)
+	implMgr := mgr.(*informerManagerImpl)
+
+	gvr := testresource.GVRConfigMap()
+
+	// Force the informer for this GVR to be created and start it so HasSynced() returns true.
+	mgr.CreateInformerForResource(APIResourceMeta{
+		GroupVersionKind:     testresource.GVKConfigMap(),
+		GroupVersionResource: gvr,
+	})
+	mgr.Start()
+	mgr.WaitForCacheSync()
+
+	// First call: cache miss, populates the cache.
+	if !mgr.IsInformerSynced(gvr) {
+		t.Fatalf("IsInformerSynced(%v) = false, want true after WaitForCacheSync", gvr)
+	}
+	if _, cached := implMgr.syncedInformers.Load(gvr); !cached {
+		t.Errorf("syncedInformers.Load(%v) reports not cached, want cached after first synced lookup", gvr)
+	}
+
+	// Second call: cache hit; behaviour is unchanged.
+	if !mgr.IsInformerSynced(gvr) {
+		t.Errorf("IsInformerSynced(%v) on cached entry = false, want true", gvr)
+	}
+}
+
+func TestIsInformerSynced_DoesNotCacheUnsyncedResult(t *testing.T) {
+	// An informer that has never been started reports HasSynced()==false. We must NOT
+	// cache that, otherwise we'd return false forever even after the informer syncs.
+	fakeClient := fake.NewSimpleDynamicClient(scheme.Scheme)
+	mgr := NewInformerManager(t.Context(), fakeClient, 0)
+	implMgr := mgr.(*informerManagerImpl)
+
+	gvr := testresource.GVRConfigMap()
+
+	if mgr.IsInformerSynced(gvr) {
+		t.Fatalf("IsInformerSynced(%v) = true on unstarted informer, want false", gvr)
+	}
+	if _, cached := implMgr.syncedInformers.Load(gvr); cached {
+		t.Errorf("syncedInformers.Load(%v) reports cached after unsynced lookup, want not cached", gvr)
 	}
 }
