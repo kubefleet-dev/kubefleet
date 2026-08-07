@@ -128,17 +128,43 @@ spec:
                       - NoSchedule
                       type: string
                     key:
-                      description: The taint key to be applied to a MemberCluster.
+                      description: |-
+                        The taint key to be applied to a MemberCluster.
+                        MaxLength is 253 (prefix) + 1 (slash) + 63 (name segment) = 317.
+                      maxLength: 317
+                      minLength: 1
                       type: string
                     value:
                       description: The taint value corresponding to the taint key.
+                      maxLength: 63
                       type: string
                   required:
                   - effect
                   - key
                   type: object
+                  x-kubernetes-validations:
+                  - message: taint key name segment must consist of alphanumeric characters,
+                      '-', '_' or '.', and must start and end with an alphanumeric
+                      character
+                    rule: '(self.key.contains(''/'') ? self.key.substring(self.key.indexOf(''/'')
+                      + 1) : self.key).matches(''^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$'')'
+                  - message: taint key prefix must be a lowercase DNS subdomain
+                    rule: '!self.key.contains(''/'') || self.key.substring(0, self.key.indexOf(''/'')).matches(''^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$'')'
+                  - message: taint key name segment must be 63 characters or less
+                    rule: '(self.key.contains(''/'') ? self.key.size() - self.key.indexOf(''/'')
+                      - 1 : self.key.size()) <= 63'
+                  - message: taint key prefix must be 253 characters or less
+                    rule: '!self.key.contains(''/'') || self.key.indexOf(''/'') <=
+                      253'
+                  - message: taint value must be a valid label value
+                    rule: '!has(self.value) || size(self.value) == 0 || self.value.matches(''^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'')'
                 maxItems: 100
                 type: array
+                x-kubernetes-validations:
+                - message: taints must be unique
+                  rule: 'self.all(t, self.filter(u, u.key == t.key && (has(u.value)
+                    ? u.value : '''') == (has(t.value) ? t.value : '''') && u.effect
+                    == t.effect).size() == 1)'
             required:
             - identity
             type: object
@@ -500,17 +526,43 @@ spec:
                       - NoSchedule
                       type: string
                     key:
-                      description: The taint key to be applied to a MemberCluster.
+                      description: |-
+                        The taint key to be applied to a MemberCluster.
+                        MaxLength is 253 (prefix) + 1 (slash) + 63 (name segment) = 317.
+                      maxLength: 317
+                      minLength: 1
                       type: string
                     value:
                       description: The taint value corresponding to the taint key.
+                      maxLength: 63
                       type: string
                   required:
                   - effect
                   - key
                   type: object
+                  x-kubernetes-validations:
+                  - message: taint key name segment must consist of alphanumeric characters,
+                      '-', '_' or '.', and must start and end with an alphanumeric
+                      character
+                    rule: '(self.key.contains(''/'') ? self.key.substring(self.key.indexOf(''/'')
+                      + 1) : self.key).matches(''^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$'')'
+                  - message: taint key prefix must be a lowercase DNS subdomain
+                    rule: '!self.key.contains(''/'') || self.key.substring(0, self.key.indexOf(''/'')).matches(''^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$'')'
+                  - message: taint key name segment must be 63 characters or less
+                    rule: '(self.key.contains(''/'') ? self.key.size() - self.key.indexOf(''/'')
+                      - 1 : self.key.size()) <= 63'
+                  - message: taint key prefix must be 253 characters or less
+                    rule: '!self.key.contains(''/'') || self.key.indexOf(''/'') <=
+                      253'
+                  - message: taint value must be a valid label value
+                    rule: '!has(self.value) || size(self.value) == 0 || self.value.matches(''^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'')'
                 maxItems: 100
                 type: array
+                x-kubernetes-validations:
+                - message: taints must be unique
+                  rule: 'self.all(t, self.filter(u, u.key == t.key && (has(u.value)
+                    ? u.value : '''') == (has(t.value) ? t.value : '''') && u.effect
+                    == t.effect).size() == 1)'
             required:
             - identity
             type: object
