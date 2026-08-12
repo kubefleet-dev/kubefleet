@@ -466,6 +466,70 @@ func TestTrackDaemonSetAvailability(t *testing.T) {
 	}
 }
 
+// TestTrackJobAvailability tests the trackJobAvailability function.
+func TestTrackJobAvailability(t *testing.T) {
+	testCases := []struct {
+		name                       string
+		job                        *batchv1.Job
+		wantAvailabilityResultType ManifestProcessingAvailabilityResultType
+	}{
+		{
+			name: "completed job",
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Conditions: []batchv1.JobCondition{
+						{
+							Type:   batchv1.JobComplete,
+							Status: corev1.ConditionTrue,
+						},
+					},
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeAvailable,
+		},
+		{
+			name:                       "running job",
+			job:                        &batchv1.Job{},
+			wantAvailabilityResultType: AvailabilityResultTypeNotYetAvailable,
+		},
+		{
+			name: "failed job",
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Conditions: []batchv1.JobCondition{
+						{
+							Type:   batchv1.JobFailed,
+							Status: corev1.ConditionTrue,
+						},
+					},
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeNotYetAvailable,
+		},
+		{
+			name: "suspended job",
+			job: &batchv1.Job{
+				Spec: batchv1.JobSpec{
+					Suspend: ptr.To(true),
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeAvailable,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotResTyp, err := trackJobAvailability(toUnstructured(t, tc.job))
+			if err != nil {
+				t.Fatalf("trackJobAvailability() = %v, want no error", err)
+			}
+			if gotResTyp != tc.wantAvailabilityResultType {
+				t.Errorf("manifestProcessingAvailabilityResultType = %v, want %v", gotResTyp, tc.wantAvailabilityResultType)
+			}
+		})
+	}
+}
+
 // TestTrackServiceAvailability tests the trackServiceAvailability function.
 func TestTrackServiceAvailability(t *testing.T) {
 	testCases := []struct {
@@ -868,7 +932,7 @@ func TestTrackInMemberClusterObjAvailabilityByGVR(t *testing.T) {
 		},
 	}
 
-	untrackableJob := &batchv1.Job{
+	runningJob := &batchv1.Job{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "batch/v1",
 			Kind:       "Job",
@@ -924,10 +988,10 @@ func TestTrackInMemberClusterObjAvailabilityByGVR(t *testing.T) {
 			wantAvailabilityResultType: AvailabilityResultTypeAvailable,
 		},
 		{
-			name:                       "untrackable object (job)",
+			name:                       "running job",
 			gvr:                        utils.JobGVR,
-			inMemberClusterObj:         toUnstructured(t, untrackableJob),
-			wantAvailabilityResultType: AvailabilityResultTypeNotTrackable,
+			inMemberClusterObj:         toUnstructured(t, runningJob),
+			wantAvailabilityResultType: AvailabilityResultTypeNotYetAvailable,
 		},
 		{
 			name:                       "available service account",
@@ -1030,7 +1094,7 @@ func TestTrackInMemberClusterObjAvailability(t *testing.T) {
 		UpdatedNumberScheduled: 2,
 	}
 
-	untrackableJob := &batchv1.Job{}
+	runningJob := &batchv1.Job{}
 
 	testCases := []struct {
 		name        string
@@ -1069,13 +1133,13 @@ func TestTrackInMemberClusterObjAvailability(t *testing.T) {
 					inMemberClusterObj:      toUnstructured(t, unavailableDaemonSet),
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 				},
-				// An untrackable job.
+				// A running job.
 				{
 					id: &fleetv1beta1.WorkResourceIdentifier{
 						Ordinal: 3,
 					},
 					gvr:                     &utils.JobGVR,
-					inMemberClusterObj:      toUnstructured(t, untrackableJob),
+					inMemberClusterObj:      toUnstructured(t, runningJob),
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 				},
 			},
@@ -1112,9 +1176,9 @@ func TestTrackInMemberClusterObjAvailability(t *testing.T) {
 						Ordinal: 3,
 					},
 					gvr:                     &utils.JobGVR,
-					inMemberClusterObj:      toUnstructured(t, untrackableJob),
+					inMemberClusterObj:      toUnstructured(t, runningJob),
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
-					availabilityResTyp:      AvailabilityResultTypeNotTrackable,
+					availabilityResTyp:      AvailabilityResultTypeNotYetAvailable,
 				},
 			},
 		},
