@@ -61,9 +61,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # A single multi-arch `docker buildx build` per image publishes the full
-      # tag (e.g. ":v0.4.0") and, for stable releases, the short alias
-      # (e.g. ":0.4.0") in the same push - no separate retag step. RC images are
-      # published under the long form (":v0.4.0-rc.1") for testers only: the
+      # tag (e.g. "v0.4.0") and, for stable releases, the short alias
+      # (e.g. "0.4.0") in the same push - no separate retag step. RC images are
+      # published under the long form ("v0.4.0-rc.1") for testers only: the
       # short-tag namespace is deliberately reserved for stable releases that
       # consumers can safely pin to, so RC tags get no short alias.
       - name: Build and push images with tag ${{ env.TAG }}

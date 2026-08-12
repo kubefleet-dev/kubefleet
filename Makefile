@@ -318,11 +318,13 @@ crd-verify: ## Verify the chart CRD directories cover every CRD in config/crd/ba
 	echo "crd-verify: chart CRD directories cover all CRDs in config/crd/bases"
 
 # Register QEMU binfmt handlers so the host can build/run non-native binaries.
-# This must run for any multi-platform build regardless of whether the buildx
-# builder already exists (a pre-existing builder would otherwise skip emulation
-# setup and the foreign-arch build would fail with "exec format error"). The
-# registration is idempotent, so it is safe to re-run. It is skipped for
-# single-platform builds, which are native and never need emulation.
+# This must run for any build that targets a non-native platform - whether a
+# multi-platform build or a single-platform cross build (e.g. PLATFORMS=linux/arm64
+# on an amd64 host) - regardless of whether the buildx builder already exists (a
+# pre-existing builder would otherwise skip emulation setup and the foreign-arch
+# build would fail with "exec format error"). The registration is idempotent, so
+# it is safe to re-run. It is skipped only when PLATFORMS is exactly the native
+# platform, which never needs emulation.
 #
 # On some systems the emulation setup might not work at all (e.g., macOS on Apple
 # Silicon -> Rosetta 2 will be used by Docker Desktop as the default emulation
@@ -331,14 +333,15 @@ crd-verify: ## Verify the chart CRD directories cover every CRD in config/crd/ba
 setup-qemu: ## Register QEMU emulation for multi-architecture image builds
 	$(info Auto-detected system architecture: $(TARGET_ARCH))
 	@case "$(PLATFORMS)" in \
-		*,*) \
-			echo "Multi-platform build ($(PLATFORMS)); registering QEMU emulation"; \
+		"$(TARGET_OS)/$(TARGET_ARCH)") \
+			echo "Native single-platform build ($(PLATFORMS)); skipping QEMU setup" ;; \
+		*) \
+			echo "Build targets non-native platforms ($(PLATFORMS)); registering QEMU emulation"; \
 			if [ "$(TARGET_ARCH)" = "amd64" ] ; then \
 				docker run --rm --privileged $(QEMU_IMAGE) --reset -p yes; \
 			else \
 				docker run --rm --privileged $(BINFMT_IMAGE) --install all; \
 			fi ;; \
-		*) echo "Single-platform build ($(PLATFORMS)); skipping QEMU setup" ;; \
 	esac
 
 # By default, docker buildx create will pull image moby/buildkit:buildx-stable-1 and hit the too many requests error
