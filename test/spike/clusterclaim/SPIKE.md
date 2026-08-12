@@ -29,6 +29,11 @@ the minimum of both sides and runs the whole loop against envtest:
 - `validation_test.go` — pins the CEL/schema contract of the claim API.
 - `workflow_test.go` — pins the behavioral contract: happy path,
   withdraw-by-other-cluster, provisioning failure, staleness refresh.
+- `eligibility_test.go` (round 2) — pins the join-window gap: raw-match
+  withdrawal vs. withdrawal gated on the scheduler's real eligibility check.
+- `lifecycle_test.go` (round 2) — pins the deletion/ownership gaps:
+  provisioner finalizers, policy-deletion orphans, cross-scope ownerRefs,
+  claim-name collisions.
 
 ## Run it
 
@@ -121,12 +126,74 @@ The patterns most worth carrying into the claim design:
   shared-resource guard after an incident where deleting one claim destroyed a
   sibling's live cluster. Finding 2.1 above is not hypothetical.
 
+## Round 2: contract gaps verified empirically
+
+A second pass turned the open contract questions from finding 2 into pinned,
+runnable demonstrations wherever envtest allows:
+
+### 4. The withdrawal predicate fires before the cluster is usable (join window)
+
+The FEP withdraws a claim once a matching cluster "is joined to the fleet",
+without defining "joined". A provisioner-created `MemberCluster` matches its
+selector at object-creation time; the scheduler's real gate
+(`pkg/scheduler/clustereligibilitychecker`: member agent online, recent
+heartbeat, `Joined=True`, healthy) passes minutes later, and taints are a
+further, separate filter (the claim spec carries no tolerations at all).
+`eligibility_test.go` demonstrates both readings side by side with the actual
+checker:
+
+- as written, the claim is withdrawn while `IsEligible` still returns false —
+  the placement stays unschedulable with no outstanding claim (and no
+  concurrency-budget entry) to explain why;
+- gated on `IsEligible`, the claim survives the join window and withdraws only
+  when the member agent reports in — the semantics #786 should implement.
+
+Withdrawal and the "still unfulfilled" check that gates *new* claims should
+both reuse the scheduler's predicate. (Round 1's suite missed this because
+envtest never populates agent status — the naive matcher and the real gate
+agree vacuously there.)
+
+### 5. Deletion and ownership are unspecified, with sharp edges (`lifecycle_test.go`)
+
+- **Provisioner finalizers "work" but mean nothing.** The API machinery lets a
+  provisioner protect in-flight work with a finalizer; withdrawal then only
+  marks the claim Terminating, indefinitely. The contract must pick: does a
+  Terminating claim still occupy the concurrency slot (starvation) or is it
+  replaced (double-provisioning)? Neither answer exists today.
+- **Policy deletion orphans claims forever.** Cross-scope ownerReferences
+  (namespaced `PlacementPolicy` owning a cluster-scoped claim) are invalid in
+  Kubernetes GC — yet the API server *accepts* them at admission, failing only
+  at GC time (`OwnerRefInvalidNamespace`, object skipped), which makes them an
+  attractive trap for #786. Cleanup has to be explicit reconciliation, and the
+  FEP doesn't specify it. `placementPolicyRef` also records no UID, so a
+  deleted-and-recreated same-named policy silently inherits the orphan.
+- **Claim names collide across namespaces.** Claims are cluster-scoped;
+  policies are namespaced; the FEP's own examples reuse the policy name `app`.
+  Any deterministic name derived from the policy name alone collides — and a
+  deterministic name is exactly what restart-safe provisioners need (see the
+  get-or-create lesson in section 3). The naming scheme must include the
+  namespace (or a hash of it).
+
+### 6. The status contract has no teeth (additions to `validation_test.go`)
+
+- The immutability bypass is symmetric: terms can be *added* after a
+  no-terms create, silently narrowing the claim (and `[]` serializes as
+  absent via `omitempty`, so empty-list creates stay mutable too). The
+  spec-level guard fixes both directions.
+- `Completed=True` with no `provisionedClusterName` is accepted; so is
+  downgrading a completed claim back to in-progress. Status atomicity and
+  terminal-state pinning (section 3) need to be CEL rules, not conventions.
+
 ## Suggested next steps
 
 1. File finding 1 against the API (fix in #803 or a follow-up), flip the
-   `KNOWN GAP` spec when merged.
-2. Raise findings 2.1–2.6 on the FEP/issue for maintainer decisions.
+   `KNOWN GAP` specs when merged (removal *and* add-after-create).
+2. Raise findings 2.1–2.6 and 4–6 on the FEP/issue for maintainer decisions —
+   the round-2 findings (withdrawal predicate, deletion protocol, policy
+   cleanup, naming, status CEL) are the ones #786 would otherwise hard-code
+   answers to implicitly.
 3. Once #786/#788 land, replace `withdrawer.go` with the real controller and
    grow `workflow_test.go` into the full #791 verification matrix (concurrency
    limits, eligible-keys gating, `whenUnfulfilled: KeepSearching`,
-   delete-races, policy-deletion cleanup).
+   delete-races, policy-deletion cleanup) — keeping the eligibility-gated
+   specs as the acceptance bar for the withdrawal predicate.

@@ -18,6 +18,7 @@ package clusterclaim
 
 import (
 	"context"
+	"sync"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -27,6 +28,7 @@ import (
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/clustereligibilitychecker"
 )
 
 // Withdrawer prototypes the claim-management slice of the FEP-0001 placement
@@ -36,8 +38,43 @@ import (
 // regardless of the claim's own Completed status — and otherwise refreshes
 // status.lastObservedMostRecentClusterCreationTimestamp so provisioners can
 // tell the claim has been re-evaluated and is still wanted.
+//
+// The FEP says a claim is withdrawn once a matching cluster "is joined to the
+// fleet" without saying whether "joined" means the MemberCluster object exists
+// or the cluster is actually usable by the scheduler. The two readings are
+// prototyped side by side, toggled by SetEligibilityGate:
+//
+//   - gate off (default, FEP-as-written reading): withdraw on raw selector
+//     match against the MemberCluster object;
+//   - gate on (recommended reading): additionally require the cluster to pass
+//     the scheduler's real eligibility gate
+//     (clustereligibilitychecker.IsEligible: member agent online, recent
+//     heartbeat, Joined=True, healthy) before the match counts.
 type Withdrawer struct {
 	client.Client
+
+	checker *clustereligibilitychecker.ClusterEligibilityChecker
+
+	mu              sync.Mutex
+	eligibilityGate bool
+}
+
+func NewWithdrawer(c client.Client) *Withdrawer {
+	return &Withdrawer{Client: c, checker: clustereligibilitychecker.New()}
+}
+
+// SetEligibilityGate toggles between the FEP-as-written withdrawal predicate
+// (raw selector match, gate off) and the eligibility-gated variant (gate on).
+func (w *Withdrawer) SetEligibilityGate(on bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.eligibilityGate = on
+}
+
+func (w *Withdrawer) gated() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.eligibilityGate
 }
 
 func (w *Withdrawer) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -55,9 +92,15 @@ func (w *Withdrawer) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	for i := range memberClusters.Items {
 		mc := &memberClusters.Items[i]
 		if clusterMatchesTerms(mc, claim.Spec.ClusterSelectorTerms) {
-			// Withdraw: the need is met, whether by the provisioned cluster or
-			// any other cluster that joined or was relabeled.
-			return ctrl.Result{}, client.IgnoreNotFound(w.Delete(ctx, claim))
+			eligible := true
+			if w.gated() {
+				eligible, _ = w.checker.IsEligible(mc)
+			}
+			if eligible {
+				// Withdraw: the need is met, whether by the provisioned cluster or
+				// any other cluster that joined or was relabeled.
+				return ctrl.Result{}, client.IgnoreNotFound(w.Delete(ctx, claim))
+			}
 		}
 		if mc.CreationTimestamp.After(mostRecent.Time) {
 			mostRecent = mc.CreationTimestamp

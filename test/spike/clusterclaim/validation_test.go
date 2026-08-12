@@ -105,6 +105,49 @@ var _ = Describe("ClusterRequest/ClusterClaim CEL and schema validation", func()
 		Expect(k8sClient.Update(ctx, claim)).Should(Succeed(), "currently accepted — should be rejected once the spec-level guard exists")
 	})
 
+	// FINDING (spike round 2): the removal bypass has a mirror image — a claim
+	// created WITHOUT terms ("any cluster satisfies") can have terms ADDED
+	// later, silently narrowing it. Same root cause as the removal case:
+	// field-scoped transition rules are skipped when the field is absent on
+	// either side of the update. Note `[]` serializes as absent via omitempty,
+	// so an empty-list create also leaves the claim mutable.
+	It("KNOWN GAP: adding clusterSelectorTerms after creation bypasses CEL immutability", func() {
+		claim := newClaim(nil)
+		Expect(k8sClient.Create(ctx, claim)).Should(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, claim)).Should(Succeed()) })
+
+		claim.Spec.ClusterSelectorTerms = []placementv1alpha1.ClusterLabelAndPropertySelectorTerm{regionTerm("eastus")}
+		Expect(k8sClient.Update(ctx, claim)).Should(Succeed(), "currently accepted — should be rejected once the spec-level guard exists")
+	})
+
+	// FINDING (spike round 2): nothing ties the Completed condition to its
+	// evidence. A provisioner can report Completed=True with no
+	// provisionedClusterName, and can later downgrade or repoint a completed
+	// claim — the status subresource accepts all of it. Status atomicity and
+	// terminal-state pinning need CEL rules (Completed=True requires
+	// provisionedClusterName; no downgrade out of a terminal state;
+	// provisionedClusterName immutable once set).
+	It("KNOWN GAP: status accepts Completed=True without provisionedClusterName, and downgrades", func() {
+		claim := newClaim([]placementv1alpha1.ClusterLabelAndPropertySelectorTerm{regionTerm("australiaeast")})
+		Expect(k8sClient.Create(ctx, claim)).Should(Succeed())
+		DeferCleanup(func() { Expect(k8sClient.Delete(ctx, claim)).Should(Succeed()) })
+
+		By("Completed=True lands with no provisioned cluster recorded")
+		claim.Status.Conditions = []metav1.Condition{{
+			Type:               placementv1alpha1.ClusterRequestCondTypeCompleted,
+			Status:             metav1.ConditionTrue,
+			Reason:             "Provisioned",
+			Message:            "spike: no provisionedClusterName set",
+			LastTransitionTime: metav1.Now(),
+		}}
+		Expect(k8sClient.Status().Update(ctx, claim)).Should(Succeed(), "currently accepted — atomicity CEL would reject this")
+
+		By("the terminal state downgrades back to in-progress")
+		claim.Status.Conditions[0].Status = metav1.ConditionFalse
+		claim.Status.Conditions[0].Reason = "Provisioning"
+		Expect(k8sClient.Status().Update(ctx, claim)).Should(Succeed(), "currently accepted — terminal-state pinning would reject this")
+	})
+
 	It("accepts a claim with no selector terms (any cluster satisfies)", func() {
 		claim := newClaim(nil)
 		Expect(k8sClient.Create(ctx, claim)).Should(Succeed())

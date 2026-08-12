@@ -43,6 +43,7 @@ var (
 	ctx             context.Context
 	cancel          context.CancelFunc
 	fakeProvisioner *FakeProvisioner
+	withdrawer      *Withdrawer
 )
 
 func TestClusterClaimSpike(t *testing.T) {
@@ -80,7 +81,8 @@ var _ = BeforeSuite(func() {
 
 	fakeProvisioner = NewFakeProvisioner(mgr.GetClient())
 	Expect(fakeProvisioner.SetupWithManager(mgr)).Should(Succeed())
-	Expect((&Withdrawer{Client: mgr.GetClient()}).SetupWithManager(mgr)).Should(Succeed())
+	withdrawer = NewWithdrawer(mgr.GetClient())
+	Expect(withdrawer.SetupWithManager(mgr)).Should(Succeed())
 
 	go func() {
 		defer GinkgoRecover()
