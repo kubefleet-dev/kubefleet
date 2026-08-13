@@ -112,7 +112,8 @@ var _ = BeforeSuite(func() {
 	setUpResources()
 
 	// Start an Azure property provider instance with all features on.
-	pp = trackers.NewAKSKarpenterPricingClient(ctx, region)
+	pp, err = trackers.NewAKSKarpenterPricingClient(ctx, region)
+	Expect(err).To(BeNil(), "Failed to build the AKS Karpenter pricing client")
 	p = NewWithPricingProvider(pp, "node watcher", "pod watcher", true, true)
 	Expect(p.Start(ctx, memberCfg)).To(Succeed())
 
