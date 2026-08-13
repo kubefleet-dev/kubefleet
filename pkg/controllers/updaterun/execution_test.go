@@ -26,6 +26,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -1233,6 +1234,7 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 			wantErrMsg: fmt.Sprintf("error returned by the API server: clusterapprovalrequests.placement.kubernetes-fleet.io \"%s\" not found", approvalRequestName),
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			objects := []client.Object{tt.updateRun}
@@ -1262,6 +1264,160 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 				t.Fatalf("checkBeforeStageTasksStatus() want aborted error but got different error: %v", gotErr)
 			}
 		})
+	}
+}
+
+func TestCheckAfterStageTasksStatus(t *testing.T) {
+	const (
+		updateRunName = "test-update-run"
+		stageName     = "test-stage"
+	)
+	waitTime := time.Minute
+	now := time.Now()
+	tests := []struct {
+		name             string
+		tasks            []placementv1beta1.StageTask
+		taskStatuses     []placementv1beta1.StageTaskStatus
+		waitStarted      time.Time
+		wantPassed       bool
+		wantPositiveWait bool
+	}{
+		{
+			name:       "unset tasks pass immediately",
+			wantPassed: true,
+		},
+		{
+			name:  "approved approval-only task passes",
+			tasks: []placementv1beta1.StageTask{{Type: placementv1beta1.StageTaskTypeApproval}},
+			taskStatuses: []placementv1beta1.StageTaskStatus{{
+				Type:                placementv1beta1.StageTaskTypeApproval,
+				ApprovalRequestName: fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRunName, stageName),
+				Conditions: []metav1.Condition{{
+					Type:               string(placementv1beta1.StageTaskConditionApprovalRequestApproved),
+					Status:             metav1.ConditionTrue,
+					ObservedGeneration: 1,
+				}},
+			}},
+			waitStarted: now,
+			wantPassed:  true,
+		},
+		{
+			name:             "timed-wait-only task waits",
+			tasks:            []placementv1beta1.StageTask{{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: waitTime}}},
+			taskStatuses:     []placementv1beta1.StageTaskStatus{{Type: placementv1beta1.StageTaskTypeTimedWait}},
+			waitStarted:      now,
+			wantPositiveWait: true,
+		},
+		{
+			name:         "timed-wait-only task passes after wait",
+			tasks:        []placementv1beta1.StageTask{{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: waitTime}}},
+			taskStatuses: []placementv1beta1.StageTaskStatus{{Type: placementv1beta1.StageTaskTypeTimedWait}},
+			waitStarted:  now.Add(-2 * waitTime),
+			wantPassed:   true,
+		},
+		{
+			name: "approval before timed wait still waits",
+			tasks: []placementv1beta1.StageTask{
+				{Type: placementv1beta1.StageTaskTypeApproval},
+				{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: waitTime}},
+			},
+			taskStatuses: []placementv1beta1.StageTaskStatus{
+				{
+					Type:                placementv1beta1.StageTaskTypeApproval,
+					ApprovalRequestName: fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRunName, stageName),
+					Conditions: []metav1.Condition{{
+						Type:               string(placementv1beta1.StageTaskConditionApprovalRequestApproved),
+						Status:             metav1.ConditionTrue,
+						ObservedGeneration: 1,
+					}},
+				},
+				{Type: placementv1beta1.StageTaskTypeTimedWait},
+			},
+			waitStarted:      now,
+			wantPositiveWait: true,
+		},
+		{
+			name: "timed wait before approval still waits",
+			tasks: []placementv1beta1.StageTask{
+				{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: waitTime}},
+				{Type: placementv1beta1.StageTaskTypeApproval},
+			},
+			taskStatuses: []placementv1beta1.StageTaskStatus{
+				{Type: placementv1beta1.StageTaskTypeTimedWait},
+				{
+					Type:                placementv1beta1.StageTaskTypeApproval,
+					ApprovalRequestName: fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRunName, stageName),
+				},
+			},
+			waitStarted: now.Add(-2 * waitTime),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scheme := runtime.NewScheme()
+			if err := placementv1beta1.AddToScheme(scheme); err != nil {
+				t.Fatalf("AddToScheme() error = %v", err)
+			}
+			r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(scheme).Build()}
+			updateRun := &placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{Name: updateRunName, Generation: 1},
+			}
+			stage := &placementv1beta1.StageConfig{Name: stageName, AfterStageTasks: tt.tasks}
+			stageStatus := &placementv1beta1.StageUpdatingStatus{
+				StageName:            stageName,
+				AfterStageTaskStatus: tt.taskStatuses,
+				Conditions: []metav1.Condition{{
+					Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
+					Status:             metav1.ConditionFalse,
+					ObservedGeneration: 1,
+					LastTransitionTime: metav1.NewTime(tt.waitStarted),
+				}},
+			}
+
+			gotPassed, gotWait, err := r.checkAfterStageTasksStatus(context.Background(), stage, stageStatus, updateRun)
+			if err != nil {
+				t.Fatalf("checkAfterStageTasksStatus() error = %v", err)
+			}
+			if gotPassed != tt.wantPassed {
+				t.Errorf("checkAfterStageTasksStatus() passed = %v, want %v", gotPassed, tt.wantPassed)
+			}
+			if (gotWait > 0) != tt.wantPositiveWait {
+				t.Errorf("checkAfterStageTasksStatus() wait = %v, wantPositiveWait %v", gotWait, tt.wantPositiveWait)
+			}
+		})
+	}
+}
+
+func TestExecuteDeleteStageWithoutTasks(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := placementv1beta1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme() error = %v", err)
+	}
+	binding := &placementv1beta1.ClusterResourceBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "binding"},
+		Spec: placementv1beta1.ResourceBindingSpec{
+			TargetCluster: "cluster-1",
+		},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(binding).Build()
+	r := &Reconciler{Client: fakeClient}
+	updateRun := &placementv1beta1.ClusterStagedUpdateRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-update-run", Generation: 1},
+		Status: placementv1beta1.UpdateRunStatus{
+			UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{},
+			DeletionStageStatus: &placementv1beta1.StageUpdatingStatus{
+				StageName: placementv1beta1.UpdateRunDeleteStageName,
+				Clusters:  []placementv1beta1.ClusterUpdatingStatus{{ClusterName: "cluster-1"}},
+			},
+		},
+	}
+
+	if _, _, err := r.executeDeleteStage(context.Background(), updateRun, []placementv1beta1.BindingObj{binding}); err != nil {
+		t.Fatalf("executeDeleteStage() error = %v", err)
+	}
+	if err := fakeClient.Get(context.Background(), client.ObjectKeyFromObject(binding), &placementv1beta1.ClusterResourceBinding{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("executeDeleteStage() binding get error = %v, want not found", err)
 	}
 }
 

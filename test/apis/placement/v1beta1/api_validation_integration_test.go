@@ -2721,6 +2721,58 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("Too many: 3: must have at most 2 items"))
 		})
 
+		It("Should deny creation of ClusterStagedUpdateStrategy with more than 2 DeleteStageTasks", func() {
+			strategy := placementv1beta1.ClusterStagedUpdateStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.UpdateStrategySpec{
+					Stages: []placementv1beta1.StageConfig{{Name: fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1)}},
+					DeleteStageTasks: []placementv1beta1.StageTask{
+						{Type: placementv1beta1.StageTaskTypeApproval},
+						{Type: placementv1beta1.StageTaskTypeApproval},
+						{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: time.Second * 10}},
+					},
+				},
+			}
+			err := hubClient.Create(ctx, &strategy)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("Too many: 3: must have at most 2 items"))
+		})
+
+		It("Should deny creation of ClusterStagedUpdateStrategy with duplicate DeleteStageTasks", func() {
+			strategy := placementv1beta1.ClusterStagedUpdateStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.UpdateStrategySpec{
+					Stages:           []placementv1beta1.StageConfig{{Name: fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1)}},
+					DeleteStageTasks: []placementv1beta1.StageTask{{Type: placementv1beta1.StageTaskTypeApproval}, {Type: placementv1beta1.StageTaskTypeApproval}},
+				},
+			}
+			err := hubClient.Create(ctx, &strategy)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("deleteStageTasks cannot have two tasks of the same type"))
+		})
+
+		It("Should deny creation of ClusterStagedUpdateStrategy with invalid DeleteStageTasks waitTime", func() {
+			strategy := placementv1beta1.ClusterStagedUpdateStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
+				},
+				Spec: placementv1beta1.UpdateStrategySpec{
+					Stages:           []placementv1beta1.StageConfig{{Name: fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1)}},
+					DeleteStageTasks: []placementv1beta1.StageTask{{Type: placementv1beta1.StageTaskTypeTimedWait}},
+				},
+			}
+			err := hubClient.Create(ctx, &strategy)
+			var statusErr *k8sErrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("DeleteStageTaskType is TimedWait, waitTime is required"))
+		})
+
 		It("Should deny creation of ClusterStagedUpdateStrategy with AfterStageTask of type Approval with waitTime specified", func() {
 			strategy := placementv1beta1.ClusterStagedUpdateStrategy{
 				ObjectMeta: metav1.ObjectMeta{
