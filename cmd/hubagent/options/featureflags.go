@@ -58,6 +58,11 @@ type FeatureFlags struct {
 	// this flag concerns the PlacementPolicy, ClusterPlacementPolicy, and ClusterClaim APIs in
 	// the placement.kubefleet.dev API group. The APIs are currently in alpha and the flag is
 	// off by default.
+	//
+	// Note that placement policies with outstanding cluster claims carry a cleanup finalizer
+	// that only this controller removes; disabling the flag while such policies exist leaves
+	// them undeletable (and their cluster claims outstanding) until it is enabled again, at
+	// which point the controller resumes and completes the cleanup.
 	EnablePlacementPolicyAPIs bool
 }
 
@@ -101,7 +106,7 @@ func (o *FeatureFlags) AddFlags(flags *flag.FlagSet) {
 		&o.EnablePlacementPolicyAPIs,
 		"enable-placement-policy-apis",
 		false,
-		"Enable the PlacementPolicy API support (the FEP-0001 placement experience, alpha) in the KubeFleet hub agent or not.",
+		"Enable the PlacementPolicy API support (the FEP-0001 placement experience, alpha) in the KubeFleet hub agent or not. Disabling it while placement policies hold cluster claims leaves those policies undeletable until it is enabled again.",
 	)
 }
 

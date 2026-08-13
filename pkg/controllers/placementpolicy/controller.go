@@ -89,6 +89,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	if err != nil {
 		if errors.IsNotFound(err) {
 			klog.V(4).InfoS("Ignoring not-found placement policy", "placementPolicy", req.NamespacedName)
+			// The policy is gone for good; stop reporting metrics for it.
+			forgetPolicyMetrics(req.Namespace, req.Name)
 			return runtime.Result{}, nil
 		}
 		klog.ErrorS(err, "Failed to get the placement policy object", "placementPolicy", req.NamespacedName)
@@ -163,6 +165,8 @@ func (r *Reconciler) updateStatus(ctx context.Context, policy policyObject, outc
 		status.ActiveClusterClaims = activeClaims
 	}
 	meta.SetStatusCondition(&status.Conditions, scheduledCond)
+
+	reportPolicyMetrics(policy, status, scheduledCond)
 
 	if apiequality.Semantic.DeepEqual(observedStatus, status) {
 		return nil
