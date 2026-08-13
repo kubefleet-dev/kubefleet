@@ -59,15 +59,20 @@ const (
 type Reconciler struct {
 	client.Client
 
+	// uncachedReader reads directly from the API server; it gates the claim cleanup
+	// finalizer release, where a stale cache read could orphan a just-created claim.
+	uncachedReader client.Reader
+
 	eligibility eligibilityChecker
 }
 
 // NewReconciler returns a Reconciler that judges cluster fulfillment with the scheduler's
 // standard cluster eligibility gate.
-func NewReconciler(c client.Client) *Reconciler {
+func NewReconciler(c client.Client, uncachedReader client.Reader) *Reconciler {
 	return &Reconciler{
-		Client:      c,
-		eligibility: clustereligibilitychecker.New(),
+		Client:         c,
+		uncachedReader: uncachedReader,
+		eligibility:    clustereligibilitychecker.New(),
 	}
 }
 
@@ -89,20 +94,44 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		klog.ErrorS(err, "Failed to get the placement policy object", "placementPolicy", req.NamespacedName)
 		return runtime.Result{}, err
 	}
+	if !policy.GetDeletionTimestamp().IsZero() {
+		// Cluster claims cannot be owner-referenced by the policy (cross-scope), so cleanup
+		// is finalizer-driven.
+		return runtime.Result{}, r.cleanupClaims(ctx, policy)
+	}
 
 	memberClusters := &clusterv1beta1.MemberClusterList{}
 	if err := r.List(ctx, memberClusters); err != nil {
 		klog.ErrorS(err, "Failed to list member clusters", "placementPolicy", req.NamespacedName)
 		return runtime.Result{}, err
 	}
+	var mostRecentClusterCreation metav1.Time
+	for i := range memberClusters.Items {
+		if ts := memberClusters.Items[i].CreationTimestamp; ts.After(mostRecentClusterCreation.Time) {
+			mostRecentClusterCreation = ts
+		}
+	}
 
 	outcomes, err := evaluateSelectors(policy.PolicySpec(), memberClusters.Items, r.eligibility)
 	if err != nil {
 		// Selector evaluation fails only on invalid selector contents (e.g., an operator
 		// applied to a key it does not support); retrying cannot help until the spec changes,
-		// so the error surfaces on the status instead of the reconcile loop.
+		// so the error surfaces on the status instead of the reconcile loop. Outstanding
+		// claims are deliberately left untouched: their specs reflect the last valid
+		// selectors.
 		klog.ErrorS(err, "Failed to evaluate the cluster selectors", "placementPolicy", req.NamespacedName)
-		return runtime.Result{}, r.updateStatus(ctx, policy, nil, invalidSelectorsCondition(policy.GetGeneration(), err))
+		return runtime.Result{}, r.updateStatus(ctx, policy, nil, nil, invalidSelectorsCondition(policy.GetGeneration(), err))
+	}
+
+	activeClaims, claimErr := r.reconcileClaims(ctx, policy, outcomes, mostRecentClusterCreation)
+	// The scheduling status is written even when claim reconciliation failed partway; the
+	// claim error is returned afterwards so the round is retried.
+	if err := r.updateStatus(ctx, policy, outcomes, &activeClaims, scheduledCondition(policy.GetGeneration(), outcomes)); err != nil {
+		return runtime.Result{}, err
+	}
+	if claimErr != nil {
+		klog.ErrorS(claimErr, "Failed to reconcile the cluster claims", "placementPolicy", req.NamespacedName)
+		return runtime.Result{}, claimErr
 	}
 
 	requeueAfter := fulfilledRequeueAfter
@@ -112,17 +141,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 			break
 		}
 	}
-
-	if err := r.updateStatus(ctx, policy, outcomes, scheduledCondition(policy.GetGeneration(), outcomes)); err != nil {
-		return runtime.Result{}, err
-	}
 	return runtime.Result{RequeueAfter: requeueAfter}, nil
 }
 
 // updateStatus writes the scheduling outcome onto the policy status, skipping the API call when
 // nothing has changed. A nil outcome list clears the cluster counts (used when the selectors
-// cannot be evaluated at all).
-func (r *Reconciler) updateStatus(ctx context.Context, policy policyObject, outcomes []selectorOutcome, scheduledCond metav1.Condition) error {
+// cannot be evaluated at all); a nil activeClaims leaves the current claim count untouched.
+func (r *Reconciler) updateStatus(ctx context.Context, policy policyObject, outcomes []selectorOutcome, activeClaims *int32, scheduledCond metav1.Condition) error {
 	status := policy.PolicyStatus()
 	observedStatus := status.DeepCopy()
 
@@ -133,6 +158,9 @@ func (r *Reconciler) updateStatus(ctx context.Context, policy policyObject, outc
 		desired, scheduled := aggregateCounts(outcomes)
 		status.DesiredClusters = &desired
 		status.ScheduledClusters = &scheduled
+	}
+	if activeClaims != nil {
+		status.ActiveClusterClaims = activeClaims
 	}
 	meta.SetStatusCondition(&status.Conditions, scheduledCond)
 
@@ -175,6 +203,10 @@ func (r *Reconciler) SetupWithManagerForPlacementPolicy(mgr runtime.Manager) err
 			handler.EnqueueRequestsFromMapFunc(r.mapMemberClusterToPlacementPolicies),
 			builder.WithPredicates(memberClusterSchedulingRelevantChanges()),
 		).
+		Watches(
+			&kfplacementv1alpha1.ClusterClaim{},
+			handler.EnqueueRequestsFromMapFunc(r.mapClaimToPlacementPolicy),
+		).
 		Complete(r)
 }
 
@@ -188,6 +220,10 @@ func (r *Reconciler) SetupWithManagerForClusterPlacementPolicy(mgr runtime.Manag
 			&clusterv1beta1.MemberCluster{},
 			handler.EnqueueRequestsFromMapFunc(r.mapMemberClusterToClusterPlacementPolicies),
 			builder.WithPredicates(memberClusterSchedulingRelevantChanges()),
+		).
+		Watches(
+			&kfplacementv1alpha1.ClusterClaim{},
+			handler.EnqueueRequestsFromMapFunc(r.mapClaimToClusterPlacementPolicy),
 		).
 		Complete(r)
 }

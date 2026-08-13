@@ -22,6 +22,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -118,6 +119,30 @@ func (r *Reconciler) mapMemberClusterToPlacementPolicies(ctx context.Context, _ 
 		})
 	}
 	return requests
+}
+
+// mapClaimToPlacementPolicy resolves a cluster claim to its owning namespaced PlacementPolicy
+// via the ownership labels; claims of cluster-scoped policies are left to the
+// ClusterPlacementPolicy controller's mapper.
+func (r *Reconciler) mapClaimToPlacementPolicy(_ context.Context, obj client.Object) []reconcile.Request {
+	claimLabels := obj.GetLabels()
+	name := claimLabels[claimPolicyNameLabel]
+	namespace := claimLabels[claimPolicyNamespaceLabel]
+	if name == "" || namespace == "" {
+		return nil
+	}
+	return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: name, Namespace: namespace}}}
+}
+
+// mapClaimToClusterPlacementPolicy resolves a cluster claim to its owning ClusterPlacementPolicy
+// via the ownership labels.
+func (r *Reconciler) mapClaimToClusterPlacementPolicy(_ context.Context, obj client.Object) []reconcile.Request {
+	claimLabels := obj.GetLabels()
+	name := claimLabels[claimPolicyNameLabel]
+	if name == "" || claimLabels[claimPolicyNamespaceLabel] != "" {
+		return nil
+	}
+	return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: name}}}
 }
 
 // mapMemberClusterToClusterPlacementPolicies enqueues every ClusterPlacementPolicy on a member

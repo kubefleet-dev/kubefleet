@@ -1,0 +1,328 @@
+/*
+Copyright 2026 The KubeFleet Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package placementpolicy
+
+import (
+	"fmt"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+)
+
+var _ = Describe("cluster claim lifecycle", Ordered, func() {
+	var counter int
+
+	nextName := func(prefix string) string {
+		counter++
+		return fmt.Sprintf("%s-claim-%d", prefix, counter)
+	}
+
+	AfterEach(func() {
+		policies := &kfplacementv1alpha1.PlacementPolicyList{}
+		Expect(k8sClient.List(ctx, policies, client.InNamespace(testNamespace))).Should(Succeed())
+		for i := range policies.Items {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, &policies.Items[i]))).Should(Succeed())
+		}
+		// Policy deletion is finalizer-gated on claim cleanup; wait for both to drain.
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.List(ctx, policies, client.InNamespace(testNamespace))).Should(Succeed())
+			g.Expect(policies.Items).Should(BeEmpty())
+			claims := &kfplacementv1alpha1.ClusterClaimList{}
+			g.Expect(k8sClient.List(ctx, claims)).Should(Succeed())
+			g.Expect(claims.Items).Should(BeEmpty())
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		memberClusters := &clusterv1beta1.MemberClusterList{}
+		Expect(k8sClient.List(ctx, memberClusters)).Should(Succeed())
+		for i := range memberClusters.Items {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, &memberClusters.Items[i]))).Should(Succeed())
+		}
+		Eventually(func() (int, error) {
+			if err := k8sClient.List(ctx, memberClusters); err != nil {
+				return -1, err
+			}
+			return len(memberClusters.Items), nil
+		}, eventuallyTimeout, pollInterval).Should(Equal(0))
+	})
+
+	It("adds a claim for an unfulfilled selector and cleans it up with the policy", func() {
+		policy := newPolicy(nextName("pp"), regionSelector("brazilsouth", ptr.To(intstr.FromInt32(1)), nil))
+		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
+
+		wantClaimName := claimName(placementPolicyAdapter{policy}, 0)
+		By("the claim appears with the policy reference, terms, and ownership labels")
+		Eventually(func(g Gomega) {
+			claim := &kfplacementv1alpha1.ClusterClaim{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, claim)).Should(Succeed())
+			g.Expect(claim.Labels).Should(HaveKeyWithValue(claimPolicyNameLabel, policy.Name))
+			g.Expect(claim.Labels).Should(HaveKeyWithValue(claimPolicyNamespaceLabel, testNamespace))
+			g.Expect(claim.Spec.PlacementPolicyRef).NotTo(BeNil())
+			g.Expect(claim.Spec.PlacementPolicyRef.Name).Should(Equal(policy.Name))
+			g.Expect(claim.Spec.PlacementPolicyRef.Kind).Should(Equal(kfplacementv1alpha1.PlacementPolicyKind))
+			g.Expect(apiequality.Semantic.DeepEqual(claim.Spec.ClusterSelectorTerms, policy.Spec.ClusterSelectors[0].Terms)).Should(BeTrue())
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		By("the policy carries the cleanup finalizer and counts the claim")
+		Eventually(func(g Gomega) {
+			fetched := &kfplacementv1alpha1.PlacementPolicy{}
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(policy), fetched)).Should(Succeed())
+			g.Expect(controllerutil.ContainsFinalizer(fetched, claimCleanupFinalizer)).Should(BeTrue())
+			g.Expect(fetched.Status.ActiveClusterClaims).NotTo(BeNil())
+			g.Expect(*fetched.Status.ActiveClusterClaims).Should(Equal(int32(1)))
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		By("deleting the policy withdraws the claim and releases the policy")
+		Expect(k8sClient.Delete(ctx, policy)).Should(Succeed())
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, &kfplacementv1alpha1.ClusterClaim{})
+			g.Expect(client.IgnoreNotFound(err)).Should(Succeed())
+			g.Expect(err).Should(HaveOccurred(), "claim should be withdrawn")
+			err = k8sClient.Get(ctx, client.ObjectKeyFromObject(policy), &kfplacementv1alpha1.PlacementPolicy{})
+			g.Expect(client.IgnoreNotFound(err)).Should(Succeed())
+			g.Expect(err).Should(HaveOccurred(), "policy should be gone once the finalizer is released")
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+	})
+
+	It("withdraws the claim only when an eligible cluster fulfills the selector", func() {
+		policy := newPolicy(nextName("pp"), regionSelector("koreacentral", ptr.To(intstr.FromInt32(1)), nil))
+		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
+
+		wantClaimName := claimName(placementPolicyAdapter{policy}, 0)
+		Eventually(func() error {
+			return k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, &kfplacementv1alpha1.ClusterClaim{})
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		By("a matching but not-yet-joined cluster does not withdraw the claim (join window)")
+		mc := newMemberCluster(nextName("mc"), map[string]string{testRegionLabel: "koreacentral"})
+		Expect(k8sClient.Create(ctx, mc)).Should(Succeed())
+		Consistently(func() error {
+			return k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, &kfplacementv1alpha1.ClusterClaim{})
+		}, consistentlyDuration, pollInterval).Should(Succeed())
+
+		By("once the cluster joins, the claim is withdrawn and the count drops")
+		markJoined(mc)
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, &kfplacementv1alpha1.ClusterClaim{})
+			g.Expect(client.IgnoreNotFound(err)).Should(Succeed())
+			g.Expect(err).Should(HaveOccurred())
+			fetched := &kfplacementv1alpha1.PlacementPolicy{}
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(policy), fetched)).Should(Succeed())
+			g.Expect(fetched.Status.ActiveClusterClaims).NotTo(BeNil())
+			g.Expect(*fetched.Status.ActiveClusterClaims).Should(Equal(int32(0)))
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+	})
+
+	It("keeps at most one claim outstanding across multiple unfulfilled selectors", func() {
+		policy := newPolicy(nextName("pp"),
+			regionSelector("swedencentral", ptr.To(intstr.FromInt32(1)), nil),
+			regionSelector("norwayeast", ptr.To(intstr.FromInt32(1)), nil),
+		)
+		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
+
+		firstClaim := claimName(placementPolicyAdapter{policy}, 0)
+		Eventually(func() error {
+			return k8sClient.Get(ctx, types.NamespacedName{Name: firstClaim}, &kfplacementv1alpha1.ClusterClaim{})
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		Consistently(func(g Gomega) {
+			claims := &kfplacementv1alpha1.ClusterClaimList{}
+			g.Expect(k8sClient.List(ctx, claims, client.MatchingLabels{claimPolicyNameLabel: policy.Name})).Should(Succeed())
+			g.Expect(claims.Items).Should(HaveLen(1))
+			g.Expect(claims.Items[0].Name).Should(Equal(firstClaim))
+		}, consistentlyDuration, pollInterval).Should(Succeed())
+	})
+
+	It("does not add claims for KeepSearching selectors", func() {
+		selector := regionSelector("qatarcentral", ptr.To(intstr.FromInt32(1)), nil)
+		selector.WhenUnfulfilled = kfplacementv1alpha1.WhenUnfulfilledOptionKeepSearching
+		policy := newPolicy(nextName("pp"), selector)
+		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
+
+		By("the policy reports unfulfilled scheduling yet no claim appears")
+		Eventually(wantScheduledState(client.ObjectKeyFromObject(policy), metav1.ConditionFalse, kfplacementv1alpha1.PlacementPolicyScheduledCondReasonFailedToFindSomeClusters, 1, 0),
+			eventuallyTimeout, pollInterval).Should(Succeed())
+		Consistently(func(g Gomega) {
+			claims := &kfplacementv1alpha1.ClusterClaimList{}
+			g.Expect(k8sClient.List(ctx, claims, client.MatchingLabels{claimPolicyNameLabel: policy.Name})).Should(Succeed())
+			g.Expect(claims.Items).Should(BeEmpty())
+		}, consistentlyDuration, pollInterval).Should(Succeed())
+	})
+
+	It("refreshes the claim freshness marker when a non-matching cluster joins", func() {
+		policy := newPolicy(nextName("pp"), regionSelector("polandcentral", ptr.To(intstr.FromInt32(1)), nil))
+		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
+
+		wantClaimName := claimName(placementPolicyAdapter{policy}, 0)
+		Eventually(func() error {
+			return k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, &kfplacementv1alpha1.ClusterClaim{})
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		By("a cluster joins that does not satisfy the selector")
+		mc := newMemberCluster(nextName("mc"), map[string]string{testRegionLabel: "italynorth"})
+		Expect(k8sClient.Create(ctx, mc)).Should(Succeed())
+		markJoined(mc)
+
+		By("the claim survives and its freshness marker is advanced")
+		Eventually(func(g Gomega) {
+			claim := &kfplacementv1alpha1.ClusterClaim{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, claim)).Should(Succeed())
+			g.Expect(claim.Status.LastObservedMostRecentClusterCreationTimestamp).NotTo(BeNil())
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+	})
+
+	It("leaves a Terminating claim alone when its selector becomes unfulfilled again", func() {
+		policy := newPolicy(nextName("pp"), regionSelector("uaenorth", ptr.To(intstr.FromInt32(1)), nil))
+		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
+
+		wantClaimName := claimName(placementPolicyAdapter{policy}, 0)
+		claim := &kfplacementv1alpha1.ClusterClaim{}
+		Eventually(func() error {
+			return k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, claim)
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		By("a provisioner holds the claim with a finalizer")
+		claim.Finalizers = append(claim.Finalizers, "test.kubefleet.dev/provisioner")
+		Expect(k8sClient.Update(ctx, claim)).Should(Succeed())
+
+		By("a matching cluster joins and fulfills the selector, so the claim is withdrawn")
+		mc := newMemberCluster(nextName("mc"), map[string]string{testRegionLabel: "uaenorth"})
+		Expect(k8sClient.Create(ctx, mc)).Should(Succeed())
+		markJoined(mc)
+		Eventually(func(g Gomega) {
+			fetched := &kfplacementv1alpha1.ClusterClaim{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, fetched)).Should(Succeed())
+			g.Expect(fetched.DeletionTimestamp.IsZero()).Should(BeFalse(), "claim should be Terminating")
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		By("the cluster leaves, so the identical selector is unfulfilled again while the claim is still Terminating")
+		Expect(k8sClient.Delete(ctx, mc)).Should(Succeed())
+
+		By("the Terminating claim keeps its slot and no replacement is issued")
+		Consistently(func(g Gomega) {
+			claims := &kfplacementv1alpha1.ClusterClaimList{}
+			g.Expect(k8sClient.List(ctx, claims, client.MatchingLabels{claimPolicyNameLabel: policy.Name})).Should(Succeed())
+			g.Expect(claims.Items).Should(HaveLen(1))
+			g.Expect(claims.Items[0].DeletionTimestamp.IsZero()).Should(BeFalse())
+		}, consistentlyDuration, pollInterval).Should(Succeed())
+
+		By("releasing the finalizer lets a fresh claim be issued for the still-unfulfilled selector")
+		Eventually(func(g Gomega) {
+			fetched := &kfplacementv1alpha1.ClusterClaim{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, fetched)).Should(Succeed())
+			fetched.Finalizers = nil
+			g.Expect(k8sClient.Update(ctx, fetched)).Should(Succeed())
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		Eventually(func(g Gomega) {
+			fetched := &kfplacementv1alpha1.ClusterClaim{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, fetched)).Should(Succeed())
+			g.Expect(fetched.DeletionTimestamp.IsZero()).Should(BeTrue(), "a live replacement claim should exist")
+		}, eventuallyTimeout*2, pollInterval).Should(Succeed())
+	})
+
+	It("waits out a provisioner finalizer when replacing a claim after a selector change", func() {
+		policy := newPolicy(nextName("pp"), regionSelector("israelcentral", ptr.To(intstr.FromInt32(1)), nil))
+		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
+
+		wantClaimName := claimName(placementPolicyAdapter{policy}, 0)
+		claim := &kfplacementv1alpha1.ClusterClaim{}
+		Eventually(func() error {
+			return k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, claim)
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		By("a provisioner protects its in-flight work with a finalizer")
+		claim.Finalizers = append(claim.Finalizers, "test.kubefleet.dev/provisioner")
+		Expect(k8sClient.Update(ctx, claim)).Should(Succeed())
+
+		By("the selector is retargeted; the old claim lingers Terminating and blocks the slot")
+		Eventually(func(g Gomega) {
+			fetched := &kfplacementv1alpha1.PlacementPolicy{}
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(policy), fetched)).Should(Succeed())
+			fetched.Spec.ClusterSelectors[0].Terms = []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{
+				{MatchLabels: map[string]string{testRegionLabel: "newzealandnorth"}},
+			}
+			g.Expect(k8sClient.Update(ctx, fetched)).Should(Succeed())
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		Eventually(func(g Gomega) {
+			fetched := &kfplacementv1alpha1.ClusterClaim{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, fetched)).Should(Succeed())
+			g.Expect(fetched.DeletionTimestamp.IsZero()).Should(BeFalse(), "old claim should be Terminating")
+			g.Expect(apiequality.Semantic.DeepEqual(fetched.Spec.ClusterSelectorTerms, claim.Spec.ClusterSelectorTerms)).Should(BeTrue(), "the Terminating claim still carries the old terms")
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		By("releasing the finalizer lets the replacement claim through with the new terms")
+		Eventually(func(g Gomega) {
+			fetched := &kfplacementv1alpha1.ClusterClaim{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, fetched)).Should(Succeed())
+			fetched.Finalizers = nil
+			g.Expect(k8sClient.Update(ctx, fetched)).Should(Succeed())
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		Eventually(func(g Gomega) {
+			fetched := &kfplacementv1alpha1.ClusterClaim{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, fetched)).Should(Succeed())
+			g.Expect(fetched.DeletionTimestamp.IsZero()).Should(BeTrue(), "replacement claim should be live")
+			g.Expect(fetched.Spec.ClusterSelectorTerms).Should(HaveLen(1))
+			g.Expect(fetched.Spec.ClusterSelectorTerms[0].MatchLabels).Should(HaveKeyWithValue(testRegionLabel, "newzealandnorth"))
+			policy := &kfplacementv1alpha1.PlacementPolicy{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: fetched.Labels[claimPolicyNameLabel], Namespace: testNamespace}, policy)).Should(Succeed())
+			g.Expect(policy.Status.ActiveClusterClaims).NotTo(BeNil())
+			g.Expect(*policy.Status.ActiveClusterClaims).Should(Equal(int32(1)))
+		}, eventuallyTimeout*2, pollInterval).Should(Succeed())
+	})
+
+	It("replaces the outstanding claim when the selector terms change", func() {
+		policy := newPolicy(nextName("pp"), regionSelector("spaincentral", ptr.To(intstr.FromInt32(1)), nil))
+		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
+
+		wantClaimName := claimName(placementPolicyAdapter{policy}, 0)
+		oldTerms := policy.Spec.ClusterSelectors[0].Terms
+		Eventually(func() error {
+			return k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, &kfplacementv1alpha1.ClusterClaim{})
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		By("the selector is retargeted to another region")
+		Eventually(func(g Gomega) {
+			fetched := &kfplacementv1alpha1.PlacementPolicy{}
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(policy), fetched)).Should(Succeed())
+			fetched.Spec.ClusterSelectors[0].Terms = []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{
+				{MatchLabels: map[string]string{testRegionLabel: "mexicocentral"}},
+			}
+			g.Expect(k8sClient.Update(ctx, fetched)).Should(Succeed())
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		By("the claim is re-issued with the new terms under the same deterministic name")
+		Eventually(func(g Gomega) {
+			claim := &kfplacementv1alpha1.ClusterClaim{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, claim)).Should(Succeed())
+			g.Expect(claim.Spec.ClusterSelectorTerms).Should(HaveLen(1))
+			g.Expect(claim.Spec.ClusterSelectorTerms[0].MatchLabels).Should(HaveKeyWithValue(testRegionLabel, "mexicocentral"))
+			g.Expect(apiequality.Semantic.DeepEqual(claim.Spec.ClusterSelectorTerms, oldTerms)).Should(BeFalse())
+		}, eventuallyTimeout*2, pollInterval).Should(Succeed())
+	})
+})

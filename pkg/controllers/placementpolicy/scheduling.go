@@ -115,8 +115,14 @@ func evaluateSelectors(spec *kfplacementv1alpha1.PlacementPolicySpec, clusters [
 
 	selectors := spec.ClusterSelectors
 	if len(selectors) == 0 {
+		// The synthesized selector mirrors what CRD defaulting would have produced had the
+		// user written it out — including the AddClusterClaim default, so that a bare policy
+		// in a fleet with no schedulable clusters can still signal that a cluster is needed.
 		selectors = []kfplacementv1alpha1.ClusterSelector{
-			{Count: ptr.To(intstr.FromString(countAllClusters))},
+			{
+				Count:           ptr.To(intstr.FromString(countAllClusters)),
+				WhenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim,
+			},
 		}
 	}
 
