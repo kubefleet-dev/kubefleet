@@ -126,8 +126,8 @@ func (r *Reconciler) mapMemberClusterToPlacementPolicies(ctx context.Context, _ 
 // ClusterPlacementPolicy controller's mapper.
 func (r *Reconciler) mapClaimToPlacementPolicy(_ context.Context, obj client.Object) []reconcile.Request {
 	claimLabels := obj.GetLabels()
-	name := claimLabels[claimPolicyNameLabel]
-	namespace := claimLabels[claimPolicyNamespaceLabel]
+	name := claimLabels[kfplacementv1alpha1.ClusterClaimPolicyNameLabel]
+	namespace := claimLabels[kfplacementv1alpha1.ClusterClaimPolicyNamespaceLabel]
 	if name == "" || namespace == "" {
 		return nil
 	}
@@ -138,8 +138,8 @@ func (r *Reconciler) mapClaimToPlacementPolicy(_ context.Context, obj client.Obj
 // via the ownership labels.
 func (r *Reconciler) mapClaimToClusterPlacementPolicy(_ context.Context, obj client.Object) []reconcile.Request {
 	claimLabels := obj.GetLabels()
-	name := claimLabels[claimPolicyNameLabel]
-	if name == "" || claimLabels[claimPolicyNamespaceLabel] != "" {
+	name := claimLabels[kfplacementv1alpha1.ClusterClaimPolicyNameLabel]
+	if name == "" || claimLabels[kfplacementv1alpha1.ClusterClaimPolicyNamespaceLabel] != "" {
 		return nil
 	}
 	return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: name}}}
