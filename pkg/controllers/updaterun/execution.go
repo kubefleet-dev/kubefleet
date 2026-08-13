@@ -349,24 +349,26 @@ func (r *Reconciler) executeDeleteStage(
 	updateRunRef := klog.KObj(updateRun)
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	existingDeleteStageStatus := updateRunStatus.DeletionStageStatus
-	deleteStage := &placementv1beta1.StageConfig{
-		Name:            placementv1beta1.UpdateRunDeleteStageName,
-		AfterStageTasks: updateRunStatus.UpdateStrategySnapshot.DeleteStageTasks,
-	}
-
-	markUpdateRunWaiting(updateRun, fmt.Sprintf(condition.UpdateRunWaitingMessageFmt, "after-stage", existingDeleteStageStatus.StageName))
-	markStageUpdatingWaiting(existingDeleteStageStatus, updateRun.GetGeneration(), "Waiting for delete stage tasks to complete")
-	approved, waitTime, err := r.checkAfterStageTasksStatus(ctx, deleteStage, existingDeleteStageStatus, updateRun)
-	if err != nil {
-		return false, 0, err
-	}
-	if !approved {
-		if waitTime < 0 {
-			waitTime = stageUpdatingWaitTime
+	if existingDeleteStageStatus.StartTime == nil {
+		deleteStage := &placementv1beta1.StageConfig{
+			Name:            placementv1beta1.UpdateRunDeleteStageName,
+			AfterStageTasks: updateRunStatus.UpdateStrategySnapshot.DeleteStageTasks,
 		}
-		return false, waitTime, nil
+
+		markUpdateRunWaiting(updateRun, fmt.Sprintf(condition.UpdateRunWaitingMessageFmt, "after-stage", existingDeleteStageStatus.StageName))
+		markStageUpdatingWaiting(existingDeleteStageStatus, updateRun.GetGeneration(), "Waiting for delete stage tasks to complete")
+		approved, waitTime, err := r.checkAfterStageTasksStatus(ctx, deleteStage, existingDeleteStageStatus, updateRun)
+		if err != nil {
+			return false, 0, err
+		}
+		if !approved {
+			if waitTime < 0 {
+				waitTime = stageUpdatingWaitTime
+			}
+			return false, waitTime, nil
+		}
+		markUpdateRunProgressing(updateRun)
 	}
-	markUpdateRunProgressing(updateRun)
 
 	existingDeleteStageClusterMap := make(map[string]*placementv1beta1.ClusterUpdatingStatus, len(existingDeleteStageStatus.Clusters))
 	for i := range existingDeleteStageStatus.Clusters {

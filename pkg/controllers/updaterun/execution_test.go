@@ -1421,6 +1421,43 @@ func TestExecuteDeleteStageWithoutTasks(t *testing.T) {
 	}
 }
 
+func TestExecuteDeleteStageDoesNotReevaluateTasksAfterStart(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := placementv1beta1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme() error = %v", err)
+	}
+	binding := &placementv1beta1.ClusterResourceBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "binding"},
+		Spec:       placementv1beta1.ResourceBindingSpec{TargetCluster: "cluster-1"},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(binding).Build()
+	r := &Reconciler{Client: fakeClient}
+	startTime := metav1.Now()
+	updateRun := &placementv1beta1.ClusterStagedUpdateRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-update-run", Generation: 1},
+		Status: placementv1beta1.UpdateRunStatus{
+			UpdateStrategySnapshot: &placementv1beta1.UpdateStrategySpec{
+				DeleteStageTasks: []placementv1beta1.StageTask{{
+					Type:     placementv1beta1.StageTaskTypeTimedWait,
+					WaitTime: &metav1.Duration{Duration: time.Hour},
+				}},
+			},
+			DeletionStageStatus: &placementv1beta1.StageUpdatingStatus{
+				StageName: placementv1beta1.UpdateRunDeleteStageName,
+				StartTime: &startTime,
+				Clusters:  []placementv1beta1.ClusterUpdatingStatus{{ClusterName: "cluster-1"}},
+			},
+		},
+	}
+
+	if _, _, err := r.executeDeleteStage(context.Background(), updateRun, []placementv1beta1.BindingObj{binding}); err != nil {
+		t.Fatalf("executeDeleteStage() error = %v", err)
+	}
+	if err := fakeClient.Get(context.Background(), client.ObjectKeyFromObject(binding), &placementv1beta1.ClusterResourceBinding{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("executeDeleteStage() binding get error = %v, want not found", err)
+	}
+}
+
 func TestGenerateStuckClustersString(t *testing.T) {
 	tests := []struct {
 		name              string
