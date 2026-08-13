@@ -286,6 +286,24 @@ BINFMT_IMAGE ?= mcr.microsoft.com/mirror/docker/tonistiigi/binfmt:$(BINFMT_VERSI
 PLATFORMS ?= $(TARGET_OS)/$(TARGET_ARCH)
 RELEASE_PLATFORMS ?= linux/amd64,linux/arm64
 
+# Attach an SPDX SBOM to the image index. BuildKit generates one per platform
+# and stores it alongside the image in the registry, so consumers can read what
+# is in an image without unpacking it. Off by default because it slows every
+# local build; the release path turns it on.
+IMAGE_SBOM ?= false
+
+# When set, buildx writes each image's build metadata (including
+# "containerimage.digest") to $(IMAGE_METADATA_DIR)/<image>.json. The release
+# workflow signs those digests: signing a tag would sign whatever the tag points
+# at when cosign runs, not what this build actually pushed.
+IMAGE_METADATA_DIR ?=
+
+# Expanded into every docker-build-* target. Kept here so the three recipes stay
+# identical to each other.
+image_build_flags = \
+	$(if $(filter true,$(IMAGE_SBOM)),--sbom=true) \
+	$(if $(IMAGE_METADATA_DIR),--metadata-file $(IMAGE_METADATA_DIR)/$(1).json)
+
 .PHONY: push
 push: ## Build and push all Docker images as multi-arch manifests
 	$(MAKE) OUTPUT_TYPE="type=registry" PLATFORMS="$(RELEASE_PLATFORMS)" docker-build-hub-agent docker-build-member-agent docker-build-refresh-token
@@ -387,6 +405,7 @@ docker-build-hub-agent: docker-buildx-builder ## Build hub-agent image
 		--pull \
 		--tag $(REGISTRY)/$(HUB_AGENT_IMAGE_NAME):$(HUB_AGENT_IMAGE_VERSION) \
 		$(if $(IMAGE_EXTRA_TAG),--tag $(REGISTRY)/$(HUB_AGENT_IMAGE_NAME):$(IMAGE_EXTRA_TAG)) \
+		$(call image_build_flags,$(HUB_AGENT_IMAGE_NAME)) \
 		--progress=$(BUILDKIT_PROGRESS_TYPE) .
 
 .PHONY: docker-build-member-agent
@@ -398,6 +417,7 @@ docker-build-member-agent: docker-buildx-builder ## Build member-agent image
 		--pull \
 		--tag $(REGISTRY)/$(MEMBER_AGENT_IMAGE_NAME):$(MEMBER_AGENT_IMAGE_VERSION) \
 		$(if $(IMAGE_EXTRA_TAG),--tag $(REGISTRY)/$(MEMBER_AGENT_IMAGE_NAME):$(IMAGE_EXTRA_TAG)) \
+		$(call image_build_flags,$(MEMBER_AGENT_IMAGE_NAME)) \
 		--progress=$(BUILDKIT_PROGRESS_TYPE) .
 
 .PHONY: docker-build-refresh-token
@@ -409,6 +429,7 @@ docker-build-refresh-token: docker-buildx-builder ## Build refresh-token image
 		--pull \
 		--tag $(REGISTRY)/$(REFRESH_TOKEN_IMAGE_NAME):$(REFRESH_TOKEN_IMAGE_VERSION) \
 		$(if $(IMAGE_EXTRA_TAG),--tag $(REGISTRY)/$(REFRESH_TOKEN_IMAGE_NAME):$(IMAGE_EXTRA_TAG)) \
+		$(call image_build_flags,$(REFRESH_TOKEN_IMAGE_NAME)) \
 		--progress=$(BUILDKIT_PROGRESS_TYPE) .
 
 ## -----------------------------------
