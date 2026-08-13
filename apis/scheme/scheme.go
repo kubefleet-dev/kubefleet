@@ -15,8 +15,8 @@ limitations under the License.
 */
 
 // Package scheme provides a builder for registering API types with a runtime
-// scheme. It keeps the API packages free of dependencies beyond the standard
-// library and k8s.io/apimachinery.
+// scheme. It replaces the deprecated controller-runtime scheme.Builder so that
+// the group-version registration code depends only on k8s.io/apimachinery.
 package scheme
 
 import (
