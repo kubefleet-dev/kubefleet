@@ -108,7 +108,7 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).Should(Succeed())
 
-	reconciler := NewReconciler(mgr.GetClient())
+	reconciler := NewReconciler(mgr.GetClient(), mgr.GetAPIReader())
 	Expect(reconciler.SetupWithManagerForPlacementPolicy(mgr)).Should(Succeed())
 	Expect(reconciler.SetupWithManagerForClusterPlacementPolicy(mgr)).Should(Succeed())
 

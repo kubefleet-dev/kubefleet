@@ -68,6 +68,45 @@ package demonstrating the current behavior.
   construction caused by data one cluster self-reported (e.g., a property
   value that is not a quantity); that cluster is skipped and logged rather
   than aborting evaluation for the whole policy.
+- **Claims are issued while a selector is below its desired count** (not just
+  below the minCount floor), consistent with the binary Scheduled contract;
+  whether floor-satisfied selectors should stop claiming is part of the same
+  FEP follow-up as item 4 above.
+- **Claim names are deterministic and namespace-qualified**: the name embeds
+  the selector index and a hash of the policy's namespaced name, so
+  same-named policies in different namespaces cannot collide on the
+  cluster-scoped claim namespace, and a restarted reconciler converges on
+  get-or-create instead of duplicating claims.
+- **A Terminating claim occupies its budget slot**: a claim held by a
+  provisioner finalizer is not replaced, so a slow teardown can starve the
+  policy of its single claim slot but can never cause double-provisioning —
+  the safer failure mode for a provisioner acting on the claim.
+- **Cleanup is finalizer-driven**: cross-scope owner references (namespaced
+  policy owning a cluster-scoped claim) are invalid in garbage collection —
+  and, trap-like, accepted at admission — so claims carry ownership labels,
+  the policy carries a cleanup finalizer (added before the first claim is
+  created, so a crash between the two writes cannot orphan a claim), and
+  deletion withdraws claims before the policy goes away. Claims are deleted
+  one by one rather than via DeleteAllOf, which keeps the RBAC surface free
+  of deletecollection.
+- **Withdrawal is eligibility-gated**: a claim is withdrawn only when its
+  selector is fulfilled by schedulable clusters, so a provisioned cluster
+  that has registered but not yet joined does not withdraw the claim (the
+  join-window race raised on the verification issue).
+- **Selector-term changes replace the claim under the same name**: the stale
+  claim is withdrawn and the same deterministic name is re-created with the
+  new terms. While the old claim is held Terminating by a provisioner
+  finalizer, `activeClusterClaims` can transiently read zero for that slot
+  (the withdraw round counts neither the just-deleted old claim nor the
+  blocked new one); it self-heals on the claim-watch-triggered reconcile.
+- **A policy with no cluster selectors claims like any other**: the
+  synthesized "all clusters" selector inherits the API's `AddClusterClaim`
+  default, so a bare policy facing an empty fleet still signals that a
+  cluster is needed rather than silently waiting forever.
+- **The FEP's eligible-keys allowlist is not implemented yet** (same status
+  as the per-fleet concurrency limit): the only opt-out today is the
+  per-selector `whenUnfulfilled: KeepSearching`. Both belong to the config
+  surface the FEP describes in prose only.
 
 ## Boy Scout fixes riding along
 
