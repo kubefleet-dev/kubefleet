@@ -274,6 +274,7 @@ type UpdateStrategySpec struct {
 	// +kubebuilder:validation:XValidation:rule="!(self.size() == 2 && self[0].type == self[1].type)",message="deleteStageTasks cannot have two tasks of the same type"
 	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'Approval' && has(e.waitTime))",message="DeleteStageTaskType is Approval, waitTime is not allowed"
 	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'TimedWait' && !has(e.waitTime))",message="DeleteStageTaskType is TimedWait, waitTime is required"
+	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'TimedWait' && has(e.waitTime) && duration(e.waitTime) <= duration('0s'))",message="DeleteStageTaskType is TimedWait, waitTime must be greater than zero"
 	DeleteStageTasks []StageTask `json:"deleteStageTasks,omitempty"`
 }
 
