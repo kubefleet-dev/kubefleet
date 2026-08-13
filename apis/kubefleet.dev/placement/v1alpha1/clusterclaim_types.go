@@ -22,6 +22,15 @@ import (
 
 const (
 	ClusterClaimCondTypeCompleted = "Completed"
+
+	// ClusterClaimPolicyNameLabel and ClusterClaimPolicyNamespaceLabel record the placement
+	// policy that added a cluster claim. Cluster claims are cluster-scoped and cannot carry an
+	// owner reference to a namespaced PlacementPolicy, so these labels are how KubeFleet — and
+	// anyone querying claims, such as a provisioner watching the claims of a specific
+	// placement — associates a claim with its policy. The namespace label is empty for claims
+	// added by a ClusterPlacementPolicy.
+	ClusterClaimPolicyNameLabel      = "placement.kubefleet.dev/policy-name"
+	ClusterClaimPolicyNamespaceLabel = "placement.kubefleet.dev/policy-namespace"
 )
 
 // ClusterClaim is a KubeFleet API that represents a claim for a new member cluster.

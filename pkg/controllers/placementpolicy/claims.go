@@ -32,13 +32,6 @@ import (
 )
 
 const (
-	// claimPolicyNameLabel and claimPolicyNamespaceLabel identify the policy a cluster claim
-	// belongs to. ClusterClaim objects are cluster-scoped and cannot carry an owner reference
-	// to a namespaced PlacementPolicy (Kubernetes garbage collection rejects cross-scope
-	// owners), so ownership is tracked with labels and cleaned up with a finalizer instead.
-	claimPolicyNameLabel      = "placement.kubefleet.dev/policy-name"
-	claimPolicyNamespaceLabel = "placement.kubefleet.dev/policy-namespace"
-
 	// claimCleanupFinalizer marks policies with outstanding cluster claims; deleting such a
 	// policy first withdraws its claims.
 	claimCleanupFinalizer = "placement.kubefleet.dev/claim-cleanup"
@@ -166,8 +159,8 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy policyObject, o
 			ObjectMeta: metav1.ObjectMeta{
 				Name: w.name,
 				Labels: map[string]string{
-					claimPolicyNameLabel:      policy.GetName(),
-					claimPolicyNamespaceLabel: policy.GetNamespace(),
+					kfplacementv1alpha1.ClusterClaimPolicyNameLabel:      policy.GetName(),
+					kfplacementv1alpha1.ClusterClaimPolicyNamespaceLabel: policy.GetNamespace(),
 				},
 			},
 			Spec: kfplacementv1alpha1.ClusterClaimSpec{
@@ -230,8 +223,8 @@ func (r *Reconciler) cleanupClaims(ctx context.Context, policy policyObject) err
 
 	claims := &kfplacementv1alpha1.ClusterClaimList{}
 	if err := r.uncachedReader.List(ctx, claims, client.MatchingLabels{
-		claimPolicyNameLabel:      policy.GetName(),
-		claimPolicyNamespaceLabel: policy.GetNamespace(),
+		kfplacementv1alpha1.ClusterClaimPolicyNameLabel:      policy.GetName(),
+		kfplacementv1alpha1.ClusterClaimPolicyNamespaceLabel: policy.GetNamespace(),
 	}); err != nil {
 		klog.ErrorS(err, "Failed to list cluster claims for the deleted policy", "placementPolicy", klog.KObj(policy.Unwrap()))
 		return err
@@ -279,8 +272,8 @@ func (r *Reconciler) ensureFinalizer(ctx context.Context, policy policyObject) e
 func (r *Reconciler) listClaims(ctx context.Context, policy policyObject) ([]kfplacementv1alpha1.ClusterClaim, error) {
 	claims := &kfplacementv1alpha1.ClusterClaimList{}
 	if err := r.List(ctx, claims, client.MatchingLabels{
-		claimPolicyNameLabel:      policy.GetName(),
-		claimPolicyNamespaceLabel: policy.GetNamespace(),
+		kfplacementv1alpha1.ClusterClaimPolicyNameLabel:      policy.GetName(),
+		kfplacementv1alpha1.ClusterClaimPolicyNamespaceLabel: policy.GetNamespace(),
 	}); err != nil {
 		klog.ErrorS(err, "Failed to list cluster claims for the policy", "placementPolicy", klog.KObj(policy.Unwrap()))
 		return nil, err
