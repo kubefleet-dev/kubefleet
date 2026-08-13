@@ -380,7 +380,7 @@ func TestSyncRole(t *testing.T) {
 								Name:      "fleet-role-mc1",
 								Namespace: namespace1,
 							},
-							Rules: []rbacv1.PolicyRule{utils.FleetClusterRule, utils.FleetPlacementRule, utils.FleetNetworkRule, utils.EventRule},
+							Rules: []rbacv1.PolicyRule{utils.FleetClusterRule, utils.FleetPlacementRule, utils.FleetNetworkRule, utils.EventRule, utils.EventsK8sIoRule},
 						}
 						return nil
 					},
