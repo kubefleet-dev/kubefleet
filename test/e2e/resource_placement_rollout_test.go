@@ -815,8 +815,8 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 		})
 
 		It("should report the job as not yet available and block rollout", func() {
-			failedJobResourceIdentifier := wantSelectedResources[0]
-			rpStatusActual := safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResources, failedJobResourceIdentifier, allMemberClusterNames, "1", 1)
+			notYetAvailableJobIdentifier := wantSelectedResources[0]
+			rpStatusActual := safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResources, notYetAvailableJobIdentifier, allMemberClusterNames, "1", 1)
 			Eventually(rpStatusActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 	})
