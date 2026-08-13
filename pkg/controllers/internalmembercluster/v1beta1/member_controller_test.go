@@ -120,13 +120,17 @@ func TestMarkInternalMemberClusterJoinFailed(t *testing.T) {
 
 	// check that the correct event is emitted
 	event := <-r.recorder.(*events.FakeRecorder).Events
-	expected := utils.GetEventString(internalMemberCluster, corev1.EventTypeNormal, EventReasonInternalMemberClusterFailedToJoin, "internal member cluster failed to join")
-	assert.Equal(t, expected, event, utils.TestCaseMsg, "TestMarkInternalMemberClusterJoinFailed")
+	wantEvent := utils.GetEventString(internalMemberCluster, corev1.EventTypeNormal, EventReasonInternalMemberClusterFailedToJoin, "internal member cluster failed to join")
+	if event != wantEvent {
+		t.Errorf("markInternalMemberClusterJoinFailed() emitted event %v, want %v", event, wantEvent)
+	}
 
 	// Check expected condition.
-	expectedCondition := metav1.Condition{Type: string(clusterv1beta1.AgentJoined), Status: metav1.ConditionUnknown, Reason: EventReasonInternalMemberClusterFailedToJoin, Message: joinErr.Error()}
-	actualCondition := internalMemberCluster.GetConditionWithType(clusterv1beta1.MemberAgent, expectedCondition.Type)
-	assert.Equal(t, "", cmp.Diff(expectedCondition, *(actualCondition), cmpopts.IgnoreTypes(time.Time{})), utils.TestCaseMsg, "TestMarkInternalMemberClusterJoinFailed")
+	wantCondition := metav1.Condition{Type: string(clusterv1beta1.AgentJoined), Status: metav1.ConditionUnknown, Reason: EventReasonInternalMemberClusterFailedToJoin, Message: joinErr.Error()}
+	gotCondition := internalMemberCluster.GetConditionWithType(clusterv1beta1.MemberAgent, wantCondition.Type)
+	if diff := cmp.Diff(*gotCondition, wantCondition, cmpopts.IgnoreTypes(time.Time{})); diff != "" {
+		t.Errorf("markInternalMemberClusterJoinFailed() condition mismatch (-got, +want):\n%s", diff)
+	}
 }
 
 func TestMarkInternalMemberClusterLeaveFailed(t *testing.T) {
@@ -138,13 +142,17 @@ func TestMarkInternalMemberClusterLeaveFailed(t *testing.T) {
 
 	// check that the correct event is emitted
 	event := <-r.recorder.(*events.FakeRecorder).Events
-	expected := utils.GetEventString(internalMemberCluster, corev1.EventTypeNormal, EventReasonInternalMemberClusterFailedToLeave, "internal member cluster failed to leave")
-	assert.Equal(t, expected, event, utils.TestCaseMsg, "TestMarkInternalMemberClusterLeaveFailed")
+	wantEvent := utils.GetEventString(internalMemberCluster, corev1.EventTypeNormal, EventReasonInternalMemberClusterFailedToLeave, "internal member cluster failed to leave")
+	if event != wantEvent {
+		t.Errorf("markInternalMemberClusterLeaveFailed() emitted event %v, want %v", event, wantEvent)
+	}
 
 	// Check expected condition.
-	expectedCondition := metav1.Condition{Type: string(clusterv1beta1.AgentJoined), Status: metav1.ConditionUnknown, Reason: EventReasonInternalMemberClusterFailedToLeave, Message: leaveErr.Error()}
-	actualCondition := internalMemberCluster.GetConditionWithType(clusterv1beta1.MemberAgent, expectedCondition.Type)
-	assert.Equal(t, "", cmp.Diff(expectedCondition, *(actualCondition), cmpopts.IgnoreTypes(time.Time{})), utils.TestCaseMsg, "TestMarkInternalMemberClusterLeaveFailed")
+	wantCondition := metav1.Condition{Type: string(clusterv1beta1.AgentJoined), Status: metav1.ConditionUnknown, Reason: EventReasonInternalMemberClusterFailedToLeave, Message: leaveErr.Error()}
+	gotCondition := internalMemberCluster.GetConditionWithType(clusterv1beta1.MemberAgent, wantCondition.Type)
+	if diff := cmp.Diff(*gotCondition, wantCondition, cmpopts.IgnoreTypes(time.Time{})); diff != "" {
+		t.Errorf("markInternalMemberClusterLeaveFailed() condition mismatch (-got, +want):\n%s", diff)
+	}
 }
 
 func TestUpdateMemberAgentHeartBeat(t *testing.T) {
