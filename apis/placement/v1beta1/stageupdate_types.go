@@ -266,6 +266,15 @@ type UpdateStrategySpec struct {
 	// +kubebuilder:validation:MaxItems=31
 	// +kubebuilder:validation:Required
 	Stages []StageConfig `json:"stages"`
+
+	// DeleteStageTasks is the collection of tasks that must complete before the deletion stage starts.
+	// Each task is executed in parallel and there cannot be more than one task of the same type.
+	// +kubebuilder:validation:MaxItems=2
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:XValidation:rule="!(self.size() == 2 && self[0].type == self[1].type)",message="deleteStageTasks cannot have two tasks of the same type"
+	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'Approval' && has(e.waitTime))",message="DeleteStageTaskType is Approval, waitTime is not allowed"
+	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'TimedWait' && !has(e.waitTime))",message="DeleteStageTaskType is TimedWait, waitTime is required"
+	DeleteStageTasks []StageTask `json:"deleteStageTasks,omitempty"`
 }
 
 // ClusterStagedUpdateStrategyList contains a list of StagedUpdateStrategy.
