@@ -108,6 +108,40 @@ package demonstrating the current behavior.
   per-selector `whenUnfulfilled: KeepSearching`. Both belong to the config
   surface the FEP describes in prose only.
 
+## How a claim records the policy that owns it
+
+`spec.placementPolicyRef` is the authoritative identity: it is required,
+immutable, and has no length limit, so the claim watch maps an event back to
+its policy through that field. The ownership **labels** exist only so that a
+policy's claims can be selected server-side with a `List`, which no spec field
+allows.
+
+That distinction matters because label values stop at 63 bytes while object
+names run to 253. When a policy's name does not fit, the label carries a
+prefix plus a hash of the full name instead — so selecting on the label with
+the policy's own name matches nothing, and consumers that must handle such
+names should list claims and match on `spec.placementPolicyRef`. Generated
+names are trimmed of trailing separators at every truncation point: a `.` or
+`-` landing exactly on the boundary would otherwise produce a name the API
+server rejects. Both flaws were found by manual testing with a 250-character
+policy name, and each made claim creation fail validation and the reconciler
+retry forever, with the policy silently never getting a claim.
+
+## Operational notes
+
+- **Disabling the feature flag with claims outstanding leaves policies
+  undeletable.** The cleanup finalizer is only removed by this controller, so
+  turning `--enable-placement-policy-apis` off while a policy holds cluster
+  claims parks that policy in `Terminating` and leaves its claims in place
+  until the flag is turned back on, at which point reconciliation resumes and
+  completes the cleanup. This mirrors the existing behavior of the staged
+  update run APIs and their finalizer; it is documented on the flag and in the
+  chart README rather than worked around, since removing a finalizer without a
+  controller to withdraw the claims would orphan them instead.
+- **Restarting the hub agent mid-flow is safe**: claim creation is
+  get-or-create on a deterministic name, and the finalizer is added before the
+  first claim exists, so no window can orphan a claim.
+
 ## Boy Scout fixes riding along
 
 - `pkg/scheduler/framework/plugins/clusteraffinity/types.go`: resource
