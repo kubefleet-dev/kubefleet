@@ -29,6 +29,13 @@ const (
 	// anyone querying claims, such as a provisioner watching the claims of a specific
 	// placement — associates a claim with its policy. The namespace label is empty for claims
 	// added by a ClusterPlacementPolicy.
+	//
+	// Object names may be longer than the 63-byte limit on label values: when a policy's name
+	// does not fit, the label carries a shortened, collision-resistant form of it instead, and
+	// selecting on the label with the policy's own name then matches nothing. The authoritative
+	// identity is always spec.placementPolicyRef, so a consumer that must handle policies with
+	// names longer than 63 bytes should list cluster claims and match on that field rather than
+	// select on this label.
 	ClusterClaimPolicyNameLabel      = "placement.kubefleet.dev/policy-name"
 	ClusterClaimPolicyNamespaceLabel = "placement.kubefleet.dev/policy-namespace"
 )

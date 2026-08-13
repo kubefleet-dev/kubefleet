@@ -125,24 +125,33 @@ func (r *Reconciler) mapMemberClusterToPlacementPolicies(ctx context.Context, _ 
 // via the ownership labels; claims of cluster-scoped policies are left to the
 // ClusterPlacementPolicy controller's mapper.
 func (r *Reconciler) mapClaimToPlacementPolicy(_ context.Context, obj client.Object) []reconcile.Request {
-	claimLabels := obj.GetLabels()
-	name := claimLabels[kfplacementv1alpha1.ClusterClaimPolicyNameLabel]
-	namespace := claimLabels[kfplacementv1alpha1.ClusterClaimPolicyNamespaceLabel]
-	if name == "" || namespace == "" {
+	// The spec reference, not the ownership labels, is the policy's authoritative identity: a
+	// label value cannot hold a name longer than 63 bytes.
+	ref := policyRefOf(obj)
+	if ref == nil || ref.Name == "" || ref.Namespace == "" {
 		return nil
 	}
-	return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: name, Namespace: namespace}}}
+	return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: ref.Name, Namespace: ref.Namespace}}}
 }
 
 // mapClaimToClusterPlacementPolicy resolves a cluster claim to its owning ClusterPlacementPolicy
 // via the ownership labels.
 func (r *Reconciler) mapClaimToClusterPlacementPolicy(_ context.Context, obj client.Object) []reconcile.Request {
-	claimLabels := obj.GetLabels()
-	name := claimLabels[kfplacementv1alpha1.ClusterClaimPolicyNameLabel]
-	if name == "" || claimLabels[kfplacementv1alpha1.ClusterClaimPolicyNamespaceLabel] != "" {
+	ref := policyRefOf(obj)
+	if ref == nil || ref.Name == "" || ref.Namespace != "" {
 		return nil
 	}
-	return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: name}}}
+	return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: ref.Name}}}
+}
+
+// policyRefOf returns the placement policy reference of a cluster claim, or nil for anything
+// else; the claim watches this maps for are registered on ClusterClaim objects only.
+func policyRefOf(obj client.Object) *kfplacementv1alpha1.ObjectReference {
+	claim, ok := obj.(*kfplacementv1alpha1.ClusterClaim)
+	if !ok {
+		return nil
+	}
+	return claim.Spec.PlacementPolicyRef
 }
 
 // mapMemberClusterToClusterPlacementPolicies enqueues every ClusterPlacementPolicy on a member
