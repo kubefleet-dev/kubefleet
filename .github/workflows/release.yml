@@ -75,11 +75,15 @@ jobs:
     permissions:
       contents: read
       packages: write
+      # Keyless signing exchanges this workflow's OIDC identity for a
+      # short-lived Fulcio certificate; there is no long-lived key to store.
+      id-token: write
     env:
       REGISTRY: ${{ needs.setup.outputs.registry }}
       TAG: ${{ needs.setup.outputs.tag }}
       VERSION: ${{ needs.setup.outputs.version }}
       PRERELEASE: ${{ needs.setup.outputs.prerelease }}
+      IMAGE_METADATA_DIR: _image-metadata
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -93,26 +97,36 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+
       # A single multi-arch `docker buildx build` per image publishes the full
       # tag (e.g. "v0.4.0") and, for stable releases, the short alias
       # (e.g. "0.4.0") in the same push - no separate retag step. RC images are
       # published under the long form ("v0.4.0-rc.1") for testers only: the
       # short-tag namespace is deliberately reserved for stable releases that
       # consumers can safely pin to, so RC tags get no short alias.
+      #
+      # IMAGE_SBOM attaches a per-platform SPDX SBOM to the image index;
+      # IMAGE_METADATA_DIR captures the digest buildx actually pushed, which is
+      # what gets signed below.
       - name: Build and push images with tag ${{ needs.setup.outputs.tag }}
         run: |
           set -euo pipefail
-          if [ "${PRERELEASE}" = "true" ]; then
-            make push
-          else
-            make push IMAGE_EXTRA_TAG="${VERSION}"
+          mkdir -p "${IMAGE_METADATA_DIR}"
+          extra_tag=""
+          if [ "${PRERELEASE}" != "true" ]; then
+            extra_tag="${VERSION}"
           fi
+          make push IMAGE_SBOM=true IMAGE_METADATA_DIR="${IMAGE_METADATA_DIR}" IMAGE_EXTRA_TAG="${extra_tag}"
 
       # Confirm every published tag is a real multi-arch manifest list rather
       # than a silently degraded single-arch image: a build that pushed only one
       # architecture would otherwise go unnoticed until a consumer on the other
       # architecture failed to pull. Stable releases also carry the short alias.
-      - name: Verify images are multi-arch
+      - name: Verify published image manifests and SBOMs
         run: |
           set -euo pipefail
           tags="${TAG}"
@@ -130,7 +144,20 @@ jobs:
                   || { echo "::error::${ref} is missing platform ${platform}"; exit 1; }
               done
             done
+            # Once per image: every tag resolves to the same index. IMAGE_SBOM is
+            # matched as an exact string in the Makefile, so a future "TRUE" or
+            # "1" would quietly produce no SBOM; assert the attestation is really
+            # attached rather than trusting the flag was spelled as make expects.
+            sbom="$(docker buildx imagetools inspect "${REGISTRY}/${IMAGE}:${TAG}" \
+              --format '{{ json (index .SBOM "linux/amd64").SPDX }}' 2>/dev/null || true)"
+            if [ -z "${sbom}" ] || [ "${sbom}" = "null" ]; then
+              echo "::error::${REGISTRY}/${IMAGE}:${TAG} has no SPDX SBOM attached"
+              exit 1
+            fi
           done
+
+      - name: Sign the published images
+        run: ./hack/release/sign-images.sh
 
   # Publish the raw CRDs as a standalone release asset so consumers can install
   # them without pulling a Helm chart. The bundle carries the unmodified CRDs the
@@ -141,6 +168,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     env:
       TAG: ${{ needs.setup.outputs.tag }}
     steps:
@@ -149,8 +177,16 @@ jobs:
         with:
           ref: ${{ needs.setup.outputs.tag }}
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+
       - name: Package CRDs
         run: make crd-package TAG="${TAG}"
+
+      - name: Sign the CRD bundle checksum
+        run: ./hack/release/sign-crd-bundle.sh
 
       # --clobber makes the upload idempotent so a re-run replaces the asset
       # rather than failing on a name collision. The token is scoped to this
@@ -163,6 +199,7 @@ jobs:
           gh release upload "${TAG}" \
             "_crd-package/kubefleet-crds-${TAG}.tgz" \
             "_crd-package/kubefleet-crds-${TAG}.tgz.sha256" \
+            "_crd-package/kubefleet-crds-${TAG}.tgz.sha256.bundle" \
             --clobber
 
   # Charts are published only for stable releases: an RC must be installable by
