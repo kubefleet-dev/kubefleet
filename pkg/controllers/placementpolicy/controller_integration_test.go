@@ -141,6 +141,19 @@ var _ = Describe("placement policy scheduling status", Ordered, func() {
 		for i := range clusterPolicies.Items {
 			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, &clusterPolicies.Items[i]))).Should(Succeed())
 		}
+		// Policy deletion is finalizer-gated on claim cleanup (unfulfilled selectors in these
+		// specs spawn claims via the AddClusterClaim default); wait for policies and their
+		// claims to fully drain so no state leaks into other suites in this package.
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.List(ctx, policies, client.InNamespace(testNamespace))).Should(Succeed())
+			g.Expect(policies.Items).Should(BeEmpty())
+			g.Expect(k8sClient.List(ctx, clusterPolicies)).Should(Succeed())
+			g.Expect(clusterPolicies.Items).Should(BeEmpty())
+			claims := &kfplacementv1alpha1.ClusterClaimList{}
+			g.Expect(k8sClient.List(ctx, claims)).Should(Succeed())
+			g.Expect(claims.Items).Should(BeEmpty())
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
 		memberClusters := &clusterv1beta1.MemberClusterList{}
 		Expect(k8sClient.List(ctx, memberClusters)).Should(Succeed())
 		for i := range memberClusters.Items {
