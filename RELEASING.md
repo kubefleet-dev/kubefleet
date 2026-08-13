@@ -11,7 +11,8 @@ supported are covered in [VERSIONING.md](VERSIONING.md) and
 | Artifact | Location | Stable (`v0.4.0`) | Release candidate (`v0.4.0-rc.1`) |
 | --- | --- | --- | --- |
 | Agent images (`hub-agent`, `member-agent`, `refresh-token`) | `ghcr.io/kubefleet-dev/kubefleet/<image>` | `:v0.4.0` and `:0.4.0` | `:v0.4.0-rc.1` only |
-| CRD bundle (`kubefleet-crds-<tag>.tgz` + `.sha256`) | GitHub Release asset | Yes | Yes |
+| Image signatures + SPDX SBOMs | Alongside each image in the registry | Yes | Yes |
+| CRD bundle (`kubefleet-crds-<tag>.tgz`, `.sha256`, `.sha256.bundle`) | GitHub Release asset | Yes | Yes |
 | Helm charts (OCI) | `oci://ghcr.io/kubefleet-dev/kubefleet/charts/<chart>` | Yes | No |
 | Helm charts (index) | `https://kubefleet-dev.github.io/kubefleet/charts` | Yes | No |
 | GitHub Release | Releases page | Published | Published, flagged pre-release |
@@ -89,6 +90,64 @@ The two jobs with real branching logic — `create-draft-release` and
 in the workflow, and are covered by `hack/release/test-release-scripts.sh`,
 which CI runs on every change to either.
 
+## Verifying a release
+
+The container images and the CRD bundle are signed with
+[cosign](https://docs.sigstore.dev/) in keyless mode: the workflow's GitHub OIDC
+identity is exchanged for a short-lived Fulcio certificate and the signature is
+recorded in Rekor. There is no long-lived signing key to hold, and nothing to
+rotate.
+
+The Helm charts are **not** signed yet, on either the OCI or the index channel.
+Signing the OCI charts is the same keyless flow used for images and is tracked
+as a follow-up; the classic-repo `.prov` mechanism needs a long-lived GPG key
+this project has no custody story for.
+
+Images are signed by digest rather than by tag, so a signature is bound to the
+exact bytes the release built. Verify one with:
+
+```bash
+cosign verify \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/kubefleet-dev/kubefleet/\.github/workflows/release\.yml@' \
+  ghcr.io/kubefleet-dev/kubefleet/hub-agent:v0.4.0
+```
+
+Each image also carries a per-platform SPDX SBOM attached to its index, readable
+without pulling the image:
+
+```bash
+docker buildx imagetools inspect ghcr.io/kubefleet-dev/kubefleet/hub-agent:v0.4.0 \
+  --format '{{ json (index .SBOM "linux/amd64").SPDX }}'
+```
+
+`.SBOM` is keyed by platform because every published image is a multi-platform
+index; there is one SBOM per architecture.
+
+The CRD bundle's checksum file is signed as a blob; verifying it and then
+checking the tarball against it covers the tarball:
+
+```bash
+cosign verify-blob \
+  --bundle kubefleet-crds-v0.4.0.tgz.sha256.bundle \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/kubefleet-dev/kubefleet/\.github/workflows/release\.yml@' \
+  kubefleet-crds-v0.4.0.tgz.sha256
+sha256sum -c kubefleet-crds-v0.4.0.tgz.sha256
+```
+
+Verification needs Sigstore's trust root (the Fulcio and Rekor keys), which
+cosign fetches once and caches under `~/.sigstore`. On a machine with no network
+access, prime that cache first or pass `--trusted-root`; otherwise the commands
+above fail for a reason that has nothing to do with the signature.
+
+The release workflow runs these same verifications immediately after signing, so
+a signature that cannot be verified fails the release instead of shipping.
+`release.yml` is the only workflow holding `id-token: write`. Any OIDC trust
+policy added later (cloud role assumption, trusted publishing) must be scoped to
+that workflow's `job_workflow_ref`, never to `repo:kubefleet-dev/kubefleet:*`,
+or it would be assumable from any workflow in the repository.
+
 ## Recovering from a failed run
 
 The normal recovery is **Re-run failed jobs** on the workflow run. Jobs that
@@ -107,8 +166,9 @@ is harmless while the release is still a draft — nothing has been announced ye
 | `create-draft-release` | Nothing | See [Re-releasing an existing tag](#re-releasing-an-existing-tag) if it refused because the release is already published. |
 | `publish-images` | Any images pushed before the failure (`make push` builds hub-agent, member-agent, then refresh-token in order) | Fix, then re-run failed jobs. |
 | `publish-crds` | Possibly the images — it runs in parallel with `publish-images`, not after it | Fix, then re-run failed jobs. |
+| Either signing step | Whatever that job published before signing | Usually a Sigstore or registry transient rather than a code fault — re-run failed jobs first. A signature that will not verify fails the job by design, so nothing unverifiable ships. |
 | `publish-charts-oci` / `publish-charts-pages` | Images; CRD bundle is attached to the still-hidden draft | Fix, then re-run failed jobs. The release stays a draft until the charts land. |
-| `publish-release` | Images, charts | The asset check found the draft incomplete or its bundle failed its own checksum. Inspect `gh release view <tag>`, re-upload, re-run failed jobs. |
+| `publish-release` | Images, charts | The asset check found the draft incomplete or its bundle failed its own checksum. Re-run `publish-crds` rather than hand-uploading: it regenerates the tarball, checksum, and signature together, and a hand-replaced checksum would no longer match its signature. |
 
 `publish-charts-pages` serializes across *all* releases, because the action it
 uses rewrites the whole `gh-pages` branch. GitHub keeps at most one pending
