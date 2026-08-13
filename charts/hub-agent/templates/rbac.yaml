@@ -67,6 +67,27 @@ rules:
       - approvalrequests/status
     verbs: ["get", "update"]
 
+  # FEP-0001 placement policy APIs (alpha; exercised only when
+  # enablePlacementPolicyAPIs is set). Policies are user-created; the
+  # hub-agent adds/removes its cleanup finalizer via update and writes
+  # status. ClusterClaims are created and withdrawn (deleted) by the
+  # hub-agent; claim status is co-written by external provisioners.
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources:
+      - placementpolicies
+      - clusterplacementpolicies
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources:
+      - clusterclaims
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources:
+      - placementpolicies/status
+      - clusterplacementpolicies/status
+      - clusterclaims/status
+    verbs: ["get", "update"]
+
   # Fleet cluster APIs. MemberCluster is user-created and user-deleted; the
   # hub-agent only adds/removes its finalizer (update) and writes status.
   # InternalMemberCluster is created by the hub-agent and cleaned up via
