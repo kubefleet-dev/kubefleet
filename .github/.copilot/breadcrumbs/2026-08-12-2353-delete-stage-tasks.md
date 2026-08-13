@@ -14,13 +14,20 @@ Allow staged update strategies to gate the implicit deletion stage with the exis
 
 ## Success Criteria
 
-- [ ] Unset delete-stage tasks preserve immediate deletion.
-- [ ] Approval and timed waits can independently gate deletion.
-- [ ] Approval and timed waits run concurrently and both must pass.
-- [ ] Cluster-scoped and namespaced runs retain bindings until their gate passes.
-- [ ] Generated API and CRD artifacts are current.
-- [ ] Targeted tests and repository quality checks pass.
+- [x] Unset delete-stage tasks preserve immediate deletion.
+- [x] Approval and timed waits can independently gate deletion.
+- [x] Approval and timed waits run concurrently and both must pass.
+- [x] Cluster-scoped and namespaced runs retain bindings until their gate passes.
+- [x] Generated API and CRD artifacts are current.
+- [x] Targeted tests and available repository quality checks pass.
 
 ## Approval
 
 Implementation was explicitly requested in the issue task.
+
+## Implementation Notes
+
+- Delete-stage approvals reuse the after-stage task machinery and labels.
+- The delete stage uses a label-safe value for approval requests while retaining its canonical status/spec stage name.
+- Gates run only before deletion starts; stopping while gated leaves bindings intact.
+- Documentation updates are deferred to the separate documentation repository.
