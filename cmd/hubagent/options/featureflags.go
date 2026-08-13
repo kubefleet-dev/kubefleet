@@ -51,6 +51,14 @@ type FeatureFlags struct {
 	// ResourcePlacement APIs are a set of KubeFleet APIs for processing namespace scoped resource placements.
 	// This flag does not concern the cluster-scoped placement APIs (`ClusterResourcePlacement` and its related APIs).
 	EnableResourcePlacementAPIs bool
+
+	// Enable the PlacementPolicy API support in the KubeFleet hub agent or not.
+	//
+	// PlacementPolicy APIs (FEP-0001) are the KubeFleet APIs for the new placement experience;
+	// this flag concerns the PlacementPolicy, ClusterPlacementPolicy, and ClusterClaim APIs in
+	// the placement.kubefleet.dev API group. The APIs are currently in alpha and the flag is
+	// off by default.
+	EnablePlacementPolicyAPIs bool
 }
 
 // AddFlags adds flags for FeatureFlags to the specified FlagSet.
@@ -87,6 +95,13 @@ func (o *FeatureFlags) AddFlags(flags *flag.FlagSet) {
 		"enable-resource-placement",
 		true,
 		"Enable the ResourcePlacement API support (for namespace-scoped placements) in the KubeFleet hub agent or not.",
+	)
+
+	flags.BoolVar(
+		&o.EnablePlacementPolicyAPIs,
+		"enable-placement-policy-apis",
+		false,
+		"Enable the PlacementPolicy API support (the FEP-0001 placement experience, alpha) in the KubeFleet hub agent or not.",
 	)
 }
 
