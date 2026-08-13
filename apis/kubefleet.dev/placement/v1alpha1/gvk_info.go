@@ -19,8 +19,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"github.com/kubefleet-dev/kubefleet/apis/scheme"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/scheme"
 )
 
 var (

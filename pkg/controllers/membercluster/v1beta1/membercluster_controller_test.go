@@ -34,7 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -202,7 +202,7 @@ func TestReconcileEnsureMemberNameLabelError(t *testing.T) {
 				return updateErr
 			},
 		},
-		recorder: record.NewFakeRecorder(10),
+		recorder: events.NewFakeRecorder(10),
 	}
 	result, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: client.ObjectKey{Name: "mc1"},
@@ -338,7 +338,7 @@ func TestSyncNamespace(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			got, err := tt.r.syncNamespace(context.Background(), tt.memberCluster)
 			if tt.r.recorder != nil {
-				fakeRecorder := tt.r.recorder.(*record.FakeRecorder)
+				fakeRecorder := tt.r.recorder.(*events.FakeRecorder)
 				event := <-fakeRecorder.Events
 				assert.Equal(t, tt.wantedEvent, event)
 			}
@@ -491,7 +491,7 @@ func TestSyncRole(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			got, err := tt.r.syncRole(context.Background(), tt.memberCluster, tt.namespaceName)
 			if tt.r.recorder != nil {
-				fakeRecorder := tt.r.recorder.(*record.FakeRecorder)
+				fakeRecorder := tt.r.recorder.(*events.FakeRecorder)
 				event := <-fakeRecorder.Events
 				assert.Equal(t, tt.wantedEvent, event)
 			}
@@ -721,7 +721,7 @@ func TestSyncRoleBinding(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			err := tt.r.syncRoleBinding(context.Background(), tt.memberCluster, tt.namespaceName, tt.roleName)
 			if tt.r.recorder != nil {
-				fakeRecorder := tt.r.recorder.(*record.FakeRecorder)
+				fakeRecorder := tt.r.recorder.(*events.FakeRecorder)
 				event := <-fakeRecorder.Events
 				assert.Equal(t, tt.wantedEvent, event)
 			}
@@ -853,7 +853,7 @@ func TestSyncInternalMemberCluster(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			got, err := tt.r.syncInternalMemberCluster(context.Background(), tt.memberCluster, tt.namespaceName, tt.internalMemberCluster)
 			if tt.r.recorder != nil {
-				fakeRecorder := tt.r.recorder.(*record.FakeRecorder)
+				fakeRecorder := tt.r.recorder.(*events.FakeRecorder)
 				event := <-fakeRecorder.Events
 				assert.Equal(t, tt.wantedEvent, event)
 			}
