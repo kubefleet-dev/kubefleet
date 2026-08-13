@@ -127,7 +127,13 @@ jobs:
             prerelease=""
             case "${TAG}" in *-*) prerelease="--prerelease" ;; esac
             # Create as a draft first so a partially uploaded release is never public.
-            gh release create "${TAG}" --title "${TAG}" --generate-notes --draft ${prerelease}
+            # --verify-tag: `gh release create` creates the tag itself when it is
+            # missing, pointing at the default branch's head. A tag that does not
+            # exist at all already fails earlier, at build-and-publish's checkout,
+            # so this guards the narrower case where the ref resolved to something
+            # that is not the tag - the release would then point at a different
+            # commit than the images were built from.
+            gh release create "${TAG}" --title "${TAG}" --generate-notes --draft --verify-tag ${prerelease}
             created_draft="true"
           fi
           gh release upload "${TAG}" \
