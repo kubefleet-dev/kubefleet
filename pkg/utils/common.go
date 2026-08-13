@@ -119,8 +119,11 @@ var (
 		Resources: []string{"*"},
 	}
 	EventRule = rbacv1.PolicyRule{
-		Verbs:     []string{"get", "list", "update", "patch", "watch", "create"},
-		APIGroups: []string{""},
+		Verbs: []string{"get", "list", "update", "patch", "watch", "create"},
+		// The controllers use the events.k8s.io recorder, which writes Event
+		// objects in the events.k8s.io API group; the core group is retained
+		// for compatibility with clients reading legacy events.
+		APIGroups: []string{"", "events.k8s.io"},
 		Resources: []string{"events"},
 	}
 	FleetNetworkRule = rbacv1.PolicyRule{
