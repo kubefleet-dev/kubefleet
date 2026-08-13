@@ -16,21 +16,40 @@ limitations under the License.
 
 // Package placementpolicy implements the FEP-0001 placement policy controller, which reconciles
 // the PlacementPolicy and ClusterPlacementPolicy API objects (placement.kubefleet.dev API group):
-// it resolves cluster selectors against the current member cluster inventory, reports scheduling
-// status on the policy objects, and manages the lifecycle of ClusterClaim API objects for
-// selectors that cannot be fulfilled.
+// it resolves cluster selectors against the current member cluster inventory and reports
+// scheduling status on the policy objects.
 package placementpolicy
 
 import (
 	"context"
 	"time"
 
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	runtime "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 
+	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/clustereligibilitychecker"
+)
+
+const (
+	// unfulfilledRequeueAfter is the wait before re-evaluating a policy that has not reached
+	// all of its desired cluster counts; it backstops cluster eligibility transitions that do
+	// not surface as watch events (e.g., a member agent heartbeat going stale).
+	unfulfilledRequeueAfter = 2 * time.Minute
+	// fulfilledRequeueAfter is the wait before re-evaluating a fulfilled policy, for the same
+	// backstop reason: a cluster that silently stops heartbeating emits no event, yet it must
+	// eventually stop counting toward fulfillment. Set to half the eligibility checker's
+	// 5-minute heartbeat timeout so the worst-case detection latency stays near the timeout
+	// itself (timeout + one requeue period, ~7.5 minutes) instead of doubling it.
+	fulfilledRequeueAfter = 150 * time.Second
 )
 
 // Reconciler reconciles PlacementPolicy and ClusterPlacementPolicy objects.
@@ -39,6 +58,17 @@ import (
 // objects carry no namespace, which is how the two are told apart.
 type Reconciler struct {
 	client.Client
+
+	eligibility eligibilityChecker
+}
+
+// NewReconciler returns a Reconciler that judges cluster fulfillment with the scheduler's
+// standard cluster eligibility gate.
+func NewReconciler(c client.Client) *Reconciler {
+	return &Reconciler{
+		Client:      c,
+		eligibility: clustereligibilitychecker.New(),
+	}
 }
 
 // Reconcile runs a single reconciliation round for a PlacementPolicy or ClusterPlacementPolicy object.
@@ -59,25 +89,79 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		klog.ErrorS(err, "Failed to get the placement policy object", "placementPolicy", req.NamespacedName)
 		return runtime.Result{}, err
 	}
-	klog.V(2).InfoS("Observed a placement policy", "placementPolicy", req.NamespacedName, "generation", policy.GetGeneration())
 
-	return runtime.Result{}, nil
+	memberClusters := &clusterv1beta1.MemberClusterList{}
+	if err := r.List(ctx, memberClusters); err != nil {
+		klog.ErrorS(err, "Failed to list member clusters", "placementPolicy", req.NamespacedName)
+		return runtime.Result{}, err
+	}
+
+	outcomes, err := evaluateSelectors(policy.PolicySpec(), memberClusters.Items, r.eligibility)
+	if err != nil {
+		// Selector evaluation fails only on invalid selector contents (e.g., an operator
+		// applied to a key it does not support); retrying cannot help until the spec changes,
+		// so the error surfaces on the status instead of the reconcile loop.
+		klog.ErrorS(err, "Failed to evaluate the cluster selectors", "placementPolicy", req.NamespacedName)
+		return runtime.Result{}, r.updateStatus(ctx, policy, nil, invalidSelectorsCondition(policy.GetGeneration(), err))
+	}
+
+	requeueAfter := fulfilledRequeueAfter
+	for i := range outcomes {
+		if !outcomes[i].satisfiedInFull() {
+			requeueAfter = unfulfilledRequeueAfter
+			break
+		}
+	}
+
+	if err := r.updateStatus(ctx, policy, outcomes, scheduledCondition(policy.GetGeneration(), outcomes)); err != nil {
+		return runtime.Result{}, err
+	}
+	return runtime.Result{RequeueAfter: requeueAfter}, nil
+}
+
+// updateStatus writes the scheduling outcome onto the policy status, skipping the API call when
+// nothing has changed. A nil outcome list clears the cluster counts (used when the selectors
+// cannot be evaluated at all).
+func (r *Reconciler) updateStatus(ctx context.Context, policy policyObject, outcomes []selectorOutcome, scheduledCond metav1.Condition) error {
+	status := policy.PolicyStatus()
+	observedStatus := status.DeepCopy()
+
+	if outcomes == nil {
+		status.DesiredClusters = nil
+		status.ScheduledClusters = nil
+	} else {
+		desired, scheduled := aggregateCounts(outcomes)
+		status.DesiredClusters = &desired
+		status.ScheduledClusters = &scheduled
+	}
+	meta.SetStatusCondition(&status.Conditions, scheduledCond)
+
+	if apiequality.Semantic.DeepEqual(observedStatus, status) {
+		return nil
+	}
+	if err := r.Status().Update(ctx, policy.Unwrap()); err != nil {
+		klog.ErrorS(err, "Failed to update the placement policy status", "placementPolicy", client.ObjectKeyFromObject(policy.Unwrap()))
+		return err
+	}
+	return nil
 }
 
 // fetchPolicy retrieves the policy object for the given request; requests without a namespace
 // concern the cluster-scoped ClusterPlacementPolicy API. Errors, including not-found ones, are
 // returned as is for the caller to inspect.
-func (r *Reconciler) fetchPolicy(ctx context.Context, req runtime.Request) (client.Object, error) {
-	var policy client.Object
+func (r *Reconciler) fetchPolicy(ctx context.Context, req runtime.Request) (policyObject, error) {
 	if req.Namespace == "" {
-		policy = &kfplacementv1alpha1.ClusterPlacementPolicy{}
-	} else {
-		policy = &kfplacementv1alpha1.PlacementPolicy{}
+		policy := &kfplacementv1alpha1.ClusterPlacementPolicy{}
+		if err := r.Get(ctx, req.NamespacedName, policy); err != nil {
+			return nil, err
+		}
+		return clusterPlacementPolicyAdapter{policy}, nil
 	}
+	policy := &kfplacementv1alpha1.PlacementPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, policy); err != nil {
 		return nil, err
 	}
-	return policy, nil
+	return placementPolicyAdapter{policy}, nil
 }
 
 // SetupWithManagerForPlacementPolicy registers the reconciler with the manager for the
@@ -86,6 +170,11 @@ func (r *Reconciler) SetupWithManagerForPlacementPolicy(mgr runtime.Manager) err
 	return runtime.NewControllerManagedBy(mgr).
 		Named("placement-policy-controller").
 		For(&kfplacementv1alpha1.PlacementPolicy{}).
+		Watches(
+			&clusterv1beta1.MemberCluster{},
+			handler.EnqueueRequestsFromMapFunc(r.mapMemberClusterToPlacementPolicies),
+			builder.WithPredicates(memberClusterSchedulingRelevantChanges()),
+		).
 		Complete(r)
 }
 
@@ -95,5 +184,10 @@ func (r *Reconciler) SetupWithManagerForClusterPlacementPolicy(mgr runtime.Manag
 	return runtime.NewControllerManagedBy(mgr).
 		Named("cluster-placement-policy-controller").
 		For(&kfplacementv1alpha1.ClusterPlacementPolicy{}).
+		Watches(
+			&clusterv1beta1.MemberCluster{},
+			handler.EnqueueRequestsFromMapFunc(r.mapMemberClusterToClusterPlacementPolicies),
+			builder.WithPredicates(memberClusterSchedulingRelevantChanges()),
+		).
 		Complete(r)
 }

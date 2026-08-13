@@ -356,9 +356,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 				}
 			}
 			klog.Info("Setting up placement policy controller")
-			ppReconciler := &placementpolicy.Reconciler{
-				Client: mgr.GetClient(),
-			}
+			ppReconciler := placementpolicy.NewReconciler(mgr.GetClient())
 			if err := ppReconciler.SetupWithManagerForClusterPlacementPolicy(mgr); err != nil {
 				klog.ErrorS(err, "Unable to set up placement policy controller for clusterPlacementPolicy")
 				return err
