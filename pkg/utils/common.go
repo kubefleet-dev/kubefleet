@@ -119,11 +119,16 @@ var (
 		Resources: []string{"*"},
 	}
 	EventRule = rbacv1.PolicyRule{
-		Verbs: []string{"get", "list", "update", "patch", "watch", "create"},
-		// The controllers use the events.k8s.io recorder, which writes Event
-		// objects in the events.k8s.io API group; the core group is retained
-		// for compatibility with clients reading legacy events.
-		APIGroups: []string{"", "events.k8s.io"},
+		Verbs:     []string{"get", "list", "update", "patch", "watch", "create"},
+		APIGroups: []string{""},
+		Resources: []string{"events"},
+	}
+	// EventsK8sIoRule grants the access needed by the events.k8s.io event
+	// recorder the controllers use. The recorder's sink only ever creates or
+	// patches Event objects, so no read access is granted here.
+	EventsK8sIoRule = rbacv1.PolicyRule{
+		Verbs:     []string{"create", "patch"},
+		APIGroups: []string{"events.k8s.io"},
 		Resources: []string{"events"},
 	}
 	FleetNetworkRule = rbacv1.PolicyRule{
