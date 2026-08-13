@@ -51,6 +51,13 @@ helm install member-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/member-ag
 
 ### Option 2: Traditional Helm Repository
 
+> **Heads up if you already use this repository.** Until recently every release
+> was published here as chart version `0.1.0` with `appVersion v0.1.0`, so an
+> install from this channel that did not set `image.tag` has been running the
+> `v0.1.0` images. Releases now publish their real version, which means the
+> commands below resolve to the current release rather than to `0.1.0`. The OCI
+> registry above was never affected.
+
 Add the repository and install from it:
 
 ```bash
@@ -88,13 +95,17 @@ helm install hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
 
 #### Traditional Repository
 
+> **Note:** `helm search repo kubefleet --versions` still lists a stale `0.1.0`
+> entry from before per-release versions were published. Releases cut before
+> that change are available from the OCI registry only.
+
 ```bash
 # List available versions
 helm search repo kubefleet --versions
 
-# Install a specific version (e.g., v0.3.0 release)
+# Install a specific version (replace VERSION with one listed above)
 helm install hub-agent kubefleet/hub-agent \
-  --version 0.3.0 \
+  --version VERSION \
   --namespace fleet-system \
   --create-namespace
 ```
@@ -122,11 +133,18 @@ helm upgrade hub-agent kubefleet/hub-agent --namespace fleet-system
 helm upgrade member-agent kubefleet/member-agent --namespace fleet-system
 ```
 
+If you have been tracking this repository since before per-release versions
+were published, this upgrade moves off `0.1.0` for the first time and can cross
+several releases at once. Read the release notes for the whole span, not just
+the newest entry, and note that unless you set `image.tag` the running image
+version moves with the chart's `appVersion`.
+
 ## Chart Publishing
 
-Charts are automatically published to both locations when:
-- Changes are pushed to the `main` branch affecting chart files
-- A version tag (e.g., `v1.0.0`) is created
+Charts are published to both locations when a stable version tag (e.g.
+`v1.0.0`) is pushed. The push trigger filters out release-candidate tags
+(e.g. `v1.0.0-rc.1`), so an RC does not reach the chart index by cutting a tag;
+a maintainer can still publish one deliberately via `workflow_dispatch`.
 
 **Published Locations:**
 - **OCI Registry**: `oci://ghcr.io/kubefleet-dev/kubefleet/charts/{chart-name}`
@@ -176,11 +194,12 @@ For detailed documentation on each chart including configuration parameters, see
 ## Contributing
 
 When making changes to charts:
-1. Update the chart version in `Chart.yaml` following [Semantic Versioning](https://semver.org/)
-2. Update the `appVersion` if the application version changes
-3. Run `helm lint` to validate your changes
-4. Update the chart's README.md with any new parameters or changes
-5. Test the chart installation locally before submitting a PR
+1. Leave `version` and `appVersion` in `Chart.yaml` alone — the release
+   workflow injects the release version at package time, so the in-tree values
+   are placeholders and are not what gets published
+2. Run `helm lint` to validate your changes
+3. Update the chart's README.md with any new parameters or changes
+4. Test the chart installation locally before submitting a PR
 
 ## Support
 
