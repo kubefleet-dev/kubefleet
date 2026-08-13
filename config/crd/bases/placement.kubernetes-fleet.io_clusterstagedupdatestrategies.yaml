@@ -407,6 +407,10 @@ spec:
                   rule: '!self.exists(e, e.type == ''Approval'' && has(e.waitTime))'
                 - message: DeleteStageTaskType is TimedWait, waitTime is required
                   rule: '!self.exists(e, e.type == ''TimedWait'' && !has(e.waitTime))'
+                - message: DeleteStageTaskType is TimedWait, waitTime must be greater
+                    than zero
+                  rule: '!self.exists(e, e.type == ''TimedWait'' && has(e.waitTime)
+                    && duration(e.waitTime) <= duration(''0s''))'
               stages:
                 description: Stage specifies the configuration for each update stage.
                 items:
