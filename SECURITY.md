@@ -67,7 +67,7 @@ This section will be updated as each item is decided.
 ## Reporting Security Issues
 
 **Please do not report security vulnerabilities through public GitHub issues.** Instead, 
-report them to the [KubeFleet maintainers](mailto:kubefleet-maintainers@googlegroups.com).
+report them to the [KubeFleet maintainers](mailto:kubefleet@microsoft.com).
 We prefer all communications to be in English.
 
 You should receive a response as soon as possible. If for some reason you do not, please
