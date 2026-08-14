@@ -44,6 +44,32 @@ const (
 	ClusterAliasLabel = KubeFleetPrefix + "cluster-alias"
 )
 
+// The labels that record, on a placement policy KubeFleet generated from an annotation, the
+// resource whose annotation caused it to exist.
+//
+// These keys carry the API group rather than the bare KubeFleet domain, since unlike the keys
+// above they are set on objects of this group.
+//
+// The labels exist so that a policy can be found with a List when its generated name is not known;
+// the owner reference on the policy remains the authoritative record of where it came from. Note
+// that ParentNameLabel is lossy: the name of a resource can run to 253 bytes while a label value
+// stops at 63, so for a longer name the label holds a prefix and a hash instead, and selecting on
+// it with the resource's own name matches nothing.
+const (
+	// ParentAPIGroupLabel holds the API group of the resource a policy was generated from. It is
+	// the empty string for resources in the core API group, and is always present, so that
+	// core-group resources can be selected as readily as any other.
+	ParentAPIGroupLabel = "placement.kubefleet.dev/parent-api-group"
+
+	// ParentKindLabel holds the kind of the resource a policy was generated from, spelled as the
+	// kind itself is (Deployment, not deployment).
+	ParentKindLabel = "placement.kubefleet.dev/parent-kind"
+
+	// ParentNameLabel holds the name of the resource a policy was generated from, shortened if it
+	// does not fit in a label value.
+	ParentNameLabel = "placement.kubefleet.dev/parent-name"
+)
+
 type ObjectReference struct {
 	// The namespace of the referenced object.
 	//
