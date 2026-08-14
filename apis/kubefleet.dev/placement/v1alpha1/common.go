@@ -16,6 +16,34 @@ limitations under the License.
 
 package v1alpha1
 
+// The annotation and label keys that KubeFleet reserves for the placement APIs.
+//
+// Note that these keys carry the KubeFleet domain itself rather than the API group; they are
+// set on arbitrary Kubernetes objects, not only on the objects of this group.
+const (
+	// KubeFleetPrefix is the domain that prefixes every reserved annotation and label key below,
+	// per the Kubernetes convention that reserves unprefixed keys for end users.
+	KubeFleetPrefix = "kubefleet.dev/"
+
+	// PlaceToAnnotation is the annotation that requests annotation-based placement for the resource
+	// it is set on. Its value is a semicolon-separated list of cluster selectors, each of which is a
+	// comma-separated list of LABEL_KEY=LABEL_VALUE label matchers with an optional count=N|All
+	// directive, e.g.:
+	//
+	//     kubefleet.dev/place-to: "env=staging,count=All;env=canary,region=eastus,count=1"
+	//
+	// KubeFleet keeps a PlacementPolicy (or ClusterPlacementPolicy) object in sync with the
+	// annotation for as long as it is present.
+	//
+	// Within the annotation, `region` may be used in place of the well-known
+	// topology.kubernetes.io/region label key, and `alias` in place of ClusterAliasLabel.
+	PlaceToAnnotation = KubeFleetPrefix + "place-to"
+
+	// ClusterAliasLabel is the label that KubeFleet reserves on member cluster objects for selecting
+	// clusters by their name (alias).
+	ClusterAliasLabel = KubeFleetPrefix + "cluster-alias"
+)
+
 type ObjectReference struct {
 	// The namespace of the referenced object.
 	//
