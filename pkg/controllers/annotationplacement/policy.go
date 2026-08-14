@@ -1,0 +1,186 @@
+/*
+Copyright 2026 The KubeFleet Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package annotationplacement
+
+import (
+	"fmt"
+	"strings"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/naming"
+)
+
+const (
+	// maxKindSegmentLength caps how much of the kind appears in a generated name. Every kind a user
+	// is likely to annotate is far shorter; the cap exists so that a pathologically long custom
+	// kind cannot crowd out the part of the name that identifies the resource.
+	maxKindSegmentLength = 40
+
+	// separatorCount is the number of separators a generated name spends joining its three parts.
+	separatorCount = 2
+)
+
+// The values the placement policy API defaults these fields to.
+//
+// A generated policy sets them explicitly, rather than letting the API server fill them in, so
+// that the object built here equals the one the API server stores. Left unset, every field the API
+// defaults would read as a difference on every pass and provoke an update that changes nothing.
+//
+// That whenUnfulfilled defaults to requesting a cluster is worth revisiting for this surface in
+// particular: the annotation grammar cannot express the field, so an annotation that no cluster
+// satisfies asks the platform to provision one. Setting the API's own default here keeps the
+// behavior unchanged while the question is open upstream.
+const (
+	defaultResourceRevisionHistoryLimit int32 = 3
+
+	defaultWhenUnfulfilled = kfplacementv1alpha1.WhenUnfulfilledOptionRequestCluster
+)
+
+// generatedPolicyName derives the name of the placement policy generated for a resource.
+//
+// The name is deterministic, so that reconciling the same resource twice converges on one policy
+// instead of accumulating them, and it is readable, so that the policy can be recognized in a
+// listing. Neither property may come at the cost of the third: the hash is taken over the
+// resource's whole identity, including the parts that do not appear in the name at all, so two
+// resources cannot generate one name even when truncation erases what distinguishes them.
+func generatedPolicyName(gvk schema.GroupVersionKind, namespace, name string) string {
+	kindSegment := naming.Truncate(strings.ToLower(gvk.Kind), maxKindSegmentLength)
+
+	// Whatever the kind and the hash do not use is available to the resource's own name.
+	nameBudget := validation.DNS1123SubdomainMaxLength - len(kindSegment) - naming.HashLength - separatorCount
+	nameSegment := naming.Truncate(name, nameBudget)
+
+	// Empty segments are dropped rather than joined. An object always has a name, and one read
+	// from the API server always has a kind, but joining an empty leading segment would put a
+	// separator at the front of the name, where the API server does not allow one.
+	segments := make([]string, 0, 3)
+	for _, segment := range []string{kindSegment, nameSegment} {
+		if segment != "" {
+			segments = append(segments, segment)
+		}
+	}
+	identity := fmt.Sprintf("%s/%s/%s/%s", gvk.Group, gvk.Kind, namespace, name)
+	segments = append(segments, naming.Hash(identity))
+
+	return strings.Join(segments, "-")
+}
+
+// parentLabels returns the labels recording which resource a generated policy came from.
+//
+// Every value is shortened to fit a label value, including the API group: a custom resource's
+// group is validated as a DNS-1123 subdomain and so may run to 253 bytes, well past what a label
+// value holds. A kind cannot exceed the limit today, but it is shortened alongside the others
+// rather than relying on a bound that belongs to a different validation rule than this one.
+func parentLabels(gvk schema.GroupVersionKind, name string) map[string]string {
+	return map[string]string{
+		kfplacementv1alpha1.ParentAPIGroupLabel: naming.LabelValue(gvk.Group),
+		kfplacementv1alpha1.ParentKindLabel:     naming.LabelValue(gvk.Kind),
+		kfplacementv1alpha1.ParentNameLabel:     naming.LabelValue(name),
+	}
+}
+
+// parentOwnerReference returns the owner reference that ties a generated policy to the resource it
+// was generated from, so that deleting the resource collects the policy with it.
+//
+// The reference deliberately claims neither controller nor blocking ownership: setting either
+// requires permission to update the finalizers subresource of the owner, and the owner here can be
+// a resource of any kind at all. Cascading deletion, the only property this needs, works the same
+// without them.
+func parentOwnerReference(source *unstructured.Unstructured) metav1.OwnerReference {
+	gvk := source.GroupVersionKind()
+	return metav1.OwnerReference{
+		APIVersion: gvk.GroupVersion().String(),
+		Kind:       gvk.Kind,
+		Name:       source.GetName(),
+		UID:        source.GetUID(),
+	}
+}
+
+// parentResourceSelector returns the selector that places the annotated resource itself.
+//
+// It is the first of the policy's resource selectors by convention: any selector after it was
+// added by KubeFleet for a resource the annotated one depends on.
+func parentResourceSelector(source *unstructured.Unstructured) kfplacementv1alpha1.ResourceSelector {
+	gvk := source.GroupVersionKind()
+	// The namespace is deliberately left unset. A generated policy for a namespaced resource lives
+	// in that resource's own namespace, where the API requires the selector's namespace to be
+	// empty or identical; a generated policy for a cluster-scoped resource has no namespace to name.
+	return kfplacementv1alpha1.ResourceSelector{
+		APIGroup:   gvk.Group,
+		APIVersion: gvk.Version,
+		Kind:       gvk.Kind,
+		Name:       source.GetName(),
+	}
+}
+
+// withAPIDefaults returns the selectors with every field the API defaults set explicitly, leaving
+// the caller's own slice untouched.
+func withAPIDefaults(selectors []kfplacementv1alpha1.ClusterSelector) []kfplacementv1alpha1.ClusterSelector {
+	if selectors == nil {
+		return nil
+	}
+	defaulted := make([]kfplacementv1alpha1.ClusterSelector, len(selectors))
+	for i, selector := range selectors {
+		selector.DeepCopyInto(&defaulted[i])
+		if defaulted[i].WhenUnfulfilled == "" {
+			defaulted[i].WhenUnfulfilled = defaultWhenUnfulfilled
+		}
+	}
+	return defaulted
+}
+
+// desiredPolicy builds the placement policy that should exist for an annotated resource.
+//
+// The policy's scope follows the resource's own: a namespaced resource yields a PlacementPolicy in
+// its namespace, and a cluster-scoped resource yields a ClusterPlacementPolicy. That is what keeps
+// the owner reference valid, since a cluster-scoped object owned by a namespaced one is accepted
+// on creation and then never collected at all.
+//
+// Scope is read from the resource's own namespace, which the API server has already reconciled
+// with the scope its kind is registered under; the source must therefore be an object read from
+// the API server rather than one assembled in memory, which is also what guarantees it carries the
+// UID and the kind that the owner reference and the generated name are built from. Taking an
+// unstructured object rather than a client.Object is deliberate for the same reason: a typed
+// object routinely arrives with an empty kind, which would silently change the generated name.
+func desiredPolicy(source *unstructured.Unstructured, selectors []kfplacementv1alpha1.ClusterSelector) client.Object {
+	gvk := source.GroupVersionKind()
+	namespace := source.GetNamespace()
+
+	meta := metav1.ObjectMeta{
+		Name:            generatedPolicyName(gvk, namespace, source.GetName()),
+		Namespace:       namespace,
+		Labels:          parentLabels(gvk, source.GetName()),
+		OwnerReferences: []metav1.OwnerReference{parentOwnerReference(source)},
+	}
+	spec := kfplacementv1alpha1.PlacementPolicySpec{
+		ClusterSelectors:             withAPIDefaults(selectors),
+		ResourceSelectors:            []kfplacementv1alpha1.ResourceSelector{parentResourceSelector(source)},
+		ResourceRevisionHistoryLimit: ptr.To(defaultResourceRevisionHistoryLimit),
+	}
+
+	if namespace == "" {
+		return &kfplacementv1alpha1.ClusterPlacementPolicy{ObjectMeta: meta, Spec: spec}
+	}
+	return &kfplacementv1alpha1.PlacementPolicy{ObjectMeta: meta, Spec: spec}
+}
