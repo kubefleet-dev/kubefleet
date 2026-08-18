@@ -131,6 +131,59 @@ func drainEvents() []string {
 	}
 }
 
+// The API server itself enforces the count bounds on both forms of the int-or-string: the Pattern
+// marker covers the string form, and the CEL rule covers the integer form, which a pattern alone
+// leaves unbounded. The parser mirrors the same bounds for annotations; these specs pin the API
+// side against a real API server, where a plain schema reading cannot.
+var _ = Describe("the count bounds of a hand-authored policy", func() {
+	newPolicy := func(count intstr.IntOrString) *kfplacementv1alpha1.PlacementPolicy {
+		configMapCount++
+		return &kfplacementv1alpha1.PlacementPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("hand-authored-%d", configMapCount),
+				Namespace: "default",
+			},
+			Spec: kfplacementv1alpha1.PlacementPolicySpec{
+				ClusterSelectors: []kfplacementv1alpha1.ClusterSelector{{Count: &count}},
+				ResourceSelectors: []kfplacementv1alpha1.ResourceSelector{{
+					APIVersion: "v1", Kind: "ConfigMap", Name: "app",
+				}},
+			},
+		}
+	}
+
+	DescribeTable("integer and string forms share the same bounds",
+		func(count intstr.IntOrString, wantAccepted bool) {
+			policy := newPolicy(count)
+			err := hubClient.Create(ctx, policy)
+			if err == nil {
+				// Whatever the verdict was meant to be, an object that made it in must not
+				// outlive the spec; a regression that admits an out-of-range count would
+				// otherwise leave its evidence lying around for the rest of the suite.
+				DeferCleanup(func() {
+					Expect(client.IgnoreNotFound(hubClient.Delete(ctx, policy))).Should(Succeed())
+				})
+			}
+			if wantAccepted {
+				Expect(err).Should(Succeed())
+				return
+			}
+			Expect(apierrors.IsInvalid(err)).Should(BeTrue(), "got %v, want an invalid error", err)
+		},
+		Entry("count 1 as an integer is accepted", intstr.FromInt32(1), true),
+		Entry("count 999 as an integer is accepted", intstr.FromInt32(999), true),
+		Entry("count 999 as a string is accepted", intstr.FromString("999"), true),
+		Entry("count All is accepted", intstr.FromString("All"), true),
+		// The integer entries below are the reason the CEL rule exists: before it, they were
+		// accepted while their quoted twins were rejected.
+		Entry("count 1000 as an integer is rejected", intstr.FromInt32(1000), false),
+		Entry("count 0 as an integer is rejected", intstr.FromInt32(0), false),
+		Entry("count -1 as an integer is rejected", intstr.FromInt32(-1), false),
+		Entry("count 1000 as a string is rejected", intstr.FromString("1000"), false),
+		Entry("count 0 as a string is rejected", intstr.FromString("0"), false),
+	)
+})
+
 var _ = Describe("annotation based placement", func() {
 	Context("a namespaced resource", Ordered, func() {
 		var configMap *corev1.ConfigMap
