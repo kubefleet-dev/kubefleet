@@ -286,11 +286,22 @@ BINFMT_IMAGE ?= mcr.microsoft.com/mirror/docker/tonistiigi/binfmt:$(BINFMT_VERSI
 PLATFORMS ?= $(TARGET_OS)/$(TARGET_ARCH)
 RELEASE_PLATFORMS ?= linux/amd64,linux/arm64
 
+.PHONY: print-release-platforms
+print-release-platforms: ## Print the platforms a release publishes, one per line
+	@echo "$(RELEASE_PLATFORMS)" | tr ',' '\n'
+
 # Attach an SPDX SBOM to the image index. BuildKit generates one per platform
 # and stores it alongside the image in the registry, so consumers can read what
 # is in an image without unpacking it. Off by default because it slows every
 # local build; the release path turns it on.
 IMAGE_SBOM ?= false
+
+# --sbom=true would resolve docker/buildkit-syft-scanner:stable-1 from Docker Hub
+# at build time: unpinned, and on the registry whose rate limits already broke
+# this repo (see docker-buildx-builder below). Pin it by digest like every other
+# build image here. There is no MCR mirror for it today, so this stays on Docker
+# Hub; if that becomes a problem, mirror it and change this one line.
+SBOM_GENERATOR ?= docker/buildkit-syft-scanner@sha256:ae4f3b554449e7e25548e7d8ccc029d17357348e30c6e3df01b92bc93654d6a9
 
 # When set, buildx writes each image's build metadata (including
 # "containerimage.digest") to $(IMAGE_METADATA_DIR)/<image>.json. The release
@@ -301,7 +312,7 @@ IMAGE_METADATA_DIR ?=
 # Expanded into every docker-build-* target. Kept here so the three recipes stay
 # identical to each other.
 image_build_flags = \
-	$(if $(filter true,$(IMAGE_SBOM)),--sbom=true) \
+	$(if $(filter true,$(IMAGE_SBOM)),--sbom=generator=$(SBOM_GENERATOR)) \
 	$(if $(IMAGE_METADATA_DIR),--metadata-file $(IMAGE_METADATA_DIR)/$(1).json)
 
 .PHONY: push
