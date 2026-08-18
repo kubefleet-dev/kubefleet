@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
@@ -533,6 +534,16 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			RestMapper:      mgr.GetRESTMapper(),
 			InformerManager: dynamicInformerManager,
 			Recorder:        mgr.GetEventRecorderFor(annotationPlacementControllerName),
+			// The same eligibility test the change detector applies to its events. The reconciler
+			// needs it again because it can be reached for a resource the detector filters out --
+			// through the generated policy watch, or through the deletion-shaped event the detector
+			// reports when a resource stops passing the filter without being deleted.
+			ShouldPlace: func(source *unstructured.Unstructured) (bool, error) {
+				if !utils.ShouldPropagateNamespace(source.GetNamespace(), skippedNamespaces) {
+					return false, nil
+				}
+				return controller.ShouldPropagateObj(dynamicInformerManager, source.DeepCopy(), opts.WebhookAndAdmissionPolicyOpts.EnableWorkload)
+			},
 		}
 		// A rate limiter of its own, rather than the one the controllers above share. An exponential
 		// failure limiter keys its backoff on the queued item alone, and this controller queues the

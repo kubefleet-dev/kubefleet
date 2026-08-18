@@ -109,9 +109,14 @@ func (d *ChangeDetector) onResourceDeleted(obj interface{}) {
 	}
 	klog.V(3).InfoS("A resource is deleted", "obj", klog.KObj(clientObj), "gvk", clientObj.GetObjectKind().GroupVersionKind().String())
 	d.ResourceChangeController.Enqueue(clientObj)
-	// Deliberately not enqueued for annotation-based placement: the policy generated from a resource
-	// carries an owner reference to it, so garbage collection removes the policy on its own, and a
-	// reconcile here could only look for a resource that is already gone.
+	// The generated policy is deleted by the reconciler rather than left to garbage collection,
+	// which would keep the policy for as long as any other party's owner reference on it survives.
+	// This callback also stands in for more than deletion: a resource that stops passing the
+	// dynamic resource filter without being deleted is reported here too, and its generated policy
+	// has to go the same way, since no further event about the resource will ever be seen.
+	if annotationplacement.HasClusterSelectorsAnnotation(clientObj) {
+		d.enqueueForAnnotationPlacement(clientObj)
+	}
 }
 
 // enqueueForAnnotationPlacement hands an object to the annotation-based placement controller, if

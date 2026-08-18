@@ -29,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -79,6 +80,15 @@ type Reconciler struct {
 
 	// Recorder records the outcome of a reconciliation on the annotated resource.
 	Recorder record.EventRecorder
+
+	// ShouldPlace reports whether a resource is one KubeFleet places at all, mirroring the filter
+	// the resource watcher applies to its events. The reconciler applies it again because it can be
+	// reached for a resource the watcher would filter out: the watcher reports a resource that
+	// stops passing its filter as a deletion, and the generated policy watch enqueues whatever a
+	// policy names as its owner. A resource that fails the check has its generated policy deleted.
+	//
+	// Left nil, every resource is eligible.
+	ShouldPlace func(source *unstructured.Unstructured) (bool, error)
 }
 
 // Reconcile brings the generated policy for one resource in line with that resource's annotation.
@@ -98,19 +108,48 @@ func (r *Reconciler) Reconcile(ctx context.Context, key controller.QueueKey) (ct
 	source, err := r.sourceObject(clusterWideKey)
 	switch {
 	case apierrors.IsNotFound(err):
-		// The resource is gone. The generated policy carries an owner reference to it, so garbage
-		// collection removes the policy without this controller deleting anything: a delete issued
-		// from here would race that, and could only ever delete a policy that is already doomed.
-		klog.V(2).InfoS("The annotated resource is gone; its generated policy is garbage collected with it", "obj", clusterWideKey)
+		// The resource is gone, and the delete is issued from here rather than left to garbage
+		// collection. The generated policy does carry an owner reference back to the resource, but
+		// the collector removes a dependent only once every owner is gone, and the merge
+		// deliberately preserves owner references that other parties added -- any live one of which
+		// would keep the policy standing indefinitely. Deleting explicitly is idempotent, so at
+		// worst it beats the collector to an object that was doomed anyway.
+		deleted, err := r.deleteGeneratedPolicy(ctx, clusterWideKey.GroupVersionKind(), clusterWideKey.Namespace, clusterWideKey.Name)
+		switch {
+		case err != nil:
+			klog.ErrorS(err, "Failed to delete the policy generated for a resource that is gone", "obj", clusterWideKey)
+		case deleted:
+			klog.V(2).InfoS("Deleted the policy generated for a resource that is gone", "obj", clusterWideKey)
+		}
+		return ctrl.Result{}, err
+	case meta.IsNoMatchError(err):
+		// The kind itself is unknown to the API server. Keys of such kinds come from the generated
+		// policy watch, which enqueues whatever a policy names as its owner; retrying cannot make
+		// the kind exist, so the key is dropped rather than kept on the queue backing off forever.
+		klog.V(2).InfoS("The owner of a generated policy is of a kind the API server does not know; dropping the key", "obj", clusterWideKey, "err", err)
 		return ctrl.Result{}, nil
 	case err != nil:
 		klog.ErrorS(err, "Failed to get the annotated resource", "obj", clusterWideKey)
 		return ctrl.Result{}, err
 	}
 
+	if r.ShouldPlace != nil {
+		eligible, err := r.ShouldPlace(source)
+		if err != nil {
+			klog.ErrorS(err, "Failed to decide whether the resource is eligible for placement", "obj", clusterWideKey)
+			return ctrl.Result{}, err
+		}
+		if !eligible {
+			// A resource KubeFleet does not place cannot keep a generated policy either; without
+			// this, a resource that stops being eligible (for instance a ReplicaSet adopted by a
+			// Deployment) would leave its policy behind, invisible to the watcher from then on.
+			return ctrl.Result{}, r.deletePolicy(ctx, source, "the resource is not eligible for placement")
+		}
+	}
+
 	value, annotated := source.GetAnnotations()[kfplacementv1alpha1.ClusterSelectorsAnnotation]
 	if !annotated {
-		return ctrl.Result{}, r.deletePolicy(ctx, source)
+		return ctrl.Result{}, r.deletePolicy(ctx, source, "the "+kfplacementv1alpha1.ClusterSelectorsAnnotation+" annotation was removed")
 	}
 
 	selectors, err := parseClusterSelectors(value)
@@ -131,6 +170,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, key controller.QueueKey) (ct
 func (r *Reconciler) sourceObject(key keys.ClusterWideKey) (*unstructured.Unstructured, error) {
 	restMapping, err := r.RestMapper.RESTMapping(key.GroupKind(), key.Version)
 	if err != nil {
+		if meta.IsNoMatchError(err) {
+			// Returned unwrapped: the caller distinguishes a kind that does not exist, which no
+			// retry can fix, and the wrapping below would flatten the error to a string.
+			return nil, err
+		}
 		return nil, controller.NewUnexpectedBehaviorError(fmt.Errorf("failed to get the resource of object %+v: %w", key, err))
 	}
 	gvr := restMapping.Resource
@@ -192,33 +236,49 @@ func (r *Reconciler) syncPolicy(ctx context.Context, source *unstructured.Unstru
 	return nil
 }
 
-// deletePolicy removes the policy generated for a resource that no longer carries the annotation.
+// deletePolicy removes the policy generated for a resource that should not have one -- because the
+// annotation was removed, or because the resource is not eligible for placement -- and tells the
+// user which through an event carrying the given cause.
+//
+// The cause is a plain string, never a format: keeping the only format string in the Eventf call
+// below constant is what lets go vet check it.
+func (r *Reconciler) deletePolicy(ctx context.Context, source *unstructured.Unstructured, cause string) error {
+	name := generatedPolicyName(source.GroupVersionKind(), source.GetNamespace(), source.GetName())
+	deleted, err := r.deleteGeneratedPolicy(ctx, source.GroupVersionKind(), source.GetNamespace(), source.GetName())
+	if err != nil {
+		klog.ErrorS(err, "Failed to delete the generated placement policy", "obj", klog.KObj(source), "policy", klog.KRef(source.GetNamespace(), name))
+		return err
+	}
+	if !deleted {
+		// The common case by far: a resource nobody annotated.
+		return nil
+	}
+	klog.V(2).InfoS("Deleted the generated placement policy", "obj", klog.KObj(source), "policy", klog.KRef(source.GetNamespace(), name))
+	r.Recorder.Eventf(source, corev1.EventTypeNormal, EventReasonPolicyDeleted, "Deleted the placement policy %s because %s", name, cause)
+	return nil
+}
+
+// deleteGeneratedPolicy deletes the policy generated for the given resource identity, reporting
+// whether there was one to delete.
 //
 // The policy is read before it is deleted, which for the vast majority of resources — those that
 // were never annotated at all — is a single cached read and no request to the API server.
-func (r *Reconciler) deletePolicy(ctx context.Context, source *unstructured.Unstructured) error {
-	namespace := source.GetNamespace()
+func (r *Reconciler) deleteGeneratedPolicy(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string) (bool, error) {
 	actual := emptyPolicyForScope(namespace)
-	name := generatedPolicyName(source.GroupVersionKind(), namespace, source.GetName())
+	policyName := generatedPolicyName(gvk, namespace, name)
 
-	err := r.Client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, actual)
+	err := r.Client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: policyName}, actual)
 	switch {
 	case apierrors.IsNotFound(err):
-		// The common case by far: a resource nobody annotated.
-		return nil
+		return false, nil
 	case err != nil:
-		klog.ErrorS(err, "Failed to get the generated placement policy", "obj", klog.KObj(source), "policy", klog.KRef(namespace, name))
-		return controller.NewAPIServerError(true, err)
+		return false, controller.NewAPIServerError(true, err)
 	}
 
 	if err := r.Client.Delete(ctx, actual); err != nil && !apierrors.IsNotFound(err) {
-		klog.ErrorS(err, "Failed to delete the generated placement policy", "obj", klog.KObj(source), "policy", klog.KObj(actual))
-		return controller.NewAPIServerError(false, err)
+		return false, controller.NewAPIServerError(false, err)
 	}
-	klog.V(2).InfoS("Deleted the generated placement policy", "obj", klog.KObj(source), "policy", klog.KObj(actual))
-	r.Recorder.Eventf(source, corev1.EventTypeNormal, EventReasonPolicyDeleted,
-		"Deleted the placement policy %s because the %s annotation was removed", name, kfplacementv1alpha1.ClusterSelectorsAnnotation)
-	return nil
+	return true, nil
 }
 
 // applyDesiredPolicy brings a live generated policy in line with the desired one, reporting whether
