@@ -57,7 +57,7 @@ func selectorOf(count intstr.IntOrString, matchLabels map[string]string) kfplace
 	return selector
 }
 
-func TestParsePlaceTo(t *testing.T) {
+func TestParseClusterSelectors(t *testing.T) {
 	one, three, all := intstr.FromInt32(1), intstr.FromInt32(3), intstr.FromString("All")
 
 	testCases := []struct {
@@ -190,12 +190,12 @@ func TestParsePlaceTo(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := parsePlaceTo(tc.value)
+			got, err := parseClusterSelectors(tc.value)
 			if err != nil {
-				t.Fatalf("parsePlaceTo(%q) = %v, want no error", tc.value, err)
+				t.Fatalf("parseClusterSelectors(%q) = %v, want no error", tc.value, err)
 			}
 			if diff := cmp.Diff(got, tc.want); diff != "" {
-				t.Errorf("parsePlaceTo(%q) mismatch (-got, +want):\n%s", tc.value, diff)
+				t.Errorf("parseClusterSelectors(%q) mismatch (-got, +want):\n%s", tc.value, diff)
 			}
 		})
 	}
@@ -284,7 +284,7 @@ func TestLimitsMatchAPIValidation(t *testing.T) {
 	}
 }
 
-func TestParsePlaceToInvalid(t *testing.T) {
+func TestParseClusterSelectorsInvalid(t *testing.T) {
 	testCases := []struct {
 		name string
 		// value is the annotation value under test.
@@ -450,12 +450,12 @@ func TestParsePlaceToInvalid(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := parsePlaceTo(tc.value)
+			got, err := parseClusterSelectors(tc.value)
 			if err == nil {
-				t.Fatalf("parsePlaceTo(%q) = %v, want an error", tc.value, got)
+				t.Fatalf("parseClusterSelectors(%q) = %v, want an error", tc.value, got)
 			}
 			if !strings.Contains(err.Error(), tc.wantErrContains) {
-				t.Errorf("parsePlaceTo(%q) = %v, want an error containing %q", tc.value, err, tc.wantErrContains)
+				t.Errorf("parseClusterSelectors(%q) = %v, want an error containing %q", tc.value, err, tc.wantErrContains)
 			}
 		})
 	}
