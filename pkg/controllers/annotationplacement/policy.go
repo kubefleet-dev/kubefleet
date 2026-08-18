@@ -119,8 +119,10 @@ func parentOwnerReference(source *unstructured.Unstructured) metav1.OwnerReferen
 
 // parentResourceSelector returns the selector that places the annotated resource itself.
 //
-// It is the first of the policy's resource selectors by convention: any selector after it was
-// added by KubeFleet for a resource the annotated one depends on.
+// It is the only resource selector a generated policy has: an annotation asks for the resource it is
+// written on to be placed, and nothing else. Should that ever stop being true, note that the
+// reconciler replaces the whole spec of a generated policy, so a selector added from elsewhere would
+// have to be reconciled here rather than merely appended to the live object.
 func parentResourceSelector(source *unstructured.Unstructured) kfplacementv1alpha1.ResourceSelector {
 	gvk := source.GroupVersionKind()
 	// The namespace is deliberately left unset. A generated policy for a namespaced resource lives
@@ -167,20 +169,45 @@ func desiredPolicy(source *unstructured.Unstructured, selectors []kfplacementv1a
 	gvk := source.GroupVersionKind()
 	namespace := source.GetNamespace()
 
-	meta := metav1.ObjectMeta{
-		Name:            generatedPolicyName(gvk, namespace, source.GetName()),
-		Namespace:       namespace,
-		Labels:          parentLabels(gvk, source.GetName()),
-		OwnerReferences: []metav1.OwnerReference{parentOwnerReference(source)},
-	}
-	spec := kfplacementv1alpha1.PlacementPolicySpec{
+	policy := emptyPolicyForScope(namespace)
+	policy.SetName(generatedPolicyName(gvk, namespace, source.GetName()))
+	policy.SetNamespace(namespace)
+	policy.SetLabels(parentLabels(gvk, source.GetName()))
+	policy.SetOwnerReferences([]metav1.OwnerReference{parentOwnerReference(source)})
+	*policySpec(policy) = kfplacementv1alpha1.PlacementPolicySpec{
 		ClusterSelectors:             withAPIDefaults(selectors),
 		ResourceSelectors:            []kfplacementv1alpha1.ResourceSelector{parentResourceSelector(source)},
 		ResourceRevisionHistoryLimit: ptr.To(defaultResourceRevisionHistoryLimit),
 	}
+	return policy
+}
 
+// emptyPolicyForScope returns an empty generated policy of the scope that a resource in the given
+// namespace generates: a namespaced resource yields a PlacementPolicy in its own namespace, and a
+// cluster-scoped resource, whose namespace is empty, yields a ClusterPlacementPolicy.
+//
+// This is the single place the scope is decided. The reconciler needs the same answer to read and to
+// delete a generated policy as it does to build one, and a disagreement between those would leave a
+// policy behind rather than fail.
+func emptyPolicyForScope(namespace string) client.Object {
 	if namespace == "" {
-		return &kfplacementv1alpha1.ClusterPlacementPolicy{ObjectMeta: meta, Spec: spec}
+		return &kfplacementv1alpha1.ClusterPlacementPolicy{}
 	}
-	return &kfplacementv1alpha1.PlacementPolicy{ObjectMeta: meta, Spec: spec}
+	return &kfplacementv1alpha1.PlacementPolicy{}
+}
+
+// policySpec returns a pointer to the spec of a generated policy, whichever scope it has, so that
+// callers can read and write the spec without repeating the scope distinction.
+//
+// It returns nil for any other type. Callers within this package only ever pass objects that
+// emptyPolicyForScope produced, so a nil here means the two have fallen out of step.
+func policySpec(policy client.Object) *kfplacementv1alpha1.PlacementPolicySpec {
+	switch typed := policy.(type) {
+	case *kfplacementv1alpha1.PlacementPolicy:
+		return &typed.Spec
+	case *kfplacementv1alpha1.ClusterPlacementPolicy:
+		return &typed.Spec
+	default:
+		return nil
+	}
 }
