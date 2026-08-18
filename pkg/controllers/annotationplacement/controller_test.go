@@ -668,6 +668,54 @@ func TestApplyDesiredPolicy(t *testing.T) {
 	}
 }
 
+// TestEventMessagesNameTheGeneratedKind pins that an event's message names the kind actually
+// generated: the two scopes generate different kinds, and a message claiming a PlacementPolicy for
+// what is really a ClusterPlacementPolicy sends the user's kubectl to a resource that is not there.
+func TestEventMessagesNameTheGeneratedKind(t *testing.T) {
+	testCases := []struct {
+		name     string
+		source   *unstructured.Unstructured
+		gvr      schema.GroupVersionResource
+		wantKind string
+	}{
+		{
+			name:     "a namespaced source names PlacementPolicy",
+			source:   newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector}),
+			gvr:      deploymentGVR,
+			wantKind: "PlacementPolicy",
+		},
+		{
+			name:     "a cluster scoped source names ClusterPlacementPolicy",
+			source:   newSource(namespaceGVK, "", testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector}),
+			gvr:      namespaceGVR,
+			wantKind: "ClusterPlacementPolicy",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{tc.gvr: {tc.source}}, []schema.GroupVersionKind{namespaceGVK}, interceptor.Funcs{})
+
+			key := keyFor(tc.source.GroupVersionKind(), tc.source.GetNamespace(), tc.source.GetName())
+			if _, err := r.Reconcile(context.Background(), key); err != nil {
+				t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+			}
+
+			select {
+			case event := <-recorder.Events:
+				// The kind is matched with its surrounding spaces: "ClusterPlacementPolicy"
+				// contains "PlacementPolicy" as a bare substring, so an unanchored check would
+				// pass the namespaced case even if the wrong kind were named.
+				if !strings.Contains(event, " the "+tc.wantKind+" ") {
+					t.Errorf("Reconcile(%v) recorded event %q, want it to name the kind %q", key, event, tc.wantKind)
+				}
+			default:
+				t.Fatalf("Reconcile(%v) recorded no event, want one naming the kind %q", key, tc.wantKind)
+			}
+		})
+	}
+}
+
 // TestReconcileUnknownKind covers a key whose kind the API server does not know, which the
 // generated policy watch can produce by enqueuing whatever a policy names as its owner. The key is
 // dropped: no retry can make the kind exist, and an error would keep it backing off forever.

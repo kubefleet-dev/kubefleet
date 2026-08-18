@@ -51,8 +51,9 @@ const (
 	EventReasonPolicyCreated = "PlacementPolicyCreated"
 	// EventReasonPolicyUpdated is recorded when an annotation change reaches its generated policy.
 	EventReasonPolicyUpdated = "PlacementPolicyUpdated"
-	// EventReasonPolicyDeleted is recorded when a resource's annotation is removed and the policy
-	// generated from it is deleted in turn.
+	// EventReasonPolicyDeleted is recorded when the policy generated for a resource is deleted --
+	// because the annotation was removed, or because the resource stopped being eligible for
+	// placement. The event's message names which.
 	EventReasonPolicyDeleted = "PlacementPolicyDeleted"
 	// EventReasonInvalidAnnotation is recorded when an annotation cannot be parsed. It is a warning
 	// rather than an error on the queue: no amount of retrying makes a malformed annotation parse,
@@ -215,7 +216,7 @@ func (r *Reconciler) syncPolicy(ctx context.Context, source *unstructured.Unstru
 		}
 		klog.V(2).InfoS("Created the generated placement policy", "obj", klog.KObj(source), "policy", klog.KObj(desired))
 		r.Recorder.Eventf(source, corev1.EventTypeNormal, EventReasonPolicyCreated,
-			"Created the placement policy %s from the %s annotation", desired.GetName(), kfplacementv1alpha1.ClusterSelectorsAnnotation)
+			"Created the %s %s from the %s annotation", generatedPolicyKind(source.GetNamespace()), desired.GetName(), kfplacementv1alpha1.ClusterSelectorsAnnotation)
 		return nil
 	case err != nil:
 		klog.ErrorS(err, "Failed to get the generated placement policy", "obj", klog.KObj(source), "policy", klog.KObj(desired))
@@ -232,7 +233,7 @@ func (r *Reconciler) syncPolicy(ctx context.Context, source *unstructured.Unstru
 	}
 	klog.V(2).InfoS("Updated the generated placement policy", "obj", klog.KObj(source), "policy", klog.KObj(actual))
 	r.Recorder.Eventf(source, corev1.EventTypeNormal, EventReasonPolicyUpdated,
-		"Updated the placement policy %s from the %s annotation", actual.GetName(), kfplacementv1alpha1.ClusterSelectorsAnnotation)
+		"Updated the %s %s from the %s annotation", generatedPolicyKind(source.GetNamespace()), actual.GetName(), kfplacementv1alpha1.ClusterSelectorsAnnotation)
 	return nil
 }
 
@@ -254,7 +255,7 @@ func (r *Reconciler) deletePolicy(ctx context.Context, source *unstructured.Unst
 		return nil
 	}
 	klog.V(2).InfoS("Deleted the generated placement policy", "obj", klog.KObj(source), "policy", klog.KRef(source.GetNamespace(), name))
-	r.Recorder.Eventf(source, corev1.EventTypeNormal, EventReasonPolicyDeleted, "Deleted the placement policy %s because %s", name, cause)
+	r.Recorder.Eventf(source, corev1.EventTypeNormal, EventReasonPolicyDeleted, "Deleted the %s %s because %s", generatedPolicyKind(source.GetNamespace()), name, cause)
 	return nil
 }
 

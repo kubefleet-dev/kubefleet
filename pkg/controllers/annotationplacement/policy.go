@@ -197,6 +197,18 @@ func emptyPolicyForScope(namespace string) client.Object {
 	return &kfplacementv1alpha1.PlacementPolicy{}
 }
 
+// generatedPolicyKind returns the kind of the policy that emptyPolicyForScope produces for the
+// given namespace, spelled as the kind itself is, so that a message carrying it can be pasted
+// straight into a kubectl command against the right resource. It asks emptyPolicyForScope rather
+// than repeating its namespace check, which keeps the scope decision in the one place that
+// function's contract promises.
+func generatedPolicyKind(namespace string) string {
+	if _, clusterScoped := emptyPolicyForScope(namespace).(*kfplacementv1alpha1.ClusterPlacementPolicy); clusterScoped {
+		return "ClusterPlacementPolicy"
+	}
+	return "PlacementPolicy"
+}
+
 // policySpec returns a pointer to the spec of a generated policy, whichever scope it has, so that
 // callers can read and write the spec without repeating the scope distinction.
 //
