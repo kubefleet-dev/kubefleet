@@ -25,19 +25,23 @@ const (
 	// per the Kubernetes convention that reserves unprefixed keys for end users.
 	KubeFleetPrefix = "kubefleet.dev/"
 
-	// PlaceToAnnotation is the annotation that requests annotation-based placement for the resource
-	// it is set on. Its value is a semicolon-separated list of cluster selectors, each of which is a
-	// comma-separated list of LABEL_KEY=LABEL_VALUE label matchers with an optional count=N|All
-	// directive, e.g.:
+	// ClusterSelectorsAnnotation is the annotation that requests annotation-based placement for the
+	// resource it is set on. Its value is a semicolon-separated list of cluster selectors, each of
+	// which is a comma-separated list of LABEL_KEY=LABEL_VALUE label matchers with an optional
+	// count=N|All directive, e.g.:
 	//
-	//     kubefleet.dev/place-to: "env=staging,count=All;env=canary,region=eastus,count=1"
+	//     kubefleet.dev/cluster-selectors: "env=staging,count=All;env=canary,region=eastus,count=1"
 	//
 	// KubeFleet keeps a PlacementPolicy (or ClusterPlacementPolicy) object in sync with the
 	// annotation for as long as it is present.
 	//
+	// The key names what the value holds rather than what KubeFleet does with it, matching the
+	// clusterSelectors field of the generated policy: the annotation is one way to write that field,
+	// and the two are read together often enough that they should not have to be translated.
+	//
 	// Within the annotation, `region` may be used in place of the well-known
 	// topology.kubernetes.io/region label key, and `alias` in place of ClusterAliasLabel.
-	PlaceToAnnotation = KubeFleetPrefix + "place-to"
+	ClusterSelectorsAnnotation = KubeFleetPrefix + "cluster-selectors"
 
 	// ClusterAliasLabel is the label that KubeFleet reserves on member cluster objects for selecting
 	// clusters by their name (alias).
