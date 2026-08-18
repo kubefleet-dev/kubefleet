@@ -29,6 +29,7 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
+	"github.com/kubefleet-dev/kubefleet/pkg/controllers/annotationplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
@@ -106,6 +107,8 @@ func (d *ChangeDetector) Start(ctx context.Context) error {
 	// set up the dynamicResourceChangeEventHandler that enqueue an event to the resource change controller's queue.
 	dynamicResourceChangeEventHandler := newFilteringHandlerOnAllEvents(d.dynamicResourceFilter,
 		d.onResourceAdded, d.onResourceUpdated, d.onResourceDeleted)
+
+	d.watchGeneratedPolicies()
 	// run the resource type list once to start informers for the existing resources
 	d.discoverResources(dynamicResourceChangeEventHandler)
 	defer d.InformerManager.Stop()
@@ -140,6 +143,24 @@ func (d *ChangeDetector) Start(ctx context.Context) error {
 		})
 	}
 	return errs.Wait()
+}
+
+// watchGeneratedPolicies watches the policies that annotation-based placement generates, on top of
+// the resources they are generated from: an edit or a delete of a generated policy produces no
+// event on its resource, and would otherwise go unrepaired forever. It does nothing when
+// annotation-based placement is not running.
+//
+// The policy informers are registered as static resources, and the resource config keeps the whole
+// placement.kubefleet.dev group out of dynamic discovery, so the generated policy event handler is
+// the only handler these informers ever get.
+func (d *ChangeDetector) watchGeneratedPolicies() {
+	if d.AnnotationPlacementController == nil {
+		return
+	}
+	generatedPolicyEventHandler := annotationplacement.NewGeneratedPolicyEventHandler(d.AnnotationPlacementController.Enqueue)
+	for _, res := range annotationplacement.GeneratedPolicyResources() {
+		d.InformerManager.AddStaticResource(res, generatedPolicyEventHandler)
+	}
 }
 
 // discoverAPIResourcesLoop runs discoverResources periodically

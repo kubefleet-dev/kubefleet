@@ -221,6 +221,34 @@ var _ = Describe("annotation based placement", func() {
 			Expect(drainEvents()).Should(Equal([]string{EventReasonPolicyUpdated}))
 		})
 
+		It("should restore the policy when someone edits it", func() {
+			policy, err := generatedPolicyFor(configMapGVK, configMap)
+			Expect(err).Should(Succeed())
+			policySpec(policy).ClusterSelectors = nil
+			Expect(hubClient.Update(ctx, policy)).Should(Succeed())
+
+			// In the running agent this reconcile is triggered by the watch on the generated
+			// policies themselves; an edit produces no event on the ConfigMap.
+			Expect(reconcile(configMapGVK, configMap)).Should(Succeed())
+
+			restored, err := generatedPolicyFor(configMapGVK, configMap)
+			Expect(err).Should(Succeed())
+			Expect(policySpec(restored).ClusterSelectors).Should(HaveLen(1))
+			Expect(drainEvents()).Should(Equal([]string{EventReasonPolicyUpdated}))
+		})
+
+		It("should recreate the policy when someone deletes it", func() {
+			policy, err := generatedPolicyFor(configMapGVK, configMap)
+			Expect(err).Should(Succeed())
+			Expect(hubClient.Delete(ctx, policy)).Should(Succeed())
+
+			Expect(reconcile(configMapGVK, configMap)).Should(Succeed())
+
+			_, err = generatedPolicyFor(configMapGVK, configMap)
+			Expect(err).Should(Succeed(), "the deleted policy must be generated again")
+			Expect(drainEvents()).Should(Equal([]string{EventReasonPolicyCreated}))
+		})
+
 		It("should keep the policy and warn when the annotation becomes invalid", func() {
 			annotate(configMap, "env")
 			Expect(reconcile(configMapGVK, configMap)).Should(Succeed(), "a malformed annotation must not be retried")
@@ -239,10 +267,16 @@ var _ = Describe("annotation based placement", func() {
 			Expect(drainEvents()).Should(Equal([]string{EventReasonPolicyDeleted}))
 		})
 
-		It("should do nothing once the resource itself is gone", func() {
-			// The generated policy carries an owner reference to the resource, so a real cluster's
-			// garbage collector removes it. envtest runs no garbage collector, so what is under test
-			// here is only that the reconciler does not error or act on a resource that is gone.
+		It("should delete the policy once the resource itself is gone", func() {
+			// Deleting explicitly, rather than leaving the policy to garbage collection, is what
+			// keeps an owner reference some other party added from holding the policy up forever.
+			// It also means envtest, which runs no garbage collector, can observe the cleanup.
+			annotate(configMap, "env=staging")
+			Expect(reconcile(configMapGVK, configMap)).Should(Succeed())
+			_, err := generatedPolicyFor(configMapGVK, configMap)
+			Expect(err).Should(Succeed())
+			drainEvents()
+
 			Expect(hubClient.Delete(ctx, configMap)).Should(Succeed())
 			Eventually(func() error {
 				_, err := cachedObject(configMapGVR, configMap)
@@ -250,6 +284,9 @@ var _ = Describe("annotation based placement", func() {
 			}, eventuallyTimeout, eventuallyInterval).ShouldNot(Succeed(), "the informer cache never observed the deletion")
 
 			Expect(reconcile(configMapGVK, configMap)).Should(Succeed())
+			_, err = generatedPolicyFor(configMapGVK, configMap)
+			Expect(apierrors.IsNotFound(err)).Should(BeTrue(), "got %v, want a not found error", err)
+			// No event: the resource an event would be recorded on no longer exists.
 			Expect(drainEvents()).Should(BeEmpty())
 		})
 	})

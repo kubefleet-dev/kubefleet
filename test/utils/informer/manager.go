@@ -128,12 +128,15 @@ type FakeManager struct {
 	// InformerSynced controls whether IsInformerSynced returns true or false.
 	// If nil, defaults to true. If set, returns the value for all resources.
 	InformerSynced *bool
+	// StaticResources records every resource registered through AddStaticResource.
+	StaticResources []informer.APIResourceMeta
 }
 
 func (m *FakeManager) AddDynamicResources(_ []informer.APIResourceMeta, _ cache.ResourceEventHandler, _ bool) {
 }
 
-func (m *FakeManager) AddStaticResource(_ informer.APIResourceMeta, _ cache.ResourceEventHandler) {
+func (m *FakeManager) AddStaticResource(resource informer.APIResourceMeta, _ cache.ResourceEventHandler) {
+	m.StaticResources = append(m.StaticResources, resource)
 }
 
 func (m *FakeManager) IsInformerSynced(_ schema.GroupVersionResource) bool {
