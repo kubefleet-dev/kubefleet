@@ -67,6 +67,14 @@ type ChangeDetector struct {
 	// This controller will be used by both v1alpha1 & v1beta1 ClusterResourcePlacementController.
 	ResourceChangeController controller.Controller
 
+	// AnnotationPlacementController maintains a rate limited queue holding the cluster wide key of
+	// every resource whose cluster-selectors annotation may have changed, and a reconcile function
+	// that keeps the placement policy generated from that annotation in step with it.
+	//
+	// It is nil unless annotation-based placement is enabled, and unlike ResourceChangeController it
+	// is fed only the resources that carry the annotation.
+	AnnotationPlacementController controller.Controller
+
 	// InformerManager manages all the dynamic informers created by the discovery client
 	InformerManager informer.Manager
 
@@ -126,6 +134,11 @@ func (d *ChangeDetector) Start(ctx context.Context) error {
 	errs.Go(func() error {
 		return d.ResourceChangeController.Run(cctx, d.ConcurrentResourceChangeWorker)
 	})
+	if d.AnnotationPlacementController != nil {
+		errs.Go(func() error {
+			return d.AnnotationPlacementController.Run(cctx, d.ConcurrentResourceChangeWorker)
+		})
+	}
 	return errs.Wait()
 }
 

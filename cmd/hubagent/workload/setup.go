@@ -31,8 +31,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
+	"github.com/kubefleet-dev/kubefleet/pkg/controllers/annotationplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/bindingwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterinventory/clusterprofile"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacementeviction"
@@ -68,6 +70,8 @@ const (
 	placementControllerName  = "placement-controller"
 
 	resourceChangeControllerName = "resource-change-controller"
+
+	annotationPlacementControllerName = "annotation-placement-controller"
 
 	schedulerQueueName = "scheduler-queue"
 )
@@ -115,6 +119,14 @@ var (
 	evictionGVKs = []schema.GroupVersionKind{
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ClusterResourcePlacementEvictionKind),
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ClusterResourcePlacementDisruptionBudgetKind),
+	}
+
+	// The kinds annotation-based placement generates, and so cannot run without. The kinds are
+	// spelled out here rather than taken from constants because the placement.kubefleet.dev API
+	// package does not declare any yet.
+	annotationBasedPlacementGVKs = []schema.GroupVersionKind{
+		kfplacementv1alpha1.GroupVersion.WithKind("PlacementPolicy"),
+		kfplacementv1alpha1.GroupVersion.WithKind("ClusterPlacementPolicy"),
 	}
 )
 
@@ -504,6 +516,32 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	}
 	resourceChangeController := controller.NewController(resourceChangeControllerName, controller.ClusterWideKeyFunc, rcr.Reconcile, rateLimiter)
 
+	// Set up the controller that keeps a placement policy in sync with the cluster-selectors
+	// annotation on a resource. It shares the resource change controller's informers, but is fed
+	// only the resources that carry the annotation.
+	var annotationPlacementController controller.Controller
+	if opts.FeatureFlags.EnableAnnotationBasedPlacement {
+		for _, gvk := range annotationBasedPlacementGVKs {
+			if err = utils.CheckCRDInstalled(discoverClient, gvk); err != nil {
+				klog.ErrorS(err, "unable to find the CRD that annotation based placement requires", "GVK", gvk)
+				return err
+			}
+		}
+		klog.Info("Setting up annotation based placement controller")
+		apr := &annotationplacement.Reconciler{
+			Client:          mgr.GetClient(),
+			RestMapper:      mgr.GetRESTMapper(),
+			InformerManager: dynamicInformerManager,
+			Recorder:        mgr.GetEventRecorderFor(annotationPlacementControllerName),
+		}
+		// A rate limiter of its own, rather than the one the controllers above share. An exponential
+		// failure limiter keys its backoff on the queued item alone, and this controller queues the
+		// very same cluster wide keys as the resource change controller: sharing one would let a
+		// success here clear the backoff that repeated failures there had earned.
+		annotationPlacementRateLimiter := options.DefaultControllerRateLimiter(opts.PlacementMgmtOpts.PlacementControllerWorkQueueRateLimiterOpts)
+		annotationPlacementController = controller.NewController(annotationPlacementControllerName, controller.ClusterWideKeyFunc, apr.Reconcile, annotationPlacementRateLimiter)
+	}
+
 	// Set up the InformerPopulator that runs on ALL pods (leader and followers)
 	// This ensures all pods have synced informer caches for webhook validation
 	klog.Info("Setting up informer populator")
@@ -527,6 +565,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		ClusterResourcePlacementControllerV1Beta1: clusterResourcePlacementControllerV1Beta1,
 		ResourcePlacementController:               resourcePlacementController,
 		ResourceChangeController:                  resourceChangeController,
+		AnnotationPlacementController:             annotationPlacementController,
 		InformerManager:                           dynamicInformerManager,
 		ResourceConfig:                            resourceConfig,
 		SkippedNamespaces:                         skippedNamespaces,
