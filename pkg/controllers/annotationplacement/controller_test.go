@@ -506,6 +506,37 @@ func TestReconcileAPIServerErrors(t *testing.T) {
 	}
 }
 
+// TestDeleteRacesAnotherDeletion covers a cached read handing the reconciler a policy that is
+// already gone by the time it deletes -- typically its own deletion re-entered through the
+// generated policy watch. The pass must not claim, in logs or events, a deletion it did not do.
+func TestDeleteRacesAnotherDeletion(t *testing.T) {
+	ctx := context.Background()
+	source := newSource(deploymentGVK, testNamespace, testName, nil)
+	annotated := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
+	selectors, err := parseClusterSelectors(oneSelector)
+	if err != nil {
+		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
+	}
+	existing := desiredPolicy(annotated, selectors)
+
+	// The interceptor stands in for the stale cache: the Get finds the policy, the Delete
+	// discovers someone else got there first.
+	raced := interceptor.Funcs{
+		Delete: func(context.Context, client.WithWatch, client.Object, ...client.DeleteOption) error {
+			return apierrors.NewNotFound(schema.GroupResource{Group: kfplacementv1alpha1.GroupVersion.Group, Resource: "placementpolicies"}, existing.GetName())
+		},
+	}
+	r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {source}}, nil, raced, existing)
+
+	key := keyFor(deploymentGVK, testNamespace, testName)
+	if _, err := r.Reconcile(ctx, key); err != nil {
+		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+	}
+	if got := recordedReasons(recorder); len(got) != 0 {
+		t.Errorf("Reconcile(%v) recorded events = %v, want none for a deletion this pass did not perform", key, got)
+	}
+}
+
 func TestApplyDesiredPolicy(t *testing.T) {
 	source := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
 	selectors, err := parseClusterSelectors(oneSelector)

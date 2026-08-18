@@ -47,10 +47,11 @@ const (
 // that the object built here equals the one the API server stores. Left unset, every field the API
 // defaults would read as a difference on every pass and provoke an update that changes nothing.
 //
-// That whenUnfulfilled defaults to requesting a cluster is worth revisiting for this surface in
-// particular: the annotation grammar cannot express the field, so an annotation that no cluster
-// satisfies asks the platform to provision one. Setting the API's own default here keeps the
-// behavior unchanged while the question is open upstream.
+// whenUnfulfilled deliberately follows the API default of requesting a cluster: asking the platform
+// for a cluster that does not exist yet is the point of these APIs, and the annotation is meant to
+// be the lowest-friction way to do so. The grammar has no slot for the field, so guarding against
+// a selector nothing can ever satisfy (a mistyped region, say) is the claim fulfillment layer's
+// job -- quota, approval, expiry -- not a softer default here.
 const (
 	defaultResourceRevisionHistoryLimit int32 = 3
 

@@ -259,7 +259,7 @@ func (r *Reconciler) deletePolicy(ctx context.Context, source *unstructured.Unst
 }
 
 // deleteGeneratedPolicy deletes the policy generated for the given resource identity, reporting
-// whether there was one to delete.
+// whether this pass performed the deletion.
 //
 // The policy is read before it is deleted, which for the vast majority of resources — those that
 // were never annotated at all — is a single cached read and no request to the API server.
@@ -275,7 +275,14 @@ func (r *Reconciler) deleteGeneratedPolicy(ctx context.Context, gvk schema.Group
 		return false, controller.NewAPIServerError(true, err)
 	}
 
-	if err := r.Client.Delete(ctx, actual); err != nil && !apierrors.IsNotFound(err) {
+	if err := r.Client.Delete(ctx, actual); err != nil {
+		if apierrors.IsNotFound(err) {
+			// The cached read raced a deletion that already happened -- typically this controller's
+			// own, re-entered through the generated policy watch moments later. Nothing was deleted
+			// here, and reporting otherwise would log, and on some paths announce to the user, a
+			// deletion that this pass did not perform.
+			return false, nil
+		}
 		return false, controller.NewAPIServerError(false, err)
 	}
 	return true, nil
