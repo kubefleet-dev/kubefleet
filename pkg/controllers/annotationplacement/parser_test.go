@@ -257,9 +257,10 @@ func TestLimitsMatchAPIValidation(t *testing.T) {
 		t.Errorf("the CRD caps matchLabels at %s, want maxMatchLabels (%d)", formatLimit(got), maxMatchLabels)
 	}
 
-	// The count field is an int-or-string, and a pattern constrains the string form of one only, so
-	// the ceiling is checked by exercising the pattern rather than by reading a numeric bound. The
-	// integer form is left unbounded by the API today; see the comment on maxCount.
+	// The count field is an int-or-string, and the API bounds each form separately: a pattern for
+	// the string form, checked here by exercising it, and a CEL rule for the integer form, checked
+	// here by asserting the rule spells out the same bounds the parser enforces. A pattern alone
+	// would leave the integer form unbounded.
 	count := selector["count"]
 	countPattern, err := regexp.Compile(count.Pattern)
 	if err != nil {
@@ -273,6 +274,28 @@ func TestLimitsMatchAPIValidation(t *testing.T) {
 	}
 	if !countPattern.MatchString(countAll) {
 		t.Errorf("the CRD pattern %q rejects %q, want it accepted", count.Pattern, countAll)
+	}
+
+	// The rule's spelling is free to change; what must not drift is the ceiling it encodes, in
+	// both the rule and the message a user is shown. The behavior itself is pinned separately by
+	// the integration suite, which submits out-of-range counts to a real API server.
+	wantCeiling := fmt.Sprintf("%d", maxCount)
+	integerRuleFound := false
+	for _, validation := range count.XValidations {
+		if !strings.Contains(validation.Rule, wantCeiling) {
+			continue
+		}
+		integerRuleFound = true
+		if !strings.Contains(validation.Message, wantCeiling) {
+			t.Errorf("the CRD rejects an out-of-range count with the message %q, want it to name the ceiling (%s)", validation.Message, wantCeiling)
+		}
+	}
+	if !integerRuleFound {
+		rules := make([]string, 0, len(count.XValidations))
+		for _, validation := range count.XValidations {
+			rules = append(rules, validation.Rule)
+		}
+		t.Errorf("the CRD validates count with the rules %q, want one to bound the integer form at maxCount (%s)", rules, wantCeiling)
 	}
 
 	if count.Default == nil {

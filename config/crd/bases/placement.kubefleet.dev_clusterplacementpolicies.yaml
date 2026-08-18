@@ -65,6 +65,9 @@ spec:
                         The default value is 1. To select all clusters that match the given terms, use the value "All".
                       pattern: ^([1-9][0-9]{0,2}|All)$
                       x-kubernetes-int-or-string: true
+                      x-kubernetes-validations:
+                      - message: count must be between 1 and 999, or "All"
+                        rule: 'type(self) == int ? self >= 1 && self <= 999 : true'
                     minCount:
                       description: |-
                         The minimum number of clusters that KubeFleet should select based on the given terms, when KubeFleet is not able
