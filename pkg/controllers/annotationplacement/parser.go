@@ -58,12 +58,9 @@ const (
 	maxSelectors = 10
 	// maxMatchLabels mirrors MaxProperties on ClusterLabelAndPropertySelectorTerm.MatchLabels.
 	maxMatchLabels = 10
-	// maxCount mirrors the three-digit ceiling of the Pattern marker on ClusterSelector.Count.
-	//
-	// The API enforces that ceiling on the string form of the field only: a pattern does not
-	// constrain the integer form of an int-or-string, so the API server accepts an integer count
-	// both above this ceiling and below 1. The parser holds the line on its own until a CEL rule
-	// constrains the integer form.
+	// maxCount mirrors the ceiling on ClusterSelector.Count, which the API enforces once per form:
+	// the Pattern marker bounds the string form, and a CEL rule bounds the integer form, since a
+	// pattern does not constrain the integer side of an int-or-string.
 	maxCount = 999
 )
 

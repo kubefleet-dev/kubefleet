@@ -160,6 +160,12 @@ type ClusterSelector struct {
 	// +kubebuilder:validation:MaxItems=5
 	Terms []ClusterLabelAndPropertySelectorTerm `json:"terms,omitempty"`
 
+	// The two validation markers below split the work by form: a pattern constrains only the string
+	// form of an int-or-string ("All", and digits arriving as a quoted string), so the CEL rule is
+	// what bounds the integer form. Without it, an unquoted count outside 1-999 is accepted while
+	// the same number in quotes is rejected. This block is deliberately detached from the field's
+	// doc comment: it is rationale for maintainers, not schema documentation for users.
+
 	// The desired number of clusters that KubeFleet should select based on the given terms.
 	//
 	// The default value is 1. To select all clusters that match the given terms, use the value "All".
@@ -168,6 +174,7 @@ type ClusterSelector struct {
 	// +kubebuilder:default=1
 	// +kubebuilder:validation:XIntOrString
 	// +kubebuilder:validation:Pattern="^([1-9][0-9]{0,2}|All)$"
+	// +kubebuilder:validation:XValidation:rule="type(self) == int ? self >= 1 && self <= 999 : true",message="count must be between 1 and 999, or \"All\""
 	Count *intstr.IntOrString `json:"count,omitempty"`
 
 	// The minimum number of clusters that KubeFleet should select based on the given terms, when KubeFleet is not able
