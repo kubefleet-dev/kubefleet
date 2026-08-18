@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 )
@@ -160,7 +161,11 @@ func isUserInGroup(userInfo authenticationv1.UserInfo, groupName string) bool {
 	return slices.Contains(userInfo.Groups, groupName)
 }
 
-// shouldDenyLabelModification returns true if any labels (besides kubernetes-fleet.io/* labels) are being modified and denyModifyMemberClusterLabels is true.
+// shouldDenyLabelModification returns true if any labels outside the reserved KubeFleet prefixes
+// are being modified and denyModifyMemberClusterLabels is true. Both reserved prefixes are exempt:
+// kubernetes-fleet.io/ and kubefleet.dev/ each carry labels KubeFleet's own controllers keep in
+// step (the member name label and the cluster alias label respectively), and the hub agent is not
+// in system:masters, so denying either would wedge its own reconciliation.
 func shouldDenyLabelModification(currentLabels, oldLabels map[string]string, denyModifyMemberClusterLabels bool) bool {
 	if !denyModifyMemberClusterLabels {
 		return false
@@ -168,19 +173,25 @@ func shouldDenyLabelModification(currentLabels, oldLabels map[string]string, den
 	for k, v := range currentLabels {
 		oldV, exists := oldLabels[k]
 		if !exists || oldV != v {
-			if !strings.HasPrefix(k, placementv1beta1.FleetPrefix) {
+			if !isReservedLabelKey(k) {
 				return true
 			}
 		}
 	}
 	for k := range oldLabels {
 		if _, exists := currentLabels[k]; !exists {
-			if !strings.HasPrefix(k, placementv1beta1.FleetPrefix) {
+			if !isReservedLabelKey(k) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// isReservedLabelKey reports whether a label key belongs to one of the prefixes KubeFleet reserves
+// for itself.
+func isReservedLabelKey(key string) bool {
+	return strings.HasPrefix(key, placementv1beta1.FleetPrefix) || strings.HasPrefix(key, kfplacementv1alpha1.KubeFleetPrefix)
 }
 
 // isMemberClusterMapFieldUpdated return true if member cluster label is updated.
