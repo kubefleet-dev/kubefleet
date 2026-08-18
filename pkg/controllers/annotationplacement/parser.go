@@ -15,8 +15,9 @@ limitations under the License.
 */
 
 // Package annotationplacement implements FEP-0001 annotation-based placement: it keeps a placement
-// policy object in sync with the kubefleet.dev/place-to annotation set on a Kubernetes resource, so
-// that simple placement scenarios can be expressed without authoring a placement policy by hand.
+// policy object in sync with the kubefleet.dev/cluster-selectors annotation set on a Kubernetes
+// resource, so that simple placement scenarios can be expressed without authoring a placement
+// policy by hand.
 package annotationplacement
 
 import (
@@ -78,12 +79,12 @@ var shorthandLabelKeys = map[string]string{
 	aliasShorthand:  kfplacementv1alpha1.ClusterAliasLabel,
 }
 
-// parsePlaceTo converts the value of the kubefleet.dev/place-to annotation into the cluster
-// selectors of a placement policy.
+// parseClusterSelectors converts the value of the kubefleet.dev/cluster-selectors annotation into
+// the cluster selectors of a placement policy.
 //
 // Errors returned by this function are always caused by the annotation's own contents; they are
 // never transient, and a caller should surface them to the user rather than retry.
-func parsePlaceTo(value string) ([]kfplacementv1alpha1.ClusterSelector, error) {
+func parseClusterSelectors(value string) ([]kfplacementv1alpha1.ClusterSelector, error) {
 	if strings.TrimSpace(value) == "" {
 		return nil, fmt.Errorf("the annotation value is empty; it must list at least one cluster selector")
 	}
