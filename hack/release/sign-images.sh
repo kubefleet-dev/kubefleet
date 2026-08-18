@@ -25,19 +25,39 @@
 set -euo pipefail
 shopt -s nullglob
 
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=hack/release/identity.sh
+. "${here}/identity.sh"
+
 : "${REGISTRY:?REGISTRY must be set}"
 : "${IMAGE_METADATA_DIR:?IMAGE_METADATA_DIR must be set}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY must be set}"
 
-OIDC_ISSUER="https://token.actions.githubusercontent.com"
-# GITHUB_REPOSITORY is interpolated into a regexp, and repository names may
-# contain dots, which would otherwise match any character.
-repo_pattern="${GITHUB_REPOSITORY//./\\.}"
-# Bound to this workflow file, not merely to the repository: any other workflow
-# that ever gains id-token: write could otherwise mint signatures that pass. No
-# ref constraint - a workflow_dispatch release signs as @refs/heads/<branch>
-# while a tag push signs as @refs/tags/<tag>.
-IDENTITY_PATTERN="^https://github\.com/${repo_pattern}/\.github/workflows/release\.yml@"
+OIDC_ISSUER="${RELEASE_OIDC_ISSUER}"
+IDENTITY_PATTERN="$(release_identity_pattern "${GITHUB_REPOSITORY}")"
+
+# Both cosign calls are retried. The realistic failure in either is a Sigstore
+# or registry transient, and recovering by re-running this job would rebuild and
+# re-push every image under a new digest.
+#
+# retry <description> <log file> <command...>
+retry() {
+  local desc="$1" log="$2"
+  shift 2
+  local attempt
+  for attempt in 1 2 3; do
+    if "$@" >/dev/null 2>"${log}"; then
+      return 0
+    fi
+    if [ "${attempt}" = 3 ]; then
+      # Print what cosign actually said: a certificate-identity mismatch is a
+      # configuration fault, not a transient, and the two need different fixes.
+      echo "::error::${desc} failed after 3 attempts: $(tr '\n' ' ' <"${log}")"
+      return 1
+    fi
+    sleep 2
+  done
+}
 
 metadata_files=("${IMAGE_METADATA_DIR}"/*.json)
 if [ "${#metadata_files[@]}" -eq 0 ]; then
@@ -59,36 +79,28 @@ for metadata in "${metadata_files[@]}"; do
 
   ref="${REGISTRY}/${image}@${digest}"
   echo "Signing ${ref}"
+  cosign_log="$(mktemp)"
   # --recursive also signs the per-platform manifests inside the index. Without
   # it, anything that has already resolved to a platform-specific digest - some
   # admission controllers, per-arch mirroring - finds no signature.
-  cosign sign --recursive --yes "${ref}"
+  if ! retry "Signing ${ref}" "${cosign_log}" \
+    cosign sign --recursive --yes "${ref}"; then
+    rm -f "${cosign_log}"
+    exit 1
+  fi
 
   # Verify what was just signed. This is not ceremony: it is the only check that
   # the signature resolves against the identity consumers will verify with. A
   # signature nobody can verify is worse than no signature, because the
   # documentation tells users to rely on it.
-  #
-  # Retried because the realistic failure is a registry read-after-write race,
-  # and re-running this job to recover would rebuild and re-push every image
-  # under a new digest.
-  verify_log="$(mktemp)"
-  for attempt in 1 2 3; do
-    if cosign verify \
+  if ! retry "Signed ${ref} but the signature" "${cosign_log}" \
+    cosign verify \
       --certificate-oidc-issuer "${OIDC_ISSUER}" \
       --certificate-identity-regexp "${IDENTITY_PATTERN}" \
-      "${ref}" >/dev/null 2>"${verify_log}"; then
-      break
-    fi
-    if [ "${attempt}" = 3 ]; then
-      # Print what cosign actually said: a certificate-identity mismatch is a
-      # configuration fault, not a transient, and the two need different fixes.
-      echo "::error::Signed ${ref} but the signature did not verify after 3 attempts: $(tr '\n' ' ' <"${verify_log}")"
-      rm -f "${verify_log}"
-      exit 1
-    fi
-    sleep 2
-  done
-  rm -f "${verify_log}"
+      "${ref}"; then
+    rm -f "${cosign_log}"
+    exit 1
+  fi
+  rm -f "${cosign_log}"
   echo "✅ ${ref} signed and verified"
 done

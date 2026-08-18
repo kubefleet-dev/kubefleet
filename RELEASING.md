@@ -103,13 +103,18 @@ Signing the OCI charts is the same keyless flow used for images and is tracked
 as a follow-up; the classic-repo `.prov` mechanism needs a long-lived GPG key
 this project has no custody story for.
 
+Releases are signed with cosign v3 (the workflow pins the exact version). Verify
+with cosign v3.0 or later — the `verify-blob --bundle` format below changed
+between v2 and v3, and an older client reports it as a bad signature rather than
+as a version mismatch.
+
 Images are signed by digest rather than by tag, so a signature is bound to the
 exact bytes the release built. Verify one with:
 
 ```bash
 cosign verify \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github\.com/kubefleet-dev/kubefleet/\.github/workflows/release\.yml@' \
+  --certificate-identity-regexp '^https://github\.com/kubefleet-dev/kubefleet/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?|heads/(main|release-[0-9]+\.[0-9]+))$' \
   ghcr.io/kubefleet-dev/kubefleet/hub-agent:v0.4.0
 ```
 
@@ -128,10 +133,11 @@ The CRD bundle's checksum file is signed as a blob; verifying it and then
 checking the tarball against it covers the tarball:
 
 ```bash
+gh release download v0.4.0 --pattern 'kubefleet-crds-*'
 cosign verify-blob \
   --bundle kubefleet-crds-v0.4.0.tgz.sha256.bundle \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github\.com/kubefleet-dev/kubefleet/\.github/workflows/release\.yml@' \
+  --certificate-identity-regexp '^https://github\.com/kubefleet-dev/kubefleet/\.github/workflows/release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?|heads/(main|release-[0-9]+\.[0-9]+))$' \
   kubefleet-crds-v0.4.0.tgz.sha256
 sha256sum -c kubefleet-crds-v0.4.0.tgz.sha256
 ```
@@ -141,12 +147,34 @@ cosign fetches once and caches under `~/.sigstore`. On a machine with no network
 access, prime that cache first or pass `--trusted-root`; otherwise the commands
 above fail for a reason that has nothing to do with the signature.
 
+The identity pattern is deliberately narrow in two ways, and both matter to
+whoever copies these commands:
+
+- **It names `release.yml`, not just the repository.** `release.yml` is not the
+  only workflow holding `id-token: write` — `squad-docs.yml` has it for GitHub
+  Pages — so a repository-wide pattern would accept a signature from a workflow
+  that has nothing to do with releases.
+- **It names the refs a release can come from:** a `vX.Y.Z` or `vX.Y.Z-rc.N` tag,
+  or the `main` / `release-X.Y` branches. A `workflow_dispatch` runs the workflow
+  *definition* from the ref it was started on, so without this anyone able to
+  push a branch and dispatch it could sign under an identity consumers trust.
+  Start a dispatched release from `main`, a release branch, or the tag itself;
+  from anywhere else `create-draft-release` fails before creating the draft, so
+  no draft and no image exists.
+
+What this does not buy: it is a bound on which workflow *definitions* can sign,
+not an access control. Someone who can already push to this repository can push
+a `v*` tag at a commit carrying a modified `release.yml`, and the tag arm accepts
+it. Closing that needs a GitHub ruleset restricting who may create `v*` tags and
+push to `main` / `release-*`; the repository has no such ruleset today, and
+adding one is worth doing independently of this workflow.
+
 The release workflow runs these same verifications immediately after signing, so
-a signature that cannot be verified fails the release instead of shipping.
-`release.yml` is the only workflow holding `id-token: write`. Any OIDC trust
-policy added later (cloud role assumption, trusted publishing) must be scoped to
-that workflow's `job_workflow_ref`, never to `repo:kubefleet-dev/kubefleet:*`,
-or it would be assumable from any workflow in the repository.
+a signature that cannot be verified fails the release instead of shipping. Any
+OIDC trust policy added later (cloud role assumption, trusted publishing) must be
+scoped to that workflow's `job_workflow_ref`, never to
+`repo:kubefleet-dev/kubefleet:*`, or it would be assumable from any workflow in
+the repository.
 
 ## Recovering from a failed run
 
@@ -163,7 +191,7 @@ is harmless while the release is still a draft — nothing has been announced ye
 | Where it failed | What is already public | What to do |
 | --- | --- | --- |
 | `setup` | Nothing | The tag is malformed. Delete it, fix, re-tag. |
-| `create-draft-release` | Nothing | See [Re-releasing an existing tag](#re-releasing-an-existing-tag) if it refused because the release is already published. |
+| `create-draft-release` | Nothing | Two causes. If it failed on **Check this ref can sign a release**, the run was started from a ref a release cannot sign under — re-dispatch from `main`, a `release-X.Y` branch, or the tag itself; nothing was published, so there is nothing to clean up. If it refused because the release is already published, see [Re-releasing an existing tag](#re-releasing-an-existing-tag). |
 | `publish-images` | Any images pushed before the failure (`make push` builds hub-agent, member-agent, then refresh-token in order) | Fix, then re-run failed jobs. |
 | `publish-crds` | Possibly the images — it runs in parallel with `publish-images`, not after it | Fix, then re-run failed jobs. |
 | Either signing step | Whatever that job published before signing | Usually a Sigstore or registry transient rather than a code fault — re-run failed jobs first. A signature that will not verify fails the job by design, so nothing unverifiable ships. |
