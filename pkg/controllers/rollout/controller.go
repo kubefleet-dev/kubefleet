@@ -508,8 +508,15 @@ func determineBindingsToUpdate(
 	targetNumber int,
 	readyBindings, canBeReadyBindings, canBeUnavailableBindings []placementv1beta1.BindingObj,
 ) ([]toBeUpdatedBinding, []toBeUpdatedBinding) {
+	// Scale to zero: remove all bindings unconditionally, bypassing rolling update constraints.
+	// When the target is zero there is no minimum availability to maintain.
+	if targetNumber == 0 {
+		toBeUpdatedBindingList := append(removeCandidates, updateCandidates...)
+		toBeUpdatedBindingList = append(toBeUpdatedBindingList, applyFailedUpdateCandidates...)
+		return toBeUpdatedBindingList, nil
+	}
+
 	toBeUpdatedBindingList := make([]toBeUpdatedBinding, 0)
-	// TODO: Fix the bug that we don't shrink to zero when there are bindings that are not ready yet.
 	// calculate the max number of bindings that can be unavailable according to user specified maxUnavailable
 	maxNumberToRemove := calculateMaxToRemove(placementObj, targetNumber, readyBindings, canBeUnavailableBindings)
 	// we can still update the bindings that are failed to apply already regardless of the maxNumberToRemove
