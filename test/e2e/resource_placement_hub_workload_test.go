@@ -118,10 +118,8 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 				Namespace: workNamespace.Name,
 			},
 		}
-		// Use customizedPlacementStatusUpdatedActual with resourceIsTrackable=false
-		// because Jobs don't have availability tracking like Deployments/DaemonSets/StatefulSets do
 		crpKey := types.NamespacedName{Name: crpName}
-		crpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(crpKey, wantSelectedResources, allMemberClusterNames, nil, "0", false)
+		crpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(crpKey, wantSelectedResources, allMemberClusterNames, nil, "0", true)
 		Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 	})
 
