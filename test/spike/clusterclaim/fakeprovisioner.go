@@ -128,8 +128,21 @@ func (p *FakeProvisioner) fulfill(ctx context.Context, claim *placementv1alpha1.
 			},
 		},
 	}
-	if err := p.Create(ctx, memberCluster); err != nil && !errors.IsAlreadyExists(err) {
-		return err
+	if err := p.Create(ctx, memberCluster); err != nil {
+		if !errors.IsAlreadyExists(err) {
+			return err
+		}
+		// A cluster already holding the deterministic name is not automatically this claim's
+		// fulfillment: it may be stale or belong to something else entirely, and reporting
+		// Completed for a cluster that does not satisfy the claim would hand the contract a
+		// fulfillment that never happened. Only a cluster the claim's own terms accept counts.
+		existing := &clusterv1beta1.MemberCluster{}
+		if getErr := p.Get(ctx, client.ObjectKey{Name: clusterName}, existing); getErr != nil {
+			return getErr
+		}
+		if !clusterMatchesTerms(existing, claim.Spec.ClusterSelectorTerms) {
+			return fmt.Errorf("member cluster %s exists but does not satisfy claim %s; refusing to report completion", clusterName, claim.Name)
+		}
 	}
 
 	claim.Status.ProvisionedClusterName = &clusterName
