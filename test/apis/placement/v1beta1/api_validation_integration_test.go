@@ -632,6 +632,15 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			Entry("maxUnavailable 101% is rejected by the pattern", func(c *placementv1beta1.RollingUpdateConfig) {
 				c.MaxUnavailable = ptr.To(intstr.FromString("101%"))
 			}, "spec.strategy.rollingUpdate.maxUnavailable in body should match"),
+			// The digit branch of the pattern is bounded to nine digits, all of which fit an int32
+			// comfortably; an unbounded digit string used to pass validation only to fail in
+			// whatever later consumed it.
+			Entry("maxUnavailable with nine digits is accepted", func(c *placementv1beta1.RollingUpdateConfig) {
+				c.MaxUnavailable = ptr.To(intstr.FromString("999999999"))
+			}, ""),
+			Entry("maxUnavailable with ten digits is rejected by the pattern", func(c *placementv1beta1.RollingUpdateConfig) {
+				c.MaxUnavailable = ptr.To(intstr.FromString("9999999999"))
+			}, "spec.strategy.rollingUpdate.maxUnavailable in body should match"),
 		)
 
 		It("does not re-litigate the rolling update bounds on an unrelated update", func() {
