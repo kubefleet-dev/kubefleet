@@ -2,7 +2,9 @@
 
 This directory is a time-boxed spike for
 [#791 — Verify the cluster claim workflow](https://github.com/kubefleet-dev/kubefleet/issues/791).
-It is not production code and is not wired into any build target. It runs
+It is spike code held to test-quality standards: the suite runs in
+`make integration-test` (and therefore CI) so the contract gaps it pins
+cannot regress silently. It also runs
 against the API types merged in #781 (`ClusterRequest`; renamed `ClusterClaim`
 by the open #803 — helper names here say "claim" to survive the rename).
 
@@ -183,6 +185,27 @@ agree vacuously there.)
 - `Completed=True` with no `provisionedClusterName` is accepted; so is
   downgrading a completed claim back to in-progress. Status atomicity and
   terminal-state pinning (section 3) need to be CEL rules, not conventions.
+
+## Round 3: review hardening
+
+The review pass on this harness surfaced one more contract gap and tightened
+two specs:
+
+- **No periodic re-evaluation of time-based eligibility.** The withdrawer
+  re-evaluates claims only on `ClusterRequest`/`MemberCluster` write events,
+  but the eligibility checker's heartbeat-staleness test is time-based: a
+  cluster can silently cross the staleness threshold with no corresponding
+  write, and nothing re-enqueues the claim to notice. The gated-withdrawal
+  reading needs a resync interval (or a periodic requeue) that the FEP does
+  not currently call for.
+- The happy-path spec now proves the provisioner's half of the contract
+  (`Completed=True`, `provisionedClusterName`) while withdrawal is held by
+  the eligibility gate, and the release is the member agent genuinely
+  reporting in -- the same transition the eligibility specs drive -- rather
+  than a harness bypass.
+- A name-squatting spec pins that a pre-existing cluster holding the
+  deterministic provisioned name, but not satisfying the claim, is never
+  reported as fulfillment.
 
 ## Suggested next steps
 

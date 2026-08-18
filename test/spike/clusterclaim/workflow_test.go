@@ -35,6 +35,9 @@ import (
 const (
 	eventuallyTimeout  = time.Second * 10
 	eventuallyInterval = time.Millisecond * 250
+	// consistentlyDuration is how long a negative assertion watches for the thing that must not
+	// happen; long enough for several reconcile rounds, short enough not to dominate the suite.
+	consistentlyDuration = time.Second * 2
 )
 
 func clientKey(name string) types.NamespacedName {
@@ -80,6 +83,14 @@ var _ = Describe("cluster claim workflow", Ordered, func() {
 	}
 
 	AfterEach(func() {
+		// The gate is spike-process state, not cluster state: reset it whatever the spec did, or
+		// a failure between set and reset would silently change every later spec's semantics.
+		withdrawer.SetEligibilityGate(false)
+		claimList := &placementv1alpha1.ClusterRequestList{}
+		Expect(k8sClient.List(ctx, claimList)).Should(Succeed())
+		for i := range claimList.Items {
+			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, &claimList.Items[i]))).Should(Succeed())
+		}
 		fakeProvisioner.SetPolicy(PolicyIgnore)
 		// Scrub member clusters between scenarios so fulfillment state does not leak.
 		mcList := &clusterv1beta1.MemberClusterList{}
@@ -97,19 +108,76 @@ var _ = Describe("cluster claim workflow", Ordered, func() {
 
 	It("happy path: provisioner fulfills the claim, then the claim is withdrawn", func() {
 		fakeProvisioner.SetPolicy(PolicyFulfill)
+		// The eligibility gate holds withdrawal open: the provisioned cluster has no agent
+		// heartbeat, so a gated withdrawer does not yet count it. Without the hold, withdrawal
+		// can race the provisioner's status update, and the test would pass without ever
+		// proving the provisioner's half of the contract was honored.
+		withdrawer.SetEligibilityGate(true)
 		claim := newClaim("eastus")
 		Expect(k8sClient.Create(ctx, claim)).Should(Succeed())
 
-		By("the provisioner creates a matching member cluster and the withdrawer deletes the claim")
+		By("the provisioner completes the claim while withdrawal is held")
+		Eventually(func(g Gomega) {
+			fulfilled := &placementv1alpha1.ClusterRequest{}
+			g.Expect(k8sClient.Get(ctx, clientKey(claim.Name), fulfilled)).Should(Succeed())
+			g.Expect(fulfilled.Status.ProvisionedClusterName).ShouldNot(BeNil())
+			g.Expect(*fulfilled.Status.ProvisionedClusterName).Should(Equal("provisioned-" + claim.Name))
+			completed := meta.FindStatusCondition(fulfilled.Status.Conditions, placementv1alpha1.ClusterRequestCondTypeCompleted)
+			g.Expect(completed).ShouldNot(BeNil())
+			g.Expect(completed.Status).Should(Equal(metav1.ConditionTrue))
+		}, eventuallyTimeout, eventuallyInterval).Should(Succeed(), "the provisioner must report completion before withdrawal")
+
+		By("the provisioned cluster's member agent reporting in is what withdraws the claim")
+		// The gate stays on: withdrawal happens because the cluster genuinely becomes eligible,
+		// the same transition eligibility_test drives, not because the test flips the harness's
+		// bypass switch. The status update is itself the member cluster event that re-runs the
+		// withdrawer's evaluation.
+		mc := &clusterv1beta1.MemberCluster{}
+		Expect(k8sClient.Get(ctx, clientKey("provisioned-"+claim.Name), mc)).Should(Succeed())
+		now := metav1.Now()
+		mc.Status.AgentStatus = []clusterv1beta1.AgentStatus{{
+			Type: clusterv1beta1.MemberAgent,
+			Conditions: []metav1.Condition{
+				{Type: string(clusterv1beta1.AgentJoined), Status: metav1.ConditionTrue, Reason: "AgentJoined", Message: "spike: simulated join", LastTransitionTime: now},
+				{Type: string(clusterv1beta1.AgentHealthy), Status: metav1.ConditionTrue, Reason: "AgentHealthy", Message: "spike: simulated health", LastTransitionTime: now},
+			},
+			LastReceivedHeartbeat: now,
+		}}
+		Expect(k8sClient.Status().Update(ctx, mc)).Should(Succeed())
 		Eventually(func() bool {
 			err := k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterRequest{})
 			return err != nil && client.IgnoreNotFound(err) == nil
 		}, eventuallyTimeout, eventuallyInterval).Should(BeTrue(), "claim should be withdrawn (deleted)")
 
 		By("the provisioned member cluster remains")
-		mc := &clusterv1beta1.MemberCluster{}
 		Expect(k8sClient.Get(ctx, clientKey("provisioned-"+claim.Name), mc)).Should(Succeed())
 		Expect(mc.Labels).Should(HaveKeyWithValue("topology.kubernetes.io/region", "eastus"))
+	})
+
+	It("a name collision with a cluster that does not satisfy the claim is not reported as completion", func() {
+		fakeProvisioner.SetPolicy(PolicyFulfill)
+		claim := newClaim("northeurope")
+		// Squat the deterministic name with a cluster whose labels satisfy nothing.
+		squatter := &clusterv1beta1.MemberCluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "provisioned-" + claim.Name,
+				Labels: map[string]string{"unrelated": "squatter"},
+			},
+			Spec: clusterv1beta1.MemberClusterSpec{
+				Identity: rbacv1.Subject{Kind: "ServiceAccount", Name: "squatter", Namespace: "fleet-system"},
+			},
+		}
+		Expect(k8sClient.Create(ctx, squatter)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, claim)).Should(Succeed())
+
+		By("the claim stays uncompleted rather than claiming the squatter as fulfillment")
+		Consistently(func() bool {
+			current := &placementv1alpha1.ClusterRequest{}
+			if err := k8sClient.Get(ctx, clientKey(claim.Name), current); err != nil {
+				return false
+			}
+			return meta.FindStatusCondition(current.Status.Conditions, placementv1alpha1.ClusterRequestCondTypeCompleted) == nil
+		}, consistentlyDuration, eventuallyInterval).Should(BeTrue(), "a squatted name must not become a completion report")
 	})
 
 	It("withdraw-by-other-cluster: an unrelated matching cluster joins while the provisioner never completes", func() {
@@ -120,7 +188,7 @@ var _ = Describe("cluster claim workflow", Ordered, func() {
 		By("the claim persists while unfulfilled and unprovisioned")
 		Consistently(func() error {
 			return k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterRequest{})
-		}, time.Second*2, eventuallyInterval).Should(Succeed())
+		}, consistentlyDuration, eventuallyInterval).Should(Succeed())
 
 		By("a manually joined cluster satisfies the selector")
 		Expect(k8sClient.Create(ctx, newMemberCluster("manual-westus", map[string]string{"topology.kubernetes.io/region": "westus"}))).Should(Succeed())
@@ -150,7 +218,7 @@ var _ = Describe("cluster claim workflow", Ordered, func() {
 		By("the failed claim is NOT withdrawn — the selector is still unfulfilled (open design question: retry policy)")
 		Consistently(func() error {
 			return k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterRequest{})
-		}, time.Second*2, eventuallyInterval).Should(Succeed())
+		}, consistentlyDuration, eventuallyInterval).Should(Succeed())
 
 		By("fulfillment by any cluster still withdraws the failed claim")
 		Expect(k8sClient.Create(ctx, newMemberCluster("late-centralus", map[string]string{"topology.kubernetes.io/region": "centralus"}))).Should(Succeed())
@@ -179,7 +247,7 @@ var _ = Describe("cluster claim workflow", Ordered, func() {
 
 		Consistently(func() error {
 			return k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterRequest{})
-		}, time.Second*2, eventuallyInterval).Should(Succeed())
+		}, consistentlyDuration, eventuallyInterval).Should(Succeed())
 
 		Expect(k8sClient.Delete(ctx, &placementv1alpha1.ClusterRequest{ObjectMeta: metav1.ObjectMeta{Name: claim.Name}})).Should(Succeed())
 	})
