@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -182,6 +183,20 @@ var _ = Describe("the count bounds of a hand-authored policy", func() {
 		Entry("count 1000 as a string is rejected", intstr.FromString("1000"), false),
 		Entry("count 0 as a string is rejected", intstr.FromString("0"), false),
 	)
+
+	// A digit string too long for an int64 used to reach the int() conversion inside the
+	// minCount<=count rule, adding an opaque evaluation error beside the length violation. The
+	// count field's own validation must be the whole story now: MaxLength rejects the string
+	// first, and the rule's digit guard keeps int() out of reach regardless.
+	It("should report an over-long count with the count field's own message alone", func() {
+		policy := newPolicy(intstr.FromString("99999999999999999999"))
+		policySpec(policy).ClusterSelectors[0].MinCount = ptr.To(int32(1))
+
+		err := hubClient.Create(ctx, policy)
+		Expect(apierrors.IsInvalid(err)).Should(BeTrue(), "got %v, want an invalid error", err)
+		Expect(err.Error()).Should(ContainSubstring("Too long"), "the count field's length bound must report the malformed count")
+		Expect(err.Error()).ShouldNot(ContainSubstring("minCount"), "the minCount rule must stay out of a problem that is not its own")
+	})
 })
 
 var _ = Describe("annotation based placement", func() {
