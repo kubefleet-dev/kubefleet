@@ -13,6 +13,10 @@
 
 set -euo pipefail
 
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=hack/release/identity.sh
+. "${here}/identity.sh"
+
 : "${TAG:?TAG must be set}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY must be set}"
 
@@ -25,11 +29,8 @@ if [ ! -f "${checksum}" ]; then
   exit 1
 fi
 
-OIDC_ISSUER="https://token.actions.githubusercontent.com"
-# See sign-images.sh for why this is bound to the workflow file and why the
-# repository name has its dots escaped before going into a regexp.
-repo_pattern="${GITHUB_REPOSITORY//./\\.}"
-IDENTITY_PATTERN="^https://github\.com/${repo_pattern}/\.github/workflows/release\.yml@"
+OIDC_ISSUER="${RELEASE_OIDC_ISSUER}"
+IDENTITY_PATTERN="$(release_identity_pattern "${GITHUB_REPOSITORY}")"
 
 echo "Signing ${checksum}"
 cosign sign-blob --yes --bundle "${bundle}" "${checksum}"
