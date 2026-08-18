@@ -286,6 +286,10 @@ BINFMT_IMAGE ?= mcr.microsoft.com/mirror/docker/tonistiigi/binfmt:$(BINFMT_VERSI
 PLATFORMS ?= $(TARGET_OS)/$(TARGET_ARCH)
 RELEASE_PLATFORMS ?= linux/amd64,linux/arm64
 
+.PHONY: print-release-platforms
+print-release-platforms: ## Print the platforms a release publishes, one per line
+	@echo "$(RELEASE_PLATFORMS)" | tr ',' '\n'
+
 # Attach an SPDX SBOM to the image index. BuildKit generates one per platform
 # and stores it alongside the image in the registry, so consumers can read what
 # is in an image without unpacking it. Off by default because it slows every

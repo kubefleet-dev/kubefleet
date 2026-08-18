@@ -66,6 +66,13 @@ jobs:
         with:
           ref: ${{ needs.setup.outputs.tag }}
 
+      # This job gates every publishing job, so failing here is the last point
+      # at which a release can be abandoned for free. Signing runs long after
+      # the images are public, so a run started from a ref that cannot produce
+      # a verifiable signature has to be stopped now or not at all.
+      - name: Check this ref can sign a release
+        run: ./hack/release/check-signing-ref.sh
+
       - name: Create or reuse the draft release
         run: ./hack/release/create-draft-release.sh
 
@@ -133,27 +140,55 @@ jobs:
           if [ "${PRERELEASE}" != "true" ]; then
             tags="${tags} ${VERSION}"
           fi
-          echo "✅ Verifying published images:"
+          # An independent statement of what a release must contain. Deriving
+          # this from RELEASE_PLATFORMS would make the build config both the
+          # input and the oracle: dropping a platform there - or overriding it
+          # in the job env - would silently narrow the check to match, and a
+          # single-arch release would ship green. Cross-checked against the
+          # Makefile so the two cannot disagree without someone noticing.
+          expected_platforms="linux/amd64 linux/arm64"
+          # Compared as sets: this is about which platforms are built, and
+          # failing a release over a reordered RELEASE_PLATFORMS would be noise.
+          built_sorted="$(make -s print-release-platforms | sort | xargs)"
+          expected_sorted="$(tr ' ' '\n' <<<"${expected_platforms}" | sort | xargs)"
+          if [ "${built_sorted}" != "${expected_sorted}" ]; then
+            echo "::error::RELEASE_PLATFORMS builds '${built_sorted}' but this release is verified for '${expected_sorted}'. Update both deliberately."
+            exit 1
+          fi
+          platforms="${expected_platforms}"
+          echo "✅ Verifying published images for: ${platforms}"
           for IMAGE in "${HUB_AGENT_IMAGE_NAME}" "${MEMBER_AGENT_IMAGE_NAME}" "${REFRESH_TOKEN_IMAGE_NAME}"; do
             for tag in ${tags}; do
               ref="${REGISTRY}/${IMAGE}:${tag}"
               echo "  - ${ref}"
               manifest="$(docker buildx imagetools inspect "${ref}")"
-              for platform in linux/amd64 linux/arm64; do
+              for platform in ${platforms}; do
                 grep -q "Platform:.*${platform}" <<<"${manifest}" \
                   || { echo "::error::${ref} is missing platform ${platform}"; exit 1; }
               done
             done
-            # Once per image: every tag resolves to the same index. IMAGE_SBOM is
+            # Once per tag would be redundant - every tag resolves to the same
+            # index - but once per platform is not: BuildKit emits one SBOM per
+            # platform, and an image whose arm64 SBOM was missing would
+            # otherwise publish behind a green amd64 check. IMAGE_SBOM is
             # matched as an exact string in the Makefile, so a future "TRUE" or
             # "1" would quietly produce no SBOM; assert the attestation is really
             # attached rather than trusting the flag was spelled as make expects.
-            sbom="$(docker buildx imagetools inspect "${REGISTRY}/${IMAGE}:${TAG}" \
-              --format '{{ json (index .SBOM "linux/amd64").SPDX }}' 2>/dev/null || true)"
-            if [ -z "${sbom}" ] || [ "${sbom}" = "null" ]; then
-              echo "::error::${REGISTRY}/${IMAGE}:${TAG} has no SPDX SBOM attached"
-              exit 1
-            fi
+            for platform in ${platforms}; do
+              sbom_err="$(mktemp)"
+              sbom="$(docker buildx imagetools inspect "${REGISTRY}/${IMAGE}:${TAG}" \
+                --format "{{ json (index .SBOM \"${platform}\").SPDX }}" 2>"${sbom_err}" || true)"
+              if [ -z "${sbom}" ] || [ "${sbom}" = "null" ]; then
+                # Print what buildx said. A missing attestation and a registry
+                # or template error are different faults with different fixes,
+                # and discarding stderr makes every one of them look like the
+                # first.
+                echo "::error::${REGISTRY}/${IMAGE}:${TAG} has no SPDX SBOM for ${platform}: $(tr '\n' ' ' <"${sbom_err}")"
+                rm -f "${sbom_err}"
+                exit 1
+              fi
+              rm -f "${sbom_err}"
+            done
           done
 
       - name: Sign the published images
