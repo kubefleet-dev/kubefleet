@@ -363,6 +363,46 @@ func TestValidateFleetMemberClusterUpdate(t *testing.T) {
 			wantResponse: admission.Allowed(fmt.Sprintf(ResourceAllowedFormat, "nonSystemMastersUser", utils.GenerateGroupString([]string{"someGroup"}),
 				admissionv1.Update, &utils.MCMetaGVK, "", types.NamespacedName{Name: "test-mc"})),
 		},
+		// The kubefleet.dev/ prefix is reserved alongside kubernetes-fleet.io/: the hub agent seeds
+		// the cluster alias label under it, is not in system:masters, and would otherwise be denied
+		// its own update and wedge the member cluster's reconciliation.
+		"allow label creation by any user for kubefleet.dev/* labels": {
+			denyModifyMemberClusterLabels: true,
+			oldMC: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "test-mc",
+					Labels: map[string]string{"kubernetes-fleet.io/member-name": "test-mc"},
+					Annotations: map[string]string{
+						"fleet.azure.com/cluster-resource-id": "test-cluster-resource-id",
+					},
+				},
+			},
+			newMC: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-mc",
+					Labels: map[string]string{
+						"kubernetes-fleet.io/member-name": "test-mc",
+						"kubefleet.dev/cluster-alias":     "test-mc",
+					},
+					Annotations: map[string]string{
+						"fleet.azure.com/cluster-resource-id": "test-cluster-resource-id",
+					},
+				},
+			},
+			req: admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name: "test-mc",
+					UserInfo: authenticationv1.UserInfo{
+						Username: "system:serviceaccount:fleet-system:hub-agent-sa",
+						Groups:   []string{"system:serviceaccounts"},
+					},
+					RequestKind: &utils.MCMetaGVK,
+					Operation:   admissionv1.Update,
+				},
+			},
+			wantResponse: admission.Allowed(fmt.Sprintf(ResourceAllowedFormat, "system:serviceaccount:fleet-system:hub-agent-sa", utils.GenerateGroupString([]string{"system:serviceaccounts"}),
+				admissionv1.Update, &utils.MCMetaGVK, "", types.NamespacedName{Name: "test-mc"})),
+		},
 		"allow label creation by any user for kubernetes-fleet.io/* labels": {
 			denyModifyMemberClusterLabels: true,
 			oldMC: &clusterv1beta1.MemberCluster{
