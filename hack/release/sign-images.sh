@@ -25,19 +25,16 @@
 set -euo pipefail
 shopt -s nullglob
 
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=hack/release/identity.sh
+. "${here}/identity.sh"
+
 : "${REGISTRY:?REGISTRY must be set}"
 : "${IMAGE_METADATA_DIR:?IMAGE_METADATA_DIR must be set}"
 : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY must be set}"
 
-OIDC_ISSUER="https://token.actions.githubusercontent.com"
-# GITHUB_REPOSITORY is interpolated into a regexp, and repository names may
-# contain dots, which would otherwise match any character.
-repo_pattern="${GITHUB_REPOSITORY//./\\.}"
-# Bound to this workflow file, not merely to the repository: any other workflow
-# that ever gains id-token: write could otherwise mint signatures that pass. No
-# ref constraint - a workflow_dispatch release signs as @refs/heads/<branch>
-# while a tag push signs as @refs/tags/<tag>.
-IDENTITY_PATTERN="^https://github\.com/${repo_pattern}/\.github/workflows/release\.yml@"
+OIDC_ISSUER="${RELEASE_OIDC_ISSUER}"
+IDENTITY_PATTERN="$(release_identity_pattern "${GITHUB_REPOSITORY}")"
 
 metadata_files=("${IMAGE_METADATA_DIR}"/*.json)
 if [ "${#metadata_files[@]}" -eq 0 ]; then
