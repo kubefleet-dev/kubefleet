@@ -302,9 +302,11 @@ func TestReconcileInvalidAnnotation(t *testing.T) {
 	}
 }
 
-// TestReconcileDeletedResource covers a key for a resource that is already gone: garbage collection
-// removes the generated policy through its owner reference, so the reconciler must not treat the
-// missing resource as an error and must not race the collector by deleting anything itself.
+// TestReconcileDeletedResource covers a key for a resource that is already gone. The reconciler
+// deletes the generated policy itself rather than deferring to garbage collection, which removes a
+// dependent only once every owner reference on it is gone -- and the merge deliberately preserves
+// owner references that other parties added, any live one of which would keep the policy standing.
+// No event is recorded, since the resource an event would be recorded on no longer exists.
 func TestReconcileDeletedResource(t *testing.T) {
 	ctx := context.Background()
 	source := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
@@ -313,6 +315,9 @@ func TestReconcileDeletedResource(t *testing.T) {
 		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
 	}
 	existing := desiredPolicy(source, selectors)
+	// The other party whose owner reference would hold the policy back from garbage collection.
+	otherOwner := metav1.OwnerReference{APIVersion: "example.com/v1", Kind: "Widget", Name: "unrelated", UID: "00000000-0000-0000-0000-0000000000ff"}
+	existing.SetOwnerReferences(append(existing.GetOwnerReferences(), otherOwner))
 
 	r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {}}, nil, interceptor.Funcs{}, existing)
 
@@ -320,11 +325,64 @@ func TestReconcileDeletedResource(t *testing.T) {
 	if _, err := r.Reconcile(ctx, key); err != nil {
 		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
 	}
-	if _, found := policyFrom(ctx, t, r, source); !found {
-		t.Errorf("Reconcile(%v) deleted the generated policy, want it left to garbage collection", key)
+	if _, found := policyFrom(ctx, t, r, source); found {
+		t.Errorf("Reconcile(%v) left the generated policy standing, want it deleted", key)
 	}
 	if got := recordedReasons(recorder); len(got) != 0 {
 		t.Errorf("Reconcile(%v) recorded events = %v, want none", key, got)
+	}
+}
+
+// TestReconcileIneligibleResource covers a resource that exists but fails the placement eligibility
+// test -- for instance one in a skipped namespace, or a ReplicaSet that a Deployment has adopted.
+// Its generated policy is deleted: the resource watcher reports such a resource as deleted and then
+// never again, so this reconciliation is the last chance to clean up.
+func TestReconcileIneligibleResource(t *testing.T) {
+	ctx := context.Background()
+	source := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
+	selectors, err := parseClusterSelectors(oneSelector)
+	if err != nil {
+		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
+	}
+	existing := desiredPolicy(source, selectors)
+
+	r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {source}}, nil, interceptor.Funcs{}, existing)
+	r.ShouldPlace = func(*unstructured.Unstructured) (bool, error) { return false, nil }
+
+	key := keyFor(deploymentGVK, testNamespace, testName)
+	if _, err := r.Reconcile(ctx, key); err != nil {
+		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+	}
+	if _, found := policyFrom(ctx, t, r, source); found {
+		t.Errorf("Reconcile(%v) left the generated policy standing, want it deleted", key)
+	}
+	if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonPolicyDeleted}); diff != "" {
+		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
+	}
+
+	// A second pass over a resource that never generated anything must stay silent.
+	if _, err := r.Reconcile(ctx, key); err != nil {
+		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+	}
+	if got := recordedReasons(recorder); len(got) != 0 {
+		t.Errorf("Reconcile(%v) recorded events = %v, want none on the second pass", key, got)
+	}
+}
+
+// TestReconcileEligibilityError covers the eligibility test itself failing, which must surface as a
+// retryable error rather than as either verdict.
+func TestReconcileEligibilityError(t *testing.T) {
+	source := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
+	r, _ := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {source}}, nil, interceptor.Funcs{})
+	wantErr := errors.New("the eligibility test is unwell")
+	r.ShouldPlace = func(*unstructured.Unstructured) (bool, error) { return false, wantErr }
+
+	key := keyFor(deploymentGVK, testNamespace, testName)
+	if _, err := r.Reconcile(context.Background(), key); !errors.Is(err, wantErr) {
+		t.Errorf("Reconcile(%v) = %v, want an error wrapping %v", key, err, wantErr)
+	}
+	if _, found := policyFrom(context.Background(), t, r, source); found {
+		t.Errorf("Reconcile(%v) acted on the policy despite the eligibility error", key)
 	}
 }
 
@@ -343,11 +401,7 @@ func TestReconcileErrors(t *testing.T) {
 			key:     "apps/v1/Deployment/prod/web",
 			wantErr: controller.ErrUnexpectedBehavior,
 		},
-		{
-			name:    "a kind with no rest mapping cannot be retried",
-			key:     keyFor(schema.GroupVersionKind{Group: "example.com", Version: "v1", Kind: "Widget"}, testNamespace, testName),
-			wantErr: controller.ErrUnexpectedBehavior,
-		},
+
 		{
 			name:    "an unsynced informer is retried",
 			key:     keyFor(deploymentGVK, testNamespace, testName),
@@ -580,6 +634,20 @@ func TestApplyDesiredPolicy(t *testing.T) {
 				t.Errorf("applyDesiredPolicy() = true on the second pass, want false")
 			}
 		})
+	}
+}
+
+// TestReconcileUnknownKind covers a key whose kind the API server does not know, which the
+// generated policy watch can produce by enqueuing whatever a policy names as its owner. The key is
+// dropped: no retry can make the kind exist, and an error would keep it backing off forever.
+func TestReconcileUnknownKind(t *testing.T) {
+	r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{}, nil, interceptor.Funcs{})
+	key := keyFor(schema.GroupVersionKind{Group: "example.com", Version: "v1", Kind: "Widget"}, testNamespace, testName)
+	if _, err := r.Reconcile(context.Background(), key); err != nil {
+		t.Errorf("Reconcile(%v) = %v, want no error, so that a kind that does not exist is not retried", key, err)
+	}
+	if got := recordedReasons(recorder); len(got) != 0 {
+		t.Errorf("Reconcile(%v) recorded events = %v, want none", key, got)
 	}
 }
 

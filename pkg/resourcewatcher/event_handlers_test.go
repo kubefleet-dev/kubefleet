@@ -258,22 +258,32 @@ func TestEventHandlersEnqueueForAnnotationPlacement(t *testing.T) {
 			wantAnnotationPlacement: nil,
 		},
 		{
-			// Garbage collection removes the generated policy through its owner reference, so a
-			// reconcile here could only look for a resource that is already gone.
-			name: "a deleted resource is left to garbage collection",
+			// The reconciler deletes the generated policy itself: garbage collection would keep it
+			// for as long as any other party's owner reference on it survives. This callback also
+			// stands in for a resource that stops passing the dynamic resource filter without being
+			// deleted, after which no further event about it is ever seen.
+			name: "a deleted annotated resource is enqueued so its policy is cleaned up",
 			event: func(d *ChangeDetector) {
 				d.onResourceDeleted(watchedResource("annotated", "1", true))
 			},
 			wantResourceChange:      []string{"annotated"},
+			wantAnnotationPlacement: []string{"annotated"},
+		},
+		{
+			name: "a deleted resource without the annotation is kept out of the placement queue",
+			event: func(d *ChangeDetector) {
+				d.onResourceDeleted(watchedResource("plain", "1", false))
+			},
+			wantResourceChange:      []string{"plain"},
 			wantAnnotationPlacement: nil,
 		},
 		{
-			name: "a deleted resource arriving as a tombstone is left to garbage collection",
+			name: "a deleted annotated resource arriving as a tombstone is enqueued too",
 			event: func(d *ChangeDetector) {
 				d.onResourceDeleted(cache.DeletedFinalStateUnknown{Key: "prod/annotated", Obj: watchedResource("annotated", "1", true)})
 			},
 			wantResourceChange:      []string{"annotated"},
-			wantAnnotationPlacement: nil,
+			wantAnnotationPlacement: []string{"annotated"},
 		},
 	}
 
