@@ -175,13 +175,15 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - name: Create issue for Copilot
+      - name: Create or update security issue
         if: steps.check-vulns.outputs.has_vulns == 'true' && github.event_name == 'schedule'
         uses: actions/github-script@v9
         with:
           script: |
             const today = new Date().toISOString().split('T')[0];
             const title = `fix: address trivy CVEs found on ${today}`;
+            const securityTeam = '@kubefleet-dev/kubefleet-secops';
+            const body = `${process.env.ISSUE_BODY}\n\n### Security owners\n${securityTeam}`;
 
             // Check if an open issue already exists for today
             const existing = await github.rest.issues.listForRepo({
@@ -191,22 +193,23 @@ jobs:
               labels: 'security,trivy',
               per_page: 100
             });
-            const alreadyExists = existing.data.some(i => i.title === title);
-            if (alreadyExists) {
-              console.log('Issue already exists for today, skipping.');
-              return;
+            const issue = existing.data.find(i => i.title === title);
+            if (issue) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: body
+              });
+              console.log('Updated the existing issue with the current scan and security team mention.');
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['security', 'trivy']
+              });
             }
-
-            const body = process.env.ISSUE_BODY;
-            const issue = await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: title,
-              body: body + '\n\n/cc @kubefleet-dev/kubefleet-secops',
-              labels: ['security', 'trivy'],
-              assignees: ['copilot'],
-            });
-            console.log(`Created issue #${issue.data.number}`);
         env:
           ISSUE_BODY: ${{ steps.vuln-summary.outputs.body }}
-
