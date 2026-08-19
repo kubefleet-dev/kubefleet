@@ -17,6 +17,7 @@ limitations under the License.
 package placementpolicy
 
 import (
+	"math"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -105,9 +106,73 @@ func TestResolveCounts(t *testing.T) {
 			wantError: true,
 		},
 		{
+			// The CRD pattern admits digit strings, so a manifest with count: "3" passes admission
+			// and must resolve the same as the integer form rather than being rejected.
+			name: "digit string count is parsed like an integer",
+			selector: &kfplacementv1alpha1.ClusterSelector{
+				Count: ptr.To(intstr.FromString("3")),
+			},
+			want: resolvedCounts{desired: 3, minimum: 3},
+		},
+		{
+			name: "digit string count with explicit minCount",
+			selector: &kfplacementv1alpha1.ClusterSelector{
+				Count:    ptr.To(intstr.FromString("3")),
+				MinCount: ptr.To(int32(2)),
+			},
+			want: resolvedCounts{desired: 3, minimum: 2},
+		},
+		{
+			name: "string count at the upper bound",
+			selector: &kfplacementv1alpha1.ClusterSelector{
+				Count: ptr.To(intstr.FromString("999")),
+			},
+			want: resolvedCounts{desired: 999, minimum: 999},
+		},
+		{
+			// Parseable as an integer but below the floor: the string branch must reject it just as
+			// the integer branch rejects a non-positive count.
+			name: "non-positive digit string count",
+			selector: &kfplacementv1alpha1.ClusterSelector{
+				Count: ptr.To(intstr.FromString("0")),
+			},
+			wantError: true,
+		},
+		{
 			name: "non-positive integer count",
 			selector: &kfplacementv1alpha1.ClusterSelector{
 				Count: ptr.To(intstr.FromInt32(0)),
+			},
+			wantError: true,
+		},
+		{
+			// The CRD pattern bounds only the string form; an integer past the limit bypasses
+			// admission, and unchecked it would overflow the aggregated desired total.
+			name: "integer count above the upper bound",
+			selector: &kfplacementv1alpha1.ClusterSelector{
+				Count: ptr.To(intstr.FromInt32(1000)),
+			},
+			wantError: true,
+		},
+		{
+			name: "maximum int32 integer count",
+			selector: &kfplacementv1alpha1.ClusterSelector{
+				Count: ptr.To(intstr.FromInt32(math.MaxInt32)),
+			},
+			wantError: true,
+		},
+		{
+			name: "integer count at the upper bound",
+			selector: &kfplacementv1alpha1.ClusterSelector{
+				Count: ptr.To(intstr.FromInt32(999)),
+			},
+			want: resolvedCounts{desired: 999, minimum: 999},
+		},
+		{
+			// A digit string past the bound (only reachable by bypassing admission) is rejected.
+			name: "digit string count above the upper bound",
+			selector: &kfplacementv1alpha1.ClusterSelector{
+				Count: ptr.To(intstr.FromString("1000")),
 			},
 			wantError: true,
 		},
