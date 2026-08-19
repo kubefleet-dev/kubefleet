@@ -60,8 +60,9 @@ rules:
       - 136224848560.member.fleet.azure.com
     verbs: ["update", "patch"]
 
-  # Events for controller recording.
-  - apiGroups: [""]
+  # Events for controller recording. The controllers use the events.k8s.io
+  # recorder, which writes Event objects in the events.k8s.io API group.
+  - apiGroups: ["", "events.k8s.io"]
     resources: ["events"]
     verbs: ["create", "patch"]
 

@@ -18,8 +18,10 @@ package trackers
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/Azure/karpenter-provider-azure/pkg/auth"
 	"github.com/Azure/karpenter-provider-azure/pkg/providers/pricing"
 	"github.com/Azure/karpenter-provider-azure/pkg/providers/pricing/client"
 )
@@ -53,7 +55,14 @@ func (k *AKSKarpenterPricingClient) LastUpdated() time.Time {
 
 // NewAKSKarpenterPricingClient returns a new AKS Karpenter pricing client, which implements
 // the PricingProvider interface.
-func NewAKSKarpenterPricingClient(ctx context.Context, region string) *AKSKarpenterPricingClient {
+func NewAKSKarpenterPricingClient(ctx context.Context, region string) (*AKSKarpenterPricingClient, error) {
+	// The pricing client queries the Azure retail prices API, which is only served from the
+	// Azure public cloud.
+	env, err := auth.EnvironmentFromName("AzurePublicCloud")
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve the Azure public cloud environment: %w", err)
+	}
+
 	// In the case of Azure property provider, there is no need to wait for leader election
 	// successes; close the channel immediately to allow immediate boot-up of the pricing
 	// client.
@@ -61,6 +70,6 @@ func NewAKSKarpenterPricingClient(ctx context.Context, region string) *AKSKarpen
 	close(ch)
 
 	return &AKSKarpenterPricingClient{
-		karpenterPricingClient: pricing.NewProvider(ctx, client.New(), region, ch),
-	}
+		karpenterPricingClient: pricing.NewProvider(ctx, env, client.New(env.Cloud), region, ch),
+	}, nil
 }

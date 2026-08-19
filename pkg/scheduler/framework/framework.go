@@ -31,7 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -88,7 +88,7 @@ type Handle interface {
 	// UncachedReader returns an uncached read-only client, which allows direct (uncached) access to the API server.
 	UncachedReader() client.Reader
 	// EventRecorder returns an event recorder.
-	EventRecorder() record.EventRecorder
+	EventRecorder() events.EventRecorder
 	// ClusterEligibilityChecker returns the cluster eligibility checker associated with the scheduler.
 	ClusterEligibilityChecker() *clustereligibilitychecker.ClusterEligibilityChecker
 }
@@ -118,7 +118,7 @@ type framework struct {
 	// manager is the controller manager in use by the scheduler framework.
 	manager ctrl.Manager
 	// eventRecorder is the event recorder in use by the scheduler framework.
-	eventRecorder record.EventRecorder
+	eventRecorder events.EventRecorder
 
 	// parallelizer is a utility which helps run tasks in parallel.
 	parallelizer parallelizer.Parallelizer
@@ -209,7 +209,7 @@ func NewFramework(profile *Profile, manager ctrl.Manager, opts ...Option) Framew
 		client:                            manager.GetClient(),
 		uncachedReader:                    manager.GetAPIReader(),
 		manager:                           manager,
-		eventRecorder:                     manager.GetEventRecorderFor(fmt.Sprintf(eventRecorderNameTemplate, profile.Name())),
+		eventRecorder:                     manager.GetEventRecorder(fmt.Sprintf(eventRecorderNameTemplate, profile.Name())),
 		parallelizer:                      parallelizer.NewParallelizer(options.numOfWorkers),
 		maxUnselectedClusterDecisionCount: options.maxUnselectedClusterDecisionCount,
 		clusterEligibilityChecker:         options.clusterEligibilityChecker,
@@ -237,7 +237,7 @@ func (f *framework) UncachedReader() client.Reader {
 }
 
 // EventRecorder returns the event recorder in use by the scheduler framework.
-func (f *framework) EventRecorder() record.EventRecorder {
+func (f *framework) EventRecorder() events.EventRecorder {
 	return f.eventRecorder
 }
 
