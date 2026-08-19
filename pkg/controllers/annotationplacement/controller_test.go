@@ -19,6 +19,7 @@ package annotationplacement
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -539,6 +540,77 @@ func TestDeleteRacesAnotherDeletion(t *testing.T) {
 	}
 	if got := recordedReasons(recorder); len(got) != 0 {
 		t.Errorf("Reconcile(%v) recorded events = %v, want none for a deletion this pass did not perform", key, got)
+	}
+}
+
+// TestReconcileDoesNotDeleteAReplacementPolicy covers the window between the read that confirms a
+// policy is this controller's and the delete that removes it. If the policy is replaced in that
+// window -- overwritten with its provenance stripped, or deleted and a hand-authored one created at
+// the same name -- an unconditioned delete would remove the replacement, since it targets the name
+// alone. The resource-version precondition must turn that into a conflict, and the retry must then
+// read the current object and decline it.
+func TestReconcileDoesNotDeleteAReplacementPolicy(t *testing.T) {
+	ctx := context.Background()
+	bare := newSource(deploymentGVK, testNamespace, testName, nil)
+	annotated := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
+	selectors, err := parseClusterSelectors(oneSelector)
+	if err != nil {
+		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
+	}
+	ours := desiredPolicy(annotated, selectors)
+
+	// A spec no generated policy would carry, marking the object that takes the name.
+	foreignSpec := kfplacementv1alpha1.PlacementPolicySpec{
+		ResourceSelectors: []kfplacementv1alpha1.ResourceSelector{{APIGroup: "example.com", APIVersion: "v1", Kind: "Widget", Name: "hand-authored"}},
+	}
+
+	replaced := false
+	raced := interceptor.Funcs{
+		Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+			if !replaced {
+				replaced = true
+				// Stand in for the replacement: the live object loses its provenance and its resource
+				// version moves on, so it is no longer the one the precondition names.
+				live := &kfplacementv1alpha1.PlacementPolicy{}
+				if err := c.Get(ctx, client.ObjectKeyFromObject(obj), live); err != nil {
+					return err
+				}
+				live.SetLabels(nil)
+				live.SetOwnerReferences(nil)
+				live.Spec = foreignSpec
+				if err := c.Update(ctx, live); err != nil {
+					return err
+				}
+			}
+			return c.Delete(ctx, obj, opts...)
+		},
+	}
+	r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {bare}}, nil, raced, ours)
+
+	key := keyFor(deploymentGVK, testNamespace, testName)
+	// First pass: the policy is replaced after it is read, so the guarded delete conflicts and the
+	// pass returns a retryable error rather than removing the replacement.
+	if _, err := r.Reconcile(ctx, key); err == nil {
+		t.Fatalf("Reconcile(%v) = nil, want a conflict error so the delete of a replaced policy is retried", key)
+	}
+	got, found := policyFrom(ctx, t, r, bare)
+	if !found {
+		t.Fatalf("Reconcile(%v) deleted the replacement policy, want it left in place", key)
+	}
+	if diff := cmp.Diff(got.(*kfplacementv1alpha1.PlacementPolicy).Spec, foreignSpec); diff != "" {
+		t.Errorf("Reconcile(%v) changed the replacement policy (-got, +want):\n%s", key, diff)
+	}
+
+	// Second pass: the reconciler reads the current, now foreign object, declines it, and records no
+	// deletion it did not perform.
+	if _, err := r.Reconcile(ctx, key); err != nil {
+		t.Fatalf("Reconcile(%v) = %v, want no error once the replacement is recognized as foreign", key, err)
+	}
+	if _, found := policyFrom(ctx, t, r, bare); !found {
+		t.Errorf("Reconcile(%v) deleted the foreign replacement on retry, want it left in place", key)
+	}
+	if got := recordedReasons(recorder); slices.Contains(got, EventReasonPolicyDeleted) {
+		t.Errorf("Reconcile(%v) recorded events = %v, want no deletion of a policy it did not generate", key, got)
 	}
 }
 
