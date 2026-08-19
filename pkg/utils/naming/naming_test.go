@@ -169,6 +169,74 @@ func TestLabelValueShortening(t *testing.T) {
 	}
 }
 
+// TestSanitize pins the transform that lets a name legal for its own API but not as a Kubernetes
+// object name pass through into a generated name: every result must be legal as a DNS-1123 name
+// segment, and the characters a name already allows must survive unchanged.
+func TestSanitize(t *testing.T) {
+	testCases := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{name: "already legal", value: "my-app", want: "my-app"},
+		{name: "uppercase is lowercased", value: "MyApp", want: "myapp"},
+		// The RBAC name that motivated the sanitizer: a colon is legal in the name but not in a
+		// Kubernetes object name.
+		{name: "rbac name with a colon", value: "system:aggregate-to-admin", want: "system-aggregate-to-admin"},
+		{name: "underscores become dashes", value: "my_app", want: "my-app"},
+		// A dot becomes a dash like any other separator: kept as a dot, an invalid character beside it
+		// would leave a label bounded by a dash, which the API server rejects.
+		{name: "dot becomes a dash", value: "my.app", want: "my-app"},
+		{name: "dot next to an illegal character does not leave a bad label", value: "my.:app", want: "my--app"},
+		{name: "adjacent dots do not leave an empty label", value: "a..b", want: "a--b"},
+		{name: "leading separators are trimmed", value: ":::app", want: "app"},
+		{name: "trailing separators are trimmed", value: "app:::", want: "app"},
+		{name: "entirely illegal collapses to empty", value: ":::", want: ""},
+		{name: "empty", value: "", want: ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Sanitize(tc.value)
+			if got != tc.want {
+				t.Errorf("Sanitize(%q) = %v, want %v", tc.value, got, tc.want)
+			}
+			if got != "" {
+				if errs := validation.IsDNS1123Subdomain(got); len(errs) > 0 {
+					t.Errorf("Sanitize(%q) = %v, want a valid DNS-1123 subdomain: %s", tc.value, got, strings.Join(errs, "; "))
+				}
+			}
+		})
+	}
+}
+
+// TestLabelValueSanitizes covers values that carry characters a label value forbids. The wider
+// label-value character set keeps case and underscores that Sanitize would drop, but a colon still
+// has to go, and the result must be a value the API server accepts.
+func TestLabelValueSanitizes(t *testing.T) {
+	testCases := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{name: "case and underscores are kept", value: "My_App", want: "My_App"},
+		{name: "colon becomes a dash", value: "system:aggregate-to-admin", want: "system-aggregate-to-admin"},
+		{name: "leading separators are trimmed", value: ":app", want: "app"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := LabelValue(tc.value)
+			if got != tc.want {
+				t.Errorf("LabelValue(%q) = %v, want %v", tc.value, got, tc.want)
+			}
+			if errs := validation.IsValidLabelValue(got); len(errs) > 0 {
+				t.Errorf("LabelValue(%q) = %v, want a valid label value: %s", tc.value, got, strings.Join(errs, "; "))
+			}
+		})
+	}
+}
+
 // TestTruncateNonPositiveBudget covers a caller whose own arithmetic left nothing for the value.
 // The package exists to keep budget mistakes from reaching the API server; it must not turn one
 // into a panic inside a reconcile loop either.

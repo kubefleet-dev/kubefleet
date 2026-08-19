@@ -646,6 +646,24 @@ func TestApplyDesiredPolicy(t *testing.T) {
 				}
 			},
 		},
+		{
+			// The source was deleted and recreated under the same name, so its reference carries the
+			// old UID. It must be updated in place, not left dangling while a second one is appended --
+			// otherwise the list grows by one on every such cycle.
+			name: "an owner reference left by a recreated source is replaced, not appended",
+			mutate: func(policy client.Object) {
+				stale := parentOwnerReference(source)
+				stale.UID = "00000000-0000-0000-0000-00000000dead"
+				policy.SetOwnerReferences([]metav1.OwnerReference{stale})
+			},
+			wantChanged: true,
+			check: func(t *testing.T, policy client.Object) {
+				want := []metav1.OwnerReference{parentOwnerReference(source)}
+				if diff := cmp.Diff(policy.GetOwnerReferences(), want); diff != "" {
+					t.Errorf("applyDesiredPolicy() owner references mismatch (-got, +want):\n%s", diff)
+				}
+			},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -717,16 +735,139 @@ func TestEventMessagesNameTheGeneratedKind(t *testing.T) {
 }
 
 // TestReconcileUnknownKind covers a key whose kind the API server does not know, which the
-// generated policy watch can produce by enqueuing whatever a policy names as its owner. The key is
-// dropped: no retry can make the kind exist, and an error would keep it backing off forever.
+// generated policy watch can produce by enqueuing whatever a policy names as its owner. The kind
+// being gone means the source's own CRD was removed, so any policy generated from it is stale and is
+// deleted; when none exists the key is simply dropped, since no retry can make the kind exist and an
+// error would keep it backing off forever.
 func TestReconcileUnknownKind(t *testing.T) {
-	r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{}, nil, interceptor.Funcs{})
-	key := keyFor(schema.GroupVersionKind{Group: "example.com", Version: "v1", Kind: "Widget"}, testNamespace, testName)
-	if _, err := r.Reconcile(context.Background(), key); err != nil {
-		t.Errorf("Reconcile(%v) = %v, want no error, so that a kind that does not exist is not retried", key, err)
+	widgetGVK := schema.GroupVersionKind{Group: "example.com", Version: "v1", Kind: "Widget"}
+	// The resource whose kind is gone. It is only used to derive the generated policy the reconciler
+	// must find and delete; the informer and the REST mapper deliberately do not know its kind.
+	widget := newSource(widgetGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
+	selectors, err := parseClusterSelectors(oneSelector)
+	if err != nil {
+		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
 	}
-	if got := recordedReasons(recorder); len(got) != 0 {
-		t.Errorf("Reconcile(%v) recorded events = %v, want none", key, got)
+	stale := desiredPolicy(widget, selectors)
+
+	testCases := []struct {
+		name       string
+		existing   []client.Object
+		wantPolicy bool
+	}{
+		{name: "no policy to clean up, key is dropped", existing: nil, wantPolicy: false},
+		{name: "a stale policy left by the gone kind is deleted", existing: []client.Object{stale}, wantPolicy: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{}, nil, interceptor.Funcs{}, tc.existing...)
+			key := keyFor(widgetGVK, testNamespace, testName)
+			if _, err := r.Reconcile(context.Background(), key); err != nil {
+				t.Errorf("Reconcile(%v) = %v, want no error, so that a kind that does not exist is not retried", key, err)
+			}
+			if _, found := policyFrom(context.Background(), t, r, widget); found != tc.wantPolicy {
+				t.Errorf("Reconcile(%v) left a generated policy = %v, want %v", key, found, tc.wantPolicy)
+			}
+			// No event is recorded either way: the resource an event would attach to is gone.
+			if got := recordedReasons(recorder); len(got) != 0 {
+				t.Errorf("Reconcile(%v) recorded events = %v, want none", key, got)
+			}
+		})
+	}
+}
+
+// TestReconcileResolvesRemovedVersion covers a key whose recorded version is no longer served while
+// the kind lives on under another. The generated policy watch can enqueue such a key, and treating
+// the removed version as a gone kind would wrongly delete a policy that is still wanted; the
+// reconciler falls back to the served version and keeps the policy in sync instead.
+func TestReconcileResolvesRemovedVersion(t *testing.T) {
+	ctx := context.Background()
+	// The source is served under apps/v1, the version the REST mapper knows; the key arrives naming
+	// apps/v2, a version that has since been removed.
+	source := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
+	r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {source}}, nil, interceptor.Funcs{})
+
+	key := keyFor(schema.GroupVersionKind{Group: "apps", Version: "v2", Kind: "Deployment"}, testNamespace, testName)
+	if _, err := r.Reconcile(ctx, key); err != nil {
+		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+	}
+
+	if _, found := policyFrom(ctx, t, r, source); !found {
+		t.Errorf("Reconcile(%v) generated no policy, want the removed version resolved to the served one", key)
+	}
+	if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonPolicyCreated}); diff != "" {
+		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
+	}
+}
+
+// TestReconcileForeignPolicyAtGeneratedName covers a policy that already occupies a resource's
+// generated name but was authored by someone else -- it carries none of this controller's provenance
+// labels. The controller must neither overwrite it when the annotation asks for a policy nor delete
+// it when the annotation is removed; a bare name match would do both.
+func TestReconcileForeignPolicyAtGeneratedName(t *testing.T) {
+	// A policy sitting at the generated name, distinguishable by a spec this controller would never
+	// produce and by the absence of the provenance labels.
+	foreignSpec := func() kfplacementv1alpha1.PlacementPolicySpec {
+		return kfplacementv1alpha1.PlacementPolicySpec{
+			ResourceSelectors: []kfplacementv1alpha1.ResourceSelector{{APIGroup: "example.com", APIVersion: "v1", Kind: "Widget", Name: "hand-authored"}},
+		}
+	}
+	newForeign := func() *kfplacementv1alpha1.PlacementPolicy {
+		return &kfplacementv1alpha1.PlacementPolicy{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      generatedPolicyName(deploymentGVK, testNamespace, testName),
+				Namespace: testNamespace,
+			},
+			Spec: foreignSpec(),
+		}
+	}
+
+	testCases := []struct {
+		name        string
+		source      *unstructured.Unstructured
+		wantReasons []string
+	}{
+		{
+			name:   "the annotation asks for a policy, the foreign one is not overwritten",
+			source: newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector}),
+			// The user hears why the placement they asked for is not running.
+			wantReasons: []string{EventReasonPolicyConflict},
+		},
+		{
+			name: "the annotation is absent, the foreign one is not deleted",
+			// Nothing asked for a policy here, so declining to delete a policy that was never this
+			// controller's is silent -- the same as a resource that never generated anything.
+			source:      newSource(deploymentGVK, testNamespace, testName, nil),
+			wantReasons: nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {tc.source}}, nil, interceptor.Funcs{}, newForeign())
+
+			key := keyFor(deploymentGVK, testNamespace, testName)
+			if _, err := r.Reconcile(ctx, key); err != nil {
+				t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+			}
+
+			got, found := policyFrom(ctx, t, r, tc.source)
+			if !found {
+				t.Fatalf("Reconcile(%v) removed the foreign policy, want it left in place", key)
+			}
+			gotSpec := got.(*kfplacementv1alpha1.PlacementPolicy).Spec
+			if diff := cmp.Diff(gotSpec, foreignSpec()); diff != "" {
+				t.Errorf("Reconcile(%v) changed the foreign policy's spec (-got, +want):\n%s", key, diff)
+			}
+			if labels := got.GetLabels(); len(labels) != 0 {
+				t.Errorf("Reconcile(%v) added labels %v to the foreign policy, want it left untouched", key, labels)
+			}
+			if diff := cmp.Diff(recordedReasons(recorder), tc.wantReasons, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
+			}
+		})
 	}
 }
 

@@ -112,6 +112,21 @@ func TestGeneratedPolicyNameValidity(t *testing.T) {
 		objName   string
 	}{
 		{name: "short everything", gvk: deploymentGVK, namespace: "prod", objName: "app"},
+		{
+			// An RBAC name carries a colon, legal for the resource but not for a Kubernetes object
+			// name; without sanitizing it the generated name is rejected and the reconciler hot-loops.
+			name:    "rbac name with a colon",
+			gvk:     schema.GroupVersionKind{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole"},
+			objName: "system:aggregate-to-admin",
+		},
+		{
+			// A dot beside an illegal character is the case that a naive sanitizer keeping dots gets
+			// wrong: it would leave a label ending in a dash, which the API server rejects. Resource
+			// names commonly carry dots (domain-like custom resource names), so this is reachable.
+			name:    "name with a dot beside an illegal character",
+			gvk:     deploymentGVK,
+			objName: "my.:app",
+		},
 		{name: "name at the object limit", gvk: deploymentGVK, namespace: "prod", objName: longName},
 		{
 			name:      "name truncated onto a separator",
@@ -183,6 +198,10 @@ func TestGeneratedPolicyNameDistinguishesIdentities(t *testing.T) {
 		{name: "different namespace", gvk: deploymentGVK, namespace: "staging", objName: "app"},
 		{name: "different api group, same kind", gvk: schema.GroupVersionKind{Group: "example.com", Version: "v1", Kind: "Deployment"}, namespace: "prod", objName: "app"},
 		{name: "kind differing only in case", gvk: schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "DeploymenT"}, namespace: "prod", objName: "app"},
+		// Two names that sanitize to the same visible segment -- a dot and a dash both render as a
+		// dash -- must still generate distinct policy names, since the hash is over the raw identity.
+		{name: "name with a dot", gvk: deploymentGVK, namespace: "prod", objName: "my.app"},
+		{name: "name with a dash where the other has a dot", gvk: deploymentGVK, namespace: "prod", objName: "my-app"},
 		// Two names identical up to well past the truncation point.
 		{name: "long name", gvk: deploymentGVK, namespace: "prod", objName: longName + "one"},
 		{name: "long name sharing a prefix", gvk: deploymentGVK, namespace: "prod", objName: longName + "two"},
@@ -195,6 +214,45 @@ func TestGeneratedPolicyNameDistinguishesIdentities(t *testing.T) {
 			t.Errorf("generatedPolicyName for %s = %v, want a name distinct from that of %s", identity.name, got, previous)
 		}
 		seen[got] = identity.name
+	}
+}
+
+// TestIsGeneratedFor pins the check that keeps this controller from commandeering or deleting a
+// policy someone else authored at a resource's generated name: a policy this controller produced is
+// recognized by its provenance labels, and anything without them, or with different ones, is not.
+func TestIsGeneratedFor(t *testing.T) {
+	source := sourceObject(deploymentGVK, "prod", "app")
+	mine := desiredPolicy(source, nil)
+
+	// A policy at the same name authored by someone else, carrying none of the provenance labels.
+	foreign := emptyPolicyForScope("prod")
+	foreign.SetName(mine.GetName())
+	foreign.SetNamespace("prod")
+
+	// A policy that carries the labels but for a different resource -- the collision a bare name
+	// match would miss.
+	otherSource := sourceObject(deploymentGVK, "prod", "other")
+	otherLabelled := emptyPolicyForScope("prod")
+	otherLabelled.SetName(mine.GetName())
+	otherLabelled.SetNamespace("prod")
+	otherLabelled.SetLabels(parentLabels(otherSource.GroupVersionKind(), otherSource.GetName()))
+
+	testCases := []struct {
+		name   string
+		policy client.Object
+		want   bool
+	}{
+		{name: "the policy this controller generated", policy: mine, want: true},
+		{name: "a foreign policy with no provenance labels", policy: foreign, want: false},
+		{name: "a policy carrying another resource's provenance", policy: otherLabelled, want: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isGeneratedFor(tc.policy, source.GroupVersionKind(), source.GetName()); got != tc.want {
+				t.Errorf("isGeneratedFor(%q) = %v, want %v", tc.policy.GetName(), got, tc.want)
+			}
+		})
 	}
 }
 

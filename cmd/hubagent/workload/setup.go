@@ -539,6 +539,14 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			// through the generated policy watch, or through the deletion-shaped event the detector
 			// reports when a resource stops passing the filter without being deleted.
 			ShouldPlace: func(source *unstructured.Unstructured) (bool, error) {
+				// The resource config decides which APIs are watched at all; a source of a disabled
+				// API is one the watcher would never have selected, so a policy generated for it
+				// before the API was excluded must stop being kept. The check belongs here because
+				// the generated policy watch can reach this controller for such a source even after
+				// its API is gone from the watch set.
+				if resourceConfig.IsResourceDisabled(source.GroupVersionKind()) {
+					return false, nil
+				}
 				if !utils.ShouldPropagateNamespace(annotationplacement.SourceNamespace(source), skippedNamespaces) {
 					return false, nil
 				}
