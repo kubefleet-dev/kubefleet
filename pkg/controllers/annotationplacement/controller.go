@@ -370,7 +370,15 @@ func (r *Reconciler) deleteGeneratedPolicy(ctx context.Context, gvk schema.Group
 		return policyName, false, nil
 	}
 
-	if err := r.Client.Delete(ctx, actual); err != nil {
+	// The delete carries the resource version the read returned as a precondition, so it removes only
+	// the exact object this pass read and confirmed was one it generated. Between that read and here
+	// the policy could be replaced -- deleted and a hand-authored one created at the same name, or
+	// overwritten in place with its provenance stripped -- and an unconditioned delete, which targets
+	// the name alone, would then remove whatever now sits there. The precondition turns that into a
+	// conflict instead; the conflict requeues, and the next pass reads the current object and declines
+	// it if it is no longer one this controller generated.
+	resourceVersion := actual.GetResourceVersion()
+	if err := r.Client.Delete(ctx, actual, client.Preconditions{ResourceVersion: &resourceVersion}); err != nil {
 		if apierrors.IsNotFound(err) {
 			// The read above raced a deletion that already happened -- typically this controller's
 			// own, re-entered through the generated policy watch moments later. Nothing was deleted
