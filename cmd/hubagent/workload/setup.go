@@ -531,6 +531,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		klog.Info("Setting up annotation based placement controller")
 		apr := &annotationplacement.Reconciler{
 			Client:          mgr.GetClient(),
+			UncachedReader:  mgr.GetAPIReader(),
 			RestMapper:      mgr.GetRESTMapper(),
 			InformerManager: dynamicInformerManager,
 			Recorder:        mgr.GetEventRecorderFor(annotationPlacementControllerName),

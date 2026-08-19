@@ -108,7 +108,10 @@ var _ = BeforeSuite(func() {
 	// which would surface as a timeout somewhere unrelated rather than as a failed expectation.
 	eventRecorder = record.NewFakeRecorder(100)
 	reconciler = &Reconciler{
-		Client:          hubClient,
+		Client: hubClient,
+		// The envtest client reads straight from the API server, so it serves as the uncached reader
+		// too; there is no separate cache to fall behind here.
+		UncachedReader:  hubClient,
 		RestMapper:      restMapper,
 		InformerManager: informerManager,
 		Recorder:        eventRecorder,
