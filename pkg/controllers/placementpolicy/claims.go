@@ -198,6 +198,17 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy policyObject, o
 	}
 
 	if len(wantedByName) == 0 {
+		// Nothing more to create. If nothing is outstanding either, the policy is claim-free, so the
+		// cleanup finalizer -- whose only job is to withdraw claims before the policy is deleted --
+		// has nothing left to guard and is released. Without this a policy that once had a claim would
+		// carry the finalizer forever, and disabling the feature and then deleting such a claim-free
+		// policy would hang its deletion with no controller left to clear it, outside the documented
+		// outstanding-claims caveat.
+		if outstanding == 0 {
+			if err := r.releaseFinalizerIfNoClaims(ctx, policy); err != nil {
+				return outstanding, err
+			}
+		}
 		return outstanding, nil
 	}
 
@@ -350,16 +361,60 @@ func claimBelongsTo(claim *kfplacementv1alpha1.ClusterClaim, ref *kfplacementv1a
 	return got.Kind == ref.Kind && got.Name == ref.Name && got.Namespace == ref.Namespace
 }
 
-// listClaims lists the cluster claims belonging to a policy via the ownership labels. The
-// labels are the fast path for the live reconcile; the cleanup path, whose mistake would be
-// permanent, goes by the immutable reference instead (see cleanupClaims).
+// listClaims returns the cluster claims belonging to a policy, matched on the immutable
+// spec.placementPolicyRef rather than the ownership labels.
+//
+// The labels are mutable: a provisioner or a user that removes or rewrites one would make the claim
+// vanish from a label-selected list while spec.placementPolicyRef still names the policy. The live
+// reconcile would then stop tracking a claim it still owns -- never withdrawing it once the selector
+// is fulfilled, changed, or switched to KeepSearching -- and a provisioner could keep acting on it.
+// Matching on the immutable reference, as the cleanup path already does, keeps that from happening.
+//
+// The list is served from the informer cache; a claim the cache has yet to observe is picked up on
+// the re-queue the claim watch fires, which is why the cache is acceptable here while the finalizer
+// release, whose mistake would be permanent, reads through the uncached reader instead.
 func (r *Reconciler) listClaims(ctx context.Context, policy policyObject) ([]kfplacementv1alpha1.ClusterClaim, error) {
-	claims := &kfplacementv1alpha1.ClusterClaimList{}
-	if err := r.List(ctx, claims, claimOwnershipLabels(policy)); err != nil {
+	all := &kfplacementv1alpha1.ClusterClaimList{}
+	if err := r.List(ctx, all); err != nil {
 		klog.ErrorS(err, "Failed to list cluster claims for the policy", "placementPolicy", klog.KObj(policy.Unwrap()))
 		return nil, err
 	}
-	return claims.Items, nil
+	return claimsForPolicy(all.Items, policy), nil
+}
+
+// claimsForPolicy returns the claims whose immutable reference names the policy.
+func claimsForPolicy(all []kfplacementv1alpha1.ClusterClaim, policy policyObject) []kfplacementv1alpha1.ClusterClaim {
+	ref := policyReference(policy)
+	owned := make([]kfplacementv1alpha1.ClusterClaim, 0, len(all))
+	for i := range all {
+		if claimBelongsTo(&all[i], ref) {
+			owned = append(owned, all[i])
+		}
+	}
+	return owned
+}
+
+// releaseFinalizerIfNoClaims removes the cleanup finalizer from a live policy once no claim of it
+// remains, confirmed against the API server. It mirrors the release in cleanupClaims: the finalizer
+// exists only to withdraw claims before the policy is deleted, so once none remain it is safe to
+// drop -- and dropping it is what keeps a claim-free policy deletable even after the feature is
+// turned off. The count is read uncached because releasing the finalizer over a claim a stale cache
+// has yet to show would orphan it, nothing ever looking at the claims of a gone policy.
+func (r *Reconciler) releaseFinalizerIfNoClaims(ctx context.Context, policy policyObject) error {
+	obj := policy.Unwrap()
+	if !controllerutil.ContainsFinalizer(obj, claimCleanupFinalizer) {
+		return nil
+	}
+	claims := &kfplacementv1alpha1.ClusterClaimList{}
+	if err := r.uncachedReader.List(ctx, claims); err != nil {
+		klog.ErrorS(err, "Failed to list cluster claims to release the cleanup finalizer", "placementPolicy", klog.KObj(obj))
+		return err
+	}
+	if len(claimsForPolicy(claims.Items, policy)) > 0 {
+		return nil
+	}
+	controllerutil.RemoveFinalizer(obj, claimCleanupFinalizer)
+	return r.Update(ctx, obj)
 }
 
 // policyReference builds the claim's back-reference to its policy.
