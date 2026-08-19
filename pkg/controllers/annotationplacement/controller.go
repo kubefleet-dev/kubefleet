@@ -127,7 +127,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, key controller.QueueKey) (ct
 		// deliberately preserves owner references that other parties added -- any live one of which
 		// would keep the policy standing indefinitely. Deleting explicitly is idempotent, so at
 		// worst it beats the collector to an object that was doomed anyway.
-		deleted, err := r.deleteGeneratedPolicy(ctx, clusterWideKey.GroupVersionKind(), clusterWideKey.Namespace, clusterWideKey.Name)
+		_, deleted, err := r.deleteGeneratedPolicy(ctx, clusterWideKey.GroupVersionKind(), clusterWideKey.Namespace, clusterWideKey.Name)
 		switch {
 		case err != nil:
 			klog.ErrorS(err, "Failed to delete the policy generated for a resource that is gone", "obj", clusterWideKey)
@@ -256,8 +256,7 @@ func (r *Reconciler) syncPolicy(ctx context.Context, source *unstructured.Unstru
 // The cause is a plain string, never a format: keeping the only format string in the Eventf call
 // below constant is what lets go vet check it.
 func (r *Reconciler) deletePolicy(ctx context.Context, source *unstructured.Unstructured, cause string) error {
-	name := generatedPolicyName(source.GroupVersionKind(), source.GetNamespace(), source.GetName())
-	deleted, err := r.deleteGeneratedPolicy(ctx, source.GroupVersionKind(), source.GetNamespace(), source.GetName())
+	name, deleted, err := r.deleteGeneratedPolicy(ctx, source.GroupVersionKind(), source.GetNamespace(), source.GetName())
 	if err != nil {
 		klog.ErrorS(err, "Failed to delete the generated placement policy", "obj", klog.KObj(source), "policy", klog.KRef(source.GetNamespace(), name))
 		return err
@@ -271,21 +270,22 @@ func (r *Reconciler) deletePolicy(ctx context.Context, source *unstructured.Unst
 	return nil
 }
 
-// deleteGeneratedPolicy deletes the policy generated for the given resource identity, reporting
-// whether this pass performed the deletion.
+// deleteGeneratedPolicy deletes the policy generated for the given resource identity, reporting the
+// policy's name and whether this pass performed the deletion. The name is returned so a caller that
+// logs or records an event about the deletion need not derive it a second time.
 //
 // The policy is read before it is deleted, which for the vast majority of resources — those that
 // were never annotated at all — is a single cached read and no request to the API server.
-func (r *Reconciler) deleteGeneratedPolicy(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string) (bool, error) {
+func (r *Reconciler) deleteGeneratedPolicy(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string) (string, bool, error) {
 	actual := emptyPolicyForScope(namespace)
 	policyName := generatedPolicyName(gvk, namespace, name)
 
 	err := r.Client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: policyName}, actual)
 	switch {
 	case apierrors.IsNotFound(err):
-		return false, nil
+		return policyName, false, nil
 	case err != nil:
-		return false, controller.NewAPIServerError(true, err)
+		return policyName, false, controller.NewAPIServerError(true, err)
 	}
 
 	if err := r.Client.Delete(ctx, actual); err != nil {
@@ -294,11 +294,11 @@ func (r *Reconciler) deleteGeneratedPolicy(ctx context.Context, gvk schema.Group
 			// own, re-entered through the generated policy watch moments later. Nothing was deleted
 			// here, and reporting otherwise would log, and on some paths announce to the user, a
 			// deletion that this pass did not perform.
-			return false, nil
+			return policyName, false, nil
 		}
-		return false, controller.NewAPIServerError(false, err)
+		return policyName, false, controller.NewAPIServerError(false, err)
 	}
-	return true, nil
+	return policyName, true, nil
 }
 
 // applyDesiredPolicy brings a live generated policy in line with the desired one, reporting whether
