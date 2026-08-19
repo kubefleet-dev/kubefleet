@@ -33,6 +33,11 @@ import (
 type FakeLister struct {
 	Objects []runtime.Object
 	Err     error
+	// ClusterScoped mirrors a cluster-scoped resource's cache, whose objects are indexed under a bare
+	// name and belong to no namespace. When set, a namespaced lookup through ByNamespace finds
+	// nothing, exactly as the real per-namespace indexer does -- so a caller that mistakes a
+	// cluster-scoped resource for a namespaced one and reads it through ByNamespace misses it.
+	ClusterScoped bool
 }
 
 func (f *FakeLister) List(selector labels.Selector) ([]runtime.Object, error) {
@@ -68,7 +73,7 @@ func (f *FakeLister) Get(name string) (runtime.Object, error) {
 }
 
 func (f *FakeLister) ByNamespace(namespace string) cache.GenericNamespaceLister {
-	return &FakeNamespaceLister{Objects: f.Objects, Namespace: namespace, Err: f.Err}
+	return &FakeNamespaceLister{Objects: f.Objects, Namespace: namespace, Err: f.Err, clusterScoped: f.ClusterScoped}
 }
 
 // FakeNamespaceLister implements cache.GenericNamespaceLister.
@@ -76,11 +81,17 @@ type FakeNamespaceLister struct {
 	Objects   []runtime.Object
 	Namespace string
 	Err       error
+	// clusterScoped is propagated from the parent FakeLister; when set, the objects live under no
+	// namespace, so every namespaced lookup here finds nothing.
+	clusterScoped bool
 }
 
 func (f *FakeNamespaceLister) List(selector labels.Selector) ([]runtime.Object, error) {
 	if f.Err != nil {
 		return nil, f.Err
+	}
+	if f.clusterScoped {
+		return nil, nil
 	}
 
 	var filtered []runtime.Object
@@ -102,6 +113,9 @@ func (f *FakeNamespaceLister) List(selector labels.Selector) ([]runtime.Object, 
 func (f *FakeNamespaceLister) Get(name string) (runtime.Object, error) {
 	if f.Err != nil {
 		return nil, f.Err
+	}
+	if f.clusterScoped {
+		return nil, apierrors.NewNotFound(schema.GroupResource{Resource: "test"}, name)
 	}
 	for _, obj := range f.Objects {
 		if uObj := obj.(*unstructured.Unstructured); uObj.GetName() == name && uObj.GetNamespace() == f.Namespace {

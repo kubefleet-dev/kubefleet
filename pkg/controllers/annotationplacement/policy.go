@@ -107,15 +107,33 @@ func parentLabels(gvk schema.GroupVersionKind, name string) map[string]string {
 }
 
 // isGeneratedFor reports whether a live policy is one this controller generated for the given
-// resource identity, judged by the provenance labels rather than by the owner reference.
+// resource identity. It is what stops the controller from overwriting or deleting a policy a user or
+// another tool authored at the deterministic name this resource happens to generate.
 //
-// The name a resource generates is deterministic, so a user or another tool can author a policy that
-// lands on it; overwriting or deleting such a policy would silently commandeer or destroy an object
-// this controller does not own. The provenance labels are the marker: this controller sets them on
-// every policy it generates and maintains them on every pass, and they are derived from the
-// resource's stable identity, not from its UID, so the judgment holds across a delete and recreate of
-// the resource that a UID-based check would get wrong.
+// Ownership is recognized from either marker this controller stamps -- the owner reference back to
+// the source, or the provenance labels -- and does not require both. Both are things applyDesiredPolicy
+// repairs, so demanding both be intact would let a single edited label or stripped owner reference
+// classify one of this controller's own policies as foreign: it would then be denied the very repair
+// that would restore the marker and, worse, denied deletion when its annotation is removed, leaving a
+// placement running with no way to reconcile or clean it up. Recognizing either marker keeps the
+// policy repairable as long as one survives; a foreign policy that merely collides with the name
+// carries neither and is still left untouched. Both markers are derived from the resource's stable
+// identity rather than its UID, so the judgment holds across a delete and recreate of the resource.
+//
+// The one residual gap is a policy that loses both markers at once, which is then indistinguishable
+// from a foreign object and abandoned. It is reachable without malice -- a tool that rewrites the
+// whole object, such as a plain kubectl apply of a hand-kept manifest or a non-server-side-apply
+// Update, drops metadata.labels and metadata.ownerReferences together -- but a policy this controller
+// generated is not one a user is expected to manage that way, and requiring both markers to survive
+// is the accepted price of never touching a policy that is genuinely someone else's.
 func isGeneratedFor(policy client.Object, gvk schema.GroupVersionKind, name string) bool {
+	sourceRef := metav1.OwnerReference{APIVersion: gvk.GroupVersion().String(), Kind: gvk.Kind, Name: name}
+	for _, ref := range policy.GetOwnerReferences() {
+		if sameOwnerIdentity(ref, sourceRef) {
+			return true
+		}
+	}
+
 	labels := policy.GetLabels()
 	for key, want := range parentLabels(gvk, name) {
 		if labels[key] != want {

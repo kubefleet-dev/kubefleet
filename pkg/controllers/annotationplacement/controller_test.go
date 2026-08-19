@@ -871,6 +871,115 @@ func TestReconcileForeignPolicyAtGeneratedName(t *testing.T) {
 	}
 }
 
+// TestReconcileRepairsDriftedProvenance covers a policy this controller generated whose provenance
+// labels were later edited away. Its owner reference still identifies it as ours, so it must be
+// repaired while the annotation stands and deleted once the annotation is removed -- never stranded
+// as though it were foreign, which would leave its placement running with nothing able to reconcile
+// or remove it.
+func TestReconcileRepairsDriftedProvenance(t *testing.T) {
+	annotated := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
+	selectors, err := parseClusterSelectors(oneSelector)
+	if err != nil {
+		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
+	}
+	// A generated policy whose provenance labels have drifted -- one label is gone -- while the owner
+	// reference this controller set is untouched, so the policy is still recognizable as ours.
+	drifted := func() client.Object {
+		policy := desiredPolicy(annotated, selectors)
+		labels := policy.GetLabels()
+		delete(labels, kfplacementv1alpha1.ParentKindLabel)
+		policy.SetLabels(labels)
+		return policy
+	}
+
+	testCases := []struct {
+		name       string
+		source     *unstructured.Unstructured
+		wantPolicy bool
+		wantReason string
+	}{
+		{
+			name:       "the annotation stands, so the drifted labels are repaired",
+			source:     annotated,
+			wantPolicy: true,
+			wantReason: EventReasonPolicyUpdated,
+		},
+		{
+			name:       "the annotation is gone, so the policy is deleted",
+			source:     newSource(deploymentGVK, testNamespace, testName, nil),
+			wantPolicy: false,
+			wantReason: EventReasonPolicyDeleted,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {tc.source}}, nil, interceptor.Funcs{}, drifted())
+
+			key := keyFor(deploymentGVK, testNamespace, testName)
+			if _, err := r.Reconcile(ctx, key); err != nil {
+				t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+			}
+
+			got, found := policyFrom(ctx, t, r, annotated)
+			if found != tc.wantPolicy {
+				t.Fatalf("Reconcile(%v) left a generated policy = %v, want %v", key, found, tc.wantPolicy)
+			}
+			if tc.wantPolicy {
+				if diff := cmp.Diff(got.GetLabels(), desiredPolicy(annotated, selectors).GetLabels()); diff != "" {
+					t.Errorf("Reconcile(%v) did not restore the drifted provenance labels (-got, +want):\n%s", key, diff)
+				}
+			}
+			if diff := cmp.Diff(recordedReasons(recorder), []string{tc.wantReason}); diff != "" {
+				t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
+			}
+		})
+	}
+}
+
+// TestReconcileResolvesRemovedVersionForClusterScoped covers a cluster-scoped source reached through
+// a key whose version is no longer served -- what the generated policy watch produces from an owner
+// reference written under an old version. Scope must come from the resolved mapping: read from the
+// stale queued version, which the informer manager no longer indexes as cluster-scoped, it would look
+// the object up in a namespace it does not live in and take it for deleted.
+func TestReconcileResolvesRemovedVersionForClusterScoped(t *testing.T) {
+	ctx := context.Background()
+	source := newSource(namespaceGVK, "", testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
+
+	// The informer holds the source as a cluster-scoped resource: it lives under no namespace, so a
+	// namespaced lookup finds nothing. That is what makes this a real regression pin -- determining
+	// scope from the stale queued GVK would misclassify the source as namespaced and read it through
+	// ByNamespace, which now misses it, taking the source for deleted; determining scope from the
+	// resolved mapping reads it through the cluster-scoped lister and finds it.
+	recorder := record.NewFakeRecorder(10)
+	r := &Reconciler{
+		Client:     fake.NewClientBuilder().WithScheme(newScheme(t)).Build(),
+		RestMapper: newRESTMapper(),
+		InformerManager: &testinformer.FakeManager{
+			// The manager knows the served version's scope but not the retired one the key names.
+			APIResources:            map[schema.GroupVersionKind]bool{namespaceGVK: true},
+			IsClusterScopedResource: true,
+			Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
+				namespaceGVR: {Objects: []runtime.Object{source}, ClusterScoped: true},
+			},
+		},
+		Recorder: recorder,
+	}
+
+	// The key names Namespace under a retired version; only the served v1 is registered in the mapper.
+	key := keyFor(schema.GroupVersionKind{Group: "", Version: "v2", Kind: "Namespace"}, "", testName)
+	if _, err := r.Reconcile(ctx, key); err != nil {
+		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+	}
+	if _, found := policyFrom(ctx, t, r, source); !found {
+		t.Errorf("Reconcile(%v) generated no policy, want the cluster-scoped source resolved through the served version", key)
+	}
+	if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonPolicyCreated}); diff != "" {
+		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
+	}
+}
+
 // TestApplyDesiredPolicyRejectsForeignObject covers the branch that exists only so that a scope this
 // package does not know about cannot take the reconcile loop down with it.
 func TestApplyDesiredPolicyRejectsForeignObject(t *testing.T) {

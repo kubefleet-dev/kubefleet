@@ -221,8 +221,15 @@ func (r *Reconciler) sourceObject(key keys.ClusterWideKey) (*unstructured.Unstru
 		return nil, controller.NewExpectedBehaviorError(fmt.Errorf("informer cache for %+v is not synced yet", gvr))
 	}
 
+	// Scope is read from the mapping just resolved, not from the queued key's group-version-kind. The
+	// two can disagree: the key's version may be one the informer manager no longer indexes -- because
+	// it was retired, or because the fallback above resolved a different served version than the key
+	// named -- and the manager's scope lookup is keyed on the exact version, so it would report a
+	// cluster-scoped source as namespaced and read it from a namespace it does not live in, missing it
+	// and taking the resource for deleted. The mapping carries the authoritative scope for the gvr the
+	// object is actually read through.
 	var object runtime.Object
-	if r.InformerManager.IsClusterScopedResources(key.GroupVersionKind()) {
+	if restMapping.Scope.Name() == meta.RESTScopeNameRoot {
 		object, err = r.InformerManager.Lister(gvr).Get(key.Name)
 	} else {
 		object, err = r.InformerManager.Lister(gvr).ByNamespace(key.Namespace).Get(key.Name)
