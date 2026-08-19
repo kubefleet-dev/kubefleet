@@ -19,6 +19,7 @@ package placementpolicy
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -35,6 +36,13 @@ import (
 // countAllClusters is the sentinel string value of the ClusterSelector count field that selects
 // every cluster matching the given terms.
 const countAllClusters = "All"
+
+// maxClusterCount is the largest number of clusters a selector's count may request. It mirrors the
+// upper bound of the count field's CRD pattern (^([1-9][0-9]{0,2}|All)$, i.e. 1..999). The pattern
+// constrains only the string form of the int-or-string field, so the integer form is bounded here
+// instead -- both to hold the intended limit and to keep the sum of counts across selectors from
+// overflowing the int32 the desired-cluster total is accumulated in.
+const maxClusterCount = 999
 
 // resolvedCounts is the outcome of interpreting a ClusterSelector's count and minCount fields.
 type resolvedCounts struct {
@@ -61,16 +69,27 @@ func resolveCounts(selector *kfplacementv1alpha1.ClusterSelector) (resolvedCount
 	}
 	switch count.Type {
 	case intstr.String:
-		if count.StrVal != countAllClusters {
-			// The CRD pattern rejects other strings; this branch guards against objects that
-			// bypassed admission (e.g., created before a CRD update).
-			return rc, fmt.Errorf("invalid count value %q: only integers and %q are supported", count.StrVal, countAllClusters)
+		if count.StrVal == countAllClusters {
+			rc.selectAll = true
+			rc.minimum = 1
+			break
 		}
-		rc.selectAll = true
-		rc.minimum = 1
+		// The CRD pattern admits digit strings alongside "All", and the minCount CEL rule converts
+		// them with int(self.count), so a manifest with count: "3" passes admission; parse it here
+		// rather than rejecting a value the API accepts. Anything else, or a digit string outside the
+		// bound (from an object that bypassed admission), is an error.
+		n, err := strconv.Atoi(count.StrVal)
+		if err != nil || n < 1 || n > maxClusterCount {
+			return rc, fmt.Errorf("invalid count value %q: only %q and integers in [1, %d] are supported", count.StrVal, countAllClusters, maxClusterCount)
+		}
+		desired := int32(n) //nolint:gosec // n is bounded to [1, maxClusterCount] above, so the conversion cannot overflow.
+		rc.desired = desired
+		rc.minimum = desired
 	case intstr.Int:
-		if count.IntVal < 1 {
-			return rc, fmt.Errorf("invalid count value %d: must be a positive integer", count.IntVal)
+		// The CRD pattern bounds only the string form, so the integer form is bounded here; the upper
+		// bound also keeps two maximum-valued selectors from overflowing the aggregated desired total.
+		if count.IntVal < 1 || count.IntVal > maxClusterCount {
+			return rc, fmt.Errorf("invalid count value %d: must be an integer in [1, %d]", count.IntVal, maxClusterCount)
 		}
 		rc.desired = count.IntVal
 		rc.minimum = count.IntVal
