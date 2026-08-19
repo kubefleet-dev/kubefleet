@@ -107,9 +107,14 @@ func newReconciler(t *testing.T, sources map[schema.GroupVersionResource][]runti
 		apiResources[gvk] = true
 	}
 	recorder := record.NewFakeRecorder(10)
+	// One fake client backs both the writer and the uncached reader: with a single store the two are
+	// always consistent, which is what every test that is not exercising cache staleness wants. A test
+	// that needs the reader to diverge from a stale cache builds its own reconciler with two stores.
+	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(policies...).WithInterceptorFuncs(funcs).Build()
 	return &Reconciler{
-		Client:     fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(policies...).WithInterceptorFuncs(funcs).Build(),
-		RestMapper: newRESTMapper(),
+		Client:         c,
+		UncachedReader: c,
+		RestMapper:     newRESTMapper(),
 		InformerManager: &testinformer.FakeManager{
 			APIResources:            apiResources,
 			IsClusterScopedResource: true,
@@ -953,9 +958,11 @@ func TestReconcileResolvesRemovedVersionForClusterScoped(t *testing.T) {
 	// ByNamespace, which now misses it, taking the source for deleted; determining scope from the
 	// resolved mapping reads it through the cluster-scoped lister and finds it.
 	recorder := record.NewFakeRecorder(10)
+	c := fake.NewClientBuilder().WithScheme(newScheme(t)).Build()
 	r := &Reconciler{
-		Client:     fake.NewClientBuilder().WithScheme(newScheme(t)).Build(),
-		RestMapper: newRESTMapper(),
+		Client:         c,
+		UncachedReader: c,
+		RestMapper:     newRESTMapper(),
 		InformerManager: &testinformer.FakeManager{
 			// The manager knows the served version's scope but not the retired one the key names.
 			APIResources:            map[schema.GroupVersionKind]bool{namespaceGVK: true},
@@ -974,6 +981,103 @@ func TestReconcileResolvesRemovedVersionForClusterScoped(t *testing.T) {
 	}
 	if _, found := policyFrom(ctx, t, r, source); !found {
 		t.Errorf("Reconcile(%v) generated no policy, want the cluster-scoped source resolved through the served version", key)
+	}
+	if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonPolicyCreated}); diff != "" {
+		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
+	}
+}
+
+// TestReconcileReadsPolicyThroughUncachedReader covers the read that repairs drift. The generated
+// policies are watched through a different informer than a manager cache reads from, so a read from
+// such a cache can lag behind the watch that just fired. The reconciler must read the policy through
+// the uncached reader, which is current as of the moment the watch fired, or it would see a stale
+// object, decide nothing changed, and leave the drift -- or, for a deletion, leave it forever.
+func TestReconcileReadsPolicyThroughUncachedReader(t *testing.T) {
+	ctx := context.Background()
+	source := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
+	correct, err := parseClusterSelectors(oneSelector)
+	if err != nil {
+		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
+	}
+	drifted, err := parseClusterSelectors(twoSelectors)
+	if err != nil {
+		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", twoSelectors, err)
+	}
+
+	// The writer's cache is stale: it holds the policy exactly as this controller last wrote it. The
+	// uncached reader is current, and the policy has drifted since. A reconciler reading the writer's
+	// cache would see no difference and never repair the drift.
+	writer := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(desiredPolicy(source, correct)).Build()
+	uncached := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(desiredPolicy(source, drifted)).Build()
+
+	recorder := record.NewFakeRecorder(10)
+	r := &Reconciler{
+		Client:         writer,
+		UncachedReader: uncached,
+		RestMapper:     newRESTMapper(),
+		InformerManager: &testinformer.FakeManager{
+			Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
+				deploymentGVR: {Objects: []runtime.Object{source}},
+			},
+		},
+		Recorder: recorder,
+	}
+
+	key := keyFor(deploymentGVK, testNamespace, testName)
+	if _, err := r.Reconcile(ctx, key); err != nil {
+		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+	}
+	// The drift the uncached reader sees is repaired; read from the stale writer cache, no update
+	// would have been recorded.
+	if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonPolicyUpdated}); diff != "" {
+		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
+	}
+}
+
+// TestReconcileRequeuesWhileForeignPolicyBlocks covers a source whose generated name is occupied by a
+// foreign policy. Removing that policy fires no event that reaches the source -- it carries no owner
+// reference to it -- and the annotation does not change, so the reconciler must requeue the source
+// itself, or the requested policy would never be created once the conflict is cleared.
+func TestReconcileRequeuesWhileForeignPolicyBlocks(t *testing.T) {
+	ctx := context.Background()
+	source := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
+	foreign := &kfplacementv1alpha1.PlacementPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      generatedPolicyName(deploymentGVK, testNamespace, testName),
+			Namespace: testNamespace,
+		},
+		Spec: kfplacementv1alpha1.PlacementPolicySpec{
+			ResourceSelectors: []kfplacementv1alpha1.ResourceSelector{{APIGroup: "example.com", APIVersion: "v1", Kind: "Widget", Name: "hand-authored"}},
+		},
+	}
+	r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {source}}, nil, interceptor.Funcs{}, foreign)
+
+	key := keyFor(deploymentGVK, testNamespace, testName)
+	result, err := r.Reconcile(ctx, key)
+	if err != nil {
+		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+	}
+	if result.RequeueAfter != conflictRequeueAfter {
+		t.Errorf("Reconcile(%v).RequeueAfter = %v, want %v so the blocked source is retried", key, result.RequeueAfter, conflictRequeueAfter)
+	}
+	if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonPolicyConflict}); diff != "" {
+		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
+	}
+
+	// The user removes the blocking policy. The next pass creates the requested policy and stops
+	// requeueing, which is the resumption a bare return would never have reached.
+	if err := r.Client.Delete(ctx, foreign); err != nil {
+		t.Fatalf("Delete(foreign) = %v, want no error", err)
+	}
+	result, err = r.Reconcile(ctx, key)
+	if err != nil {
+		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+	}
+	if result.RequeueAfter != 0 {
+		t.Errorf("Reconcile(%v).RequeueAfter = %v after the conflict cleared, want no requeue", key, result.RequeueAfter)
+	}
+	if _, found := policyFrom(ctx, t, r, source); !found {
+		t.Errorf("Reconcile(%v) did not create the policy after the conflict cleared", key)
 	}
 	if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonPolicyCreated}); diff != "" {
 		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)

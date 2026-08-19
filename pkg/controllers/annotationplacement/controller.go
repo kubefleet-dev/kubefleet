@@ -68,16 +68,37 @@ const (
 	EventReasonPolicyConflict = "PlacementPolicyConflict"
 )
 
+// conflictRequeueAfter is how long the reconciler waits before re-examining a source whose generated
+// name is occupied by a policy it did not create.
+//
+// The source has to be requeued, not merely left, because nothing else will bring it back: the
+// blocking policy carries no owner reference to the source, so removing it enqueues its own owners
+// and never this source, and the annotation the source carries does not change, so no source event
+// fires either. Without a requeue the placement the annotation asks for would never be created once
+// the conflict is cleared. The interval is a compromise -- short enough that resolving the conflict
+// takes visible effect soon, long enough that a conflict left in place does not busy-poll.
+const conflictRequeueAfter = time.Minute
+
 // Reconciler keeps the placement policy generated from a resource's cluster-selectors annotation in
 // sync with that annotation.
 //
 // It is driven by the same dynamic informers as the resource change controller, so its queue holds
 // keys for resources of any kind the hub agent watches, not for the generated policies themselves.
 type Reconciler struct {
-	// Client reads and writes the generated placement policies. Its reads are expected to be served
-	// from a cache: the reconciler reads a policy on every pass, including for the overwhelming
-	// majority of resources that carry no annotation and generate none.
+	// Client writes the generated placement policies -- creating, updating, and deleting them. Reads
+	// go through UncachedReader, so this is used only for the mutations.
 	Client client.Client
+
+	// UncachedReader reads the generated placement policies straight from the API server rather than
+	// from a cache. The policies are watched through a different informer than a manager-backed cache
+	// would read from, and the two can sit at different points: were a policy read from a cache, an
+	// edit or a deletion the policy watch delivered first could be met with a stale object, the pass
+	// would conclude nothing had changed, and the drift would stand until the next resync -- or, for a
+	// deletion, forever, since a deleted object is gone from the watch's own cache and no later event
+	// or resync re-delivers it. A read from the API server is current as of the moment the watch
+	// fired. The reconciler's queue holds only annotated resources and the owners of generated
+	// policies, so this read is not on the hot path of every watched resource in the cluster.
+	UncachedReader client.Reader
 
 	// RestMapper converts the group kind of a queued key into the resource that the informer
 	// manager knows it by.
@@ -196,7 +217,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, key controller.QueueKey) (ct
 			"The %s annotation is not valid and no placement policy was generated from it: %s", kfplacementv1alpha1.ClusterSelectorsAnnotation, err)
 		return ctrl.Result{}, nil
 	}
-	return ctrl.Result{}, r.syncPolicy(ctx, source, selectors)
+	return r.syncPolicy(ctx, source, selectors)
 }
 
 // sourceObject reads the annotated resource a queued key refers to.
@@ -247,25 +268,26 @@ func (r *Reconciler) sourceObject(key keys.ClusterWideKey) (*unstructured.Unstru
 	return source, nil
 }
 
-// syncPolicy creates or updates the policy generated from a resource's annotation.
-func (r *Reconciler) syncPolicy(ctx context.Context, source *unstructured.Unstructured, selectors []kfplacementv1alpha1.ClusterSelector) error {
+// syncPolicy creates or updates the policy generated from a resource's annotation, reporting whether
+// the source needs to be looked at again later.
+func (r *Reconciler) syncPolicy(ctx context.Context, source *unstructured.Unstructured, selectors []kfplacementv1alpha1.ClusterSelector) (ctrl.Result, error) {
 	desired := desiredPolicy(source, selectors)
 	actual := emptyPolicyForScope(source.GetNamespace())
 
-	err := r.Client.Get(ctx, client.ObjectKeyFromObject(desired), actual)
+	err := r.UncachedReader.Get(ctx, client.ObjectKeyFromObject(desired), actual)
 	switch {
 	case apierrors.IsNotFound(err):
 		if err := r.Client.Create(ctx, desired); err != nil {
 			klog.ErrorS(err, "Failed to create the generated placement policy", "obj", klog.KObj(source), "policy", klog.KObj(desired))
-			return controller.NewAPIServerError(false, err)
+			return ctrl.Result{}, controller.NewAPIServerError(false, err)
 		}
 		klog.V(2).InfoS("Created the generated placement policy", "obj", klog.KObj(source), "policy", klog.KObj(desired))
 		r.Recorder.Eventf(source, corev1.EventTypeNormal, EventReasonPolicyCreated,
 			"Created the %s %s from the %s annotation", generatedPolicyKind(source.GetNamespace()), desired.GetName(), kfplacementv1alpha1.ClusterSelectorsAnnotation)
-		return nil
+		return ctrl.Result{}, nil
 	case err != nil:
 		klog.ErrorS(err, "Failed to get the generated placement policy", "obj", klog.KObj(source), "policy", klog.KObj(desired))
-		return controller.NewAPIServerError(true, err)
+		return ctrl.Result{}, controller.NewAPIServerError(true, err)
 	}
 
 	if !isGeneratedFor(actual, source.GroupVersionKind(), source.GetName()) {
@@ -275,24 +297,29 @@ func (r *Reconciler) syncPolicy(ctx context.Context, source *unstructured.Unstru
 		// as found and the conflict is surfaced to the user instead. The name mixes in a hash of the
 		// resource's identity, so a genuine collision is near impossible and almost always means the
 		// name was chosen deliberately.
+		//
+		// The source is requeued rather than dropped: removing the blocking policy fires no event that
+		// would reach this source (the policy carries no owner reference to it), and the annotation
+		// does not change, so nothing else would ever create the requested policy once the conflict is
+		// cleared. See conflictRequeueAfter.
 		klog.V(2).InfoS("A policy at the generated name was not generated by this controller; leaving it untouched", "obj", klog.KObj(source), "policy", klog.KObj(actual))
 		r.Recorder.Eventf(source, corev1.EventTypeWarning, EventReasonPolicyConflict,
 			"A %s named %s already exists and was not generated from the %s annotation; it was left unchanged", generatedPolicyKind(source.GetNamespace()), actual.GetName(), kfplacementv1alpha1.ClusterSelectorsAnnotation)
-		return nil
+		return ctrl.Result{RequeueAfter: conflictRequeueAfter}, nil
 	}
 
 	if !applyDesiredPolicy(actual, desired) {
 		klog.V(3).InfoS("The generated placement policy is already up to date", "obj", klog.KObj(source), "policy", klog.KObj(actual))
-		return nil
+		return ctrl.Result{}, nil
 	}
 	if err := r.Client.Update(ctx, actual); err != nil {
 		klog.ErrorS(err, "Failed to update the generated placement policy", "obj", klog.KObj(source), "policy", klog.KObj(actual))
-		return controller.NewAPIServerError(false, err)
+		return ctrl.Result{}, controller.NewAPIServerError(false, err)
 	}
 	klog.V(2).InfoS("Updated the generated placement policy", "obj", klog.KObj(source), "policy", klog.KObj(actual))
 	r.Recorder.Eventf(source, corev1.EventTypeNormal, EventReasonPolicyUpdated,
 		"Updated the %s %s from the %s annotation", generatedPolicyKind(source.GetNamespace()), actual.GetName(), kfplacementv1alpha1.ClusterSelectorsAnnotation)
-	return nil
+	return ctrl.Result{}, nil
 }
 
 // deletePolicy removes the policy generated for a resource that should not have one -- because the
@@ -320,13 +347,14 @@ func (r *Reconciler) deletePolicy(ctx context.Context, source *unstructured.Unst
 // policy's name and whether this pass performed the deletion. The name is returned so a caller that
 // logs or records an event about the deletion need not derive it a second time.
 //
-// The policy is read before it is deleted, which for the vast majority of resources — those that
-// were never annotated at all — is a single cached read and no request to the API server.
+// The policy is read through the uncached reader before it is deleted, so a deletion the policy watch
+// delivered is seen even if a cache has yet to catch up; the read is confined to annotated resources,
+// which are all that reach this controller's queue.
 func (r *Reconciler) deleteGeneratedPolicy(ctx context.Context, gvk schema.GroupVersionKind, namespace, name string) (string, bool, error) {
 	actual := emptyPolicyForScope(namespace)
 	policyName := generatedPolicyName(gvk, namespace, name)
 
-	err := r.Client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: policyName}, actual)
+	err := r.UncachedReader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: policyName}, actual)
 	switch {
 	case apierrors.IsNotFound(err):
 		return policyName, false, nil
@@ -344,7 +372,7 @@ func (r *Reconciler) deleteGeneratedPolicy(ctx context.Context, gvk schema.Group
 
 	if err := r.Client.Delete(ctx, actual); err != nil {
 		if apierrors.IsNotFound(err) {
-			// The cached read raced a deletion that already happened -- typically this controller's
+			// The read above raced a deletion that already happened -- typically this controller's
 			// own, re-entered through the generated policy watch moments later. Nothing was deleted
 			// here, and reporting otherwise would log, and on some paths announce to the user, a
 			// deletion that this pass did not perform.
