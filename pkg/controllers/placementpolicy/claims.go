@@ -183,9 +183,18 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy policyObject, o
 			continue
 		}
 		klog.V(2).InfoS("Withdrawing a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy.Unwrap()))
-		if err := r.Delete(ctx, claim); err != nil && !errors.IsNotFound(err) {
+		if err := r.Delete(ctx, claim); err != nil {
+			if errors.IsNotFound(err) {
+				// Already fully gone; it occupies nothing.
+				continue
+			}
 			return outstanding, err
 		}
+		// A claim withdrawn this pass still occupies its budget slot: a provisioner finalizer
+		// can hold it in Terminating past this reconcile, and a differently-named claim created
+		// below would otherwise stand beside it, exceeding the concurrency budget. The claim
+		// watch re-queues the policy once the object is truly gone, and the slot frees then.
+		outstanding++
 	}
 
 	if len(wantedByName) == 0 {
@@ -212,6 +221,11 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy policyObject, o
 				PlacementPolicyRef:   policyReference(policy),
 				ClusterSelectorTerms: w.terms,
 			},
+		}
+		if outstanding >= maxConcurrentClaimsPerPolicy {
+			// Every slot is taken, by kept claims or by ones withdrawn moments ago that may
+			// still be terminating; the create is retried when a watch frees a slot.
+			break
 		}
 		klog.V(2).InfoS("Adding a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy.Unwrap()))
 		if err := r.Create(ctx, claim); err != nil {
@@ -266,14 +280,23 @@ func (r *Reconciler) cleanupClaims(ctx context.Context, policy policyObject) err
 		return nil
 	}
 
+	// The release decision cannot rest on the ownership labels: labels are mutable, and a claim
+	// whose labels were stripped would vanish from a label-selected list, releasing the
+	// finalizer over a claim that still exists -- permanently orphaned, since nothing else ever
+	// looks at claims of a gone policy. The claim's spec.placementPolicyRef is immutable, so
+	// every claim is listed and ownership is decided by the reference.
 	claims := &kfplacementv1alpha1.ClusterClaimList{}
-	if err := r.uncachedReader.List(ctx, claims, claimOwnershipLabels(policy)); err != nil {
+	if err := r.uncachedReader.List(ctx, claims); err != nil {
 		klog.ErrorS(err, "Failed to list cluster claims for the deleted policy", "placementPolicy", klog.KObj(policy.Unwrap()))
 		return err
 	}
+	ownRef := policyReference(policy)
 	remaining := 0
 	for i := range claims.Items {
 		claim := &claims.Items[i]
+		if !claimBelongsTo(claim, ownRef) {
+			continue
+		}
 		if !claim.DeletionTimestamp.IsZero() {
 			remaining++
 			continue
@@ -312,7 +335,24 @@ func (r *Reconciler) ensureFinalizer(ctx context.Context, policy policyObject) e
 	return r.Update(ctx, obj)
 }
 
-// listClaims lists the cluster claims belonging to a policy via the ownership labels.
+// claimBelongsTo reports whether a claim's immutable back-reference names the given policy.
+// The API enforces the reference's immutability, which is what makes it, unlike the ownership
+// labels, fit to gate the cleanup finalizer's release.
+//
+// The comparison deliberately ignores the reference's API group and version: kind, namespace,
+// and name identify the same object across an API promotion, and a version-strict comparison
+// would orphan every outstanding claim the moment the policy API moved to a new version.
+func claimBelongsTo(claim *kfplacementv1alpha1.ClusterClaim, ref *kfplacementv1alpha1.ObjectReference) bool {
+	got := claim.Spec.PlacementPolicyRef
+	if got == nil || ref == nil {
+		return false
+	}
+	return got.Kind == ref.Kind && got.Name == ref.Name && got.Namespace == ref.Namespace
+}
+
+// listClaims lists the cluster claims belonging to a policy via the ownership labels. The
+// labels are the fast path for the live reconcile; the cleanup path, whose mistake would be
+// permanent, goes by the immutable reference instead (see cleanupClaims).
 func (r *Reconciler) listClaims(ctx context.Context, policy policyObject) ([]kfplacementv1alpha1.ClusterClaim, error) {
 	claims := &kfplacementv1alpha1.ClusterClaimList{}
 	if err := r.List(ctx, claims, claimOwnershipLabels(policy)); err != nil {

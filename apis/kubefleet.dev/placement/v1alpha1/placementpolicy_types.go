@@ -548,8 +548,9 @@ type PlacementPolicyStatus struct {
 	ResourcesAvailableClusters *int32 `json:"resourcesAvailableClusters,omitempty"`
 
 	// The number of active cluster claims that have been submitted by this placement. A claim
-	// that is being withdrawn but is held back by a provisioner finalizer still counts as
-	// active, as it continues to occupy the placement's claim budget until it is gone.
+	// that is being withdrawn still counts as active until KubeFleet observes it gone --
+	// whether a provisioner finalizer holds it or the withdrawal simply has not been confirmed
+	// yet -- as it continues to occupy the placement's claim budget.
 	ActiveClusterClaims *int32 `json:"activeClusterClaims,omitempty"`
 
 	// The binding manager that is currently managing the bindings for this placement.

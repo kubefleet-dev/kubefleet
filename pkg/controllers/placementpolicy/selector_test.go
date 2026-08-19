@@ -132,6 +132,75 @@ func TestResolveCounts(t *testing.T) {
 	}
 }
 
+// TestMatchesTermsWithBrokenTerms covers the OR semantics under evaluation errors: one broken
+// term must not veto a later term that matches on its own, and the error surfaces only when no
+// term matches, since only then does the broken term's answer matter.
+func TestMatchesTermsWithBrokenTerms(t *testing.T) {
+	eastusCluster := testCluster("eastus-cluster", map[string]string{regionLabel: "eastus"}, nil, nil)
+	// An operator the evaluator does not know fails unconditionally, unlike a numeric
+	// comparison, whose absence semantics can swallow a malformed value into a clean no-match.
+	brokenTerm := kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{
+		MatchClusterPropertyExpressions: []kfplacementv1alpha1.LabelClusterPropertyExpression{
+			{Key: "resources.kubefleet.dev/total-cpu", Operator: kfplacementv1alpha1.LabelClusterPropertyExpressionOperator("Bogus"), Values: []string{"1"}},
+		},
+	}
+
+	testCases := []struct {
+		name    string
+		terms   []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm
+		want    bool
+		wantErr bool
+	}{
+		{
+			name: "a broken term does not veto a later matching term",
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{
+				brokenTerm,
+				{MatchLabels: map[string]string{regionLabel: "eastus"}},
+			},
+			want: true,
+		},
+		{
+			name: "a broken term after the matching term changes nothing",
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{
+				{MatchLabels: map[string]string{regionLabel: "eastus"}},
+				brokenTerm,
+			},
+			want: true,
+		},
+		{
+			name: "the error surfaces when no term matches",
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{
+				brokenTerm,
+				{MatchLabels: map[string]string{regionLabel: "westus"}},
+			},
+			wantErr: true,
+		},
+		{
+			name:    "only broken terms surface the error",
+			terms:   []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{brokenTerm},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := matchesTerms(eastusCluster, tc.terms)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("matchesTerms() = %v, nil, want an error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("matchesTerms() = %v, want no error", err)
+			}
+			if got != tc.want {
+				t.Errorf("matchesTerms() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestMatchesTerms(t *testing.T) {
 	eastusCluster := testCluster("eastus-cluster", map[string]string{regionLabel: "eastus", envLabel: "prod"}, nil, nil)
 
