@@ -92,15 +92,58 @@ func Truncate(s string, maxLength int) string {
 	return TrimSeparators(s[:maxLength])
 }
 
-// LabelValue renders value so that it fits in a label value, shortening it to a prefix and a hash
-// of the whole when it does not.
+// Sanitize renders s legal as a single label of a generated DNS-1123 name: it lowercases the value
+// and replaces every character outside [a-z0-9-] with a dash. A name legal for its own API but not
+// as a Kubernetes object name -- an RBAC name like system:aggregate-to-admin, whose colon a DNS-1123
+// name forbids -- becomes usable this way.
 //
-// The shortened form is lossy by design, and callers must treat it that way: selecting on the
-// label with the original value matches nothing once the value has been shortened, so anything
-// that needs to resolve an exact identity has to read it from a field that has no length limit.
+// The dot is mapped to a dash along with everything else, rather than kept as a label separator: a
+// dot is only legal between two alphanumerics, so preserving it would let an invalid character next
+// to it (or another dot) produce an empty or dash-bounded label that the API server still rejects --
+// the very failure Sanitize exists to prevent. Its one caller joins the sanitized parts with dashes
+// anyway, so no dot is needed to keep them apart.
+//
+// It is lossy: distinct inputs can sanitize to the same string, so a caller must still append Hash
+// of the full, unsanitized identity for uniqueness.
+func Sanitize(s string) string {
+	return TrimSeparators(strings.TrimLeft(mapInvalid(strings.ToLower(s), isDNS1123Char), separators))
+}
+
+// sanitizeLabelValue is Sanitize's counterpart for a label value, whose legal character set is
+// wider (it keeps case and underscores). It exists so LabelValue never returns a value the API
+// server would reject; like Sanitize it is lossy and relies on a hash for identity.
+func sanitizeLabelValue(value string) string {
+	return TrimSeparators(strings.TrimLeft(mapInvalid(value, isLabelValueChar), separators))
+}
+
+func mapInvalid(s string, valid func(rune) bool) string {
+	return strings.Map(func(r rune) rune {
+		if valid(r) {
+			return r
+		}
+		return '-'
+	}, s)
+}
+
+func isDNS1123Char(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-'
+}
+
+func isLabelValueChar(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.'
+}
+
+// LabelValue renders value so that it fits in a label value, sanitizing characters the API server
+// would reject and shortening it to a prefix and a hash of the whole when it is too long.
+//
+// The result is lossy by design -- both sanitization and shortening can collapse distinct values --
+// and callers must treat it that way: selecting on the label with the original value matches nothing
+// once it has been rewritten, so anything that needs to resolve an exact identity has to read it
+// from a field that has neither a character nor a length limit.
 func LabelValue(value string) string {
-	if len(value) <= validation.LabelValueMaxLength {
-		return value
+	sanitized := sanitizeLabelValue(value)
+	if len(sanitized) <= validation.LabelValueMaxLength {
+		return sanitized
 	}
-	return fmt.Sprintf("%s-%s", TrimSeparators(value[:labelValuePrefixMaxLength]), Hash(value))
+	return fmt.Sprintf("%s-%s", TrimSeparators(sanitized[:labelValuePrefixMaxLength]), Hash(value))
 }

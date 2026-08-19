@@ -66,11 +66,16 @@ const (
 // resource's whole identity, including the parts that do not appear in the name at all, so two
 // resources cannot generate one name even when truncation erases what distinguishes them.
 func generatedPolicyName(gvk schema.GroupVersionKind, namespace, name string) string {
-	kindSegment := naming.Truncate(strings.ToLower(gvk.Kind), maxKindSegmentLength)
+	// The kind and the name are sanitized before they appear in the name: a resource legal for its
+	// own API can carry characters a DNS-1123 object name forbids (an RBAC name like
+	// system:aggregate-to-admin), and copying them through would produce a policy the API server
+	// rejects, hot-looping the reconciler. The hash below is taken over the unsanitized identity, so
+	// sanitizing the visible parts costs no uniqueness.
+	kindSegment := naming.Truncate(naming.Sanitize(gvk.Kind), maxKindSegmentLength)
 
 	// Whatever the kind and the hash do not use is available to the resource's own name.
 	nameBudget := validation.DNS1123SubdomainMaxLength - len(kindSegment) - naming.HashLength - separatorCount
-	nameSegment := naming.Truncate(name, nameBudget)
+	nameSegment := naming.Truncate(naming.Sanitize(name), nameBudget)
 
 	// Empty segments are dropped rather than joined. An object always has a name, and one read
 	// from the API server always has a kind, but joining an empty leading segment would put a
@@ -99,6 +104,25 @@ func parentLabels(gvk schema.GroupVersionKind, name string) map[string]string {
 		kfplacementv1alpha1.ParentKindLabel:     naming.LabelValue(gvk.Kind),
 		kfplacementv1alpha1.ParentNameLabel:     naming.LabelValue(name),
 	}
+}
+
+// isGeneratedFor reports whether a live policy is one this controller generated for the given
+// resource identity, judged by the provenance labels rather than by the owner reference.
+//
+// The name a resource generates is deterministic, so a user or another tool can author a policy that
+// lands on it; overwriting or deleting such a policy would silently commandeer or destroy an object
+// this controller does not own. The provenance labels are the marker: this controller sets them on
+// every policy it generates and maintains them on every pass, and they are derived from the
+// resource's stable identity, not from its UID, so the judgment holds across a delete and recreate of
+// the resource that a UID-based check would get wrong.
+func isGeneratedFor(policy client.Object, gvk schema.GroupVersionKind, name string) bool {
+	labels := policy.GetLabels()
+	for key, want := range parentLabels(gvk, name) {
+		if labels[key] != want {
+			return false
+		}
+	}
+	return true
 }
 
 // parentOwnerReference returns the owner reference that ties a generated policy to the resource it
