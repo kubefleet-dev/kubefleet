@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -14,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
 
@@ -87,5 +89,56 @@ func (v *memberClusterValidator) Handle(ctx context.Context, req admission.Reque
 		klog.V(2).ErrorS(err, "Member cluster has invalid fields, request is denied", "operation", req.Operation, "memberCluster", mcObjectName)
 		return admission.Denied(err.Error())
 	}
-	return admission.Allowed("Member cluster has valid fields")
+
+	response := admission.Allowed("Member cluster has valid fields")
+	if warning := v.clusterAliasCollisionWarning(ctx, &mc); warning != "" {
+		response = response.WithWarnings(warning)
+	}
+	return response
+}
+
+// clusterAliasCollisionWarning returns a warning message if another member cluster already carries
+// the alias this one is being labelled with, or the empty string otherwise.
+//
+// The alias selects a cluster by a name of the admin's choosing, so it is meant to identify one
+// cluster; two clusters sharing an alias makes an alias-based selector match both. It is only a
+// warning, never a denial: labelling a replacement cluster with the outgoing one's alias before
+// removing it from the outgoing one is exactly the handoff the alias exists to allow, and that
+// handoff passes through a state where two clusters share the alias. For the same reason a failure
+// to list the member clusters does not block the request -- an advisory check must not stand
+// between an admin and the cluster they are registering.
+func (v *memberClusterValidator) clusterAliasCollisionWarning(ctx context.Context, mc *clusterv1beta1.MemberCluster) string {
+	alias, ok := mc.Labels[kfplacementv1alpha1.ClusterAliasLabel]
+	if !ok || alias == "" {
+		return ""
+	}
+
+	memberClusterList := &clusterv1beta1.MemberClusterList{}
+	if err := v.client.List(ctx, memberClusterList); err != nil {
+		klog.V(2).ErrorS(err, "Failed to list member clusters for the alias uniqueness check; admitting without a warning", "memberCluster", klog.KObj(mc))
+		return ""
+	}
+
+	holders := make([]string, 0, len(memberClusterList.Items))
+	for i := range memberClusterList.Items {
+		other := &memberClusterList.Items[i]
+		if other.Name == mc.Name {
+			continue
+		}
+		if other.Labels[kfplacementv1alpha1.ClusterAliasLabel] == alias {
+			holders = append(holders, other.Name)
+		}
+	}
+	if len(holders) == 0 {
+		return ""
+	}
+	// The message leads with the alias value and lists at most a few holders: an admission warning
+	// is truncated by the API server past 256 bytes, and the admin already knows which label they
+	// set, so the actionable half -- the value and who else holds it -- must fit inside that budget.
+	const maxListedHolders = 3
+	listed := holders
+	if len(listed) > maxListedHolders {
+		listed = append(listed[:maxListedHolders:maxListedHolders], fmt.Sprintf("and %d more", len(holders)-maxListedHolders))
+	}
+	return fmt.Sprintf("cluster alias %q is already used by %s; an alias-based cluster selector will match more than one cluster while this is the case", alias, strings.Join(listed, ", "))
 }
