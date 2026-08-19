@@ -539,7 +539,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			// through the generated policy watch, or through the deletion-shaped event the detector
 			// reports when a resource stops passing the filter without being deleted.
 			ShouldPlace: func(source *unstructured.Unstructured) (bool, error) {
-				if !utils.ShouldPropagateNamespace(source.GetNamespace(), skippedNamespaces) {
+				if !utils.ShouldPropagateNamespace(annotationplacement.SourceNamespace(source), skippedNamespaces) {
 					return false, nil
 				}
 				return controller.ShouldPropagateObj(dynamicInformerManager, source.DeepCopy(), opts.WebhookAndAdmissionPolicyOpts.EnableWorkload)

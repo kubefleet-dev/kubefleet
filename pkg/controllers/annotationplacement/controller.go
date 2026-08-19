@@ -41,7 +41,9 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/keys"
 )
 
-// The reasons of the events this controller records on the annotated resource.
+// The reasons of the events this controller records on the annotated resource. Each reason is the
+// same whether the generated object is a PlacementPolicy or a ClusterPlacementPolicy -- the reason
+// names the action, and the event message names the concrete kind.
 //
 // The events are recorded on the resource the user annotated rather than on the policy generated
 // from it, because the resource is where a user who has just run kubectl annotate is looking, and
@@ -83,10 +85,20 @@ type Reconciler struct {
 	Recorder record.EventRecorder
 
 	// ShouldPlace reports whether a resource is one KubeFleet places at all, mirroring the filter
-	// the resource watcher applies to its events. The reconciler applies it again because it can be
-	// reached for a resource the watcher would filter out: the watcher reports a resource that
-	// stops passing its filter as a deletion, and the generated policy watch enqueues whatever a
-	// policy names as its owner. A resource that fails the check has its generated policy deleted.
+	// the resource watcher applies to its events. For example, a Deployment in a user namespace
+	// should place (true); a ConfigMap in a skipped namespace like kube-system, or a ReplicaSet a
+	// Deployment already owns, should not (false).
+	//
+	// The reconciler applies it again because it can be reached for a resource the watcher would
+	// filter out: the watcher reports a resource that stops passing its filter as a deletion, and
+	// the generated policy watch enqueues whatever a policy names as its owner. A resource that
+	// fails the check has its generated policy deleted.
+	//
+	// Eligibility can change over a resource's life -- an owned ReplicaSet becomes eligible again
+	// once orphaned, a resource stays ineligible while in a skipped namespace. The transitions that
+	// matter are edits to the resource itself (its owner references, its labels), so each fires an
+	// event that re-runs this check; a resource that becomes eligible again and still carries the
+	// annotation has its policy regenerated on that event.
 	//
 	// Left nil, every resource is eligible.
 	ShouldPlace func(source *unstructured.Unstructured) (bool, error)
