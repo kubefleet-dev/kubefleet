@@ -159,16 +159,24 @@ func matchesTerms(cluster *clusterv1beta1.MemberCluster, terms []kfplacementv1al
 	if len(terms) == 0 {
 		return true, nil
 	}
+	// A term that cannot be evaluated does not veto the disjunction: a later term matching on
+	// its own proves the whole OR true regardless of what the broken term would have said. Only
+	// when no term matches does the error surface, since "no match" cannot be distinguished
+	// from "could not tell" at that point.
+	var firstErr error
 	for i := range terms {
 		matched, err := matchesTerm(cluster, &terms[i])
 		if err != nil {
-			return false, err
+			if firstErr == nil {
+				firstErr = fmt.Errorf("selector term %d: %w", i, err)
+			}
+			continue
 		}
 		if matched {
 			return true, nil
 		}
 	}
-	return false, nil
+	return false, firstErr
 }
 
 // matchesTerm reports whether the member cluster satisfies a single selector term; the

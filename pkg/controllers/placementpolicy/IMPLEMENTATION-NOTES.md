@@ -96,9 +96,10 @@ package demonstrating the current behavior.
 - **Selector-term changes replace the claim under the same name**: the stale
   claim is withdrawn and the same deterministic name is re-created with the
   new terms. While the old claim is held Terminating by a provisioner
-  finalizer, `activeClusterClaims` can transiently read zero for that slot
-  (the withdraw round counts neither the just-deleted old claim nor the
-  blocked new one); it self-heals on the claim-watch-triggered reconcile.
+  finalizer, `activeClusterClaims` keeps counting it: the withdraw round
+  treats the just-deleted claim as still occupying its slot, and the
+  replacement create waits for the slot to free rather than standing beside
+  it, so the budget holds through the swap.
 - **A policy with no cluster selectors claims like any other**: the
   synthesized "all clusters" selector inherits the API's `AddClusterClaim`
   default, so a bare policy facing an empty fleet still signals that a
@@ -148,3 +149,13 @@ retry forever, with the policy silently never getting a claim.
   property names containing dashes in the resource name (e.g.
   `allocatable-ephemeral-storage`) were rejected by the two-segment split;
   now parsed with `strings.Cut` and covered by a regression test.
+
+## Cleanup lists every claim
+
+Releasing the claim-cleanup finalizer is gated on an uncached list of ALL
+cluster claims, filtered by each claim's immutable `spec.placementPolicyRef`
+-- the ownership labels are mutable, and a label-stripped claim vanishing
+from a label-selected list would be orphaned permanently. This trades a
+full-collection read per deleting policy for that guarantee; cheap while the
+per-policy claim budget is 1, worth revisiting together with the
+configurable concurrency limits.

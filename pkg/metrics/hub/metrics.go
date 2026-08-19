@@ -63,8 +63,8 @@ var (
 
 	// FleetPlacementPolicyActiveClusterClaims is a prometheus metric which holds the number of
 	// cluster claims a placement policy currently has outstanding, including claims that are
-	// being withdrawn but are still held by a provisioner finalizer. The namespace label is
-	// empty for cluster-scoped placement policies.
+	// being withdrawn and not yet observed gone, held by a provisioner finalizer or not. The
+	// namespace label is empty for cluster-scoped placement policies.
 	FleetPlacementPolicyActiveClusterClaims = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "fleet_workload_placement_policy_active_cluster_claims",
 		Help: "Number of cluster claims currently outstanding for a placement policy",
