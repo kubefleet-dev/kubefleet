@@ -29,6 +29,17 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
 )
 
+// SourceNamespace returns the namespace whose skip-status governs whether a source resource is
+// placed. For an ordinary namespaced resource that is its metadata.namespace; a core Namespace
+// object carries none and is itself the namespace, so its own name is returned. The skip check
+// would otherwise read an empty namespace for a Namespace source and place one KubeFleet excludes.
+func SourceNamespace(source *unstructured.Unstructured) string {
+	if gvk := source.GroupVersionKind(); gvk.Group == "" && gvk.Kind == "Namespace" {
+		return source.GetName()
+	}
+	return source.GetNamespace()
+}
+
 // GeneratedPolicyResources returns the resources that hold the policies this controller generates,
 // for the resource watcher to add informers for.
 //
@@ -85,12 +96,19 @@ func NewGeneratedPolicyEventHandler(enqueue func(obj interface{})) cache.Resourc
 	}
 }
 
-// enqueueGeneratingResources enqueues every resource a policy names as its owner.
+// enqueueGeneratingResources enqueues the resource that generated a policy, identified from the
+// policy's owner references.
 //
-// The owner references are used rather than the parent labels, because the labels are lossy (a long
+// Only the owner whose identity reproduces this policy's own generated name is enqueued. A policy
+// may carry more than one owner reference -- a foreign one that applyDesiredPolicy deliberately
+// preserves, or any owner on a hand-authored policy that happens to share these informers -- and
+// following those would enqueue a key for a kind the resource watcher does not track, which
+// sourceObject would answer by lazily creating an informer outside the resource configuration.
+// Matching the generated name is exact, so only the true source passes.
+//
+// The owner reference is used rather than the parent labels because the labels are lossy (a long
 // name is shortened to a prefix and a hash) and, being labels, can be stripped -- which is itself
-// drift this path exists to repair. Owners that never generated a policy cost one reconciliation
-// that reads the annotation, finds none, looks up a policy under the generated name, and stops.
+// drift this path exists to repair.
 func enqueueGeneratingResources(obj interface{}, enqueue func(obj interface{})) {
 	if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
 		obj = tombstone.Obj
@@ -100,18 +118,24 @@ func enqueueGeneratingResources(obj interface{}, enqueue func(obj interface{})) 
 		klog.ErrorS(fmt.Errorf("object %+v is not a policy: %w", obj, err), "Skipped a generated policy event")
 		return
 	}
+	// A generated policy always lives in the namespace of the resource it came from, and a
+	// cluster-scoped one has none, matching a cluster-scoped owner.
+	policyName, policyNamespace := accessor.GetName(), accessor.GetNamespace()
 	for _, owner := range accessor.GetOwnerReferences() {
 		gv, err := schema.ParseGroupVersion(owner.APIVersion)
 		if err != nil {
 			klog.ErrorS(err, "Skipped an owner with an unparsable API version", "policy", klog.KObj(accessor), "apiVersion", owner.APIVersion)
 			continue
 		}
-		// The owner's own namespace is the policy's: a generated policy always lives in the
-		// namespace of the resource it came from, and a cluster-scoped one has none, matching a
-		// cluster-scoped owner.
+		gvk := gv.WithKind(owner.Kind)
+		if generatedPolicyName(gvk, policyNamespace, owner.Name) != policyName {
+			// Not the owner this policy was generated from; following it would reach a resource
+			// the watcher never selected.
+			continue
+		}
 		source := &unstructured.Unstructured{}
-		source.SetGroupVersionKind(gv.WithKind(owner.Kind))
-		source.SetNamespace(accessor.GetNamespace())
+		source.SetGroupVersionKind(gvk)
+		source.SetNamespace(policyNamespace)
 		source.SetName(owner.Name)
 		enqueue(source)
 	}
