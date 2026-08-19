@@ -218,19 +218,32 @@ func TestGeneratedPolicyNameDistinguishesIdentities(t *testing.T) {
 }
 
 // TestIsGeneratedFor pins the check that keeps this controller from commandeering or deleting a
-// policy someone else authored at a resource's generated name: a policy this controller produced is
-// recognized by its provenance labels, and anything without them, or with different ones, is not.
+// policy someone else authored at a resource's generated name, while still recognizing its own policy
+// after either provenance marker has drifted so that the policy stays repairable and removable.
 func TestIsGeneratedFor(t *testing.T) {
 	source := sourceObject(deploymentGVK, "prod", "app")
 	mine := desiredPolicy(source, nil)
 
-	// A policy at the same name authored by someone else, carrying none of the provenance labels.
+	// The same policy with its provenance labels edited away; the owner reference still identifies it.
+	labelsStripped := mine.DeepCopyObject().(client.Object)
+	labelsStripped.SetLabels(nil)
+
+	// The same policy with its owner reference removed; the provenance labels still identify it.
+	ownerStripped := mine.DeepCopyObject().(client.Object)
+	ownerStripped.SetOwnerReferences(nil)
+
+	// The same policy stripped of both markers; nothing is left to tell it from a foreign object.
+	bothStripped := mine.DeepCopyObject().(client.Object)
+	bothStripped.SetLabels(nil)
+	bothStripped.SetOwnerReferences(nil)
+
+	// A policy at the same name authored by someone else, carrying neither marker.
 	foreign := emptyPolicyForScope("prod")
 	foreign.SetName(mine.GetName())
 	foreign.SetNamespace("prod")
 
-	// A policy that carries the labels but for a different resource -- the collision a bare name
-	// match would miss.
+	// A policy that carries another resource's provenance -- the collision a bare name match would
+	// miss -- and no owner reference to this source.
 	otherSource := sourceObject(deploymentGVK, "prod", "other")
 	otherLabelled := emptyPolicyForScope("prod")
 	otherLabelled.SetName(mine.GetName())
@@ -243,7 +256,10 @@ func TestIsGeneratedFor(t *testing.T) {
 		want   bool
 	}{
 		{name: "the policy this controller generated", policy: mine, want: true},
-		{name: "a foreign policy with no provenance labels", policy: foreign, want: false},
+		{name: "our policy with its labels stripped is still recognized by its owner reference", policy: labelsStripped, want: true},
+		{name: "our policy with its owner reference stripped is still recognized by its labels", policy: ownerStripped, want: true},
+		{name: "our policy with both markers gone is indistinguishable from foreign", policy: bothStripped, want: false},
+		{name: "a foreign policy with neither marker", policy: foreign, want: false},
 		{name: "a policy carrying another resource's provenance", policy: otherLabelled, want: false},
 	}
 
