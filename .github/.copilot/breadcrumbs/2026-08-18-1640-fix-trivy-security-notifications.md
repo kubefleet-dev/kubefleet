@@ -24,3 +24,4 @@ Update the scheduled Trivy issue workflow to notify KubeFleet security owners wi
 - Reused the existing daily issue title and `security,trivy` labels.
 - Existing same-day issues are refreshed with the latest vulnerability summary.
 - Validated `.github/workflows/trivy.yml` with actionlint v1.7.12, matching CI.
+- Excluded authenticated CNCF Slack archive links from markdown-link-check after the service returned HTTP 403.
