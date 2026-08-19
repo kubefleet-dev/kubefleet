@@ -126,9 +126,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	}
 
 	activeClaims, claimErr := r.reconcileClaims(ctx, policy, outcomes, mostRecentClusterCreation)
-	// The scheduling status is written even when claim reconciliation failed partway; the
-	// claim error is returned afterwards so the round is retried.
-	if err := r.updateStatus(ctx, policy, outcomes, &activeClaims, scheduledCondition(policy.GetGeneration(), outcomes)); err != nil {
+	// The scheduling status is written even when claim reconciliation failed partway, but the
+	// claim count is published only from a completed round: a failed round returns whatever it
+	// had counted when it stopped, which would misreport the claims that the rest of the round
+	// never reached. A nil count leaves the last completed round's value standing; the retry
+	// corrects it.
+	reportedClaims := &activeClaims
+	if claimErr != nil {
+		reportedClaims = nil
+	}
+	if err := r.updateStatus(ctx, policy, outcomes, reportedClaims, scheduledCondition(policy.GetGeneration(), outcomes)); err != nil {
 		return runtime.Result{}, err
 	}
 	if claimErr != nil {
