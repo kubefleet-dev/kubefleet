@@ -615,6 +615,56 @@ func TestValidateTerms(t *testing.T) {
 			}},
 			wantError: true,
 		},
+		{
+			name: "matchLabels with an invalid key",
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{
+				MatchLabels: map[string]string{"not a valid key": "eastus"},
+			}},
+			wantError: true,
+		},
+		{
+			name: "matchLabels with an invalid value",
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{
+				MatchLabels: map[string]string{regionLabel: "not a valid value"},
+			}},
+			wantError: true,
+		},
+		{
+			name: "non-resource property key that is empty",
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{
+				MatchClusterPropertyExpressions: []kfplacementv1alpha1.LabelClusterPropertyExpression{
+					{Key: "", Operator: kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorDoesNotExist},
+				},
+			}},
+			wantError: true,
+		},
+		{
+			name: "non-resource property key that is not a qualified name",
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{
+				MatchClusterPropertyExpressions: []kfplacementv1alpha1.LabelClusterPropertyExpression{
+					{Key: "not a valid key", Operator: kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorExists},
+				},
+			}},
+			wantError: true,
+		},
+		{
+			name: "valid non-resource property key",
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{
+				MatchClusterPropertyExpressions: []kfplacementv1alpha1.LabelClusterPropertyExpression{
+					{Key: propertyprovider.NodeCountProperty, Operator: kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorExists},
+				},
+			}},
+		},
+		{
+			name: "valid multi-segment non-resource property key",
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{
+				MatchClusterPropertyExpressions: []kfplacementv1alpha1.LabelClusterPropertyExpression{
+					// The Azure property provider ships per-SKU capacity keys in this multi-slash form;
+					// a whole-string IsQualifiedName check would wrongly reject them.
+					{Key: "kubernetes.azure.com/vm-sizes/Standard_D2s_v3/count", Operator: kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorExists},
+				},
+			}},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -624,6 +674,31 @@ func TestValidateTerms(t *testing.T) {
 				t.Errorf("validateTerms(%v) error = %v, want error %t", tc.terms, err, tc.wantError)
 			}
 		})
+	}
+}
+
+// TestValidateTermsDeterministicError guards against a reconcile hot-loop: the validation error
+// surfaces on the policy's Scheduled condition message, so a term with more than one invalid
+// matchLabels entry must always report the same one. Go randomizes map iteration, so validating in
+// map order would return a different message from call to call and defeat the status no-op check.
+func TestValidateTermsDeterministicError(t *testing.T) {
+	terms := []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{
+		MatchLabels: map[string]string{
+			"bad key one": "eastus",
+			"bad key two": "westus",
+		},
+	}}
+	first := validateTerms(terms)
+	if first == nil {
+		t.Fatalf("validateTerms(%v) error = nil, want error", terms)
+	}
+	// Many iterations so a randomized order would almost certainly have produced a different
+	// message at least once.
+	for i := 0; i < 100; i++ {
+		got := validateTerms(terms)
+		if got == nil || got.Error() != first.Error() {
+			t.Fatalf("validateTerms(%v) error = %v, want stable %v", terms, got, first)
+		}
 	}
 }
 

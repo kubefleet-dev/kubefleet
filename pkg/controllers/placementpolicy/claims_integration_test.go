@@ -166,6 +166,32 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		}, eventuallyTimeout, pollInterval).Should(Succeed())
 	})
 
+	It("restores the ownership labels on a still-wanted claim after they are stripped", func() {
+		policy := newPolicy(nextName("pp"), regionSelector("canadacentral", ptr.To(intstr.FromInt32(1)), nil))
+		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
+
+		wantClaimName := claimName(placementPolicyAdapter{policy}, 0)
+		Eventually(func() error {
+			return k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, &kfplacementv1alpha1.ClusterClaim{})
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		By("a provisioner strips the ownership labels while the selector is still unfulfilled")
+		Eventually(func(g Gomega) {
+			claim := &kfplacementv1alpha1.ClusterClaim{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, claim)).Should(Succeed())
+			claim.Labels = nil
+			g.Expect(k8sClient.Update(ctx, claim)).Should(Succeed())
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+
+		By("the controller re-asserts the labels so label-watching consumers find the claim again")
+		Eventually(func(g Gomega) {
+			claim := &kfplacementv1alpha1.ClusterClaim{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, claim)).Should(Succeed())
+			g.Expect(claim.Labels).Should(HaveKeyWithValue(kfplacementv1alpha1.ClusterClaimPolicyNameLabel, policy.Name))
+			g.Expect(claim.Labels).Should(HaveKeyWithValue(kfplacementv1alpha1.ClusterClaimPolicyNamespaceLabel, testNamespace))
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+	})
+
 	It("releases the cleanup finalizer once the policy's last claim is withdrawn", func() {
 		policy := newPolicy(nextName("pp"), regionSelector("mexicocentral", ptr.To(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())

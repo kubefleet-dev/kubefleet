@@ -212,6 +212,9 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy policyObject, o
 		if keep {
 			delete(wantedByName, claim.Name)
 			outstanding++
+			if err := r.reconcileClaimLabels(ctx, claim, policy); err != nil {
+				return outstanding, err
+			}
 			if err := r.refreshClaimFreshness(ctx, claim, mostRecentClusterCreation); err != nil {
 				return outstanding, err
 			}
@@ -292,6 +295,40 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy policyObject, o
 		}
 	}
 	return outstanding, nil
+}
+
+// reconcileClaimLabels restores the ownership labels on a kept claim. The controller itself finds
+// a policy's claims through the immutable spec.placementPolicyRef, so a stripped or rewritten label
+// never confuses the reconcile; the labels exist for external consumers -- a provisioner watching a
+// policy's claims by label -- and a provisioner or user that mutated one would hide the claim from
+// them. The labels are re-asserted here for the same reason the cleanup finalizer is re-asserted
+// while claims exist: out-of-band drift on an object the controller owns should self-heal.
+func (r *Reconciler) reconcileClaimLabels(ctx context.Context, claim *kfplacementv1alpha1.ClusterClaim, policy policyObject) error {
+	want := claimOwnershipLabels(policy)
+	drifted := false
+	for k, v := range want {
+		if claim.Labels[k] != v {
+			drifted = true
+			break
+		}
+	}
+	if !drifted {
+		return nil
+	}
+	if claim.Labels == nil {
+		claim.Labels = make(map[string]string, len(want))
+	}
+	for k, v := range want {
+		claim.Labels[k] = v
+	}
+	klog.V(2).InfoS("Restoring ownership labels on a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy.Unwrap()))
+	// A conflict means another writer touched the claim; the claim watch re-queues the policy and
+	// the repair retries then. A NotFound means the claim was withdrawn out from under us, which a
+	// later pass reconciles.
+	if err := r.Update(ctx, claim); err != nil && !errors.IsNotFound(err) && !errors.IsConflict(err) {
+		return err
+	}
+	return nil
 }
 
 // refreshClaimFreshness advances the claim's freshness marker when clusters joined after the
