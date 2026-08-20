@@ -109,6 +109,7 @@ _See [helm install](https://helm.sh/docs/helm/helm_install/) for command documen
 | `enableClusterInventoryAPI` | Enable cluster inventory APIs | `true` |
 | `enableStagedUpdateRunAPIs` | Enable staged update run APIs | `true` |
 | `enableEvictionAPIs` | Enable eviction APIs | `true` |
+| `enableAnnotationBasedPlacement` | Keep a placement policy in sync with the `kubefleet.dev/cluster-selectors` annotation on a resource. Requires the `placement.kubefleet.dev/v1alpha1` CRDs. No chart installs them yet; apply them from `config/crd/bases/` (the hub agent refuses to start with this flag on until they are present). | `false` |
 | `enablePprof` | Enable pprof endpoint | `true` |
 | `pprofPort` | pprof server port | `6065` |
 | `hubAPIQPS` | QPS for fleet-apiserver (not including events/node heartbeat) | `250` |

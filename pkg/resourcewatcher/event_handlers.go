@@ -24,6 +24,8 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/kubefleet-dev/kubefleet/pkg/controllers/annotationplacement"
 )
 
 // handleTombStoneObj handles the case that the delete object is a tombStone instead of the real object
@@ -60,6 +62,9 @@ func (d *ChangeDetector) onResourceAdded(obj interface{}) {
 	klog.V(3).InfoS("A resource is added", "obj", klog.KObj(metaInfo),
 		"gvk", runtimeObject.GetObjectKind().GroupVersionKind().String())
 	d.ResourceChangeController.Enqueue(obj)
+	if annotationplacement.HasClusterSelectorsAnnotation(metaInfo) {
+		d.enqueueForAnnotationPlacement(obj)
+	}
 }
 
 // onResourceUpdated handles object update event and push the updated object to the resource queue.
@@ -83,6 +88,12 @@ func (d *ChangeDetector) onResourceUpdated(oldObj, newObj interface{}) {
 		klog.V(3).InfoS("A resource is updated", "obj", oldObjMeta.GetName(),
 			"namespace", oldObjMeta.GetNamespace(), "gvk", runtimeObject.GetObjectKind().GroupVersionKind().String())
 		d.ResourceChangeController.Enqueue(newObj)
+		// The old object is checked as well as the new one, because the update that matters most to
+		// annotation-based placement is the one that removes the annotation: looking only at the new
+		// object would filter that event out and leave the generated policy behind forever.
+		if annotationplacement.HasClusterSelectorsAnnotation(newObjMeta) || annotationplacement.HasClusterSelectorsAnnotation(oldObjMeta) {
+			d.enqueueForAnnotationPlacement(newObj)
+		}
 		return
 	}
 	klog.V(4).InfoS("Received a resource updated event with no change", "obj", oldObjMeta.GetName(),
@@ -98,4 +109,21 @@ func (d *ChangeDetector) onResourceDeleted(obj interface{}) {
 	}
 	klog.V(3).InfoS("A resource is deleted", "obj", klog.KObj(clientObj), "gvk", clientObj.GetObjectKind().GroupVersionKind().String())
 	d.ResourceChangeController.Enqueue(clientObj)
+	// The generated policy is deleted by the reconciler rather than left to garbage collection,
+	// which would keep the policy for as long as any other party's owner reference on it survives.
+	// This callback also stands in for more than deletion: a resource that stops passing the
+	// dynamic resource filter without being deleted is reported here too, and its generated policy
+	// has to go the same way, since no further event about the resource will ever be seen.
+	if annotationplacement.HasClusterSelectorsAnnotation(clientObj) {
+		d.enqueueForAnnotationPlacement(clientObj)
+	}
+}
+
+// enqueueForAnnotationPlacement hands an object to the annotation-based placement controller, if
+// that feature is running at all.
+func (d *ChangeDetector) enqueueForAnnotationPlacement(obj interface{}) {
+	if d.AnnotationPlacementController == nil {
+		return
+	}
+	d.AnnotationPlacementController.Enqueue(obj)
 }
