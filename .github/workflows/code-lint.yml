@@ -14,7 +14,7 @@ on:
 
 env:
   # Common versions
-  GO_VERSION: "1.25.12"
+  GO_VERSION: "1.26.6"
 
 jobs:
   detect-noop:
