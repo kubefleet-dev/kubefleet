@@ -90,6 +90,15 @@ type ClusterClaimStatus struct {
 
 	// The name of the cluster that has been provisioned for this cluster claim, if any.
 	//
+	// A cluster claim asks for a single cluster: a provisioner fulfills it by provisioning one
+	// cluster, recording its name here, and marking the Completed condition. A placement that still
+	// needs more clusters than one claim provides is served one claim at a time -- once the
+	// provisioned cluster becomes eligible, the completed claim is withdrawn and a new claim is
+	// created, under the same deterministic name, for the next cluster. A provisioner that retries a
+	// conflicting status write must therefore key the retry on the claim's identity (UID or resource
+	// version), not on its name alone, so that a write meant for a completed claim is not applied to
+	// the different, freshly created claim that has taken its name.
+	//
 	// +kubebuilder:validation:Optional
 	ProvisionedClusterName *string `json:"provisionedClusterName,omitempty"`
 
