@@ -22,6 +22,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -191,6 +193,74 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(policy), &kfplacementv1alpha1.PlacementPolicy{})
 			g.Expect(client.IgnoreNotFound(err)).Should(Succeed())
 			g.Expect(err).Should(HaveOccurred())
+		}, eventuallyTimeout, pollInterval).Should(Succeed())
+	})
+
+	It("issues one claim at a time until a count>1 selector is fully provisioned", func() {
+		policy := newPolicy(nextName("pp"), regionSelector("australiaeast", ptr.To(intstr.FromInt32(3)), nil))
+		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
+		claimN := claimName(placementPolicyAdapter{policy}, 0)
+
+		// waitFreshUID returns the UID of the claim at the selector's name once it exists and has not
+		// been marked completed -- a claim the provisioner has not acted on yet.
+		waitFreshUID := func() types.UID {
+			claim := &kfplacementv1alpha1.ClusterClaim{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: claimN}, claim)).Should(Succeed())
+				g.Expect(meta.IsStatusConditionTrue(claim.Status.Conditions, kfplacementv1alpha1.ClusterClaimCondTypeCompleted)).Should(BeFalse())
+			}, eventuallyTimeout, pollInterval).Should(Succeed())
+			return claim.UID
+		}
+		// provision stands in for a provisioner acting on exactly one claim: it joins one cluster and
+		// marks that specific claim (identified by UID) completed for it, exactly once. Guarding on the
+		// UID keeps a conflict retry from marking the next, already-rotated claim.
+		provision := func(clusterName string, claimUID types.UID) {
+			mc := newMemberCluster(clusterName, map[string]string{testRegionLabel: "australiaeast"})
+			Expect(k8sClient.Create(ctx, mc)).Should(Succeed())
+			markJoined(mc)
+			Eventually(func(g Gomega) {
+				claim := &kfplacementv1alpha1.ClusterClaim{}
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: claimN}, claim)
+				if apierrors.IsNotFound(err) || (err == nil && claim.UID != claimUID) {
+					return // the targeted claim is gone or already rotated: our completion took effect
+				}
+				g.Expect(err).ShouldNot(HaveOccurred()) // any other read error fails loudly rather than passing as a skip
+				claim.Status.ProvisionedClusterName = ptr.To(clusterName)
+				meta.SetStatusCondition(&claim.Status.Conditions, metav1.Condition{
+					Type: kfplacementv1alpha1.ClusterClaimCondTypeCompleted, Status: metav1.ConditionTrue, Reason: "Provisioned",
+				})
+				g.Expect(k8sClient.Status().Update(ctx, claim)).Should(Succeed())
+			}, eventuallyTimeout, pollInterval).Should(Succeed())
+		}
+		// expectRotation waits for the completed claim (previous UID) to be withdrawn and a fresh one
+		// issued for the next cluster, and returns the fresh claim's UID.
+		expectRotation := func(previousUID types.UID) types.UID {
+			claim := &kfplacementv1alpha1.ClusterClaim{}
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: claimN}, claim)).Should(Succeed())
+				g.Expect(claim.UID).ShouldNot(Equal(previousUID), "the completed claim should be rotated to a fresh one")
+				g.Expect(meta.IsStatusConditionTrue(claim.Status.Conditions, kfplacementv1alpha1.ClusterClaimCondTypeCompleted)).Should(BeFalse())
+			}, eventuallyTimeout, pollInterval).Should(Succeed())
+			return claim.UID
+		}
+
+		By("clusters 1 and 2 of 3: each completed claim is rotated to a fresh one for the next cluster")
+		uid := waitFreshUID()
+		provision(nextName("mc-aue"), uid)
+		uid = expectRotation(uid)
+		provision(nextName("mc-aue"), uid)
+		uid = expectRotation(uid)
+
+		By("cluster 3 of 3: the selector is satisfied, so the claim is withdrawn and not reissued")
+		provision(nextName("mc-aue"), uid)
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: claimN}, &kfplacementv1alpha1.ClusterClaim{})
+			g.Expect(client.IgnoreNotFound(err)).Should(Succeed())
+			g.Expect(err).Should(HaveOccurred(), "the claim should be withdrawn once three clusters are provisioned")
+			fetched := &kfplacementv1alpha1.PlacementPolicy{}
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(policy), fetched)).Should(Succeed())
+			g.Expect(fetched.Status.ActiveClusterClaims).NotTo(BeNil())
+			g.Expect(*fetched.Status.ActiveClusterClaims).Should(Equal(int32(0)))
 		}, eventuallyTimeout, pollInterval).Should(Succeed())
 	})
 

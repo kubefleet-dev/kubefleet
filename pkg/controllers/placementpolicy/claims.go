@@ -21,10 +21,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"strings"
 
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/klog/v2"
@@ -112,6 +114,9 @@ func claimName(policy policyObject, selectorIndex int) string {
 type desiredClaim struct {
 	name  string
 	terms []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm
+	// outcome is the selector this claim serves. It is what lets the reconcile decide when a
+	// completed claim has done its job and should be rotated to provision the next cluster.
+	outcome *selectorOutcome
 }
 
 // desiredClaims returns the claims the policy should have outstanding given the selector
@@ -124,12 +129,33 @@ func desiredClaims(policy policyObject, outcomes []selectorOutcome) []desiredCla
 		if o.satisfiedInFull() || o.whenUnfulfilled != kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim {
 			continue
 		}
-		wanted = append(wanted, desiredClaim{name: claimName(policy, i), terms: o.terms})
+		wanted = append(wanted, desiredClaim{name: claimName(policy, i), terms: o.terms, outcome: o})
 		if len(wanted) >= maxConcurrentClaimsPerPolicy {
 			break
 		}
 	}
 	return wanted
+}
+
+// claimReadyToRotate reports whether a claim has done its job -- the provisioner marked it completed
+// and the cluster it provisioned is now eligible for the selector -- while the selector still needs
+// more clusters. One claim yields one cluster (the claim carries no count, and its status names a
+// single provisioned cluster), so a selector wanting several is filled one claim at a time: such a
+// claim is withdrawn and reissued so the provisioner provisions the next cluster.
+//
+// The eligibility check is what makes this safe. The next claim is issued only once the current
+// claim's cluster is counted toward the selector, so a provisioner is never handed a second claim
+// while the first cluster is still joining -- which would ask it to provision two clusters at once
+// for one selector.
+func claimReadyToRotate(claim *kfplacementv1alpha1.ClusterClaim, outcome *selectorOutcome) bool {
+	if outcome == nil || outcome.satisfiedInFull() {
+		return false
+	}
+	if !meta.IsStatusConditionTrue(claim.Status.Conditions, kfplacementv1alpha1.ClusterClaimCondTypeCompleted) {
+		return false
+	}
+	provisioned := claim.Status.ProvisionedClusterName
+	return provisioned != nil && slices.Contains(outcome.matched, *provisioned)
 }
 
 // reconcileClaims drives the policy's cluster claims toward the desired set: it withdraws
@@ -174,7 +200,16 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy policyObject, o
 		w, stillWanted := wantedByName[claim.Name]
 		// A claim only serves its original terms; if the policy's selector changed, the
 		// outstanding claim is withdrawn and a fresh one is issued on a later pass.
-		if stillWanted && apiequality.Semantic.DeepEqual(claim.Spec.ClusterSelectorTerms, w.terms) {
+		keep := stillWanted && apiequality.Semantic.DeepEqual(claim.Spec.ClusterSelectorTerms, w.terms)
+		if keep && claimReadyToRotate(claim, w.outcome) {
+			// The provisioner has provisioned an eligible cluster for this claim, but the selector
+			// still needs more. The completed claim is not kept: it falls through to the withdrawal
+			// below and, its entry left in wantedByName, is reissued on a later pass so the provisioner
+			// gets a fresh claim for the next cluster. Rotation is gated on the provisioned cluster
+			// being eligible, so the next claim is never issued before this one's cluster is confirmed.
+			keep = false
+		}
+		if keep {
 			delete(wantedByName, claim.Name)
 			outstanding++
 			if err := r.refreshClaimFreshness(ctx, claim, mostRecentClusterCreation); err != nil {
