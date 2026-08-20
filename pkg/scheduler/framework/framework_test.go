@@ -36,6 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -6708,5 +6709,16 @@ func TestRunSchedulingCycleForPickAllPlacementType_StableStatusOutputInLargeFlee
 	// Check if any status update was attempted; all should be skipped as there is no status change.
 	if mockClientStatusUpdateCount.Load() != 0 {
 		t.Errorf("runSchedulingCycleForPickAllPlacementType() status update attempt count = %d, want 0", mockClientStatusUpdateCount.Load())
+	}
+}
+
+// TestEventRecorder tests the EventRecorder method.
+func TestEventRecorder(t *testing.T) {
+	recorder := events.NewFakeRecorder(1)
+	f := &framework{
+		eventRecorder: recorder,
+	}
+	if got := f.EventRecorder(); got != events.EventRecorder(recorder) {
+		t.Errorf("EventRecorder() = %v, want %v", got, recorder)
 	}
 }
