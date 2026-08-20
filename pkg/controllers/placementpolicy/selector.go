@@ -148,11 +148,27 @@ func validateTerms(terms []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTe
 			}
 			switch expr.Operator {
 			case kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorIn,
-				kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorNotIn,
-				kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorExists,
+				kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorNotIn:
+				// In and NotIn test set membership by comparing the property's value as a string.
+				// A resource property is a quantity whose canonical string form is not unique --
+				// 8000m and 8 are equal -- so a membership test against it silently mismatches
+				// (In: ["8000m"] never matches a cluster reporting "8"), which would misreport the
+				// selector as unfulfilled and add a spurious claim. The API reserves these
+				// operators for labels and string-based properties, so a resource-prefixed key
+				// here is rejected rather than evaluated.
+				if strings.HasPrefix(expr.Key, propertyprovider.ResourcePropertyNamePrefix) {
+					return fmt.Errorf("operator %s is not applicable to the resource property %s: resource properties are numeric, use Gt, Lt, Ge, Le, Eq, or Ne", expr.Operator, expr.Key)
+				}
+			case kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorExists,
 				kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorDoesNotExist:
-				// String-based operators carry no numeric constraints; the CRD validation
-				// rules cover their value arity.
+				// Presence operators carry no numeric constraints and apply uniformly to string
+				// and resource properties; the CRD validation rules cover their value arity.
+				// Unlike In/NotIn above, these are intentionally left valid on a resource key: a
+				// presence check is a map-key lookup, immune to the quantity-canonicalization that
+				// breaks membership tests, and the evaluation path (stringPropertyValueFrom) already
+				// supports it. The API type doc frames the string operators more narrowly; leaving
+				// that wording in step with this enforced rule is a deferred, separate change -- do
+				// not "reconcile" the two by banning presence checks on resource keys here.
 			case kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorGt,
 				kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorLt,
 				kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorGe,
@@ -191,10 +207,23 @@ func validatePropertyKey(key string) error {
 	}
 	switch capacityType {
 	case propertyprovider.TotalCapacityName, propertyprovider.AllocatableCapacityName, propertyprovider.AvailableCapacityName:
-		return nil
 	default:
 		return fmt.Errorf("invalid capacity type %s in cluster property expression key %s", capacityType, key)
 	}
+	// A non-empty resource-name portion is not enough: a key such as
+	// resources.kubernetes-fleet.io/allocatable-not a resource clears the checks above yet names a
+	// resource no cluster can ever report, so Exists would raise an unfulfillable claim and
+	// DoesNotExist would match every cluster. The resource name is what indexes into the cluster's
+	// reported ResourceList, so it -- not the whole key -- is validated as a qualified name: this
+	// rejects the malformed case while still admitting a domain-qualified extended resource such as
+	// nvidia.com/gpu, which a whole-key check would reject for carrying a second slash. This is a
+	// deliberate divergence from validateName in pkg/utils/validator, which validates the whole key
+	// and so rejects such extended resources; do not "align" this with that validator, as that would
+	// reintroduce the rejection of a resource the cluster genuinely reports.
+	if errs := validation.IsQualifiedName(resourceName); len(errs) != 0 {
+		return fmt.Errorf("invalid resource name %s in cluster property expression key %s: %s", resourceName, key, strings.Join(errs, "; "))
+	}
+	return nil
 }
 
 // validateNonResourcePropertyName checks a non-resource cluster property name against the grammar

@@ -665,6 +665,68 @@ func TestValidateTerms(t *testing.T) {
 				},
 			}},
 		},
+		{
+			name: "In on a resource property is rejected",
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{
+				MatchClusterPropertyExpressions: []kfplacementv1alpha1.LabelClusterPropertyExpression{
+					{Key: propertyprovider.ResourcePropertyNamePrefix + "allocatable-cpu", Operator: kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorIn, Values: []string{"8000m"}},
+				},
+			}},
+			wantError: true,
+		},
+		{
+			name: "NotIn on a resource property is rejected",
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{
+				MatchClusterPropertyExpressions: []kfplacementv1alpha1.LabelClusterPropertyExpression{
+					{Key: propertyprovider.ResourcePropertyNamePrefix + "allocatable-cpu", Operator: kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorNotIn, Values: []string{"8"}},
+				},
+			}},
+			wantError: true,
+		},
+		{
+			name: "Exists on a resource property is allowed",
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{
+				MatchClusterPropertyExpressions: []kfplacementv1alpha1.LabelClusterPropertyExpression{
+					{Key: propertyprovider.ResourcePropertyNamePrefix + "allocatable-cpu", Operator: kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorExists},
+				},
+			}},
+		},
+		{
+			name: "In on a string property is allowed",
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{
+				MatchClusterPropertyExpressions: []kfplacementv1alpha1.LabelClusterPropertyExpression{
+					{Key: propertyprovider.NodeCountProperty, Operator: kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorIn, Values: []string{"3"}},
+				},
+			}},
+		},
+		{
+			name: "resource property with an invalid resource name",
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{
+				MatchClusterPropertyExpressions: []kfplacementv1alpha1.LabelClusterPropertyExpression{
+					{Key: propertyprovider.ResourcePropertyNamePrefix + "allocatable-not a resource", Operator: kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorExists},
+				},
+			}},
+			wantError: true,
+		},
+		{
+			name: "valid resource property with a dashed resource name",
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{
+				MatchClusterPropertyExpressions: []kfplacementv1alpha1.LabelClusterPropertyExpression{
+					{Key: propertyprovider.ResourcePropertyNamePrefix + "allocatable-ephemeral-storage", Operator: kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorExists},
+				},
+			}},
+		},
+		{
+			name: "valid resource property with a domain-qualified extended resource name",
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{
+				MatchClusterPropertyExpressions: []kfplacementv1alpha1.LabelClusterPropertyExpression{
+					// An extended resource name carries its own slash; validating the whole key would
+					// reject it for a second slash even though the cluster reports it and evaluation
+					// resolves it. Only the resource-name portion is validated, so this is accepted.
+					{Key: propertyprovider.ResourcePropertyNamePrefix + "allocatable-nvidia.com/gpu", Operator: kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorExists},
+				},
+			}},
+		},
 	}
 
 	for _, tc := range testCases {
