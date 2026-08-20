@@ -18,6 +18,7 @@ package placementpolicy
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -110,6 +112,25 @@ func resolveCounts(selector *kfplacementv1alpha1.ClusterSelector) (resolvedCount
 func validateTerms(terms []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm) error {
 	for i := range terms {
 		term := &terms[i]
+		// matchLabels is a free-form map on the CRD: admission stores whatever keys and values
+		// are given, and labels.SelectorFromSet performs no validation of its own. An invalid
+		// key or value therefore yields a selector that matches no cluster, which the policy
+		// would misread as an ordinarily unfulfilled selector and answer by provisioning a
+		// cluster no manifest can ever satisfy. Reject it structurally instead.
+		//
+		// The keys are validated in sorted order so that a term carrying more than one invalid
+		// entry always surfaces the same error. The message ends up on the policy's Scheduled
+		// condition, and a message that changed from one reconcile to the next -- as it would if
+		// the map were ranged in Go's randomized order -- would defeat the status no-op check and
+		// spin the reconcile.
+		for _, key := range slices.Sorted(maps.Keys(term.MatchLabels)) {
+			if errs := validation.IsQualifiedName(key); len(errs) != 0 {
+				return fmt.Errorf("invalid matchLabels key %q: %s", key, strings.Join(errs, "; "))
+			}
+			if errs := validation.IsValidLabelValue(term.MatchLabels[key]); len(errs) != 0 {
+				return fmt.Errorf("invalid matchLabels value %q for key %q: %s", term.MatchLabels[key], key, strings.Join(errs, "; "))
+			}
+		}
 		for j := range term.MatchLabelExpressions {
 			expr := &term.MatchLabelExpressions[j]
 			op, err := labelSelectionOperatorFor(expr.Operator)
@@ -156,7 +177,12 @@ func validateTerms(terms []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTe
 // non-empty resource; non-resource property keys carry no structural constraints.
 func validatePropertyKey(key string) error {
 	if !strings.HasPrefix(key, propertyprovider.ResourcePropertyNamePrefix) {
-		return nil
+		// A non-resource property key names a property a cluster reports. Admission accepts a
+		// present-but-malformed key (an empty string, say) as an ordinary map entry, and a
+		// DoesNotExist expression on such a key would then report the property absent on every
+		// cluster -- matching all of them and potentially withdrawing a still-needed claim.
+		// Reject it here rather than treat it as an always-absent property.
+		return validateNonResourcePropertyName(key)
 	}
 	name := strings.TrimPrefix(key, propertyprovider.ResourcePropertyNamePrefix)
 	capacityType, resourceName, ok := strings.Cut(name, "-")
@@ -169,6 +195,32 @@ func validatePropertyKey(key string) error {
 	default:
 		return fmt.Errorf("invalid capacity type %s in cluster property expression key %s", capacityType, key)
 	}
+}
+
+// validateNonResourcePropertyName checks a non-resource cluster property name against the grammar
+// the property provider uses: one or more slash-separated segments, where an optional first segment
+// is a DNS subdomain or qualified name and every remaining segment is a qualified name. This mirrors
+// validateName in pkg/utils/validator so that a multi-segment provider name such as the Azure
+// per-SKU key "kubernetes.azure.com/vm-sizes/Standard_D2s_v3/count" is accepted -- IsQualifiedName
+// alone rejects any name carrying more than one slash and would misflag those legitimate keys.
+func validateNonResourcePropertyName(name string) error {
+	segs := strings.Split(name, "/")
+	if len(segs) <= 1 {
+		if errs := validation.IsQualifiedName(name); len(errs) != 0 {
+			return fmt.Errorf("invalid cluster property key %q: %s", name, strings.Join(errs, "; "))
+		}
+		return nil
+	}
+	prefix := segs[0]
+	if len(validation.IsDNS1123Subdomain(prefix)) != 0 && len(validation.IsQualifiedName(prefix)) != 0 {
+		return fmt.Errorf("invalid cluster property key %q: first segment %q is neither a valid DNS subdomain nor a valid qualified name", name, prefix)
+	}
+	for _, seg := range segs[1:] {
+		if errs := validation.IsQualifiedName(seg); len(errs) != 0 {
+			return fmt.Errorf("invalid cluster property key %q: segment %q is not valid: %s", name, seg, strings.Join(errs, "; "))
+		}
+	}
+	return nil
 }
 
 // matchesTerms reports whether the member cluster satisfies any of the given selector terms
