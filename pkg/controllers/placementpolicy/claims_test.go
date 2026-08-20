@@ -22,8 +22,10 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/utils/ptr"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 )
@@ -250,8 +252,88 @@ func TestDesiredClaims(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := desiredClaims(policy, tc.outcomes)
-			if diff := cmp.Diff(got, tc.want, cmp.AllowUnexported(desiredClaim{})); diff != "" {
+			// The outcome field is a pointer back into tc.outcomes that carries no identity of its
+			// own to assert here; the name/terms selection is what this test pins. Its wiring is
+			// exercised by TestClaimReadyToRotate and the integration tests.
+			if diff := cmp.Diff(got, tc.want, cmp.AllowUnexported(desiredClaim{}), cmpopts.IgnoreFields(desiredClaim{}, "outcome")); diff != "" {
 				t.Errorf("desiredClaims(%v) mismatch (-got, +want):\n%s", tc.outcomes, diff)
+			}
+		})
+	}
+}
+
+func TestClaimReadyToRotate(t *testing.T) {
+	completed := func() []metav1.Condition {
+		return []metav1.Condition{{Type: kfplacementv1alpha1.ClusterClaimCondTypeCompleted, Status: metav1.ConditionTrue, Reason: "Provisioned"}}
+	}
+	claim := func(conds []metav1.Condition, provisioned *string) *kfplacementv1alpha1.ClusterClaim {
+		return &kfplacementv1alpha1.ClusterClaim{
+			Status: kfplacementv1alpha1.ClusterClaimStatus{Conditions: conds, ProvisionedClusterName: provisioned},
+		}
+	}
+	// A count-of-3 selector with one eligible cluster: a deficit remains.
+	deficit := &selectorOutcome{counts: resolvedCounts{desired: 3, minimum: 3}, matched: []string{"c1"}}
+
+	testCases := []struct {
+		name    string
+		claim   *kfplacementv1alpha1.ClusterClaim
+		outcome *selectorOutcome
+		want    bool
+	}{
+		{
+			name:    "completed with an eligible cluster while a deficit remains rotates",
+			claim:   claim(completed(), ptr.To("c1")),
+			outcome: deficit,
+			want:    true,
+		},
+		{
+			name:    "not yet completed does not rotate",
+			claim:   claim(nil, nil),
+			outcome: deficit,
+			want:    false,
+		},
+		{
+			// The provisioner completed but its cluster has not joined/become eligible yet: waiting
+			// here is what keeps a second claim from being issued mid-join (no double-provisioning).
+			name:    "completed but the provisioned cluster is not eligible yet does not rotate",
+			claim:   claim(completed(), ptr.To("c2")),
+			outcome: deficit,
+			want:    false,
+		},
+		{
+			name:    "completed with no provisioned cluster recorded does not rotate",
+			claim:   claim(completed(), nil),
+			outcome: deficit,
+			want:    false,
+		},
+		{
+			// The selector is already at its desired count; the claim is withdrawn (not rotated) by
+			// the fulfilled path, so rotation must not fire.
+			name:    "satisfied in full does not rotate",
+			claim:   claim(completed(), ptr.To("c1")),
+			outcome: &selectorOutcome{counts: resolvedCounts{desired: 1, minimum: 1}, matched: []string{"c1"}},
+			want:    false,
+		},
+		{
+			// count: All with a minCount floor is satisfied in full at the floor, so a completed
+			// claim below the floor still has a deficit and rotates, mirroring the integer case.
+			name:    "select-all below its minCount floor rotates",
+			claim:   claim(completed(), ptr.To("c1")),
+			outcome: &selectorOutcome{counts: resolvedCounts{selectAll: true, minimum: 2}, matched: []string{"c1"}},
+			want:    true,
+		},
+		{
+			name:    "a nil outcome does not rotate",
+			claim:   claim(completed(), ptr.To("c1")),
+			outcome: nil,
+			want:    false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := claimReadyToRotate(tc.claim, tc.outcome); got != tc.want {
+				t.Errorf("claimReadyToRotate() = %v, want %v", got, tc.want)
 			}
 		})
 	}
