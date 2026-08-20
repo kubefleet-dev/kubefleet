@@ -48,6 +48,7 @@ affinity: {}
 enableClusterInventoryAPI: true
 enableStagedUpdateRunAPIs: true
 enableEvictionAPIs: true
+enablePlacementPolicyAPIs: false
 
 enablePprof: true
 pprofPort: 6065

@@ -31,6 +31,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/bindingwatcher"
@@ -39,6 +40,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/clusterresourceplacementstatuswatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/overrider"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placement"
+	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placementpolicy"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placementwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/resourcechange"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/rollout"
@@ -115,6 +117,12 @@ var (
 	evictionGVKs = []schema.GroupVersionKind{
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ClusterResourcePlacementEvictionKind),
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ClusterResourcePlacementDisruptionBudgetKind),
+	}
+
+	placementPolicyGVKs = []schema.GroupVersionKind{
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.PlacementPolicyKind),
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.ClusterPlacementPolicyKind),
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.ClusterClaimKind),
 	}
 )
 
@@ -336,6 +344,26 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 					klog.ErrorS(err, "Unable to set up stagedUpdateRun controller")
 					return err
 				}
+			}
+		}
+
+		// Set up the placement policy controller (FEP-0001, alpha) for the new placement experience.
+		if opts.FeatureFlags.EnablePlacementPolicyAPIs {
+			for _, gvk := range placementPolicyGVKs {
+				if err = utils.CheckCRDInstalled(discoverClient, gvk); err != nil {
+					klog.ErrorS(err, "Unable to find the required CRD", "GVK", gvk)
+					return err
+				}
+			}
+			klog.Info("Setting up placement policy controller")
+			ppReconciler := placementpolicy.NewReconciler(mgr.GetClient(), mgr.GetAPIReader())
+			if err := ppReconciler.SetupWithManagerForClusterPlacementPolicy(mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up placement policy controller for clusterPlacementPolicy")
+				return err
+			}
+			if err := ppReconciler.SetupWithManagerForPlacementPolicy(mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up placement policy controller for placementPolicy")
+				return err
 			}
 		}
 
