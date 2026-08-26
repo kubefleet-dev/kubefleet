@@ -253,8 +253,29 @@ BUILDKIT_VERSION ?= v0.18.1
 # and are pinned by digest as well as tag: a floating reference on a privileged
 # release-path container is a supply-chain risk. The binfmt mirror digest is
 # byte-identical to the upstream docker.io/tonistiigi/binfmt tag it mirrors.
+#
+# qemu-user-static has no manifest list - neither upstream nor on the mirror. It
+# is a single linux/amd64 schema-2 manifest, which is all setup-qemu needs: the
+# QEMU_IMAGE branch runs only when TARGET_ARCH is amd64. Obtain its digest with a
+# request that names a schema-2 or OCI media type (substitute QEMU_VERSION for the
+# tag):
+#
+#   curl -sI -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' \
+#     https://mcr.microsoft.com/v2/mirror/docker/multiarch/qemu-user-static/manifests/7.2.0-1 \
+#     | grep -i docker-content-digest
+#
+# `docker manifest inspect -v` and `docker buildx imagetools inspect` also report
+# the correct digest. What does NOT is a bare `curl -sI` sending no Accept header,
+# or one naming only the manifest-list type: MCR then answers with a deprecated
+# schema-1 `v1+prettyjws` view synthesised on demand from the schema-2 manifest.
+# The digest it advertises is stable, but it is never stored as a manifest
+# revision, so fetching by it returns "manifest unknown" and every pull of a pin
+# taken that way fails - most likely how the previous pin here was produced.
+#
+# Both mirrors carry exactly one tag today, so bumping either version below needs
+# MCR to onboard the new tag first.
 QEMU_VERSION ?= 7.2.0-1
-QEMU_IMAGE ?= mcr.microsoft.com/mirror/docker/multiarch/qemu-user-static:$(QEMU_VERSION)@sha256:cb0dff994856c640b6080bfbd5983352e7856221a989625ea3e232cb7eff4507
+QEMU_IMAGE ?= mcr.microsoft.com/mirror/docker/multiarch/qemu-user-static:$(QEMU_VERSION)@sha256:fe60359c92e86a43cc87b3d906006245f77bfc0565676b80004cc666e4feb9f0
 BINFMT_VERSION ?= qemu-v9.2.2-52
 BINFMT_IMAGE ?= mcr.microsoft.com/mirror/docker/tonistiigi/binfmt:$(BINFMT_VERSION)@sha256:1b804311fe87047a4c96d38b4b3ef6f62fca8cd125265917a9e3dc3c996c39e6
 
