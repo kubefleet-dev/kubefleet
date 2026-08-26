@@ -25,7 +25,7 @@ jobs:
   heartbeat:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
 
       - name: Check triage script
         id: check-script
@@ -48,7 +48,7 @@ jobs:
 
       - name: Ralph — Apply triage decisions
         if: steps.check-script.outputs.has_script == 'true' && hashFiles('triage-results.json') != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -100,16 +100,13 @@ jobs:
       # Copilot auto-assign step (uses PAT if available)
       - name: Ralph — Assign @copilot issues
         if: success()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.COPILOT_ASSIGN_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
 
-            let teamFile = '.squad/team.md';
-            if (!fs.existsSync(teamFile)) {
-              teamFile = '.ai-team/team.md';
-            }
+            const teamFile = '.squad/team.md';
             if (!fs.existsSync(teamFile)) return;
 
             const content = fs.readFileSync(teamFile, 'utf8');
@@ -154,7 +151,7 @@ jobs:
                     agent_assignment: {
                       target_repo: `${context.repo.owner}/${context.repo.repo}`,
                       base_branch: repoData.default_branch,
-                      custom_instructions: `Read .squad/team.md (or .ai-team/team.md) for team context and .squad/routing.md (or .ai-team/routing.md) for routing rules.`
+                      custom_instructions: `Read .squad/team.md for team context and .squad/routing.md for routing rules.`
                     }
                   });
                   core.info(`Assigned copilot-swe-agent[bot] to #${issue.number}`);

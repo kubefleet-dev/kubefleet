@@ -40,6 +40,8 @@ KubeFleet's scheduler evaluates member cluster properties, available capacity, a
 
 To learn more about KubeFleet go to the [KubeFleet documentation](https://kubefleet-dev.github.io/website/).
 
+For release versioning, supported agent version skew, and upgrade ordering, see [VERSIONING.md](VERSIONING.md).
+
 ## Community
 
 You can reach the KubeFleet community and developers via the following channels:
@@ -50,9 +52,9 @@ You can reach the KubeFleet community and developers via the following channels:
 
 ## Community Meetings
 
-Please refer to the [calendar](https://zoom-lfx.platform.linuxfoundation.org/meetings/kubefleet?view=month) for the latest schedule. 
+We aim to hold one meeting per month. Community meetings for US/EU and APAC/India communities happen in alternate months.
 
-We aim to hold one meeting per month for each of our US/EU and APAC/India communities.
+Please refer to the [calendar](https://zoom-lfx.platform.linuxfoundation.org/meetings/kubefleet?view=month) for the latest schedule.
 
 For more meeting information please see the [KubeFleet community repository](https://github.com/kubefleet-dev/community#community-meetings).
 
