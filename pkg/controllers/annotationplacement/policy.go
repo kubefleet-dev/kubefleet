@@ -55,7 +55,7 @@ const (
 const (
 	defaultResourceRevisionHistoryLimit int32 = 3
 
-	defaultWhenUnfulfilled = kfplacementv1alpha1.WhenUnfulfilledOptionRequestCluster
+	defaultWhenUnfulfilled = kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim
 )
 
 // generatedPolicyName derives the name of the placement policy generated for a resource.
