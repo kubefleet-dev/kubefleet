@@ -131,6 +131,19 @@ helm install cert-manager jetstack/cert-manager \
     --wait \
     --timeout=300s
 
+# Install the placement policy CRDs that annotation based placement generates policies for.
+#
+# The hub agent chart does not ship the placement.kubefleet.dev CRDs yet, and the hub agent
+# refuses to start with the feature on when they are absent, so they are applied straight from
+# the source tree ahead of the chart.
+kubectl apply -f ../../config/crd/bases/placement.kubefleet.dev_placementpolicies.yaml
+kubectl apply -f ../../config/crd/bases/placement.kubefleet.dev_clusterplacementpolicies.yaml
+# The hub agent checks for the CRDs at startup with a retry budget of about a second, so they
+# must be established before the chart is installed rather than merely applied.
+kubectl wait --for=condition=Established --timeout=60s \
+    -f ../../config/crd/bases/placement.kubefleet.dev_placementpolicies.yaml \
+    -f ../../config/crd/bases/placement.kubefleet.dev_clusterplacementpolicies.yaml
+
 # Install the hub agent to the hub cluster
 helm install hub-agent ../../charts/hub-agent/ \
     --namespace fleet-system \
@@ -153,6 +166,7 @@ helm install hub-agent ../../charts/hub-agent/ \
     --set-file additionalConfigData.admissionPolicyManagerCfg=admission_policy_manager_cfg.yaml \
     --set admissionPolicyManagerConfigName=admissionPolicyManagerCfg \
     --set enableAdmissionPolicyManager=true \
+    --set enableAnnotationBasedPlacement=true \
     --set resourceSnapshotCreationMinimumInterval=$RESOURCE_SNAPSHOT_CREATION_MINIMUM_INTERVAL \
     --set resourceChangesCollectionDuration=$RESOURCE_CHANGES_COLLECTION_DURATION \
     --wait \
