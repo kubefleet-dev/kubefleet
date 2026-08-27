@@ -31,7 +31,7 @@ RUN echo "Building hubagent with GOOS=${TARGETOS} GOARCH=${TARGETARCH}" && \
 # The pinned digest must reference a multi-arch image index so BuildKit can
 # resolve the matching base layer for each target architecture.
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM gcr.io/distroless/base:nonroot@sha256:97b9d04bed1c754b756c3c4b6a04915c22fb0b5d96a59944eb3bf78c26e6e157
+FROM gcr.io/distroless/base:nonroot@sha256:2d7d29b504e7166f6d0c7655a18ebf5def5b37b029f8c4f8667e434ba774844f
 WORKDIR /
 COPY --link --from=builder /workspace/hubagent .
 USER 65532:65532
