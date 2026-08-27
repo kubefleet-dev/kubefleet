@@ -289,7 +289,7 @@ func TestDesiredPolicy(t *testing.T) {
 			Terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{
 				{MatchLabels: map[string]string{"env": "prod"}},
 			},
-			WhenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionRequestCluster,
+			WhenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim,
 		},
 	}
 
