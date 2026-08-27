@@ -50,11 +50,11 @@ func clientKey(name string) types.NamespacedName {
 var _ = Describe("cluster claim workflow", Ordered, func() {
 	var counter int
 
-	newClaim := func(region string) *placementv1alpha1.ClusterRequest {
+	newClaim := func(region string) *placementv1alpha1.ClusterClaim {
 		counter++
-		return &placementv1alpha1.ClusterRequest{
+		return &placementv1alpha1.ClusterClaim{
 			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("wf-claim-%d", counter)},
-			Spec: placementv1alpha1.ClusterRequestSpec{
+			Spec: placementv1alpha1.ClusterClaimSpec{
 				PlacementPolicyRef: &placementv1alpha1.ObjectReference{
 					Name:       "app",
 					Namespace:  "work",
@@ -86,7 +86,7 @@ var _ = Describe("cluster claim workflow", Ordered, func() {
 		// The gate is spike-process state, not cluster state: reset it whatever the spec did, or
 		// a failure between set and reset would silently change every later spec's semantics.
 		withdrawer.SetEligibilityGate(false)
-		claimList := &placementv1alpha1.ClusterRequestList{}
+		claimList := &placementv1alpha1.ClusterClaimList{}
 		Expect(k8sClient.List(ctx, claimList)).Should(Succeed())
 		for i := range claimList.Items {
 			Expect(client.IgnoreNotFound(k8sClient.Delete(ctx, &claimList.Items[i]))).Should(Succeed())
@@ -118,11 +118,11 @@ var _ = Describe("cluster claim workflow", Ordered, func() {
 
 		By("the provisioner completes the claim while withdrawal is held")
 		Eventually(func(g Gomega) {
-			fulfilled := &placementv1alpha1.ClusterRequest{}
+			fulfilled := &placementv1alpha1.ClusterClaim{}
 			g.Expect(k8sClient.Get(ctx, clientKey(claim.Name), fulfilled)).Should(Succeed())
 			g.Expect(fulfilled.Status.ProvisionedClusterName).ShouldNot(BeNil())
 			g.Expect(*fulfilled.Status.ProvisionedClusterName).Should(Equal("provisioned-" + claim.Name))
-			completed := meta.FindStatusCondition(fulfilled.Status.Conditions, placementv1alpha1.ClusterRequestCondTypeCompleted)
+			completed := meta.FindStatusCondition(fulfilled.Status.Conditions, placementv1alpha1.ClusterClaimCondTypeCompleted)
 			g.Expect(completed).ShouldNot(BeNil())
 			g.Expect(completed.Status).Should(Equal(metav1.ConditionTrue))
 		}, eventuallyTimeout, eventuallyInterval).Should(Succeed(), "the provisioner must report completion before withdrawal")
@@ -145,7 +145,7 @@ var _ = Describe("cluster claim workflow", Ordered, func() {
 		}}
 		Expect(k8sClient.Status().Update(ctx, mc)).Should(Succeed())
 		Eventually(func() bool {
-			err := k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterRequest{})
+			err := k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterClaim{})
 			return err != nil && client.IgnoreNotFound(err) == nil
 		}, eventuallyTimeout, eventuallyInterval).Should(BeTrue(), "claim should be withdrawn (deleted)")
 
@@ -172,11 +172,11 @@ var _ = Describe("cluster claim workflow", Ordered, func() {
 
 		By("the claim stays uncompleted rather than claiming the squatter as fulfillment")
 		Consistently(func() bool {
-			current := &placementv1alpha1.ClusterRequest{}
+			current := &placementv1alpha1.ClusterClaim{}
 			if err := k8sClient.Get(ctx, clientKey(claim.Name), current); err != nil {
 				return false
 			}
-			return meta.FindStatusCondition(current.Status.Conditions, placementv1alpha1.ClusterRequestCondTypeCompleted) == nil
+			return meta.FindStatusCondition(current.Status.Conditions, placementv1alpha1.ClusterClaimCondTypeCompleted) == nil
 		}, consistentlyDuration, eventuallyInterval).Should(BeTrue(), "a squatted name must not become a completion report")
 	})
 
@@ -187,7 +187,7 @@ var _ = Describe("cluster claim workflow", Ordered, func() {
 
 		By("the claim persists while unfulfilled and unprovisioned")
 		Consistently(func() error {
-			return k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterRequest{})
+			return k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterClaim{})
 		}, consistentlyDuration, eventuallyInterval).Should(Succeed())
 
 		By("a manually joined cluster satisfies the selector")
@@ -195,7 +195,7 @@ var _ = Describe("cluster claim workflow", Ordered, func() {
 
 		By("the claim is withdrawn even though Completed was never set")
 		Eventually(func() bool {
-			err := k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterRequest{})
+			err := k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterClaim{})
 			return err != nil && client.IgnoreNotFound(err) == nil
 		}, eventuallyTimeout, eventuallyInterval).Should(BeTrue())
 	})
@@ -207,23 +207,23 @@ var _ = Describe("cluster claim workflow", Ordered, func() {
 
 		By("the provisioner reports terminal failure")
 		Eventually(func() bool {
-			fetched := &placementv1alpha1.ClusterRequest{}
+			fetched := &placementv1alpha1.ClusterClaim{}
 			if err := k8sClient.Get(ctx, clientKey(claim.Name), fetched); err != nil {
 				return false
 			}
-			cond := meta.FindStatusCondition(fetched.Status.Conditions, placementv1alpha1.ClusterRequestCondTypeCompleted)
+			cond := meta.FindStatusCondition(fetched.Status.Conditions, placementv1alpha1.ClusterClaimCondTypeCompleted)
 			return cond != nil && cond.Status == metav1.ConditionFalse && cond.Reason == "Failed"
 		}, eventuallyTimeout, eventuallyInterval).Should(BeTrue())
 
 		By("the failed claim is NOT withdrawn — the selector is still unfulfilled (open design question: retry policy)")
 		Consistently(func() error {
-			return k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterRequest{})
+			return k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterClaim{})
 		}, consistentlyDuration, eventuallyInterval).Should(Succeed())
 
 		By("fulfillment by any cluster still withdraws the failed claim")
 		Expect(k8sClient.Create(ctx, newMemberCluster("late-centralus", map[string]string{"topology.kubernetes.io/region": "centralus"}))).Should(Succeed())
 		Eventually(func() bool {
-			err := k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterRequest{})
+			err := k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterClaim{})
 			return err != nil && client.IgnoreNotFound(err) == nil
 		}, eventuallyTimeout, eventuallyInterval).Should(BeTrue())
 	})
@@ -238,7 +238,7 @@ var _ = Describe("cluster claim workflow", Ordered, func() {
 
 		By("the claim survives and lastObservedMostRecentClusterCreationTimestamp is refreshed")
 		Eventually(func() bool {
-			fetched := &placementv1alpha1.ClusterRequest{}
+			fetched := &placementv1alpha1.ClusterClaim{}
 			if err := k8sClient.Get(ctx, clientKey(claim.Name), fetched); err != nil {
 				return false
 			}
@@ -246,9 +246,9 @@ var _ = Describe("cluster claim workflow", Ordered, func() {
 		}, eventuallyTimeout, eventuallyInterval).Should(BeTrue())
 
 		Consistently(func() error {
-			return k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterRequest{})
+			return k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterClaim{})
 		}, consistentlyDuration, eventuallyInterval).Should(Succeed())
 
-		Expect(k8sClient.Delete(ctx, &placementv1alpha1.ClusterRequest{ObjectMeta: metav1.ObjectMeta{Name: claim.Name}})).Should(Succeed())
+		Expect(k8sClient.Delete(ctx, &placementv1alpha1.ClusterClaim{ObjectMeta: metav1.ObjectMeta{Name: claim.Name}})).Should(Succeed())
 	})
 })

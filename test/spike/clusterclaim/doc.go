@@ -19,11 +19,11 @@ limitations under the License.
 // wired into any build target.
 //
 // The spike demonstrates, against the merged v1alpha1 API types
-// (ClusterRequest; renamed ClusterClaim in PR #803), the full claim
+// (ClusterClaim, as renamed in PR #803), the full claim
 // lifecycle with the two controllers the FEP-0001 contract implies:
 //
 //   - FakeProvisioner plays the platform/cloud-provider role (the part
-//     Meridian's ClusterRequest reconciler or a CAPI-based controller would
+//     a platform claim reconciler or a CAPI-based controller would
 //     play in production): it watches claims and, per test policy, fulfills
 //     them (creates a matching MemberCluster, sets Completed=True and
 //     provisionedClusterName), fails them, or ignores them.

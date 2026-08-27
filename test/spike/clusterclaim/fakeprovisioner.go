@@ -49,7 +49,7 @@ const (
 
 // FakeProvisioner is the test stand-in for the platform/cloud-provider
 // controller in the FEP-0001 claim contract (the role Meridian's
-// ClusterRequest reconciler plays for AKS). It only ever writes the fields
+// claim reconciler plays for AKS). It only ever writes the fields
 // that side of the contract owns: the Completed status condition and
 // status.provisionedClusterName — never the claim spec, and never
 // lastObservedMostRecentClusterCreationTimestamp.
@@ -74,13 +74,13 @@ func (p *FakeProvisioner) SetPolicy(policy ProvisionPolicy) {
 }
 
 func (p *FakeProvisioner) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	claim := &placementv1alpha1.ClusterRequest{}
+	claim := &placementv1alpha1.ClusterClaim{}
 	if err := p.Get(ctx, req.NamespacedName, claim); err != nil {
 		// A vanished claim is a normal outcome in this contract: KubeFleet may
 		// withdraw at any moment, regardless of provisioning state.
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	if meta.FindStatusCondition(claim.Status.Conditions, placementv1alpha1.ClusterRequestCondTypeCompleted) != nil {
+	if meta.FindStatusCondition(claim.Status.Conditions, placementv1alpha1.ClusterClaimCondTypeCompleted) != nil {
 		return ctrl.Result{}, nil
 	}
 
@@ -93,7 +93,7 @@ func (p *FakeProvisioner) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, p.fulfill(ctx, claim)
 	case PolicyFail:
 		meta.SetStatusCondition(&claim.Status.Conditions, metav1.Condition{
-			Type:               placementv1alpha1.ClusterRequestCondTypeCompleted,
+			Type:               placementv1alpha1.ClusterClaimCondTypeCompleted,
 			Status:             metav1.ConditionFalse,
 			Reason:             "Failed",
 			Message:            "spike: simulated terminal provisioning failure",
@@ -105,7 +105,7 @@ func (p *FakeProvisioner) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 }
 
-func (p *FakeProvisioner) fulfill(ctx context.Context, claim *placementv1alpha1.ClusterRequest) error {
+func (p *FakeProvisioner) fulfill(ctx context.Context, claim *placementv1alpha1.ClusterClaim) error {
 	p.mu.Lock()
 	clusterName, ok := p.provisioned[claim.Name]
 	if !ok {
@@ -147,7 +147,7 @@ func (p *FakeProvisioner) fulfill(ctx context.Context, claim *placementv1alpha1.
 
 	claim.Status.ProvisionedClusterName = &clusterName
 	meta.SetStatusCondition(&claim.Status.Conditions, metav1.Condition{
-		Type:               placementv1alpha1.ClusterRequestCondTypeCompleted,
+		Type:               placementv1alpha1.ClusterClaimCondTypeCompleted,
 		Status:             metav1.ConditionTrue,
 		Reason:             "Provisioned",
 		Message:            fmt.Sprintf("spike: member cluster %s provisioned", clusterName),
@@ -158,7 +158,7 @@ func (p *FakeProvisioner) fulfill(ctx context.Context, claim *placementv1alpha1.
 
 // labelsForClaim derives the provisioned cluster's labels from the claim, the
 // way a real provisioner would feed selector terms into a cluster blueprint.
-func labelsForClaim(claim *placementv1alpha1.ClusterRequest) map[string]string {
+func labelsForClaim(claim *placementv1alpha1.ClusterClaim) map[string]string {
 	if len(claim.Spec.ClusterSelectorTerms) == 0 {
 		return nil
 	}
@@ -170,6 +170,6 @@ func labelsForClaim(claim *placementv1alpha1.ClusterRequest) map[string]string {
 func (p *FakeProvisioner) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("spike-fake-provisioner").
-		For(&placementv1alpha1.ClusterRequest{}).
+		For(&placementv1alpha1.ClusterClaim{}).
 		Complete(p)
 }

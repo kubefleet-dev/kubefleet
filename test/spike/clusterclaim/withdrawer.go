@@ -78,7 +78,7 @@ func (w *Withdrawer) gated() bool {
 }
 
 func (w *Withdrawer) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	claim := &placementv1alpha1.ClusterRequest{}
+	claim := &placementv1alpha1.ClusterClaim{}
 	if err := w.Get(ctx, req.NamespacedName, claim); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -121,7 +121,7 @@ func (w *Withdrawer) SetupWithManager(mgr ctrl.Manager) error {
 	// "evaluates unfulfilled cluster selectors as soon as a new cluster is
 	// joined ... or an existing cluster has been relabeled" behavior.
 	mapAllClaims := handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, _ client.Object) []reconcile.Request {
-		claims := &placementv1alpha1.ClusterRequestList{}
+		claims := &placementv1alpha1.ClusterClaimList{}
 		if err := w.List(ctx, claims); err != nil {
 			return nil
 		}
@@ -134,7 +134,7 @@ func (w *Withdrawer) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("spike-claim-withdrawer").
-		For(&placementv1alpha1.ClusterRequest{}).
+		For(&placementv1alpha1.ClusterClaim{}).
 		Watches(&clusterv1beta1.MemberCluster{}, mapAllClaims).
 		Complete(w)
 }

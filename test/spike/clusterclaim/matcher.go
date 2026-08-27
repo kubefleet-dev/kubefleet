@@ -26,7 +26,7 @@ import (
 
 // clusterMatchesTerms reports whether a member cluster satisfies any of the
 // given selector terms (terms are ORed; requirements within a term are ANDed),
-// mirroring the semantics FEP-0001 assigns to ClusterRequest/ClusterClaim
+// mirroring the semantics FEP-0001 assigns to ClusterClaim
 // spec.clusterSelectorTerms. Per the FEP, no terms means any cluster matches.
 //
 // Spike scope: label matching only (MatchLabels + MatchLabelExpressions).

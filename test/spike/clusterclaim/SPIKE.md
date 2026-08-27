@@ -5,8 +5,8 @@ This directory is a time-boxed spike for
 It is spike code held to test-quality standards: the suite runs in
 `make integration-test` (and therefore CI) so the contract gaps it pins
 cannot regress silently. It also runs
-against the API types merged in #781 (`ClusterRequest`; renamed `ClusterClaim`
-by the open #803 — helper names here say "claim" to survive the rename).
+against the API types merged in #781 (`ClusterClaim`, as renamed
+by #803).
 
 ## What the spike does
 
@@ -67,7 +67,7 @@ These surfaced while writing the tests; each needs a design answer before
 #786's reconciler hard-codes one:
 
 1. **Delete-while-provisioning.** Claims carry no finalizer, and withdrawal is
-   a hard delete "regardless of the status of the cluster request." Nothing
+   a hard delete "regardless of the status of the cluster claim." Nothing
    tells a provisioner whether deletion means cancel-and-clean-up or
    finish-and-orphan. Prior art (CAPI `Machine`, Karpenter `NodeClaim`) uses
    finalizers so that "delete means stop and clean up" is explicit.
@@ -192,7 +192,7 @@ The review pass on this harness surfaced one more contract gap and tightened
 two specs:
 
 - **No periodic re-evaluation of time-based eligibility.** The withdrawer
-  re-evaluates claims only on `ClusterRequest`/`MemberCluster` write events,
+  re-evaluates claims only on `ClusterClaim`/`MemberCluster` write events,
   but the eligibility checker's heartbeat-staleness test is time-based: a
   cluster can silently cross the staleness threshold with no corresponding
   write, and nothing re-enqueues the claim to notice. The gated-withdrawal

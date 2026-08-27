@@ -28,14 +28,14 @@ import (
 
 // These specs pin the CEL/schema contract of the claim API (issue #791,
 // coordinating with #793 for the broader CEL test scope).
-var _ = Describe("ClusterRequest/ClusterClaim CEL and schema validation", func() {
+var _ = Describe("ClusterClaim CEL and schema validation", func() {
 	var counter int
 
-	newClaim := func(terms []placementv1alpha1.ClusterLabelAndPropertySelectorTerm) *placementv1alpha1.ClusterRequest {
+	newClaim := func(terms []placementv1alpha1.ClusterLabelAndPropertySelectorTerm) *placementv1alpha1.ClusterClaim {
 		counter++
-		return &placementv1alpha1.ClusterRequest{
+		return &placementv1alpha1.ClusterClaim{
 			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("cel-claim-%d", counter)},
-			Spec: placementv1alpha1.ClusterRequestSpec{
+			Spec: placementv1alpha1.ClusterClaimSpec{
 				PlacementPolicyRef: &placementv1alpha1.ObjectReference{
 					Name:       "app",
 					Namespace:  "work",
@@ -134,7 +134,7 @@ var _ = Describe("ClusterRequest/ClusterClaim CEL and schema validation", func()
 
 		By("Completed=True lands with no provisioned cluster recorded")
 		claim.Status.Conditions = []metav1.Condition{{
-			Type:               placementv1alpha1.ClusterRequestCondTypeCompleted,
+			Type:               placementv1alpha1.ClusterClaimCondTypeCompleted,
 			Status:             metav1.ConditionTrue,
 			Reason:             "Provisioned",
 			Message:            "spike: no provisionedClusterName set",
@@ -184,7 +184,7 @@ var _ = Describe("ClusterRequest/ClusterClaim CEL and schema validation", func()
 		mutated.Spec.ClusterSelectorTerms = []placementv1alpha1.ClusterLabelAndPropertySelectorTerm{regionTerm("westus")}
 		Expect(k8sClient.Update(ctx, mutated)).ShouldNot(Succeed())
 
-		fetched := &placementv1alpha1.ClusterRequest{}
+		fetched := &placementv1alpha1.ClusterClaim{}
 		Expect(k8sClient.Get(ctx, clientKey(claim.Name), fetched)).Should(Succeed())
 		Expect(fetched.Generation).Should(Equal(int64(1)))
 	})

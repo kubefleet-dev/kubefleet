@@ -42,11 +42,11 @@ const spikeProvisionerFinalizer = "spike.kubefleet.dev/provisioner"
 var _ = Describe("claim lifecycle gaps", Ordered, func() {
 	var counter int
 
-	newClaimFor := func(policyName, policyNamespace, region string) *placementv1alpha1.ClusterRequest {
+	newClaimFor := func(policyName, policyNamespace, region string) *placementv1alpha1.ClusterClaim {
 		counter++
-		return &placementv1alpha1.ClusterRequest{
+		return &placementv1alpha1.ClusterClaim{
 			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("lc-claim-%d", counter)},
-			Spec: placementv1alpha1.ClusterRequestSpec{
+			Spec: placementv1alpha1.ClusterClaimSpec{
 				PlacementPolicyRef: &placementv1alpha1.ObjectReference{
 					Name:       policyName,
 					Namespace:  policyNamespace,
@@ -117,23 +117,23 @@ var _ = Describe("claim lifecycle gaps", Ordered, func() {
 
 		By("the claim lingers in Terminating instead of disappearing")
 		Eventually(func() bool {
-			fetched := &placementv1alpha1.ClusterRequest{}
+			fetched := &placementv1alpha1.ClusterClaim{}
 			if err := k8sClient.Get(ctx, clientKey(claim.Name), fetched); err != nil {
 				return false
 			}
 			return !fetched.DeletionTimestamp.IsZero()
 		}, eventuallyTimeout, eventuallyInterval).Should(BeTrue())
 		Consistently(func() error {
-			return k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterRequest{})
+			return k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterClaim{})
 		}, time.Second*2, eventuallyInterval).Should(Succeed())
 
 		By("releasing the finalizer completes the withdrawal")
-		fetched := &placementv1alpha1.ClusterRequest{}
+		fetched := &placementv1alpha1.ClusterClaim{}
 		Expect(k8sClient.Get(ctx, clientKey(claim.Name), fetched)).Should(Succeed())
 		fetched.Finalizers = nil
 		Expect(k8sClient.Update(ctx, fetched)).Should(Succeed())
 		Eventually(func() bool {
-			err := k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterRequest{})
+			err := k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterClaim{})
 			return err != nil && client.IgnoreNotFound(err) == nil
 		}, eventuallyTimeout, eventuallyInterval).Should(BeTrue())
 	})
@@ -160,7 +160,7 @@ var _ = Describe("claim lifecycle gaps", Ordered, func() {
 
 		By("the claim survives indefinitely — nothing reconciles it away")
 		Consistently(func() error {
-			return k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterRequest{})
+			return k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterClaim{})
 		}, time.Second*2, eventuallyInterval).Should(Succeed())
 	})
 

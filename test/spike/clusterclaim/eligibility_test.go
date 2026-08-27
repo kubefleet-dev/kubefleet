@@ -42,11 +42,11 @@ import (
 var _ = Describe("join-window eligibility gap", Ordered, func() {
 	var counter int
 
-	newClaim := func(region string) *placementv1alpha1.ClusterRequest {
+	newClaim := func(region string) *placementv1alpha1.ClusterClaim {
 		counter++
-		return &placementv1alpha1.ClusterRequest{
+		return &placementv1alpha1.ClusterClaim{
 			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("elig-claim-%d", counter)},
-			Spec: placementv1alpha1.ClusterRequestSpec{
+			Spec: placementv1alpha1.ClusterClaimSpec{
 				PlacementPolicyRef: &placementv1alpha1.ObjectReference{
 					Name:       "app",
 					Namespace:  "work",
@@ -109,7 +109,7 @@ var _ = Describe("join-window eligibility gap", Ordered, func() {
 
 		By("yet the claim is withdrawn — the 'still needed' signal is gone while nothing is schedulable")
 		Eventually(func() bool {
-			err := k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterRequest{})
+			err := k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterClaim{})
 			return err != nil && client.IgnoreNotFound(err) == nil
 		}, eventuallyTimeout, eventuallyInterval).Should(BeTrue())
 	})
@@ -123,7 +123,7 @@ var _ = Describe("join-window eligibility gap", Ordered, func() {
 		mc := newMemberCluster("joining-westus2", map[string]string{"topology.kubernetes.io/region": "westus2"})
 		Expect(k8sClient.Create(ctx, mc)).Should(Succeed())
 		Consistently(func() error {
-			return k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterRequest{})
+			return k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterClaim{})
 		}, time.Second*2, eventuallyInterval).Should(Succeed())
 
 		By("once the member agent reports joined + healthy + heartbeating, the claim is withdrawn")
@@ -140,7 +140,7 @@ var _ = Describe("join-window eligibility gap", Ordered, func() {
 		Expect(k8sClient.Status().Update(ctx, mc)).Should(Succeed())
 
 		Eventually(func() bool {
-			err := k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterRequest{})
+			err := k8sClient.Get(ctx, clientKey(claim.Name), &placementv1alpha1.ClusterClaim{})
 			return err != nil && client.IgnoreNotFound(err) == nil
 		}, eventuallyTimeout, eventuallyInterval).Should(BeTrue())
 	})
