@@ -133,6 +133,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 		t.Fatalf("failed to create the policy hash: %v", err)
 	}
 	unspecifiedPolicyHash := []byte(fmt.Sprintf("%x", sha256.Sum256(jsonBytes)))
+	previousPlacementGeneration := strconv.Itoa(placementGeneration - 1)
 	tests := []struct {
 		name                    string
 		policy                  *fleetv1beta1.PlacementPolicy
@@ -312,6 +313,70 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						Annotations: map[string]string{
 							fleetv1beta1.NumberOfClustersAnnotation: strconv.Itoa(3),
 							fleetv1beta1.CRPGenerationAnnotation:    strconv.Itoa(placementGeneration),
+						},
+					},
+					Spec: fleetv1beta1.SchedulingPolicySnapshotSpec{
+						Policy:     testPolicy,
+						PolicyHash: policyHash,
+					},
+				},
+			},
+			wantLatestSnapshotIndex: 0,
+		},
+		{
+			name:                 "crp policy has no change and generation alone does not update the policy snapshot",
+			policy:               placementPolicyForTest(),
+			revisionHistoryLimit: &singleRevisionLimit,
+			policySnapshots: []fleetv1beta1.ClusterSchedulingPolicySnapshot{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: fmt.Sprintf(fleetv1beta1.PolicySnapshotNameFmt, testCRPName, 0),
+						Labels: map[string]string{
+							fleetv1beta1.PolicyIndexLabel:       "0",
+							fleetv1beta1.IsLatestSnapshotLabel:  "true",
+							fleetv1beta1.PlacementTrackingLabel: testCRPName,
+						},
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								Name:               testCRPName,
+								BlockOwnerDeletion: ptr.To(true),
+								Controller:         ptr.To(true),
+								APIVersion:         fleetAPIVersion,
+								Kind:               "ClusterResourcePlacement",
+							},
+						},
+						Annotations: map[string]string{
+							fleetv1beta1.NumberOfClustersAnnotation: strconv.Itoa(3),
+							fleetv1beta1.CRPGenerationAnnotation:    previousPlacementGeneration,
+						},
+					},
+					Spec: fleetv1beta1.SchedulingPolicySnapshotSpec{
+						Policy:     testPolicy,
+						PolicyHash: policyHash,
+					},
+				},
+			},
+			wantPolicySnapshots: []fleetv1beta1.ClusterSchedulingPolicySnapshot{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: fmt.Sprintf(fleetv1beta1.PolicySnapshotNameFmt, testCRPName, 0),
+						Labels: map[string]string{
+							fleetv1beta1.PolicyIndexLabel:       "0",
+							fleetv1beta1.IsLatestSnapshotLabel:  "true",
+							fleetv1beta1.PlacementTrackingLabel: testCRPName,
+						},
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								Name:               testCRPName,
+								BlockOwnerDeletion: ptr.To(true),
+								Controller:         ptr.To(true),
+								APIVersion:         fleetAPIVersion,
+								Kind:               "ClusterResourcePlacement",
+							},
+						},
+						Annotations: map[string]string{
+							fleetv1beta1.NumberOfClustersAnnotation: strconv.Itoa(3),
+							fleetv1beta1.CRPGenerationAnnotation:    previousPlacementGeneration,
 						},
 					},
 					Spec: fleetv1beta1.SchedulingPolicySnapshotSpec{
@@ -538,7 +603,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.NumberOfClustersAnnotation: strconv.Itoa(3),
-							fleetv1beta1.CRPGenerationAnnotation:    "2",
+							fleetv1beta1.CRPGenerationAnnotation:    previousPlacementGeneration,
 						},
 					},
 					Spec: fleetv1beta1.SchedulingPolicySnapshotSpec{
@@ -593,7 +658,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.NumberOfClustersAnnotation: strconv.Itoa(3),
-							fleetv1beta1.CRPGenerationAnnotation:    strconv.Itoa(placementGeneration),
+							fleetv1beta1.CRPGenerationAnnotation:    previousPlacementGeneration,
 						},
 					},
 					Spec: fleetv1beta1.SchedulingPolicySnapshotSpec{
@@ -710,7 +775,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						},
 						Annotations: map[string]string{
 							fleetv1beta1.NumberOfClustersAnnotation: strconv.Itoa(3),
-							fleetv1beta1.CRPGenerationAnnotation:    strconv.Itoa(placementGeneration),
+							fleetv1beta1.CRPGenerationAnnotation:    "2",
 						},
 					},
 					Spec: fleetv1beta1.SchedulingPolicySnapshotSpec{
@@ -785,10 +850,12 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 	tests := []struct {
 		name            string
 		policySnapshots []fleetv1beta1.ClusterSchedulingPolicySnapshot
+		wantErr         bool
 	}{
 		{
 			// Should never hit this case unless there is a bug in the controller or customers manually modify the clusterPolicySnapshot.
 			name: "existing active policy snapshot does not have policyIndex label",
+			wantErr: true,
 			policySnapshots: []fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -811,6 +878,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 		{
 			// Should never hit this case unless there is a bug in the controller or customers manually modify the clusterPolicySnapshot.
 			name: "existing active policy snapshot has an invalid policyIndex label",
+			wantErr: true,
 			policySnapshots: []fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -834,6 +902,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 		{
 			// Should never hit this case unless there is a bug in the controller or customers manually modify the clusterPolicySnapshot.
 			name: "no active policy snapshot exists and policySnapshot with invalid policyIndex label",
+			wantErr: true,
 			policySnapshots: []fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -872,6 +941,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 		{
 			// Should never hit this case unless there is a bug in the controller or customers manually modify the clusterPolicySnapshot.
 			name: "multiple active policy snapshot exist",
+			wantErr: true,
 			policySnapshots: []fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -912,6 +982,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 		{
 			// Should never hit this case unless there is a bug in the controller or customers manually modify the clusterPolicySnapshot.
 			name: "no active policy snapshot exists and policySnapshot with invalid policyIndex label (negative value)",
+			wantErr: true,
 			policySnapshots: []fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -934,6 +1005,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 		{
 			// Should never hit this case unless there is a bug in the controller or customers manually modify the clusterPolicySnapshot.
 			name: "active policy snapshot exists and policySnapshot with invalid numberOfClusters annotation",
+			wantErr: true,
 			policySnapshots: []fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -966,6 +1038,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 		{
 			// Should never hit this case unless there is a bug in the controller or customers manually modify the clusterPolicySnapshot.
 			name: "no active policy snapshot exists and policySnapshot with invalid numberOfClusters annotation (negative)",
+			wantErr: true,
 			policySnapshots: []fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -995,8 +1068,10 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 			},
 		},
 		{
-			// Should never hit this case unless there is a bug in the controller or customers manually modify the clusterPolicySnapshot.
+			// This can happen for older snapshots created before the annotation existed; we now tolerate it
+			// because same-policy reconciles no longer require rewriting the CRP generation annotation.
 			name: "active policy snapshot exists and policySnapshot without crp generation annotation",
+			wantErr: false,
 			policySnapshots: []fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -1045,12 +1120,24 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 				Scheme:   scheme,
 				Recorder: record.NewFakeRecorder(10),
 			}
-			_, err := r.getOrCreateSchedulingPolicySnapshot(ctx, crp, 1)
-			if err == nil { // if error is nil
-				t.Fatal("getOrCreateClusterResourceSnapshot() = nil, want err")
+			got, err := r.getOrCreateSchedulingPolicySnapshot(ctx, crp, 1)
+			if tc.wantErr {
+				if err == nil { // if error is nil
+					t.Fatal("getOrCreateClusterResourceSnapshot() = nil, want err")
+				}
+				if !errors.Is(err, controller.ErrUnexpectedBehavior) {
+					t.Errorf("getOrCreateClusterResourceSnapshot() got %v, want %v type", err, controller.ErrUnexpectedBehavior)
+				}
+				return
 			}
-			if !errors.Is(err, controller.ErrUnexpectedBehavior) {
-				t.Errorf("getOrCreateClusterResourceSnapshot() got %v, want %v type", err, controller.ErrUnexpectedBehavior)
+			if err != nil {
+				t.Fatalf("getOrCreateClusterResourceSnapshot() = %v, want nil", err)
+			}
+			if got == nil {
+				t.Fatal("getOrCreateClusterResourceSnapshot() = nil, want policy snapshot")
+			}
+			if got.GetLabels()[fleetv1beta1.IsLatestSnapshotLabel] != strconv.FormatBool(true) {
+				t.Fatalf("policy snapshot latest label = %q, want %q", got.GetLabels()[fleetv1beta1.IsLatestSnapshotLabel], strconv.FormatBool(true))
 			}
 		})
 	}
