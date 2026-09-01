@@ -1794,8 +1794,9 @@ func (rpl *ResourcePlacementList) GetPlacementObjs() []PlacementObj {
 // +kubebuilder:printcolumn:JSONPath=`.metadata.creationTimestamp`,name="Age",type=date
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// ClusterResourcePlacementStatus is a namespaced resource that mirrors the PlacementStatus of a corresponding
-// ClusterResourcePlacement object. This allows namespace-scoped access to cluster-scoped placement status.
+// ClusterResourcePlacementStatus is a namespaced resource that projects the PlacementStatus of a corresponding
+// ClusterResourcePlacement object. The projection includes only the target Namespace and resources and references
+// within it, allowing namespace-scoped access without exposing other cluster-scoped or namespaced resources.
 // The LastUpdatedTime field is updated whenever the CRPS object is updated.
 //
 // This object will be created within the target namespace that contains resources being managed by the CRP.
@@ -1808,7 +1809,7 @@ type ClusterResourcePlacementStatus struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// Source status copied from the corresponding ClusterResourcePlacement.
+	// Source status projected from the corresponding ClusterResourcePlacement for the target namespace.
 	// +kubebuilder:validation:Required
 	PlacementStatus `json:"sourceStatus,omitempty"`
 
