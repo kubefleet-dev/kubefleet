@@ -19,11 +19,28 @@ package validator
 
 import (
 	"fmt"
+	"strings"
 
+	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/errors"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
+
+var kubernetesRBACResourceKinds = map[string]bool{
+	"Role":               true,
+	"RoleBinding":        true,
+	"ClusterRole":        true,
+	"ClusterRoleBinding": true,
+}
+
+var rbacEscalationPaths = map[string]struct{}{
+	"subjects":        {},
+	"roleRef":         {},
+	"rules":           {},
+	"aggregationRule": {},
+}
 
 // ValidateClusterResourceOverride validates cluster resource override fields and returns error.
 func ValidateClusterResourceOverride(cro placementv1beta1.ClusterResourceOverride, croList *placementv1beta1.ClusterResourceOverrideList) error {
@@ -42,6 +59,9 @@ func ValidateClusterResourceOverride(cro placementv1beta1.ClusterResourceOverrid
 
 	if cro.Spec.Policy != nil {
 		if err := validateOverridePolicy(cro.Spec.Policy); err != nil {
+			allErr = append(allErr, err)
+		}
+		if err := validateRBACJSONPatchOverrides(cro.Spec.ClusterResourceSelectors, cro.Spec.Policy); err != nil {
 			allErr = append(allErr, err)
 		}
 	}
@@ -70,6 +90,41 @@ func validateClusterResourceSelectors(cro placementv1beta1.ClusterResourceOverri
 		selectorMap[selector] = true
 	}
 	return errors.NewAggregate(allErr)
+}
+
+func isKubernetesRBACResource(gk schema.GroupKind) bool {
+	return gk.Group == rbacv1.GroupName && kubernetesRBACResourceKinds[gk.Kind]
+}
+
+func validateRBACJSONPatchOverrides(selectors []placementv1beta1.ResourceSelectorTerm, policy *placementv1beta1.OverridePolicy) error {
+	allErr := make([]error, 0)
+	for _, selector := range selectors {
+		gk := schema.GroupKind{Group: selector.Group, Kind: selector.Kind}
+		if !isKubernetesRBACResource(gk) {
+			continue
+		}
+
+		for _, rule := range policy.OverrideRules {
+			for _, patch := range rule.JSONPatchOverrides {
+				if isProtectedRBACOverridePath(patch.Path) {
+					allErr = append(allErr, fmt.Errorf("clusterResourceOverride cannot patch path %q on RBAC resource %s because it can escalate privileges on member clusters", patch.Path, gk))
+				}
+			}
+		}
+	}
+	return errors.NewAggregate(allErr)
+}
+
+func isProtectedRBACOverridePath(path string) bool {
+	if !strings.HasPrefix(path, "/") {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) == 0 {
+		return false
+	}
+	_, found := rbacEscalationPaths[parts[0]]
+	return found
 }
 
 // validateClusterResourceOverrideResourceLimit checks if there is only 1 cluster resource override per resource,

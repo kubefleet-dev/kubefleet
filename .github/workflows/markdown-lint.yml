@@ -5,6 +5,8 @@ on:
     paths:
       - '**.md'
       - "docs/**"
+      - ".github/workflows/markdown-lint.yml"
+      - ".github/workflows/markdown.links.config.json"
 
 jobs:
   markdown-link-check:

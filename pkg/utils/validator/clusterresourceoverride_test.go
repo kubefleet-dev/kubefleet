@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	rbacv1 "k8s.io/api/rbac/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apierrors "k8s.io/apimachinery/pkg/util/errors"
@@ -138,6 +139,90 @@ func TestValidateClusterResourceSelectors(t *testing.T) {
 
 			if got != nil && !strings.Contains(got.Error(), tt.wantErrMsg.Error()) {
 				t.Errorf("validateClusterResourceSelectors() = %v, want %v", got, tt.wantErrMsg)
+			}
+		})
+	}
+}
+
+func TestValidateRBACJSONPatchOverrides(t *testing.T) {
+	tests := map[string]struct {
+		group      string
+		kind       string
+		path       string
+		wantErrMsg string
+	}{
+		"deny subjects": {
+			group: rbacv1.GroupName, kind: "ClusterRoleBinding", path: "/subjects",
+			wantErrMsg: `cannot patch path "/subjects" on RBAC resource`,
+		},
+		"deny subjects descendant": {
+			group: rbacv1.GroupName, kind: "RoleBinding", path: "/subjects/0/name",
+			wantErrMsg: `cannot patch path "/subjects/0/name" on RBAC resource`,
+		},
+		"deny roleRef": {
+			group: rbacv1.GroupName, kind: "ClusterRoleBinding", path: "/roleRef",
+			wantErrMsg: `cannot patch path "/roleRef" on RBAC resource`,
+		},
+		"deny roleRef descendant": {
+			group: rbacv1.GroupName, kind: "RoleBinding", path: "/roleRef/name",
+			wantErrMsg: `cannot patch path "/roleRef/name" on RBAC resource`,
+		},
+		"deny rules": {
+			group: rbacv1.GroupName, kind: "ClusterRole", path: "/rules",
+			wantErrMsg: `cannot patch path "/rules" on RBAC resource`,
+		},
+		"deny rules descendant": {
+			group: rbacv1.GroupName, kind: "Role", path: "/rules/0/verbs",
+			wantErrMsg: `cannot patch path "/rules/0/verbs" on RBAC resource`,
+		},
+		"deny aggregationRule": {
+			group: rbacv1.GroupName, kind: "ClusterRole", path: "/aggregationRule",
+			wantErrMsg: `cannot patch path "/aggregationRule" on RBAC resource`,
+		},
+		"deny aggregationRule descendant": {
+			group: rbacv1.GroupName, kind: "ClusterRole", path: "/aggregationRule/clusterRoleSelectors",
+			wantErrMsg: `cannot patch path "/aggregationRule/clusterRoleSelectors" on RBAC resource`,
+		},
+		"allow unrelated RBAC path": {
+			group: rbacv1.GroupName, kind: "ClusterRoleBinding", path: "/metadata/annotations/example.com~1owner",
+		},
+		"allow same path on non-RBAC resource": {
+			group: "example.com", kind: "Example", path: "/rules",
+		},
+		"allow lookalike kind outside RBAC group": {
+			group: "example.com", kind: "ClusterRole", path: "/rules",
+		},
+	}
+
+	for testName, tt := range tests {
+		t.Run(testName, func(t *testing.T) {
+			cro := placementv1beta1.ClusterResourceOverride{
+				Spec: placementv1beta1.ClusterResourceOverrideSpec{
+					ClusterResourceSelectors: []placementv1beta1.ResourceSelectorTerm{{
+						Group: tt.group, Version: "v1", Kind: tt.kind, Name: "target",
+					}},
+					Policy: &placementv1beta1.OverridePolicy{
+						OverrideRules: []placementv1beta1.OverrideRule{{
+							OverrideType: placementv1beta1.JSONPatchOverrideType,
+							JSONPatchOverrides: []placementv1beta1.JSONPatchOverride{{
+								Operator: placementv1beta1.JSONPatchOverrideOpAdd,
+								Path:     tt.path,
+								Value:    apiextensionsv1.JSON{Raw: []byte(`{}`)},
+							}},
+						}},
+					},
+				},
+			}
+
+			got := ValidateClusterResourceOverride(cro, nil)
+			if tt.wantErrMsg == "" {
+				if got != nil {
+					t.Fatalf("ValidateClusterResourceOverride() = %v, want nil", got)
+				}
+				return
+			}
+			if got == nil || !strings.Contains(got.Error(), tt.wantErrMsg) {
+				t.Fatalf("ValidateClusterResourceOverride() = %v, want error containing %q", got, tt.wantErrMsg)
 			}
 		})
 	}
