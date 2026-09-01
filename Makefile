@@ -323,9 +323,9 @@ crd-package: ## Package the raw CRDs into a release tarball with a SHA-256 check
 	@echo "Packaged CRDs into $(CRD_PACKAGE_DIR)/$(CRD_PACKAGE_NAME).tgz"
 
 .PHONY: crd-verify
-crd-verify: ## Verify the chart CRD directories cover every CRD in config/crd/bases; note (chenyu1): kubefleet.dev CRDs are ignored for now until the implementation is completed.
+crd-verify: ## Verify the chart CRD directories cover every CRD in config/crd/bases; note: the placement.kubefleet.dev binding/snapshot/work CRDs are excluded until their controllers ship, since only their API types exist so far.
 	@bases="$$(mktemp)"; charts="$$(mktemp)"; \
-	ls config/crd/bases/ | grep -v '^placement\.kubefleet\.dev' | sort > "$$bases"; \
+	ls config/crd/bases/ | grep -vE '^placement\.kubefleet\.dev_(clusterplacementbindings|placementbindings|clusterplacementresourcesnapshots|placementresourcesnapshots|works)\.yaml$$' | sort > "$$bases"; \
 	{ ls charts/hub-agent/templates/crds/; ls charts/member-agent/templates/crds/; } | sort > "$$charts"; \
 	missing="$$(comm -3 "$$bases" "$$charts")"; \
 	rm -f "$$bases" "$$charts"; \
