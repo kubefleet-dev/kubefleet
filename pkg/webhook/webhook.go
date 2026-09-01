@@ -780,7 +780,7 @@ func (w *Config) buildFleetGuardRailValidatingWebhooks() []admv1.ValidatingWebho
 		{
 			Name:                    "fleet.namespace.guardrail.validating",
 			ClientConfig:            w.createClientConfig(fleetresourcehandler.ValidationPath),
-			FailurePolicy:           &ignoreFailurePolicy,
+			FailurePolicy:           &failFailurePolicy,
 			SideEffects:             &sideEffortsNone,
 			AdmissionReviewVersions: admissionReviewVersions,
 			Rules: []admv1.RuleWithOperations{

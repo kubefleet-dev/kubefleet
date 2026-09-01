@@ -95,8 +95,8 @@ func TestBuildFleetValidatingWebhooks(t *testing.T) {
 func TestBuildFleetGuardRailValidatingWebhooks(t *testing.T) {
 	url := options.WebhookClientConnectionType("url")
 	testCases := map[string]struct {
-		config     Config
-		wantLength int
+		config              Config
+		wantFailurePolicies map[string]admv1.FailurePolicyType
 	}{
 		"valid input": {
 			config: Config{
@@ -105,14 +105,28 @@ func TestBuildFleetGuardRailValidatingWebhooks(t *testing.T) {
 				serviceURL:           "test-url",
 				clientConnectionType: &url,
 			},
-			wantLength: 6,
+			wantFailurePolicies: map[string]admv1.FailurePolicyType{
+				"fleet.customresourcedefinition.guardrail.validating":       admv1.Ignore,
+				"fleet.membercluster.guardrail.validating":                  admv1.Ignore,
+				"fleet.fleetmembernamespacedresources.guardrail.validating": admv1.Ignore,
+				"fleet.fleetsystemnamespacedresources.guardrail.validating": admv1.Ignore,
+				"fleet.kubenamespacedresources.guardrail.validating":        admv1.Ignore,
+				"fleet.namespace.guardrail.validating":                      admv1.Fail,
+			},
 		},
 	}
 
 	for testName, testCase := range testCases {
 		t.Run(testName, func(t *testing.T) {
 			gotResult := testCase.config.buildFleetGuardRailValidatingWebhooks()
-			assert.Equal(t, testCase.wantLength, len(gotResult), utils.TestCaseMsg, testName)
+			assert.Len(t, gotResult, len(testCase.wantFailurePolicies), utils.TestCaseMsg, testName)
+			gotFailurePolicies := make(map[string]admv1.FailurePolicyType, len(gotResult))
+			for _, webhook := range gotResult {
+				if assert.NotNil(t, webhook.FailurePolicy, "webhook %q failure policy", webhook.Name) {
+					gotFailurePolicies[webhook.Name] = *webhook.FailurePolicy
+				}
+			}
+			assert.Equal(t, testCase.wantFailurePolicies, gotFailurePolicies, utils.TestCaseMsg, testName)
 		})
 	}
 }
