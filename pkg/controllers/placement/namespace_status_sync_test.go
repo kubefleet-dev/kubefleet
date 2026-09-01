@@ -45,6 +45,167 @@ var (
 	}
 )
 
+func TestBuildNamespaceAccessiblePlacementStatus(t *testing.T) {
+	targetNamespace := "test-namespace"
+	status := &placementv1beta1.PlacementStatus{
+		SelectedResources: []placementv1beta1.ResourceIdentifier{
+			{Version: "v1", Kind: "Namespace", Name: targetNamespace},
+			{Group: "apps", Version: "v1", Kind: "Deployment", Namespace: targetNamespace, Name: "api", Envelope: &placementv1beta1.EnvelopeIdentifier{Name: "cluster-envelope", Type: placementv1beta1.ClusterResourceEnvelopeType}},
+			{Version: "v1", Kind: "ConfigMap", Namespace: targetNamespace, Name: "config", Envelope: &placementv1beta1.EnvelopeIdentifier{Name: "resource-envelope", Namespace: targetNamespace, Type: placementv1beta1.ResourceEnvelopeType}},
+			{Version: "v1", Kind: "ConfigMap", Namespace: "other-namespace", Name: "other"},
+			{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole", Name: "cluster-reader"},
+		},
+		ObservedResourceIndex: "1",
+		PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+			{
+				ClusterName: "member-1",
+				ApplicableResourceOverrides: []placementv1beta1.NamespacedName{
+					{Name: "same-namespace-override", Namespace: targetNamespace},
+					{Name: "other-namespace-override", Namespace: "other-namespace"},
+				},
+				ApplicableClusterResourceOverrides: []string{"cluster-override"},
+				FailedPlacements: []placementv1beta1.FailedResourcePlacement{
+					{
+						ResourceIdentifier: placementv1beta1.ResourceIdentifier{Group: "apps", Version: "v1", Kind: "Deployment", Namespace: targetNamespace, Name: "api"},
+						Condition:          metav1.Condition{Type: "Applied", Status: metav1.ConditionFalse, Reason: "ApplyFailed", Message: "apply failed"},
+					},
+					{
+						ResourceIdentifier: placementv1beta1.ResourceIdentifier{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole", Name: "cluster-reader"},
+						Condition:          metav1.Condition{Type: "Applied", Status: metav1.ConditionFalse, Reason: "ApplyFailed", Message: "apply failed"},
+					},
+				},
+				DriftedPlacements: []placementv1beta1.DriftedResourcePlacement{
+					{
+						ResourceIdentifier: placementv1beta1.ResourceIdentifier{Group: "apps", Version: "v1", Kind: "Deployment", Namespace: targetNamespace, Name: "api"},
+						ObservedDrifts: []placementv1beta1.PatchDetail{
+							{Path: "/spec/template/spec/containers/0/env/0/value", ValueInMember: "member-secret", ValueInHub: "hub-secret"},
+						},
+					},
+					{
+						ResourceIdentifier: placementv1beta1.ResourceIdentifier{Version: "v1", Kind: "ConfigMap", Namespace: "other-namespace", Name: "other"},
+						ObservedDrifts:     []placementv1beta1.PatchDetail{{Path: "/data/token", ValueInMember: "other-secret"}},
+					},
+				},
+				DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
+					{
+						ResourceIdentifier: placementv1beta1.ResourceIdentifier{Version: "v1", Kind: "Namespace", Name: targetNamespace},
+						ObservedDiffs:      []placementv1beta1.PatchDetail{{Path: "/metadata/labels/team", ValueInMember: "member-value", ValueInHub: "hub-value"}},
+					},
+					{
+						ResourceIdentifier: placementv1beta1.ResourceIdentifier{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole", Name: "cluster-reader"},
+						ObservedDiffs:      []placementv1beta1.PatchDetail{{Path: "/metadata/annotations/token", ValueInMember: "cluster-secret"}},
+					},
+				},
+				Conditions: []metav1.Condition{{Type: "Applied", Status: metav1.ConditionFalse, Reason: "ApplyFailed", Message: "member object contained rejected value secret"}},
+			},
+		},
+		Conditions: []metav1.Condition{
+			{Type: string(placementv1beta1.ClusterResourcePlacementScheduledConditionType), Status: metav1.ConditionTrue, Message: "aggregate message"},
+			{Type: string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType), Status: metav1.ConditionTrue},
+		},
+	}
+	originalStatus := status.DeepCopy()
+
+	want := &placementv1beta1.PlacementStatus{
+		SelectedResources: []placementv1beta1.ResourceIdentifier{
+			{Version: "v1", Kind: "Namespace", Name: targetNamespace},
+			{Group: "apps", Version: "v1", Kind: "Deployment", Namespace: targetNamespace, Name: "api"},
+			{Version: "v1", Kind: "ConfigMap", Namespace: targetNamespace, Name: "config", Envelope: &placementv1beta1.EnvelopeIdentifier{Name: "resource-envelope", Namespace: targetNamespace, Type: placementv1beta1.ResourceEnvelopeType}},
+		},
+		ObservedResourceIndex: "1",
+		PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+			{
+				ClusterName: "member-1",
+				ApplicableResourceOverrides: []placementv1beta1.NamespacedName{
+					{Name: "same-namespace-override", Namespace: targetNamespace},
+				},
+				FailedPlacements: []placementv1beta1.FailedResourcePlacement{
+					{
+						ResourceIdentifier: placementv1beta1.ResourceIdentifier{Group: "apps", Version: "v1", Kind: "Deployment", Namespace: targetNamespace, Name: "api"},
+						Condition:          metav1.Condition{Type: "Applied", Status: metav1.ConditionFalse, Reason: "ApplyFailed"},
+					},
+				},
+				DriftedPlacements: []placementv1beta1.DriftedResourcePlacement{
+					{
+						ResourceIdentifier: placementv1beta1.ResourceIdentifier{Group: "apps", Version: "v1", Kind: "Deployment", Namespace: targetNamespace, Name: "api"},
+						ObservedDrifts:     []placementv1beta1.PatchDetail{{Path: "/spec/template/spec/containers/0/env/0/value"}},
+					},
+				},
+				DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
+					{
+						ResourceIdentifier: placementv1beta1.ResourceIdentifier{Version: "v1", Kind: "Namespace", Name: targetNamespace},
+						ObservedDiffs:      []placementv1beta1.PatchDetail{{Path: "/metadata/labels/team"}},
+					},
+				},
+				Conditions: []metav1.Condition{{Type: "Applied", Status: metav1.ConditionFalse, Reason: "ApplyFailed"}},
+			},
+		},
+		Conditions: []metav1.Condition{
+			{Type: string(placementv1beta1.ClusterResourcePlacementScheduledConditionType), Status: metav1.ConditionTrue},
+		},
+	}
+
+	got := buildNamespaceAccessiblePlacementStatus(status, targetNamespace)
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("buildNamespaceAccessiblePlacementStatus() mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(originalStatus, status); diff != "" {
+		t.Errorf("buildNamespaceAccessiblePlacementStatus() mutated source status (-want +got):\n%s", diff)
+	}
+}
+
+func TestSyncClusterResourcePlacementStatusSanitizesNamespaceView(t *testing.T) {
+	targetNamespace := "test-namespace"
+	crp := &placementv1beta1.ClusterResourcePlacement{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-crp"},
+		Status: placementv1beta1.PlacementStatus{
+			PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+				{
+					ClusterName: "member-1",
+					DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
+						{
+							ResourceIdentifier: placementv1beta1.ResourceIdentifier{Group: "apps", Version: "v1", Kind: "Deployment", Namespace: targetNamespace, Name: "api"},
+							ObservedDiffs:      []placementv1beta1.PatchDetail{{Path: "/spec/template/spec/containers/0/env", ValueInMember: "member-secret", ValueInHub: "hub-secret"}},
+						},
+						{
+							ResourceIdentifier: placementv1beta1.ResourceIdentifier{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole", Name: "cluster-reader"},
+							ObservedDiffs:      []placementv1beta1.PatchDetail{{Path: "/metadata/annotations/token", ValueInMember: "cluster-secret"}},
+						},
+					},
+				},
+			},
+		},
+	}
+	originalStatus := crp.Status.DeepCopy()
+	scheme := statusSyncServiceScheme(t)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+		crp,
+		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: targetNamespace}},
+	).Build()
+	reconciler := &Reconciler{Client: fakeClient, Scheme: scheme}
+
+	if err := reconciler.syncClusterResourcePlacementStatus(context.Background(), crp, targetNamespace); err != nil {
+		t.Fatalf("syncClusterResourcePlacementStatus() failed: %v", err)
+	}
+
+	got := &placementv1beta1.ClusterResourcePlacementStatus{}
+	if err := fakeClient.Get(context.Background(), types.NamespacedName{Name: crp.Name, Namespace: targetNamespace}, got); err != nil {
+		t.Fatalf("Failed to get ClusterResourcePlacementStatus: %v", err)
+	}
+	wantDiffedPlacements := []placementv1beta1.DiffedResourcePlacement{
+		{
+			ResourceIdentifier: placementv1beta1.ResourceIdentifier{Group: "apps", Version: "v1", Kind: "Deployment", Namespace: targetNamespace, Name: "api"},
+			ObservedDiffs:      []placementv1beta1.PatchDetail{{Path: "/spec/template/spec/containers/0/env"}},
+		},
+	}
+	if diff := cmp.Diff(wantDiffedPlacements, got.PlacementStatus.PerClusterPlacementStatuses[0].DiffedPlacements); diff != "" {
+		t.Errorf("synced DiffedPlacements mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(originalStatus, &crp.Status); diff != "" {
+		t.Errorf("syncClusterResourcePlacementStatus() mutated source status (-want +got):\n%s", diff)
+	}
+}
+
 func TestHandleNamespaceAccessibleCRP(t *testing.T) {
 	testCases := []struct {
 		name              string
