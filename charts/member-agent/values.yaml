@@ -24,7 +24,38 @@ tolerations: []
 
 affinity: {}
 
-namespace: 
+# serviceAccount.annotations lets you annotate the chart-managed ServiceAccount, e.g. with
+# azure.workload.identity/client-id: <uami-client-id> for Azure Workload Identity Federation.
+# Combine with podLabels: {azure.workload.identity/use: "true"} below and
+# config.provider: azure to have the refresh-token sidecar's DefaultAzureCredential chain
+# pick up the federated identity automatically — see docs/cluster-authentication.md.
+serviceAccount:
+  annotations: {}
+
+# podLabels/podAnnotations are merged onto the member-agent pod. Needed for auth mechanisms
+# that key off pod metadata, e.g. Azure Workload Identity's mutating webhook (which only
+# injects its token/env vars into pods labeled azure.workload.identity/use: "true").
+podLabels: {}
+podAnnotations: {}
+
+# extraEnv/extraEnvFrom are injected into the refresh-token sidecar only (the container that
+# actually acquires the hub credential). Use these for Azure auth modes that need explicit
+# environment configuration and have no dedicated chart value — most notably a service
+# principal for azidentity's EnvironmentCredential leg (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET
+# or AZURE_CLIENT_CERTIFICATE_PATH, AZURE_TENANT_ID), typically sourced from a Secret via
+# extraEnvFrom rather than inlined here. Workload Identity and (system-assigned) Managed
+# Identity need neither — see serviceAccount.annotations/podLabels above and
+# docs/cluster-authentication.md for the full picture of what each Azure auth mode needs.
+# extraEnv:
+#   - name: AZURE_TENANT_ID
+#     value: "<tenant-id>"
+# extraEnvFrom:
+#   - secretRef:
+#       name: azure-service-principal
+extraEnv: []
+extraEnvFrom: []
+
+namespace:
   fleet-system
 
 config:
@@ -53,8 +84,13 @@ secret:
   name: "hub-kubeconfig-secret"
   namespace: "default"
 
-azure:
-  clientid: <member_cluster_clientID>
+# azure has no keys by default: the refresh-token sidecar's `azure` provider
+# (pkg/authtoken/providers/azure) uses azidentity.DefaultAzureCredential, which picks an
+# identity on its own (workload identity, a service principal, system-assigned managed
+# identity, az/azd CLI login) with no client-ID configuration needed -- see
+# docs/cluster-authentication.md. Add a `scope` key here only to override the default AKS AAD
+# scope.
+azure: {}
 
 tlsClientInsecure: false
 useCAAuth: false
