@@ -42,7 +42,7 @@ const (
 	qualifiedNameMaxLength = 63
 
 	// crdPath is the placement policy CRD, read by TestLimitsMatchAPIValidation.
-	crdPath = "../../../config/crd/bases/placement.kubefleet.dev_placementpolicies.yaml"
+	crdPath = "../../../../config/crd/bases/placement.kubefleet.dev_placementpolicies.yaml"
 )
 
 // selectorOf builds the cluster selector that the parser is expected to produce for one segment of

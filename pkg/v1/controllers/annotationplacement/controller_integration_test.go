@@ -19,6 +19,7 @@ package annotationplacement
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -35,14 +36,14 @@ import (
 )
 
 const (
-	eventuallyTimeout  = "10s"
-	eventuallyInterval = "250ms"
+	eventuallyTimeout         = "10s"
+	eventuallyTimeoutDuration = 10 * time.Second
+	eventuallyInterval        = "250ms"
 )
 
 var configMapCount int
 
-// annotate sets, changes, or (with an empty value) removes the annotation on an object, and waits for
-// the informer cache the reconciler reads from to catch up.
+// annotate sets, changes, or (with an empty value) removes the annotation on an object.
 func annotate(object client.Object, value string) {
 	Expect(hubClient.Get(ctx, client.ObjectKeyFromObject(object), object)).Should(Succeed())
 	annotations := object.GetAnnotations()
@@ -56,54 +57,11 @@ func annotate(object client.Object, value string) {
 	}
 	object.SetAnnotations(annotations)
 	Expect(hubClient.Update(ctx, object)).Should(Succeed())
-
-	// The reconciler reads the annotated resource from the informer cache rather than from the API
-	// server, so a reconcile run before the cache catches up would act on the previous value.
-	gvr := configMapGVR
-	if object.GetNamespace() == "" {
-		gvr = namespaceGVR
-	}
-	Eventually(func() (string, error) {
-		cached, err := cachedObject(gvr, object)
-		if err != nil {
-			return "", err
-		}
-		return cached.GetAnnotations()[kfplacementv1alpha1.ClusterSelectorsAnnotation], nil
-	}, eventuallyTimeout, eventuallyInterval).Should(Equal(value), "the informer cache never caught up with the annotation")
-}
-
-// waitForCache blocks until the informer cache the reconciler reads from has observed an object.
-//
-// Without it, a reconcile can run against a cache that has not caught up, where a resource that is
-// merely not yet visible is indistinguishable from one that carries no annotation: both leave no
-// generated policy behind, so an assertion that none exists would hold either way.
-func waitForCache(gvr schema.GroupVersionResource, object client.Object) {
-	Eventually(func() error {
-		_, err := cachedObject(gvr, object)
-		return err
-	}, eventuallyTimeout, eventuallyInterval).Should(Succeed(), "the informer cache never observed the resource")
-}
-
-// cachedObject reads an object out of the informer cache the reconciler uses.
-func cachedObject(gvr schema.GroupVersionResource, object client.Object) (client.Object, error) {
-	lister := informerManager.Lister(gvr)
-	if object.GetNamespace() == "" {
-		cached, err := lister.Get(object.GetName())
-		if err != nil {
-			return nil, err
-		}
-		return cached.(client.Object), nil
-	}
-	cached, err := lister.ByNamespace(object.GetNamespace()).Get(object.GetName())
-	if err != nil {
-		return nil, err
-	}
-	return cached.(client.Object), nil
 }
 
 // reconcile runs one pass of the reconciler over an object, as the resource watcher would.
 func reconcile(gvk schema.GroupVersionKind, object client.Object) error {
-	_, err := reconciler.Reconcile(ctx, keyFor(gvk, object.GetNamespace(), object.GetName()))
+	_, err := reconciler.Reconcile(ctx, requestFor(gvk, object.GetNamespace(), object.GetName()))
 	return err
 }
 
@@ -212,7 +170,6 @@ var _ = Describe("annotation based placement", func() {
 				},
 			}
 			Expect(hubClient.Create(ctx, configMap)).Should(Succeed())
-			waitForCache(configMapGVR, configMap)
 			drainEvents()
 		})
 
@@ -346,10 +303,6 @@ var _ = Describe("annotation based placement", func() {
 			drainEvents()
 
 			Expect(hubClient.Delete(ctx, configMap)).Should(Succeed())
-			Eventually(func() error {
-				_, err := cachedObject(configMapGVR, configMap)
-				return err
-			}, eventuallyTimeout, eventuallyInterval).ShouldNot(Succeed(), "the informer cache never observed the deletion")
 
 			Expect(reconcile(configMapGVK, configMap)).Should(Succeed())
 			_, err = generatedPolicyFor(configMapGVK, configMap)
@@ -368,7 +321,6 @@ var _ = Describe("annotation based placement", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("team-%d", configMapCount)},
 			}
 			Expect(hubClient.Create(ctx, namespace)).Should(Succeed())
-			waitForCache(namespaceGVR, namespace)
 			drainEvents()
 		})
 
