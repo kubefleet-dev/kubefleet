@@ -1637,8 +1637,7 @@ func buildPerClusterPlacementStatusesAndHasOverrides(
 						},
 						ObservedDiffs: []placementv1beta1.PatchDetail{
 							{
-								Path:       "/",
-								ValueInHub: "(the whole object)",
+								Path: "/",
 							},
 						},
 					},
@@ -1652,8 +1651,7 @@ func buildPerClusterPlacementStatusesAndHasOverrides(
 						},
 						ObservedDiffs: []placementv1beta1.PatchDetail{
 							{
-								Path:       "/",
-								ValueInHub: "(the whole object)",
+								Path: "/",
 							},
 						},
 					})
