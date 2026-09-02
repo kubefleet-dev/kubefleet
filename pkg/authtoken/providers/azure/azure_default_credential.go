@@ -49,8 +49,6 @@ const aksScope = "6dae42f8-4368-4678-94ff-3960e28e3630/.default"
 //  3. ManagedIdentityCredential   - IMDS; a system-assigned managed identity, or a user-assigned
 //     one if AZURE_CLIENT_ID happens to already be set in the environment (e.g. by one of the
 //     mechanisms above)
-//  4. AzureCLICredential          - an `az login` session (local development only)
-//  5. AzureDeveloperCLICredential - an `azd auth login` session (local development only)
 //
 // This lets the same binary/image authenticate correctly no matter which of these mechanisms
 // the member cluster is actually set up with, without the operator having to pick one Azure
