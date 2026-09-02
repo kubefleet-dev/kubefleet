@@ -39,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
@@ -71,26 +72,54 @@ func TestEnsureMemberNameLabel(t *testing.T) {
 		wantLabels    map[string]string
 		wantErr       string
 	}{
-		"label already present with correct value": {
+		"name and alias labels already present with correct values": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
-					MockUpdate: test.NewMockUpdateFn(fmt.Errorf("update should not be called when label is already correct")),
+					MockUpdate: test.NewMockUpdateFn(fmt.Errorf("update should not be called when the labels are already correct")),
 				},
 			},
 			memberCluster: &clusterv1beta1.MemberCluster{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "mc1",
 					Labels: map[string]string{
-						placementv1beta1.MemberNameLabel: "mc1",
+						placementv1beta1.MemberNameLabel:      "mc1",
+						kfplacementv1alpha1.ClusterAliasLabel: "mc1",
 					},
 				},
 			},
 			wantLabels: map[string]string{
-				placementv1beta1.MemberNameLabel: "mc1",
+				placementv1beta1.MemberNameLabel:      "mc1",
+				kfplacementv1alpha1.ClusterAliasLabel: "mc1",
+			},
+		},
+		// The alias is the admin's to rename: unlike the name label, a different value is left
+		// alone rather than reasserted, since the alias exists precisely so that a selector can
+		// follow a role while the cluster behind it changes.
+		"an alias renamed by an admin is not reverted": {
+			r: &Reconciler{
+				SeedClusterAliasLabel: true,
+				Client: &test.MockClient{
+					MockUpdate: test.NewMockUpdateFn(fmt.Errorf("update should not be called when the alias was deliberately renamed")),
+				},
+			},
+			memberCluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "mc1",
+					Labels: map[string]string{
+						placementv1beta1.MemberNameLabel:      "mc1",
+						kfplacementv1alpha1.ClusterAliasLabel: "bravelion",
+					},
+				},
+			},
+			wantLabels: map[string]string{
+				placementv1beta1.MemberNameLabel:      "mc1",
+				kfplacementv1alpha1.ClusterAliasLabel: "bravelion",
 			},
 		},
 		"no labels at all": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockUpdate: func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
 						return nil
@@ -103,11 +132,13 @@ func TestEnsureMemberNameLabel(t *testing.T) {
 				},
 			},
 			wantLabels: map[string]string{
-				placementv1beta1.MemberNameLabel: "mc1",
+				placementv1beta1.MemberNameLabel:      "mc1",
+				kfplacementv1alpha1.ClusterAliasLabel: "mc1",
 			},
 		},
 		"labels exist but name label is missing": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockUpdate: func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
 						return nil
@@ -123,12 +154,14 @@ func TestEnsureMemberNameLabel(t *testing.T) {
 				},
 			},
 			wantLabels: map[string]string{
-				"existing-label":                 "value",
-				placementv1beta1.MemberNameLabel: "mc1",
+				"existing-label":                      "value",
+				placementv1beta1.MemberNameLabel:      "mc1",
+				kfplacementv1alpha1.ClusterAliasLabel: "mc1",
 			},
 		},
 		"label present with wrong value": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockUpdate: func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
 						return nil
@@ -144,11 +177,55 @@ func TestEnsureMemberNameLabel(t *testing.T) {
 				},
 			},
 			wantLabels: map[string]string{
+				placementv1beta1.MemberNameLabel:      "mc1",
+				kfplacementv1alpha1.ClusterAliasLabel: "mc1",
+			},
+		},
+		// The day-2 scenario: a member cluster labeled by the controller before the alias existed.
+		// Only the alias branch has anything to do, and it alone must drive the update.
+		"name label correct, alias absent, alias alone drives the update": {
+			r: &Reconciler{
+				SeedClusterAliasLabel: true,
+				Client: &test.MockClient{
+					MockUpdate: func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+						return nil
+					},
+				},
+			},
+			memberCluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "mc1",
+					Labels: map[string]string{
+						placementv1beta1.MemberNameLabel: "mc1",
+					},
+				},
+			},
+			wantLabels: map[string]string{
+				placementv1beta1.MemberNameLabel:      "mc1",
+				kfplacementv1alpha1.ClusterAliasLabel: "mc1",
+			},
+		},
+		"no alias is seeded while the feature is off": {
+			r: &Reconciler{
+				Client: &test.MockClient{
+					MockUpdate: test.NewMockUpdateFn(fmt.Errorf("update should not be called when the name label is correct and seeding is off")),
+				},
+			},
+			memberCluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "mc1",
+					Labels: map[string]string{
+						placementv1beta1.MemberNameLabel: "mc1",
+					},
+				},
+			},
+			wantLabels: map[string]string{
 				placementv1beta1.MemberNameLabel: "mc1",
 			},
 		},
 		"update error": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockUpdate: func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
 						return errors.New("update failed")
@@ -225,6 +302,7 @@ func TestSyncNamespace(t *testing.T) {
 	}{
 		"namespace doesn't exist": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						return apierrors.NewNotFound(schema.GroupResource{}, "")
@@ -242,6 +320,7 @@ func TestSyncNamespace(t *testing.T) {
 		},
 		"namespace exists without label": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						o := obj.(*corev1.Namespace)
@@ -266,6 +345,7 @@ func TestSyncNamespace(t *testing.T) {
 		},
 		"namespace exists with label": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						o := obj.(*corev1.Namespace)
@@ -285,6 +365,7 @@ func TestSyncNamespace(t *testing.T) {
 		},
 		"namespace create error": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						return apierrors.NewNotFound(schema.GroupResource{}, "")
@@ -300,6 +381,7 @@ func TestSyncNamespace(t *testing.T) {
 		},
 		"namespace get error": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						return errors.New("namespace cannot be retrieved")
@@ -312,6 +394,7 @@ func TestSyncNamespace(t *testing.T) {
 		},
 		"namespace patch error": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						o := obj.(*corev1.Namespace)
@@ -368,6 +451,7 @@ func TestSyncRole(t *testing.T) {
 	}{
 		"role exists but no diff": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						o := obj.(*rbacv1.Role)
@@ -393,6 +477,7 @@ func TestSyncRole(t *testing.T) {
 		},
 		"role exists but with diff": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						o := obj.(*rbacv1.Role)
@@ -418,6 +503,7 @@ func TestSyncRole(t *testing.T) {
 		},
 		"role doesn't exist": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						return apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "Namespace"}, "namespace")
@@ -436,6 +522,7 @@ func TestSyncRole(t *testing.T) {
 		},
 		"role create error": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						return apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "Namespace"}, "namespace")
@@ -451,6 +538,7 @@ func TestSyncRole(t *testing.T) {
 		},
 		"role get error": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						return errors.New("role cannot be retrieved")
@@ -464,6 +552,7 @@ func TestSyncRole(t *testing.T) {
 		},
 		"role update error": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						o := obj.(*rbacv1.Role)
@@ -553,6 +642,7 @@ func TestSyncRoleBinding(t *testing.T) {
 	}{
 		"role binding but no diff": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						roleRef := rbacv1.RoleRef{
@@ -587,6 +677,7 @@ func TestSyncRoleBinding(t *testing.T) {
 		},
 		"identity without APIGroup should not trigger roleBinding reconcile": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						roleRef := rbacv1.RoleRef{
@@ -621,6 +712,7 @@ func TestSyncRoleBinding(t *testing.T) {
 		},
 		"role binding but with diff": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						roleRef := rbacv1.RoleRef{
@@ -654,6 +746,7 @@ func TestSyncRoleBinding(t *testing.T) {
 		},
 		"role binding doesn't exist": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						return apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "Namespace"}, "namespace")
@@ -669,6 +762,7 @@ func TestSyncRoleBinding(t *testing.T) {
 		},
 		"role binding create error": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						return apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "Namespace"}, "namespace")
@@ -685,6 +779,7 @@ func TestSyncRoleBinding(t *testing.T) {
 		},
 		"role binding get error": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						return errors.New("role binding cannot be retrieved")
@@ -701,6 +796,7 @@ func TestSyncRoleBinding(t *testing.T) {
 		},
 		"role binding update error": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						return nil
@@ -778,6 +874,7 @@ func TestSyncInternalMemberCluster(t *testing.T) {
 	}{
 		"internal member cluster exists and spec is updated": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockUpdate: updateMock},
 				recorder: utils.NewFakeRecorder(1),
@@ -794,6 +891,7 @@ func TestSyncInternalMemberCluster(t *testing.T) {
 		},
 		"internal member cluster exists and spec is not updated ": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockUpdate: updateMock},
 			},
@@ -825,6 +923,7 @@ func TestSyncInternalMemberCluster(t *testing.T) {
 		},
 		"internal member cluster gets created": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockCreate: createMock},
 				recorder: utils.NewFakeRecorder(1),
@@ -838,6 +937,7 @@ func TestSyncInternalMemberCluster(t *testing.T) {
 		},
 		"internal member cluster create error": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockCreate: createMock},
 			},
@@ -1900,6 +2000,7 @@ func TestHandleDelete(t *testing.T) {
 		},
 		"Remove the namespace when the imc does not exist": {
 			r: &Reconciler{
+				SeedClusterAliasLabel: true,
 				Client: &test.MockClient{
 					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
 						if key.Namespace == "" {

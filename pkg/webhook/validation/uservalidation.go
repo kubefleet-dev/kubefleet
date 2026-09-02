@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 )
@@ -94,7 +95,13 @@ func ValidateFleetMemberClusterUpdate(currentMC, oldMC clusterv1beta1.MemberClus
 	}
 
 	isLabelUpdated := isMapFieldUpdated(currentMC.GetLabels(), oldMC.GetLabels())
-	if isLabelUpdated && !isUserInGroup(userInfo, mastersGroup) && shouldDenyLabelModification(currentMC.GetLabels(), oldMC.GetLabels(), denyModifyMemberClusterLabels) {
+	// A whitelisted identity (the hub agent seeds the alias) or a cluster admin may modify the
+	// reserved kubefleet.dev/ labels; ordinary users may not. The distinction matters because,
+	// unlike the member-name label the controller reasserts every reconcile, the cluster alias is
+	// left as it is set -- so a non-admin edit to it would persist and redirect alias-based
+	// placements. (system:masters is already exempted before this runs, at the guard below.)
+	isFleetController := isAdminGroupUserOrWhiteListedUser(whiteListedUsers, userInfo)
+	if isLabelUpdated && !isUserInGroup(userInfo, mastersGroup) && shouldDenyLabelModification(currentMC.GetLabels(), oldMC.GetLabels(), denyModifyMemberClusterLabels, isFleetController) {
 		// allow any user to modify kubernetes-fleet.io/* labels, but restricts other label modifications given denyModifyMemberClusterLabels is true.
 		klog.V(2).InfoS(DeniedModifyMemberClusterLabels, "user", userInfo.Username, "groups", userInfo.Groups, "operation", req.Operation, "GVK", req.RequestKind, "subResource", req.SubResource, "namespacedName", namespacedName)
 		return admission.Denied(DeniedModifyMemberClusterLabels)
@@ -160,27 +167,44 @@ func isUserInGroup(userInfo authenticationv1.UserInfo, groupName string) bool {
 	return slices.Contains(userInfo.Groups, groupName)
 }
 
-// shouldDenyLabelModification returns true if any labels (besides kubernetes-fleet.io/* labels) are being modified and denyModifyMemberClusterLabels is true.
-func shouldDenyLabelModification(currentLabels, oldLabels map[string]string, denyModifyMemberClusterLabels bool) bool {
+// shouldDenyLabelModification returns true if any labels the requester is not allowed to touch are
+// being modified and denyModifyMemberClusterLabels is true.
+//
+// The kubernetes-fleet.io/ prefix is exempt for everyone, as it always has been: those labels
+// (e.g. the member name) are reasserted by the controller, so a stray edit self-heals. The
+// kubefleet.dev/ prefix is exempt only for the fleet controllers, because the cluster alias it
+// carries is not reasserted -- a non-admin edit would persist and redirect alias-based placements.
+// The hub agent is not in system:masters, so without an exemption for its own identity, denying
+// that prefix would wedge alias seeding.
+func shouldDenyLabelModification(currentLabels, oldLabels map[string]string, denyModifyMemberClusterLabels, isFleetController bool) bool {
 	if !denyModifyMemberClusterLabels {
 		return false
 	}
 	for k, v := range currentLabels {
 		oldV, exists := oldLabels[k]
 		if !exists || oldV != v {
-			if !strings.HasPrefix(k, placementv1beta1.FleetPrefix) {
+			if !isReservedLabelKey(k, isFleetController) {
 				return true
 			}
 		}
 	}
 	for k := range oldLabels {
 		if _, exists := currentLabels[k]; !exists {
-			if !strings.HasPrefix(k, placementv1beta1.FleetPrefix) {
+			if !isReservedLabelKey(k, isFleetController) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// isReservedLabelKey reports whether a label key belongs to a prefix the requester may modify:
+// kubernetes-fleet.io/ for anyone, and kubefleet.dev/ only for a fleet controller.
+func isReservedLabelKey(key string, isFleetController bool) bool {
+	if strings.HasPrefix(key, placementv1beta1.FleetPrefix) {
+		return true
+	}
+	return isFleetController && strings.HasPrefix(key, kfplacementv1alpha1.KubeFleetPrefix)
 }
 
 // isMemberClusterMapFieldUpdated return true if member cluster label is updated.
