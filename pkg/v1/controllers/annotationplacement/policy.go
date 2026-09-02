@@ -22,10 +22,12 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/naming"
@@ -126,12 +128,15 @@ func parentLabels(gvk schema.GroupVersionKind, name string) map[string]string {
 // Update, drops metadata.labels and metadata.ownerReferences together -- but a policy this controller
 // generated is not one a user is expected to manage that way, and requiring both markers to survive
 // is the accepted price of never touching a policy that is genuinely someone else's.
-func isGeneratedFor(policy client.Object, gvk schema.GroupVersionKind, name string) bool {
-	sourceRef := metav1.OwnerReference{APIVersion: gvk.GroupVersion().String(), Kind: gvk.Kind, Name: name}
-	for _, ref := range policy.GetOwnerReferences() {
-		if sameOwnerIdentity(ref, sourceRef) {
-			return true
-		}
+func isGeneratedFor(policy client.Object, gvk schema.GroupVersionKind, name string, scheme *runtime.Scheme) bool {
+	// The owner reference is matched on the source's group, kind, and name -- deliberately not on
+	// its version or its UID, both of which can change while the resource keeps its name: a source
+	// deleted and recreated comes back with a new UID, and a served version can be retired.
+	source := &unstructured.Unstructured{}
+	source.SetGroupVersionKind(gvk)
+	source.SetName(name)
+	if owned, err := controllerutil.HasOwnerReference(policy.GetOwnerReferences(), source, scheme); err == nil && owned {
+		return true
 	}
 
 	labels := policy.GetLabels()
@@ -239,13 +244,11 @@ func emptyPolicyForScope(namespace string) client.Object {
 	return &kfplacementv1alpha1.PlacementPolicy{}
 }
 
-// generatedPolicyKind returns the kind of the policy that emptyPolicyForScope produces for the
-// given namespace, spelled as the kind itself is, so that a message carrying it can be pasted
-// straight into a kubectl command against the right resource. It asks emptyPolicyForScope rather
-// than repeating its namespace check, which keeps the scope decision in the one place that
-// function's contract promises.
+// generatedPolicyKind returns the kind of the policy generated for a resource in the given
+// namespace, spelled as the kind itself is, so that a message carrying it can be pasted straight
+// into a kubectl command against the right resource.
 func generatedPolicyKind(namespace string) string {
-	if _, clusterScoped := emptyPolicyForScope(namespace).(*kfplacementv1alpha1.ClusterPlacementPolicy); clusterScoped {
+	if namespace == "" {
 		return "ClusterPlacementPolicy"
 	}
 	return "PlacementPolicy"

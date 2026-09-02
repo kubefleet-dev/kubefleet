@@ -265,7 +265,7 @@ func TestIsGeneratedFor(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := isGeneratedFor(tc.policy, source.GroupVersionKind(), source.GetName()); got != tc.want {
+			if got := isGeneratedFor(tc.policy, source.GroupVersionKind(), source.GetName(), newScheme(t)); got != tc.want {
 				t.Errorf("isGeneratedFor(%q) = %v, want %v", tc.policy.GetName(), got, tc.want)
 			}
 		})

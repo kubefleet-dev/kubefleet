@@ -25,6 +25,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,16 +33,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
-	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils/keys"
-	testinformer "github.com/kubefleet-dev/kubefleet/test/utils/informer"
 )
 
 var (
@@ -57,7 +53,7 @@ const (
 	twoSelectors = "env=staging,count=All;env=canary,region=eastus"
 )
 
-// newSource builds the annotated resource as the informer cache would hold it.
+// newSource builds the annotated resource as the API server would return it.
 func newSource(gvk schema.GroupVersionKind, namespace, name string, annotations map[string]string) *unstructured.Unstructured {
 	source := sourceObject(gvk, namespace, name)
 	if annotations != nil {
@@ -66,16 +62,11 @@ func newSource(gvk schema.GroupVersionKind, namespace, name string, annotations 
 	return source
 }
 
-// keyFor builds the queue key the resource watcher would enqueue for a resource.
-func keyFor(gvk schema.GroupVersionKind, namespace, name string) keys.ClusterWideKey {
-	return keys.ClusterWideKey{
-		ResourceIdentifier: placementv1beta1.ResourceIdentifier{
-			Group:     gvk.Group,
-			Version:   gvk.Version,
-			Kind:      gvk.Kind,
-			Namespace: namespace,
-			Name:      name,
-		},
+// requestFor builds the request the resource watcher would enqueue for a resource.
+func requestFor(gvk schema.GroupVersionKind, namespace, name string) Request {
+	return Request{
+		GroupVersionKind: gvk,
+		NamespacedName:   client.ObjectKey{Namespace: namespace, Name: name},
 	}
 }
 
@@ -88,6 +79,9 @@ func newScheme(t *testing.T) *runtime.Scheme {
 	return scheme
 }
 
+// newRESTMapper knows the served kinds these tests read: a namespaced Deployment and a cluster
+// scoped Namespace. A kind or a version outside it resolves to a no-match error, as a kind whose
+// CRD was removed would at the API server.
 func newRESTMapper() meta.RESTMapper {
 	mapper := meta.NewDefaultRESTMapper([]schema.GroupVersion{deploymentGVK.GroupVersion(), namespaceGVK.GroupVersion()})
 	mapper.AddSpecific(deploymentGVK, deploymentGVR, deploymentGVR, meta.RESTScopeNamespace)
@@ -95,33 +89,18 @@ func newRESTMapper() meta.RESTMapper {
 	return mapper
 }
 
-// newReconciler wires a reconciler whose informer cache holds the given resources and whose client
-// holds the given policies.
-func newReconciler(t *testing.T, sources map[schema.GroupVersionResource][]runtime.Object, clusterScoped []schema.GroupVersionKind, funcs interceptor.Funcs, policies ...client.Object) (*Reconciler, *record.FakeRecorder) {
+// newReconciler wires a reconciler whose API server holds the given annotated resources and
+// policies. One fake client backs both the policy client and the API reader, so the two are always
+// consistent, which is what every test here wants.
+func newReconciler(t *testing.T, funcs interceptor.Funcs, objects ...client.Object) (*Reconciler, *record.FakeRecorder) {
 	t.Helper()
-	listers := make(map[schema.GroupVersionResource]*testinformer.FakeLister, len(sources))
-	for gvr, objects := range sources {
-		listers[gvr] = &testinformer.FakeLister{Objects: objects}
-	}
-	apiResources := make(map[schema.GroupVersionKind]bool, len(clusterScoped))
-	for _, gvk := range clusterScoped {
-		apiResources[gvk] = true
-	}
 	recorder := record.NewFakeRecorder(10)
-	// One fake client backs both the writer and the uncached reader: with a single store the two are
-	// always consistent, which is what every test that is not exercising cache staleness wants. A test
-	// that needs the reader to diverge from a stale cache builds its own reconciler with two stores.
-	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(policies...).WithInterceptorFuncs(funcs).Build()
+	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(objects...).WithInterceptorFuncs(funcs).Build()
 	return &Reconciler{
-		Client:         c,
-		UncachedReader: c,
-		RestMapper:     newRESTMapper(),
-		InformerManager: &testinformer.FakeManager{
-			APIResources:            apiResources,
-			IsClusterScopedResource: true,
-			Listers:                 listers,
-		},
-		Recorder: recorder,
+		Client:     c,
+		APIReader:  c,
+		RESTMapper: newRESTMapper(),
+		Recorder:   recorder,
 	}, recorder
 }
 
@@ -151,7 +130,7 @@ func policyFrom(ctx context.Context, t *testing.T, r *Reconciler, source *unstru
 	namespace := source.GetNamespace()
 	policy := emptyPolicyForScope(namespace)
 	name := generatedPolicyName(source.GroupVersionKind(), namespace, source.GetName())
-	err := r.Client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, policy)
+	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, policy)
 	switch {
 	case apierrors.IsNotFound(err):
 		return nil, false
@@ -167,6 +146,15 @@ var policyIgnoreOpts = cmp.Options{
 	cmpopts.IgnoreFields(metav1.ObjectMeta{}, "ResourceVersion", "Generation", "CreationTimestamp", "ManagedFields"),
 }
 
+func mustParse(t *testing.T, value string) []kfplacementv1alpha1.ClusterSelector {
+	t.Helper()
+	selectors, err := parseClusterSelectors(value)
+	if err != nil {
+		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", value, err)
+	}
+	return selectors
+}
+
 func TestReconcile(t *testing.T) {
 	// The desired policy is built with desiredPolicy, which policy_test.go covers on its own; what
 	// is under test here is whether the reconciler puts that object in the cluster, takes it away
@@ -177,11 +165,10 @@ func TestReconcile(t *testing.T) {
 
 	testCases := []struct {
 		name string
-		// source is the resource the informer cache holds, and the resource the key points at.
+		// source is the resource the API server holds, and the resource the request points at.
 		source *unstructured.Unstructured
 		// existing is the annotation value a policy was already generated from, if any.
 		existing    string
-		gvr         schema.GroupVersionResource
 		wantPolicy  bool
 		wantValue   string
 		wantReasons []string
@@ -189,7 +176,6 @@ func TestReconcile(t *testing.T) {
 		{
 			name:        "an annotated resource with no policy yet gets one",
 			source:      annotatedSource,
-			gvr:         deploymentGVR,
 			wantPolicy:  true,
 			wantValue:   oneSelector,
 			wantReasons: []string{EventReasonPolicyCreated},
@@ -198,7 +184,6 @@ func TestReconcile(t *testing.T) {
 			name:        "a policy that already matches the annotation is left alone",
 			source:      annotatedSource,
 			existing:    oneSelector,
-			gvr:         deploymentGVR,
 			wantPolicy:  true,
 			wantValue:   oneSelector,
 			wantReasons: nil,
@@ -207,7 +192,6 @@ func TestReconcile(t *testing.T) {
 			name:        "a changed annotation reaches the policy",
 			source:      newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: twoSelectors}),
 			existing:    oneSelector,
-			gvr:         deploymentGVR,
 			wantPolicy:  true,
 			wantValue:   twoSelectors,
 			wantReasons: []string{EventReasonPolicyUpdated},
@@ -216,21 +200,18 @@ func TestReconcile(t *testing.T) {
 			name:        "removing the annotation deletes the policy",
 			source:      bareSource,
 			existing:    oneSelector,
-			gvr:         deploymentGVR,
 			wantPolicy:  false,
 			wantReasons: []string{EventReasonPolicyDeleted},
 		},
 		{
 			name:        "a resource that was never annotated is left alone",
 			source:      bareSource,
-			gvr:         deploymentGVR,
 			wantPolicy:  false,
 			wantReasons: nil,
 		},
 		{
 			name:        "a cluster scoped resource generates a cluster scoped policy",
 			source:      clusterScopedSource,
-			gvr:         namespaceGVR,
 			wantPolicy:  true,
 			wantValue:   oneSelector,
 			wantReasons: []string{EventReasonPolicyCreated},
@@ -240,75 +221,62 @@ func TestReconcile(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
-			var policies []client.Object
+			objects := []client.Object{tc.source}
 			if tc.existing != "" {
-				selectors, err := parseClusterSelectors(tc.existing)
-				if err != nil {
-					t.Fatalf("parseClusterSelectors(%q) = %v, want no error", tc.existing, err)
-				}
-				policies = append(policies, desiredPolicy(tc.source, selectors))
+				objects = append(objects, desiredPolicy(tc.source, mustParse(t, tc.existing)))
 			}
-			clusterScoped := []schema.GroupVersionKind{namespaceGVK}
-			r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{tc.gvr: {tc.source}}, clusterScoped, interceptor.Funcs{}, policies...)
+			r, recorder := newReconciler(t, interceptor.Funcs{}, objects...)
 
-			key := keyFor(tc.source.GroupVersionKind(), tc.source.GetNamespace(), tc.source.GetName())
-			if _, err := r.Reconcile(ctx, key); err != nil {
-				t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+			req := RequestFor(tc.source)
+			if _, err := r.Reconcile(ctx, req); err != nil {
+				t.Fatalf("Reconcile(%v) = %v, want no error", req, err)
 			}
 
 			got, found := policyFrom(ctx, t, r, tc.source)
 			if found != tc.wantPolicy {
-				t.Fatalf("Reconcile(%v) left a generated policy = %v, want %v", key, found, tc.wantPolicy)
+				t.Fatalf("Reconcile(%v) left a generated policy = %v, want %v", req, found, tc.wantPolicy)
 			}
 			if tc.wantPolicy {
-				selectors, err := parseClusterSelectors(tc.wantValue)
-				if err != nil {
-					t.Fatalf("parseClusterSelectors(%q) = %v, want no error", tc.wantValue, err)
-				}
-				want := desiredPolicy(tc.source, selectors)
+				want := desiredPolicy(tc.source, mustParse(t, tc.wantValue))
 				if diff := cmp.Diff(got, want, policyIgnoreOpts); diff != "" {
-					t.Errorf("Reconcile(%v) generated policy mismatch (-got, +want):\n%s", key, diff)
+					t.Errorf("Reconcile(%v) generated policy mismatch (-got, +want):\n%s", req, diff)
 				}
 			}
 			if diff := cmp.Diff(recordedReasons(recorder), tc.wantReasons, cmpopts.EquateEmpty()); diff != "" {
-				t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
+				t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", req, diff)
 			}
 		})
 	}
 }
 
 // TestReconcileInvalidAnnotation covers the case the parser rejects: the user hears about it, the
-// key is not retried, and a policy generated from an earlier valid annotation stays up.
+// request is not retried, and a policy generated from an earlier valid annotation stays up.
 func TestReconcileInvalidAnnotation(t *testing.T) {
 	ctx := context.Background()
 	valid := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
-	selectors, err := parseClusterSelectors(oneSelector)
-	if err != nil {
-		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
-	}
-	existing := desiredPolicy(valid, selectors)
+	existing := desiredPolicy(valid, mustParse(t, oneSelector))
 
 	broken := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: "env"})
-	r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {broken}}, nil, interceptor.Funcs{}, existing)
+	r, recorder := newReconciler(t, interceptor.Funcs{}, broken, existing)
 
-	key := keyFor(deploymentGVK, testNamespace, testName)
-	if _, err := r.Reconcile(ctx, key); err != nil {
-		t.Fatalf("Reconcile(%v) = %v, want no error, so that a malformed annotation is not retried", key, err)
+	req := RequestFor(broken)
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("Reconcile(%v) = %v, want no error, so that a malformed annotation is not retried", req, err)
 	}
 
 	got, found := policyFrom(ctx, t, r, broken)
 	if !found {
-		t.Fatalf("Reconcile(%v) removed the policy generated from the previous annotation, want it left in place", key)
+		t.Fatalf("Reconcile(%v) removed the policy generated from the previous annotation, want it left in place", req)
 	}
 	if diff := cmp.Diff(got, existing, policyIgnoreOpts); diff != "" {
-		t.Errorf("Reconcile(%v) changed the policy generated from the previous annotation (-got, +want):\n%s", key, diff)
+		t.Errorf("Reconcile(%v) changed the policy generated from the previous annotation (-got, +want):\n%s", req, diff)
 	}
 	if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonInvalidAnnotation}); diff != "" {
-		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
+		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", req, diff)
 	}
 }
 
-// TestReconcileDeletedResource covers a key for a resource that is already gone. The reconciler
+// TestReconcileDeletedResource covers a request for a resource that is already gone. The reconciler
 // deletes the generated policy itself rather than deferring to garbage collection, which removes a
 // dependent only once every owner reference on it is gone -- and the merge deliberately preserves
 // owner references that other parties added, any live one of which would keep the policy standing.
@@ -316,26 +284,22 @@ func TestReconcileInvalidAnnotation(t *testing.T) {
 func TestReconcileDeletedResource(t *testing.T) {
 	ctx := context.Background()
 	source := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
-	selectors, err := parseClusterSelectors(oneSelector)
-	if err != nil {
-		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
-	}
-	existing := desiredPolicy(source, selectors)
+	existing := desiredPolicy(source, mustParse(t, oneSelector))
 	// The other party whose owner reference would hold the policy back from garbage collection.
 	otherOwner := metav1.OwnerReference{APIVersion: "example.com/v1", Kind: "Widget", Name: "unrelated", UID: "00000000-0000-0000-0000-0000000000ff"}
 	existing.SetOwnerReferences(append(existing.GetOwnerReferences(), otherOwner))
 
-	r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {}}, nil, interceptor.Funcs{}, existing)
+	r, recorder := newReconciler(t, interceptor.Funcs{}, existing)
 
-	key := keyFor(deploymentGVK, testNamespace, testName)
-	if _, err := r.Reconcile(ctx, key); err != nil {
-		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+	req := RequestFor(source)
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("Reconcile(%v) = %v, want no error", req, err)
 	}
 	if _, found := policyFrom(ctx, t, r, source); found {
-		t.Errorf("Reconcile(%v) left the generated policy standing, want it deleted", key)
+		t.Errorf("Reconcile(%v) left the generated policy standing, want it deleted", req)
 	}
 	if got := recordedReasons(recorder); len(got) != 0 {
-		t.Errorf("Reconcile(%v) recorded events = %v, want none", key, got)
+		t.Errorf("Reconcile(%v) recorded events = %v, want none", req, got)
 	}
 }
 
@@ -346,32 +310,28 @@ func TestReconcileDeletedResource(t *testing.T) {
 func TestReconcileIneligibleResource(t *testing.T) {
 	ctx := context.Background()
 	source := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
-	selectors, err := parseClusterSelectors(oneSelector)
-	if err != nil {
-		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
-	}
-	existing := desiredPolicy(source, selectors)
+	existing := desiredPolicy(source, mustParse(t, oneSelector))
 
-	r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {source}}, nil, interceptor.Funcs{}, existing)
+	r, recorder := newReconciler(t, interceptor.Funcs{}, source, existing)
 	r.ShouldPlace = func(*unstructured.Unstructured) (bool, error) { return false, nil }
 
-	key := keyFor(deploymentGVK, testNamespace, testName)
-	if _, err := r.Reconcile(ctx, key); err != nil {
-		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+	req := RequestFor(source)
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("Reconcile(%v) = %v, want no error", req, err)
 	}
 	if _, found := policyFrom(ctx, t, r, source); found {
-		t.Errorf("Reconcile(%v) left the generated policy standing, want it deleted", key)
+		t.Errorf("Reconcile(%v) left the generated policy standing, want it deleted", req)
 	}
 	if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonPolicyDeleted}); diff != "" {
-		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
+		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", req, diff)
 	}
 
 	// A second pass over a resource that never generated anything must stay silent.
-	if _, err := r.Reconcile(ctx, key); err != nil {
-		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("Reconcile(%v) = %v, want no error", req, err)
 	}
 	if got := recordedReasons(recorder); len(got) != 0 {
-		t.Errorf("Reconcile(%v) recorded events = %v, want none on the second pass", key, got)
+		t.Errorf("Reconcile(%v) recorded events = %v, want none on the second pass", req, got)
 	}
 }
 
@@ -379,71 +339,26 @@ func TestReconcileIneligibleResource(t *testing.T) {
 // retryable error rather than as either verdict.
 func TestReconcileEligibilityError(t *testing.T) {
 	source := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
-	r, _ := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {source}}, nil, interceptor.Funcs{})
+	r, _ := newReconciler(t, interceptor.Funcs{}, source)
 	wantErr := errors.New("the eligibility test is unwell")
 	r.ShouldPlace = func(*unstructured.Unstructured) (bool, error) { return false, wantErr }
 
-	key := keyFor(deploymentGVK, testNamespace, testName)
-	if _, err := r.Reconcile(context.Background(), key); !errors.Is(err, wantErr) {
-		t.Errorf("Reconcile(%v) = %v, want an error wrapping %v", key, err, wantErr)
+	req := RequestFor(source)
+	if _, err := r.Reconcile(context.Background(), req); !errors.Is(err, wantErr) {
+		t.Errorf("Reconcile(%v) = %v, want an error wrapping %v", req, err, wantErr)
 	}
 	if _, found := policyFrom(context.Background(), t, r, source); found {
-		t.Errorf("Reconcile(%v) acted on the policy despite the eligibility error", key)
+		t.Errorf("Reconcile(%v) acted on the policy despite the eligibility error", req)
 	}
 }
 
-func TestReconcileErrors(t *testing.T) {
-	source := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
-
-	testCases := []struct {
-		name     string
-		key      controller.QueueKey
-		synced   *bool
-		wantErr  error
-		wantKind string
-	}{
-		{
-			name:    "a key of the wrong type cannot be retried",
-			key:     "apps/v1/Deployment/prod/web",
-			wantErr: controller.ErrUnexpectedBehavior,
-		},
-
-		{
-			name:    "an unsynced informer is retried",
-			key:     keyFor(deploymentGVK, testNamespace, testName),
-			synced:  ptr.To(false),
-			wantErr: controller.ErrExpectedBehavior,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			r, _ := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {source}}, nil, interceptor.Funcs{})
-			if tc.synced != nil {
-				r.InformerManager.(*testinformer.FakeManager).InformerSynced = tc.synced
-			}
-			_, err := r.Reconcile(context.Background(), tc.key)
-			if err == nil {
-				t.Fatalf("Reconcile(%v) = nil, want an error", tc.key)
-			}
-			if !errors.Is(err, tc.wantErr) {
-				t.Errorf("Reconcile(%v) = %v, want an error of kind %v", tc.key, err, tc.wantErr)
-			}
-		})
-	}
-}
-
-// TestReconcileAPIServerErrors covers the paths where the write itself fails. Each has to come back
-// as a retryable error rather than as a silent success, because the annotation and the cluster have
-// disagreed at that point and only another pass can settle it.
+// TestReconcileAPIServerErrors covers the paths where a read or a write fails. Each has to come
+// back as a retryable error rather than as a silent success, because the annotation and the cluster
+// have disagreed at that point and only another pass can settle it.
 func TestReconcileAPIServerErrors(t *testing.T) {
 	annotated := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
 	bare := newSource(deploymentGVK, testNamespace, testName, nil)
-	selectors, err := parseClusterSelectors(oneSelector)
-	if err != nil {
-		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
-	}
-	existing := desiredPolicy(annotated, selectors)
+	existing := desiredPolicy(annotated, mustParse(t, oneSelector))
 	failure := apierrors.NewInternalError(errors.New("the api server is unwell"))
 
 	testCases := []struct {
@@ -453,10 +368,25 @@ func TestReconcileAPIServerErrors(t *testing.T) {
 		interceptor interceptor.Funcs
 	}{
 		{
+			name:   "the annotated resource cannot be read",
+			source: annotated,
+			interceptor: interceptor.Funcs{
+				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					if _, isSource := obj.(*unstructured.Unstructured); isSource {
+						return failure
+					}
+					return c.Get(ctx, key, obj, opts...)
+				},
+			},
+		},
+		{
 			name:   "the policy cannot be read",
 			source: annotated,
 			interceptor: interceptor.Funcs{
-				Get: func(context.Context, client.WithWatch, client.ObjectKey, client.Object, ...client.GetOption) error {
+				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					if _, isSource := obj.(*unstructured.Unstructured); isSource {
+						return c.Get(ctx, key, obj, opts...)
+					}
 					return failure
 				},
 			},
@@ -494,21 +424,41 @@ func TestReconcileAPIServerErrors(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {tc.source}}, nil, tc.interceptor, tc.existing...)
+			r, recorder := newReconciler(t, tc.interceptor, append([]client.Object{tc.source}, tc.existing...)...)
 
-			key := keyFor(deploymentGVK, testNamespace, testName)
-			_, err := r.Reconcile(context.Background(), key)
-			if err == nil {
-				t.Fatalf("Reconcile(%v) = nil, want an error", key)
-			}
-			if !errors.Is(err, controller.ErrAPIServerError) {
-				t.Errorf("Reconcile(%v) = %v, want an error of kind %v", key, err, controller.ErrAPIServerError)
+			req := RequestFor(tc.source)
+			_, err := r.Reconcile(context.Background(), req)
+			if !errors.Is(err, failure) {
+				t.Errorf("Reconcile(%v) = %v, want an error wrapping %v", req, err, failure)
 			}
 			// A write that failed must not be announced as though it had happened.
 			if got := recordedReasons(recorder); len(got) != 0 {
-				t.Errorf("Reconcile(%v) recorded events = %v, want none", key, got)
+				t.Errorf("Reconcile(%v) recorded events = %v, want none", req, got)
 			}
 		})
+	}
+}
+
+// TestReconcileRetriesWhenCreateRacesTheCache covers a create that finds the policy already there:
+// the cache has yet to see the policy this controller created a moment ago, and a second, unrelated
+// event for the source arrived in that window. The pass must come back as a retryable error, not
+// as a failure, and must not announce a creation it did not perform.
+func TestReconcileRetriesWhenCreateRacesTheCache(t *testing.T) {
+	source := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
+	alreadyExists := apierrors.NewAlreadyExists(schema.GroupResource{Group: kfplacementv1alpha1.GroupVersion.Group, Resource: "placementpolicies"}, generatedPolicyName(deploymentGVK, testNamespace, testName))
+	raced := interceptor.Funcs{
+		Create: func(context.Context, client.WithWatch, client.Object, ...client.CreateOption) error {
+			return alreadyExists
+		},
+	}
+	r, recorder := newReconciler(t, raced, source)
+
+	req := RequestFor(source)
+	if _, err := r.Reconcile(context.Background(), req); !errors.Is(err, alreadyExists) {
+		t.Errorf("Reconcile(%v) = %v, want an error wrapping %v so the source is retried", req, err, alreadyExists)
+	}
+	if got := recordedReasons(recorder); len(got) != 0 {
+		t.Errorf("Reconcile(%v) recorded events = %v, want none for a creation this pass did not perform", req, got)
 	}
 }
 
@@ -519,11 +469,7 @@ func TestDeleteRacesAnotherDeletion(t *testing.T) {
 	ctx := context.Background()
 	source := newSource(deploymentGVK, testNamespace, testName, nil)
 	annotated := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
-	selectors, err := parseClusterSelectors(oneSelector)
-	if err != nil {
-		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
-	}
-	existing := desiredPolicy(annotated, selectors)
+	existing := desiredPolicy(annotated, mustParse(t, oneSelector))
 
 	// The interceptor stands in for the stale cache: the Get finds the policy, the Delete
 	// discovers someone else got there first.
@@ -532,14 +478,14 @@ func TestDeleteRacesAnotherDeletion(t *testing.T) {
 			return apierrors.NewNotFound(schema.GroupResource{Group: kfplacementv1alpha1.GroupVersion.Group, Resource: "placementpolicies"}, existing.GetName())
 		},
 	}
-	r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {source}}, nil, raced, existing)
+	r, recorder := newReconciler(t, raced, source, existing)
 
-	key := keyFor(deploymentGVK, testNamespace, testName)
-	if _, err := r.Reconcile(ctx, key); err != nil {
-		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+	req := RequestFor(source)
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("Reconcile(%v) = %v, want no error", req, err)
 	}
 	if got := recordedReasons(recorder); len(got) != 0 {
-		t.Errorf("Reconcile(%v) recorded events = %v, want none for a deletion this pass did not perform", key, got)
+		t.Errorf("Reconcile(%v) recorded events = %v, want none for a deletion this pass did not perform", req, got)
 	}
 }
 
@@ -553,11 +499,7 @@ func TestReconcileDoesNotDeleteAReplacementPolicy(t *testing.T) {
 	ctx := context.Background()
 	bare := newSource(deploymentGVK, testNamespace, testName, nil)
 	annotated := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
-	selectors, err := parseClusterSelectors(oneSelector)
-	if err != nil {
-		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
-	}
-	ours := desiredPolicy(annotated, selectors)
+	ours := desiredPolicy(annotated, mustParse(t, oneSelector))
 
 	// A spec no generated policy would carry, marking the object that takes the name.
 	foreignSpec := kfplacementv1alpha1.PlacementPolicySpec{
@@ -585,42 +527,39 @@ func TestReconcileDoesNotDeleteAReplacementPolicy(t *testing.T) {
 			return c.Delete(ctx, obj, opts...)
 		},
 	}
-	r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {bare}}, nil, raced, ours)
+	r, recorder := newReconciler(t, raced, bare, ours)
 
-	key := keyFor(deploymentGVK, testNamespace, testName)
+	req := RequestFor(bare)
 	// First pass: the policy is replaced after it is read, so the guarded delete conflicts and the
 	// pass returns a retryable error rather than removing the replacement.
-	if _, err := r.Reconcile(ctx, key); err == nil {
-		t.Fatalf("Reconcile(%v) = nil, want a conflict error so the delete of a replaced policy is retried", key)
+	if _, err := r.Reconcile(ctx, req); err == nil {
+		t.Fatalf("Reconcile(%v) = nil, want a conflict error so the delete of a replaced policy is retried", req)
 	}
 	got, found := policyFrom(ctx, t, r, bare)
 	if !found {
-		t.Fatalf("Reconcile(%v) deleted the replacement policy, want it left in place", key)
+		t.Fatalf("Reconcile(%v) deleted the replacement policy, want it left in place", req)
 	}
 	if diff := cmp.Diff(got.(*kfplacementv1alpha1.PlacementPolicy).Spec, foreignSpec); diff != "" {
-		t.Errorf("Reconcile(%v) changed the replacement policy (-got, +want):\n%s", key, diff)
+		t.Errorf("Reconcile(%v) changed the replacement policy (-got, +want):\n%s", req, diff)
 	}
 
 	// Second pass: the reconciler reads the current, now foreign object, declines it, and records no
 	// deletion it did not perform.
-	if _, err := r.Reconcile(ctx, key); err != nil {
-		t.Fatalf("Reconcile(%v) = %v, want no error once the replacement is recognized as foreign", key, err)
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("Reconcile(%v) = %v, want no error once the replacement is recognized as foreign", req, err)
 	}
 	if _, found := policyFrom(ctx, t, r, bare); !found {
-		t.Errorf("Reconcile(%v) deleted the foreign replacement on retry, want it left in place", key)
+		t.Errorf("Reconcile(%v) deleted the foreign replacement on retry, want it left in place", req)
 	}
 	if got := recordedReasons(recorder); slices.Contains(got, EventReasonPolicyDeleted) {
-		t.Errorf("Reconcile(%v) recorded events = %v, want no deletion of a policy it did not generate", key, got)
+		t.Errorf("Reconcile(%v) recorded events = %v, want no deletion of a policy it did not generate", req, got)
 	}
 }
 
 func TestApplyDesiredPolicy(t *testing.T) {
 	source := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
-	selectors, err := parseClusterSelectors(oneSelector)
-	if err != nil {
-		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
-	}
-	desired := desiredPolicy(source, selectors)
+	desired := desiredPolicy(source, mustParse(t, oneSelector))
+	scheme := newScheme(t)
 
 	otherOwner := metav1.OwnerReference{
 		APIVersion: "example.com/v1",
@@ -747,17 +686,25 @@ func TestApplyDesiredPolicy(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			actual := desired.DeepCopyObject().(client.Object)
 			tc.mutate(actual)
+			before := actual.DeepCopyObject()
 
-			if got := applyDesiredPolicy(actual, desired); got != tc.wantChanged {
-				t.Errorf("applyDesiredPolicy() = %v, want %v", got, tc.wantChanged)
+			if err := applyDesiredPolicy(actual, desired, source, scheme); err != nil {
+				t.Fatalf("applyDesiredPolicy() = %v, want no error", err)
+			}
+			if got := !equality.Semantic.DeepEqual(before, actual); got != tc.wantChanged {
+				t.Errorf("applyDesiredPolicy() changed the policy = %v, want %v", got, tc.wantChanged)
 			}
 			if tc.check != nil {
 				tc.check(t, actual)
 			}
 			// Whatever the merge did, a second pass over its own output must find nothing left to
 			// do; otherwise the reconciler would issue an update on every single pass.
-			if got := applyDesiredPolicy(actual, desired); got {
-				t.Errorf("applyDesiredPolicy() = true on the second pass, want false")
+			settled := actual.DeepCopyObject()
+			if err := applyDesiredPolicy(actual, desired, source, scheme); err != nil {
+				t.Fatalf("applyDesiredPolicy() = %v on the second pass, want no error", err)
+			}
+			if !equality.Semantic.DeepEqual(settled, actual) {
+				t.Errorf("applyDesiredPolicy() changed the policy on the second pass, want it settled")
 			}
 		})
 	}
@@ -770,30 +717,27 @@ func TestEventMessagesNameTheGeneratedKind(t *testing.T) {
 	testCases := []struct {
 		name     string
 		source   *unstructured.Unstructured
-		gvr      schema.GroupVersionResource
 		wantKind string
 	}{
 		{
 			name:     "a namespaced source names PlacementPolicy",
 			source:   newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector}),
-			gvr:      deploymentGVR,
 			wantKind: "PlacementPolicy",
 		},
 		{
 			name:     "a cluster scoped source names ClusterPlacementPolicy",
 			source:   newSource(namespaceGVK, "", testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector}),
-			gvr:      namespaceGVR,
 			wantKind: "ClusterPlacementPolicy",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{tc.gvr: {tc.source}}, []schema.GroupVersionKind{namespaceGVK}, interceptor.Funcs{})
+			r, recorder := newReconciler(t, interceptor.Funcs{}, tc.source)
 
-			key := keyFor(tc.source.GroupVersionKind(), tc.source.GetNamespace(), tc.source.GetName())
-			if _, err := r.Reconcile(context.Background(), key); err != nil {
-				t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+			req := RequestFor(tc.source)
+			if _, err := r.Reconcile(context.Background(), req); err != nil {
+				t.Fatalf("Reconcile(%v) = %v, want no error", req, err)
 			}
 
 			select {
@@ -802,79 +746,96 @@ func TestEventMessagesNameTheGeneratedKind(t *testing.T) {
 				// contains "PlacementPolicy" as a bare substring, so an unanchored check would
 				// pass the namespaced case even if the wrong kind were named.
 				if !strings.Contains(event, " the "+tc.wantKind+" ") {
-					t.Errorf("Reconcile(%v) recorded event %q, want it to name the kind %q", key, event, tc.wantKind)
+					t.Errorf("Reconcile(%v) recorded event %q, want it to name the kind %q", req, event, tc.wantKind)
 				}
 			default:
-				t.Fatalf("Reconcile(%v) recorded no event, want one naming the kind %q", key, tc.wantKind)
+				t.Fatalf("Reconcile(%v) recorded no event, want one naming the kind %q", req, tc.wantKind)
 			}
 		})
 	}
 }
 
-// TestReconcileUnknownKind covers a key whose kind the API server does not know, which the
+// TestReconcileUnknownKind covers a request whose kind the API server does not know, which the
 // generated policy watch can produce by enqueuing whatever a policy names as its owner. The kind
 // being gone means the source's own CRD was removed, so any policy generated from it is stale and is
-// deleted; when none exists the key is simply dropped, since no retry can make the kind exist and an
-// error would keep it backing off forever.
+// deleted; when none exists the request is simply dropped, since no retry can make the kind exist
+// and an error would keep it backing off forever.
 func TestReconcileUnknownKind(t *testing.T) {
 	widgetGVK := schema.GroupVersionKind{Group: "example.com", Version: "v1", Kind: "Widget"}
 	// The resource whose kind is gone. It is only used to derive the generated policy the reconciler
-	// must find and delete; the informer and the REST mapper deliberately do not know its kind.
+	// must find and delete; the REST mapper deliberately does not know its kind.
 	widget := newSource(widgetGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
-	selectors, err := parseClusterSelectors(oneSelector)
-	if err != nil {
-		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
-	}
-	stale := desiredPolicy(widget, selectors)
+	stale := desiredPolicy(widget, mustParse(t, oneSelector))
 
 	testCases := []struct {
 		name       string
 		existing   []client.Object
 		wantPolicy bool
 	}{
-		{name: "no policy to clean up, key is dropped", existing: nil, wantPolicy: false},
+		{name: "no policy to clean up, request is dropped", existing: nil, wantPolicy: false},
 		{name: "a stale policy left by the gone kind is deleted", existing: []client.Object{stale}, wantPolicy: false},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{}, nil, interceptor.Funcs{}, tc.existing...)
-			key := keyFor(widgetGVK, testNamespace, testName)
-			if _, err := r.Reconcile(context.Background(), key); err != nil {
-				t.Errorf("Reconcile(%v) = %v, want no error, so that a kind that does not exist is not retried", key, err)
+			r, recorder := newReconciler(t, interceptor.Funcs{}, tc.existing...)
+			req := RequestFor(widget)
+			if _, err := r.Reconcile(context.Background(), req); err != nil {
+				t.Errorf("Reconcile(%v) = %v, want no error, so that a kind that does not exist is not retried", req, err)
 			}
 			if _, found := policyFrom(context.Background(), t, r, widget); found != tc.wantPolicy {
-				t.Errorf("Reconcile(%v) left a generated policy = %v, want %v", key, found, tc.wantPolicy)
+				t.Errorf("Reconcile(%v) left a generated policy = %v, want %v", req, found, tc.wantPolicy)
 			}
 			// No event is recorded either way: the resource an event would attach to is gone.
 			if got := recordedReasons(recorder); len(got) != 0 {
-				t.Errorf("Reconcile(%v) recorded events = %v, want none", key, got)
+				t.Errorf("Reconcile(%v) recorded events = %v, want none", req, got)
 			}
 		})
 	}
 }
 
-// TestReconcileResolvesRemovedVersion covers a key whose recorded version is no longer served while
-// the kind lives on under another. The generated policy watch can enqueue such a key, and treating
-// the removed version as a gone kind would wrongly delete a policy that is still wanted; the
-// reconciler falls back to the served version and keeps the policy in sync instead.
+// TestReconcileResolvesRemovedVersion covers a request whose recorded version is no longer served
+// while the kind lives on under another. The generated policy watch can enqueue such a request, and
+// treating the removed version as a gone kind would wrongly delete a policy that is still wanted;
+// the reconciler falls back to the served version and keeps the policy in sync instead.
+//
+// The cluster scoped case additionally pins that scope comes from the resolved mapping: read under
+// the stale version, the source would be looked up in a namespace it does not live in and taken for
+// deleted.
 func TestReconcileResolvesRemovedVersion(t *testing.T) {
-	ctx := context.Background()
-	// The source is served under apps/v1, the version the REST mapper knows; the key arrives naming
-	// apps/v2, a version that has since been removed.
-	source := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
-	r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {source}}, nil, interceptor.Funcs{})
-
-	key := keyFor(schema.GroupVersionKind{Group: "apps", Version: "v2", Kind: "Deployment"}, testNamespace, testName)
-	if _, err := r.Reconcile(ctx, key); err != nil {
-		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+	testCases := []struct {
+		name   string
+		source *unstructured.Unstructured
+		// req names the source under a version the REST mapper no longer knows.
+		req Request
+	}{
+		{
+			name:   "a namespaced source served under apps/v1 is reached through apps/v2",
+			source: newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector}),
+			req:    requestFor(schema.GroupVersionKind{Group: "apps", Version: "v2", Kind: "Deployment"}, testNamespace, testName),
+		},
+		{
+			name:   "a cluster scoped source served under v1 is reached through v2",
+			source: newSource(namespaceGVK, "", testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector}),
+			req:    requestFor(schema.GroupVersionKind{Group: "", Version: "v2", Kind: "Namespace"}, "", testName),
+		},
 	}
 
-	if _, found := policyFrom(ctx, t, r, source); !found {
-		t.Errorf("Reconcile(%v) generated no policy, want the removed version resolved to the served one", key)
-	}
-	if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonPolicyCreated}); diff != "" {
-		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			r, recorder := newReconciler(t, interceptor.Funcs{}, tc.source)
+
+			if _, err := r.Reconcile(ctx, tc.req); err != nil {
+				t.Fatalf("Reconcile(%v) = %v, want no error", tc.req, err)
+			}
+			if _, found := policyFrom(ctx, t, r, tc.source); !found {
+				t.Errorf("Reconcile(%v) generated no policy, want the removed version resolved to the served one", tc.req)
+			}
+			if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonPolicyCreated}); diff != "" {
+				t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", tc.req, diff)
+			}
+		})
 	}
 }
 
@@ -903,12 +864,15 @@ func TestReconcileForeignPolicyAtGeneratedName(t *testing.T) {
 	testCases := []struct {
 		name        string
 		source      *unstructured.Unstructured
+		wantErr     error
 		wantReasons []string
 	}{
 		{
 			name:   "the annotation asks for a policy, the foreign one is not overwritten",
 			source: newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector}),
-			// The user hears why the placement they asked for is not running.
+			// The source is retried with backoff -- nothing else brings it back once the conflict is
+			// cleared -- and the user hears why the placement they asked for is not running.
+			wantErr:     errForeignPolicy,
 			wantReasons: []string{EventReasonPolicyConflict},
 		},
 		{
@@ -923,26 +887,26 @@ func TestReconcileForeignPolicyAtGeneratedName(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
-			r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {tc.source}}, nil, interceptor.Funcs{}, newForeign())
+			r, recorder := newReconciler(t, interceptor.Funcs{}, tc.source, newForeign())
 
-			key := keyFor(deploymentGVK, testNamespace, testName)
-			if _, err := r.Reconcile(ctx, key); err != nil {
-				t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+			req := RequestFor(tc.source)
+			if _, err := r.Reconcile(ctx, req); !errors.Is(err, tc.wantErr) {
+				t.Fatalf("Reconcile(%v) = %v, want %v", req, err, tc.wantErr)
 			}
 
 			got, found := policyFrom(ctx, t, r, tc.source)
 			if !found {
-				t.Fatalf("Reconcile(%v) removed the foreign policy, want it left in place", key)
+				t.Fatalf("Reconcile(%v) removed the foreign policy, want it left in place", req)
 			}
 			gotSpec := got.(*kfplacementv1alpha1.PlacementPolicy).Spec
 			if diff := cmp.Diff(gotSpec, foreignSpec()); diff != "" {
-				t.Errorf("Reconcile(%v) changed the foreign policy's spec (-got, +want):\n%s", key, diff)
+				t.Errorf("Reconcile(%v) changed the foreign policy's spec (-got, +want):\n%s", req, diff)
 			}
 			if labels := got.GetLabels(); len(labels) != 0 {
-				t.Errorf("Reconcile(%v) added labels %v to the foreign policy, want it left untouched", key, labels)
+				t.Errorf("Reconcile(%v) added labels %v to the foreign policy, want it left untouched", req, labels)
 			}
 			if diff := cmp.Diff(recordedReasons(recorder), tc.wantReasons, cmpopts.EquateEmpty()); diff != "" {
-				t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
+				t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", req, diff)
 			}
 		})
 	}
@@ -955,10 +919,7 @@ func TestReconcileForeignPolicyAtGeneratedName(t *testing.T) {
 // or remove it.
 func TestReconcileRepairsDriftedProvenance(t *testing.T) {
 	annotated := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
-	selectors, err := parseClusterSelectors(oneSelector)
-	if err != nil {
-		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
-	}
+	selectors := mustParse(t, oneSelector)
 	// A generated policy whose provenance labels have drifted -- one label is gone -- while the owner
 	// reference this controller set is untouched, so the policy is still recognizable as ours.
 	drifted := func() client.Object {
@@ -992,125 +953,35 @@ func TestReconcileRepairsDriftedProvenance(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
-			r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {tc.source}}, nil, interceptor.Funcs{}, drifted())
+			r, recorder := newReconciler(t, interceptor.Funcs{}, tc.source, drifted())
 
-			key := keyFor(deploymentGVK, testNamespace, testName)
-			if _, err := r.Reconcile(ctx, key); err != nil {
-				t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
+			req := RequestFor(tc.source)
+			if _, err := r.Reconcile(ctx, req); err != nil {
+				t.Fatalf("Reconcile(%v) = %v, want no error", req, err)
 			}
 
 			got, found := policyFrom(ctx, t, r, annotated)
 			if found != tc.wantPolicy {
-				t.Fatalf("Reconcile(%v) left a generated policy = %v, want %v", key, found, tc.wantPolicy)
+				t.Fatalf("Reconcile(%v) left a generated policy = %v, want %v", req, found, tc.wantPolicy)
 			}
 			if tc.wantPolicy {
 				if diff := cmp.Diff(got.GetLabels(), desiredPolicy(annotated, selectors).GetLabels()); diff != "" {
-					t.Errorf("Reconcile(%v) did not restore the drifted provenance labels (-got, +want):\n%s", key, diff)
+					t.Errorf("Reconcile(%v) did not restore the drifted provenance labels (-got, +want):\n%s", req, diff)
 				}
 			}
 			if diff := cmp.Diff(recordedReasons(recorder), []string{tc.wantReason}); diff != "" {
-				t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
+				t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", req, diff)
 			}
 		})
 	}
 }
 
-// TestReconcileResolvesRemovedVersionForClusterScoped covers a cluster-scoped source reached through
-// a key whose version is no longer served -- what the generated policy watch produces from an owner
-// reference written under an old version. Scope must come from the resolved mapping: read from the
-// stale queued version, which the informer manager no longer indexes as cluster-scoped, it would look
-// the object up in a namespace it does not live in and take it for deleted.
-func TestReconcileResolvesRemovedVersionForClusterScoped(t *testing.T) {
-	ctx := context.Background()
-	source := newSource(namespaceGVK, "", testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
-
-	// The informer holds the source as a cluster-scoped resource: it lives under no namespace, so a
-	// namespaced lookup finds nothing. That is what makes this a real regression pin -- determining
-	// scope from the stale queued GVK would misclassify the source as namespaced and read it through
-	// ByNamespace, which now misses it, taking the source for deleted; determining scope from the
-	// resolved mapping reads it through the cluster-scoped lister and finds it.
-	recorder := record.NewFakeRecorder(10)
-	c := fake.NewClientBuilder().WithScheme(newScheme(t)).Build()
-	r := &Reconciler{
-		Client:         c,
-		UncachedReader: c,
-		RestMapper:     newRESTMapper(),
-		InformerManager: &testinformer.FakeManager{
-			// The manager knows the served version's scope but not the retired one the key names.
-			APIResources:            map[schema.GroupVersionKind]bool{namespaceGVK: true},
-			IsClusterScopedResource: true,
-			Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-				namespaceGVR: {Objects: []runtime.Object{source}, ClusterScoped: true},
-			},
-		},
-		Recorder: recorder,
-	}
-
-	// The key names Namespace under a retired version; only the served v1 is registered in the mapper.
-	key := keyFor(schema.GroupVersionKind{Group: "", Version: "v2", Kind: "Namespace"}, "", testName)
-	if _, err := r.Reconcile(ctx, key); err != nil {
-		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
-	}
-	if _, found := policyFrom(ctx, t, r, source); !found {
-		t.Errorf("Reconcile(%v) generated no policy, want the cluster-scoped source resolved through the served version", key)
-	}
-	if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonPolicyCreated}); diff != "" {
-		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
-	}
-}
-
-// TestReconcileReadsPolicyThroughUncachedReader covers the read that repairs drift. The generated
-// policies are watched through a different informer than a manager cache reads from, so a read from
-// such a cache can lag behind the watch that just fired. The reconciler must read the policy through
-// the uncached reader, which is current as of the moment the watch fired, or it would see a stale
-// object, decide nothing changed, and leave the drift -- or, for a deletion, leave it forever.
-func TestReconcileReadsPolicyThroughUncachedReader(t *testing.T) {
-	ctx := context.Background()
-	source := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
-	correct, err := parseClusterSelectors(oneSelector)
-	if err != nil {
-		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", oneSelector, err)
-	}
-	drifted, err := parseClusterSelectors(twoSelectors)
-	if err != nil {
-		t.Fatalf("parseClusterSelectors(%q) = %v, want no error", twoSelectors, err)
-	}
-
-	// The writer's cache is stale: it holds the policy exactly as this controller last wrote it. The
-	// uncached reader is current, and the policy has drifted since. A reconciler reading the writer's
-	// cache would see no difference and never repair the drift.
-	writer := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(desiredPolicy(source, correct)).Build()
-	uncached := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(desiredPolicy(source, drifted)).Build()
-
-	recorder := record.NewFakeRecorder(10)
-	r := &Reconciler{
-		Client:         writer,
-		UncachedReader: uncached,
-		RestMapper:     newRESTMapper(),
-		InformerManager: &testinformer.FakeManager{
-			Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
-				deploymentGVR: {Objects: []runtime.Object{source}},
-			},
-		},
-		Recorder: recorder,
-	}
-
-	key := keyFor(deploymentGVK, testNamespace, testName)
-	if _, err := r.Reconcile(ctx, key); err != nil {
-		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
-	}
-	// The drift the uncached reader sees is repaired; read from the stale writer cache, no update
-	// would have been recorded.
-	if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonPolicyUpdated}); diff != "" {
-		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
-	}
-}
-
-// TestReconcileRequeuesWhileForeignPolicyBlocks covers a source whose generated name is occupied by a
+// TestReconcileResumesOnceForeignPolicyClears covers a source whose generated name is occupied by a
 // foreign policy. Removing that policy fires no event that reaches the source -- it carries no owner
-// reference to it -- and the annotation does not change, so the reconciler must requeue the source
-// itself, or the requested policy would never be created once the conflict is cleared.
-func TestReconcileRequeuesWhileForeignPolicyBlocks(t *testing.T) {
+// reference to it -- and the annotation does not change, so the reconciler reports the conflict as
+// an error to be retried with backoff; the pass after the conflict clears must then create the
+// requested policy.
+func TestReconcileResumesOnceForeignPolicyClears(t *testing.T) {
 	ctx := context.Background()
 	source := newSource(deploymentGVK, testNamespace, testName, map[string]string{kfplacementv1alpha1.ClusterSelectorsAnnotation: oneSelector})
 	foreign := &kfplacementv1alpha1.PlacementPolicy{
@@ -1122,45 +993,37 @@ func TestReconcileRequeuesWhileForeignPolicyBlocks(t *testing.T) {
 			ResourceSelectors: []kfplacementv1alpha1.ResourceSelector{{APIGroup: "example.com", APIVersion: "v1", Kind: "Widget", Name: "hand-authored"}},
 		},
 	}
-	r, recorder := newReconciler(t, map[schema.GroupVersionResource][]runtime.Object{deploymentGVR: {source}}, nil, interceptor.Funcs{}, foreign)
+	r, recorder := newReconciler(t, interceptor.Funcs{}, source, foreign)
 
-	key := keyFor(deploymentGVK, testNamespace, testName)
-	result, err := r.Reconcile(ctx, key)
-	if err != nil {
-		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
-	}
-	if result.RequeueAfter != conflictRequeueAfter {
-		t.Errorf("Reconcile(%v).RequeueAfter = %v, want %v so the blocked source is retried", key, result.RequeueAfter, conflictRequeueAfter)
+	req := RequestFor(source)
+	if _, err := r.Reconcile(ctx, req); !errors.Is(err, errForeignPolicy) {
+		t.Fatalf("Reconcile(%v) = %v, want %v so the blocked source is retried", req, err, errForeignPolicy)
 	}
 	if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonPolicyConflict}); diff != "" {
-		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
+		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", req, diff)
 	}
 
-	// The user removes the blocking policy. The next pass creates the requested policy and stops
-	// requeueing, which is the resumption a bare return would never have reached.
-	if err := r.Client.Delete(ctx, foreign); err != nil {
+	// The user removes the blocking policy. The next pass creates the requested policy.
+	if err := r.Delete(ctx, foreign); err != nil {
 		t.Fatalf("Delete(foreign) = %v, want no error", err)
 	}
-	result, err = r.Reconcile(ctx, key)
-	if err != nil {
-		t.Fatalf("Reconcile(%v) = %v, want no error", key, err)
-	}
-	if result.RequeueAfter != 0 {
-		t.Errorf("Reconcile(%v).RequeueAfter = %v after the conflict cleared, want no requeue", key, result.RequeueAfter)
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("Reconcile(%v) = %v, want no error after the conflict cleared", req, err)
 	}
 	if _, found := policyFrom(ctx, t, r, source); !found {
-		t.Errorf("Reconcile(%v) did not create the policy after the conflict cleared", key)
+		t.Errorf("Reconcile(%v) did not create the policy after the conflict cleared", req)
 	}
 	if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonPolicyCreated}); diff != "" {
-		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", key, diff)
+		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", req, diff)
 	}
 }
 
 // TestApplyDesiredPolicyRejectsForeignObject covers the branch that exists only so that a scope this
 // package does not know about cannot take the reconcile loop down with it.
 func TestApplyDesiredPolicyRejectsForeignObject(t *testing.T) {
-	if got := applyDesiredPolicy(&unstructured.Unstructured{}, &kfplacementv1alpha1.PlacementPolicy{}); got {
-		t.Errorf("applyDesiredPolicy(%T) = true, want false", &unstructured.Unstructured{})
+	source := newSource(deploymentGVK, testNamespace, testName, nil)
+	if err := applyDesiredPolicy(&unstructured.Unstructured{}, &kfplacementv1alpha1.PlacementPolicy{}, source, newScheme(t)); err == nil {
+		t.Errorf("applyDesiredPolicy(%T) = nil, want an error", &unstructured.Unstructured{})
 	}
 }
 
