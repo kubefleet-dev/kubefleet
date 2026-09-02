@@ -29,7 +29,6 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
-	"github.com/kubefleet-dev/kubefleet/pkg/controllers/annotationplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
@@ -68,14 +67,6 @@ type ChangeDetector struct {
 	// This controller will be used by both v1alpha1 & v1beta1 ClusterResourcePlacementController.
 	ResourceChangeController controller.Controller
 
-	// AnnotationPlacementController maintains a rate limited queue holding the cluster wide key of
-	// every resource whose cluster-selectors annotation may have changed, and a reconcile function
-	// that keeps the placement policy generated from that annotation in step with it.
-	//
-	// It is nil unless annotation-based placement is enabled, and unlike ResourceChangeController it
-	// is fed only the resources that carry the annotation.
-	AnnotationPlacementController controller.Controller
-
 	// InformerManager manages all the dynamic informers created by the discovery client
 	InformerManager informer.Manager
 
@@ -107,8 +98,6 @@ func (d *ChangeDetector) Start(ctx context.Context) error {
 	// set up the dynamicResourceChangeEventHandler that enqueue an event to the resource change controller's queue.
 	dynamicResourceChangeEventHandler := newFilteringHandlerOnAllEvents(d.dynamicResourceFilter,
 		d.onResourceAdded, d.onResourceUpdated, d.onResourceDeleted)
-
-	d.watchGeneratedPolicies()
 	// run the resource type list once to start informers for the existing resources
 	d.discoverResources(dynamicResourceChangeEventHandler)
 	defer d.InformerManager.Stop()
@@ -137,30 +126,7 @@ func (d *ChangeDetector) Start(ctx context.Context) error {
 	errs.Go(func() error {
 		return d.ResourceChangeController.Run(cctx, d.ConcurrentResourceChangeWorker)
 	})
-	if d.AnnotationPlacementController != nil {
-		errs.Go(func() error {
-			return d.AnnotationPlacementController.Run(cctx, d.ConcurrentResourceChangeWorker)
-		})
-	}
 	return errs.Wait()
-}
-
-// watchGeneratedPolicies watches the policies that annotation-based placement generates, on top of
-// the resources they are generated from: an edit or a delete of a generated policy produces no
-// event on its resource, and would otherwise go unrepaired forever. It does nothing when
-// annotation-based placement is not running.
-//
-// The policy informers are registered as static resources, and the resource config keeps the whole
-// placement.kubefleet.dev group out of dynamic discovery, so the generated policy event handler is
-// the only handler these informers ever get.
-func (d *ChangeDetector) watchGeneratedPolicies() {
-	if d.AnnotationPlacementController == nil {
-		return
-	}
-	generatedPolicyEventHandler := annotationplacement.NewGeneratedPolicyEventHandler(d.AnnotationPlacementController.Enqueue)
-	for _, res := range annotationplacement.GeneratedPolicyResources() {
-		d.InformerManager.AddStaticResource(res, generatedPolicyEventHandler)
-	}
 }
 
 // discoverAPIResourcesLoop runs discoverResources periodically

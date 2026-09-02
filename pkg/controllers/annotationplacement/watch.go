@@ -40,8 +40,9 @@ func SourceNamespace(source *unstructured.Unstructured) string {
 	return source.GetNamespace()
 }
 
-// GeneratedPolicyResources returns the resources that hold the policies this controller generates,
-// for the resource watcher to add informers for.
+// GeneratedPolicyResources returns the resources that hold the policies this controller generates.
+// Whatever runs the controller is expected to add informers for them, with the handler that
+// NewGeneratedPolicyEventHandler returns.
 //
 // Watching the generated policies, and not only the resources they are generated from, is what
 // makes drift repairable: without it, deleting a generated policy or editing its spec produces no

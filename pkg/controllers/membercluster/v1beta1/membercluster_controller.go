@@ -78,9 +78,9 @@ type Reconciler struct {
 	ForceDeleteWaitTime time.Duration
 
 	// SeedClusterAliasLabel controls whether joining member clusters are given the cluster alias
-	// label, seeded from the cluster name. It follows the annotation-based placement feature flag:
-	// the alias exists for that feature's alias= shorthand, and seeding it on fleets that do not
-	// run the feature would relabel every member cluster for nothing.
+	// label, seeded from the cluster name. The alias exists for the alias= shorthand of
+	// annotation-based placement, which is not wired into the hub agent yet, so nothing sets this
+	// field today and no member cluster is relabelled.
 	SeedClusterAliasLabel bool
 	// agents are used as hashset to query the expected agent type, so the value will be ignored.
 	agents map[clusterv1beta1.AgentType]bool

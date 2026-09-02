@@ -472,8 +472,9 @@ func sameOwnerIdentity(a, b metav1.OwnerReference) bool {
 }
 
 // HasClusterSelectorsAnnotation reports whether an object carries the annotation this controller
-// acts on. It is what keeps every unrelated resource in the cluster out of this controller's queue,
-// and so is called by the resource watcher on every event for every watched resource.
+// acts on. It is what keeps every unrelated resource in the cluster out of this controller's queue:
+// whichever event source feeds the controller is expected to call it on every event for every
+// watched resource, and to enqueue only the objects it reports true for.
 func HasClusterSelectorsAnnotation(object metav1.Object) bool {
 	_, found := object.GetAnnotations()[kfplacementv1alpha1.ClusterSelectorsAnnotation]
 	return found

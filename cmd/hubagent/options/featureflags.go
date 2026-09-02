@@ -51,17 +51,6 @@ type FeatureFlags struct {
 	// ResourcePlacement APIs are a set of KubeFleet APIs for processing namespace scoped resource placements.
 	// This flag does not concern the cluster-scoped placement APIs (`ClusterResourcePlacement` and its related APIs).
 	EnableResourcePlacementAPIs bool
-
-	// Enable annotation-based placement in the KubeFleet hub agent or not.
-	//
-	// With it enabled, the hub agent keeps a placement policy in sync with the
-	// kubefleet.dev/cluster-selectors annotation on any resource it watches, so that a placement can
-	// be expressed without authoring a placement policy by hand.
-	//
-	// This defaults to off. The feature reads and writes the placement.kubefleet.dev/v1alpha1
-	// placement policy APIs, which are alpha and whose custom resource definitions a cluster does not
-	// necessarily have installed.
-	EnableAnnotationBasedPlacement bool
 }
 
 // AddFlags adds flags for FeatureFlags to the specified FlagSet.
@@ -98,13 +87,6 @@ func (o *FeatureFlags) AddFlags(flags *flag.FlagSet) {
 		"enable-resource-placement",
 		true,
 		"Enable the ResourcePlacement API support (for namespace-scoped placements) in the KubeFleet hub agent or not.",
-	)
-
-	flags.BoolVar(
-		&o.EnableAnnotationBasedPlacement,
-		"enable-annotation-based-placement",
-		false,
-		"Enable annotation-based placement in the KubeFleet hub agent or not. It requires the placement.kubefleet.dev/v1alpha1 custom resource definitions to be installed.",
 	)
 }
 
