@@ -45,12 +45,12 @@ const aksScope = "6dae42f8-4368-4678-94ff-3960e28e3630/.default"
 // only AzureCLICredential/AzureDeveloperCLICredential. See azureTokenCredentialsProd below.
 const azureTokenCredentialsEnvVar = "AZURE_TOKEN_CREDENTIALS"
 
-// azureTokenCredentialsProd is the value FetchToken defaults AZURE_TOKEN_CREDENTIALS to. The
-// refresh-token image ships no az/azd binary and no cached CLI session, so
-// AzureCLICredential/AzureDeveloperCLICredential can never succeed there anyway; excluding them
-// avoids two guaranteed-to-fail attempts (and their noise in the aggregated error) on every
-// token fetch. Set AZURE_TOKEN_CREDENTIALS explicitly (e.g. to "dev") before running this binary
-// to opt back in -- FetchToken only fills the variable in when it's unset, never overrides it.
+// azureTokenCredentialsProd is the value FetchToken unconditionally forces AZURE_TOKEN_CREDENTIALS
+// to, every call, overriding anything already in the environment. The refresh-token image ships
+// no az/azd binary and no cached CLI session, so AzureCLICredential/AzureDeveloperCLICredential
+// can never succeed there anyway; excluding them avoids two guaranteed-to-fail attempts (and
+// their noise in the aggregated error) on every token fetch. This is deliberately not
+// configurable -- the CLI-based legs are not a supported auth mode for this binary.
 const azureTokenCredentialsProd = "prod"
 
 // AuthTokenProvider fetches Azure AD access tokens for the fleet hub using
@@ -65,10 +65,9 @@ const azureTokenCredentialsProd = "prod"
 //     one if AZURE_CLIENT_ID happens to already be set in the environment (e.g. by one of the
 //     mechanisms above)
 //
-// AzureCLICredential and AzureDeveloperCLICredential are excluded by default (see
-// azureTokenCredentialsProd) since the shipped image has no az/azd binary to shell out to; set
-// AZURE_TOKEN_CREDENTIALS=dev in the environment to opt into them for local testing outside the
-// container.
+// AzureCLICredential and AzureDeveloperCLICredential are always excluded (see
+// azureTokenCredentialsProd) since the shipped image has no az/azd binary to shell out to; this
+// is not configurable via the environment.
 //
 // This lets the same binary/image authenticate correctly no matter which of these mechanisms
 // the member cluster is actually set up with, without the operator having to pick one Azure
@@ -94,10 +93,8 @@ func New(scope string) authtoken.Provider {
 func (a *AuthTokenProvider) FetchToken(ctx context.Context) (authtoken.AuthToken, error) {
 	token := authtoken.AuthToken{}
 
-	if _, ok := os.LookupEnv(azureTokenCredentialsEnvVar); !ok {
-		if err := os.Setenv(azureTokenCredentialsEnvVar, azureTokenCredentialsProd); err != nil {
-			return token, fmt.Errorf("failed to set %s: %w", azureTokenCredentialsEnvVar, err)
-		}
+	if err := os.Setenv(azureTokenCredentialsEnvVar, azureTokenCredentialsProd); err != nil {
+		return token, fmt.Errorf("failed to set %s: %w", azureTokenCredentialsEnvVar, err)
 	}
 
 	httpClient := &http.Client{}
