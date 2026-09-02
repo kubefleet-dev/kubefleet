@@ -334,9 +334,6 @@ func TestFeatureFlags(t *testing.T) {
 				EnableStagedUpdateRunAPIs:   true,
 				EnableEvictionAPIs:          true,
 				EnableResourcePlacementAPIs: true,
-				// Annotation-based placement is alpha and needs CRDs the chart does not install,
-				// so unlike its siblings it is off unless asked for.
-				EnableAnnotationBasedPlacement: false,
 			},
 		},
 		{
@@ -348,15 +345,13 @@ func TestFeatureFlags(t *testing.T) {
 				"--enable-staged-update-run-apis=false",
 				"--enable-eviction-apis=false",
 				"--enable-resource-placement=false",
-				"--enable-annotation-based-placement=true",
 			},
 			wantFeatureFlags: FeatureFlags{
-				EnableV1Beta1APIs:              true,
-				EnableClusterInventoryAPIs:     false,
-				EnableStagedUpdateRunAPIs:      false,
-				EnableEvictionAPIs:             false,
-				EnableResourcePlacementAPIs:    false,
-				EnableAnnotationBasedPlacement: true,
+				EnableV1Beta1APIs:           true,
+				EnableClusterInventoryAPIs:  false,
+				EnableStagedUpdateRunAPIs:   false,
+				EnableEvictionAPIs:          false,
+				EnableResourcePlacementAPIs: false,
 			},
 		},
 		{

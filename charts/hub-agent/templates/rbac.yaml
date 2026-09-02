@@ -67,20 +67,6 @@ rules:
       - approvalrequests/status
     verbs: ["get", "update"]
 
-  # Placement policies the hub-agent generates from the
-  # kubefleet.dev/cluster-selectors annotation on a resource. Unlike the
-  # user-created placement resources above, the hub-agent owns these outright:
-  # it creates one when the annotation appears, updates it when the annotation
-  # changes, and deletes it when the annotation is removed. No status
-  # subresource rule: the generating controller never writes status.
-  #
-  # The broad read rule further down does not cover these, being read-only.
-  - apiGroups: ["placement.kubefleet.dev"]
-    resources:
-      - placementpolicies
-      - clusterplacementpolicies
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-
   # Fleet cluster APIs. MemberCluster is user-created and user-deleted; the
   # hub-agent only adds/removes its finalizer (update) and writes status.
   # InternalMemberCluster is created by the hub-agent and cleaned up via

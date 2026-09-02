@@ -48,10 +48,6 @@ affinity: {}
 enableClusterInventoryAPI: true
 enableStagedUpdateRunAPIs: true
 enableEvictionAPIs: true
-# Keeps a placement policy in sync with the kubefleet.dev/cluster-selectors annotation on a resource.
-# It requires the placement.kubefleet.dev/v1alpha1 custom resource definitions, which this chart does not
-# install yet, so it is off by default.
-enableAnnotationBasedPlacement: false
 
 enablePprof: true
 pprofPort: 6065

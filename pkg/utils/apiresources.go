@@ -211,9 +211,7 @@ func NewResourceConfig(isAllowList bool) *ResourceConfig {
 	// Disable the placement.kubefleet.dev group wholesale: everything in it is KubeFleet's own
 	// bookkeeping (placement policies, bindings, snapshots, works, claims), including the policies
 	// that annotation-based placement generates. Treating those as placeable resources would let a
-	// placement that selects a whole namespace propagate KubeFleet's own generated objects, and
-	// would put a second, filtered event handler on the informers that the generated-policy watch
-	// registers first.
+	// placement that selects a whole namespace propagate KubeFleet's own generated objects.
 	r.AddGroup(kfplacementv1alpha1.GroupVersion.Group)
 
 	// disable some fleet networking resources
