@@ -11,7 +11,7 @@ import (
 
 func TestParseArgs(t *testing.T) {
 	t.Run("all arguments", func(t *testing.T) {
-		os.Args = []string{"refreshtoken", "azure", "--clientid=test-client-id", "--scope=test-scope"}
+		os.Args = []string{"refreshtoken", "azure", "--scope=test-scope"}
 		t.Cleanup(func() {
 			os.Args = nil
 		})
@@ -24,7 +24,7 @@ func TestParseArgs(t *testing.T) {
 		assert.Equal(t, "test-scope", azTokenProvider.Scope)
 	})
 	t.Run("no optional arguments", func(t *testing.T) {
-		os.Args = []string{"refreshtoken", "azure", "--clientid=test-client-id"}
+		os.Args = []string{"refreshtoken", "azure"}
 		t.Cleanup(func() {
 			os.Args = nil
 		})
@@ -34,6 +34,6 @@ func TestParseArgs(t *testing.T) {
 
 		azTokenProvider, ok := tokenProvider.(*azure.AuthTokenProvider)
 		assert.Equal(t, true, ok)
-		assert.Equal(t, "6dae42f8-4368-4678-94ff-3960e28e3630", azTokenProvider.Scope)
+		assert.Equal(t, "6dae42f8-4368-4678-94ff-3960e28e3630/.default", azTokenProvider.Scope)
 	})
 }
