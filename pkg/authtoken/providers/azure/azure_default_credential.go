@@ -80,6 +80,18 @@ type AuthTokenProvider struct {
 	Scope string
 }
 
+// newAzureCredential constructs the credential FetchToken fetches tokens from. It's a package
+// variable, rather than a direct call to azidentity.NewDefaultAzureCredential, purely so tests
+// can substitute a fake azcore.TokenCredential and exercise FetchToken's retry/error-handling
+// logic without making real network calls to IMDS or Entra ID.
+var newAzureCredential = func(options *azidentity.DefaultAzureCredentialOptions) (azcore.TokenCredential, error) {
+	credential, err := azidentity.NewDefaultAzureCredential(options)
+	if err != nil {
+		return nil, err
+	}
+	return credential, nil
+}
+
 func New(scope string) authtoken.Provider {
 	if scope == "" {
 		scope = aksScope
@@ -98,7 +110,7 @@ func (a *AuthTokenProvider) FetchToken(ctx context.Context) (authtoken.AuthToken
 	}
 
 	httpClient := &http.Client{}
-	credential, err := azidentity.NewDefaultAzureCredential(&azidentity.DefaultAzureCredentialOptions{
+	credential, err := newAzureCredential(&azidentity.DefaultAzureCredentialOptions{
 		ClientOptions: azcore.ClientOptions{
 			// Only applies to the credential types that make HTTP calls directly
 			// (Environment/WorkloadIdentity/ManagedIdentity); the CLI-based credentials shell
