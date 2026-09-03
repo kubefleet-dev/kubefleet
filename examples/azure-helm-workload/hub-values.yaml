@@ -1,0 +1,25 @@
+# helm install hub-agent charts/hub-agent -n fleet-system --create-namespace -f hub-values.yaml
+#
+# The hub side is identical regardless of which Azure auth mode a member cluster uses -- the
+# membercluster controller binds RBAC to whatever spec.identity subject a MemberCluster object
+# declares, ServiceAccount or User alike. Nothing here is specific to workload identity; this
+# file exists mainly to pin the real published image tag, since charts/hub-agent/Chart.yaml's
+# appVersion (used as the default image tag) lags behind the latest release.
+image:
+  tag: v0.3.1
+
+# Requires two charts/hub-agent fixes that, at the time this example was written, were pending
+# in the working tree (not yet committed) -- confirmed necessary by two separate live
+# deployments against the published v0.3.1 image:
+#  1. logFileMaxSize needs a default (1800 here matches the binary's own documented default).
+#     Without it the chart renders --log_file_max_size= empty, which crashes hub-agent at
+#     startup ("invalid value \"\" for flag -log_file_max_size: parse error").
+#  2. --enable-admission-policy-manager must be conditionally rendered (only when true), not
+#     unconditional. v0.3.1 predates that flag entirely ("flag provided but not defined:
+#     -enable-admission-policy-manager"); this repo's current chart/source already has it.
+# Confirm charts/hub-agent/values.yaml has a logFileMaxSize entry and
+# charts/hub-agent/templates/deployment.yaml guards --enable-admission-policy-manager with
+# {{- if .Values.enableAdmissionPolicyManager }} before installing -- otherwise hub-agent will
+# crash-loop on start against this image tag. If deploying against a newer image that has the
+# flag, no action needed either way; if stuck with an older image and the guard isn't in the
+# chart yet, you'll need to patch the rendered Deployment's args after install as a workaround.

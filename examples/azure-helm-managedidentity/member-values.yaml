@@ -1,0 +1,37 @@
+# helm install member-agent charts/member-agent -n fleet-system --create-namespace \
+#   -f member-values.yaml
+#
+# Configures member-agent for Azure Managed Identity: the refresh-token sidecar's `azure`
+# provider (pkg/authtoken/providers/azure) uses azidentity.DefaultAzureCredential, whose
+# ManagedIdentityCredential leg resolves via IMDS to whichever identity is attached to the
+# underlying node/VMSS -- no client-ID configuration exists or is needed. No pod label, no
+# ServiceAccount annotation, no hub-kubeconfig-secret, no federated credential -- this is the
+# simplest of the Azure auth flows to wire up, at the cost of a coarser-grained, per-node
+# (rather than per-workload) identity -- see this folder's README for that tradeoff.
+#
+# See ../../docs/cluster-authentication.md for the full mechanics, and this folder's README.md
+# for exactly where each placeholder value below comes from.
+#
+# REQUIRES the pending charts/member-agent azure: {} default fix -- at the time this example
+# was written that was sitting uncommitted in the working tree. Without it, Helm's default
+# `azure.clientid` placeholder would break the refresh-token sidecar outright (it no longer
+# accepts a --clientid flag).
+
+image:
+  tag: v0.3.1
+
+refreshtoken:
+  # IMPORTANT: placeholder. As of the latest published release (v0.3.1),
+  # ghcr.io/kubefleet-dev/kubefleet/refresh-token doesn't yet have the AZURE_TOKEN_CREDENTIALS
+  # scope fix and non-CLI-credential exclusion this flow was verified against. Build from a
+  # source tree that has pkg/authtoken/providers/azure/azure_default_credential.go (see
+  # ../manual-deploy/workload-identity/README.md's "Building the refresh-token image" section
+  # for the exact `az acr build` command) and point repository/tag at that image instead.
+  repository: <your-registry>/refresh-token
+  tag: <tag>
+
+config:
+  provider: azure
+  hubURL: "https://<hub-cluster-api-server-ip>:<port>"
+  memberClusterName: "<member-cluster-name>"
+  hubCA: "<base64-encoded-ca-data>"
