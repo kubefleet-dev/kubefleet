@@ -1,0 +1,49 @@
+# helm install member-agent charts/member-agent -n fleet-system --create-namespace \
+#   -f member-values.yaml
+#
+# Configures member-agent for Azure Workload Identity Federation: the refresh-token sidecar's
+# `azure` provider (pkg/authtoken/providers/azure) uses azidentity.DefaultAzureCredential, whose
+# WorkloadIdentityCredential leg picks up the AZURE_CLIENT_ID/AZURE_TENANT_ID/
+# AZURE_FEDERATED_TOKEN_FILE that the Azure Workload Identity mutating webhook injects
+# automatically -- because of the pod.labels + serviceAccount.annotations below. No
+# hub-kubeconfig-secret, no client-ID flag (the provider doesn't have one), nothing to rotate.
+#
+# See ../../docs/cluster-authentication.md for the full mechanics, and this folder's README.md
+# for the Azure-side prerequisites (UAMI, federated credential, hub AAD integration) and exactly
+# where each placeholder value below comes from.
+#
+# REQUIRES the pending charts/member-agent updates (serviceAccount.annotations, pod.labels,
+# azure: {} default) -- at the time this example was written those were sitting uncommitted in
+# the working tree. Without them, `serviceAccount.annotations`/`pod.labels` below are silently
+# ignored by the chart, and Helm's default `azure.clientid` placeholder would break the
+# refresh-token sidecar outright (it no longer accepts a --clientid flag).
+
+image:
+  tag: v0.3.1
+
+refreshtoken:
+  # IMPORTANT: placeholder. As of the latest published release (v0.3.1),
+  # ghcr.io/kubefleet-dev/kubefleet/refresh-token only implements ManagedIdentityCredential --
+  # it never attempts WorkloadIdentityCredential, so this whole flow won't join no matter how
+  # correctly everything else here is configured. Build from a source tree that has
+  # pkg/authtoken/providers/azure/azure_default_credential.go (see ../../examples/manual-deploy
+  # /workload-identity/README.md's "Building the refresh-token image" section for the exact
+  # `az acr build` command) and point repository/tag at that image instead.
+  repository: <your-registry>/refresh-token
+  tag: <tag>
+
+config:
+  provider: azure
+  hubURL: "https://<hub-cluster-api-server-ip>:<port>"
+  memberClusterName: "<member-cluster-name>"
+  hubCA: "<base64-encoded-ca-data>"
+
+# Read by the Azure Workload Identity mutating webhook: annotates the chart-managed
+# ServiceAccount with the UAMI's client ID, and labels the pod so the webhook actually acts on
+# it (both are required together -- the annotation alone does nothing without the label).
+serviceAccount:
+  annotations:
+    azure.workload.identity/client-id: "<uami-client-id>"
+pod:
+  labels:
+    azure.workload.identity/use: "true"

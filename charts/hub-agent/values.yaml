@@ -11,6 +11,10 @@ image:
   tag: ""
 
 logVerbosity: 5
+# logFileMaxSize is the maximum size (in MB) a log file can grow to before rotating. Must have a
+# value -- the hub-agent binary rejects an empty --log_file_max_size at startup. 1800 matches the
+# binary's own documented default.
+logFileMaxSize: 1800
 
 enableWebhook: true
 webhookServiceName: fleetwebhook
@@ -61,5 +65,11 @@ MaxFleetSizeSupported: 100
 additionalConfigData: {}
 additionalConfigDataMountPath: /etc/kubefleet/additional-config
 
+# enableAdmissionPolicyManager: false (the default) omits --enable-admission-policy-manager
+# from the container args entirely, rather than rendering it as =false -- this flag postdates
+# some published hub-agent releases (v0.3.1 and earlier don't have it: "flag provided but not
+# defined"), so leaving it unset when disabled keeps this chart deployable against those older
+# images too. Set to true only when deploying an image built from a source tree that has the
+# flag (cmd/hubagent/options/webhooks.go).
 enableAdmissionPolicyManager: false
 admissionPolicyManagerConfigName: ""

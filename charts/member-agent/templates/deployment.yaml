@@ -13,6 +13,13 @@ spec:
     metadata:
       labels:
         {{- include "member-agent.selectorLabels" . | nindent 8 }}
+        {{- with .Values.pod.labels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.pod.annotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
     spec:
       restartPolicy: Always
       serviceAccountName: {{ include "member-agent.fullname" . }}-sa
@@ -166,6 +173,14 @@ spec:
             - --{{ $key }}={{ $value }}
             {{- end }}
             - --v={{ .Values.logVerbosity }}
+          {{- with .Values.refreshtoken.extraEnv }}
+          env:
+            {{- toYaml . | nindent 10 }}
+          {{- end }}
+          {{- with .Values.refreshtoken.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 10 }}
+          {{- end }}
           ports:
             - name: http
               containerPort: 4000
@@ -179,7 +194,8 @@ spec:
       volumes:
       {{- if not .Values.useCAAuth }}
       - name: provider-token
-        emptyDir: {}
+        emptyDir:
+          medium: Memory
       {{- end }}
       {{- if eq .Values.propertyProvider "azure" }}
       - name: cloud-provider-config
