@@ -194,7 +194,8 @@ spec:
       volumes:
       {{- if not .Values.useCAAuth }}
       - name: provider-token
-        emptyDir: {}
+        emptyDir:
+          medium: Memory
       {{- end }}
       {{- if eq .Values.propertyProvider "azure" }}
       - name: cloud-provider-config
