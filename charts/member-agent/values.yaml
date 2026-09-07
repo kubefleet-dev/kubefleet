@@ -16,8 +16,10 @@ refreshtoken:
   # environment configuration and have no dedicated chart value -- most notably a service
   # principal for azidentity's EnvironmentCredential leg (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET
   # or AZURE_CLIENT_CERTIFICATE_PATH, AZURE_TENANT_ID), typically sourced from a Secret via
-  # extraEnvFrom rather than inlined here. Workload Identity and managed identity need neither
-  # -- see serviceAccount.annotations/pod.labels below.
+  # extraEnvFrom rather than inlined here. Workload Identity needs neither -- see
+  # serviceAccount.annotations/pod.labels below. Managed identity usually needs neither either,
+  # but set AZURE_CLIENT_ID here too if the node/VMSS has more than one user-assigned identity
+  # attached and IMDS would otherwise be ambiguous about which one to use.
   # extraEnv:
   #   - name: AZURE_TENANT_ID
   #     value: "<tenant-id>"
