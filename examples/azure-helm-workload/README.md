@@ -59,6 +59,30 @@ a Helm value — it's applied as a separate Kubernetes object; see Step 2 below.
      --subject system:serviceaccount:fleet-system:member-agent-sa \
      --audiences api://AzureADTokenExchange
    ```
+5. **The `refresh-token` image itself.** The latest published release (`v0.3.1`) predates this
+   repo's Azure auth changes, so build it yourself:
+   ```bash
+   az acr create -g <acr-rg> -n <acr-name> --sku Basic
+   ```
+   `az acr build` can't parse this repo's `docker/refresh-token.Dockerfile` (its
+   `FROM --platform=$BUILDPLATFORM` line trips ACR's dependency scan). Use an explicit `cmd:`
+   step instead, which skips the scan:
+   ```bash
+   cat > acr-task.yaml <<'EOF'
+   version: v1.1.0
+   steps:
+     - cmd: docker build -t {{.Run.Registry}}/refresh-token:workload-identity -f docker/refresh-token.Dockerfile .
+     - cmd: docker push {{.Run.Registry}}/refresh-token:workload-identity
+   EOF
+   az acr run -r <acr-name> -f acr-task.yaml .
+   rm acr-task.yaml
+   ```
+   (`-f` must be relative to `.` — the upload context — not an absolute path.) Then:
+   ```bash
+   az aks update -g <member-rg> -n <member-cluster> --attach-acr <acr-name>
+   ```
+   Set `member-values.yaml`'s `refreshtoken.repository`/`tag` to `<acr-name>.azurecr.io` /
+   `workload-identity`.
 
 ## Order of operations
 

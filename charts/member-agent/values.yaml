@@ -17,8 +17,7 @@ refreshtoken:
   # principal for azidentity's EnvironmentCredential leg (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET
   # or AZURE_CLIENT_CERTIFICATE_PATH, AZURE_TENANT_ID), typically sourced from a Secret via
   # extraEnvFrom rather than inlined here. Workload Identity and managed identity need neither
-  # -- see serviceAccount.annotations/pod.labels below and docs/cluster-authentication.md for
-  # the full picture of what each Azure auth mode needs.
+  # -- see serviceAccount.annotations/pod.labels below.
   # extraEnv:
   #   - name: AZURE_TENANT_ID
   #     value: "<tenant-id>"
@@ -44,7 +43,7 @@ affinity: {}
 # azure.workload.identity/client-id: <uami-client-id> for Azure Workload Identity Federation.
 # Combine with pod.labels: {azure.workload.identity/use: "true"} below and
 # config.provider: azure to have the refresh-token sidecar's DefaultAzureCredential chain pick
-# up the federated identity automatically -- see docs/cluster-authentication.md.
+# up the federated identity automatically.
 serviceAccount:
   annotations: {}
 
@@ -87,8 +86,8 @@ secret:
 # azure has no keys by default: the refresh-token sidecar's `azure` provider
 # (pkg/authtoken/providers/azure) uses azidentity.DefaultAzureCredential, which picks an
 # identity on its own (workload identity, a service principal, or managed identity) with no
-# client-ID configuration needed -- see docs/cluster-authentication.md. Add a `scope` key here
-# only to override the default AKS AAD scope.
+# client-ID configuration needed. Add a `scope` key here only to override the default AKS AAD
+# scope.
 azure: {}
 
 tlsClientInsecure: false

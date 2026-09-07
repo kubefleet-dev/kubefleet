@@ -168,6 +168,9 @@ spec:
                 - ALL
           args:
             {{- $provider := .Values.config.provider }}
+            {{- if and (eq $provider "azure") (hasKey .Values.azure "clientid") }}
+            {{- fail "ERROR: azure.clientid is no longer supported -- the refresh-token binary has no --clientid flag; remove it from your values (DefaultAzureCredential resolves an identity automatically, see serviceAccount.annotations/pod.labels)" }}
+            {{- end }}
             - {{ $provider }}
             {{- range $key, $value := (index .Values $provider) }}
             - --{{ $key }}={{ $value }}
