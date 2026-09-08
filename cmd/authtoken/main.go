@@ -60,6 +60,7 @@ func parseArgs() (authtoken.Provider, error) {
 	_ = secretCmd.MarkFlagRequired("namespace")
 
 	var scope string
+	var clientID string
 	azureCmd := &cobra.Command{
 		Use:  "azure",
 		Args: cobra.NoArgs,
@@ -71,6 +72,11 @@ func parseArgs() (authtoken.Provider, error) {
 	// TODO: this scope argument is specific for Azure provider. We should allow registering and parsing provider specific argument
 	// in provider level, instead of global level.
 	azureCmd.Flags().StringVar(&scope, "scope", "", "Azure AAD token scope (optional)")
+	// Deprecated: no longer used. DefaultAzureCredential resolves an identity automatically; kept
+	// as a no-op so upgrading an existing deployment that still sets azure.clientid doesn't fail.
+	// pflag prints a deprecation warning to stderr whenever this is actually passed.
+	azureCmd.Flags().StringVar(&clientID, "clientid", "", "Deprecated, ignored")
+	_ = azureCmd.Flags().MarkDeprecated("clientid", "DefaultAzureCredential resolves an identity automatically and no longer needs a client ID flag")
 
 	rootCmd.AddCommand(secretCmd, azureCmd)
 	err = rootCmd.Execute()
