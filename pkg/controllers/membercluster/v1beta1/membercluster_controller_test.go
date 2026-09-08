@@ -71,22 +71,47 @@ func TestEnsureMemberNameLabel(t *testing.T) {
 		wantLabels    map[string]string
 		wantErr       string
 	}{
-		"label already present with correct value": {
+		"name and alias labels already present with correct values": {
 			r: &Reconciler{
 				Client: &test.MockClient{
-					MockUpdate: test.NewMockUpdateFn(fmt.Errorf("update should not be called when label is already correct")),
+					MockUpdate: test.NewMockUpdateFn(fmt.Errorf("update should not be called when the labels are already correct")),
 				},
 			},
 			memberCluster: &clusterv1beta1.MemberCluster{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "mc1",
 					Labels: map[string]string{
-						placementv1beta1.MemberNameLabel: "mc1",
+						placementv1beta1.MemberNameLabel:   "mc1",
+						placementv1beta1.ClusterAliasLabel: "mc1",
 					},
 				},
 			},
 			wantLabels: map[string]string{
-				placementv1beta1.MemberNameLabel: "mc1",
+				placementv1beta1.MemberNameLabel:   "mc1",
+				placementv1beta1.ClusterAliasLabel: "mc1",
+			},
+		},
+		// The alias is the admin's to rename: unlike the name label, a different value is left
+		// alone rather than reasserted, since the alias exists precisely so that a selector can
+		// follow a role while the cluster behind it changes.
+		"an alias renamed by an admin is not reverted": {
+			r: &Reconciler{
+				Client: &test.MockClient{
+					MockUpdate: test.NewMockUpdateFn(fmt.Errorf("update should not be called when the alias was deliberately renamed")),
+				},
+			},
+			memberCluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "mc1",
+					Labels: map[string]string{
+						placementv1beta1.MemberNameLabel:   "mc1",
+						placementv1beta1.ClusterAliasLabel: "bravelion",
+					},
+				},
+			},
+			wantLabels: map[string]string{
+				placementv1beta1.MemberNameLabel:   "mc1",
+				placementv1beta1.ClusterAliasLabel: "bravelion",
 			},
 		},
 		"no labels at all": {
@@ -103,7 +128,8 @@ func TestEnsureMemberNameLabel(t *testing.T) {
 				},
 			},
 			wantLabels: map[string]string{
-				placementv1beta1.MemberNameLabel: "mc1",
+				placementv1beta1.MemberNameLabel:   "mc1",
+				placementv1beta1.ClusterAliasLabel: "mc1",
 			},
 		},
 		"labels exist but name label is missing": {
@@ -123,8 +149,9 @@ func TestEnsureMemberNameLabel(t *testing.T) {
 				},
 			},
 			wantLabels: map[string]string{
-				"existing-label":                 "value",
-				placementv1beta1.MemberNameLabel: "mc1",
+				"existing-label":                   "value",
+				placementv1beta1.MemberNameLabel:   "mc1",
+				placementv1beta1.ClusterAliasLabel: "mc1",
 			},
 		},
 		"label present with wrong value": {
@@ -144,7 +171,31 @@ func TestEnsureMemberNameLabel(t *testing.T) {
 				},
 			},
 			wantLabels: map[string]string{
-				placementv1beta1.MemberNameLabel: "mc1",
+				placementv1beta1.MemberNameLabel:   "mc1",
+				placementv1beta1.ClusterAliasLabel: "mc1",
+			},
+		},
+		// The day-2 scenario: a member cluster labeled by the controller before the alias existed.
+		// Only the alias branch has anything to do, and it alone must drive the update.
+		"name label correct, alias absent, alias alone drives the update": {
+			r: &Reconciler{
+				Client: &test.MockClient{
+					MockUpdate: func(ctx context.Context, obj client.Object, opts ...client.UpdateOption) error {
+						return nil
+					},
+				},
+			},
+			memberCluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "mc1",
+					Labels: map[string]string{
+						placementv1beta1.MemberNameLabel: "mc1",
+					},
+				},
+			},
+			wantLabels: map[string]string{
+				placementv1beta1.MemberNameLabel:   "mc1",
+				placementv1beta1.ClusterAliasLabel: "mc1",
 			},
 		},
 		"update error": {
