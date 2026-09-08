@@ -10,7 +10,7 @@ Architecture ownership, code review, technical decisions, scope control.
 - Triages issues and assigns squad members
 
 ## Tools & Approach
-- Review PRs for correctness and style (Uber Go Style Guide)
+- Review PRs against the conventions in `AGENTS.md` at the repository root (test style, generated files, version-skew contract)
 - Make architecture decisions with rationale
 - Gate changes that affect the reconciliation pipeline or API contracts
 
