@@ -93,6 +93,7 @@ status flows back: AppliedWork → Work → Binding → Placement
 ## Where to look
 
 - [CONTRIBUTING.md](CONTRIBUTING.md): DCO, PR titles, release-note labels, backports.
+- `.agents/skills/`: step-by-step procedures (API change, backport, CVE remediation, e2e failure analysis, release, review) that assistants load on demand and people can read.
 - [VERSIONING.md](VERSIONING.md), [SECURITY.md](SECURITY.md), [ROADMAP.md](ROADMAP.md).
 - User documentation: <https://kubefleet.dev/docs/> (source in `kubefleet-dev/website`). Runnable manifests in `examples/`.
 - `.github/.copilot/`: the maintainers' domain knowledge and breadcrumbs (per-task design notes). The team tracks its non-trivial work there under the protocol in [`.github/copilot-instructions.md`](.github/copilot-instructions.md), whatever tool it uses; external contributors are not expected to write one, and "plan approval" for them is agreement on the issue.
