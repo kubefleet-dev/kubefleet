@@ -160,7 +160,8 @@ func isUserInGroup(userInfo authenticationv1.UserInfo, groupName string) bool {
 	return slices.Contains(userInfo.Groups, groupName)
 }
 
-// shouldDenyLabelModification returns true if any labels (besides kubernetes-fleet.io/* labels) are being modified and denyModifyMemberClusterLabels is true.
+// shouldDenyLabelModification returns true if any labels (besides kubernetes-fleet.io/* and
+// kubefleet.dev/* labels) are being modified and denyModifyMemberClusterLabels is true.
 func shouldDenyLabelModification(currentLabels, oldLabels map[string]string, denyModifyMemberClusterLabels bool) bool {
 	if !denyModifyMemberClusterLabels {
 		return false
@@ -168,19 +169,26 @@ func shouldDenyLabelModification(currentLabels, oldLabels map[string]string, den
 	for k, v := range currentLabels {
 		oldV, exists := oldLabels[k]
 		if !exists || oldV != v {
-			if !strings.HasPrefix(k, placementv1beta1.FleetPrefix) {
+			if !isFleetLabel(k) {
 				return true
 			}
 		}
 	}
 	for k := range oldLabels {
 		if _, exists := currentLabels[k]; !exists {
-			if !strings.HasPrefix(k, placementv1beta1.FleetPrefix) {
+			if !isFleetLabel(k) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// isFleetLabel reports whether a label key is under one of the prefixes fleet reserves, which any
+// user may modify: the hub agent itself writes labels under both (the member name, the cluster
+// alias) and is not in system:masters.
+func isFleetLabel(key string) bool {
+	return strings.HasPrefix(key, placementv1beta1.FleetPrefix) || strings.HasPrefix(key, placementv1beta1.KubeFleetPrefix)
 }
 
 // isMemberClusterMapFieldUpdated return true if member cluster label is updated.
