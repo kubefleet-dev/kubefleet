@@ -204,7 +204,7 @@ func (r *Reconciler) stopDeleteStage(
 	if allDeletingClustersDeleted {
 		markStageUpdatingStopped(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration())
 	}
-	return len(toBeDeletedBindings) == 0, nil
+	return allDeletingClustersDeleted, nil
 }
 
 // markUpdateRunStopping marks the update run as stopping in memory.
