@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta1
+package v1alpha1
 
 import (
 	"context"
@@ -24,8 +24,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/textlogger"
@@ -34,7 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 )
 
 var (
@@ -47,7 +45,7 @@ var (
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecs(t, "ClusterResourcePlacement Controller Suite")
+	RunSpecs(t, "Placement v1alpha1 API Validation Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -62,7 +60,7 @@ var _ = BeforeSuite(func() {
 	// Start the cluster.
 	hubTestEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
-			filepath.Join("..", "..", "..", "..", "config", "crd", "bases"),
+			filepath.Join("..", "..", "..", "..", "..", "config", "crd", "bases"),
 		},
 		ErrorIfCRDPathMissing: true,
 	}
@@ -70,7 +68,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(hubCfg).NotTo(BeNil())
 
-	Expect(placementv1beta1.AddToScheme(scheme.Scheme)).Should(Succeed())
+	Expect(placementv1alpha1.AddToScheme(scheme.Scheme)).Should(Succeed())
 
 	klog.InitFlags(flag.CommandLine)
 	flag.Parse()
@@ -89,14 +87,6 @@ var _ = BeforeSuite(func() {
 	// use of the cache indexes.
 	hubClient = hubCtrlMgr.GetClient()
 	Expect(hubClient).NotTo(BeNil())
-
-	By("creating a test namespace")
-	var ns = corev1.Namespace{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: testNamespace,
-		},
-	}
-	Expect(hubClient.Create(ctx, &ns)).Should(Succeed(), "failed to create namespace")
 
 	go func() {
 		defer GinkgoRecover()
