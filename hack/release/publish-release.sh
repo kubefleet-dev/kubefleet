@@ -26,7 +26,7 @@ checksum="${bundle}.sha256"
 assets="$(gh release view "${TAG}" --json assets \
   --jq '.assets[] | select(.state == "uploaded" and .size > 0) | .name')"
 
-for want in "${bundle}" "${checksum}"; do
+for want in "${bundle}" "${checksum}" checksums.txt; do
   if ! grep -qxF -- "${want}" <<<"${assets}"; then
     echo "::error::Release ${TAG} is missing fully-uploaded asset ${want}; leaving it as a draft."
     exit 1
@@ -38,13 +38,24 @@ done
 # and "the artifact users will download is intact".
 workdir="$(mktemp -d)"
 trap 'rm -rf "${workdir}"' EXIT
-gh release download "${TAG}" --dir "${workdir}" --pattern "${bundle}" --pattern "${checksum}"
+gh release download "${TAG}" --dir "${workdir}" \
+  --pattern "${bundle}" --pattern "${checksum}" \
+  --pattern checksums.txt --pattern 'kubectl-fleet-*'
 
 if command -v sha256sum >/dev/null 2>&1; then
-  (cd "${workdir}" && sha256sum -c "${checksum}")
+  sha256() { sha256sum "$@"; }
 else
-  (cd "${workdir}" && shasum -a 256 -c "${checksum}")
+  sha256() { shasum -a 256 "$@"; }
 fi
+
+(cd "${workdir}" && sha256 -c "${checksum}")
+
+# checksums.txt names every kubectl-fleet archive, so checking it covers both
+# "is the asset there" and "did it arrive whole" without a second hardcoded list
+# to drift from CLI_PLATFORMS. No --ignore-missing: an archive the release
+# promises but never uploaded has to fail here, while the release is still a
+# draft.
+(cd "${workdir}" && sha256 -c checksums.txt)
 
 # Set the pre-release flag here rather than only at creation time: a draft this
 # workflow reused may have been created by hand, and GitHub defaults such

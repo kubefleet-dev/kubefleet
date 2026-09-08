@@ -1,8 +1,9 @@
 name: Release
 
 # One workflow owns the whole release. Every artifact a tag produces - images,
-# the CRD bundle, the Helm charts - is built by a job in this graph, and the
-# GitHub Release stays a draft until all of them have succeeded.
+# the CRD bundle, the kubectl-fleet archives, the Helm charts - is built by a
+# job in this graph, and the GitHub Release stays a draft until all of them have
+# succeeded.
 #
 # This replaces the previous split between release.yml and chart.yml, which had
 # no ordering between them: a chart publish could fail (or simply never run)
@@ -165,6 +166,38 @@ jobs:
             "_crd-package/kubefleet-crds-${TAG}.tgz.sha256" \
             --clobber
 
+  # Cross-compiled kubectl-fleet archives (one tar.gz/zip per OS/arch plus a
+  # checksums.txt) give users, krew, and install scripts a stable download URL
+  # instead of building from source. Uploaded into the same draft, so a release
+  # is only public once the CLI is attached too.
+  publish-cli:
+    needs: [setup, create-draft-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.setup.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.setup.outputs.tag }}
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+
+      - name: Build kubectl-fleet release archives
+        run: make cli-package TAG="${TAG}"
+
+      - name: Upload the kubectl-fleet archives to the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "${TAG}" _cli-package/* --clobber
+
   # Charts are published only for stable releases: an RC must be installable by
   # testers from its images, but must never land in the public chart index that
   # `helm repo update` resolves. Charts wait on publish-images because a chart
@@ -323,12 +356,14 @@ jobs:
       - create-draft-release
       - publish-images
       - publish-crds
+      - publish-cli
       - publish-charts-oci
       - publish-charts-pages
     if: >-
       ${{ !cancelled()
           && needs.publish-images.result == 'success'
           && needs.publish-crds.result == 'success'
+          && needs.publish-cli.result == 'success'
           && (needs.setup.outputs.prerelease == 'true'
               || (needs.publish-charts-oci.result == 'success'
                   && needs.publish-charts-pages.result == 'success')) }}
