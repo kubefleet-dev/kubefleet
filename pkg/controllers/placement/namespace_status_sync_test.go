@@ -45,6 +45,67 @@ var (
 	}
 )
 
+func TestFilterStatusSyncedConditionRedactsPatchValues(t *testing.T) {
+	status := &placementv1beta1.PlacementStatus{
+		PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+			{
+				DriftedPlacements: []placementv1beta1.DriftedResourcePlacement{
+					{
+						ObservedDrifts: []placementv1beta1.PatchDetail{
+							{Path: "/both", ValueInMember: "member-value", ValueInHub: "hub-value"},
+							{Path: "/hub-only", ValueInHub: "hub-value"},
+						},
+					},
+				},
+				DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
+					{
+						ObservedDiffs: []placementv1beta1.PatchDetail{
+							{Path: "/member-only", ValueInMember: "member-value"},
+						},
+					},
+				},
+			},
+		},
+		Conditions: []metav1.Condition{
+			{Type: string(placementv1beta1.ClusterResourcePlacementScheduledConditionType), Message: "preserved message"},
+			{Type: string(placementv1beta1.ClusterResourcePlacementStatusSyncedConditionType)},
+		},
+	}
+	originalStatus := status.DeepCopy()
+	want := &placementv1beta1.PlacementStatus{
+		PerClusterPlacementStatuses: []placementv1beta1.PerClusterPlacementStatus{
+			{
+				DriftedPlacements: []placementv1beta1.DriftedResourcePlacement{
+					{
+						ObservedDrifts: []placementv1beta1.PatchDetail{
+							{Path: "/both", ValueInMember: redactedPatchValue, ValueInHub: redactedPatchValue},
+							{Path: "/hub-only", ValueInHub: redactedPatchValue},
+						},
+					},
+				},
+				DiffedPlacements: []placementv1beta1.DiffedResourcePlacement{
+					{
+						ObservedDiffs: []placementv1beta1.PatchDetail{
+							{Path: "/member-only", ValueInMember: redactedPatchValue},
+						},
+					},
+				},
+			},
+		},
+		Conditions: []metav1.Condition{
+			{Type: string(placementv1beta1.ClusterResourcePlacementScheduledConditionType), Message: "preserved message"},
+		},
+	}
+
+	got := filterStatusSyncedCondition(status)
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("filterStatusSyncedCondition() mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(originalStatus, status); diff != "" {
+		t.Errorf("filterStatusSyncedCondition() mutated source status (-want +got):\n%s", diff)
+	}
+}
+
 func TestHandleNamespaceAccessibleCRP(t *testing.T) {
 	testCases := []struct {
 		name              string
