@@ -79,6 +79,16 @@ const (
 	// by name in ResourceOverride and ClusterResourceOverride via labelSelector.
 	MemberNameLabel = FleetPrefix + "member-name"
 
+	// KubeFleetPrefix is the prefix used for the labels/annotations of the kubefleet.dev APIs. Like
+	// FleetPrefix, it is reserved: users may not set unprefixed keys, and the member cluster label
+	// guard treats both prefixes alike.
+	KubeFleetPrefix = "kubefleet.dev/"
+
+	// ClusterAliasLabel is a label on MemberCluster objects that names the cluster for placement by
+	// role rather than by name. It is seeded from the MemberCluster's name when absent and never
+	// reasserted, so an admin can move an alias to another cluster.
+	ClusterAliasLabel = KubeFleetPrefix + "cluster-alias"
+
 	// WorkFinalizer is used by the work generator to make sure that the binding is not deleted until the work objects
 	// it generates are all deleted, or used by the work controller to make sure the work has been deleted in the member
 	// cluster.
