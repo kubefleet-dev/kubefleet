@@ -1,0 +1,142 @@
+/*
+Copyright 2025 The KubeFleet Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package utils
+
+import (
+	"errors"
+	"testing"
+
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+)
+
+func TestNotFoundMatcher(t *testing.T) {
+	matcher := NotFoundMatcher{}
+
+	testCases := []struct {
+		name        string
+		actual      any
+		wantSuccess bool
+	}{
+		{
+			name:        "nil actual",
+			actual:      nil,
+			wantSuccess: false,
+		},
+		{
+			name:        "not found error",
+			actual:      apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "pods"}, "pod-1"),
+			wantSuccess: true,
+		},
+		{
+			name:        "other error",
+			actual:      errors.New("some other error"),
+			wantSuccess: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			success, err := matcher.Match(tc.actual)
+			if err != nil {
+				t.Fatalf("Match(%v) returned error %v, want nil", tc.actual, err)
+			}
+			if success != tc.wantSuccess {
+				t.Errorf("Match(%v) = %v, want %v", tc.actual, success, tc.wantSuccess)
+			}
+		})
+	}
+
+	if got := matcher.FailureMessage("actual"); got == "" {
+		t.Error("FailureMessage() = empty string, want non-empty message")
+	}
+	if got := matcher.NegatedFailureMessage("actual"); got == "" {
+		t.Error("NegatedFailureMessage() = empty string, want non-empty message")
+	}
+}
+
+func TestAlreadyExistMatcher(t *testing.T) {
+	matcher := AlreadyExistMatcher{}
+
+	testCases := []struct {
+		name        string
+		actual      any
+		wantSuccess bool
+	}{
+		{
+			name:        "nil actual",
+			actual:      nil,
+			wantSuccess: false,
+		},
+		{
+			name:        "already exists error",
+			actual:      apierrors.NewAlreadyExists(schema.GroupResource{Group: "", Resource: "pods"}, "pod-1"),
+			wantSuccess: true,
+		},
+		{
+			name:        "other error",
+			actual:      errors.New("some other error"),
+			wantSuccess: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			success, err := matcher.Match(tc.actual)
+			if err != nil {
+				t.Fatalf("Match(%v) returned error %v, want nil", tc.actual, err)
+			}
+			if success != tc.wantSuccess {
+				t.Errorf("Match(%v) = %v, want %v", tc.actual, success, tc.wantSuccess)
+			}
+		})
+	}
+
+	if got := matcher.FailureMessage("actual"); got == "" {
+		t.Error("FailureMessage() = empty string, want non-empty message")
+	}
+	if got := matcher.NegatedFailureMessage("actual"); got == "" {
+		t.Error("NegatedFailureMessage() = empty string, want non-empty message")
+	}
+}
+
+func TestGetEventString(t *testing.T) {
+	pod := &corev1.Pod{}
+	got := GetEventString(pod, corev1.EventTypeNormal, "SomeReason", "something %s happened", "good")
+	want := "Normal SomeReason something good happened"
+	if got != want {
+		t.Errorf("GetEventString() = %q, want %q", got, want)
+	}
+}
+
+func TestNewFakeRecorder(t *testing.T) {
+	recorder := NewFakeRecorder(1)
+	if recorder == nil {
+		t.Fatal("NewFakeRecorder(1) = nil, want non-nil recorder")
+	}
+	recorder.Eventf(&corev1.Pod{}, nil, corev1.EventTypeNormal, "SomeReason", "SomeAction", "some note")
+	select {
+	case event := <-recorder.Events:
+		want := "Normal SomeReason some note"
+		if event != want {
+			t.Errorf("recorded event = %q, want %q", event, want)
+		}
+	default:
+		t.Error("no event recorded, want one event")
+	}
+}

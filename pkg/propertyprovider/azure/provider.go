@@ -236,7 +236,11 @@ func (p *PropertyProvider) Start(ctx context.Context, config *rest.Config) error
 			p.region = discoveredRegion
 		}
 		klog.V(2).Infof("Starting with the region set to %s", *p.region)
-		pp := trackers.NewAKSKarpenterPricingClient(ctx, *p.region)
+		pp, err := trackers.NewAKSKarpenterPricingClient(ctx, *p.region)
+		if err != nil {
+			klog.ErrorS(err, "Failed to build the AKS Karpenter pricing client")
+			return err
+		}
 		p.nodeTracker = trackers.NewNodeTracker(pp)
 	default:
 		// No node tracker has been set, and cost collection is disabled; set up a node tracker

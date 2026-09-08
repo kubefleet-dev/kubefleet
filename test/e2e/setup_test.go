@@ -380,7 +380,9 @@ func beforeSuiteForAllProcesses() {
 
 	var pricingProvider1 trackers.PricingProvider
 	if isAzurePropertyProviderEnabled {
-		pricingProvider1 = trackers.NewAKSKarpenterPricingClient(ctx, memberCluster1AKSRegion)
+		var err error
+		pricingProvider1, err = trackers.NewAKSKarpenterPricingClient(ctx, memberCluster1AKSRegion)
+		Expect(err).To(BeNil(), "Failed to build the AKS Karpenter pricing client")
 	}
 	memberCluster1EastProd = framework.NewCluster(memberCluster1EastProdName, memberCluster1EastProdSAName, scheme, pricingProvider1)
 	Expect(memberCluster1EastProd).NotTo(BeNil(), "Failed to initialize cluster object")
@@ -390,7 +392,9 @@ func beforeSuiteForAllProcesses() {
 
 	var pricingProvider2 trackers.PricingProvider
 	if isAzurePropertyProviderEnabled {
-		pricingProvider2 = trackers.NewAKSKarpenterPricingClient(ctx, memberCluster2AKSRegion)
+		var err error
+		pricingProvider2, err = trackers.NewAKSKarpenterPricingClient(ctx, memberCluster2AKSRegion)
+		Expect(err).To(BeNil(), "Failed to build the AKS Karpenter pricing client")
 	}
 	memberCluster2EastCanary = framework.NewCluster(memberCluster2EastCanaryName, memberCluster2EastCanarySAName, scheme, pricingProvider2)
 	Expect(memberCluster2EastCanary).NotTo(BeNil(), "Failed to initialize cluster object")
@@ -400,7 +404,9 @@ func beforeSuiteForAllProcesses() {
 
 	var pricingProvider3 trackers.PricingProvider
 	if isAzurePropertyProviderEnabled {
-		pricingProvider3 = trackers.NewAKSKarpenterPricingClient(ctx, memberCluster3AKSRegion)
+		var err error
+		pricingProvider3, err = trackers.NewAKSKarpenterPricingClient(ctx, memberCluster3AKSRegion)
+		Expect(err).To(BeNil(), "Failed to build the AKS Karpenter pricing client")
 	}
 	memberCluster3WestProd = framework.NewCluster(memberCluster3WestProdName, memberCluster3WestProdSAName, scheme, pricingProvider3)
 	Expect(memberCluster3WestProd).NotTo(BeNil(), "Failed to initialize cluster object")
