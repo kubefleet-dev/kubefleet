@@ -1,8 +1,7 @@
 # KubeFleet
 
 ![GitHub release (latest by date)][1]
-[![Go Report Card][2]][3]
-![Build Status][4]
+![Coverage][4]
 ![GitHub go.mod Go version][5]
 [![Slack](https://img.shields.io/badge/slack-join-brightgreen)](https://slack.cncf.io)
 
@@ -20,7 +19,7 @@ Use KubeFleet to schedule workloads intelligently, roll out changes progressivel
 
 ## Quickstart
 
-* [Get started here](https://kubefleet-dev.github.io/website/docs/getting-started/kind/)
+* [Get started here](https://kubefleet.dev/docs/getting-started/kind/)
 
 ## Key benefits and capabilities
 
@@ -38,7 +37,7 @@ KubeFleet's scheduler evaluates member cluster properties, available capacity, a
 
 ## Documentation
 
-To learn more about KubeFleet go to the [KubeFleet documentation](https://kubefleet-dev.github.io/website/).
+To learn more about KubeFleet go to the [KubeFleet documentation](https://kubefleet.dev/docs/).
 
 For release versioning, supported agent version skew, and upgrade ordering, see [VERSIONING.md](VERSIONING.md).
 
@@ -47,7 +46,7 @@ For release versioning, supported agent version skew, and upgrade ordering, see 
 You can reach the KubeFleet community and developers via the following channels:
 
 * Q & A: [GitHub Discussions](https://github.com/kubefleet-dev/kubefleet/discussions)
-* Slack: [The #KubeFleet Slack channel](https://cloud-native.slack.com/archives/C08KR7589R8) 
+* Slack: [The #KubeFleet Slack channel](https://cloud-native.slack.com/archives/C08KR7589R8)
 * Mailing list: [mailing list](https://groups.google.com/g/kubefleet-dev)
 
 ## Community Meetings
@@ -66,14 +65,14 @@ Participation in KubeFleet is governed by the [CNCF Code of Conduct](https://git
 
 The [contribution guide](CONTRIBUTING.md) covers everything you need to know about how you can contribute to KubeFleet.
 
+AI coding assistants pick up [AGENTS.md](AGENTS.md) automatically; it carries the commands, conventions, and rules they must follow, and it is the shortest start-here for new contributors as well.
+
 ## Support
 
 For more information, see [SUPPORT](SUPPORT.md).
 
 [1]:  https://img.shields.io/github/v/release/kubefleet-dev/kubefleet
-[2]:  https://goreportcard.com/badge/go.goms.io/fleet
-[3]:  https://goreportcard.com/report/go.goms.io/fleet
-[4]:  https://codecov.io/gh/Azure/fleet/branch/main/graph/badge.svg?token=D3mtbzACjC
+[4]:  https://codecov.io/gh/kubefleet-dev/kubefleet/branch/main/graph/badge.svg
 [5]:  https://img.shields.io/github/go-mod/go-version/kubefleet-dev/kubefleet
 
 Copyright The KubeFleet Authors.
