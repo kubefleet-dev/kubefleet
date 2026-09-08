@@ -18,7 +18,7 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -31,13 +31,14 @@ import (
 var (
 	version = "dev"
 	commit  = "unknown"
+	date    = "unknown"
 )
 
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "kubectl-fleet",
 		Short: "KubeFleet cluster management plugin",
-		Long:  "kubectl-fleet is a kubectl plugin for managing KubeFleet member clusters",
+		Long:  "kubectl-fleet is a kubectl plugin for KubeFleet operations: draining and uncordoning member clusters, and approving staged update runs",
 	}
 
 	// Add version subcommand
@@ -45,7 +46,7 @@ func main() {
 		Use:   "version",
 		Short: "Print the version information",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("kubectl-fleet %s (%s)\n", version, commit)
+			fmt.Printf("kubectl-fleet %s (commit %s, built %s)\n", version, commit, date)
 		},
 	})
 
@@ -54,7 +55,8 @@ func main() {
 	rootCmd.AddCommand(draincluster.NewCmdDrainCluster())
 	rootCmd.AddCommand(uncordoncluster.NewCmdUncordonCluster())
 
+	// Cobra already prints the error and usage; only the exit code is left to us.
 	if err := rootCmd.Execute(); err != nil {
-		log.Fatalf("Error executing command: %v", err)
+		os.Exit(1)
 	}
 }
