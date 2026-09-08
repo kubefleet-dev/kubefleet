@@ -130,15 +130,19 @@ retry forever, with the policy silently never getting a claim.
 
 ## Operational notes
 
-- **Disabling the feature flag with claims outstanding leaves policies
+- **Stopping the controller with claims outstanding leaves policies
   undeletable.** The cleanup finalizer is only removed by this controller, so
-  turning `--enable-placement-policy-apis` off while a policy holds cluster
-  claims parks that policy in `Terminating` and leaves its claims in place
-  until the flag is turned back on, at which point reconciliation resumes and
-  completes the cleanup. This mirrors the existing behavior of the staged
-  update run APIs and their finalizer; it is documented on the flag and in the
-  chart README rather than worked around, since removing a finalizer without a
-  controller to withdraw the claims would orphan them instead.
+  running the hub agent without it while a policy holds cluster claims parks
+  that policy in `Terminating` and leaves its claims in place until the
+  controller runs again, at which point reconciliation resumes and completes
+  the cleanup. This mirrors the existing behavior of the staged update run
+  APIs and their finalizer; the integration PR that wires the controller in
+  should document it on the enabling flag and in the chart README rather than
+  work around it, since removing a finalizer without a controller to withdraw
+  the claims would orphan them instead.
+- **Not wired into the hub agent yet.** The controller is dormant code until
+  the integration PR adds the flag, scheme registration, RBAC, and the chart
+  CRDs; its kind e2e is parked at `parked/fep0001-placement-policy-e2e`.
 - **Restarting the hub agent mid-flow is safe**: claim creation is
   get-or-create on a deterministic name, and the finalizer is added before the
   first claim exists, so no window can orphan a claim.
