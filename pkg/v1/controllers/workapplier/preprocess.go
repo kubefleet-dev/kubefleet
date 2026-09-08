@@ -35,15 +35,15 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/utils/ownerreferences"
 )
 
-func prepareWorkObjectAndManifestProcessingStates(works []placementv1alpha1.Work,
-	appliedWorks []placementv1alpha1.AppliedWork) ([]*workObjectProcessingState, []*manifestProcessingState) {
+func prepareWorkObjectAndManifestProcessingStates(works []*placementv1alpha1.Work,
+	appliedWorks []*placementv1alpha1.AppliedWork) ([]*workObjectProcessingState, []*manifestProcessingState) {
 	// Pre-allocate the slices.
 	workObjectStates := make([]*workObjectProcessingState, 0, len(works))
 	manifestProcessingStates := make([]*manifestProcessingState, 0, len(works[0].Spec.Manifests))
 
 	for i := range works {
-		work := &works[i]
-		appliedWork := &appliedWorks[i]
+		work := works[i]
+		appliedWork := appliedWorks[i]
 
 		appliedWorkOwnerRef := &metav1.OwnerReference{
 			APIVersion:         placementv1alpha1.GroupVersion.String(),
@@ -57,9 +57,10 @@ func prepareWorkObjectAndManifestProcessingStates(works []placementv1alpha1.Work
 		for j := range work.Spec.Manifests {
 			manifest := &work.Spec.Manifests[j]
 			manifestProcessingState := &manifestProcessingState{
-				manifest:    manifest,
-				fromWorkObj: work,
-				ownedBy:     appliedWorkOwnerRef,
+				manifest:              manifest,
+				fromWorkObj:           work,
+				fromPrimaryWorkObject: works[0],
+				ownedBy:               appliedWorkOwnerRef,
 			}
 			perWorkManifestProcessingStates = append(perWorkManifestProcessingStates, manifestProcessingState)
 			manifestProcessingStates = append(manifestProcessingStates, manifestProcessingState)
@@ -94,11 +95,11 @@ func (r *Reconciler) preProcessWorkObjects(ctx context.Context, workObjProcessin
 	for idx := range workObjProcessingStates {
 		workObjProcessingState := workObjProcessingStates[idx]
 
-		// Write-ahead the manifest processing states in the work object status so that
-		// Fleet can always track applied manifests, even upon untimely crashes. This method will
+		// Write-ahead the manifest processing attempts in the work object status so that
+		// KubeFleet can always track applied manifests, even upon untimely crashes. This method will
 		// also check for any leftover apply attempts from previous runs and clean them up (if the
 		// corresponding manifest object has been applied).
-		if err := r.writeAheadPerWorkObjManifestProcessingStates(ctx, workObjProcessingState); err != nil {
+		if err := r.writeAheadPerWorkObjManifestProcessingAttempts(ctx, workObjProcessingState); err != nil {
 			return errors.Wraps(err, "failed to write ahead manifest processing states", "work", klog.KObj(workObjProcessingState.work))
 		}
 
@@ -235,7 +236,7 @@ func markDuplicatedManifests(workObjProcessingStates []*workObjectProcessingStat
 	}
 }
 
-func (r *Reconciler) writeAheadPerWorkObjManifestProcessingStates(ctx context.Context, workObjProcessingState *workObjectProcessingState) error {
+func (r *Reconciler) writeAheadPerWorkObjManifestProcessingAttempts(ctx context.Context, workObjProcessingState *workObjectProcessingState) error {
 	work := workObjProcessingState.work
 	manifestProcessingStates := workObjProcessingState.manifestProcessingStates
 

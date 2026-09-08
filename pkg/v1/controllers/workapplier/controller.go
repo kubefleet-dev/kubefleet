@@ -26,6 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -37,31 +38,79 @@ import (
 )
 
 const (
-	controllerName = "work-applier"
+	controllerName   = "work-applier"
+	fieldManagerName = "kubefleet-member-agent"
 
 	workAppliedCleanupFinalizer = "placement.kubefleet.dev/work-cleanup"
 )
 
-type applyResultType string
+type ApplyResultType string
 
 const (
 	// The result types for apply op failures.
-	ApplyResTypeDecodingErred                  applyResultType = "DecodingErred"
-	ApplyResTypeFoundGenerateName              applyResultType = "FoundGenerateName"
-	ApplyResTypeDuplicated                     applyResultType = "Duplicated"
-	ApplyResTypeFailedToFindObjInMemberCluster applyResultType = "FailedToFindObjInMemberCluster"
-	ApplyResTypeFailedToTakeOver               applyResultType = "FailedToTakeOver"
-	ApplyResTypeNotTakenOver                   applyResultType = "NotTakenOver"
-	ApplyResTypeFailedToRunDriftDetection      applyResultType = "FailedToRunDriftDetection"
-	ApplyResTypeFoundDrifts                    applyResultType = "FoundDrifts"
-	ApplyResTypeFoundDriftsInDegradedMode      applyResultType = "FoundDriftsInDegradedMode"
-	ApplyResTypeFailedToApply                  applyResultType = "FailedToApply"
+	ApplyResTypeDecodingErred                   ApplyResultType = "DecodingErred"
+	ApplyResTypeFoundGenerateName               ApplyResultType = "FoundGenerateName"
+	ApplyResTypeDuplicated                      ApplyResultType = "Duplicated"
+	ApplyResTypeFailedToFindObjInMemberCluster  ApplyResultType = "FailedToFindObjInMemberCluster"
+	ApplyResTypeOwnedByOtherKubeFleetAPIObjects ApplyResultType = "OwnedByOtherKubeFleetAPIObjects"
+	ApplyResTypeFailedToTakeOver                ApplyResultType = "FailedToTakeOver"
+	ApplyResTypeNotTakenOver                    ApplyResultType = "NotTakenOver"
+	ApplyResTypeFailedToRunDriftDetection       ApplyResultType = "FailedToRunDriftDetection"
+	ApplyResTypeFoundDrifts                     ApplyResultType = "FoundDrifts"
+	ApplyResTypeFoundDriftsInDegradedMode       ApplyResultType = "FoundDriftsInDegradedMode"
+	ApplyResTypeFailedToApply                   ApplyResultType = "FailedToApply"
 
 	// The result type and description for successful apply ops.
-	ApplyResTypeApplied applyResultType = "Applied"
+	ApplyResTypeApplied ApplyResultType = "Applied"
+	// The apply op has succeeded, but KubeFleet cannot tell whether the object has drifted.
+	ApplyResTypeAppliedWithFailedDriftDetection ApplyResultType = "AppliedWithFailedDriftDetection"
 )
 
-type availabilityCheckResultType string
+var allApplyResTypes = sets.New(
+	ApplyResTypeDecodingErred,
+	ApplyResTypeFoundGenerateName,
+	ApplyResTypeDuplicated,
+	ApplyResTypeFailedToFindObjInMemberCluster,
+	ApplyResTypeOwnedByOtherKubeFleetAPIObjects,
+	ApplyResTypeFailedToTakeOver,
+	ApplyResTypeNotTakenOver,
+	ApplyResTypeFailedToRunDriftDetection,
+	ApplyResTypeFoundDrifts,
+	ApplyResTypeFoundDriftsInDegradedMode,
+	ApplyResTypeFailedToApply,
+	ApplyResTypeApplied,
+	ApplyResTypeAppliedWithFailedDriftDetection,
+)
+
+// The messages reported on the Applied condition of a manifest.
+const (
+	ApplyResTypeAppliedDescription                         = "The manifest has been applied successfully"
+	ApplyResTypeAppliedWithFailedDriftDetectionDescription = "The manifest has been applied successfully, but KubeFleet cannot determine whether the object has drifted"
+	ApplyResTypeFailedToApplyDescription                   = "Failed to apply the manifest (error: %s)"
+)
+
+type AvailabilityCheckResultType string
+
+const (
+	// The result type for availability check being skipped.
+	AvailabilityResultTypeSkipped AvailabilityCheckResultType = "Skipped"
+
+	// The result type for availability check failures.
+	AvailabilityResultTypeFailed AvailabilityCheckResultType = "FailedToCheck"
+
+	// The result types for completed availability checks.
+	AvailabilityResultTypeAvailable       AvailabilityCheckResultType = "Available"
+	AvailabilityResultTypeNotYetAvailable AvailabilityCheckResultType = "Unavailable"
+	AvailabilityResultTypeNotTrackable    AvailabilityCheckResultType = "NotTrackable"
+)
+
+// The messages reported on the Available condition of a manifest.
+const (
+	AvailabilityResultTypeAvailableDescription       = "The manifest is available"
+	AvailabilityResultTypeNotYetAvailableDescription = "The manifest is not yet available; KubeFleet will check again later"
+	AvailabilityResultTypeNotTrackableDescription    = "The manifest's availability is not trackable; KubeFleet assumes that the applied manifest is available"
+	AvailabilityResultTypeFailedDescription          = "Failed to track the availability of the applied manifest (error: %s)"
+)
 
 type manifestProcessingState struct {
 	// The manifest data in its raw form (not yet decoded).
@@ -92,18 +141,19 @@ type manifestProcessingState struct {
 	gvr *schema.GroupVersionResource
 
 	// The result of the apply operation.
-	applyRes applyResultType
+	applyRes ApplyResultType
 	// The result of the availability check operation.
-	availabilityCheckRes availabilityCheckResultType
+	availabilityCheckRes AvailabilityCheckResultType
 	// The error that occurred during the apply operation, if any.
 	applyErr error
 	// The error that occurred during the availability check operation, if any.
 	availabilityCheckErr error
 	// The diffs detected in the apply operation.
 	diffs []placementv1alpha1.PatchDetail
-
 	// A link back to the work object that includes the manifest.
 	fromWorkObj *placementv1alpha1.Work
+	// A link back to the primary work object.
+	fromPrimaryWorkObject *placementv1alpha1.Work
 	// The expected owner reference for the manifest object.
 	ownedBy *metav1.OwnerReference
 }
@@ -124,6 +174,8 @@ type Reconciler struct {
 	hubClient          client.Client
 	spokeDynamicClient dynamic.Interface
 	spokeClient        client.Client
+
+	workNSName string
 
 	restMapper meta.RESTMapper
 
@@ -229,6 +281,22 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		klog.ErrorS(err, "Failed to process manifests", errors.Args(wrappedErr)...)
 		return ctrl.Result{}, wrappedErr
 	}
+
+	// Track the availability information.
+	if err := r.trackInMemberClusterObjAvailability(ctx, manifestProcessingStates); err != nil {
+		wrappedErr := errors.Wraps(err, "", "primaryWork", klog.KObj(work), "controller", controllerName)
+		klog.ErrorS(err, "Failed to check for object availability", errors.Args(wrappedErr)...)
+		return ctrl.Result{}, wrappedErr
+	}
+
+	// Refresh the status of the Work object.
+	if err := r.refreshWorkStatus(ctx, workObjProcessingStates); err != nil {
+		wrappedErr := errors.Wraps(err, "", "primaryWork", klog.KObj(work), "controller", controllerName)
+		klog.ErrorS(err, "Failed to refresh work object status", errors.Args(wrappedErr)...)
+		return ctrl.Result{}, wrappedErr
+	}
+
+	panic("not yet implemented")
 
 	return ctrl.Result{}, nil
 }

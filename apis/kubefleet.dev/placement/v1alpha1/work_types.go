@@ -56,6 +56,11 @@ const (
 )
 
 const (
+	LastAppliedConfigAnnotationKey       = "placement.kubefleet.dev/last-applied-configuration"
+	LastAppliedManifestHashAnnotationKey = "placement.kubefleet.dev/manifest-hash"
+)
+
+const (
 	// The condition types for the Work API.
 	WorkCondTypeApplied   = "Applied"
 	WorkCondTypeAvailable = "Available"
@@ -66,7 +71,12 @@ const (
 )
 
 const (
-	WorkAppliedCondPreparingToProcessReason = "PreparingToProcess"
+	WorkAppliedCondPreparingToProcessReason     = "PreparingToProcess"
+	WorkAppliedCondAllManifestsAppliedReason    = "AllManifestsApplied"
+	WorkAppliedCondNotAllManifestsAppliedReason = "SomeManifestsAreNotYetApplied"
+
+	WorkAvailableCondAllManifestsAvailableReason    = "AllManifestsAvailable"
+	WorkAvailableCondNotAllManifestsAvailableReason = "SomeManifestsAreNotYetAvailable"
 )
 
 // Work is the KubeFleet API used for synchronizing resources to place between

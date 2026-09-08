@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The KubeFleet Authors.
+Copyright 2026 The KubeFleet Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -106,26 +106,26 @@ var (
 	)
 )
 
-// bundleProcessingWave is a wave of bundles that can be processed in parallel.
-type bundleProcessingWave struct {
-	num     waveNumber
-	bundles []*manifestProcessingBundle
+// manifestProcessingWave is a wave of manifests that can be processed in parallel.
+type manifestProcessingWave struct {
+	num    waveNumber
+	states []*manifestProcessingState
 }
 
-// organizeManifestsIntoProcessingWaves organizes the list of manifests (their processing states) into different
-// waves for parallel processing based on their GVR information.
-func organizeManifestsIntoProcessingWaves(bundles []*manifestProcessingBundle, workRef klog.ObjectRef) []*bundleProcessingWave {
+// organizeManifestsIntoProcessingWaves organizes the list of manifest processing states into
+// different waves for parallel processing based on their GVR information.
+func organizeManifestsIntoProcessingWaves(manifestProcessingStates []*manifestProcessingState) []*manifestProcessingWave {
 	// Pre-allocate the map; 7 is the total count of default wave numbers, though
 	// not all wave numbers might be used.
-	waveByNum := make(map[waveNumber]*bundleProcessingWave, 7)
+	waveByNum := make(map[waveNumber]*manifestProcessingWave, 7)
 
-	getOrAddWave := func(num waveNumber) *bundleProcessingWave {
+	getOrAddWave := func(num waveNumber) *manifestProcessingWave {
 		wave, ok := waveByNum[num]
 		if !ok {
-			wave = &bundleProcessingWave{
+			wave = &manifestProcessingWave{
 				num: num,
 				// Pre-allocate with a reasonable size.
-				bundles: make([]*manifestProcessingBundle, 0, 5),
+				states: make([]*manifestProcessingState, 0, 5),
 			}
 			waveByNum[num] = wave
 		}
@@ -133,47 +133,47 @@ func organizeManifestsIntoProcessingWaves(bundles []*manifestProcessingBundle, w
 	}
 
 	// For simplicity reasons, the organization itself runs in sequential order.
-	// Considering that the categorization itself is quick and the total number of bundles
+	// Considering that the categorization itself is quick and the total number of manifests
 	// should be limited in most cases, this should not introduce significant overhead.
-	for idx := range bundles {
-		bundle := bundles[idx]
-		if bundle.gvr == nil {
+	for idx := range manifestProcessingStates {
+		state := manifestProcessingStates[idx]
+		if state.gvr == nil {
 			// For manifest data that cannot be decoded, there might not be any available GVR
-			// information. Skip such processing bundles; this is not considered as an error.
-			klog.V(2).InfoS("Skipping a bundle with no GVR; no wave is assigned",
-				"ordinal", idx, "work", workRef)
+			// information. Skip such manifests; this is not considered as an error.
+			klog.V(2).InfoS("Skipping a manifest with no GVR; no wave is assigned",
+				"ordinal", idx, "work", klog.KObj(state.fromWorkObj))
 			continue
 		}
 
-		if bundle.applyOrReportDiffErr != nil {
-			// An error has occurred before this step; such bundles need no further processing,
+		if state.applyErr != nil {
+			// An error has occurred before this step; such manifests need no further processing,
 			// skip them. This is not considered as an error.
-			klog.V(2).InfoS("Skipping a bundle with prior processing error; no wave is assigned",
-				"manifestObj", klog.KObj(bundle.manifestObj), "GVR", *bundle.gvr, "work", workRef)
+			klog.V(2).InfoS("Skipping a manifest with prior processing error; no wave is assigned",
+				"manifestObj", klog.KObj(state.manifestObj), "GVR", *state.gvr, "work", klog.KObj(state.fromWorkObj))
 			continue
 		}
 
 		waveNum := lastWave
-		defaultWaveNum, foundInDefaultWaveNumber := defaultWaveNumberByResourceType[bundle.gvr.Resource]
-		if foundInDefaultWaveNumber && knownAPIGroups.Has(bundle.gvr.Group) {
-			// The resource is a known one; assign the bundle to its default wave.
+		defaultWaveNum, foundInDefaultWaveNumber := defaultWaveNumberByResourceType[state.gvr.Resource]
+		if foundInDefaultWaveNumber && knownAPIGroups.Has(state.gvr.Group) {
+			// The resource is a known one; assign the manifest to its default wave.
 			waveNum = defaultWaveNum
 		}
 
 		wave := getOrAddWave(waveNum)
-		wave.bundles = append(wave.bundles, bundle)
+		wave.states = append(wave.states, state)
 		klog.V(2).InfoS("Assigned manifest to a wave",
 			"waveNumber", waveNum,
-			"manifestObj", klog.KObj(bundle.manifestObj), "GVR", *bundle.gvr, "work", workRef)
+			"manifestObj", klog.KObj(state.manifestObj), "GVR", *state.gvr, "work", klog.KObj(state.fromWorkObj))
 	}
 
 	// Retrieve all the waves and sort them by their wave number.
-	waves := make([]*bundleProcessingWave, 0, len(waveByNum))
+	waves := make([]*manifestProcessingWave, 0, len(waveByNum))
 	for _, w := range waveByNum {
 		waves = append(waves, w)
 	}
 	// Sort the waves in ascending order.
-	slices.SortFunc(waves, func(a, b *bundleProcessingWave) int {
+	slices.SortFunc(waves, func(a, b *manifestProcessingWave) int {
 		return int(a.num) - int(b.num)
 	})
 	return waves

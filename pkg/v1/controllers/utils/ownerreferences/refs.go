@@ -47,3 +47,16 @@ func AreEqual(a, b *metav1.OwnerReference) bool {
 		a.Kind == b.Kind &&
 		a.APIVersion == b.APIVersion
 }
+
+// Own adds a specific owner reference to the given object if it is not already present.
+func Own(obj *unstructured.Unstructured, owner *metav1.OwnerReference) {
+	ownerRefs := obj.GetOwnerReferences()
+	for idx := range ownerRefs {
+		if AreEqual(&ownerRefs[idx], owner) {
+			// The object is already owned by the given owner.
+			return
+		}
+	}
+	ownerRefs = append(ownerRefs, *owner)
+	obj.SetOwnerReferences(ownerRefs)
+}

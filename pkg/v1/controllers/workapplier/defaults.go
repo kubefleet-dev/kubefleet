@@ -26,7 +26,12 @@ import (
 // the sync strategy itself is absent, which leaves those defaults unapplied.
 func setDefaultSyncStrategy(work *placementv1alpha1.Work) {
 	if work.Spec.SyncStrategy != nil {
-		return
+		if work.Spec.SyncStrategy.ApplyMethod == placementv1alpha1.ApplyMethodServerSideApply &&
+			work.Spec.SyncStrategy.ServerSideApplyOptions == nil {
+			work.Spec.SyncStrategy.ServerSideApplyOptions = &placementv1alpha1.ServerSideApplyOptions{
+				ForceConflicts: false,
+			}
+		}
 	}
 
 	work.Spec.SyncStrategy = &placementv1alpha1.SyncStrategy{

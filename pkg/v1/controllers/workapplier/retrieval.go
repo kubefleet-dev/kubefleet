@@ -40,7 +40,9 @@ import (
 // The set is returned only when it is complete and consistent, that is, its size matches the linked work count
 // recorded on the primary work object and every work object is linked to the same primary placement resource
 // snapshot; otherwise a transient error is returned, as the set is expected to converge on its own.
-func (r *Reconciler) retrieveLinkedWorks(ctx context.Context, primaryWork *placementv1alpha1.Work) ([]placementv1alpha1.Work, error) {
+//
+// The first work object in the array is always the primary work object.
+func (r *Reconciler) retrieveLinkedWorks(ctx context.Context, primaryWork *placementv1alpha1.Work) ([]*placementv1alpha1.Work, error) {
 	ownedBy := primaryWork.GetLabels()[placementv1alpha1.WorkOwnedByPlacementBindingLabelKey]
 	if ownedBy == "" {
 		return nil, errors.NewUnexpectedError(nil, "the primary work is missing the owner placement binding label")
@@ -76,6 +78,8 @@ func (r *Reconciler) retrieveLinkedWorks(ctx context.Context, primaryWork *place
 			"observedLinkedWorkCount", len(workList.Items), "wantLinkedWorkCount", wantLinkedWorkCount)
 	}
 
+	works := make([]*placementv1alpha1.Work, 0, len(workList.Items))
+	works = append(works, primaryWork)
 	for idx := range workList.Items {
 		linkedWork := &workList.Items[idx]
 		primarySnapshotName := linkedWork.GetAnnotations()[placementv1alpha1.WorkLinkedToPrimaryPlacementResourceSnapshotAnnotationKey]
@@ -84,16 +88,20 @@ func (r *Reconciler) retrieveLinkedWorks(ctx context.Context, primaryWork *place
 				"linkedWork", klog.KObj(linkedWork),
 				"observedPlacementResourceSnapshot", primarySnapshotName, "expectedPrimaryPlacementResourceSnapshot", wantPrimarySnapshotName)
 		}
+
+		if linkedWork.Name != primaryWork.Name {
+			works = append(works, linkedWork)
+		}
 	}
 
-	return workList.Items, nil
+	return works, nil
 }
 
 // addCleanupFinalizerTo adds the cleanup finalizer to the given work objects, so that the applied resources
 // on the member cluster side can be cleaned up before the work objects are removed.
-func (r *Reconciler) addCleanupFinalizerTo(ctx context.Context, linkedWorks []placementv1alpha1.Work) error {
+func (r *Reconciler) addCleanupFinalizerTo(ctx context.Context, linkedWorks []*placementv1alpha1.Work) error {
 	for idx := range linkedWorks {
-		linkedWork := &linkedWorks[idx]
+		linkedWork := linkedWorks[idx]
 		if controllerutil.ContainsFinalizer(linkedWork, workAppliedCleanupFinalizer) {
 			continue
 		}
@@ -110,11 +118,11 @@ func (r *Reconciler) addCleanupFinalizerTo(ctx context.Context, linkedWorks []pl
 	return nil
 }
 
-func (r *Reconciler) ensureAppliedWorks(ctx context.Context, linkedWorks []placementv1alpha1.Work) ([]placementv1alpha1.AppliedWork, error) {
-	appliedWorks := make([]placementv1alpha1.AppliedWork, 0, len(linkedWorks))
+func (r *Reconciler) ensureAppliedWorks(ctx context.Context, linkedWorks []*placementv1alpha1.Work) ([]*placementv1alpha1.AppliedWork, error) {
+	appliedWorks := make([]*placementv1alpha1.AppliedWork, 0, len(linkedWorks))
 
 	for idx := range linkedWorks {
-		work := &linkedWorks[idx]
+		work := linkedWorks[idx]
 
 		// Check if an appliedWork object already exists for the work object.
 		//
@@ -131,7 +139,7 @@ func (r *Reconciler) ensureAppliedWorks(ctx context.Context, linkedWorks []place
 		case err == nil:
 			// The AppliedWork already exists; no further action is needed.
 			klog.V(2).InfoS("Found an appliedWork object for the work object", "work", klog.KObj(work), "appliedWork", klog.KObj(appliedWork))
-			appliedWorks = append(appliedWorks, *appliedWork)
+			appliedWorks = append(appliedWorks, appliedWork)
 		case !apierrors.IsNotFound(err):
 			klog.ErrorS(err, "Failed to retrieve the appliedWork object", "appliedWork", klog.KObj(work))
 			return nil, errors.NewAPIServerError(err, "failed to retrieve the appliedWork object", true,
@@ -156,7 +164,7 @@ func (r *Reconciler) ensureAppliedWorks(ctx context.Context, linkedWorks []place
 			return nil, controller.NewAPIServerError(false, err)
 		}
 		klog.V(2).InfoS("Created an AppliedWork for the Work object", "work", klog.KObj(work), "appliedWork", klog.KObj(appliedWork))
-		appliedWorks = append(appliedWorks, *appliedWork)
+		appliedWorks = append(appliedWorks, appliedWork)
 	}
 
 	return appliedWorks, nil
