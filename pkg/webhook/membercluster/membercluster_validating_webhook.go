@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
-	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
 
@@ -108,7 +108,7 @@ func (v *memberClusterValidator) Handle(ctx context.Context, req admission.Reque
 // to list the member clusters does not block the request -- an advisory check must not stand
 // between an admin and the cluster they are registering.
 func (v *memberClusterValidator) clusterAliasCollisionWarning(ctx context.Context, mc *clusterv1beta1.MemberCluster) string {
-	alias, ok := mc.Labels[kfplacementv1alpha1.ClusterAliasLabel]
+	alias, ok := mc.Labels[placementv1beta1.ClusterAliasLabel]
 	if !ok || alias == "" {
 		return ""
 	}
@@ -125,7 +125,7 @@ func (v *memberClusterValidator) clusterAliasCollisionWarning(ctx context.Contex
 		if other.Name == mc.Name {
 			continue
 		}
-		if other.Labels[kfplacementv1alpha1.ClusterAliasLabel] == alias {
+		if other.Labels[placementv1beta1.ClusterAliasLabel] == alias {
 			holders = append(holders, other.Name)
 		}
 	}

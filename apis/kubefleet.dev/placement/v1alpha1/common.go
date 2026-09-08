@@ -40,12 +40,9 @@ const (
 	// and the two are read together often enough that they should not have to be translated.
 	//
 	// Within the annotation, `region` may be used in place of the well-known
-	// topology.kubernetes.io/region label key, and `alias` in place of ClusterAliasLabel.
+	// topology.kubernetes.io/region label key, and `alias` in place of the cluster alias label
+	// (placement/v1beta1's ClusterAliasLabel).
 	ClusterSelectorsAnnotation = KubeFleetPrefix + "cluster-selectors"
-
-	// ClusterAliasLabel is the label that KubeFleet reserves on member cluster objects for selecting
-	// clusters by their name (alias).
-	ClusterAliasLabel = KubeFleetPrefix + "cluster-alias"
 )
 
 // The labels that record, on a placement policy KubeFleet generated from an annotation, the

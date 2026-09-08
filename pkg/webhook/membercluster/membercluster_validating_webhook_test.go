@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
-	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 
 	fleetnetworkingv1alpha1 "go.goms.io/fleet-networking/api/v1alpha1"
@@ -161,7 +161,7 @@ func buildCreateRequestFromObject(t *testing.T, mc *clusterv1beta1.MemberCluster
 func memberClusterWithAlias(name, alias string) *clusterv1beta1.MemberCluster {
 	mc := &clusterv1beta1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: name}}
 	if alias != "" {
-		mc.Labels = map[string]string{kfplacementv1alpha1.ClusterAliasLabel: alias}
+		mc.Labels = map[string]string{placementv1beta1.ClusterAliasLabel: alias}
 	}
 	return mc
 }

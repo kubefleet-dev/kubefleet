@@ -42,7 +42,6 @@ import (
 
 	"github.com/kubefleet-dev/kubefleet/apis"
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
-	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	sharedmetrics "github.com/kubefleet-dev/kubefleet/pkg/metrics/shared"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
@@ -76,12 +75,6 @@ type Reconciler struct {
 	MaxConcurrentReconciles int
 	// the wait time in minutes before we force delete a member cluster.
 	ForceDeleteWaitTime time.Duration
-
-	// SeedClusterAliasLabel controls whether joining member clusters are given the cluster alias
-	// label, seeded from the cluster name. The alias exists for the alias= shorthand of
-	// annotation-based placement, which is not wired into the hub agent yet, so nothing sets this
-	// field today and no member cluster is relabelled.
-	SeedClusterAliasLabel bool
 	// agents are used as hashset to query the expected agent type, so the value will be ignored.
 	agents map[clusterv1beta1.AgentType]bool
 }
@@ -300,13 +293,12 @@ func (r *Reconciler) ensureMemberNameLabel(ctx context.Context, mc *clusterv1bet
 		changed = true
 	}
 
-	// The alias label is seeded from the cluster name, but only when it is absent entirely. Unlike
-	// the name label above, which states a fact this controller owns and reasserts, the alias
-	// exists to be renamed: it is the level of indirection that lets an admin point a selector at
-	// "the cluster playing this role" rather than at a fixed name. Reasserting it here would
-	// silently revert an admin's alias on the next reconcile.
-	if _, found := mc.Labels[kfplacementv1alpha1.ClusterAliasLabel]; r.SeedClusterAliasLabel && !found {
-		mc.Labels[kfplacementv1alpha1.ClusterAliasLabel] = mc.Name
+	// The alias label is seeded from the cluster name, but only when it is absent. Unlike the name
+	// label above, which the controller owns and reasserts, the alias exists to be renamed by an
+	// admin so that a selector can follow a role rather than a fixed name; reasserting it would
+	// revert that rename on the next reconcile.
+	if _, found := mc.Labels[placementv1beta1.ClusterAliasLabel]; !found {
+		mc.Labels[placementv1beta1.ClusterAliasLabel] = mc.Name
 		changed = true
 	}
 
