@@ -159,13 +159,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req Request) (ctrl.Result, e
 
 	source, err := r.sourceObject(ctx, req)
 	switch {
-	case apierrors.IsNotFound(err):
-		// The resource is gone, and the delete is issued from here rather than left to garbage
-		// collection. The generated policy does carry an owner reference back to the resource, but
-		// the collector removes a dependent only once every owner is gone, and the merge
-		// deliberately preserves owner references that other parties added -- any live one of which
-		// would keep the policy standing indefinitely. Deleting explicitly is idempotent, so at
-		// worst it beats the collector to an object that was doomed anyway.
+	case apierrors.IsNotFound(err), meta.IsNoMatchError(err):
+		// The resource is gone, or its whole kind is (the CRD was removed; the generated policy
+		// watch enqueues a stale policy's owner). The delete is issued from here rather than left
+		// to garbage collection: the collector removes a dependent only once every owner is gone,
+		// and the merge deliberately preserves owner references that other parties added -- any
+		// live one of which would keep the policy standing indefinitely. Deleting explicitly is
+		// idempotent, so at worst it beats the collector to an object that was doomed anyway.
 		_, deleted, err := r.deleteGeneratedPolicy(ctx, req.GroupVersionKind, req.Namespace, req.Name)
 		switch {
 		case err != nil:
@@ -174,27 +174,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req Request) (ctrl.Result, e
 			klog.V(2).InfoS("Deleted the policy generated for a resource that is gone", "obj", req)
 		}
 		return ctrl.Result{}, err
-	case meta.IsNoMatchError(err):
-		// The kind is unknown to the API server even under its served version, so the source's own
-		// CRD has been removed. The generated policy watch enqueues a policy's generating owner, so
-		// this request is that stale policy's source: the policy is deleted here rather than left to
-		// garbage collection, which -- as in the resource-gone case above -- keeps a dependent alive
-		// as long as any owner reference the merge preserved still is. Retrying cannot make the kind
-		// exist, so the request is not requeued.
-		_, deleted, delErr := r.deleteGeneratedPolicy(ctx, req.GroupVersionKind, req.Namespace, req.Name)
-		switch {
-		case delErr != nil:
-			klog.ErrorS(delErr, "Failed to delete the policy generated for a resource whose kind is gone", kferrors.Args(delErr, "obj", req)...)
-		case deleted:
-			klog.V(2).InfoS("Deleted the policy generated for a resource whose kind is gone", "obj", req)
-		default:
-			// deleted is false because nothing this controller generated was there to remove: either
-			// no policy exists at the name, or one does but belongs to someone else, in which case
-			// deleteGeneratedPolicy has already logged the decline distinctly. Either way there is
-			// nothing more to do and no retry can make the kind exist, so the request is dropped.
-			klog.V(2).InfoS("A request names a kind the API server does not know and this controller has no generated policy to clean up for it; dropping the request", "obj", req)
-		}
-		return ctrl.Result{}, delErr
 	case err != nil:
 		klog.ErrorS(err, "Failed to get the annotated resource", kferrors.Args(err)...)
 		return ctrl.Result{}, err

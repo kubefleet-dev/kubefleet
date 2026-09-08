@@ -21,6 +21,7 @@ limitations under the License.
 package annotationplacement
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -177,12 +178,13 @@ func parseCount(value string) (*intstr.IntOrString, error) {
 		return nil, fmt.Errorf("the %s value %q is not recognized; it must be spelled exactly %q", countKey, value, countAll)
 	}
 
-	if !isAllDigits(value) {
-		return nil, fmt.Errorf("the %s value %q is neither a positive integer nor %q", countKey, value, countAll)
-	}
-	parsed, err := strconv.ParseInt(value, 10, 32)
-	if err != nil {
+	// ParseUint accepts exactly a run of decimal digits: no sign, no whitespace, no exponent.
+	parsed, err := strconv.ParseUint(value, 10, 32)
+	switch {
+	case errors.Is(err, strconv.ErrRange):
 		return nil, fmt.Errorf("the %s value %q is out of the supported range (1-%d)", countKey, value, maxCount)
+	case err != nil:
+		return nil, fmt.Errorf("the %s value %q is neither a positive integer nor %q", countKey, value, countAll)
 	}
 	if parsed < 1 || parsed > maxCount {
 		return nil, fmt.Errorf("the %s value %d is out of the supported range (1-%d)", countKey, parsed, maxCount)
@@ -220,18 +222,4 @@ func validateLabelValue(key, value string) error {
 		return fmt.Errorf("the value %q of the label key %q is not valid: %s", value, key, strings.Join(errs, "; "))
 	}
 	return nil
-}
-
-// isAllDigits reports whether the string is a non-empty run of decimal digits, which excludes the
-// signs and the whitespace that the strconv parsers would otherwise accept.
-func isAllDigits(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
 }
