@@ -91,7 +91,7 @@ expect_no_gh "release create" "API error: creates nothing"
 
 echo "== publish-release.sh =="
 
-both_uploaded="$(printf 'kubefleet-crds-v0.4.0.tgz;uploaded;4096\nkubefleet-crds-v0.4.0.tgz.sha256;uploaded;98')"
+both_uploaded="$(printf 'kubefleet-crds-v0.4.0.tgz;uploaded;4096\nkubefleet-crds-v0.4.0.tgz.sha256;uploaded;98\nchecksums.txt;uploaded;96\nkubectl-fleet-linux-amd64.tar.gz;uploaded;9000000')"
 
 run_case FAKE_GH_STATE=draft FAKE_GH_ASSETS="${both_uploaded}" TAG=v0.4.0 PRERELEASE=false \
   bash "${publish_script}"
@@ -100,7 +100,7 @@ expect_gh "gh release edit v0.4.0 --draft=false --prerelease=false" \
   "stable release is published without the pre-release flag"
 
 run_case FAKE_GH_STATE=draft \
-  FAKE_GH_ASSETS="$(printf 'kubefleet-crds-v0.4.0-rc.1.tgz;uploaded;4096\nkubefleet-crds-v0.4.0-rc.1.tgz.sha256;uploaded;98')" \
+  FAKE_GH_ASSETS="$(printf 'kubefleet-crds-v0.4.0-rc.1.tgz;uploaded;4096\nkubefleet-crds-v0.4.0-rc.1.tgz.sha256;uploaded;98\nchecksums.txt;uploaded;96\nkubectl-fleet-linux-amd64.tar.gz;uploaded;9000000')" \
   TAG=v0.4.0-rc.1 PRERELEASE=true bash "${publish_script}"
 expect_rc 0 "complete draft, RC: publishes"
 # A draft created by hand defaults to prerelease=false, so the flag has to be
@@ -133,6 +133,19 @@ run_case FAKE_GH_STATE=draft FAKE_GH_ASSETS="${both_uploaded}" FAKE_GH_DOWNLOAD=
   TAG=v0.4.0 PRERELEASE=false bash "${publish_script}"
 expect_rc 1 "bundle that fails its own checksum: refuses to publish"
 expect_no_gh "release edit" "failed checksum: release stays a draft"
+
+# The release promises kubectl-fleet archives, so an incomplete CLI upload has to
+# hold the release as a draft exactly like an incomplete CRD bundle would.
+run_case FAKE_GH_STATE=draft \
+  FAKE_GH_ASSETS="$(printf 'kubefleet-crds-v0.4.0.tgz;uploaded;4096\nkubefleet-crds-v0.4.0.tgz.sha256;uploaded;98')" \
+  TAG=v0.4.0 PRERELEASE=false bash "${publish_script}"
+expect_rc 1 "no checksums.txt: refuses to publish"
+expect_no_gh "release edit" "no checksums.txt: release stays a draft"
+
+run_case FAKE_GH_STATE=draft FAKE_GH_ASSETS="${both_uploaded}" FAKE_GH_CLI_MISSING=1 \
+  TAG=v0.4.0 PRERELEASE=false bash "${publish_script}"
+expect_rc 1 "CLI archive named in checksums.txt but never uploaded: refuses to publish"
+expect_no_gh "release edit" "missing CLI archive: release stays a draft"
 
 # An asset whose name only looks right must not satisfy the check.
 run_case FAKE_GH_STATE=draft \
