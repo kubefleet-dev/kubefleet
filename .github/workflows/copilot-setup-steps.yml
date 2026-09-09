@@ -1,0 +1,56 @@
+# Pre-installs the toolchain the Copilot coding agent needs so it can run
+# `make reviewable` and `make local-unit-test` itself before opening a PR.
+# Copilot runs this job at the start of every coding-agent session; GitHub
+# finds it by this exact file path and the job name `copilot-setup-steps`.
+# The pull_request and push triggers only exist so edits to this file are
+# validated in CI.
+name: Copilot Setup Steps
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+permissions:
+  contents: read
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      - name: Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+
+      - name: Download Go modules
+        run: go mod download
+
+      # Each target installs its pinned tools into hack/tools/bin on first use:
+      # reviewable -> golangci-lint, staticcheck, goimports; generate and
+      # manifests -> controller-gen; kubebuilder-assets-path -> envtest and the
+      # Kubernetes binaries. Running them here also warms the build and lint
+      # caches. The checkout is what the agent starts from, so revert anything
+      # they rewrote (hack/tools/bin is gitignored and survives).
+      - name: Install tools and warm caches
+        run: |
+          make reviewable
+          make generate manifests
+          make --silent kubebuilder-assets-path
+          go install github.com/onsi/ginkgo/v2/ginkgo@v2.23.4
+          git checkout -- .
