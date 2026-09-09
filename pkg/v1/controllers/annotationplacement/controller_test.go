@@ -125,7 +125,7 @@ func recordedReasons(recorder *record.FakeRecorder) []string {
 
 // policyFrom reads the generated policy for a resource back out of the client, or reports that none
 // exists.
-func policyFrom(ctx context.Context, t *testing.T, r *Reconciler, source *unstructured.Unstructured) (client.Object, bool) {
+func policyFrom(ctx context.Context, t *testing.T, r *Reconciler, source *unstructured.Unstructured) (generatedPolicy, bool) {
 	t.Helper()
 	namespace := source.GetNamespace()
 	policy := emptyPolicyForScope(namespace)
@@ -571,37 +571,37 @@ func TestApplyDesiredPolicy(t *testing.T) {
 	testCases := []struct {
 		name string
 		// mutate turns the desired policy into the live one the reconciler would read back.
-		mutate      func(client.Object)
+		mutate      func(generatedPolicy)
 		wantChanged bool
 		// check asserts on whatever the merge is supposed to preserve.
-		check func(*testing.T, client.Object)
+		check func(*testing.T, generatedPolicy)
 	}{
 		{
 			name:        "an untouched policy needs no update",
-			mutate:      func(client.Object) {},
+			mutate:      func(generatedPolicy) {},
 			wantChanged: false,
 		},
 		{
 			name: "a drifted spec is restored",
-			mutate: func(policy client.Object) {
-				policySpec(policy).ClusterSelectors = nil
+			mutate: func(policy generatedPolicy) {
+				policy.GetSpec().ClusterSelectors = nil
 			},
 			wantChanged: true,
-			check: func(t *testing.T, policy client.Object) {
-				if diff := cmp.Diff(policySpec(policy), policySpec(desired)); diff != "" {
+			check: func(t *testing.T, policy generatedPolicy) {
+				if diff := cmp.Diff(policy.GetSpec(), desired.GetSpec()); diff != "" {
 					t.Errorf("applyDesiredPolicy() spec mismatch (-got, +want):\n%s", diff)
 				}
 			},
 		},
 		{
 			name: "a missing provenance label is restored",
-			mutate: func(policy client.Object) {
+			mutate: func(policy generatedPolicy) {
 				labels := policy.GetLabels()
 				delete(labels, kfplacementv1alpha1.ParentKindLabel)
 				policy.SetLabels(labels)
 			},
 			wantChanged: true,
-			check: func(t *testing.T, policy client.Object) {
+			check: func(t *testing.T, policy generatedPolicy) {
 				if diff := cmp.Diff(policy.GetLabels(), desired.GetLabels()); diff != "" {
 					t.Errorf("applyDesiredPolicy() labels mismatch (-got, +want):\n%s", diff)
 				}
@@ -609,11 +609,11 @@ func TestApplyDesiredPolicy(t *testing.T) {
 		},
 		{
 			name: "a policy stripped of every label gets the provenance labels back",
-			mutate: func(policy client.Object) {
+			mutate: func(policy generatedPolicy) {
 				policy.SetLabels(nil)
 			},
 			wantChanged: true,
-			check: func(t *testing.T, policy client.Object) {
+			check: func(t *testing.T, policy generatedPolicy) {
 				if diff := cmp.Diff(policy.GetLabels(), desired.GetLabels()); diff != "" {
 					t.Errorf("applyDesiredPolicy() labels mismatch (-got, +want):\n%s", diff)
 				}
@@ -621,14 +621,14 @@ func TestApplyDesiredPolicy(t *testing.T) {
 		},
 		{
 			name: "labels added by something else are kept",
-			mutate: func(policy client.Object) {
+			mutate: func(policy generatedPolicy) {
 				labels := policy.GetLabels()
 				labels["example.com/managed-by"] = "gitops"
 				delete(labels, kfplacementv1alpha1.ParentKindLabel)
 				policy.SetLabels(labels)
 			},
 			wantChanged: true,
-			check: func(t *testing.T, policy client.Object) {
+			check: func(t *testing.T, policy generatedPolicy) {
 				if got := policy.GetLabels()["example.com/managed-by"]; got != "gitops" {
 					t.Errorf("applyDesiredPolicy() label example.com/managed-by = %q, want %q", got, "gitops")
 				}
@@ -636,13 +636,13 @@ func TestApplyDesiredPolicy(t *testing.T) {
 		},
 		{
 			name: "an owner reference that drifted is corrected in place",
-			mutate: func(policy client.Object) {
+			mutate: func(policy generatedPolicy) {
 				drifted := parentOwnerReference(source)
 				drifted.APIVersion = "apps/v1beta1"
 				policy.SetOwnerReferences([]metav1.OwnerReference{drifted})
 			},
 			wantChanged: true,
-			check: func(t *testing.T, policy client.Object) {
+			check: func(t *testing.T, policy generatedPolicy) {
 				want := []metav1.OwnerReference{parentOwnerReference(source)}
 				if diff := cmp.Diff(policy.GetOwnerReferences(), want); diff != "" {
 					t.Errorf("applyDesiredPolicy() owner references mismatch (-got, +want):\n%s", diff)
@@ -651,11 +651,11 @@ func TestApplyDesiredPolicy(t *testing.T) {
 		},
 		{
 			name: "a missing owner reference is restored alongside any other",
-			mutate: func(policy client.Object) {
+			mutate: func(policy generatedPolicy) {
 				policy.SetOwnerReferences([]metav1.OwnerReference{otherOwner})
 			},
 			wantChanged: true,
-			check: func(t *testing.T, policy client.Object) {
+			check: func(t *testing.T, policy generatedPolicy) {
 				want := []metav1.OwnerReference{otherOwner, parentOwnerReference(source)}
 				if diff := cmp.Diff(policy.GetOwnerReferences(), want); diff != "" {
 					t.Errorf("applyDesiredPolicy() owner references mismatch (-got, +want):\n%s", diff)
@@ -667,13 +667,13 @@ func TestApplyDesiredPolicy(t *testing.T) {
 			// old UID. It must be updated in place, not left dangling while a second one is appended --
 			// otherwise the list grows by one on every such cycle.
 			name: "an owner reference left by a recreated source is replaced, not appended",
-			mutate: func(policy client.Object) {
+			mutate: func(policy generatedPolicy) {
 				stale := parentOwnerReference(source)
 				stale.UID = "00000000-0000-0000-0000-00000000dead"
 				policy.SetOwnerReferences([]metav1.OwnerReference{stale})
 			},
 			wantChanged: true,
-			check: func(t *testing.T, policy client.Object) {
+			check: func(t *testing.T, policy generatedPolicy) {
 				want := []metav1.OwnerReference{parentOwnerReference(source)}
 				if diff := cmp.Diff(policy.GetOwnerReferences(), want); diff != "" {
 					t.Errorf("applyDesiredPolicy() owner references mismatch (-got, +want):\n%s", diff)
@@ -684,7 +684,7 @@ func TestApplyDesiredPolicy(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			actual := desired.DeepCopyObject().(client.Object)
+			actual := desired.DeepCopyObject().(generatedPolicy)
 			tc.mutate(actual)
 			before := actual.DeepCopyObject()
 
@@ -1015,15 +1015,6 @@ func TestReconcileResumesOnceForeignPolicyClears(t *testing.T) {
 	}
 	if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonPolicyCreated}); diff != "" {
 		t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", req, diff)
-	}
-}
-
-// TestApplyDesiredPolicyRejectsForeignObject covers the branch that exists only so that a scope this
-// package does not know about cannot take the reconcile loop down with it.
-func TestApplyDesiredPolicyRejectsForeignObject(t *testing.T) {
-	source := newSource(deploymentGVK, testNamespace, testName, nil)
-	if err := applyDesiredPolicy(&unstructured.Unstructured{}, &kfplacementv1alpha1.PlacementPolicy{}, source, newScheme(t)); err == nil {
-		t.Errorf("applyDesiredPolicy(%T) = nil, want an error", &unstructured.Unstructured{})
 	}
 }
 

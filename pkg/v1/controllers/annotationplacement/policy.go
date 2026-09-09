@@ -213,7 +213,7 @@ func withAPIDefaults(selectors []kfplacementv1alpha1.ClusterSelector) []kfplacem
 // UID and the kind that the owner reference and the generated name are built from. Taking an
 // unstructured object rather than a client.Object is deliberate for the same reason: a typed
 // object routinely arrives with an empty kind, which would silently change the generated name.
-func desiredPolicy(source *unstructured.Unstructured, selectors []kfplacementv1alpha1.ClusterSelector) client.Object {
+func desiredPolicy(source *unstructured.Unstructured, selectors []kfplacementv1alpha1.ClusterSelector) generatedPolicy {
 	gvk := source.GroupVersionKind()
 	namespace := source.GetNamespace()
 
@@ -222,12 +222,20 @@ func desiredPolicy(source *unstructured.Unstructured, selectors []kfplacementv1a
 	policy.SetNamespace(namespace)
 	policy.SetLabels(parentLabels(gvk, source.GetName()))
 	policy.SetOwnerReferences([]metav1.OwnerReference{parentOwnerReference(source)})
-	*policySpec(policy) = kfplacementv1alpha1.PlacementPolicySpec{
+	*policy.GetSpec() = kfplacementv1alpha1.PlacementPolicySpec{
 		ClusterSelectors:             withAPIDefaults(selectors),
 		ResourceSelectors:            []kfplacementv1alpha1.ResourceSelector{parentResourceSelector(source)},
 		ResourceRevisionHistoryLimit: ptr.To(defaultResourceRevisionHistoryLimit),
 	}
 	return policy
+}
+
+// generatedPolicy is a placement policy of either scope: a client.Object the reconciler can read,
+// write, and delete, whose spec is reached through the API's accessor without repeating the scope
+// distinction.
+type generatedPolicy interface {
+	client.Object
+	kfplacementv1alpha1.PlacementPolicyAccessor
 }
 
 // emptyPolicyForScope returns an empty generated policy of the scope that a resource in the given
@@ -237,7 +245,7 @@ func desiredPolicy(source *unstructured.Unstructured, selectors []kfplacementv1a
 // This is the single place the scope is decided. The reconciler needs the same answer to read and to
 // delete a generated policy as it does to build one, and a disagreement between those would leave a
 // policy behind rather than fail.
-func emptyPolicyForScope(namespace string) client.Object {
+func emptyPolicyForScope(namespace string) generatedPolicy {
 	if namespace == "" {
 		return &kfplacementv1alpha1.ClusterPlacementPolicy{}
 	}
@@ -252,20 +260,4 @@ func generatedPolicyKind(namespace string) string {
 		return "ClusterPlacementPolicy"
 	}
 	return "PlacementPolicy"
-}
-
-// policySpec returns a pointer to the spec of a generated policy, whichever scope it has, so that
-// callers can read and write the spec without repeating the scope distinction.
-//
-// It returns nil for any other type. Callers within this package only ever pass objects that
-// emptyPolicyForScope produced, so a nil here means the two have fallen out of step.
-func policySpec(policy client.Object) *kfplacementv1alpha1.PlacementPolicySpec {
-	switch typed := policy.(type) {
-	case *kfplacementv1alpha1.PlacementPolicy:
-		return &typed.Spec
-	case *kfplacementv1alpha1.ClusterPlacementPolicy:
-		return &typed.Spec
-	default:
-		return nil
-	}
 }

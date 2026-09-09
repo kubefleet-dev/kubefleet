@@ -66,7 +66,7 @@ func reconcile(gvk schema.GroupVersionKind, object client.Object) error {
 }
 
 // generatedPolicyFor reads back the policy generated for an object, whichever scope it has.
-func generatedPolicyFor(gvk schema.GroupVersionKind, object client.Object) (client.Object, error) {
+func generatedPolicyFor(gvk schema.GroupVersionKind, object client.Object) (generatedPolicy, error) {
 	namespace := object.GetNamespace()
 	policy := emptyPolicyForScope(namespace)
 	name := generatedPolicyName(gvk, namespace, object.GetName())
@@ -148,7 +148,7 @@ var _ = Describe("the count bounds of a hand-authored policy", func() {
 	// first, and the rule's digit guard keeps int() out of reach regardless.
 	It("should report an over-long count with the count field's own message alone", func() {
 		policy := newPolicy(intstr.FromString("99999999999999999999"))
-		policySpec(policy).ClusterSelectors[0].MinCount = ptr.To(int32(1))
+		policy.GetSpec().ClusterSelectors[0].MinCount = ptr.To(int32(1))
 
 		err := hubClient.Create(ctx, policy)
 		Expect(apierrors.IsInvalid(err)).Should(BeTrue(), "got %v, want an invalid error", err)
@@ -191,7 +191,7 @@ var _ = Describe("annotation based placement", func() {
 			policy, err := generatedPolicyFor(configMapGVK, configMap)
 			Expect(err).Should(Succeed())
 
-			spec := policySpec(policy)
+			spec := policy.GetSpec()
 			Expect(spec.ClusterSelectors).Should(HaveLen(1))
 			Expect(spec.ClusterSelectors[0].Count).Should(Equal(ptrIntOrString(countAll)))
 			Expect(spec.ClusterSelectors[0].Terms[0].MatchLabels).Should(Equal(map[string]string{"env": "staging"}))
@@ -236,7 +236,7 @@ var _ = Describe("annotation based placement", func() {
 
 			policy, err := generatedPolicyFor(configMapGVK, configMap)
 			Expect(err).Should(Succeed())
-			spec := policySpec(policy)
+			spec := policy.GetSpec()
 			Expect(spec.ClusterSelectors).Should(HaveLen(1))
 			Expect(spec.ClusterSelectors[0].Count).Should(Equal(ptrIntOrString("3")))
 			Expect(spec.ClusterSelectors[0].Terms[0].MatchLabels).Should(Equal(map[string]string{
@@ -249,7 +249,7 @@ var _ = Describe("annotation based placement", func() {
 		It("should restore the policy when someone edits it", func() {
 			policy, err := generatedPolicyFor(configMapGVK, configMap)
 			Expect(err).Should(Succeed())
-			policySpec(policy).ClusterSelectors = nil
+			policy.GetSpec().ClusterSelectors = nil
 			Expect(hubClient.Update(ctx, policy)).Should(Succeed())
 
 			// In the running agent this reconcile is triggered by the watch on the generated
@@ -258,7 +258,7 @@ var _ = Describe("annotation based placement", func() {
 
 			restored, err := generatedPolicyFor(configMapGVK, configMap)
 			Expect(err).Should(Succeed())
-			Expect(policySpec(restored).ClusterSelectors).Should(HaveLen(1))
+			Expect(restored.GetSpec().ClusterSelectors).Should(HaveLen(1))
 			Expect(drainEvents()).Should(Equal([]string{EventReasonPolicyUpdated}))
 		})
 
@@ -337,7 +337,7 @@ var _ = Describe("annotation based placement", func() {
 			Expect(policy).Should(BeAssignableToTypeOf(&kfplacementv1alpha1.ClusterPlacementPolicy{}),
 				"a cluster scoped resource must generate a ClusterPlacementPolicy, since a namespaced policy owned by it would never be collected")
 			Expect(policy.GetNamespace()).Should(BeEmpty())
-			Expect(policySpec(policy).ClusterSelectors).Should(HaveLen(1))
+			Expect(policy.GetSpec().ClusterSelectors).Should(HaveLen(1))
 			Expect(drainEvents()).Should(Equal([]string{EventReasonPolicyCreated}))
 		})
 

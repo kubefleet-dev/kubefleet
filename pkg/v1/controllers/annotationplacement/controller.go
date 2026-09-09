@@ -377,14 +377,8 @@ func (r *Reconciler) deleteGeneratedPolicy(ctx context.Context, gvk schema.Group
 // alone, so that a generated policy can be labelled by an operator or a GitOps tool without this
 // controller and that tool taking turns undoing each other. Whether anything changed is for the
 // caller to judge by comparing the object before and after.
-func applyDesiredPolicy(actual, desired client.Object, source *unstructured.Unstructured, scheme *runtime.Scheme) error {
-	actualSpec, desiredSpec := policySpec(actual), policySpec(desired)
-	if actualSpec == nil || desiredSpec == nil {
-		// Unreachable for the objects this package builds; reported rather than allowed to panic so
-		// that a future scope cannot take the reconcile loop down with it.
-		return kferrors.NewUnexpectedError(fmt.Errorf("object of type %T is not a generated placement policy", actual), "skipped updating an object that is not a placement policy")
-	}
-	desiredSpec.DeepCopyInto(actualSpec)
+func applyDesiredPolicy(actual, desired generatedPolicy, source *unstructured.Unstructured, scheme *runtime.Scheme) error {
+	desired.GetSpec().DeepCopyInto(actual.GetSpec())
 
 	labels := actual.GetLabels()
 	if labels == nil {

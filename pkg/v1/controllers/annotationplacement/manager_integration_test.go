@@ -67,7 +67,7 @@ var _ = Describe("annotation based placement under a manager", Ordered, func() {
 		}
 	}
 
-	managedPolicy := func() (client.Object, error) {
+	managedPolicy := func() (generatedPolicy, error) {
 		policy := &kfplacementv1alpha1.PlacementPolicy{}
 		key := client.ObjectKey{Namespace: configMap.Namespace, Name: generatedPolicyName(configMapGVK, configMap.Namespace, configMap.Name)}
 		return policy, hubClient.Get(ctx, key, policy)
@@ -124,7 +124,7 @@ var _ = Describe("annotation based placement under a manager", Ordered, func() {
 	It("should restore a generated policy someone edits, with no event on the resource", func() {
 		policy, err := managedPolicy()
 		Expect(err).Should(Succeed())
-		policySpec(policy).ClusterSelectors = nil
+		policy.GetSpec().ClusterSelectors = nil
 		Expect(hubClient.Update(ctx, policy)).Should(Succeed())
 
 		Eventually(func() ([]kfplacementv1alpha1.ClusterSelector, error) {
@@ -132,7 +132,7 @@ var _ = Describe("annotation based placement under a manager", Ordered, func() {
 			if err != nil {
 				return nil, err
 			}
-			return policySpec(policy).ClusterSelectors, nil
+			return policy.GetSpec().ClusterSelectors, nil
 		}, eventuallyTimeout, eventuallyInterval).Should(HaveLen(1), "the watch on generated policies must bring an edited policy back")
 	})
 
