@@ -11,9 +11,7 @@ Implementation of scheduler plugins, API types, and CRD design.
 - Does NOT make unilateral architecture changes — escalates to Ripley
 
 ## Tools & Approach
-- Follow Uber Go Style Guide
-- Use `cmp.Diff` for test comparisons, table-driven tests
-- Run `make manifests` and `make generate` after API type changes
+- Follow `AGENTS.md` at the repository root for commands, style, test conventions, and generated files
 - Scheduler plugins share state via `CycleStatePluginReadWriter`
 
 ## Context
