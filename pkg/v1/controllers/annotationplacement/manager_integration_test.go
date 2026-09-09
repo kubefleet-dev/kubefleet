@@ -46,6 +46,7 @@ var _ = Describe("annotation based placement under a manager", Ordered, func() {
 	var (
 		managerCtx    context.Context
 		stopManager   context.CancelFunc
+		managerDone   chan struct{}
 		sourceEvents  chan event.TypedGenericEvent[client.Object]
 		configMap     *corev1.ConfigMap
 		managedEvents *record.FakeRecorder
@@ -67,7 +68,7 @@ var _ = Describe("annotation based placement under a manager", Ordered, func() {
 		}
 	}
 
-	managedPolicy := func() (generatedPolicy, error) {
+	managedPolicy := func() (kfplacementv1alpha1.PlacementPolicyAccessor, error) {
 		policy := &kfplacementv1alpha1.PlacementPolicy{}
 		key := client.ObjectKey{Namespace: configMap.Namespace, Name: generatedPolicyName(configMapGVK, configMap.Namespace, configMap.Name)}
 		return policy, hubClient.Get(ctx, key, policy)
@@ -90,8 +91,10 @@ var _ = Describe("annotation based placement under a manager", Ordered, func() {
 			Recorder:   managedEvents,
 		}
 		Expect(managed.SetupWithManager(mgr, sourceEvents)).Should(Succeed())
+		managerDone = make(chan struct{})
 		go func() {
 			defer GinkgoRecover()
+			defer close(managerDone)
 			Expect(mgr.Start(managerCtx)).Should(Succeed())
 		}()
 
@@ -111,6 +114,8 @@ var _ = Describe("annotation based placement under a manager", Ordered, func() {
 	AfterAll(func() {
 		Expect(client.IgnoreNotFound(hubClient.Delete(ctx, configMap))).Should(Succeed())
 		stopManager()
+		// Start's own assertion must land while this spec tree is still running.
+		Eventually(managerDone, eventuallyTimeout).Should(BeClosed())
 	})
 
 	It("should generate a policy for a resource the watcher reports", func() {

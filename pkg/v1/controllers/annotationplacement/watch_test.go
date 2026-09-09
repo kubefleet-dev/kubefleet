@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 )
@@ -103,6 +104,13 @@ func TestMapGeneratedPolicyToSource(t *testing.T) {
 			want:   nil,
 		},
 		{
+			// ParseGroupVersion rejects a second slash; the owner is skipped rather than turned
+			// into a bogus kind on the queue.
+			name:   "an owner with an unparsable API version is skipped",
+			policy: generatedPolicyOwnedBy(deploymentSource, ownerRef("apps/v1/extra", "Deployment", "web")),
+			want:   []Request{deploymentRequest},
+		},
+		{
 			name:   "a cluster scoped policy enqueues a cluster scoped source",
 			policy: generatedPolicyOwnedBy(namespaceSource),
 			want:   []Request{{GroupVersionKind: namespaceGVK, NamespacedName: client.ObjectKey{Name: "team"}}},
@@ -171,6 +179,41 @@ func TestSourceNamespace(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := SourceNamespace(tc.source); got != tc.want {
 				t.Errorf("SourceNamespace(%s %s) = %q, want %q", tc.source.GetKind(), tc.source.GetName(), got, tc.want)
+			}
+		})
+	}
+}
+
+// TestGeneratedPolicyDrift pins which policy updates reach the reconciler: what applyDesiredPolicy
+// writes must, a status write must not.
+func TestGeneratedPolicyDrift(t *testing.T) {
+	base := func() *kfplacementv1alpha1.PlacementPolicy {
+		policy := generatedPolicyOwnedBy(sourceObject(deploymentGVK, "prod", "web")).(*kfplacementv1alpha1.PlacementPolicy)
+		policy.Generation = 1
+		return policy
+	}
+
+	testCases := []struct {
+		name   string
+		mutate func(*kfplacementv1alpha1.PlacementPolicy)
+		want   bool
+	}{
+		{name: "status only", mutate: func(p *kfplacementv1alpha1.PlacementPolicy) {
+			p.ResourceVersion = "2"
+			p.Status.Conditions = []metav1.Condition{{Type: "Scheduled", Status: metav1.ConditionTrue}}
+		}},
+		{name: "spec edit bumps the generation", mutate: func(p *kfplacementv1alpha1.PlacementPolicy) { p.Generation = 2 }, want: true},
+		{name: "label change", mutate: func(p *kfplacementv1alpha1.PlacementPolicy) { p.Labels = map[string]string{"drift": "yes"} }, want: true},
+		{name: "owner reference stripped", mutate: func(p *kfplacementv1alpha1.PlacementPolicy) { p.OwnerReferences = nil }, want: true},
+	}
+
+	pred := generatedPolicyDrift()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			updated := base()
+			tc.mutate(updated)
+			if got := pred.Update(event.UpdateEvent{ObjectOld: base(), ObjectNew: updated}); got != tc.want {
+				t.Errorf("generatedPolicyDrift().Update() = %v, want %v", got, tc.want)
 			}
 		})
 	}

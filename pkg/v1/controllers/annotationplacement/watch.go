@@ -19,6 +19,7 @@ package annotationplacement
 import (
 	"context"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
@@ -55,14 +56,28 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager, sourceEvents <-chan even
 		Watches(
 			&kfplacementv1alpha1.PlacementPolicy{},
 			handler.TypedEnqueueRequestsFromMapFunc(mapGeneratedPolicyToSource),
-			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+			builder.WithPredicates(generatedPolicyDrift()),
 		).
 		Watches(
 			&kfplacementv1alpha1.ClusterPlacementPolicy{},
 			handler.TypedEnqueueRequestsFromMapFunc(mapGeneratedPolicyToSource),
-			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
+			builder.WithPredicates(generatedPolicyDrift()),
 		).
 		Complete(r)
+}
+
+// generatedPolicyDrift admits the policy events that can mean a generated policy needs repair: a
+// creation or deletion, and an update to the spec (which bumps the generation), the labels, or the
+// owner references -- exactly what applyDesiredPolicy writes. Status updates are filtered out: the
+// controllers that schedule a policy write its status on every change of the fleet, and each event
+// let through here costs an uncached read of the annotated resource to learn that nothing drifted.
+func generatedPolicyDrift() predicate.Predicate {
+	ownerReferencesChanged := predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return !equality.Semantic.DeepEqual(e.ObjectOld.GetOwnerReferences(), e.ObjectNew.GetOwnerReferences())
+		},
+	}
+	return predicate.Or(predicate.GenerationChangedPredicate{}, predicate.LabelChangedPredicate{}, ownerReferencesChanged)
 }
 
 // mapSourceToRequest enqueues an annotated resource the resource watcher reported.

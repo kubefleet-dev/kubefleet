@@ -377,7 +377,7 @@ func (r *Reconciler) deleteGeneratedPolicy(ctx context.Context, gvk schema.Group
 // alone, so that a generated policy can be labelled by an operator or a GitOps tool without this
 // controller and that tool taking turns undoing each other. Whether anything changed is for the
 // caller to judge by comparing the object before and after.
-func applyDesiredPolicy(actual, desired generatedPolicy, source *unstructured.Unstructured, scheme *runtime.Scheme) error {
+func applyDesiredPolicy(actual, desired kfplacementv1alpha1.PlacementPolicyAccessor, source *unstructured.Unstructured, scheme *runtime.Scheme) error {
 	desired.GetSpec().DeepCopyInto(actual.GetSpec())
 
 	labels := actual.GetLabels()

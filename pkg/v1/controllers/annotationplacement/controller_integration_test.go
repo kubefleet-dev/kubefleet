@@ -66,7 +66,7 @@ func reconcile(gvk schema.GroupVersionKind, object client.Object) error {
 }
 
 // generatedPolicyFor reads back the policy generated for an object, whichever scope it has.
-func generatedPolicyFor(gvk schema.GroupVersionKind, object client.Object) (generatedPolicy, error) {
+func generatedPolicyFor(gvk schema.GroupVersionKind, object client.Object) (kfplacementv1alpha1.PlacementPolicyAccessor, error) {
 	namespace := object.GetNamespace()
 	policy := emptyPolicyForScope(namespace)
 	name := generatedPolicyName(gvk, namespace, object.GetName())

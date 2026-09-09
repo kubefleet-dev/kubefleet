@@ -213,7 +213,7 @@ func withAPIDefaults(selectors []kfplacementv1alpha1.ClusterSelector) []kfplacem
 // UID and the kind that the owner reference and the generated name are built from. Taking an
 // unstructured object rather than a client.Object is deliberate for the same reason: a typed
 // object routinely arrives with an empty kind, which would silently change the generated name.
-func desiredPolicy(source *unstructured.Unstructured, selectors []kfplacementv1alpha1.ClusterSelector) generatedPolicy {
+func desiredPolicy(source *unstructured.Unstructured, selectors []kfplacementv1alpha1.ClusterSelector) kfplacementv1alpha1.PlacementPolicyAccessor {
 	gvk := source.GroupVersionKind()
 	namespace := source.GetNamespace()
 
@@ -230,14 +230,6 @@ func desiredPolicy(source *unstructured.Unstructured, selectors []kfplacementv1a
 	return policy
 }
 
-// generatedPolicy is a placement policy of either scope: a client.Object the reconciler can read,
-// write, and delete, whose spec is reached through the API's accessor without repeating the scope
-// distinction.
-type generatedPolicy interface {
-	client.Object
-	kfplacementv1alpha1.PlacementPolicyAccessor
-}
-
 // emptyPolicyForScope returns an empty generated policy of the scope that a resource in the given
 // namespace generates: a namespaced resource yields a PlacementPolicy in its own namespace, and a
 // cluster-scoped resource, whose namespace is empty, yields a ClusterPlacementPolicy.
@@ -245,7 +237,7 @@ type generatedPolicy interface {
 // This is the single place the scope is decided. The reconciler needs the same answer to read and to
 // delete a generated policy as it does to build one, and a disagreement between those would leave a
 // policy behind rather than fail.
-func emptyPolicyForScope(namespace string) generatedPolicy {
+func emptyPolicyForScope(namespace string) kfplacementv1alpha1.PlacementPolicyAccessor {
 	if namespace == "" {
 		return &kfplacementv1alpha1.ClusterPlacementPolicy{}
 	}

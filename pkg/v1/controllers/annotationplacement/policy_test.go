@@ -448,15 +448,12 @@ func TestParentLabelsAreValid(t *testing.T) {
 // an update that changes nothing, forever.
 func TestDesiredPolicySetsDefaultedFields(t *testing.T) {
 	selectors := []kfplacementv1alpha1.ClusterSelector{{Count: ptr.To(intstr.FromInt32(1))}}
-	policy, ok := desiredPolicy(sourceObject(deploymentGVK, "prod", "app"), selectors).(*kfplacementv1alpha1.PlacementPolicy)
-	if !ok {
-		t.Fatalf("desiredPolicy() returned a %T, want a *PlacementPolicy", policy)
-	}
+	spec := desiredPolicy(sourceObject(deploymentGVK, "prod", "app"), selectors).GetSpec()
 
-	if got := policy.Spec.ResourceRevisionHistoryLimit; got == nil || *got != defaultResourceRevisionHistoryLimit {
+	if got := spec.ResourceRevisionHistoryLimit; got == nil || *got != defaultResourceRevisionHistoryLimit {
 		t.Errorf("resourceRevisionHistoryLimit = %v, want %d", got, defaultResourceRevisionHistoryLimit)
 	}
-	if got := policy.Spec.ClusterSelectors[0].WhenUnfulfilled; got != defaultWhenUnfulfilled {
+	if got := spec.ClusterSelectors[0].WhenUnfulfilled; got != defaultWhenUnfulfilled {
 		t.Errorf("whenUnfulfilled = %v, want %v", got, defaultWhenUnfulfilled)
 	}
 	// The caller's own selectors must not have been defaulted in place.
