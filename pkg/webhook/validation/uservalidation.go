@@ -94,8 +94,9 @@ func ValidateFleetMemberClusterUpdate(currentMC, oldMC clusterv1beta1.MemberClus
 	}
 
 	isLabelUpdated := isMapFieldUpdated(currentMC.GetLabels(), oldMC.GetLabels())
-	if isLabelUpdated && !isUserInGroup(userInfo, mastersGroup) && shouldDenyLabelModification(currentMC.GetLabels(), oldMC.GetLabels(), denyModifyMemberClusterLabels) {
-		// allow any user to modify kubernetes-fleet.io/* labels, but restricts other label modifications given denyModifyMemberClusterLabels is true.
+	if isLabelUpdated && !isUserInGroup(userInfo, mastersGroup) && shouldDenyLabelModification(currentMC.GetLabels(), oldMC.GetLabels(), denyModifyMemberClusterLabels, isUserAuthenticatedServiceAccount(userInfo)) {
+		// allow any user to modify kubernetes-fleet.io/* labels and service accounts to modify kubefleet.dev/* labels,
+		// but restricts other label modifications given denyModifyMemberClusterLabels is true.
 		klog.V(2).InfoS(DeniedModifyMemberClusterLabels, "user", userInfo.Username, "groups", userInfo.Groups, "operation", req.Operation, "GVK", req.RequestKind, "subResource", req.SubResource, "namespacedName", namespacedName)
 		return admission.Denied(DeniedModifyMemberClusterLabels)
 	}
@@ -160,35 +161,34 @@ func isUserInGroup(userInfo authenticationv1.UserInfo, groupName string) bool {
 	return slices.Contains(userInfo.Groups, groupName)
 }
 
-// shouldDenyLabelModification returns true if any labels (besides kubernetes-fleet.io/* and
-// kubefleet.dev/* labels) are being modified and denyModifyMemberClusterLabels is true.
-func shouldDenyLabelModification(currentLabels, oldLabels map[string]string, denyModifyMemberClusterLabels bool) bool {
+// shouldDenyLabelModification returns true if any labels besides the ones fleet reserves are being
+// modified and denyModifyMemberClusterLabels is true. kubernetes-fleet.io/* labels are exempt for
+// every user; kubefleet.dev/* labels only for service accounts, so that the hub agent (which is not
+// in system:masters) can seed the cluster alias while a plain user under the guard cannot move an
+// alias, which is a scheduling label, from one cluster to another.
+func shouldDenyLabelModification(currentLabels, oldLabels map[string]string, denyModifyMemberClusterLabels, isServiceAccount bool) bool {
 	if !denyModifyMemberClusterLabels {
 		return false
+	}
+	exempt := func(k string) bool {
+		return strings.HasPrefix(k, placementv1beta1.FleetPrefix) || (isServiceAccount && strings.HasPrefix(k, placementv1beta1.KubeFleetPrefix))
 	}
 	for k, v := range currentLabels {
 		oldV, exists := oldLabels[k]
 		if !exists || oldV != v {
-			if !isFleetLabel(k) {
+			if !exempt(k) {
 				return true
 			}
 		}
 	}
 	for k := range oldLabels {
 		if _, exists := currentLabels[k]; !exists {
-			if !isFleetLabel(k) {
+			if !exempt(k) {
 				return true
 			}
 		}
 	}
 	return false
-}
-
-// isFleetLabel reports whether a label key is under one of the prefixes fleet reserves, which any
-// user may modify: the hub agent itself writes labels under both (the member name, the cluster
-// alias) and is not in system:masters.
-func isFleetLabel(key string) bool {
-	return strings.HasPrefix(key, placementv1beta1.FleetPrefix) || strings.HasPrefix(key, placementv1beta1.KubeFleetPrefix)
 }
 
 // isMemberClusterMapFieldUpdated return true if member cluster label is updated.
