@@ -132,9 +132,8 @@ func (v *memberClusterValidator) clusterAliasCollisionWarning(ctx context.Contex
 	if len(holders) == 0 {
 		return ""
 	}
-	// The message leads with the alias value and lists at most a few holders: an admission warning
-	// is truncated by the API server past 256 bytes, and the admin already knows which label they
-	// set, so the actionable half -- the value and who else holds it -- must fit inside that budget.
+	// The message lists at most a few holders: it is read on a terminal, and the actionable half is
+	// the alias value and that someone else holds it, not an exhaustive roll call.
 	const maxListedHolders = 3
 	listed := holders
 	if len(listed) > maxListedHolders {

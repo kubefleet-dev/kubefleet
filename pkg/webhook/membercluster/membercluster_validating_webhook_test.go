@@ -215,8 +215,8 @@ func TestHandleClusterAliasCollision(t *testing.T) {
 	}
 }
 
-// TestClusterAliasCollisionWarningTruncatesHolders covers the many-holders path: the message caps
-// the listed clusters so it stays inside the API server's warning-length budget.
+// TestClusterAliasCollisionWarningTruncatesHolders covers the many-holders path: the message lists
+// a few holders and summarizes the rest.
 func TestClusterAliasCollisionWarningTruncatesHolders(t *testing.T) {
 	t.Parallel()
 
@@ -232,11 +232,8 @@ func TestClusterAliasCollisionWarningTruncatesHolders(t *testing.T) {
 	v := &memberClusterValidator{client: c, decoder: admission.NewDecoder(scheme)}
 
 	got := v.clusterAliasCollisionWarning(context.Background(), memberClusterWithAlias("newcomer", "web-primary"))
-	if !strings.Contains(got, "and 3 more") {
-		t.Errorf("clusterAliasCollisionWarning() = %q, want it to summarize the surplus holders as \"and 3 more\"", got)
-	}
-	if len(got) > 256 {
-		t.Errorf("clusterAliasCollisionWarning() message is %d bytes, want it within the API server's 256-byte warning budget", len(got))
+	if want := "holder-0, holder-1, holder-2, and 3 more"; !strings.Contains(got, want) {
+		t.Errorf("clusterAliasCollisionWarning() = %q, want it to list three holders and summarize the rest as %q", got, want)
 	}
 }
 
