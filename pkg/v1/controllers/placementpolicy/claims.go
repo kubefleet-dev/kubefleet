@@ -90,8 +90,8 @@ func trimNameSeparators(fragment string) string {
 // claimOwnershipLabels returns the labels that select the claims of a policy.
 func claimOwnershipLabels(policy kfplacementv1alpha1.PlacementPolicyAccessor) client.MatchingLabels {
 	return client.MatchingLabels{
-		kfplacementv1alpha1.ClusterClaimPolicyNameLabel:      policyNameLabelValue(policy.GetName()),
-		kfplacementv1alpha1.ClusterClaimPolicyNamespaceLabel: policy.GetNamespace(),
+		kfplacementv1alpha1.ClusterClaimPlacementPolicyNameLabel:      policyNameLabelValue(policy.GetName()),
+		kfplacementv1alpha1.ClusterClaimPlacementPolicyNamespaceLabel: policy.GetNamespace(),
 	}
 }
 

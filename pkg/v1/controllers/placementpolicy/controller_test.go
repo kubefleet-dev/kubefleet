@@ -91,3 +91,26 @@ func TestReconcilePreservesClaimCountOnFailedRound(t *testing.T) {
 		t.Errorf("Reconcile() left activeClusterClaims = %v, want the last completed round's 1 preserved", fetched.Status.ActiveClusterClaims)
 	}
 }
+
+// TestReconcileIgnoresDeletedPolicy pins that a policy that is already gone ends the round quietly.
+// The read is wrapped as a categorized API server error, and IsNotFound has to keep resolving
+// through that wrap: an error utility that flattened the cause instead would turn every deleted
+// policy into an endless retry, with its metric series never forgotten.
+func TestReconcileIgnoresDeletedPolicy(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kfplacementv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme() = %v, want no error", err)
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	r := NewReconciler(c, c)
+
+	for _, name := range []types.NamespacedName{{Namespace: "default", Name: "gone"}, {Name: "gone"}} {
+		res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: name})
+		if err != nil {
+			t.Errorf("Reconcile(%v) = %v, want no error for a policy that no longer exists", name, err)
+		}
+		if res.RequeueAfter != 0 {
+			t.Errorf("Reconcile(%v) requeued after %v, want no requeue for a policy that no longer exists", name, res.RequeueAfter)
+		}
+	}
+}

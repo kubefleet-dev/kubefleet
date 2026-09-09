@@ -23,7 +23,7 @@ import (
 const (
 	ClusterClaimCondTypeCompleted = "Completed"
 
-	// ClusterClaimPolicyNameLabel and ClusterClaimPolicyNamespaceLabel record the placement
+	// ClusterClaimPlacementPolicyNameLabel and ClusterClaimPlacementPolicyNamespaceLabel record the placement
 	// policy that added a cluster claim. Cluster claims are cluster-scoped and cannot carry an
 	// owner reference to a namespaced PlacementPolicy, so these labels are how KubeFleet — and
 	// anyone querying claims, such as a provisioner watching the claims of a specific
@@ -36,8 +36,8 @@ const (
 	// identity is always spec.placementPolicyRef, so a consumer that must handle policies with
 	// names longer than 63 bytes should list cluster claims and match on that field rather than
 	// select on this label.
-	ClusterClaimPolicyNameLabel      = "placement.kubefleet.dev/policy-name"
-	ClusterClaimPolicyNamespaceLabel = "placement.kubefleet.dev/policy-namespace"
+	ClusterClaimPlacementPolicyNameLabel      = "placement.kubefleet.dev/placement-policy-name"
+	ClusterClaimPlacementPolicyNamespaceLabel = "placement.kubefleet.dev/placement-policy-namespace"
 )
 
 // ClusterClaim is a KubeFleet API that represents a claim for a new member cluster.
@@ -62,6 +62,8 @@ type ClusterClaim struct {
 	Status ClusterClaimStatus `json:"status,omitempty"`
 }
 
+// ClusterClaimSpec is the specification of a cluster claim.
+//
 // +kubebuilder:validation:XValidation:rule="has(self.clusterSelectorTerms) == has(oldSelf.clusterSelectorTerms)",message="the clusterSelectorTerms field cannot be added or removed after creation"
 type ClusterClaimSpec struct {
 	// The reference to the placement policy that adds the cluster claim.

@@ -80,8 +80,8 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		Eventually(func(g Gomega) {
 			claim := &kfplacementv1alpha1.ClusterClaim{}
 			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, claim)).Should(Succeed())
-			g.Expect(claim.Labels).Should(HaveKeyWithValue(kfplacementv1alpha1.ClusterClaimPolicyNameLabel, policy.Name))
-			g.Expect(claim.Labels).Should(HaveKeyWithValue(kfplacementv1alpha1.ClusterClaimPolicyNamespaceLabel, testNamespace))
+			g.Expect(claim.Labels).Should(HaveKeyWithValue(kfplacementv1alpha1.ClusterClaimPlacementPolicyNameLabel, policy.Name))
+			g.Expect(claim.Labels).Should(HaveKeyWithValue(kfplacementv1alpha1.ClusterClaimPlacementPolicyNamespaceLabel, testNamespace))
 			g.Expect(claim.Spec.PlacementPolicyRef).NotTo(BeNil())
 			g.Expect(claim.Spec.PlacementPolicyRef.Name).Should(Equal(policy.Name))
 			g.Expect(claim.Spec.PlacementPolicyRef.Kind).Should(Equal(kfplacementv1alpha1.PlacementPolicyKind))
@@ -187,8 +187,8 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		Eventually(func(g Gomega) {
 			claim := &kfplacementv1alpha1.ClusterClaim{}
 			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, claim)).Should(Succeed())
-			g.Expect(claim.Labels).Should(HaveKeyWithValue(kfplacementv1alpha1.ClusterClaimPolicyNameLabel, policy.Name))
-			g.Expect(claim.Labels).Should(HaveKeyWithValue(kfplacementv1alpha1.ClusterClaimPolicyNamespaceLabel, testNamespace))
+			g.Expect(claim.Labels).Should(HaveKeyWithValue(kfplacementv1alpha1.ClusterClaimPlacementPolicyNameLabel, policy.Name))
+			g.Expect(claim.Labels).Should(HaveKeyWithValue(kfplacementv1alpha1.ClusterClaimPlacementPolicyNamespaceLabel, testNamespace))
 		}, eventuallyTimeout, pollInterval).Should(Succeed())
 	})
 
@@ -304,7 +304,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 
 		Consistently(func(g Gomega) {
 			claims := &kfplacementv1alpha1.ClusterClaimList{}
-			g.Expect(k8sClient.List(ctx, claims, client.MatchingLabels{kfplacementv1alpha1.ClusterClaimPolicyNameLabel: policy.Name})).Should(Succeed())
+			g.Expect(k8sClient.List(ctx, claims, client.MatchingLabels{kfplacementv1alpha1.ClusterClaimPlacementPolicyNameLabel: policy.Name})).Should(Succeed())
 			g.Expect(claims.Items).Should(HaveLen(1))
 			g.Expect(claims.Items[0].Name).Should(Equal(firstClaim))
 		}, consistentlyDuration, pollInterval).Should(Succeed())
@@ -321,7 +321,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 			eventuallyTimeout, pollInterval).Should(Succeed())
 		Consistently(func(g Gomega) {
 			claims := &kfplacementv1alpha1.ClusterClaimList{}
-			g.Expect(k8sClient.List(ctx, claims, client.MatchingLabels{kfplacementv1alpha1.ClusterClaimPolicyNameLabel: policy.Name})).Should(Succeed())
+			g.Expect(k8sClient.List(ctx, claims, client.MatchingLabels{kfplacementv1alpha1.ClusterClaimPlacementPolicyNameLabel: policy.Name})).Should(Succeed())
 			g.Expect(claims.Items).Should(BeEmpty())
 		}, consistentlyDuration, pollInterval).Should(Succeed())
 	})
@@ -378,7 +378,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		By("the Terminating claim keeps its slot and no replacement is issued")
 		Consistently(func(g Gomega) {
 			claims := &kfplacementv1alpha1.ClusterClaimList{}
-			g.Expect(k8sClient.List(ctx, claims, client.MatchingLabels{kfplacementv1alpha1.ClusterClaimPolicyNameLabel: policy.Name})).Should(Succeed())
+			g.Expect(k8sClient.List(ctx, claims, client.MatchingLabels{kfplacementv1alpha1.ClusterClaimPlacementPolicyNameLabel: policy.Name})).Should(Succeed())
 			g.Expect(claims.Items).Should(HaveLen(1))
 			g.Expect(claims.Items[0].DeletionTimestamp.IsZero()).Should(BeFalse())
 		}, consistentlyDuration, pollInterval).Should(Succeed())
@@ -444,7 +444,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 			g.Expect(fetched.Spec.ClusterSelectorTerms).Should(HaveLen(1))
 			g.Expect(fetched.Spec.ClusterSelectorTerms[0].MatchLabels).Should(HaveKeyWithValue(testRegionLabel, "newzealandnorth"))
 			policy := &kfplacementv1alpha1.PlacementPolicy{}
-			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: fetched.Labels[kfplacementv1alpha1.ClusterClaimPolicyNameLabel], Namespace: testNamespace}, policy)).Should(Succeed())
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: fetched.Labels[kfplacementv1alpha1.ClusterClaimPlacementPolicyNameLabel], Namespace: testNamespace}, policy)).Should(Succeed())
 			g.Expect(policy.Status.ActiveClusterClaims).NotTo(BeNil())
 			g.Expect(*policy.Status.ActiveClusterClaims).Should(Equal(int32(1)))
 		}, eventuallyTimeout*2, pollInterval).Should(Succeed())

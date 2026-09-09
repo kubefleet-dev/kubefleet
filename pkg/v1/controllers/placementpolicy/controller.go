@@ -37,6 +37,7 @@ import (
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/clustereligibilitychecker"
+	kferrors "github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
 )
 
 const (
@@ -186,19 +187,17 @@ func (r *Reconciler) updateStatus(ctx context.Context, policy kfplacementv1alpha
 }
 
 // fetchPolicy retrieves the policy object for the given request; requests without a namespace
-// concern the cluster-scoped ClusterPlacementPolicy API. Errors, including not-found ones, are
-// returned as is for the caller to inspect.
+// concern the cluster-scoped ClusterPlacementPolicy API.
+//
+// The read is categorized as an API server error, which stays recognizable to errors.IsNotFound:
+// it resolves through the wrap, so the caller can still tell a deleted policy from a failed read.
 func (r *Reconciler) fetchPolicy(ctx context.Context, req runtime.Request) (kfplacementv1alpha1.PlacementPolicyAccessor, error) {
+	var policy kfplacementv1alpha1.PlacementPolicyAccessor = &kfplacementv1alpha1.PlacementPolicy{}
 	if req.Namespace == "" {
-		policy := &kfplacementv1alpha1.ClusterPlacementPolicy{}
-		if err := r.Get(ctx, req.NamespacedName, policy); err != nil {
-			return nil, err
-		}
-		return policy, nil
+		policy = &kfplacementv1alpha1.ClusterPlacementPolicy{}
 	}
-	policy := &kfplacementv1alpha1.PlacementPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, policy); err != nil {
-		return nil, err
+		return nil, kferrors.NewAPIServerError(err, "failed to get the placement policy", true, "placementPolicy", req.NamespacedName)
 	}
 	return policy, nil
 }
