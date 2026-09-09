@@ -147,13 +147,6 @@ retry forever, with the policy silently never getting a claim.
   get-or-create on a deterministic name, and the finalizer is added before the
   first claim exists, so no window can orphan a claim.
 
-## Boy Scout fixes riding along
-
-- `pkg/scheduler/framework/plugins/clusteraffinity/types.go`: resource
-  property names containing dashes in the resource name (e.g.
-  `allocatable-ephemeral-storage`) were rejected by the two-segment split;
-  now parsed with `strings.Cut` and covered by a regression test.
-
 ## Cleanup lists every claim
 
 Releasing the claim-cleanup finalizer is gated on an uncached list of ALL

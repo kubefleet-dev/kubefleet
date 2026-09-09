@@ -30,7 +30,7 @@ import (
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 )
 
-func policyFor(name, namespace string) policyObject {
+func policyFor(name, namespace string) kfplacementv1alpha1.PlacementPolicyAccessor {
 	if namespace == "" {
 		return &kfplacementv1alpha1.ClusterPlacementPolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: name},

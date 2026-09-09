@@ -17,19 +17,8 @@ limitations under the License.
 package placementpolicy
 
 import (
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
-	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 )
-
-// policyObject is a placement policy of either scope: the PlacementPolicy and
-// ClusterPlacementPolicy kinds share their spec and status shapes, reached through the API's
-// accessor, so the reconciliation logic flows both through a single code path.
-type policyObject interface {
-	client.Object
-	kfplacementv1alpha1.PlacementPolicyAccessor
-}
 
 // eligibilityChecker is the subset of the scheduler's cluster eligibility gate that the
 // placement policy controller depends on. Selector fulfillment is judged against this predicate

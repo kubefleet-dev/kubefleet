@@ -156,7 +156,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 // updateStatus writes the scheduling outcome onto the policy status, skipping the API call when
 // nothing has changed. A nil outcome list clears the cluster counts (used when the selectors
 // cannot be evaluated at all); a nil activeClaims leaves the current claim count untouched.
-func (r *Reconciler) updateStatus(ctx context.Context, policy policyObject, outcomes []selectorOutcome, activeClaims *int32, scheduledCond metav1.Condition) error {
+func (r *Reconciler) updateStatus(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, outcomes []selectorOutcome, activeClaims *int32, scheduledCond metav1.Condition) error {
 	status := policy.GetStatus()
 	observedStatus := status.DeepCopy()
 
@@ -188,7 +188,7 @@ func (r *Reconciler) updateStatus(ctx context.Context, policy policyObject, outc
 // fetchPolicy retrieves the policy object for the given request; requests without a namespace
 // concern the cluster-scoped ClusterPlacementPolicy API. Errors, including not-found ones, are
 // returned as is for the caller to inspect.
-func (r *Reconciler) fetchPolicy(ctx context.Context, req runtime.Request) (policyObject, error) {
+func (r *Reconciler) fetchPolicy(ctx context.Context, req runtime.Request) (kfplacementv1alpha1.PlacementPolicyAccessor, error) {
 	if req.Namespace == "" {
 		policy := &kfplacementv1alpha1.ClusterPlacementPolicy{}
 		if err := r.Get(ctx, req.NamespacedName, policy); err != nil {

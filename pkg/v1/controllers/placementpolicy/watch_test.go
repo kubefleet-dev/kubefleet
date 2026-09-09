@@ -20,14 +20,17 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 )
 
@@ -88,6 +91,57 @@ func TestMapClaimToPolicies(t *testing.T) {
 			gotClusterScoped := r.mapClaimToClusterPlacementPolicy(context.Background(), tc.obj)
 			if diff := cmp.Diff(gotClusterScoped, tc.wantClusterScoped); diff != "" {
 				t.Errorf("mapClaimToClusterPlacementPolicy() mismatch (-got, +want):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestMemberClusterSchedulingRelevantChanges pins which member cluster updates reach the policy
+// reconciler: heartbeat and observation timestamps must not, anything scheduling reads must.
+func TestMemberClusterSchedulingRelevantChanges(t *testing.T) {
+	now := metav1.Now()
+	base := func() *clusterv1beta1.MemberCluster {
+		return &clusterv1beta1.MemberCluster{
+			ObjectMeta: metav1.ObjectMeta{Name: "member", Labels: map[string]string{"region": "eastus"}},
+			Spec:       clusterv1beta1.MemberClusterSpec{Taints: []clusterv1beta1.Taint{{Key: "k", Value: "v", Effect: corev1.TaintEffectNoSchedule}}},
+			Status: clusterv1beta1.MemberClusterStatus{
+				AgentStatus: []clusterv1beta1.AgentStatus{{
+					Type:                  clusterv1beta1.MemberAgent,
+					Conditions:            []metav1.Condition{{Type: string(clusterv1beta1.AgentJoined), Status: metav1.ConditionTrue, LastTransitionTime: now}},
+					LastReceivedHeartbeat: now,
+				}},
+				Properties: map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue{"node-count": {Value: "3", ObservationTime: now}},
+			},
+		}
+	}
+
+	testCases := []struct {
+		name   string
+		mutate func(*clusterv1beta1.MemberCluster)
+		want   bool
+	}{
+		{name: "heartbeat only", mutate: func(mc *clusterv1beta1.MemberCluster) {
+			mc.Status.AgentStatus[0].LastReceivedHeartbeat = metav1.NewTime(now.Add(time.Minute))
+			mc.Status.Properties["node-count"] = clusterv1beta1.PropertyValue{Value: "3", ObservationTime: metav1.NewTime(now.Add(time.Minute))}
+		}},
+		{name: "label change", mutate: func(mc *clusterv1beta1.MemberCluster) { mc.Labels["region"] = "westus" }, want: true},
+		{name: "taint change", mutate: func(mc *clusterv1beta1.MemberCluster) { mc.Spec.Taints = nil }, want: true},
+		{name: "joined condition flips", mutate: func(mc *clusterv1beta1.MemberCluster) {
+			mc.Status.AgentStatus[0].Conditions[0].Status = metav1.ConditionFalse
+		}, want: true},
+		{name: "property value change", mutate: func(mc *clusterv1beta1.MemberCluster) {
+			mc.Status.Properties["node-count"] = clusterv1beta1.PropertyValue{Value: "4", ObservationTime: now}
+		}, want: true},
+		{name: "deletion starts", mutate: func(mc *clusterv1beta1.MemberCluster) { mc.DeletionTimestamp = &now }, want: true},
+	}
+
+	pred := memberClusterSchedulingRelevantChanges()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			updated := base()
+			tc.mutate(updated)
+			if got := pred.Update(event.UpdateEvent{ObjectOld: base(), ObjectNew: updated}); got != tc.want {
+				t.Errorf("memberClusterSchedulingRelevantChanges().Update() = %v, want %v", got, tc.want)
 			}
 		})
 	}

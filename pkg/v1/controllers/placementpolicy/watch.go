@@ -122,7 +122,7 @@ func (r *Reconciler) mapMemberClusterToPlacementPolicies(ctx context.Context, _ 
 }
 
 // mapClaimToPlacementPolicy resolves a cluster claim to its owning namespaced PlacementPolicy
-// via the ownership labels; claims of cluster-scoped policies are left to the
+// via its spec reference; claims of cluster-scoped policies are left to the
 // ClusterPlacementPolicy controller's mapper.
 func (r *Reconciler) mapClaimToPlacementPolicy(_ context.Context, obj client.Object) []reconcile.Request {
 	// The spec reference, not the ownership labels, is the policy's authoritative identity: a
@@ -135,7 +135,7 @@ func (r *Reconciler) mapClaimToPlacementPolicy(_ context.Context, obj client.Obj
 }
 
 // mapClaimToClusterPlacementPolicy resolves a cluster claim to its owning ClusterPlacementPolicy
-// via the ownership labels.
+// via its spec reference.
 func (r *Reconciler) mapClaimToClusterPlacementPolicy(_ context.Context, obj client.Object) []reconcile.Request {
 	ref := policyRefOf(obj)
 	if ref == nil || ref.Name == "" || ref.Namespace != "" {

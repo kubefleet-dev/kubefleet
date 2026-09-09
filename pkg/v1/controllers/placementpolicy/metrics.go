@@ -29,7 +29,7 @@ import (
 // reportPolicyMetrics publishes the scheduling status and the outstanding claim count for a
 // policy. The namespace label is empty for cluster-scoped policies, which is how the two kinds
 // are told apart in the metric.
-func reportPolicyMetrics(policy policyObject, status *kfplacementv1alpha1.PlacementPolicyStatus, scheduledCond metav1.Condition) {
+func reportPolicyMetrics(policy kfplacementv1alpha1.PlacementPolicyAccessor, status *kfplacementv1alpha1.PlacementPolicyStatus, scheduledCond metav1.Condition) {
 	namespace, name := policy.GetNamespace(), policy.GetName()
 
 	hubmetrics.FleetPlacementPolicyStatusLastTimestampSeconds.

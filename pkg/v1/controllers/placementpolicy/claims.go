@@ -88,7 +88,7 @@ func trimNameSeparators(fragment string) string {
 }
 
 // claimOwnershipLabels returns the labels that select the claims of a policy.
-func claimOwnershipLabels(policy policyObject) client.MatchingLabels {
+func claimOwnershipLabels(policy kfplacementv1alpha1.PlacementPolicyAccessor) client.MatchingLabels {
 	return client.MatchingLabels{
 		kfplacementv1alpha1.ClusterClaimPolicyNameLabel:      policyNameLabelValue(policy.GetName()),
 		kfplacementv1alpha1.ClusterClaimPolicyNamespaceLabel: policy.GetNamespace(),
@@ -100,7 +100,7 @@ func claimOwnershipLabels(policy policyObject) client.MatchingLabels {
 // PlacementPolicy names are only unique per namespace; two same-named policies in different
 // namespaces must not collide. Determinism matters: creation is get-or-create, so a restarted
 // reconciler converges on the same claim instead of issuing a duplicate.
-func claimName(policy policyObject, selectorIndex int) string {
+func claimName(policy kfplacementv1alpha1.PlacementPolicyAccessor, selectorIndex int) string {
 	base := policy.GetName()
 	if len(base) > claimNameBaseMaxLength {
 		// Truncation can land on a separator, which would make the generated name start a
@@ -122,7 +122,7 @@ type desiredClaim struct {
 // desiredClaims returns the claims the policy should have outstanding given the selector
 // outcomes: one claim per unfulfilled selector that opted into AddClusterClaim, in selector
 // order, capped by the per-policy concurrency limit.
-func desiredClaims(policy policyObject, outcomes []selectorOutcome) []desiredClaim {
+func desiredClaims(policy kfplacementv1alpha1.PlacementPolicyAccessor, outcomes []selectorOutcome) []desiredClaim {
 	wanted := make([]desiredClaim, 0, maxConcurrentClaimsPerPolicy)
 	for i := range outcomes {
 		o := &outcomes[i]
@@ -166,7 +166,7 @@ func claimReadyToRotate(claim *kfplacementv1alpha1.ClusterClaim, outcome *select
 // A claim held in Terminating by a provisioner finalizer still counts toward the concurrency
 // budget (its deterministic name also blocks re-creation), so a slow provisioner teardown can
 // never cause double-provisioning for the same selector.
-func (r *Reconciler) reconcileClaims(ctx context.Context, policy policyObject, outcomes []selectorOutcome, mostRecentClusterCreation metav1.Time) (int32, error) {
+func (r *Reconciler) reconcileClaims(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, outcomes []selectorOutcome, mostRecentClusterCreation metav1.Time) (int32, error) {
 	existing, err := r.listClaims(ctx, policy)
 	if err != nil {
 		return 0, err
@@ -221,7 +221,11 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy policyObject, o
 			continue
 		}
 		klog.V(2).InfoS("Withdrawing a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy))
-		if err := r.Delete(ctx, claim); err != nil {
+		// The delete is pinned to the UID the cache showed: claim names are deterministic, so a
+		// cache that has yet to see an earlier withdrawal can still list the predecessor after its
+		// successor was created under the same name, and an unpinned delete would withdraw the
+		// successor. A UID mismatch fails with a conflict, and the requeue retries on a fresher view.
+		if err := r.Delete(ctx, claim, client.Preconditions{UID: &claim.UID}); err != nil {
 			if errors.IsNotFound(err) {
 				// Already fully gone; it occupies nothing.
 				continue
@@ -303,7 +307,7 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy policyObject, o
 // policy's claims by label -- and a provisioner or user that mutated one would hide the claim from
 // them. The labels are re-asserted here for the same reason the cleanup finalizer is re-asserted
 // while claims exist: out-of-band drift on an object the controller owns should self-heal.
-func (r *Reconciler) reconcileClaimLabels(ctx context.Context, claim *kfplacementv1alpha1.ClusterClaim, policy policyObject) error {
+func (r *Reconciler) reconcileClaimLabels(ctx context.Context, claim *kfplacementv1alpha1.ClusterClaim, policy kfplacementv1alpha1.PlacementPolicyAccessor) error {
 	want := claimOwnershipLabels(policy)
 	drifted := false
 	for k, v := range want {
@@ -358,7 +362,7 @@ func (r *Reconciler) refreshClaimFreshness(ctx context.Context, claim *kfplaceme
 // read from the API server directly, not the informer cache: a claim created moments before
 // the policy deletion might not have reached the cache yet, and releasing the finalizer on a
 // stale zero would orphan it permanently (nothing else ever looks at claims of a gone policy).
-func (r *Reconciler) cleanupClaims(ctx context.Context, policy policyObject) error {
+func (r *Reconciler) cleanupClaims(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor) error {
 	if !controllerutil.ContainsFinalizer(policy, claimCleanupFinalizer) {
 		return nil
 	}
@@ -385,7 +389,7 @@ func (r *Reconciler) cleanupClaims(ctx context.Context, policy policyObject) err
 			continue
 		}
 		klog.V(2).InfoS("Withdrawing a cluster claim of a deleted policy", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy))
-		if err := r.Delete(ctx, claim); err != nil {
+		if err := r.Delete(ctx, claim, client.Preconditions{UID: &claim.UID}); err != nil {
 			if errors.IsNotFound(err) {
 				// Already fully removed between the list and the delete; nothing remains for
 				// this claim.
@@ -408,7 +412,7 @@ func (r *Reconciler) cleanupClaims(ctx context.Context, policy policyObject) err
 }
 
 // ensureFinalizer adds the claim cleanup finalizer to the policy if not present yet.
-func (r *Reconciler) ensureFinalizer(ctx context.Context, policy policyObject) error {
+func (r *Reconciler) ensureFinalizer(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor) error {
 	if controllerutil.ContainsFinalizer(policy, claimCleanupFinalizer) {
 		return nil
 	}
@@ -443,7 +447,7 @@ func claimBelongsTo(claim *kfplacementv1alpha1.ClusterClaim, ref *kfplacementv1a
 // The list is served from the informer cache; a claim the cache has yet to observe is picked up on
 // the re-queue the claim watch fires, which is why the cache is acceptable here while the finalizer
 // release, whose mistake would be permanent, reads through the uncached reader instead.
-func (r *Reconciler) listClaims(ctx context.Context, policy policyObject) ([]kfplacementv1alpha1.ClusterClaim, error) {
+func (r *Reconciler) listClaims(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor) ([]kfplacementv1alpha1.ClusterClaim, error) {
 	all := &kfplacementv1alpha1.ClusterClaimList{}
 	if err := r.List(ctx, all); err != nil {
 		klog.ErrorS(err, "Failed to list cluster claims for the policy", "placementPolicy", klog.KObj(policy))
@@ -453,7 +457,7 @@ func (r *Reconciler) listClaims(ctx context.Context, policy policyObject) ([]kfp
 }
 
 // claimsForPolicy returns the claims whose immutable reference names the policy.
-func claimsForPolicy(all []kfplacementv1alpha1.ClusterClaim, policy policyObject) []kfplacementv1alpha1.ClusterClaim {
+func claimsForPolicy(all []kfplacementv1alpha1.ClusterClaim, policy kfplacementv1alpha1.PlacementPolicyAccessor) []kfplacementv1alpha1.ClusterClaim {
 	ref := policyReference(policy)
 	owned := make([]kfplacementv1alpha1.ClusterClaim, 0, len(all))
 	for i := range all {
@@ -470,7 +474,7 @@ func claimsForPolicy(all []kfplacementv1alpha1.ClusterClaim, policy policyObject
 // drop -- and dropping it is what keeps a claim-free policy deletable even after the feature is
 // turned off. The count is read uncached because releasing the finalizer over a claim a stale cache
 // has yet to show would orphan it, nothing ever looking at the claims of a gone policy.
-func (r *Reconciler) releaseFinalizerIfNoClaims(ctx context.Context, policy policyObject) error {
+func (r *Reconciler) releaseFinalizerIfNoClaims(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor) error {
 	if !controllerutil.ContainsFinalizer(policy, claimCleanupFinalizer) {
 		return nil
 	}
@@ -487,7 +491,7 @@ func (r *Reconciler) releaseFinalizerIfNoClaims(ctx context.Context, policy poli
 }
 
 // policyReference builds the claim's back-reference to its policy.
-func policyReference(policy policyObject) *kfplacementv1alpha1.ObjectReference {
+func policyReference(policy kfplacementv1alpha1.PlacementPolicyAccessor) *kfplacementv1alpha1.ObjectReference {
 	kind := kfplacementv1alpha1.PlacementPolicyKind
 	if policy.GetNamespace() == "" {
 		kind = kfplacementv1alpha1.ClusterPlacementPolicyKind
