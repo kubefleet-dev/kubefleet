@@ -220,7 +220,7 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy policyObject, o
 			}
 			continue
 		}
-		klog.V(2).InfoS("Withdrawing a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy.Unwrap()))
+		klog.V(2).InfoS("Withdrawing a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy))
 		if err := r.Delete(ctx, claim); err != nil {
 			if errors.IsNotFound(err) {
 				// Already fully gone; it occupies nothing.
@@ -276,7 +276,7 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy policyObject, o
 			// still be terminating; the create is retried when a watch frees a slot.
 			break
 		}
-		klog.V(2).InfoS("Adding a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy.Unwrap()))
+		klog.V(2).InfoS("Adding a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy))
 		if err := r.Create(ctx, claim); err != nil {
 			if errors.IsAlreadyExists(err) {
 				// The deterministic name is still occupied — most commonly by this round's own
@@ -321,7 +321,7 @@ func (r *Reconciler) reconcileClaimLabels(ctx context.Context, claim *kfplacemen
 	for k, v := range want {
 		claim.Labels[k] = v
 	}
-	klog.V(2).InfoS("Restoring ownership labels on a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy.Unwrap()))
+	klog.V(2).InfoS("Restoring ownership labels on a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy))
 	// A conflict means another writer touched the claim; the claim watch re-queues the policy and
 	// the repair retries then. A NotFound means the claim was withdrawn out from under us, which a
 	// later pass reconciles.
@@ -359,7 +359,7 @@ func (r *Reconciler) refreshClaimFreshness(ctx context.Context, claim *kfplaceme
 // the policy deletion might not have reached the cache yet, and releasing the finalizer on a
 // stale zero would orphan it permanently (nothing else ever looks at claims of a gone policy).
 func (r *Reconciler) cleanupClaims(ctx context.Context, policy policyObject) error {
-	if !controllerutil.ContainsFinalizer(policy.Unwrap(), claimCleanupFinalizer) {
+	if !controllerutil.ContainsFinalizer(policy, claimCleanupFinalizer) {
 		return nil
 	}
 
@@ -370,7 +370,7 @@ func (r *Reconciler) cleanupClaims(ctx context.Context, policy policyObject) err
 	// every claim is listed and ownership is decided by the reference.
 	claims := &kfplacementv1alpha1.ClusterClaimList{}
 	if err := r.uncachedReader.List(ctx, claims); err != nil {
-		klog.ErrorS(err, "Failed to list cluster claims for the deleted policy", "placementPolicy", klog.KObj(policy.Unwrap()))
+		klog.ErrorS(err, "Failed to list cluster claims for the deleted policy", "placementPolicy", klog.KObj(policy))
 		return err
 	}
 	ownRef := policyReference(policy)
@@ -384,7 +384,7 @@ func (r *Reconciler) cleanupClaims(ctx context.Context, policy policyObject) err
 			remaining++
 			continue
 		}
-		klog.V(2).InfoS("Withdrawing a cluster claim of a deleted policy", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy.Unwrap()))
+		klog.V(2).InfoS("Withdrawing a cluster claim of a deleted policy", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy))
 		if err := r.Delete(ctx, claim); err != nil {
 			if errors.IsNotFound(err) {
 				// Already fully removed between the list and the delete; nothing remains for
@@ -401,21 +401,19 @@ func (r *Reconciler) cleanupClaims(ctx context.Context, policy policyObject) err
 		return nil
 	}
 
-	obj := policy.Unwrap()
-	controllerutil.RemoveFinalizer(obj, claimCleanupFinalizer)
+	controllerutil.RemoveFinalizer(policy, claimCleanupFinalizer)
 	// Once the finalizer is gone the policy is deleted, and the reconcile that observes its
 	// absence drops the metric series.
-	return r.Update(ctx, obj)
+	return r.Update(ctx, policy)
 }
 
 // ensureFinalizer adds the claim cleanup finalizer to the policy if not present yet.
 func (r *Reconciler) ensureFinalizer(ctx context.Context, policy policyObject) error {
-	obj := policy.Unwrap()
-	if controllerutil.ContainsFinalizer(obj, claimCleanupFinalizer) {
+	if controllerutil.ContainsFinalizer(policy, claimCleanupFinalizer) {
 		return nil
 	}
-	controllerutil.AddFinalizer(obj, claimCleanupFinalizer)
-	return r.Update(ctx, obj)
+	controllerutil.AddFinalizer(policy, claimCleanupFinalizer)
+	return r.Update(ctx, policy)
 }
 
 // claimBelongsTo reports whether a claim's immutable back-reference names the given policy.
@@ -448,7 +446,7 @@ func claimBelongsTo(claim *kfplacementv1alpha1.ClusterClaim, ref *kfplacementv1a
 func (r *Reconciler) listClaims(ctx context.Context, policy policyObject) ([]kfplacementv1alpha1.ClusterClaim, error) {
 	all := &kfplacementv1alpha1.ClusterClaimList{}
 	if err := r.List(ctx, all); err != nil {
-		klog.ErrorS(err, "Failed to list cluster claims for the policy", "placementPolicy", klog.KObj(policy.Unwrap()))
+		klog.ErrorS(err, "Failed to list cluster claims for the policy", "placementPolicy", klog.KObj(policy))
 		return nil, err
 	}
 	return claimsForPolicy(all.Items, policy), nil
@@ -473,20 +471,19 @@ func claimsForPolicy(all []kfplacementv1alpha1.ClusterClaim, policy policyObject
 // turned off. The count is read uncached because releasing the finalizer over a claim a stale cache
 // has yet to show would orphan it, nothing ever looking at the claims of a gone policy.
 func (r *Reconciler) releaseFinalizerIfNoClaims(ctx context.Context, policy policyObject) error {
-	obj := policy.Unwrap()
-	if !controllerutil.ContainsFinalizer(obj, claimCleanupFinalizer) {
+	if !controllerutil.ContainsFinalizer(policy, claimCleanupFinalizer) {
 		return nil
 	}
 	claims := &kfplacementv1alpha1.ClusterClaimList{}
 	if err := r.uncachedReader.List(ctx, claims); err != nil {
-		klog.ErrorS(err, "Failed to list cluster claims to release the cleanup finalizer", "placementPolicy", klog.KObj(obj))
+		klog.ErrorS(err, "Failed to list cluster claims to release the cleanup finalizer", "placementPolicy", klog.KObj(policy))
 		return err
 	}
 	if len(claimsForPolicy(claims.Items, policy)) > 0 {
 		return nil
 	}
-	controllerutil.RemoveFinalizer(obj, claimCleanupFinalizer)
-	return r.Update(ctx, obj)
+	controllerutil.RemoveFinalizer(policy, claimCleanupFinalizer)
+	return r.Update(ctx, policy)
 }
 
 // policyReference builds the claim's back-reference to its policy.

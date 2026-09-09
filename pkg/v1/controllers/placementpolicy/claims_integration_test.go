@@ -75,7 +75,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		policy := newPolicy(nextName("pp"), regionSelector("brazilsouth", ptr.To(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
-		wantClaimName := claimName(placementPolicyAdapter{policy}, 0)
+		wantClaimName := claimName(policy, 0)
 		By("the claim appears with the policy reference, terms, and ownership labels")
 		Eventually(func(g Gomega) {
 			claim := &kfplacementv1alpha1.ClusterClaim{}
@@ -113,7 +113,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		policy := newPolicy(nextName("pp"), regionSelector("koreacentral", ptr.To(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
-		wantClaimName := claimName(placementPolicyAdapter{policy}, 0)
+		wantClaimName := claimName(policy, 0)
 		Eventually(func() error {
 			return k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, &kfplacementv1alpha1.ClusterClaim{})
 		}, eventuallyTimeout, pollInterval).Should(Succeed())
@@ -142,7 +142,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		policy := newPolicy(nextName("pp"), regionSelector("chilecentral", ptr.To(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
-		wantClaimName := claimName(placementPolicyAdapter{policy}, 0)
+		wantClaimName := claimName(policy, 0)
 		Eventually(func() error {
 			return k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, &kfplacementv1alpha1.ClusterClaim{})
 		}, eventuallyTimeout, pollInterval).Should(Succeed())
@@ -170,7 +170,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		policy := newPolicy(nextName("pp"), regionSelector("canadacentral", ptr.To(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
-		wantClaimName := claimName(placementPolicyAdapter{policy}, 0)
+		wantClaimName := claimName(policy, 0)
 		Eventually(func() error {
 			return k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, &kfplacementv1alpha1.ClusterClaim{})
 		}, eventuallyTimeout, pollInterval).Should(Succeed())
@@ -225,7 +225,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 	It("issues one claim at a time until a count>1 selector is fully provisioned", func() {
 		policy := newPolicy(nextName("pp"), regionSelector("australiaeast", ptr.To(intstr.FromInt32(3)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
-		claimN := claimName(placementPolicyAdapter{policy}, 0)
+		claimN := claimName(policy, 0)
 
 		// waitFreshUID returns the UID of the claim at the selector's name once it exists and has not
 		// been marked completed -- a claim the provisioner has not acted on yet.
@@ -297,7 +297,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		)
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
-		firstClaim := claimName(placementPolicyAdapter{policy}, 0)
+		firstClaim := claimName(policy, 0)
 		Eventually(func() error {
 			return k8sClient.Get(ctx, types.NamespacedName{Name: firstClaim}, &kfplacementv1alpha1.ClusterClaim{})
 		}, eventuallyTimeout, pollInterval).Should(Succeed())
@@ -330,7 +330,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		policy := newPolicy(nextName("pp"), regionSelector("polandcentral", ptr.To(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
-		wantClaimName := claimName(placementPolicyAdapter{policy}, 0)
+		wantClaimName := claimName(policy, 0)
 		Eventually(func() error {
 			return k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, &kfplacementv1alpha1.ClusterClaim{})
 		}, eventuallyTimeout, pollInterval).Should(Succeed())
@@ -352,7 +352,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		policy := newPolicy(nextName("pp"), regionSelector("uaenorth", ptr.To(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
-		wantClaimName := claimName(placementPolicyAdapter{policy}, 0)
+		wantClaimName := claimName(policy, 0)
 		claim := &kfplacementv1alpha1.ClusterClaim{}
 		Eventually(func() error {
 			return k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, claim)
@@ -402,7 +402,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		policy := newPolicy(nextName("pp"), regionSelector("israelcentral", ptr.To(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
-		wantClaimName := claimName(placementPolicyAdapter{policy}, 0)
+		wantClaimName := claimName(policy, 0)
 		claim := &kfplacementv1alpha1.ClusterClaim{}
 		Eventually(func() error {
 			return k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, claim)
@@ -460,8 +460,8 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 			regionSelector("italynorth", ptr.To(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
-		claim0Name := claimName(placementPolicyAdapter{policy}, 0)
-		claim1Name := claimName(placementPolicyAdapter{policy}, 1)
+		claim0Name := claimName(policy, 0)
+		claim1Name := claimName(policy, 1)
 		claim0 := &kfplacementv1alpha1.ClusterClaim{}
 		Eventually(func() error {
 			return k8sClient.Get(ctx, types.NamespacedName{Name: claim0Name}, claim0)
@@ -505,7 +505,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		policy := newPolicy(nextName("pp"), regionSelector("qatarcentral", ptr.To(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
-		wantClaimName := claimName(placementPolicyAdapter{policy}, 0)
+		wantClaimName := claimName(policy, 0)
 		claim := &kfplacementv1alpha1.ClusterClaim{}
 		Eventually(func() error {
 			return k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, claim)
@@ -543,7 +543,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		policy := newPolicy(nextName("pp"), regionSelector("spaincentral", ptr.To(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
-		wantClaimName := claimName(placementPolicyAdapter{policy}, 0)
+		wantClaimName := claimName(policy, 0)
 		oldTerms := policy.Spec.ClusterSelectors[0].Terms
 		Eventually(func() error {
 			return k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, &kfplacementv1alpha1.ClusterClaim{})

@@ -114,7 +114,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		}
 	}
 
-	outcomes, err := evaluateSelectors(policy.PolicySpec(), memberClusters.Items, r.eligibility)
+	outcomes, err := evaluateSelectors(policy.GetSpec(), memberClusters.Items, r.eligibility)
 	if err != nil {
 		// Selector evaluation fails only on invalid selector contents (e.g., an operator
 		// applied to a key it does not support); retrying cannot help until the spec changes,
@@ -157,7 +157,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 // nothing has changed. A nil outcome list clears the cluster counts (used when the selectors
 // cannot be evaluated at all); a nil activeClaims leaves the current claim count untouched.
 func (r *Reconciler) updateStatus(ctx context.Context, policy policyObject, outcomes []selectorOutcome, activeClaims *int32, scheduledCond metav1.Condition) error {
-	status := policy.PolicyStatus()
+	status := policy.GetStatus()
 	observedStatus := status.DeepCopy()
 
 	if outcomes == nil {
@@ -178,8 +178,8 @@ func (r *Reconciler) updateStatus(ctx context.Context, policy policyObject, outc
 	if apiequality.Semantic.DeepEqual(observedStatus, status) {
 		return nil
 	}
-	if err := r.Status().Update(ctx, policy.Unwrap()); err != nil {
-		klog.ErrorS(err, "Failed to update the placement policy status", "placementPolicy", client.ObjectKeyFromObject(policy.Unwrap()))
+	if err := r.Status().Update(ctx, policy); err != nil {
+		klog.ErrorS(err, "Failed to update the placement policy status", "placementPolicy", client.ObjectKeyFromObject(policy))
 		return err
 	}
 	return nil
@@ -194,13 +194,13 @@ func (r *Reconciler) fetchPolicy(ctx context.Context, req runtime.Request) (poli
 		if err := r.Get(ctx, req.NamespacedName, policy); err != nil {
 			return nil, err
 		}
-		return clusterPlacementPolicyAdapter{policy}, nil
+		return policy, nil
 	}
 	policy := &kfplacementv1alpha1.PlacementPolicy{}
 	if err := r.Get(ctx, req.NamespacedName, policy); err != nil {
 		return nil, err
 	}
-	return placementPolicyAdapter{policy}, nil
+	return policy, nil
 }
 
 // SetupWithManagerForPlacementPolicy registers the reconciler with the manager for the

@@ -30,21 +30,21 @@ import (
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 )
 
-func policyAdapterFor(name, namespace string) policyObject {
+func policyFor(name, namespace string) policyObject {
 	if namespace == "" {
-		return clusterPlacementPolicyAdapter{&kfplacementv1alpha1.ClusterPlacementPolicy{
+		return &kfplacementv1alpha1.ClusterPlacementPolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: name},
-		}}
+		}
 	}
-	return placementPolicyAdapter{&kfplacementv1alpha1.PlacementPolicy{
+	return &kfplacementv1alpha1.PlacementPolicy{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
-	}}
+	}
 }
 
 func TestClaimName(t *testing.T) {
-	policyA := policyAdapterFor("app", "tenant-a")
-	policyB := policyAdapterFor("app", "tenant-b")
-	clusterScoped := policyAdapterFor("app", "")
+	policyA := policyFor("app", "tenant-a")
+	policyB := policyFor("app", "tenant-b")
+	clusterScoped := policyFor("app", "")
 
 	nameA := claimName(policyA, 0)
 	nameB := claimName(policyB, 0)
@@ -63,7 +63,7 @@ func TestClaimName(t *testing.T) {
 		t.Errorf("claimName(tenant-a/app, 1) = claimName(tenant-a/app, 0) = %s, want distinct names per selector", nameA)
 	}
 
-	longPolicy := policyAdapterFor(strings.Repeat("x", 250), "tenant-a")
+	longPolicy := policyFor(strings.Repeat("x", 250), "tenant-a")
 	if got := claimName(longPolicy, 0); len(got) > 253 {
 		t.Errorf("claimName(long policy, 0) has length %d, want at most 253", len(got))
 	}
@@ -152,7 +152,7 @@ func TestClaimNameValidity(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := claimName(policyAdapterFor(tc.policyName, "tenant-a"), 0)
+			got := claimName(policyFor(tc.policyName, "tenant-a"), 0)
 			if errs := validation.IsDNS1123Subdomain(got); len(errs) > 0 {
 				t.Errorf("claimName(%q, 0) = %q, want a valid DNS-1123 subdomain, got errors %v", tc.policyName, got, errs)
 			}
@@ -173,7 +173,7 @@ func TestPolicyNameLabelValueValidityAtBoundaries(t *testing.T) {
 }
 
 func TestDesiredClaims(t *testing.T) {
-	policy := policyAdapterFor("app", "tenant-a")
+	policy := policyFor("app", "tenant-a")
 	regionTerms := func(region string) []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm {
 		return []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{
 			{MatchLabels: map[string]string{regionLabel: region}},
@@ -194,7 +194,7 @@ func TestDesiredClaims(t *testing.T) {
 					whenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim,
 				},
 			},
-			want: []desiredClaim{{name: claimName(policyAdapterFor("app", "tenant-a"), 0), terms: regionTerms("eastus")}},
+			want: []desiredClaim{{name: claimName(policyFor("app", "tenant-a"), 0), terms: regionTerms("eastus")}},
 		},
 		{
 			name: "budget caps at one claim across multiple unfulfilled selectors",
@@ -210,7 +210,7 @@ func TestDesiredClaims(t *testing.T) {
 					whenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim,
 				},
 			},
-			want: []desiredClaim{{name: claimName(policyAdapterFor("app", "tenant-a"), 0), terms: regionTerms("eastus")}},
+			want: []desiredClaim{{name: claimName(policyFor("app", "tenant-a"), 0), terms: regionTerms("eastus")}},
 		},
 		{
 			name: "fulfilled selectors and KeepSearching selectors yield no claims",
@@ -245,7 +245,7 @@ func TestDesiredClaims(t *testing.T) {
 					whenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim,
 				},
 			},
-			want: []desiredClaim{{name: claimName(policyAdapterFor("app", "tenant-a"), 1), terms: regionTerms("westus")}},
+			want: []desiredClaim{{name: claimName(policyFor("app", "tenant-a"), 1), terms: regionTerms("westus")}},
 		},
 	}
 
