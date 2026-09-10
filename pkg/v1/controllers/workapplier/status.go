@@ -97,7 +97,7 @@ func (r *Reconciler) refreshOneWorkStatus(
 	}
 	statusCopy.Manifests = refreshedManifestStatuses
 
-	// Set work object status conditons.
+	// Set work object status conditions.
 
 	// Do a sanity check.
 	if appliedManifestsCount > manifestCount ||
