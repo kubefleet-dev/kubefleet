@@ -2647,6 +2647,121 @@ func TestPickBindingsToRoll(t *testing.T) {
 	}
 }
 
+// TestDetermineBindingsToUpdate tests the determineBindingsToUpdate function, covering the
+// scale-to-zero case (targetNumber == 0) and preservation of rolling update constraints for
+// targetNumber > 0.
+func TestDetermineBindingsToUpdate(t *testing.T) {
+	crb1 := &placementv1beta1.ClusterResourceBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "binding-1"},
+		Spec: placementv1beta1.ResourceBindingSpec{
+			State:                placementv1beta1.BindingStateUnscheduled,
+			TargetCluster:        cluster1,
+			ResourceSnapshotName: "snapshot-1",
+		},
+	}
+	crb2 := &placementv1beta1.ClusterResourceBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "binding-2"},
+		Spec: placementv1beta1.ResourceBindingSpec{
+			State:                placementv1beta1.BindingStateBound,
+			TargetCluster:        cluster2,
+			ResourceSnapshotName: "snapshot-1",
+		},
+	}
+	crb3 := &placementv1beta1.ClusterResourceBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "binding-3"},
+		Spec: placementv1beta1.ResourceBindingSpec{
+			State:                placementv1beta1.BindingStateBound,
+			TargetCluster:        cluster3,
+			ResourceSnapshotName: "snapshot-1",
+		},
+	}
+
+	tests := map[string]struct {
+		placementObj            placementv1beta1.PlacementObj
+		removeCandidates        []toBeUpdatedBinding
+		updateCandidates        []toBeUpdatedBinding
+		boundingCandidates      []toBeUpdatedBinding
+		applyFailedCandidates   []toBeUpdatedBinding
+		targetNumber            int
+		readyBindings           []placementv1beta1.BindingObj
+		canBeReadyBindings      []placementv1beta1.BindingObj
+		canBeUnavailableBinding []placementv1beta1.BindingObj
+		wantToBeUpdated         []toBeUpdatedBinding
+		wantStaleUnselected     []toBeUpdatedBinding
+	}{
+		"targetNumber=0 with no ready bindings: all candidates are returned": {
+			placementObj: clusterResourcePlacementForTest(crpName,
+				createPlacementPolicyForTest(placementv1beta1.PickNPlacementType, 0),
+				createPlacementRolloutStrategyForTest(placementv1beta1.RollingUpdateRolloutStrategyType, generateDefaultRollingUpdateConfig(), nil)),
+			removeCandidates: []toBeUpdatedBinding{
+				{currentBinding: crb1},
+			},
+			updateCandidates: []toBeUpdatedBinding{
+				{currentBinding: crb2, desiredBinding: crb2.DeepCopy()},
+			},
+			targetNumber:        0,
+			readyBindings:       nil,
+			wantToBeUpdated:     []toBeUpdatedBinding{{currentBinding: crb1}, {currentBinding: crb2, desiredBinding: crb2.DeepCopy()}},
+			wantStaleUnselected: nil,
+		},
+		"targetNumber=0 with some ready bindings: all candidates are still returned": {
+			placementObj: clusterResourcePlacementForTest(crpName,
+				createPlacementPolicyForTest(placementv1beta1.PickNPlacementType, 0),
+				createPlacementRolloutStrategyForTest(placementv1beta1.RollingUpdateRolloutStrategyType, generateDefaultRollingUpdateConfig(), nil)),
+			removeCandidates: []toBeUpdatedBinding{
+				{currentBinding: crb1},
+			},
+			updateCandidates: []toBeUpdatedBinding{
+				{currentBinding: crb2, desiredBinding: crb2.DeepCopy()},
+			},
+			applyFailedCandidates: []toBeUpdatedBinding{
+				{currentBinding: crb3, desiredBinding: crb3.DeepCopy()},
+			},
+			targetNumber:        0,
+			readyBindings:       []placementv1beta1.BindingObj{crb2},
+			wantToBeUpdated:     []toBeUpdatedBinding{{currentBinding: crb1}, {currentBinding: crb2, desiredBinding: crb2.DeepCopy()}, {currentBinding: crb3, desiredBinding: crb3.DeepCopy()}},
+			wantStaleUnselected: nil,
+		},
+		"targetNumber>0 with no ready bindings: rolling update constraints prevent removals": {
+			placementObj: clusterResourcePlacementForTest(crpName,
+				createPlacementPolicyForTest(placementv1beta1.PickNPlacementType, 2),
+				createPlacementRolloutStrategyForTest(placementv1beta1.RollingUpdateRolloutStrategyType, generateDefaultRollingUpdateConfig(), nil)),
+			removeCandidates: []toBeUpdatedBinding{
+				{currentBinding: crb1},
+			},
+			updateCandidates: []toBeUpdatedBinding{
+				{currentBinding: crb2, desiredBinding: crb2.DeepCopy()},
+			},
+			targetNumber:        2,
+			readyBindings:       nil,
+			wantToBeUpdated:     nil,
+			wantStaleUnselected: []toBeUpdatedBinding{{currentBinding: crb2, desiredBinding: crb2.DeepCopy()}},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			gotToBeUpdated, gotStaleUnselected := determineBindingsToUpdate(
+				tt.placementObj,
+				tt.removeCandidates,
+				tt.updateCandidates,
+				tt.boundingCandidates,
+				tt.applyFailedCandidates,
+				tt.targetNumber,
+				tt.readyBindings,
+				tt.canBeReadyBindings,
+				tt.canBeUnavailableBinding,
+			)
+			if diff := cmp.Diff(tt.wantToBeUpdated, gotToBeUpdated, cmpOptions...); diff != "" {
+				t.Errorf("determineBindingsToUpdate() toBeUpdated mismatch (-want, +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantStaleUnselected, gotStaleUnselected, cmpOptions...); diff != "" {
+				t.Errorf("determineBindingsToUpdate() staleUnselected mismatch (-want, +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func createPlacementPolicyForTest(placementType placementv1beta1.PlacementType, numberOfClusters int32) *placementv1beta1.PlacementPolicy {
 	return &placementv1beta1.PlacementPolicy{
 		PlacementType:    placementType,
