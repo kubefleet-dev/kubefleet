@@ -32,6 +32,7 @@ func setDefaultSyncStrategy(work *placementv1alpha1.Work) {
 				ForceConflicts: false,
 			}
 		}
+		return
 	}
 
 	work.Spec.SyncStrategy = &placementv1alpha1.SyncStrategy{

@@ -143,14 +143,21 @@ func (r *Reconciler) processOneManifest(ctx context.Context, manifestProcessingS
 	// Perform another round of drift detection after the apply op, if the ApplyStrategy dictates
 	// that drift detection should be done in full comparison mode.
 	//
-	// Drift detection is currently always enabled in Fleet. At this stage of execution, it is
+	// Drift detection is currently always enabled in KubeFleet. At this stage of execution, it is
 	// safe for us to assume that all the managed fields have been overwritten by the just
 	// completed apply op (or no apply op is necessary); consequently, no further drift
 	// detection is necessary if the partial comparison mode is used. However, for the full
 	// comparison mode, the apply op might not to able to resolve all the drifts, should there
-	// be any change made on the unmanaged fields; and Fleet would need to perform another
+	// be any change made on the unmanaged fields; and KubeFleet would need to perform another
 	// round of drift detection.
-	r.performPostApplyDriftDetectionIfApplicable(ctx, manifestProcessingState)
+	if shouldSkipProcessing := r.performPostApplyDriftDetectionIfApplicable(ctx, manifestProcessingState); shouldSkipProcessing {
+		return
+	}
+
+	manifestProcessingState.applyRes = ApplyResTypeApplied
+	klog.V(2).InfoS("Manifest processing completed",
+		"manifestObj", klog.KObj(manifestObj), "GVR", *gvr,
+		"work", klog.KObj(ownerWorkObj), "primaryWork", klog.KObj(manifestProcessingState.fromPrimaryWorkObject))
 }
 
 // findInMemberClusterObjectFor attempts to find the corresponding object in the member cluster
@@ -416,7 +423,7 @@ func shouldPerformPreApplyDriftDetection(manifestProcessingState *manifestProces
 func (r *Reconciler) performPostApplyDriftDetectionIfApplicable(
 	ctx context.Context,
 	manifestProcessingState *manifestProcessingState,
-) {
+) (shouldSkipProcessing bool) {
 	manifestObj := manifestProcessingState.manifestObj
 	inMemberClusterObj := manifestProcessingState.inMemberClusterObj
 	ownerWorkObj := manifestProcessingState.fromWorkObj
@@ -428,7 +435,7 @@ func (r *Reconciler) performPostApplyDriftDetectionIfApplicable(
 		klog.V(2).InfoS("Post-apply drift detection is not needed; skip the step",
 			"manifestObj", klog.KObj(manifestObj), "GVR", *gvr,
 			"work", klog.KObj(ownerWorkObj), "primaryWork", klog.KObj(manifestProcessingState.fromPrimaryWorkObject))
-		return
+		return false
 	}
 
 	diffs, driftsCalculatedInDegradedMode, err := r.diffBetweenManifestAndInMemberClusterObjects(ctx,
@@ -447,7 +454,7 @@ func (r *Reconciler) performPostApplyDriftDetectionIfApplicable(
 		klog.ErrorS(err,
 			"Failed to complete post-apply drift detection",
 			errors.Args(wrappedErr)...)
-		return
+		return true
 	case len(diffs) > 0 && driftsCalculatedInDegradedMode:
 		// Configuration drifts are found, but they were calculated in degraded mode.
 		//
@@ -458,7 +465,7 @@ func (r *Reconciler) performPostApplyDriftDetectionIfApplicable(
 			"manifestObj", klog.KObj(manifestObj), "GVR", *gvr,
 			"work", klog.KObj(ownerWorkObj), "primaryWork", klog.KObj(manifestProcessingState.fromPrimaryWorkObject))
 		// The presence of such drifts is not considered as an error.
-		return
+		return false
 	case len(diffs) > 0:
 		// Drifts are found in the post-apply drift detection process.
 		manifestProcessingState.diffs = diffs
@@ -466,13 +473,13 @@ func (r *Reconciler) performPostApplyDriftDetectionIfApplicable(
 			"manifestObj", klog.KObj(manifestObj), "GVR", *gvr,
 			"work", klog.KObj(ownerWorkObj), "primaryWork", klog.KObj(manifestProcessingState.fromPrimaryWorkObject))
 		// The presence of such drifts is not considered as an error.
-		return
+		return false
 	default:
 		// No drifts are found in the post-apply drift detection process.
 		klog.V(2).InfoS("Post-apply drift detection completed; no drifts are found",
 			"manifestObj", klog.KObj(manifestObj), "GVR", *gvr,
 			"work", klog.KObj(ownerWorkObj), "primaryWork", klog.KObj(manifestProcessingState.fromPrimaryWorkObject))
-		return
+		return false
 	}
 }
 

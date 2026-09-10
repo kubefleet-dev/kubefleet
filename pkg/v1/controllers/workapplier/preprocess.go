@@ -41,17 +41,17 @@ func prepareWorkObjectAndManifestProcessingStates(works []*placementv1alpha1.Wor
 	workObjectStates := make([]*workObjectProcessingState, 0, len(works))
 	manifestProcessingStates := make([]*manifestProcessingState, 0, len(works[0].Spec.Manifests))
 
+	primaryWork := works[0]
+	primaryAppliedWorkOwnerRef := &metav1.OwnerReference{
+		APIVersion:         placementv1alpha1.GroupVersion.String(),
+		Kind:               "AppliedWork",
+		Name:               appliedWorks[0].GetName(),
+		UID:                appliedWorks[0].GetUID(),
+		BlockOwnerDeletion: ptr.To(true),
+	}
+
 	for i := range works {
 		work := works[i]
-		appliedWork := appliedWorks[i]
-
-		appliedWorkOwnerRef := &metav1.OwnerReference{
-			APIVersion:         placementv1alpha1.GroupVersion.String(),
-			Kind:               "AppliedWork",
-			Name:               appliedWork.GetName(),
-			UID:                appliedWork.GetUID(),
-			BlockOwnerDeletion: ptr.To(true),
-		}
 
 		perWorkManifestProcessingStates := make([]*manifestProcessingState, 0, len(work.Spec.Manifests))
 		for j := range work.Spec.Manifests {
@@ -59,16 +59,18 @@ func prepareWorkObjectAndManifestProcessingStates(works []*placementv1alpha1.Wor
 			manifestProcessingState := &manifestProcessingState{
 				manifest:              manifest,
 				fromWorkObj:           work,
-				fromPrimaryWorkObject: works[0],
-				ownedBy:               appliedWorkOwnerRef,
+				fromPrimaryWorkObject: primaryWork,
+				// Use the appliedWork object that corresponds to the primary work object as the owner for
+				// all manifests in this work object once they are applied.
+				ownedBy: primaryAppliedWorkOwnerRef,
 			}
 			perWorkManifestProcessingStates = append(perWorkManifestProcessingStates, manifestProcessingState)
 			manifestProcessingStates = append(manifestProcessingStates, manifestProcessingState)
 		}
 		workObjectState := &workObjectProcessingState{
 			work:                     work,
-			appliedWork:              appliedWork,
-			appliedWorkOwnerRef:      appliedWorkOwnerRef,
+			appliedWork:              appliedWorks[i],
+			appliedWorkOwnerRef:      primaryAppliedWorkOwnerRef,
 			manifestProcessingStates: perWorkManifestProcessingStates,
 		}
 		workObjectStates = append(workObjectStates, workObjectState)
@@ -77,7 +79,7 @@ func prepareWorkObjectAndManifestProcessingStates(works []*placementv1alpha1.Wor
 	return workObjectStates, manifestProcessingStates
 }
 
-func (r *Reconciler) preProcessWorkObjects(ctx context.Context, workObjProcessingStates []*workObjectProcessingState) error {
+func (r *Reconciler) preProcessWorkObjects(ctx context.Context, workObjProcessingStates []*workObjectProcessingState) (sets.Set[string], error) {
 	for idx := range workObjProcessingStates {
 		workObjProcessingState := workObjProcessingStates[idx]
 
@@ -90,7 +92,7 @@ func (r *Reconciler) preProcessWorkObjects(ctx context.Context, workObjProcessin
 			"manifestCount", len(workObjProcessingState.manifestProcessingStates))
 	}
 
-	markDuplicatedManifests(workObjProcessingStates)
+	seenManifestIDs := markDuplicatedManifests(workObjProcessingStates)
 
 	for idx := range workObjProcessingStates {
 		workObjProcessingState := workObjProcessingStates[idx]
@@ -99,14 +101,14 @@ func (r *Reconciler) preProcessWorkObjects(ctx context.Context, workObjProcessin
 		// KubeFleet can always track applied manifests, even upon untimely crashes. This method will
 		// also check for any leftover apply attempts from previous runs and clean them up (if the
 		// corresponding manifest object has been applied).
-		if err := r.writeAheadPerWorkObjManifestProcessingAttempts(ctx, workObjProcessingState); err != nil {
-			return errors.Wraps(err, "failed to write ahead manifest processing states", "work", klog.KObj(workObjProcessingState.work))
+		if err := r.writeAheadPerWorkObjManifestProcessingAttempts(ctx, workObjProcessingState, seenManifestIDs); err != nil {
+			return nil, errors.Wraps(err, "failed to write ahead manifest processing states", "work", klog.KObj(workObjProcessingState.work))
 		}
 
 		klog.V(2).InfoS("Wrote ahead manifest processing states for a work object",
 			"work", klog.KObj(workObjProcessingState.work))
 	}
-	return nil
+	return seenManifestIDs, nil
 }
 
 func (r *Reconciler) preProcessPerWorkObjManifests(ctx context.Context, manifestProcessingStates []*manifestProcessingState) {
@@ -205,7 +207,7 @@ func formatManifestIdentifierStr(id *placementv1alpha1.ManifestIdentifier) strin
 
 // markDuplicatedManifests rejects any manifest that shares an identifier with a manifest seen earlier, so that
 // only its first occurrence is applied; duplicates would otherwise overwrite one another on the member cluster.
-func markDuplicatedManifests(workObjProcessingStates []*workObjectProcessingState) {
+func markDuplicatedManifests(workObjProcessingStates []*workObjectProcessingState) sets.Set[string] {
 	// The set spans all the work objects, as linked work objects apply to the same member cluster.
 	seenManifestIDs := sets.New[string]()
 
@@ -217,7 +219,7 @@ func markDuplicatedManifests(workObjProcessingStates []*workObjectProcessingStat
 			if processingState.applyErr != nil {
 				// The manifest has already failed pre-processing; it has no usable identifier string.
 				klog.V(2).InfoS("Skipped a manifest in the duplicated manifest checking process as it has failed in the decoding process",
-					"work", klog.KObj(workObjProcessingState.work), "ordinal", idx,
+					"work", klog.KObj(workObjProcessingState.work), "ordinal", i,
 					"applyErr", processingState.applyErr, "applyResTyp", processingState.applyRes)
 				continue
 			}
@@ -234,14 +236,16 @@ func markDuplicatedManifests(workObjProcessingStates []*workObjectProcessingStat
 
 		klog.V(2).InfoS("Completed the check for duplicated manifests", "work", klog.KObj(workObjProcessingState.work))
 	}
+	return seenManifestIDs
 }
 
-func (r *Reconciler) writeAheadPerWorkObjManifestProcessingAttempts(ctx context.Context, workObjProcessingState *workObjectProcessingState) error {
+func (r *Reconciler) writeAheadPerWorkObjManifestProcessingAttempts(ctx context.Context,
+	workObjProcessingState *workObjectProcessingState, seenManifestIDs sets.Set[string]) error {
 	work := workObjProcessingState.work
 	manifestProcessingStates := workObjProcessingState.manifestProcessingStates
 
 	// As a shortcut, if there's no spec change in the Work object and the status indicates that
-	// a previous apply attempt has been recorded (**successful or not**), Fleet will skip the write-ahead
+	// a previous apply attempt has been recorded (**successful or not**), KubeFleet will skip the write-ahead
 	// op.
 	appliedCond := meta.FindStatusCondition(work.Status.Conditions, placementv1alpha1.WorkCondTypeApplied)
 	if appliedCond != nil && appliedCond.ObservedGeneration == work.Generation {
@@ -279,7 +283,7 @@ func (r *Reconciler) writeAheadPerWorkObjManifestProcessingAttempts(ctx context.
 
 	// Identify any manifests from previous runs that might have been applied and are now left
 	// over in the member cluster.
-	leftOverManifests := findLeftOverManifests(perManifestStatusesToWriteAhead, work, existingManifestStatusIdx)
+	leftOverManifests := findLeftOverManifests(perManifestStatusesToWriteAhead, work, existingManifestStatusIdx, seenManifestIDs)
 	if err := r.removeLeftOverManifests(ctx, leftOverManifests, workObjProcessingState); err != nil {
 		return errors.Wraps(err, "failed to remove leftover manifests",
 			"work", klog.KObj(work), "leftOverManifestCount", len(leftOverManifests), "removalFailedCount", len(err.Errors()))
@@ -327,7 +331,7 @@ func buildManifestStatusToWriteAhead(manifestProcessingState *manifestProcessing
 		return work.Status.Manifests[idx]
 	}
 
-	// The manifest has not been processed before; report that Fleet is preparing to process it.
+	// The manifest has not been processed before; report that KubeFleet is preparing to process it.
 	return placementv1alpha1.PerManifestStatus{
 		Identifier: *manifestProcessingState.id,
 		Conditions: []metav1.Condition{
@@ -347,6 +351,7 @@ func findLeftOverManifests(
 	perManifestStatusesToWriteAhead []placementv1alpha1.PerManifestStatus,
 	work *placementv1alpha1.Work,
 	existingManifestStatusIdx map[string]int,
+	seenManifestIDs sets.Set[string],
 ) []placementv1alpha1.ManifestIdentifier {
 	// Build an index for quicker lookup in the newly prepared write-ahead manifest conditions.
 	// Here the work applier uses the string representations as map keys; ordinals are omitted from any lookup.
@@ -360,7 +365,7 @@ func findLeftOverManifests(
 
 	// For each manifest condition in the existing set of manifest conditions, check if
 	// there is a corresponding entry in the set of manifest conditions prepared for the write-ahead
-	// process. If not, Fleet will consider that the manifest has been left over on the member
+	// process. If not, the work applier will consider that the manifest has been left over on the member
 	// cluster side and should be removed.
 
 	// An existing manifest status without a counterpart in the write-ahead set refers to a manifest that
@@ -373,9 +378,18 @@ func findLeftOverManifests(
 			continue
 		}
 
+		if seenManifestIDs.Has(existingManifestIDStr) {
+			// There exists a corner case where a manifest might have changed its location, i.e., it was previously
+			// seen on work object A but now lives on work object B. In this case the manifest should not be
+			// categorized as a left-over manifest.
+			klog.V(2).InfoS("A manifest has moved to another work object; it will not be considered a left-over manifest",
+				"manifestID", existingManifestIDStr, "work", klog.KObj(work))
+			continue
+		}
+
 		existingManifestStatus := work.Status.Manifests[existingManifestStatusIdx]
 
-		// Fleet assumes that the manifest has been applied if:
+		// The work applier assumes that the manifest has been applied if:
 		// a) it has an Applied condition set to the True status; or
 		// b) it has an Applied condition which signals that the object is preparing to be processed.
 		//
@@ -385,7 +399,6 @@ func findLeftOverManifests(
 		if appliedCond == nil {
 			continue
 		}
-
 		if appliedCond.Status == metav1.ConditionTrue || appliedCond.Reason == placementv1alpha1.WorkAppliedCondPreparingToProcessReason {
 			leftOverManifests = append(leftOverManifests, existingManifestStatus.Identifier)
 		}
@@ -497,7 +510,7 @@ func (r *Reconciler) removeOneLeftOverManifest(
 				// right before the deletion request is sent.
 				//
 				// Technically speaking resource version based concurrency control should also be
-				// enabled here; the work applier drops the check to avoid conflicts; this is safe as the Fleet
+				// enabled here; the work applier drops the check to avoid conflicts; this is safe as the KubeFleet
 				// ownership is considered to be a reserved field and other changes on the object are
 				// irrelevant to this step.
 				UID: &inMemberClusterObjUID,

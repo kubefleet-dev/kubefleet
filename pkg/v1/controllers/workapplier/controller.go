@@ -30,7 +30,10 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrloption "sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
@@ -41,7 +44,7 @@ const (
 	controllerName   = "work-applier"
 	fieldManagerName = "kubefleet-member-agent"
 
-	workAppliedCleanupFinalizer = "placement.kubefleet.dev/work-cleanup"
+	workApplierCleanupFinalizer = "placement.kubefleet.dev/work-cleanup"
 )
 
 type ApplyResultType string
@@ -162,8 +165,9 @@ type workObjectProcessingState struct {
 	// The work object being processed.
 	work *placementv1alpha1.Work
 
-	// The corresponding appliedWork object for the work object being processed.
-	appliedWork         *placementv1alpha1.AppliedWork
+	// The corresponding appliedWork object for the work object.
+	appliedWork *placementv1alpha1.AppliedWork
+	// The owner reference to use for all the manifests within the work object when they are applied.
 	appliedWorkOwnerRef *metav1.OwnerReference
 
 	// The processing state of each manifest within the work object.
@@ -172,8 +176,9 @@ type workObjectProcessingState struct {
 
 type Reconciler struct {
 	hubClient          client.Client
-	spokeDynamicClient dynamic.Interface
+	hubUncachedReader  client.Reader
 	spokeClient        client.Client
+	spokeDynamicClient dynamic.Interface
 
 	workNSName string
 
@@ -181,7 +186,37 @@ type Reconciler struct {
 
 	parallelizer parallelizerutil.Parallelizer
 
+	concurrentReconciles int
+	cleanupRequeueAfter  time.Duration
+	periodicRequeueAfter time.Duration
+	cleanupWaitTime      time.Duration
+
 	ready atomic.Bool
+}
+
+func New(workNSName string,
+	hubClient client.Client, hubUncachedReader client.Reader,
+	spokeClient client.Client, spokeDynamicClient dynamic.Interface,
+	restMapper meta.RESTMapper,
+	parallelizer parallelizerutil.Parallelizer,
+	concurrentReconciles int,
+	cleanupRequeueAfter time.Duration,
+	periodicRequeueAfter time.Duration,
+	cleanupWaitTime time.Duration,
+) *Reconciler {
+	return &Reconciler{
+		workNSName:           workNSName,
+		hubClient:            hubClient,
+		hubUncachedReader:    hubUncachedReader,
+		spokeDynamicClient:   spokeDynamicClient,
+		spokeClient:          spokeClient,
+		restMapper:           restMapper,
+		parallelizer:         parallelizer,
+		concurrentReconciles: concurrentReconciles,
+		cleanupRequeueAfter:  cleanupRequeueAfter,
+		periodicRequeueAfter: periodicRequeueAfter,
+		cleanupWaitTime:      cleanupWaitTime,
+	}
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -219,7 +254,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	// Retrieve all linked work objects.
-	works, err := r.retrieveLinkedWorks(ctx, work)
+	linkedWorks, leftOverWorks, err := r.retrieveLinkedAndLeftOverWorks(ctx, work)
 	if err != nil {
 		wrappedErr := errors.Wraps(err, "", "primaryWork", klog.KObj(work), "controller", controllerName)
 		klog.ErrorS(err, "Failed to retrieve linked work objects", errors.Args(wrappedErr)...)
@@ -228,23 +263,33 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	// Clean things up if the work object has been marked for deletion.
 	if !work.DeletionTimestamp.IsZero() {
-		// Perform cleanup logic here.
-		panic("not yet implemented")
+		requeueAfter, err := r.cleanupWhenPlacementDeleted(ctx, linkedWorks, leftOverWorks)
+		if err != nil {
+			wrappedErr := errors.Wraps(err, "", "primaryWork", klog.KObj(work), "controller", controllerName)
+			klog.ErrorS(err, "Failed to clean up linked work objects", errors.Args(wrappedErr)...)
+			return ctrl.Result{}, wrappedErr
+		}
+		if requeueAfter != nil {
+			return ctrl.Result{RequeueAfter: *requeueAfter}, nil
+		}
+		return ctrl.Result{}, nil
 	}
 
 	// Add cleanup finalizer to all linked work objects.
-	if err := r.addCleanupFinalizerTo(ctx, works); err != nil {
+	if err := r.addCleanupFinalizerTo(ctx, linkedWorks); err != nil {
 		wrappedErr := errors.Wraps(err, "", "primaryWork", klog.KObj(work), "controller", controllerName)
 		klog.ErrorS(err, "Failed to add cleanup finalizer to linked work objects", errors.Args(wrappedErr)...)
 		return ctrl.Result{}, wrappedErr
 	}
 
-	// Ensure one appliedWork object for each linked work object. These objects are created as owners for
-	// applied manifests.
+	// Ensure an appliedWork object for each work object.
 	//
-	// Note that this method returns a list of appliedWork objects in the same order as the passed-in linked
-	// work objects.
-	appliedWorks, err := r.ensureAppliedWorks(ctx, works)
+	// The appliedWork object that corresponds to the primary work object will be set as the owner for all
+	// applied manifests across the linked work objects.
+	//
+	// Note that the appliedWork objects are returned in the same order as their corresponding work objects in the
+	// input.
+	appliedWorks, err := r.ensureAppliedWorks(ctx, linkedWorks)
 	if err != nil {
 		wrappedErr := errors.Wraps(err, "", "primaryWork", klog.KObj(work), "controller", controllerName)
 		klog.ErrorS(err, "Failed to ensure appliedWork objects for linked work objects", errors.Args(wrappedErr)...)
@@ -252,7 +297,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	// Prepare the processing states for the work objects and their manifests.
-	workObjProcessingStates, manifestProcessingStates := prepareWorkObjectAndManifestProcessingStates(works, appliedWorks)
+	workObjProcessingStates, manifestProcessingStates := prepareWorkObjectAndManifestProcessingStates(linkedWorks, appliedWorks)
 
 	// Pre-process the manifests to apply.
 	//
@@ -260,9 +305,19 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// a) decode the manifests; and
 	// b) write ahead the manifest processing attempts; and
 	// c) remove any applied manifests left over from previous runs.
-	if err := r.preProcessWorkObjects(ctx, workObjProcessingStates); err != nil {
+	seenManifestIDs, err := r.preProcessWorkObjects(ctx, workObjProcessingStates)
+	if err != nil {
 		wrappedErr := errors.Wraps(err, "", "primaryWork", klog.KObj(work), "controller", controllerName)
 		klog.ErrorS(err, "Failed to pre-process work objects", errors.Args(wrappedErr)...)
+		return ctrl.Result{}, wrappedErr
+	}
+
+	// Before processing the manifests in the linked work objects, handle the left-over work objects: check if
+	// there is any applied manifest on them that needs to be cleaned up, and drop the cleanup finalizer
+	// from these work objects.
+	if err := r.cleanupLeftOverWorks(ctx, leftOverWorks, seenManifestIDs, workObjProcessingStates[0].appliedWorkOwnerRef); err != nil {
+		wrappedErr := errors.Wraps(err, "", "primaryWork", klog.KObj(work), "controller", controllerName)
+		klog.ErrorS(err, "Failed to clean up left-over work objects", errors.Args(wrappedErr)...)
 		return ctrl.Result{}, wrappedErr
 	}
 
@@ -296,7 +351,22 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, wrappedErr
 	}
 
-	panic("not yet implemented")
+	// Refresh the status of the AppliedWork object.
+	if err := r.refreshAppliedWorkStatus(ctx, workObjProcessingStates); err != nil {
+		wrappedErr := errors.Wraps(err, "", "primaryWork", klog.KObj(work), "controller", controllerName)
+		klog.ErrorS(err, "Failed to refresh appliedWork object status", errors.Args(wrappedErr)...)
+		return ctrl.Result{}, wrappedErr
+	}
 
-	return ctrl.Result{}, nil
+	// Periodically requeue the work object to check and (re-)apply manifests.
+	return ctrl.Result{RequeueAfter: r.periodicRequeueAfter}, nil
+}
+
+func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		WithOptions(ctrloption.Options{
+			MaxConcurrentReconciles: r.concurrentReconciles,
+		}).
+		For(&placementv1alpha1.Work{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Complete(r)
 }

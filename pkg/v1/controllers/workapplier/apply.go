@@ -44,7 +44,7 @@ import (
 var builtInScheme = runtime.NewScheme()
 
 func init() {
-	// This is a trick that allows Fleet to check if a resource is a K8s built-in one.
+	// This is a trick that allows KubeFleet to check if a resource is a K8s built-in one.
 	_ = clientgoscheme.AddToScheme(builtInScheme)
 }
 
@@ -246,11 +246,11 @@ func sanitizeManifestObject(manifestObj *unstructured.Unstructured) *unstructure
 	// Remove the status field.
 	unstructured.RemoveNestedField(manifestObjCopy.Object, "status")
 
-	// Note: in the Fleet hub agent logic, the system also handles the Service and Job objects
+	// Note: in the KubeFleet hub agent logic, the system also handles the Service and Job objects
 	// in a special way, so as to remove certain fields that are set by the hub cluster API
-	// server automatically; for the Fleet member agent logic here, however, Fleet assumes
+	// server automatically; for the KubeFleet member agent logic here, however, KubeFleet assumes
 	// that if these fields are set, users must have set them on purpose, and they should not
-	// be removed. The difference comes to the fact that the Fleet member agent sanitization
+	// be removed. The difference comes to the fact that the KubeFleet member agent sanitization
 	// logic concerns only the enveloped objects, which are free from any hub cluster API
 	// server manipulation anyway.
 
@@ -607,7 +607,7 @@ func (r *Reconciler) serverSideApply(
 	// Check if forced server-side apply is needed even if it is not turned on by the user.
 	//
 	// Note (chenyu1): This is added to addresses cases where Kubernetes might register
-	// Fleet (the member agent) as an Update typed field manager for the object, which blocks
+	// KubeFleet (the member agent) as an Update typed field manager for the object, which blocks
 	// the same agent itself from performing a server-side apply due to conflicts,
 	// as Kubernetes considers Update typed and Apply typed field managers to be different
 	// entities, despite having the same identifier. In these cases, users will see their

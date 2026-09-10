@@ -47,11 +47,15 @@ const (
 )
 
 // isOwnedByOlderKubeFleetAPIObjects checks if the object in the member cluster is owned by older KubeFleet API
-// objects, specifically the appliedWork objects in the `kubernetes-fleet.io` API group.
+// objects, specifically the appliedWork objects in the `placement.kubernetes-fleet.io` API group.
 //
-// This is added as a safeguard to avoid scenarions where a manifest is applied via both the newer PlacementPolicy
+// This is added as a safeguard to avoid scenarios where a manifest is applied via both the newer PlacementPolicy
 // APIs and the older ResourcePlacement APIs. And the safeguard always runs regardless of the sync strategy in use.
 func isOwnedByOlderKubeFleetAPIObjects(inMemberClusterObj *unstructured.Unstructured) bool {
+	if inMemberClusterObj == nil {
+		return false
+	}
+
 	curOwners := inMemberClusterObj.GetOwnerReferences()
 	for idx := range curOwners {
 		owner := &curOwners[idx]
@@ -371,7 +375,7 @@ func discardFieldsIrrelevantInComparisonFrom(obj *unstructured.Unstructured) *un
 		}
 
 		if strings.Contains(k, kubefleetReservedLabelAnnotationDomain) {
-			// Skip Fleet reserved annotations.
+			// Skip KubeFleet reserved annotations.
 			continue
 		}
 		cleanedAnnotations[k] = v
@@ -392,7 +396,7 @@ func discardFieldsIrrelevantInComparisonFrom(obj *unstructured.Unstructured) *un
 		}
 
 		if strings.Contains(k, kubefleetReservedLabelAnnotationDomain) {
-			// Skip Fleet reserved labels.
+			// Skip KubeFleet reserved labels.
 			continue
 		}
 		cleanedLabels[k] = v
@@ -404,7 +408,7 @@ func discardFieldsIrrelevantInComparisonFrom(obj *unstructured.Unstructured) *un
 	// these fields (except for the finalizers) before applying the manifests.
 	// As a result, for now KubeFleet will ignore them in the comparison process as well.
 	//
-	// TO-DO (chenyu1): evaluate if this is a correct assumption for most (if not all) Fleet
+	// TO-DO (chenyu1): evaluate if this is a correct assumption for most (if not all) KubeFleet
 	// users.
 	objCopy.SetFinalizers([]string{})
 	objCopy.SetManagedFields([]metav1.ManagedFieldsEntry{})

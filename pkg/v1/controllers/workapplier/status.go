@@ -35,6 +35,16 @@ func (r *Reconciler) refreshWorkStatus(
 	ctx context.Context,
 	workObjProcessingStates []*workObjectProcessingState,
 ) error {
+	// Note (chenyu1): it is possible to run this method in parallel; however, for simplicity reasons,
+	// considering that in most of the time the count of work objects would be low, currently
+	// KubeFleet still does the status refresh sequentially.
+	for idx := range workObjProcessingStates {
+		workObjProcessingState := workObjProcessingStates[idx]
+		if err := r.refreshOneWorkStatus(ctx, workObjProcessingState); err != nil {
+			wrappedErr := errors.Wraps(err, "", "work", klog.KObj(workObjProcessingState.work))
+			return wrappedErr
+		}
+	}
 	return nil
 }
 
@@ -47,7 +57,7 @@ func (r *Reconciler) refreshOneWorkStatus(
 
 	// Note (chenyu1): it is possible to run this method in parallel; however, for simplicity reasons,
 	// considering that in most of the time the count of manifests would be low, currently
-	// Fleet still does the status refresh sequentially.
+	// KubeFleet still does the status refresh sequentially.
 
 	// Set up the counters.
 	manifestCount := len(workObjProcessingState.manifestProcessingStates)
@@ -447,4 +457,72 @@ func setWorkAvailableCondition(
 func shouldSkipStatusUpdate(oldStatus, newStatus *placementv1alpha1.WorkStatus) bool {
 	// Skip status update if there is no change in the status.
 	return equality.Semantic.DeepEqual(oldStatus, newStatus)
+}
+
+// refreshAppliedWorkStatus refreshes the status of appliedWork objects.
+func (r *Reconciler) refreshAppliedWorkStatus(
+	ctx context.Context,
+	workObjProcessingStates []*workObjectProcessingState,
+) error {
+	// Note (chenyu1): it is possible to run this method in parallel; however, for simplicity reasons,
+	// considering that in most of the time the count of work objects would be low, currently
+	// KubeFleet still does the status refresh sequentially.
+	for idx := range workObjProcessingStates {
+		workObjProcessingState := workObjProcessingStates[idx]
+		if err := r.refreshOneAppliedWorkStatus(ctx, workObjProcessingState); err != nil {
+			wrappedErr := errors.Wraps(err, "", "appliedWork", klog.KObj(workObjProcessingState.appliedWork))
+			return wrappedErr
+		}
+	}
+	return nil
+}
+
+func (r *Reconciler) refreshOneAppliedWorkStatus(
+	ctx context.Context,
+	workObjProcessingState *workObjectProcessingState,
+) error {
+	appliedWork := workObjProcessingState.appliedWork
+	appliedWorkStatusCopy := appliedWork.Status.DeepCopy()
+
+	manifestProcessingStates := workObjProcessingState.manifestProcessingStates
+
+	// Note (chenyu1): It is possible to run this method in parallel; however, for simplicity reasons,
+	// considering that in most of the time the count of manifests would be low, currently
+	// KubeFleet still does the status refresh sequentially.
+
+	// Pre-allocate the slice.
+	//
+	// Manifests that failed to get applied are not included in this list, hence
+	// empty length.
+	appliedResources := make([]placementv1alpha1.AppliedResource, 0, len(manifestProcessingStates))
+
+	// Build the list of applied resources.
+	for idx := range manifestProcessingStates {
+		manifestProcessingState := manifestProcessingStates[idx]
+
+		if isManifestObjectApplied(manifestProcessingState.applyRes) {
+			appliedResources = append(appliedResources, placementv1alpha1.AppliedResource{
+				ManifestIdentifier: *manifestProcessingState.id,
+				UID:                manifestProcessingState.inMemberClusterObj.GetUID(),
+			})
+		}
+	}
+
+	// Update the AppliedWork object status.
+	appliedWorkStatusCopy.AppliedResources = appliedResources
+
+	// Skip the status update if no change found.
+	if equality.Semantic.DeepEqual(&appliedWork.Status, appliedWorkStatusCopy) {
+		klog.V(2).InfoS("No status change found for appliedWork object; skip the status update", "appliedWork", klog.KObj(appliedWork))
+	} else {
+		klog.V(2).InfoS("Refreshing appliedWork object status", "appliedWork", klog.KObj(appliedWork))
+
+		appliedWork.Status = *appliedWorkStatusCopy
+		if err := r.spokeClient.Status().Update(ctx, appliedWork); err != nil {
+			klog.ErrorS(err, "Failed to update appliedWork status",
+				"appliedWork", klog.KObj(appliedWork))
+			return errors.NewAPIServerError(err, "failed to update appliedWork object status", false, "appliedWork", klog.KObj(appliedWork))
+		}
+	}
+	return nil
 }
