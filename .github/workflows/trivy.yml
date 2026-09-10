@@ -1,7 +1,7 @@
 name: Trivy Vulnerability Scanner
 on:
   schedule:
-    - cron: '0 6 * * *' # Daily at 6:00 AM UTC
+    - cron: '0 6 * * *' # Daily at 6:00 AM UTC; findings are reported into a single issue per ISO week
   push:
     branches:
       - main
@@ -21,7 +21,7 @@ env:
   MEMBER_AGENT_IMAGE_NAME: member-agent
   REFRESH_TOKEN_IMAGE_NAME: refresh-token
 
-  GO_VERSION: '1.25.12'
+  GO_VERSION: '1.26.6'
 
 jobs:
   export-registry:
@@ -47,10 +47,10 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Login to ${{ env.REGISTRY }}
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -81,7 +81,7 @@ jobs:
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-          TRIVY_DB_REPOSITORY: mcr.microsoft.com/mirror/ghcr/aquasecurity/trivy-db
+          TRIVY_DB_REPOSITORY: mcr.microsoft.com/oss/v2/aquasecurity/trivy-db
 
       - name: Scan ${{ env.REGISTRY }}/${{ env.MEMBER_AGENT_IMAGE_NAME }}:${{ env.IMAGE_VERSION }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -96,7 +96,7 @@ jobs:
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-          TRIVY_DB_REPOSITORY: mcr.microsoft.com/mirror/ghcr/aquasecurity/trivy-db
+          TRIVY_DB_REPOSITORY: mcr.microsoft.com/oss/v2/aquasecurity/trivy-db
 
       - name: Scan ${{ env.REGISTRY }}/${{ env.REFRESH_TOKEN_IMAGE_NAME }}:${{ env.IMAGE_VERSION }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -111,7 +111,7 @@ jobs:
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-          TRIVY_DB_REPOSITORY: mcr.microsoft.com/mirror/ghcr/aquasecurity/trivy-db
+          TRIVY_DB_REPOSITORY: mcr.microsoft.com/oss/v2/aquasecurity/trivy-db
 
       - name: Check for vulnerabilities
         id: check-vulns
@@ -142,9 +142,9 @@ jobs:
         run: |
           {
             echo 'body<<EOF'
-            echo "## Trivy CVE Scan - $(date -u +%Y-%m-%d)"
+            echo "## Trivy CVE Scan - $(date -u +%G-W%V) (last updated $(date -u +%Y-%m-%d))"
             echo ""
-            echo "The daily vulnerability scan found **HIGH/CRITICAL** CVEs in our container images."
+            echo "The latest vulnerability scan found **HIGH/CRITICAL** CVEs in our container images."
             echo "Please remediate the vulnerabilities listed below."
             echo ""
             echo "### Vulnerabilities"
@@ -175,38 +175,78 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - name: Create issue for Copilot
+      - name: Create or update security issue
         if: steps.check-vulns.outputs.has_vulns == 'true' && github.event_name == 'schedule'
         uses: actions/github-script@v9
         with:
           script: |
-            const today = new Date().toISOString().split('T')[0];
-            const title = `fix: address trivy CVEs found on ${today}`;
+            // ISO week date (e.g. 2026-W37); the ISO year can differ from the calendar year near year end.
+            const isoWeek = (date) => {
+              const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+              d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+              const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+              const week = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+              return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+            };
 
-            // Check if an open issue already exists for today
-            const existing = await github.rest.issues.listForRepo({
+            const currentWeek = isoWeek(new Date());
+            const title = `fix: address trivy CVEs found in ${currentWeek}`;
+            const securityTeam = '@kubefleet-dev/kubefleet-secops';
+            const body = `${process.env.ISSUE_BODY}\n\n### Security owners\n${securityTeam}`;
+
+            // Every report this workflow files carries these labels; they are the only handle used to find prior reports.
+            const reportLabels = ['security', 'trivy'];
+
+            const open = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: 'open',
-              labels: 'security,trivy',
+              labels: reportLabels.join(','),
+              sort: 'created',
+              direction: 'desc',
               per_page: 100
             });
-            const alreadyExists = existing.data.some(i => i.title === title);
-            if (alreadyExists) {
-              console.log('Issue already exists for today, skipping.');
-              return;
+            // listForRepo also returns pull requests, which are never trivy reports.
+            const reports = open.filter(i => !i.pull_request);
+
+            const newest = reports[0];
+            const thisWeek = newest && isoWeek(new Date(newest.created_at)) === currentWeek ? newest : null;
+
+            if (thisWeek) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: thisWeek.number,
+                body: body
+              });
+              console.log(`Updated issue #${thisWeek.number} with the current scan.`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: reportLabels
+              });
+              console.log(`Created issue #${created.data.number} for ${currentWeek}.`);
             }
 
-            const body = process.env.ISSUE_BODY;
-            const issue = await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: title,
-              body: body + '\n\n/cc @kubefleet-dev/kubefleet-secops',
-              labels: ['security', 'trivy'],
-              assignees: ['copilot'],
-            });
-            console.log(`Created issue #${issue.data.number}`);
+            // Any other open report predates this week; the current one supersedes it.
+            for (const stale of reports.filter(i => i.number !== thisWeek?.number)) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: stale.number,
+                body: `Superseded by the scan reported in \`${title}\`; closing this stale report.`
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: stale.number,
+                state: 'closed',
+                state_reason: 'not_planned'
+              });
+              console.log(`Closed stale issue #${stale.number} (created ${stale.created_at}).`);
+            }
         env:
           ISSUE_BODY: ${{ steps.vuln-summary.outputs.body }}
-
