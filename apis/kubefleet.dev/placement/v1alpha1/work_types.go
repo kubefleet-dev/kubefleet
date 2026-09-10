@@ -297,7 +297,19 @@ type AppliedResource struct {
 	UID types.UID `json:"uid,omitempty"`
 }
 
+// AppliedWorkList contains a list of AppliedWork.
+//
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Cluster
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type AppliedWorkList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+
+	Items []AppliedWork `json:"items"`
+}
+
 // Set up the API types with the scheme builder.
 func init() {
-	SchemeBuilder.Register(&Work{}, &WorkList{}, &AppliedWork{})
+	SchemeBuilder.Register(&Work{}, &WorkList{}, &AppliedWork{}, &AppliedWorkList{})
 }
