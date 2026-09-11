@@ -116,6 +116,7 @@ func (r *Reconciler) processOneManifest(
 ) {
 	workRef := klog.KObj(work)
 	manifestObjRef := klog.KObj(bundle.manifestObj)
+	defer hideDiffValuesUnlessOwned(bundle, expectedAppliedWorkOwnerRef)
 	// Note (chenyu1): Fleet does not track references for objects in the member cluster as
 	// the references should be the same as those of the manifest objects, provided that Fleet
 	// does not support objects with generate names for now.
@@ -199,6 +200,17 @@ func (r *Reconciler) processOneManifest(
 	bundle.applyOrReportDiffResTyp = ApplyOrReportDiffResTypeApplied
 	klog.V(2).InfoS("Manifest processing completed",
 		"manifestObj", manifestObjRef, "GVR", *bundle.gvr, "work", workRef)
+}
+
+func hideDiffValuesUnlessOwned(bundle *manifestProcessingBundle, expectedAppliedWorkOwnerRef *metav1.OwnerReference) {
+	if bundle.inMemberClusterObj != nil && canApplyWithOwnership(bundle.inMemberClusterObj, expectedAppliedWorkOwnerRef) {
+		return
+	}
+
+	for idx := range bundle.diffs {
+		bundle.diffs[idx].ValueInMember = ""
+		bundle.diffs[idx].ValueInHub = ""
+	}
 }
 
 // findInMemberClusterObjectFor attempts to find the corresponding object in the member cluster
