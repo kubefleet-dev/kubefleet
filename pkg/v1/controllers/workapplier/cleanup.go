@@ -43,9 +43,9 @@ func (r *Reconciler) cleanupWhenPlacementDeleted(ctx context.Context,
 	primaryWork := linkedWorks[0]
 	setDefaultSyncStrategy(primaryWork)
 
-	deletePolicy := metav1.DeletePropagationForeground
+	deletionPolicy := metav1.DeletePropagationForeground
 	if primaryWork.Spec.SyncStrategy.WhenPlacementDeleted == placementv1alpha1.WhenPlacementDeletedOptionOrphanResources {
-		deletePolicy = metav1.DeletePropagationOrphan
+		deletionPolicy = metav1.DeletePropagationOrphan
 	}
 
 	// All the manifests across the linked work objects are owned by the appliedWork object of the primary work.
@@ -62,13 +62,13 @@ func (r *Reconciler) cleanupWhenPlacementDeleted(ctx context.Context,
 		return nil, errors.NewAPIServerError(err, "failed to retrieve the appliedWork object", true, "appliedWork", klog.KObj(appliedWork))
 	case appliedWork.DeletionTimestamp.IsZero():
 		// The appliedWork object exists and has not been marked for deletion yet; delete it.
-		if err := r.spokeClient.Delete(ctx, appliedWork, &client.DeleteOptions{PropagationPolicy: &deletePolicy}); err != nil && !apierrors.IsNotFound(err) {
+		if err := r.spokeClient.Delete(ctx, appliedWork, &client.DeleteOptions{PropagationPolicy: &deletionPolicy}); err != nil && !apierrors.IsNotFound(err) {
 			// An unexpected error has occurred.
 			return nil, errors.NewAPIServerError(err, "failed to delete the appliedWork object", false,
-				"appliedWork", klog.KObj(appliedWork), "propagationPolicy", deletePolicy)
+				"appliedWork", klog.KObj(appliedWork), "propagationPolicy", deletionPolicy)
 		}
 		klog.V(2).InfoS("The primary appliedWork object has been marked for deletion; wait for the deletion to complete",
-			"appliedWork", klog.KObj(appliedWork), "propagationPolicy", deletePolicy)
+			"appliedWork", klog.KObj(appliedWork), "propagationPolicy", deletionPolicy)
 		return &r.cleanupRequeueAfter, nil
 	default:
 		// The appliedWork object has been marked for deletion; wait for the deletion to complete.
@@ -77,15 +77,41 @@ func (r *Reconciler) cleanupWhenPlacementDeleted(ctx context.Context,
 			return &r.cleanupRequeueAfter, nil
 		}
 
-		// The appliedWork object has been stuck in the pending deletion state for longer than the cleanup wait time;
-		// manually update owner references from all the applied manifests so that they no longer block the deletion
-		// of the appliedWork object. Once the appliedWork object is gone, GC will handle the cleanup of the manifests.
-		if err := r.manuallyUpdateOwnerReferencesOnManifests(ctx, appliedWork, linkedWorks, leftOverWorks); err != nil {
-			return nil, errors.Wraps(err, "failed to manually remove owner references from manifests")
+		if _, found := appliedWork.Annotations[appliedWorkForcedDeletedAnnotationKey]; !found {
+			klog.V(2).InfoS("The primary appliedWork object has been stuck in the pending deletion state; force-remove KubeFleet owner reference from applied manifests as a last resort",
+				"appliedWork", klog.KObj(appliedWork))
+			// The appliedWork object has been stuck in the pending deletion state for longer than the cleanup wait time;
+			// manually update owner references from all the applied manifests so that they no longer block the deletion
+			// of the appliedWork object.
+			if err := r.manuallyUpdateOwnerReferencesOnManifests(ctx, appliedWork, linkedWorks, leftOverWorks); err != nil {
+				return nil, errors.Wraps(err, "failed to manually remove owner references from manifests")
+			}
+
+			// Add the force-deleted annotation to the appliedWork object.
+			appliedWorkPatch := client.MergeFrom(appliedWork.DeepCopy())
+			annotations := appliedWork.GetAnnotations()
+			if annotations == nil {
+				annotations = make(map[string]string)
+			}
+			annotations[appliedWorkForcedDeletedAnnotationKey] = "true"
+			appliedWork.SetAnnotations(annotations)
+			if err := r.spokeClient.Patch(ctx, appliedWork, appliedWorkPatch); err != nil && !apierrors.IsNotFound(err) {
+				return nil, errors.NewAPIServerError(err, "failed to add the force-deleted annotation to the appliedWork object", false,
+					"appliedWork", klog.KObj(appliedWork))
+			}
 		}
 
-		// Since the time limit has been exceeded, the work applier will not wait until the appliedWork object is
-		// actually gone; Kubernetes GC will clean things up under normal circumstances.
+		if time.Since(appliedWork.DeletionTimestamp.Time) < 2*r.cleanupWaitTime {
+			// Keep waiting.
+			return &r.cleanupRequeueAfter, nil
+		}
+
+		// If the appliedWork object is still stuck in the pending deletion state after us manually removing the
+		// owner references from all the applied manifests, the work applier will NOT keep
+		// waiting for the appliedWork object to disappear. Users should keep an eye on the GC progress (the
+		// API server/GC controller might not be fast enough) themselves, and manual intervention might be needed
+		// if the situation persists.
+		klog.Warning("The appliedWork object has been stuck in the pending deletion state for too long, and KubeFleet will proceed with the cleanup without further waiting; manual intervention might be needed.")
 	}
 
 	// Remove the cleanup finalizer from all work objects.
@@ -94,6 +120,19 @@ func (r *Reconciler) cleanupWhenPlacementDeleted(ctx context.Context,
 			work := works[idx]
 			if !controllerutil.ContainsFinalizer(work, workApplierCleanupFinalizer) {
 				continue
+			}
+
+			if work.Name != primaryWork.Name {
+				// Remove non-primary appliedWork objects.
+				appliedWork := &placementv1alpha1.AppliedWork{
+					ObjectMeta: metav1.ObjectMeta{Name: work.Name},
+				}
+				// No need to specify the propagation policy; these appliedWork objects do not own any child resources.
+				if err := r.spokeClient.Delete(ctx, appliedWork); err != nil && !apierrors.IsNotFound(err) {
+					return nil, errors.NewAPIServerError(err, "failed to delete the appliedWork object", false,
+						"appliedWork", klog.KObj(appliedWork), "work", klog.KObj(work))
+				}
+				klog.V(2).InfoS("Cleaned up the appliedWork object", "appliedWork", klog.KObj(appliedWork), "work", klog.KObj(work))
 			}
 
 			controllerutil.RemoveFinalizer(work, workApplierCleanupFinalizer)
@@ -229,6 +268,17 @@ func (r *Reconciler) cleanupLeftOverWorks(ctx context.Context,
 		if aggregatedErrs != nil {
 			return errors.Wraps(nil, "failed to remove manifests on a left-over work", "work", klog.KObj(leftOverWork), "errs", aggregatedErrs)
 		}
+
+		// Clean up the appliedWork object associated with the left-over work.
+		appliedWork := &placementv1alpha1.AppliedWork{
+			ObjectMeta: metav1.ObjectMeta{Name: leftOverWork.Name},
+		}
+		if err := r.spokeClient.Delete(ctx, appliedWork); err != nil && !apierrors.IsNotFound(err) {
+			return errors.NewAPIServerError(err, "failed to delete the appliedWork object associated with the left-over work", false,
+				"appliedWork", klog.KObj(appliedWork), "work", klog.KObj(leftOverWork))
+		}
+		klog.V(2).InfoS("Cleaned up the appliedWork object associated with the left-over work",
+			"appliedWork", klog.KObj(appliedWork), "work", klog.KObj(leftOverWork))
 
 		controllerutil.RemoveFinalizer(leftOverWork, workApplierCleanupFinalizer)
 		if err := r.hubClient.Update(ctx, leftOverWork); err != nil {

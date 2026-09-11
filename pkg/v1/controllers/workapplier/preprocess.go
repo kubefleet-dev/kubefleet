@@ -200,9 +200,10 @@ func buildManifestIdentifier(
 }
 
 func formatManifestIdentifierStr(id *placementv1alpha1.ManifestIdentifier) string {
-	// For a regular object, the string representation includes the actual name.
-	return fmt.Sprintf("GV=%s/%s, Kind=%s, Namespace=%s, Name=%s",
-		id.APIGroup, id.APIVersion, id.Kind, id.Namespace, id.Name)
+	// API version is omitted; KubeFleet will report an error if one attempts to place two manifests with the same
+	// GK but different versions.
+	return fmt.Sprintf("GK=%s/%s, Namespace=%s, Name=%s",
+		id.APIGroup, id.Kind, id.Namespace, id.Name)
 }
 
 // markDuplicatedManifests rejects any manifest that shares an identifier with a manifest seen earlier, so that

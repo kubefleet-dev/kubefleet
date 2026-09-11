@@ -45,6 +45,8 @@ const (
 	fieldManagerName = "kubefleet-member-agent"
 
 	workApplierCleanupFinalizer = "placement.kubefleet.dev/work-cleanup"
+
+	appliedWorkForcedDeletedAnnotationKey = "placement.kubefleet.dev/applied-work-forced-deleted"
 )
 
 type ApplyResultType string
