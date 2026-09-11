@@ -37,7 +37,7 @@ import (
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 )
 
-// Note (chenyu1): this package uses envtest-based environment for testing purposes as some the ops in the logic,
+// Note (chenyu1): this package uses envtest-based environment for testing purposes as some of the ops in the logic,
 // specifically the dry-run ops, require interaction with a real API server.
 
 var (

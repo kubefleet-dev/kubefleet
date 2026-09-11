@@ -81,7 +81,7 @@ func ClaimRoleAs(
 
 	found := false
 	for idx := range bindingManager.ObjectRefs {
-		if reflect.DeepEqual(bindingManager.ObjectRefs[idx], objectRef) {
+		if bindingManager.ObjectRefs[idx] == objectRef {
 			found = true
 			break
 		}
@@ -148,7 +148,7 @@ func RelinquishRoleFor(
 	found := false
 	updatedObjectRefs := make([]placementv1alpha1.ObjectReference, 0, len(bindingManager.ObjectRefs))
 	for idx := range bindingManager.ObjectRefs {
-		if reflect.DeepEqual(bindingManager.ObjectRefs[idx], objectRef) {
+		if bindingManager.ObjectRefs[idx] == objectRef {
 			found = true
 			continue
 		}
