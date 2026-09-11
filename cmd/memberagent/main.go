@@ -195,12 +195,18 @@ func buildHubConfig(hubURL string, opts options.HubConnectivityOptions) (*rest.C
 		// server URL, TLS configuration, and authentication (a bearer token, a client
 		// certificate, or a standard Kubernetes exec credential plugin for a federated
 		// identity), so none of the env-var/flag-based configuration below applies.
+		kubeConfigPath := os.Getenv("KUBE_CONFIG_PATH")
+		if kubeConfigPath == "" {
+			err := errors.New("hub kubeconfig file path cannot be empty if use-kubeconfig is set")
+			klog.ErrorS(err, "Failed to retrieve hub kubeconfig path")
+			return nil, err
+		}
 		clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-			&clientcmd.ClientConfigLoadingRules{ExplicitPath: opts.HubKubeconfigPath},
+			&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeConfigPath},
 			&clientcmd.ConfigOverrides{})
 		loadedConfig, err := clientConfig.ClientConfig()
 		if err != nil {
-			klog.ErrorS(err, "Failed to load hub kubeconfig", "path", opts.HubKubeconfigPath)
+			klog.ErrorS(err, "Failed to load hub kubeconfig", "path", kubeConfigPath)
 			return nil, err
 		}
 		return applyHubKubeHeader(loadedConfig)
