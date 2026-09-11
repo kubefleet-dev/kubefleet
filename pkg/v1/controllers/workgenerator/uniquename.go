@@ -71,7 +71,7 @@ func uniqueNameForWorkDerivedFromPlacementResourceSnapshot(
 	placementBinding placementv1alpha1.PlacementBindingAccessor,
 	isFromPrimarySnapshot bool,
 	derivedFromSrcFormatter derivedFromSourceFormatter,
-) (string, error) {
+) string {
 	namespace := placementBinding.GetNamespace()
 	policyName := placementBinding.GetSpec().PlacementPolicyName
 
@@ -98,7 +98,7 @@ func uniqueNameForWorkDerivedFromPlacementResourceSnapshot(
 		// The work is derived from the primary placement resource snapshot; the name omits the source marker segment.
 		name := fmt.Sprintf(workDerivedFromPrimarySnapshotSourceNameFmt, namespacedName, hash)
 		if len(name) <= nameLenLimit {
-			return name, nil
+			return name
 		}
 
 		// The name is too long; truncate the namespaced name segment. The hash suffix always disambiguates.
@@ -107,7 +107,7 @@ func uniqueNameForWorkDerivedFromPlacementResourceSnapshot(
 		if len(namespacedName) > availableLen {
 			namespacedName = namespacedName[:availableLen]
 		}
-		return fmt.Sprintf(workDerivedFromPrimarySnapshotSourceNameFmt, namespacedName, hash), nil
+		return fmt.Sprintf(workDerivedFromPrimarySnapshotSourceNameFmt, namespacedName, hash)
 	}
 
 	// The work is derived from another source (e.g., a secondary placement resource snapshot); the name carries
@@ -115,7 +115,7 @@ func uniqueNameForWorkDerivedFromPlacementResourceSnapshot(
 	derivedFromSrcLabel := derivedFromSrcFormatter.StrictDNSLabel()
 	name := fmt.Sprintf(workDerivedFromOtherSourcesNameFmt, namespacedName, derivedFromSrcLabel, hash)
 	if len(name) <= nameLenLimit {
-		return name, nil
+		return name
 	}
 
 	// The name is too long; truncate the namespaced name and source marker segments, splitting the available
@@ -129,5 +129,5 @@ func uniqueNameForWorkDerivedFromPlacementResourceSnapshot(
 	if len(derivedFromSrcLabel) > availablePerSeg {
 		derivedFromSrcLabel = derivedFromSrcLabel[:availablePerSeg]
 	}
-	return fmt.Sprintf(workDerivedFromOtherSourcesNameFmt, namespacedName, derivedFromSrcLabel, hash), nil
+	return fmt.Sprintf(workDerivedFromOtherSourcesNameFmt, namespacedName, derivedFromSrcLabel, hash)
 }

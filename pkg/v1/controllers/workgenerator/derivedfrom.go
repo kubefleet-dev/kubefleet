@@ -16,10 +16,6 @@ limitations under the License.
 
 package workgenerator
 
-import (
-	"k8s.io/apimachinery/pkg/types"
-)
-
 // Verify that all formatter implements the derivedFromSourceFormatter interface.
 var _ derivedFromSourceFormatter = &placementResourceSnapshotDerivedFromSourceFormatter{}
 
@@ -44,8 +40,7 @@ type derivedFromSourceFormatter interface {
 // placementResourceSnapshotDerivedFromSourceFormatter is a formatter for placement resource snapshots that implements
 // the derivedFromSourceFormatter interface.
 type placementResourceSnapshotDerivedFromSourceFormatter struct {
-	snapshotNamespacedName types.NamespacedName
-	snapshotSubIdx         string
+	snapshotSubIdx string
 }
 
 func (f *placementResourceSnapshotDerivedFromSourceFormatter) SourceID() string {

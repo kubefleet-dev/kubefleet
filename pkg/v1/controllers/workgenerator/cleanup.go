@@ -22,7 +22,6 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -51,16 +50,9 @@ func (r *Reconciler) cleanupWorks(ctx context.Context, placementBinding placemen
 	}
 
 	derivedFromSourceFormatter := &placementResourceSnapshotDerivedFromSourceFormatter{
-		snapshotNamespacedName: types.NamespacedName{
-			Namespace: placementBinding.GetNamespace(),
-			Name:      placementBinding.GetSpec().PlacementPolicyName,
-		},
 		snapshotSubIdx: "0",
 	}
-	workName, err := uniqueNameForWorkDerivedFromPlacementResourceSnapshot(placementBinding, true, derivedFromSourceFormatter)
-	if err != nil {
-		return errors.Wraps(err, "failed to generate work name for primary placement resource snapshot")
-	}
+	workName := uniqueNameForWorkDerivedFromPlacementResourceSnapshot(placementBinding, true, derivedFromSourceFormatter)
 	workForPrimaryResSnapshot := &placementv1alpha1.Work{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: fmt.Sprintf(utils.NamespaceNameFormat, placementBinding.GetSpec().ClusterName),
@@ -73,6 +65,15 @@ func (r *Reconciler) cleanupWorks(ctx context.Context, placementBinding placemen
 	}
 	// This work object is set as the owner of all other work objects created for this placement binding;
 	// no further cleanup is needed.
+
+	// If the binding has been suspended, unset its last processed resource snapshot name.
+	if placementBinding.GetSpec().Suspended && placementBinding.GetDeletionTimestamp().IsZero() {
+		placementBinding.GetStatus().LastProcessedResourceSnapshotName = nil
+
+		if err := r.hubClient.Status().Update(ctx, placementBinding); err != nil {
+			return errors.NewAPIServerError(err, "failed to update placement binding status to reset last processed resource snapshot name", false)
+		}
+	}
 
 	// Remove the cleanup finalizer from the placement binding.
 	controllerutil.RemoveFinalizer(placementBinding, workGeneratorCleanupFinalizer)

@@ -34,16 +34,22 @@ func (r *Reconciler) refreshPlacementBindingStatus(
 	ctx context.Context,
 	placementBinding placementv1alpha1.PlacementBindingAccessor,
 	works []placementv1alpha1.Work,
-) error {
+) (err error) {
 	oldStatus := placementBinding.GetStatus().DeepCopy()
 
-	refreshPlacementBindingSyncCond(placementBinding, works)
-	refreshPlacementBindingAvailableCond(placementBinding, works)
+	if notReady := refreshPlacementBindingSyncCond(placementBinding, works); notReady {
+		klog.V(2).InfoS("the synchronized condition is not yet ready to be refreshed; skipping status update for now")
+		return nil
+	}
+	if notReady := refreshPlacementBindingAvailableCond(placementBinding, works); notReady {
+		klog.V(2).InfoS("the available condition is not yet ready to be refreshed; skipping status update for now")
+		return nil
+	}
 
 	total, synced, available, failed := countResourcesInWorksByProcessingResults(works)
-	placementBinding.GetStatus().SelectedResources = ptr.To(int32(total))
-	placementBinding.GetStatus().SynchronizedResources = ptr.To(int32(synced))
-	placementBinding.GetStatus().AvailableResources = ptr.To(int32(available))
+	placementBinding.GetStatus().SelectedResources = ptr.To(total)
+	placementBinding.GetStatus().SynchronizedResources = ptr.To(synced)
+	placementBinding.GetStatus().AvailableResources = ptr.To(available)
 	if len(failed) > 50 {
 		klog.V(2).InfoS("Too many failed resources to report in placement binding status; truncating the list to 50",
 			"placementBinding", klog.KObj(placementBinding), "totalFailedResources", len(failed))
@@ -98,11 +104,11 @@ func (r *Reconciler) reportPlacementBindingProcessingProgress(
 	})
 
 	// Count the number of manifests in all created/updated work objects.
-	total := 0
+	total := int32(0)
 	for idx := range worksToCreateOrUpdate {
-		total += len(worksToCreateOrUpdate[idx].Spec.Manifests)
+		total += int32(len(worksToCreateOrUpdate[idx].Spec.Manifests)) //nolint:gosec // safe: there is no risk of overflowing due to API-level restrictions.
 	}
-	placementBindingStatus.SelectedResources = ptr.To(int32(total))
+	placementBindingStatus.SelectedResources = ptr.To(total)
 
 	// Clear the other counters and failed resources as their previous values no longer apply.
 	placementBindingStatus.SynchronizedResources = nil
@@ -117,12 +123,18 @@ func (r *Reconciler) reportPlacementBindingProcessingProgress(
 	return nil
 }
 
-func refreshPlacementBindingSyncCond(placementBinding placementv1alpha1.PlacementBindingAccessor, works []placementv1alpha1.Work) {
+func refreshPlacementBindingSyncCond(placementBinding placementv1alpha1.PlacementBindingAccessor, works []placementv1alpha1.Work) (notReady bool) {
 	// The binding is synchronized only if every work has been applied and its applied condition is up-to-date.
 	synchronized := true
 	for idx := range works {
 		work := &works[idx]
 		appliedCond := meta.FindStatusCondition(work.Status.Conditions, placementv1alpha1.WorkCondTypeApplied)
+		if appliedCond == nil || appliedCond.ObservedGeneration != work.Generation {
+			// The work object has not been applied or its applied condition is outdated. Instead of refreshing
+			// the placement binding status conditions on stale data, return a transient error and wait for
+			// the status to be updated.
+			return true
+		}
 		if !condition.IsConditionStatusTrue(appliedCond, work.GetGeneration()) {
 			synchronized = false
 			break
@@ -148,14 +160,21 @@ func refreshPlacementBindingSyncCond(placementBinding placementv1alpha1.Placemen
 		}
 	}
 	meta.SetStatusCondition(&placementBinding.GetStatus().Conditions, syncCond)
+	return false
 }
 
-func refreshPlacementBindingAvailableCond(placementBinding placementv1alpha1.PlacementBindingAccessor, works []placementv1alpha1.Work) {
+func refreshPlacementBindingAvailableCond(placementBinding placementv1alpha1.PlacementBindingAccessor, works []placementv1alpha1.Work) (notReady bool) {
 	// The binding is available only if every work is available and its available condition is up-to-date.
 	available := true
 	for idx := range works {
 		work := &works[idx]
 		availableCond := meta.FindStatusCondition(work.Status.Conditions, placementv1alpha1.WorkCondTypeAvailable)
+		if availableCond == nil || availableCond.ObservedGeneration != work.Generation {
+			// The work object has not been marked as available or its available condition is outdated.
+			// Instead of refreshing the placement binding status conditions on stale data, return a transient error
+			// and wait for the status to be updated.
+			return true
+		}
 		if !condition.IsConditionStatusTrue(availableCond, work.GetGeneration()) {
 			available = false
 			break
@@ -181,6 +200,7 @@ func refreshPlacementBindingAvailableCond(placementBinding placementv1alpha1.Pla
 		}
 	}
 	meta.SetStatusCondition(&placementBinding.GetStatus().Conditions, availableCond)
+	return false
 }
 
 func countResourcesInWorksByProcessingResults(works []placementv1alpha1.Work) (
@@ -189,7 +209,7 @@ func countResourcesInWorksByProcessingResults(works []placementv1alpha1.Work) (
 ) {
 	for i := range works {
 		work := &works[i]
-		total += int32(len(work.Spec.Manifests))
+		total += int32(len(work.Spec.Manifests)) //nolint:gosec // safe: there is no risk of overflowing due to API-level restrictions.
 		for j := range work.Status.Manifests {
 			manifest := &work.Status.Manifests[j]
 
@@ -216,7 +236,8 @@ func countResourcesInWorksByProcessingResults(works []placementv1alpha1.Work) (
 				// The Available condition has not been set yet; the manifest has not been processed.
 				continue
 			case availableCond.Status != metav1.ConditionTrue:
-				// The manifest is not available.
+				// The manifest is not yet available. We consider an applied manifest in a failed state if
+				// it fails the availability check; see the work applier for the rules.
 				failed = append(failed, failedResourceFromManifestStatus(manifest, availableCond))
 				continue
 			default:

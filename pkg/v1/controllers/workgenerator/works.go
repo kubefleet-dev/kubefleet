@@ -28,7 +28,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -235,19 +234,12 @@ func buildWorkObjectFor(
 		return nil, errors.NewUnexpectedError(nil, "no sub-index label found on the placement resource snapshot")
 	}
 	derivedFromSnapshotSrcFormatter := &placementResourceSnapshotDerivedFromSourceFormatter{
-		snapshotNamespacedName: types.NamespacedName{
-			Namespace: placementResourceSnapshot.GetNamespace(),
-			Name:      placementResourceSnapshot.GetName(),
-		},
 		snapshotSubIdx: snapshotSubIdx,
 	}
 	placementBindingSpec := placementBinding.GetSpec()
 	placementResourceSnapshotSpec := placementResourceSnapshot.GetSpec()
 
-	workName, err := uniqueNameForWorkDerivedFromPlacementResourceSnapshot(placementBinding, snapshotSubIdx == "0", derivedFromSnapshotSrcFormatter)
-	if err != nil {
-		return nil, errors.Wraps(err, "failed to generate unique name for the work object", "snapshotSubIdx", snapshotSubIdx)
-	}
+	workName := uniqueNameForWorkDerivedFromPlacementResourceSnapshot(placementBinding, snapshotSubIdx == "0", derivedFromSnapshotSrcFormatter)
 
 	work := &placementv1alpha1.Work{
 		ObjectMeta: metav1.ObjectMeta{
