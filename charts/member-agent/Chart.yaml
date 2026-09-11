@@ -12,13 +12,15 @@ description: Helm chart for member agent.
 # pipeline. Library charts do not define any templates and therefore cannot be deployed.
 type: application
 
-# This is the chart version. This version number should be incremented each time you make changes
-# to the chart and its templates, including the app version.
-# Versions are expected to follow Semantic Versioning (https://semver.org/)
+# The chart version, following Semantic Versioning (https://semver.org/).
+# Placeholder: leave this alone when changing the chart. The release workflow
+# packages charts with the release version, so this value is never published.
 version: 0.1.0
 
-# This is the version number of the application being deployed. This version number should be
-# incremented each time you make changes to the application. Versions are not expected to
-# follow Semantic Versioning. They should reflect the version the application is using.
-# It is recommended to use it with quotes.
+# The version of the application being deployed. Also a placeholder, which the
+# release workflow overwrites with the release tag. Templates read it back as
+# .Chart.AppVersion to default the member-agent and refresh-token image tags, so
+# a published chart runs the images from the release it was published for.
+# Installing straight from a git checkout gets this placeholder instead, which
+# names no published image: pass --set image.tag / --set refreshtoken.tag.
 appVersion: "v0.1.0"

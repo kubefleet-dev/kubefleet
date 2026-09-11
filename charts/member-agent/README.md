@@ -49,6 +49,12 @@ helm install member-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/member-ag
 
 #### Option 2: Traditional Helm Repository
 
+> **Important:** every release before this fix reached this index as chart
+> `0.1.0`, which depending on when you installed it either failed to start or
+> silently tracked the unreleased `main` branch. Releases now publish their real
+> version. If you already installed from here, see
+> [Migrating from the 0.1.0 chart index](../README.md#migrating-from-the-010-chart-index).
+
 ```console
 # Add the KubeFleet Helm repository
 helm repo add kubefleet https://kubefleet-dev.github.io/kubefleet/charts
@@ -65,10 +71,16 @@ helm install member-agent kubefleet/member-agent \
 
 ### From Local Source
 
+The in-tree `Chart.yaml` carries a placeholder `appVersion` that names no
+published image, so a local install has to say which images to run:
+
 ```console
+# Replace VERSION with a published release tag, e.g. v0.3.1
 helm install member-agent ./charts/member-agent/ \
   --namespace fleet-system \
   --create-namespace \
+  --set image.tag=VERSION \
+  --set refreshtoken.tag=VERSION \
   --set config.hubURL=https://<hub-api-server> \
   --set config.hubCA=<base64-encoded-hub-ca> \
   --set config.memberClusterName=<member-cluster-name>
@@ -88,19 +100,28 @@ helm upgrade member-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/member-ag
 helm upgrade member-agent kubefleet/member-agent --namespace fleet-system
 ```
 
+> If you have tracked the traditional repository since before per-release
+> versions were published, that second command moves off `0.1.0` for the first
+> time and can cross several releases at once. Read the release notes for the
+> whole span, and see
+> [Migrating from the 0.1.0 chart index](../README.md#migrating-from-the-010-chart-index).
+
 ## Parameters
 
 | Parameter               | Description                                                                                                                                                                                                                                    | Default                                              |
 |:------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:-----------------------------------------------------|
 | replicaCount            | The number of member-agent replicas to deploy                                                                                                                                                                                                  | `1`                                                  |
-| image.repository        | Image repository                                                                                                                                                                                                                               | `ghcr.io/azure/azure/fleet/member-agent`             |
-| image.pullPolicy        | Image pullPolicy                                                                                                                                                                                                                               | `IfNotPresent`                                       |
-| image.tag               | The image tag to use                                                                                                                                                                                                                           | `v0.1.0`                                             |
+| image.repository        | Image repository                                                                                                                                                                                                                               | `ghcr.io/kubefleet-dev/kubefleet/member-agent`       |
+| image.pullPolicy        | Image pullPolicy                                                                                                                                                                                                                               | `Always`                                             |
+| image.tag               | Image release tag (empty uses chart `appVersion`)                                                                                                                                                                                              | `""`                                                 |
+| refreshtoken.repository | Refresh-token sidecar image repository                                                                                                                                                                                                         | `ghcr.io/kubefleet-dev/kubefleet/refresh-token`      |
+| refreshtoken.pullPolicy | Refresh-token sidecar image pullPolicy                                                                                                                                                                                                         | `Always`                                             |
+| refreshtoken.tag        | Refresh-token sidecar release tag (empty uses chart `appVersion`)                                                                                                                                                                              | `""`                                                 |
 | affinity                | The node affinity to use for pod scheduling                                                                                                                                                                                                    | `{}`                                                 |
 | tolerations             | The toleration to use for pod scheduling                                                                                                                                                                                                       | `[]`                                                 |
-| resources               | The resource request/limits for the container image                                                                                                                                                                                            | limits: "2" CPU, 4Gi, requests: 100m CPU, 128Mi      |
+| resources               | The resource request/limits for the container image                                                                                                                                                                                            | limits: 500m CPU, 1Gi, requests: 100m CPU, 128Mi     |
 | namespace               | Namespace that this Helm chart is installed on.                                                                                                                                                                                                | `fleet-system`                                       |
-| logVerbosity            | Log level. Uses V logs (klog)                                                                                                                                                                                                                  | `3`                                                  |
+| logVerbosity            | Log level. Uses V logs (klog)                                                                                                                                                                                                                  | `5`                                                  |
 | tlsClientInsecure       | Skip TLS server certificate verification when the member agent connects to the hub cluster. Leave this `false` unless you explicitly trust the endpoint and understand the risk.                                                            | `false`                                              |
 | useCAAuth               | Use certificate-based authentication for the hub connection instead of the token-based path.                                                                                                                                                  | `false`                                              |
 | propertyProvider        | The property provider to use with the member agent; if none is specified, the Fleet member agent will start with no property provider (i.e., the agent will expose no cluster properties, and collect only limited resource usage information) | ``                                                   |
