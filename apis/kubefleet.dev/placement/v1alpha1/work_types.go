@@ -19,6 +19,45 @@ package v1alpha1
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+)
+
+const (
+	// The label key that denotes the namespace of a work object's owner placement policy and placement binding
+	// objects. For cluster-scoped owners, the label has an empty value.
+	WorkOwnerNamespaceLabelKey = "placement.kubefleet.dev/owner-namespace"
+	// The label key that denotes the name of a work object's owner placement policy object.
+	//
+	// KubeFleet might truncate the name value and append a hash to satisfy Kubernetes' label value length limit
+	// (63 characters).
+	WorkOwnedByPlacementPolicyLabelKey = "placement.kubefleet.dev/owned-by-placement-policy"
+	// The label key that denotes the name of a work object's owner placement binding object.
+	//
+	// KubeFleet might truncate the name value and append a hash to satisfy Kubernetes' label value length limit
+	// (63 characters).
+	WorkOwnedByPlacementBindingLabelKey = "placement.kubefleet.dev/owned-by-placement-binding"
+
+	// The annotation key that denotes the name of a work object's owner placement policy object.
+	//
+	// The name will saved as the annotation value as it is.
+	WorkOwnedByPlacementPolicyAnnotationKey = "placement.kubefleet.dev/owned-by-placement-policy"
+	// The annotation key that denotes the name of a work object's owner placement binding object.
+	//
+	// The name will saved as the annotation value as it is.
+	WorkOwnedByPlacementBindingAnnotationKey = "placement.kubefleet.dev/owned-by-placement-binding"
+	// The annotation key that denotes the name of a work object's primary placement resource snapshot.
+	//
+	// The name will saved as the annotation value as it is.
+	WorkLinkedToPrimaryPlacementResourceSnapshotAnnotationKey = "placement.kubefleet.dev/linked-to-primary-placement-resource-snapshot"
+	// The annotation key that denotes the number of linked work objects.
+	LinkedWorkCountAnnotationKey = "placement.kubefleet.dev/linked-work-count"
+	// The annotation key that denotes the source from which the work object is derived.
+	WorkDerivedFromSourceAnnotationKey = "placement.kubefleet.dev/derived-from"
+)
+
+const (
+	LastAppliedConfigAnnotationKey       = "placement.kubefleet.dev/last-applied-configuration"
+	LastAppliedManifestHashAnnotationKey = "placement.kubefleet.dev/manifest-hash"
 )
 
 const (
@@ -29,6 +68,15 @@ const (
 	// The condition types for each manifest in the Work API.
 	ManifestCondTypeApplied   = "Applied"
 	ManifestCondTypeAvailable = "Available"
+)
+
+const (
+	WorkAppliedCondPreparingToProcessReason     = "PreparingToProcess"
+	WorkAppliedCondAllManifestsAppliedReason    = "AllManifestsApplied"
+	WorkAppliedCondNotAllManifestsAppliedReason = "SomeManifestsAreNotYetApplied"
+
+	WorkAvailableCondAllManifestsAvailableReason    = "AllManifestsAvailable"
+	WorkAvailableCondNotAllManifestsAvailableReason = "SomeManifestsAreNotYetAvailable"
 )
 
 // Work is the KubeFleet API used for synchronizing resources to place between
@@ -198,7 +246,70 @@ type WorkList struct {
 	Items []Work `json:"items"`
 }
 
+// AppliedWork is the KubeFleet API that serves as owners for manifests applied to a member cluster via
+// a work object.
+//
+// +genclient
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster,categories={kubefleet, kubefleet-placement}
+// +kubebuilder:storageversion
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type AppliedWork struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	// Spec represents the desired configuration of AppliedWork.
+	// +kubebuilder:validation:Required
+	Spec AppliedWorkSpec `json:"spec"`
+
+	// Status represents the current status of AppliedWork.
+	// +kubebuilder:validation:Optional
+	Status AppliedWorkStatus `json:"status,omitempty"`
+}
+
+type AppliedWorkSpec struct {
+	// The name of the corresponding work object. Note that the object is on the KubeFleet hub cluster.
+	//
+	// +kubebuilder:validation:Required
+	WorkName string `json:"workName"`
+
+	// The namespace of the corresponding work object. Note that the object is on the KubeFleet hub cluster.
+	//
+	// +kubebuilder:validation:Required
+	WorkNamespace string `json:"workNamespace"`
+}
+
+type AppliedWorkStatus struct {
+	// A list of applied manifests. This list is populated for informational purposes only.
+	//
+	// +kubebuilder:validation:Optional
+	AppliedResources []AppliedResource `json:"appliedResources,omitempty"`
+}
+
+type AppliedResource struct {
+	// The ID of the applied manifest.
+	ManifestIdentifier `json:",inline"`
+
+	// The UID of the applied manifest.
+	//
+	// +kubebuilder:validation:Required
+	UID types.UID `json:"uid,omitempty"`
+}
+
+// AppliedWorkList contains a list of AppliedWork.
+//
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Cluster
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type AppliedWorkList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+
+	Items []AppliedWork `json:"items"`
+}
+
 // Set up the API types with the scheme builder.
 func init() {
-	SchemeBuilder.Register(&Work{}, &WorkList{})
+	SchemeBuilder.Register(&Work{}, &WorkList{}, &AppliedWork{}, &AppliedWorkList{})
 }
