@@ -144,6 +144,63 @@ func Test_buildHubConfig(t *testing.T) {
 		assert.Nil(t, err)
 		assert.NotNil(t, config.WrapTransport)
 	})
+	t.Run("use CA auth and insecure client - success", func(t *testing.T) {
+		t.Setenv("IDENTITY_KEY", "/path/to/key")
+		t.Setenv("IDENTITY_CERT", "/path/to/cert")
+		config, err := buildHubConfig("https://hub.domain.com", options.HubConnectivityOptions{UseCertificateAuth: true, UseInsecureTLSClient: true})
+		assert.NotNil(t, config)
+		assert.Nil(t, err)
+		assert.Equal(t, rest.Config{
+			Host: "https://hub.domain.com",
+			TLSClientConfig: rest.TLSClientConfig{
+				KeyFile:  "/path/to/key",
+				CertFile: "/path/to/cert",
+				Insecure: true,
+			},
+		}, *config)
+	})
+	t.Run("use CA auth and CA data - success", func(t *testing.T) {
+		t.Setenv("IDENTITY_KEY", "/path/to/key")
+		t.Setenv("IDENTITY_CERT", "/path/to/cert")
+		t.Setenv("HUB_CERTIFICATE_AUTHORITY", "dGhpcyBpcyBhIGZha2UgY2E=")
+		config, err := buildHubConfig("https://hub.domain.com", options.HubConnectivityOptions{UseCertificateAuth: true, UseInsecureTLSClient: false})
+		assert.NotNil(t, config)
+		assert.Nil(t, err)
+		assert.Equal(t, rest.Config{
+			Host: "https://hub.domain.com",
+			TLSClientConfig: rest.TLSClientConfig{
+				KeyFile:  "/path/to/key",
+				CertFile: "/path/to/cert",
+				CAData:   []byte("this is a fake ca"),
+			},
+		}, *config)
+	})
+	t.Run("use CA auth, empty CA data - error", func(t *testing.T) {
+		t.Setenv("IDENTITY_KEY", "/path/to/key")
+		t.Setenv("IDENTITY_CERT", "/path/to/cert")
+		t.Setenv("HUB_CERTIFICATE_AUTHORITY", "")
+		config, err := buildHubConfig("https://hub.domain.com", options.HubConnectivityOptions{UseCertificateAuth: true, UseInsecureTLSClient: false})
+		assert.Nil(t, config)
+		assert.NotNil(t, err)
+	})
+	t.Run("use CA auth, both of CA bundle and CA data present - error", func(t *testing.T) {
+		t.Setenv("IDENTITY_KEY", "/path/to/key")
+		t.Setenv("IDENTITY_CERT", "/path/to/cert")
+		t.Setenv("HUB_CERTIFICATE_AUTHORITY", "dGhpcyBpcyBhIGZha2UgY2E=")
+		t.Setenv("CA_BUNDLE", "/path/to/ca/bundle")
+		config, err := buildHubConfig("https://hub.domain.com", options.HubConnectivityOptions{UseCertificateAuth: true, UseInsecureTLSClient: false})
+		assert.Nil(t, config)
+		assert.NotNil(t, err)
+	})
+	t.Run("use CA auth with custom header - success", func(t *testing.T) {
+		t.Setenv("IDENTITY_KEY", "/path/to/key")
+		t.Setenv("IDENTITY_CERT", "/path/to/cert")
+		t.Setenv("HUB_KUBE_HEADER", "Member-Resource-ID: some-id")
+		config, err := buildHubConfig("https://hub.domain.com", options.HubConnectivityOptions{UseCertificateAuth: true, UseInsecureTLSClient: false})
+		assert.NotNil(t, config)
+		assert.Nil(t, err)
+		assert.NotNil(t, config.WrapTransport)
+	})
 	t.Run("use hub kubeconfig - success", func(t *testing.T) {
 		// hubURL is deliberately left empty here, mirroring main()'s behavior of skipping the
 		// HUB_SERVER_URL read entirely when UseKubeConfig is set: the kubeconfig's own
@@ -181,5 +238,52 @@ func Test_buildHubConfig(t *testing.T) {
 		assert.NotNil(t, config)
 		assert.Nil(t, err)
 		assert.NotNil(t, config.WrapTransport)
+	})
+	t.Run("use hub kubeconfig, malformed content - error", func(t *testing.T) {
+		t.Setenv("KUBE_CONFIG_PATH", "./testdata/kubeconfig-malformed")
+		config, err := buildHubConfig("", options.HubConnectivityOptions{
+			UseKubeConfig: true,
+		})
+		assert.Nil(t, config)
+		assert.NotNil(t, err)
+	})
+	t.Run("use hub kubeconfig, hubURL argument is ignored - success", func(t *testing.T) {
+		// The kubeconfig's own cluster server URL is authoritative; a non-empty hubURL passed
+		// in (which main() only does when UseKubeConfig is unset) must not leak through.
+		t.Setenv("KUBE_CONFIG_PATH", "./testdata/kubeconfig")
+		config, err := buildHubConfig("https://should-be-ignored.example.com", options.HubConnectivityOptions{
+			UseKubeConfig: true,
+		})
+		assert.NotNil(t, config)
+		assert.Nil(t, err)
+		assert.Equal(t, "https://hub.fixture.example.com", config.Host)
+	})
+	t.Run("use hub kubeconfig, TLSClientConfig.Insecure from kubeconfig is not overridden - success", func(t *testing.T) {
+		// The fixture kubeconfig sets insecure-skip-tls-verify: true; UseInsecureTLSClient is
+		// left at its false zero-value here to confirm the kubeconfig's own setting wins,
+		// rather than being reset by the (ignored, per hub.go's doc comment) opts field.
+		t.Setenv("KUBE_CONFIG_PATH", "./testdata/kubeconfig")
+		config, err := buildHubConfig("", options.HubConnectivityOptions{
+			UseKubeConfig:        true,
+			UseInsecureTLSClient: false,
+		})
+		assert.NotNil(t, config)
+		assert.Nil(t, err)
+		assert.True(t, config.TLSClientConfig.Insecure)
+	})
+	t.Run("use hub kubeconfig takes precedence over CA auth - success", func(t *testing.T) {
+		// options.Validate() rejects UseCertificateAuth+UseKubeConfig together in practice, but
+		// buildHubConfig itself does not re-validate; this locks in that UseKubeConfig, checked
+		// first in the if/else chain, wins if it is ever called with both set.
+		t.Setenv("KUBE_CONFIG_PATH", "./testdata/kubeconfig")
+		config, err := buildHubConfig("", options.HubConnectivityOptions{
+			UseKubeConfig:      true,
+			UseCertificateAuth: true,
+		})
+		assert.NotNil(t, config)
+		assert.Nil(t, err)
+		assert.Equal(t, "https://hub.fixture.example.com", config.Host)
+		assert.Empty(t, config.TLSClientConfig.CertFile)
+		assert.Empty(t, config.TLSClientConfig.KeyFile)
 	})
 }

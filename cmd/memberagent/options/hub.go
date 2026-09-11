@@ -29,7 +29,7 @@ type HubConnectivityOptions struct {
 	// and certificate to use for authentication via the `IDENTITY_KEY` and `IDENTITY_CERT`
 	// environment variables respectively.
 	//
-	// Otherwise, unless HubKubeconfigPath is set, the member agent will use token-based
+	// Otherwise, unless UseKubeConfig is set, the member agent will use token-based
 	// authentication when connecting to the hub cluster. The agent will read the token
 	// from the file path specified by the `CONFIG_PATH` environment variable.
 	UseCertificateAuth bool
