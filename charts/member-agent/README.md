@@ -103,7 +103,8 @@ helm upgrade member-agent kubefleet/member-agent --namespace fleet-system
 | logVerbosity            | Log level. Uses V logs (klog)                                                                                                                                                                                                                  | `3`                                                  |
 | tlsClientInsecure       | Skip TLS server certificate verification when the member agent connects to the hub cluster. Leave this `false` unless you explicitly trust the endpoint and understand the risk.                                                            | `false`                                              |
 | useCAAuth               | Use certificate-based authentication for the hub connection instead of the token-based path.                                                                                                                                                  | `false`                                              |
-| config.hubKubeconfigSecretName | The name of a Secret (key `kubeconfig`) containing a full kubeconfig for the hub connection, mounted and passed to `--hub-kubeconfig`. The vendor-neutral way to authenticate via a federated identity. Mutually exclusive with `useCAAuth`. See [Hub connection via kubeconfig](#hub-connection-via-kubeconfig-federated-identity-any-vendor). | ``                                                   |
+| useKubeconfig        | Authenticate to the hub cluster via a full kubeconfig instead of the refresh-token sidecar or `useCAAuth`. The vendor-neutral way to authenticate via a federated identity. Mutually exclusive with `useCAAuth`. See [Hub connection via kubeconfig](#hub-connection-via-kubeconfig-federated-identity-any-vendor). | `false`                                              |
+| config.hubKubeconfigSecretName | The name of a Secret (key `kubeconfig`) containing a full kubeconfig for the hub connection, mounted and passed to `--hub-kubeconfig`. Only used when `useKubeconfig` is `true`.                                                    | ``                                                   |
 | podLabels               | Extra labels applied to the member-agent pod template — e.g. workload-identity labels a `hubKubeconfigSecretName` exec plugin needs.                                                                                                          | `{}`                                                 |
 | serviceAccountAnnotations | Extra annotations applied to the member-agent ServiceAccount — e.g. workload-identity annotations a `hubKubeconfigSecretName` exec plugin needs.                                                                                            | `{}`                                                 |
 | extraVolumes / extraVolumeMounts / extraInitContainers | Standard passthroughs (rendered via `toYaml`) for getting an exec plugin binary, or a workload-API socket, into the pod without a custom image. `extraVolumeMounts` applies to the member-agent container.               | `[]`                                                 |
@@ -130,7 +131,8 @@ Set `tlsClientInsecure=true` only for explicitly trusted test environments where
 ## Hub connection via kubeconfig (federated identity, any vendor)
 
 As an alternative to the refresh-token sidecar, the member agent can load a full kubeconfig for the
-hub connection (`config.hubKubeconfigSecretName`, `--hub-kubeconfig`), the same way `kubectl` does.
+hub connection (`useKubeconfig` + `config.hubKubeconfigSecretName`, `--hub-kubeconfig`), the same
+way `kubectl` does.
 This mode requires no sidecar container and no shared token volume — `client-go` handles token
 caching and refresh itself, whatever credential mechanism the kubeconfig's `users[].user.exec`
 stanza invokes.
@@ -197,10 +199,13 @@ helm install member-agent ./charts/member-agent/ \
   --create-namespace \
   -f values-kubelogin-init.yaml \
   --set config.memberClusterName=<member-cluster-name> \
+  --set useKubeconfig=true \
   --set config.hubKubeconfigSecretName=hub-kubeconfig \
   --set podLabels."azure\.workload\.identity/use"=true \
   --set serviceAccountAnnotations."azure\.workload\.identity/client-id"=<uami-client-id>
 ```
+Equivalent `member-agent` invocation: `--use-kubeconfig=true --hub-kubeconfig=/etc/kubefleet/hub-kubeconfig/kubeconfig`
+
 `kubelogin-bin` is mounted at `/usr/local/bin` on the member-agent container too, so it works with
 the bare `command: kubelogin` shown in every example below — no image build required, at the cost
 of a network fetch on every pod start.
@@ -252,10 +257,12 @@ helm install member-agent ./charts/member-agent/ \
   --namespace fleet-system \
   --create-namespace \
   --set config.memberClusterName=<member-cluster-name> \
+  --set useKubeconfig=true \
   --set config.hubKubeconfigSecretName=hub-kubeconfig \
   --set podLabels."azure\.workload\.identity/use"=true \
   --set serviceAccountAnnotations."azure\.workload\.identity/client-id"=<uami-client-id>
 ```
+Equivalent `member-agent` invocation: `--use-kubeconfig=true --hub-kubeconfig=/etc/kubefleet/hub-kubeconfig/kubeconfig`
 
 #### Managed identity (`--login msi`)
 
@@ -289,8 +296,10 @@ helm install member-agent ./charts/member-agent/ \
   --namespace fleet-system \
   --create-namespace \
   --set config.memberClusterName=<member-cluster-name> \
+  --set useKubeconfig=true \
   --set config.hubKubeconfigSecretName=hub-kubeconfig
 ```
+Equivalent `member-agent` invocation: `--use-kubeconfig=true --hub-kubeconfig=/etc/kubefleet/hub-kubeconfig/kubeconfig`
 
 #### Client secret / client certificate (`--login spn`)
 
@@ -327,8 +336,10 @@ helm install member-agent ./charts/member-agent/ \
   --namespace fleet-system \
   --create-namespace \
   --set config.memberClusterName=<member-cluster-name> \
+  --set useKubeconfig=true \
   --set config.hubKubeconfigSecretName=hub-kubeconfig
 ```
+Equivalent `member-agent` invocation: `--use-kubeconfig=true --hub-kubeconfig=/etc/kubefleet/hub-kubeconfig/kubeconfig`
 
 **Client certificate flow:** `--client-certificate` must point to a file on disk, so the
 certificate needs its own mount via `extraVolumes`/`extraVolumeMounts` rather than living inline in
@@ -363,6 +374,7 @@ helm install member-agent ./charts/member-agent/ \
   --namespace fleet-system \
   --create-namespace \
   --set config.memberClusterName=<member-cluster-name> \
+  --set useKubeconfig=true \
   --set config.hubKubeconfigSecretName=hub-kubeconfig \
   --set 'extraVolumes[0].name=spn-cert' \
   --set 'extraVolumes[0].secret.secretName=spn-cert' \
@@ -370,6 +382,7 @@ helm install member-agent ./charts/member-agent/ \
   --set 'extraVolumeMounts[0].mountPath=/etc/kubefleet/spn-cert' \
   --set 'extraVolumeMounts[0].readOnly=true'
 ```
+Equivalent `member-agent` invocation: `--use-kubeconfig=true --hub-kubeconfig=/etc/kubefleet/hub-kubeconfig/kubeconfig`
 
 ### AWS / EKS (IRSA)
 
@@ -396,9 +409,12 @@ helm install member-agent ./charts/member-agent/ \
   --namespace fleet-system \
   --create-namespace \
   --set config.memberClusterName=<member-cluster-name> \
+  --set useKubeconfig=true \
   --set config.hubKubeconfigSecretName=hub-kubeconfig \
   --set serviceAccountAnnotations."eks\.amazonaws\.com/role-arn"=<iam-role-arn>
 ```
+Equivalent `member-agent` invocation: `--use-kubeconfig=true --hub-kubeconfig=/etc/kubefleet/hub-kubeconfig/kubeconfig`
+
 No `podLabels` needed — IRSA only requires the ServiceAccount annotation.
 
 ### GCP / GKE (Workload Identity)
@@ -424,9 +440,12 @@ helm install member-agent ./charts/member-agent/ \
   --namespace fleet-system \
   --create-namespace \
   --set config.memberClusterName=<member-cluster-name> \
+  --set useKubeconfig=true \
   --set config.hubKubeconfigSecretName=hub-kubeconfig \
   --set serviceAccountAnnotations."iam\.gke\.io/gcp-service-account"=<gsa-email>
 ```
+Equivalent `member-agent` invocation: `--use-kubeconfig=true --hub-kubeconfig=/etc/kubefleet/hub-kubeconfig/kubeconfig`
+
 No `podLabels` needed here either — Workload Identity is resolved automatically for any pod running
 under the annotated ServiceAccount.
 

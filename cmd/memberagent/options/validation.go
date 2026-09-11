@@ -29,8 +29,12 @@ func (o *Options) Validate() field.ErrorList {
 	newPath := field.NewPath("Options")
 
 	// Cross-field validation for hub connectivity options.
-	if o.HubConnectivityOpts.UseCertificateAuth && o.HubConnectivityOpts.HubKubeconfigPath != "" {
-		errs = append(errs, field.Invalid(newPath.Child("HubConnectivityOpts").Child("HubKubeconfigPath"), o.HubConnectivityOpts.HubKubeconfigPath, "UseCertificateAuth and HubKubeconfigPath must not both be set"))
+	if o.HubConnectivityOpts.UseCertificateAuth && o.HubConnectivityOpts.UseKubeConfig {
+		errs = append(errs, field.Invalid(newPath.Child("HubConnectivityOpts").Child("UseKubeConfig"), o.HubConnectivityOpts.UseKubeConfig, "UseCertificateAuth and UseKubeConfig must not both be set"))
+	}
+
+	if o.HubConnectivityOpts.UseKubeConfig && o.HubConnectivityOpts.HubKubeconfigPath == "" {
+		errs = append(errs, field.Invalid(newPath.Child("HubConnectivityOpts").Child("HubKubeconfigPath"), o.HubConnectivityOpts.HubKubeconfigPath, "HubKubeconfigPath must be set when UseKubeConfig is set"))
 	}
 
 	// Cross-field validation for controller manager options.
