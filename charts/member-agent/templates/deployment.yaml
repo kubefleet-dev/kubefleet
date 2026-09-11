@@ -48,7 +48,6 @@ spec:
             - --use-ca-auth={{ .Values.useCAAuth }}
             {{- else if $mountHubKubeconfig }}
             - --use-kubeconfig=true
-            - --hub-kubeconfig=/etc/kubefleet/hub-kubeconfig/kubeconfig
             {{- else }}
             - --tls-insecure={{ .Values.tlsClientInsecure }}
             {{- end }}
@@ -102,6 +101,10 @@ spec:
           {{- if not $mountHubKubeconfig }}
           - name: HUB_SERVER_URL
             value: "{{ .Values.config.hubURL }}"
+          {{- end }}
+          {{- if $mountHubKubeconfig }}
+          - name: KUBE_CONFIG_PATH
+            value: "/etc/kubefleet/hub-kubeconfig/kubeconfig"
           {{- end }}
           {{- if $useSidecar }}
           - name: CONFIG_PATH

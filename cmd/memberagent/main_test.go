@@ -148,28 +148,35 @@ func Test_buildHubConfig(t *testing.T) {
 		// hubURL is deliberately left empty here, mirroring main()'s behavior of skipping the
 		// HUB_SERVER_URL read entirely when UseKubeConfig is set: the kubeconfig's own
 		// cluster server URL is authoritative.
+		t.Setenv("KUBE_CONFIG_PATH", "./testdata/kubeconfig")
 		config, err := buildHubConfig("", options.HubConnectivityOptions{
-			UseKubeConfig:     true,
-			HubKubeconfigPath: "./testdata/kubeconfig",
+			UseKubeConfig: true,
 		})
 		assert.NotNil(t, config)
 		assert.Nil(t, err)
 		assert.Equal(t, "https://hub.fixture.example.com", config.Host)
 		assert.Equal(t, "fixture-bearer-token", config.BearerToken)
 	})
-	t.Run("use hub kubeconfig, not exists - error", func(t *testing.T) {
+	t.Run("use hub kubeconfig, no path - error", func(t *testing.T) {
 		config, err := buildHubConfig("", options.HubConnectivityOptions{
-			UseKubeConfig:     true,
-			HubKubeconfigPath: "./testdata/does-not-exist",
+			UseKubeConfig: true,
+		})
+		assert.Nil(t, config)
+		assert.NotNil(t, err)
+	})
+	t.Run("use hub kubeconfig, not exists - error", func(t *testing.T) {
+		t.Setenv("KUBE_CONFIG_PATH", "./testdata/does-not-exist")
+		config, err := buildHubConfig("", options.HubConnectivityOptions{
+			UseKubeConfig: true,
 		})
 		assert.Nil(t, config)
 		assert.NotNil(t, err)
 	})
 	t.Run("use hub kubeconfig with custom header - success", func(t *testing.T) {
 		t.Setenv("HUB_KUBE_HEADER", "Member-Resource-ID: some-id")
+		t.Setenv("KUBE_CONFIG_PATH", "./testdata/kubeconfig")
 		config, err := buildHubConfig("", options.HubConnectivityOptions{
-			UseKubeConfig:     true,
-			HubKubeconfigPath: "./testdata/kubeconfig",
+			UseKubeConfig: true,
 		})
 		assert.NotNil(t, config)
 		assert.Nil(t, err)
