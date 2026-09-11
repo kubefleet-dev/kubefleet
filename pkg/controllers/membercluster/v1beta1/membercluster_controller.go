@@ -283,16 +283,29 @@ func (r *Reconciler) ensureFinalizer(ctx context.Context, mc *clusterv1beta1.Mem
 // ensureMemberNameLabel makes sure that the member cluster has a label with its own name.
 // This enables selecting clusters by name in ResourceOverride and ClusterResourceOverride via labelSelector.
 func (r *Reconciler) ensureMemberNameLabel(ctx context.Context, mc *clusterv1beta1.MemberCluster) error {
-	if mc.Labels != nil && mc.Labels[placementv1beta1.MemberNameLabel] == mc.Name {
-		return nil
-	}
-
+	changed := false
 	if mc.Labels == nil {
 		mc.Labels = make(map[string]string)
 	}
-	mc.Labels[placementv1beta1.MemberNameLabel] = mc.Name
 
-	klog.InfoS("Ensured the member cluster name label", "memberCluster", klog.KObj(mc))
+	if mc.Labels[placementv1beta1.MemberNameLabel] != mc.Name {
+		mc.Labels[placementv1beta1.MemberNameLabel] = mc.Name
+		changed = true
+	}
+
+	// The alias label is seeded from the cluster name, but only when it is absent. Unlike the name
+	// label above, which the controller owns and reasserts, the alias exists to be renamed by an
+	// admin so that a selector can follow a role rather than a fixed name; reasserting it would
+	// revert that rename on the next reconcile.
+	if _, found := mc.Labels[placementv1beta1.ClusterAliasLabel]; !found {
+		mc.Labels[placementv1beta1.ClusterAliasLabel] = mc.Name
+		changed = true
+	}
+
+	if !changed {
+		return nil
+	}
+	klog.InfoS("Ensured the member cluster name and alias labels", "memberCluster", klog.KObj(mc))
 	return r.Update(ctx, mc, client.FieldOwner(utils.MCControllerFieldManagerName))
 }
 
