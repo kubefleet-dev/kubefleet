@@ -49,7 +49,7 @@ jobs:
       # The release scripts live outside the workflow files, so actionlint's
       # embedded-shell checking does not reach them.
       - name: Shellcheck the release scripts
-        run: shellcheck hack/release/*.sh hack/release/testdata/gh
+        run: shellcheck hack/release/*.sh hack/release/testdata/*
 
       - name: Test the release scripts
         run: ./hack/release/test-release-scripts.sh
