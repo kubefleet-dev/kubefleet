@@ -101,7 +101,7 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
 
 	var hubURL string
-	if opts.HubConnectivityOpts.HubKubeconfigPath == "" {
+	if !opts.HubConnectivityOpts.UseKubeConfig {
 		hubURL = os.Getenv("HUB_SERVER_URL")
 		if hubURL == "" {
 			klog.ErrorS(errors.New("hub server api cannot be empty"), "Failed to read URL for the hub cluster")
@@ -186,7 +186,11 @@ func main() {
 }
 
 func buildHubConfig(hubURL string, opts options.HubConnectivityOptions) (*rest.Config, error) {
-	if opts.HubKubeconfigPath != "" {
+	var hubConfig = &rest.Config{
+		Host: hubURL,
+	}
+	switch {
+	case opts.UseKubeConfig:
 		// A full kubeconfig is authoritative for the hub connection: it already carries the
 		// server URL, TLS configuration, and authentication (a bearer token, a client
 		// certificate, or a standard Kubernetes exec credential plugin for a federated
@@ -194,18 +198,12 @@ func buildHubConfig(hubURL string, opts options.HubConnectivityOptions) (*rest.C
 		clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 			&clientcmd.ClientConfigLoadingRules{ExplicitPath: opts.HubKubeconfigPath},
 			&clientcmd.ConfigOverrides{})
-		hubConfig, err := clientConfig.ClientConfig()
+		loadedConfig, err := clientConfig.ClientConfig()
 		if err != nil {
 			klog.ErrorS(err, "Failed to load hub kubeconfig", "path", opts.HubKubeconfigPath)
 			return nil, err
 		}
-		return applyHubKubeHeader(hubConfig)
-	}
-
-	var hubConfig = &rest.Config{
-		Host: hubURL,
-	}
-	switch {
+		return applyHubKubeHeader(loadedConfig)
 	case opts.UseCertificateAuth:
 		keyFilePath := os.Getenv("IDENTITY_KEY")
 		certFilePath := os.Getenv("IDENTITY_CERT")

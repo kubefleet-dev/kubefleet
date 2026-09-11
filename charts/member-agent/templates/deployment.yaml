@@ -1,6 +1,6 @@
-{{- $useSidecar := and (not .Values.useCAAuth) (not .Values.config.hubKubeconfigSecretName) }}
+{{- $useSidecar := and (not .Values.useCAAuth) (not .Values.useKubeconfig) }}
 {{- $mountIdentitySecret := and .Values.useCAAuth .Values.config.identitySecretName }}
-{{- $mountHubKubeconfig := and (not .Values.useCAAuth) .Values.config.hubKubeconfigSecretName }}
+{{- $mountHubKubeconfig := and (not .Values.useCAAuth) .Values.useKubeconfig }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -47,6 +47,7 @@ spec:
             {{- if .Values.useCAAuth }}
             - --use-ca-auth={{ .Values.useCAAuth }}
             {{- else if $mountHubKubeconfig }}
+            - --use-kubeconfig=true
             - --hub-kubeconfig=/etc/kubefleet/hub-kubeconfig/kubeconfig
             {{- else }}
             - --tls-insecure={{ .Values.tlsClientInsecure }}

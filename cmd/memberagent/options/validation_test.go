@@ -64,13 +64,22 @@ func TestValidate(t *testing.T) {
 			opt:  newTestOptions(nil),
 			want: field.ErrorList{},
 		},
-		"use certificate auth and hub kubeconfig together": {
+		"use certificate auth and use kubeconfig together": {
 			opt: newTestOptions(func(option *Options) {
 				option.HubConnectivityOpts.UseCertificateAuth = true
+				option.HubConnectivityOpts.UseKubeConfig = true
 				option.HubConnectivityOpts.HubKubeconfigPath = "/etc/kubefleet/hub-kubeconfig/kubeconfig"
 			}),
 			want: field.ErrorList{
-				field.Invalid(newPath.Child("HubConnectivityOpts").Child("HubKubeconfigPath"), "/etc/kubefleet/hub-kubeconfig/kubeconfig", "UseCertificateAuth and HubKubeconfigPath must not both be set"),
+				field.Invalid(newPath.Child("HubConnectivityOpts").Child("UseKubeConfig"), true, "UseCertificateAuth and UseKubeConfig must not both be set"),
+			},
+		},
+		"use kubeconfig without a path": {
+			opt: newTestOptions(func(option *Options) {
+				option.HubConnectivityOpts.UseKubeConfig = true
+			}),
+			want: field.ErrorList{
+				field.Invalid(newPath.Child("HubConnectivityOpts").Child("HubKubeconfigPath"), "", "HubKubeconfigPath must be set when UseKubeConfig is set"),
 			},
 		},
 		"hub burst less than hub QPS": {

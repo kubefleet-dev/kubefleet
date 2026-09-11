@@ -64,11 +64,13 @@ func TestHubConnectivityOptions(t *testing.T) {
 			name:        "hub kubeconfig specified",
 			flagSetName: "hubKubeconfigSpecified",
 			args: []string{
+				"--use-kubeconfig=true",
 				"--hub-kubeconfig=/etc/kubefleet/hub-kubeconfig/kubeconfig",
 			},
 			wantHubConnectOpts: HubConnectivityOptions{
 				UseCertificateAuth:   false,
 				UseInsecureTLSClient: false,
+				UseKubeConfig:        true,
 				HubKubeconfigPath:    "/etc/kubefleet/hub-kubeconfig/kubeconfig",
 			},
 		},

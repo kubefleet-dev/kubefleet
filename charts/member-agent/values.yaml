@@ -40,13 +40,12 @@ config:
   # paths above. Only used when useCAAuth is true. Leave empty ("") to keep bringing your own
   # cert/key files by another means (identityKey/identityCert must then point at that mount).
   identitySecretName: ""
-  # hubKubeconfigSecretName, when set, mounts a Secret (key "kubeconfig") containing a full
-  # kubeconfig for the hub connection and passes it to --hub-kubeconfig. This is the
-  # vendor-neutral way to authenticate via a federated identity (AWS IRSA, GCP Workload
-  # Identity, Azure AD workload identity, SPIFFE, etc.): the kubeconfig's exec stanza invokes
-  # whatever credential plugin your platform provides — this chart has no vendor-specific
-  # knowledge of any of them. See the README for worked examples. Mutually exclusive with
-  # useCAAuth. Leave empty ("") to keep using the provider configured via config.provider.
+  # hubKubeconfigSecretName names a Secret (key "kubeconfig") containing a full kubeconfig for
+  # the hub connection, mounted and passed to --hub-kubeconfig. Only used when useKubeconfig
+  # is true. This is the vendor-neutral way to authenticate via a federated identity (AWS IRSA,
+  # GCP Workload Identity, Azure AD workload identity, SPIFFE, etc.): the kubeconfig's exec
+  # stanza invokes whatever credential plugin your platform provides — this chart has no
+  # vendor-specific knowledge of any of them. See the README for worked examples.
   hubKubeconfigSecretName: ""
   azureCloudConfig:
     cloud: ""
@@ -73,6 +72,11 @@ azure:
 
 tlsClientInsecure: false
 useCAAuth: false
+
+# useKubeconfig authenticates to the hub cluster via a full kubeconfig instead of the
+# refresh-token sidecar or useCAAuth — see config.hubKubeconfigSecretName above for the
+# companion value naming the Secret that holds it. Mutually exclusive with useCAAuth.
+useKubeconfig: false
 
 # podLabels and serviceAccountAnnotations are passed straight through to the pod template and the
 # member agent's ServiceAccount, respectively. Use them to attach whatever platform-specific

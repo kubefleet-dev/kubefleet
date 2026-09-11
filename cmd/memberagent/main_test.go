@@ -146,9 +146,10 @@ func Test_buildHubConfig(t *testing.T) {
 	})
 	t.Run("use hub kubeconfig - success", func(t *testing.T) {
 		// hubURL is deliberately left empty here, mirroring main()'s behavior of skipping the
-		// HUB_SERVER_URL read entirely when HubKubeconfigPath is set: the kubeconfig's own
+		// HUB_SERVER_URL read entirely when UseKubeConfig is set: the kubeconfig's own
 		// cluster server URL is authoritative.
 		config, err := buildHubConfig("", options.HubConnectivityOptions{
+			UseKubeConfig:     true,
 			HubKubeconfigPath: "./testdata/kubeconfig",
 		})
 		assert.NotNil(t, config)
@@ -158,6 +159,7 @@ func Test_buildHubConfig(t *testing.T) {
 	})
 	t.Run("use hub kubeconfig, not exists - error", func(t *testing.T) {
 		config, err := buildHubConfig("", options.HubConnectivityOptions{
+			UseKubeConfig:     true,
 			HubKubeconfigPath: "./testdata/does-not-exist",
 		})
 		assert.Nil(t, config)
@@ -166,6 +168,7 @@ func Test_buildHubConfig(t *testing.T) {
 	t.Run("use hub kubeconfig with custom header - success", func(t *testing.T) {
 		t.Setenv("HUB_KUBE_HEADER", "Member-Resource-ID: some-id")
 		config, err := buildHubConfig("", options.HubConnectivityOptions{
+			UseKubeConfig:     true,
 			HubKubeconfigPath: "./testdata/kubeconfig",
 		})
 		assert.NotNil(t, config)

@@ -44,13 +44,15 @@ type HubConnectivityOptions struct {
 	// Not used when HubKubeconfigPath is set.
 	UseInsecureTLSClient bool
 
-	// The path to a kubeconfig file to use for the hub cluster connection, loaded via
-	// client-go's clientcmd (the same mechanism kubectl uses). When set, this takes over the
-	// hub connection entirely: HUB_SERVER_URL, UseCertificateAuth, UseInsecureTLSClient,
-	// CA_BUNDLE/HUB_CERTIFICATE_AUTHORITY, and CONFIG_PATH/IDENTITY_KEY/IDENTITY_CERT are all
-	// ignored, since the kubeconfig already carries the server URL, TLS configuration, and
-	// authentication (a bearer token, a client certificate, or a standard Kubernetes exec
-	// credential plugin — https://kubernetes.io/docs/reference/access-authn-authz/authentication/#client-go-credential-plugins).
+	// Use a kubeconfig file for the hub cluster connection instead of the refresh-token
+	// sidecar or UseCertificateAuth. When set, HubKubeconfigPath must be a path to a
+	// kubeconfig file, loaded via client-go's clientcmd (the same mechanism kubectl uses).
+	// This takes over the hub connection entirely: HUB_SERVER_URL, UseCertificateAuth,
+	// UseInsecureTLSClient, CA_BUNDLE/HUB_CERTIFICATE_AUTHORITY, and
+	// CONFIG_PATH/IDENTITY_KEY/IDENTITY_CERT are all ignored, since the kubeconfig already
+	// carries the server URL, TLS configuration, and authentication (a bearer token, a
+	// client certificate, or a standard Kubernetes exec credential plugin —
+	// https://kubernetes.io/docs/reference/access-authn-authz/authentication/#client-go-credential-plugins).
 	//
 	// This is the vendor-neutral way to authenticate to the hub via a federated identity
 	// (AWS IRSA, GCP Workload Identity, Azure AD workload identity, SPIFFE, etc.): point this
@@ -60,6 +62,10 @@ type HubConnectivityOptions struct {
 	// layered on top of the official one, or via the Helm chart's extraInitContainers).
 	//
 	// Mutually exclusive with UseCertificateAuth.
+	UseKubeConfig bool
+
+	// The path to the kubeconfig file to load. Required when UseKubeConfig is set; see
+	// UseKubeConfig for details.
 	HubKubeconfigPath string
 }
 
@@ -77,9 +83,15 @@ func (o *HubConnectivityOptions) AddFlags(flags *flag.FlagSet) {
 		false,
 		"Use an insecure client or not when connecting to the hub cluster.")
 
+	flags.BoolVar(
+		&o.UseKubeConfig,
+		"use-kubeconfig",
+		false,
+		"Use a kubeconfig file for the hub cluster connection instead of the refresh-token sidecar or --use-ca-auth. Requires --hub-kubeconfig to also be set. Mutually exclusive with --use-ca-auth.")
+
 	flags.StringVar(
 		&o.HubKubeconfigPath,
 		"hub-kubeconfig",
 		"",
-		"The path to a kubeconfig file to use for the hub cluster connection, loaded via clientcmd. When set, this takes over the hub connection entirely (see HubConnectivityOptions.HubKubeconfigPath for details) and is mutually exclusive with --use-ca-auth.")
+		"The path to a kubeconfig file to use for the hub cluster connection, loaded via clientcmd. Only used when --use-kubeconfig is set.")
 }
