@@ -159,7 +159,8 @@ integration-test: $(ENVTEST) ## Run integration tests
 	export CGO_ENABLED=1 && \
 	export KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" && \
 	ginkgo -v -p --race --cover --coverpkg=./pkg/scheduler/... -coverprofile=scheduler-it.out ./test/scheduler && \
-	ginkgo -v -p --race --cover --coverpkg=./apis/ -coverprofile=api-validation-it.out ./test/apis/...
+	ginkgo -v -p --race --cover --coverpkg=./apis/ -coverprofile=api-validation-it.out ./test/apis/... && \
+	ginkgo -v -p --race ./test/spike/...
 
 .PHONY: kubebuilder-assets-path
 kubebuilder-assets-path: $(ENVTEST) ## Get the path to kubebuilder assets
