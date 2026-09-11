@@ -23,6 +23,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/scheme"
 )
 
+const (
+	// PlacementPolicyKind is the kind of the PlacementPolicy API object.
+	PlacementPolicyKind = "PlacementPolicy"
+	// ClusterPlacementPolicyKind is the kind of the ClusterPlacementPolicy API object.
+	ClusterPlacementPolicyKind = "ClusterPlacementPolicy"
+	// ClusterClaimKind is the kind of the ClusterClaim API object.
+	ClusterClaimKind = "ClusterClaim"
+)
+
 var (
 	// GroupVersion is group version used to register these objects
 	GroupVersion = schema.GroupVersion{Group: "placement.kubefleet.dev", Version: "v1alpha1"}
