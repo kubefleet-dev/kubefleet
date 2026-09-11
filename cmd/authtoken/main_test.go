@@ -36,4 +36,17 @@ func TestParseArgs(t *testing.T) {
 		assert.Equal(t, true, ok)
 		assert.Equal(t, "6dae42f8-4368-4678-94ff-3960e28e3630", azTokenProvider.Scope)
 	})
+	t.Run("no clientid - system-assigned identity", func(t *testing.T) {
+		os.Args = []string{"refreshtoken", "azure"}
+		t.Cleanup(func() {
+			os.Args = nil
+		})
+		tokenProvider, err := parseArgs()
+		assert.NotNil(t, tokenProvider)
+		assert.Nil(t, err)
+
+		azTokenProvider, ok := tokenProvider.(*azure.AuthTokenProvider)
+		assert.Equal(t, true, ok)
+		assert.Equal(t, "", azTokenProvider.ClientID)
+	})
 }

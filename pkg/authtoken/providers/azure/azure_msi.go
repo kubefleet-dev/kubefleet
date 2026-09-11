@@ -57,7 +57,12 @@ func (a *AuthTokenProvider) FetchToken(ctx context.Context) (authtoken.AuthToken
 		ClientOptions: azcore.ClientOptions{
 			Transport: httpClient,
 		},
-		ID: azidentity.ClientID(a.ClientID),
+	}
+	// azidentity.NewManagedIdentityCredential authenticates a system-assigned identity when
+	// opts.ID is nil; a non-nil ID (even azidentity.ClientID("")) is treated as user-assigned
+	// and requires a real client ID, so ID must only be set when ClientID is non-empty.
+	if a.ClientID != "" {
+		opts.ID = azidentity.ClientID(a.ClientID)
 	}
 
 	klog.V(2).InfoS("FetchToken", "client ID", a.ClientID)
