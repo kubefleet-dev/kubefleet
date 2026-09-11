@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -49,10 +50,11 @@ func NewCmdUncordonCluster() *cobra.Command {
 		Short: "Uncordon a member cluster",
 		Long:  "Uncordon a previously drained member cluster by removing the cordon taint",
 		RunE: func(command *cobra.Command, args []string) error {
-			if err := o.setupClient(); err != nil {
+			var err error
+			if o.hubClient, err = toolsutils.NewHubClient(o.hubClusterContext); err != nil {
 				return err
 			}
-			return o.runUncordon()
+			return o.runUncordon(command.Context())
 		},
 	}
 
@@ -68,8 +70,8 @@ func NewCmdUncordonCluster() *cobra.Command {
 	return cmd
 }
 
-func (o *uncordonOptions) runUncordon() error {
-	ctx, cancel := context.WithTimeout(context.Background(), o.timeout)
+func (o *uncordonOptions) runUncordon(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, o.timeout)
 	defer cancel()
 
 	if err := o.uncordon(ctx); err != nil {
@@ -80,22 +82,6 @@ func (o *uncordonOptions) runUncordon() error {
 	return nil
 }
 
-// setupClient creates and configures the Kubernetes client
-func (o *uncordonOptions) setupClient() error {
-	scheme, err := toolsutils.NewFleetScheme()
-	if err != nil {
-		return fmt.Errorf("failed to create runtime scheme: %w", err)
-	}
-
-	hubClient, err := toolsutils.GetClusterClientFromClusterContext(o.hubClusterContext, scheme)
-	if err != nil {
-		return fmt.Errorf("failed to create hub cluster client: %w", err)
-	}
-
-	o.hubClient = hubClient
-	return nil
-}
-
 func (o *uncordonOptions) uncordon(ctx context.Context) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var mc clusterv1beta1.MemberCluster
@@ -103,19 +89,10 @@ func (o *uncordonOptions) uncordon(ctx context.Context) error {
 			return err
 		}
 
-		if len(mc.Spec.Taints) == 0 {
+		if !slices.Contains(mc.Spec.Taints, toolsutils.CordonTaint) {
 			return nil
 		}
-
-		var newTaints []clusterv1beta1.Taint
-		for i := range mc.Spec.Taints {
-			taint := mc.Spec.Taints[i]
-			if taint == toolsutils.CordonTaint {
-				continue
-			}
-			newTaints = append(newTaints, taint)
-		}
-		mc.Spec.Taints = newTaints
+		mc.Spec.Taints = slices.DeleteFunc(mc.Spec.Taints, func(t clusterv1beta1.Taint) bool { return t == toolsutils.CordonTaint })
 
 		return o.hubClient.Update(ctx, &mc)
 	})

@@ -42,6 +42,8 @@ To learn more about KubeFleet go to the [KubeFleet documentation](https://kubefl
 
 For release versioning, supported agent version skew, and upgrade ordering, see [VERSIONING.md](VERSIONING.md).
 
+The `kubectl fleet` plugin (drain/uncordon member clusters, approve staged update runs) ships as pre-built binaries with every release; see [tools/fleet/README.md](tools/fleet/README.md).
+
 ## Community
 
 You can reach the KubeFleet community and developers via the following channels:

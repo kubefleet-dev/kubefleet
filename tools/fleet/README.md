@@ -1,42 +1,44 @@
 # kubectl-fleet
 
-A kubectl plugin for KubeFleet cluster management operations, providing functionalities include draining workloads from member clusters for maintenance,
-uncordoning them when ready to accept workloads again, as well as approving staged update run stage execution.
+A kubectl plugin for KubeFleet cluster management: drain workloads off a member cluster for maintenance,
+uncordon it when it is ready to accept workloads again, and approve staged update run stages.
 
 ## Installation
 
-### Building as a kubectl plugin
+### Download a release binary
 
-1. Build the plugin binary by running the following command in the root directory of the KubeFleet repo:
-
-```bash
-go build -o ./hack/tools/bin/kubectl-fleet ./tools/fleet/
-```
-
-2. Copy the binary to a directory in your `PATH` so that it can be run as a kubectl plugin. For example, you can move it to `/usr/local/bin`:
+Every [GitHub release](https://github.com/kubefleet-dev/kubefleet/releases) ships pre-built archives for
+`linux` (`amd64`, `arm64`), `darwin` (`amd64`, `arm64`) and `windows` (`amd64`), plus a `checksums.txt`.
+Pick the archive for your platform and put the binary somewhere on your `PATH`:
 
 ```bash
-sudo cp ./hack/tools/bin/kubectl-fleet /usr/local/bin/
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')   # linux or darwin
+ARCH=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
+curl -sSfLO "https://github.com/kubefleet-dev/kubefleet/releases/latest/download/kubectl-fleet-${OS}-${ARCH}.tar.gz"
+curl -sSfLO "https://github.com/kubefleet-dev/kubefleet/releases/latest/download/checksums.txt"
+sha256sum --ignore-missing -c checksums.txt   # shasum -a 256 --ignore-missing -c on macOS
+tar -xzf "kubectl-fleet-${OS}-${ARCH}.tar.gz" kubectl-fleet
+sudo install kubectl-fleet /usr/local/bin/
 ```
 
-3. Make the binary executable by running the following command:
+The checksum step guards against a corrupted or truncated download; it does not authenticate the release itself.
+Replace `latest` with a tag (for example `v0.4.0`) to pin a version. On Windows, download the `.zip` and place
+`kubectl-fleet.exe` on your `PATH`.
+
+### Build from source
+
+From the root of the KubeFleet repo:
 
 ```bash
-chmod +x /usr/local/bin/kubectl-fleet
+make build            # produces bin/kubectl-fleet with version info embedded
+sudo install bin/kubectl-fleet /usr/local/bin/
 ```
 
-4. Verify that the plugin is recognized by kubectl by running the following command:
+### Verify
 
 ```bash
-kubectl plugin list
-```
-
-You should see the `fleet` plugin listed in the output:
-
-```
-The following compatible plugins are available:
-
-/usr/local/bin/kubectl-fleet
+kubectl plugin list   # lists /usr/local/bin/kubectl-fleet
+kubectl fleet version
 ```
 
 Please refer to the [kubectl plugin documentation](https://kubernetes.io/docs/tasks/extend-kubectl/kubectl-plugins/) for more information.
@@ -188,7 +190,7 @@ kubectl fleet uncordoncluster --hub-cluster-context production-hub --cluster-nam
 # Approve a ClusterApprovalRequest for staged updates
 kubectl fleet approve clusterapprovalrequest --hub-cluster-context hub --name update-approval-stage-1
 
-# Approve a ApprovalRequest for staged updates
+# Approve an ApprovalRequest for staged updates
 kubectl fleet approve approvalrequest --hub-cluster-context hub --name update-approval-stage-1 --namespace test-namespace
 
 # Drain multiple clusters (run separately for each cluster)
@@ -218,9 +220,9 @@ After running the approval command, verify that the corresponding clusterApprova
 #### ApprovalRequest (namespace-scope)
 After running the approval command, verify that the corresponding approvalRequest has been approved:
 
-1. Check that the clusterApprovalRequest has `APPROVED` set to true
+1. Check that the approvalRequest has `APPROVED` set to true
    ```
-   kubectl get approvalrequest example-run-staging -n test-namspace
+   kubectl get approvalrequest example-run-staging -n test-namespace
    NAME                  UPDATE-RUN    STAGE     APPROVED   AGE
    example-run-staging   example-run   staging   True       2m46s
    ```
