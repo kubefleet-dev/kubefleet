@@ -189,8 +189,8 @@ func buildHubConfig(hubURL string, opts options.HubConnectivityOptions) (*rest.C
 	var hubConfig = &rest.Config{
 		Host: hubURL,
 	}
-	switch {
-	case opts.UseKubeConfig:
+
+	if opts.UseKubeConfig {
 		// A full kubeconfig is authoritative for the hub connection: it already carries the
 		// server URL, TLS configuration, and authentication (a bearer token, a client
 		// certificate, or a standard Kubernetes exec credential plugin for a federated
@@ -210,7 +210,7 @@ func buildHubConfig(hubURL string, opts options.HubConnectivityOptions) (*rest.C
 			return nil, err
 		}
 		return applyHubKubeHeader(loadedConfig)
-	case opts.UseCertificateAuth:
+	} else if opts.UseCertificateAuth {
 		keyFilePath := os.Getenv("IDENTITY_KEY")
 		certFilePath := os.Getenv("IDENTITY_CERT")
 		if keyFilePath == "" {
@@ -226,7 +226,7 @@ func buildHubConfig(hubURL string, opts options.HubConnectivityOptions) (*rest.C
 		}
 		hubConfig.TLSClientConfig.CertFile = certFilePath
 		hubConfig.TLSClientConfig.KeyFile = keyFilePath
-	default:
+	} else {
 		tokenFilePath := os.Getenv("CONFIG_PATH")
 		if tokenFilePath == "" {
 			err := errors.New("hub token file path cannot be empty if CA auth not used")
@@ -248,6 +248,14 @@ func buildHubConfig(hubURL string, opts options.HubConnectivityOptions) (*rest.C
 		hubConfig.BearerTokenFile = tokenFilePath
 	}
 
+	return applyHubTLSConfig(hubConfig, opts)
+}
+
+// applyHubTLSConfig applies the TLS insecure/CA settings shared by the certificate-auth and
+// token-auth hub connection modes, then wraps the config with the HUB_KUBE_HEADER transport if
+// one is configured. The kubeconfig mode does not go through this path: a loaded kubeconfig is
+// already authoritative for TLS and skips straight to the header wrapping.
+func applyHubTLSConfig(hubConfig *rest.Config, opts options.HubConnectivityOptions) (*rest.Config, error) {
 	hubConfig.TLSClientConfig.Insecure = opts.UseInsecureTLSClient
 	if opts.UseInsecureTLSClient {
 		klog.Warning("TLS verification is disabled for hub cluster connection. This is insecure and should not be used in production.")

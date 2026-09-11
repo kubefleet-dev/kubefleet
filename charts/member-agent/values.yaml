@@ -41,11 +41,12 @@ config:
   # cert/key files by another means (identityKey/identityCert must then point at that mount).
   identitySecretName: ""
   # hubKubeconfigSecretName names a Secret (key "kubeconfig") containing a full kubeconfig for
-  # the hub connection, mounted and passed to --hub-kubeconfig. Only used when useKubeconfig
-  # is true. This is the vendor-neutral way to authenticate via a federated identity (AWS IRSA,
-  # GCP Workload Identity, Azure AD workload identity, SPIFFE, etc.): the kubeconfig's exec
-  # stanza invokes whatever credential plugin your platform provides — this chart has no
-  # vendor-specific knowledge of any of them. See the README for worked examples.
+  # the hub connection, mounted and passed to the process via the KUBE_CONFIG_PATH environment
+  # variable. Only used when useKubeconfig is true. This is the vendor-neutral way to
+  # authenticate via a federated identity (AWS IRSA, GCP Workload Identity, Azure AD workload
+  # identity, SPIFFE, etc.): the kubeconfig's exec stanza invokes whatever credential plugin
+  # your platform provides — this chart has no vendor-specific knowledge of any of them. See
+  # the README for worked examples.
   hubKubeconfigSecretName: ""
   azureCloudConfig:
     cloud: ""
@@ -66,8 +67,6 @@ secret:
   namespace: "default"
 
 azure:
-  # clientid is the client ID of a user-assigned managed identity. Leave this empty ("") to
-  # use the member cluster's system-assigned managed identity instead.
   clientid: <member_cluster_clientID>
 
 tlsClientInsecure: false
