@@ -69,11 +69,10 @@ func parseArgs() (authtoken.Provider, error) {
 		},
 	}
 
-	azureCmd.Flags().StringVar(&clientID, "clientid", "", "Azure AAD client ID (required)")
+	azureCmd.Flags().StringVar(&clientID, "clientid", "", "Azure AAD client ID of a user-assigned managed identity. Leave empty to use the system-assigned managed identity.")
 	// TODO: this scope argument is specific for Azure provider. We should allow registering and parsing provider specific argument
 	// in provider level, instead of global level.
 	azureCmd.Flags().StringVar(&scope, "scope", "", "Azure AAD token scope (optional)")
-	_ = azureCmd.MarkFlagRequired("clientid")
 
 	rootCmd.AddCommand(secretCmd, azureCmd)
 	err = rootCmd.Execute()

@@ -29,9 +29,9 @@ type HubConnectivityOptions struct {
 	// and certificate to use for authentication via the `IDENTITY_KEY` and `IDENTITY_CERT`
 	// environment variables respectively.
 	//
-	// Otherwise, the member agent will use token-based authentication when connecting
-	// to the hub cluster. The agent will read the token from the file path specified
-	// by the `CONFIG_PATH` environment variable.
+	// Otherwise, unless HubKubeconfigPath is set, the member agent will use token-based
+	// authentication when connecting to the hub cluster. The agent will read the token
+	// from the file path specified by the `CONFIG_PATH` environment variable.
 	UseCertificateAuth bool
 
 	// Use an insecure client or not when connecting to the hub cluster.
@@ -40,7 +40,27 @@ type HubConnectivityOptions struct {
 	// bundle to use for verifying the hub cluster's identity via the `CA_BUNDLE` environment
 	// variable; you can also give the member agent a file path to the CA data instead
 	// via the `HUB_CERTIFICATE_AUTHORITY` environment variable.
+	//
+	// Not used when HubKubeconfigPath is set.
 	UseInsecureTLSClient bool
+
+	// The path to a kubeconfig file to use for the hub cluster connection, loaded via
+	// client-go's clientcmd (the same mechanism kubectl uses). When set, this takes over the
+	// hub connection entirely: HUB_SERVER_URL, UseCertificateAuth, UseInsecureTLSClient,
+	// CA_BUNDLE/HUB_CERTIFICATE_AUTHORITY, and CONFIG_PATH/IDENTITY_KEY/IDENTITY_CERT are all
+	// ignored, since the kubeconfig already carries the server URL, TLS configuration, and
+	// authentication (a bearer token, a client certificate, or a standard Kubernetes exec
+	// credential plugin — https://kubernetes.io/docs/reference/access-authn-authz/authentication/#client-go-credential-plugins).
+	//
+	// This is the vendor-neutral way to authenticate to the hub via a federated identity
+	// (AWS IRSA, GCP Workload Identity, Azure AD workload identity, SPIFFE, etc.): point this
+	// at a kubeconfig whose exec stanza invokes whatever credential plugin your platform
+	// provides. KubeFleet itself has no vendor-specific knowledge of any of these; the exec
+	// plugin binary must be present in the member agent image (e.g. via a custom image
+	// layered on top of the official one, or via the Helm chart's extraInitContainers).
+	//
+	// Mutually exclusive with UseCertificateAuth.
+	HubKubeconfigPath string
 }
 
 // AddFlags adds flags for HubConnectivityOptions to the specified FlagSet.
@@ -56,4 +76,10 @@ func (o *HubConnectivityOptions) AddFlags(flags *flag.FlagSet) {
 		"tls-insecure",
 		false,
 		"Use an insecure client or not when connecting to the hub cluster.")
+
+	flags.StringVar(
+		&o.HubKubeconfigPath,
+		"hub-kubeconfig",
+		"",
+		"The path to a kubeconfig file to use for the hub cluster connection, loaded via clientcmd. When set, this takes over the hub connection entirely (see HubConnectivityOptions.HubKubeconfigPath for details) and is mutually exclusive with --use-ca-auth.")
 }

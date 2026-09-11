@@ -44,6 +44,7 @@ func TestHubConnectivityOptions(t *testing.T) {
 			wantHubConnectOpts: HubConnectivityOptions{
 				UseCertificateAuth:   false,
 				UseInsecureTLSClient: false,
+				HubKubeconfigPath:    "",
 			},
 		},
 		{
@@ -56,6 +57,19 @@ func TestHubConnectivityOptions(t *testing.T) {
 			wantHubConnectOpts: HubConnectivityOptions{
 				UseCertificateAuth:   true,
 				UseInsecureTLSClient: true,
+				HubKubeconfigPath:    "",
+			},
+		},
+		{
+			name:        "hub kubeconfig specified",
+			flagSetName: "hubKubeconfigSpecified",
+			args: []string{
+				"--hub-kubeconfig=/etc/kubefleet/hub-kubeconfig/kubeconfig",
+			},
+			wantHubConnectOpts: HubConnectivityOptions{
+				UseCertificateAuth:   false,
+				UseInsecureTLSClient: false,
+				HubKubeconfigPath:    "/etc/kubefleet/hub-kubeconfig/kubeconfig",
 			},
 		},
 	}
