@@ -248,6 +248,7 @@ users:
       - --login
       - workloadidentity
       provideClusterInfo: false
+      interactiveMode: Never
 ```
 
 ```console
@@ -287,6 +288,7 @@ users:
       - --client-id       # omit this flag entirely to use the system-assigned identity instead
       - <uami-client-id>
       provideClusterInfo: false
+      interactiveMode: Never
 ```
 
 ```console
@@ -328,6 +330,7 @@ users:
       - --tenant-id
       - <aad-tenant-id>
       provideClusterInfo: false
+      interactiveMode: Never
 ```
 ```console
 kubectl create secret generic hub-kubeconfig --namespace fleet-system --from-file=kubeconfig=./kubeconfig.yaml
@@ -364,6 +367,7 @@ users:
       - --tenant-id
       - <aad-tenant-id>
       provideClusterInfo: false
+      interactiveMode: Never
 ```
 This flow also needs its own Secret for the certificate:
 ```console
@@ -400,6 +404,7 @@ users:
       - -i
       - <hub-cluster-id>
       provideClusterInfo: false
+      interactiveMode: Never
 ```
 
 ```console
