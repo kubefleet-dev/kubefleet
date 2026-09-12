@@ -34,7 +34,10 @@ config:
   hubCA: <certificate-authority-data>
   identityKey: "identity-key-path"
   identityCert: "identity-cert-path"
-  CABundle: "ca-bundle-path"
+  # CABundle is a file path to a CA bundle used to verify the hub cluster's TLS certificate.
+  # Optional and mutually exclusive with hubCA: leave empty ("") to trust the hub's CA via
+  # hubCA (or the system trust store) instead.
+  CABundle: ""
   # identitySecretName, when set, mounts a kubernetes.io/tls Secret (keys tls.crt/tls.key) of
   # this name and uses it for IDENTITY_KEY/IDENTITY_CERT instead of the identityKey/identityCert
   # paths above. Only used when useCAAuth is true. Leave empty ("") to keep bringing your own
