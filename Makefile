@@ -227,10 +227,10 @@ generate: $(CONTROLLER_GEN) ## Generate deep copy methods
 ## --------------------------------------
 
 .PHONY: build
-build: generate fmt vet ## Build agent binaries
+build: generate fmt vet ## Build agent binaries and the kubectl-fleet plugin
 	go build -o bin/hubagent cmd/hubagent/main.go
 	go build -o bin/memberagent cmd/memberagent/main.go
-	go build -o bin/kubectl-fleet ./tools/fleet/
+	go build -ldflags '$(CLI_LDFLAGS)' -o bin/kubectl-fleet ./tools/fleet/
 
 .PHONY: run-hubagent
 run-hubagent: manifests generate fmt vet ## Run hub-agent from your host
@@ -297,6 +297,38 @@ helm-push: ## Package and push Helm charts to OCI registry
 	helm push .helm-packages/hub-agent-$(CHART_VERSION).tgz oci://$(REGISTRY)
 	helm push .helm-packages/member-agent-$(CHART_VERSION).tgz oci://$(REGISTRY)
 	rm -rf .helm-packages
+
+## --------------------------------------
+## kubectl-fleet release archives
+## --------------------------------------
+
+# Cross-compiled kubectl-fleet archives attached to each GitHub release so
+# users can install the plugin without a Go toolchain (also what krew and
+# install scripts point at). Each archive holds the binary plus LICENSE.
+CLI_PACKAGE_DIR ?= _cli-package
+CLI_PLATFORMS ?= linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
+# Shown by `kubectl fleet version`; TAG defaults to the short SHA.
+CLI_LDFLAGS = -s -w -X main.version=$(TAG) -X main.commit=$(shell git rev-parse HEAD) -X main.date=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
+.PHONY: cli-package
+cli-package: ## Cross-compile kubectl-fleet for CLI_PLATFORMS into tar.gz/zip archives with a checksums.txt
+	rm -rf $(CLI_PACKAGE_DIR)
+	mkdir -p $(CLI_PACKAGE_DIR)
+	@set -e; for platform in $(CLI_PLATFORMS); do \
+		os=$${platform%/*}; arch=$${platform#*/}; \
+		name=kubectl-fleet-$$os-$$arch; stage=$(CLI_PACKAGE_DIR)/$$name; \
+		bin=kubectl-fleet; [ "$$os" = windows ] && bin=kubectl-fleet.exe; \
+		mkdir -p "$$stage"; cp LICENSE "$$stage/"; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags '$(CLI_LDFLAGS)' -o "$$stage/$$bin" ./tools/fleet/; \
+		if [ "$$os" = windows ]; then \
+			(cd "$$stage" && zip -q "../$$name.zip" "$$bin" LICENSE); \
+		else \
+			tar -czf "$(CLI_PACKAGE_DIR)/$$name.tar.gz" -C "$$stage" "$$bin" LICENSE; \
+		fi; \
+		rm -rf "$$stage"; \
+		echo "Packaged $$name"; \
+	done
+	cd $(CLI_PACKAGE_DIR) && $(SHA256SUM) kubectl-fleet-* > checksums.txt
 
 ## --------------------------------------
 ## CRD release bundle

@@ -15,12 +15,14 @@ permissions:
   contents: read
   packages: write
 
-# Serialize releases per ref so concurrent tag pushes can't race on image
-# pushes to the same ${REGISTRY}/${IMAGE}:${TAG}. Different tags can still
+# Serialize releases per tag so concurrent runs can't race on image pushes
+# to the same ${REGISTRY}/${IMAGE}:${TAG} or on the GitHub release assets.
+# Keyed on the tag name rather than github.ref so a workflow_dispatch for a
+# tag shares the group with that tag's push run. Different tags can still
 # run in parallel. We never want cancel-in-progress here: aborting a
 # half-pushed image is worse than letting it finish.
 concurrency:
-  group: release-images-${{ github.ref }}
+  group: release-images-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 env:
@@ -43,15 +45,15 @@ jobs:
       TAG: ${{ needs.export-registry.outputs.tag }}
     runs-on: ubuntu-latest
     steps:
-      - name: Set up Go ${{ env.GO_VERSION }}
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.export-registry.outputs.tag }}
+
+      - name: Set up Go ${{ env.GO_VERSION }}
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
 
       - name: Login to ghcr.io
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
@@ -103,12 +105,15 @@ jobs:
             done
           done
 
-  # Publish the raw CRDs as a standalone release asset so consumers can install
-  # them without pulling a Helm chart. The bundle carries the unmodified CRDs the
-  # charts install (no downstream-specific labels), split into crds/hub and
-  # crds/member so each set can be applied to the right cluster. Runs after the
-  # images are published so a release is only created once the build succeeds.
-  publish-crds:
+  # Publish the non-image release assets: the raw CRD bundle and the
+  # cross-compiled kubectl-fleet archives. The CRD bundle lets consumers install
+  # CRDs without pulling a Helm chart; it carries the unmodified CRDs the charts
+  # install (no downstream-specific labels), split into crds/hub and crds/member
+  # so each set can be applied to the right cluster. The kubectl-fleet archives
+  # (one tar.gz/zip per OS/arch plus checksums.txt) give users, krew, and install
+  # scripts a stable download URL instead of building from source. Runs after
+  # the images are published so a release is only created once the build succeeds.
+  publish-release-assets:
     needs: [export-registry, build-and-publish]
     runs-on: ubuntu-latest
     permissions:
@@ -121,10 +126,18 @@ jobs:
         with:
           ref: ${{ needs.export-registry.outputs.tag }}
 
+      - name: Set up Go ${{ env.GO_VERSION }}
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
       - name: Package CRDs
         run: make crd-package TAG="${TAG}"
 
-      - name: Create or update the release and upload the CRD bundle
+      - name: Build kubectl-fleet release archives
+        run: make cli-package TAG="${TAG}"
+
+      - name: Create or update the release and upload the assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -147,10 +160,11 @@ jobs:
           gh release upload "${TAG}" \
             "_crd-package/kubefleet-crds-${TAG}.tgz" \
             "_crd-package/kubefleet-crds-${TAG}.tgz.sha256" \
+            _cli-package/* \
             --clobber
           # Only publish releases this job created; never flip a maintainer's existing release.
           if [ "${created_draft}" = "true" ]; then
             gh release edit "${TAG}" --draft=false
           elif [ "$(gh release view "${TAG}" --json isDraft --jq .isDraft)" = "true" ]; then
-            echo "::warning::Release ${TAG} already existed as a draft; the CRD bundle was uploaded but the release was left unpublished. Publish it manually."
+            echo "::warning::Release ${TAG} already existed as a draft; the assets were uploaded but the release was left unpublished. Publish it manually."
           fi
