@@ -34,6 +34,8 @@ import (
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workapplier"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
+	testutilseviction "github.com/kubefleet-dev/kubefleet/test/utils/eviction"
 )
 
 var (
@@ -481,6 +483,186 @@ var _ = Describe("takeover, drift detection, and reportDiff mode (v1beta1 to v1)
 
 			// Verify that all resources placed have been removed from the specified member clusters.
 			cleanWorkResourcesOnCluster(memberCluster1EastProd)
+		})
+	})
+})
+
+var _ = Describe("eviction and disruption budget", func() {
+	Context("eviction of a PickAll CRP protected by a disruption budget (read and write in v1)", Ordered, func() {
+		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+		crpEvictionName := fmt.Sprintf(crpEvictionNameTemplate, GinkgoParallelProcess())
+
+		BeforeAll(func() {
+			createWorkResources()
+
+			crp := &placementv1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+				},
+				Spec: placementv1.PlacementSpec{
+					Policy: &placementv1.PlacementPolicy{
+						PlacementType: placementv1.PickAllPlacementType,
+					},
+					ResourceSelectors: []placementv1.ResourceSelectorTerm{
+						{
+							Group:   "",
+							Version: "v1",
+							Kind:    "Namespace",
+							Name:    fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess()),
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP %s", crpName)
+		})
+
+		AfterAll(func() {
+			ensureCRPEvictionDeleted(crpEvictionName)
+			ensureCRPDisruptionBudgetDeleted(crpName)
+			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+		})
+
+		It("should place resources on all available member clusters", func() {
+			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0")
+			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("should create a disruption budget that protects all placements", func() {
+			crpdb := &placementv1.ClusterResourcePlacementDisruptionBudget{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+				},
+				Spec: placementv1.PlacementDisruptionBudgetSpec{
+					MinAvailable: ptr.To(intstr.FromInt32(int32(len(allMemberClusterNames)))),
+				},
+			}
+			Expect(hubClient.Create(ctx, crpdb)).To(Succeed(), "Failed to create CRP disruption budget %s", crpName)
+		})
+
+		It("should create an eviction targeting a bound cluster", func() {
+			crpe := &placementv1.ClusterResourcePlacementEviction{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpEvictionName,
+				},
+				Spec: placementv1.PlacementEvictionSpec{
+					PlacementName: crpName,
+					ClusterName:   memberCluster1EastProdName,
+				},
+			}
+			Expect(hubClient.Create(ctx, crpe)).To(Succeed(), "Failed to create CRP eviction %s", crpEvictionName)
+		})
+
+		It("should deny the disruption", func() {
+			crpEvictionStatusUpdatedActual := testutilseviction.StatusUpdatedActual(
+				ctx, hubClient, crpEvictionName,
+				&testutilseviction.IsValidEviction{IsValid: true, Msg: condition.EvictionValidMessage},
+				&testutilseviction.IsExecutedEviction{
+					IsExecuted: false,
+					Msg: fmt.Sprintf(
+						condition.EvictionBlockedPDBSpecifiedMessageFmt,
+						len(allMemberClusterNames),
+						len(allMemberClusterNames),
+					),
+				},
+			)
+			Eventually(crpEvictionStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to deny CRP eviction as expected")
+		})
+	})
+
+	Context("eviction of a PickN CRP protected by a disruption budget (read and write in v1)", Ordered, Serial, func() {
+		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
+		crpEvictionName := fmt.Sprintf(crpEvictionNameTemplate, GinkgoParallelProcess())
+		taintClusterNames := []string{memberCluster1EastProdName}
+		noTaintClusterNames := []string{memberCluster2EastCanaryName, memberCluster3WestProdName}
+
+		BeforeAll(func() {
+			createWorkResources()
+
+			crp := &placementv1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+				},
+				Spec: placementv1.PlacementSpec{
+					Policy: &placementv1.PlacementPolicy{
+						PlacementType:    placementv1.PickNPlacementType,
+						NumberOfClusters: ptr.To(int32(len(allMemberClusterNames))),
+					},
+					ResourceSelectors: []placementv1.ResourceSelectorTerm{
+						{
+							Group:   "",
+							Version: "v1",
+							Kind:    "Namespace",
+							Name:    fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess()),
+						},
+					},
+				},
+			}
+			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP %s", crpName)
+		})
+
+		AfterAll(func() {
+			removeTaintsFromMemberClusters(taintClusterNames)
+			ensureCRPEvictionDeleted(crpEvictionName)
+			ensureCRPDisruptionBudgetDeleted(crpName)
+			ensureCRPAndRelatedResourcesDeleted(crpName, allMemberClusters)
+		})
+
+		It("should place resources on all available member clusters", func() {
+			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), allMemberClusterNames, nil, "0")
+			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("should create a disruption budget that allows one unavailable placement", func() {
+			crpdb := &placementv1.ClusterResourcePlacementDisruptionBudget{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpName,
+				},
+				Spec: placementv1.PlacementDisruptionBudgetSpec{
+					MaxUnavailable: ptr.To(intstr.FromInt32(1)),
+				},
+			}
+			Expect(hubClient.Create(ctx, crpdb)).To(Succeed(), "Failed to create CRP disruption budget %s", crpName)
+		})
+
+		It("should taint the target cluster to prevent it from being picked again", func() {
+			addTaintsToMemberClusters(taintClusterNames, buildTaints(taintClusterNames))
+		})
+
+		It("should create an eviction targeting a bound cluster", func() {
+			crpe := &placementv1.ClusterResourcePlacementEviction{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: crpEvictionName,
+				},
+				Spec: placementv1.PlacementEvictionSpec{
+					PlacementName: crpName,
+					ClusterName:   memberCluster1EastProdName,
+				},
+			}
+			Expect(hubClient.Create(ctx, crpe)).To(Succeed(), "Failed to create CRP eviction %s", crpEvictionName)
+		})
+
+		It("should allow the disruption", func() {
+			crpEvictionStatusUpdatedActual := testutilseviction.StatusUpdatedActual(
+				ctx, hubClient, crpEvictionName,
+				&testutilseviction.IsValidEviction{IsValid: true, Msg: condition.EvictionValidMessage},
+				&testutilseviction.IsExecutedEviction{
+					IsExecuted: true,
+					Msg: fmt.Sprintf(
+						condition.EvictionAllowedPDBSpecifiedMessageFmt,
+						len(allMemberClusterNames),
+						len(allMemberClusterNames),
+					),
+				},
+			)
+			Eventually(crpEvictionStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to allow CRP eviction as expected")
+		})
+
+		It("should complete the disruption", func() {
+			workResourcesRemovedActual := workNamespaceRemovedFromClusterActual(memberCluster1EastProd)
+			Eventually(workResourcesRemovedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove work resources from evicted member cluster")
+
+			crpStatusUpdatedActual := crpStatusUpdatedActual(workResourceIdentifiers(), noTaintClusterNames, taintClusterNames, "0")
+			Eventually(crpStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status after eviction")
 		})
 	})
 })
