@@ -22,6 +22,12 @@ helm install hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
 
 #### Option 2: Traditional Helm Repository
 
+> **Important:** every release before this fix reached this index as chart
+> `0.1.0`, which depending on when you installed it either failed to start or
+> silently tracked the unreleased `main` branch. Releases now publish their real
+> version. If you already installed from here, see
+> [Migrating from the 0.1.0 chart index](../README.md#migrating-from-the-010-chart-index).
+
 ```console
 # Add the KubeFleet Helm repository
 helm repo add kubefleet https://kubefleet-dev.github.io/kubefleet/charts
@@ -33,8 +39,15 @@ helm install hub-agent kubefleet/hub-agent --namespace fleet-system --create-nam
 
 ### Local Installation from Source
 
+The in-tree `Chart.yaml` carries a placeholder `appVersion` that names no
+published image, so a local install has to say which image to run:
+
 ```console
-helm install hub-agent ./charts/hub-agent/ --namespace fleet-system --create-namespace
+# Replace VERSION with a published release tag, e.g. v0.3.1
+helm install hub-agent ./charts/hub-agent/ \
+  --namespace fleet-system \
+  --create-namespace \
+  --set image.tag=VERSION
 ```
 
 ### Installation with cert-manager
@@ -60,8 +73,9 @@ helm install hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
   --set enableWorkload=true \
   --set enableWebhook=true
 
-# Or using traditional repository
+# Or using traditional repository (specify VERSION; see the note under Option 2)
 helm install hub-agent kubefleet/hub-agent \
+  --version VERSION \
   --namespace fleet-system \
   --create-namespace \
   --set useCertManager=true \
@@ -82,6 +96,12 @@ helm upgrade hub-agent oci://ghcr.io/kubefleet-dev/kubefleet/charts/hub-agent \
 # Using traditional repository
 helm upgrade hub-agent kubefleet/hub-agent --namespace fleet-system
 ```
+
+> If you have tracked the traditional repository since before per-release
+> versions were published, that second command moves off `0.1.0` for the first
+> time and can cross several releases at once. Read the release notes for the
+> whole span, and see
+> [Migrating from the 0.1.0 chart index](../README.md#migrating-from-the-010-chart-index).
 
 _See [parameters](#parameters) below._
 

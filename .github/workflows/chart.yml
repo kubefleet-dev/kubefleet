@@ -43,13 +43,57 @@ jobs:
         with:
           submodules: true
           fetch-depth: 0
+      # Without chart_version/app_version the action packages charts/*/Chart.yaml
+      # verbatim, and those are pinned in-tree at 0.1.0/v0.1.0. Every release
+      # therefore republished "hub-agent 0.1.0" with appVersion v0.1.0 - and
+      # because `helm repo index --merge` lets the newly generated entry win a
+      # version collision, each release silently replaced the contents of the
+      # same 0.1.0 tarball. The OCI publish below has always passed both values
+      # (see `make helm-push`); this brings the index in line with it.
       - name: Publish Helm chart to GitHub Pages
         uses: stefanprodan/helm-gh-pages@0ad2bb377311d61ac04ad9eb6f252fb68e207260 # v1.7.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           charts_dir: charts
           target_dir: charts
+          chart_version: ${{ needs.export-registry.outputs.version }}
+          app_version: ${{ needs.export-registry.outputs.tag }}
           linting: on
+
+      # Unknown inputs to an action are a warning, not an error, so a rename or
+      # typo above would silently restore the old behaviour with a green build.
+      # Check the branch the action just wrote instead of trusting that it
+      # accepted them.
+      - name: Verify the published index carries this release
+        env:
+          TAG: ${{ needs.export-registry.outputs.tag }}
+          CHART_VERSION: ${{ needs.export-registry.outputs.version }}
+        run: |
+          set -euo pipefail
+          git fetch origin gh-pages
+          index="$(git cat-file blob "FETCH_HEAD:charts/index.yaml")"
+          for chart in hub-agent member-agent; do
+            packaged="charts/${chart}-${CHART_VERSION}.tgz"
+            if ! git cat-file -e "FETCH_HEAD:${packaged}" 2>/dev/null; then
+              echo "::error::gh-pages has no ${packaged}; the chart was not published for this release."
+              exit 1
+            fi
+            app_version="$(git cat-file blob "FETCH_HEAD:${packaged}" \
+              | tar -xzO "${chart}/Chart.yaml" \
+              | awk -F': ' '/^appVersion:/ {gsub(/"/, "", $2); print $2}')"
+            if [ "${app_version}" != "${TAG}" ]; then
+              echo "::error::gh-pages ${chart} appVersion (${app_version}) does not match release tag (${TAG})"
+              exit 1
+            fi
+            # index.yaml is what `helm repo add` reads; a tarball on the branch
+            # that the index does not list is invisible to users, so assert the
+            # index gained this version rather than only that the file exists.
+            if ! grep -qF "${chart}-${CHART_VERSION}.tgz" <<<"${index}"; then
+              echo "::error::gh-pages charts/index.yaml does not list ${chart} ${CHART_VERSION}"
+              exit 1
+            fi
+            echo "✅ gh-pages publishes and indexes ${chart} ${CHART_VERSION} (appVersion ${app_version})"
+          done
 
   publish-oci:
     needs: export-registry
