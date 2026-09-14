@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	appv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	apiextensionshelpers "k8s.io/apiextensions-apiserver/pkg/apihelpers"
@@ -109,6 +110,8 @@ func trackInMemberClusterObjAvailabilityByGVR(
 		return trackStatefulSetAvailability(inMemberClusterObj)
 	case utils.DaemonSetGVR:
 		return trackDaemonSetAvailability(inMemberClusterObj)
+	case utils.JobGVR:
+		return trackJobAvailability(inMemberClusterObj)
 	case utils.ServiceGVR:
 		return trackServiceAvailability(inMemberClusterObj)
 	case utils.CustomResourceDefinitionGVR:
@@ -204,6 +207,30 @@ func trackDaemonSetAvailability(inMemberClusterObj *unstructured.Unstructured) (
 		return AvailabilityResultTypeAvailable, nil
 	}
 	klog.V(2).InfoS("Daemon set is not ready yet, will check later to see if it becomes available", "daemonSet", klog.KObj(inMemberClusterObj))
+	return AvailabilityResultTypeNotYetAvailable, nil
+}
+
+// trackJobAvailability tracks the availability of a job in the member cluster.
+func trackJobAvailability(inMemberClusterObj *unstructured.Unstructured) (ManifestProcessingAvailabilityResultType, error) {
+	var job batchv1.Job
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(inMemberClusterObj.Object, &job); err != nil {
+		// Normally this branch should never run.
+		wrappedErr := fmt.Errorf("failed to convert the unstructured object to a job: %w", err)
+		_ = controller.NewUnexpectedBehaviorError(wrappedErr)
+		return AvailabilityResultTypeFailed, wrappedErr
+	}
+
+	if job.Spec.Suspend != nil && *job.Spec.Suspend {
+		klog.V(2).InfoS("Job is suspended, consider it to be immediately available", "job", klog.KObj(inMemberClusterObj))
+		return AvailabilityResultTypeAvailable, nil
+	}
+	for _, condition := range job.Status.Conditions {
+		if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
+			klog.V(2).InfoS("Job is available", "job", klog.KObj(inMemberClusterObj))
+			return AvailabilityResultTypeAvailable, nil
+		}
+	}
+	klog.V(2).InfoS("Job is not complete yet, will check later to see if it becomes available", "job", klog.KObj(inMemberClusterObj))
 	return AvailabilityResultTypeNotYetAvailable, nil
 }
 
