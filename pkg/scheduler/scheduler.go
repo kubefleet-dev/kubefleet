@@ -187,11 +187,17 @@ func (s *Scheduler) scheduleOnce(ctx context.Context, worker int) {
 	latestPolicySnapshot, err := s.lookupLatestPolicySnapshot(ctx, placement)
 	if err != nil {
 		klog.ErrorS(err, "Failed to lookup latest policy snapshot", "placement", placementKey)
-		// No requeue is needed; the scheduler will be triggered again when an active policy
-		// snapshot is created.
+		if errors.Is(err, controller.ErrNoLatestPolicySnapshot) || errors.Is(err, controller.ErrMultipleActivePolicySnapshots) {
+			// No requeue is needed; the scheduler will be triggered again when an active policy
+			// snapshot is created.
 
-		// Untrack the key for quicker reprocessing.
-		s.queue.Forget(placementKey)
+			// Untrack the key for quicker reprocessing.
+			s.queue.Forget(placementKey)
+			return
+		}
+
+		// Requeue transient lookup failures for later processing.
+		s.queue.AddRateLimited(placementKey)
 		return
 	}
 
