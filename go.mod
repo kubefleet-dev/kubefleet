@@ -137,10 +137,4 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
 )
 
-replace (
-	// fix CVE-2023-47108 introduced by k8s.io/apiextensions-apiserver
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc => go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.46.0
-
-	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.30.2 // weird bug that the goland won't compile without this
-	sigs.k8s.io/work-api => github.com/Azure/k8s-work-api v0.5.0
-)
+replace sigs.k8s.io/work-api => github.com/Azure/k8s-work-api v0.5.0
