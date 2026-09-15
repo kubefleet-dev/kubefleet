@@ -23,8 +23,7 @@ import (
 )
 
 func TestGetEventString(t *testing.T) {
-	pod := &corev1.Pod{}
-	got := GetEventString(pod, corev1.EventTypeNormal, "SomeReason", "something %s happened", "good")
+	got := GetEventString(corev1.EventTypeNormal, "SomeReason", "something %s happened", "good")
 	want := "Normal SomeReason something good happened"
 	if got != want {
 		t.Errorf("GetEventString() = %q, want %q", got, want)

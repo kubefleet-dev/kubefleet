@@ -232,11 +232,11 @@ func TestSyncNamespace(t *testing.T) {
 						return nil
 					},
 				},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			},
 			memberCluster:       &clusterv1beta1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: "mc1"}},
 			wantedNamespaceName: namespace1,
-			wantedEvent:         utils.GetEventString(&clusterv1beta1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: "mc1"}}, corev1.EventTypeNormal, eventReasonNamespaceCreated, "Namespace was created"),
+			wantedEvent:         utils.GetEventString(corev1.EventTypeNormal, eventReasonNamespaceCreated, "Namespace was created"),
 			wantedError:         "",
 		},
 		"namespace exists without label": {
@@ -256,11 +256,11 @@ func TestSyncNamespace(t *testing.T) {
 						return nil
 					},
 				},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			},
 			memberCluster:       &clusterv1beta1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: "mc1"}},
 			wantedNamespaceName: namespace1,
-			wantedEvent:         utils.GetEventString(&clusterv1beta1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: "mc1"}}, corev1.EventTypeNormal, eventReasonNamespacePatched, "Namespace was patched"),
+			wantedEvent:         utils.GetEventString(corev1.EventTypeNormal, eventReasonNamespacePatched, "Namespace was patched"),
 			wantedError:         "",
 		},
 		"namespace exists with label": {
@@ -360,8 +360,8 @@ func TestSyncNamespace(t *testing.T) {
 func TestSyncRole(t *testing.T) {
 	expectedMemberCluster1 := clusterv1beta1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: "mc2"}}
 	expectedMemberCluster2 := clusterv1beta1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: "mc3"}}
-	expectedEvent1 := utils.GetEventString(&expectedMemberCluster1, corev1.EventTypeNormal, eventReasonRoleUpdated, "role was updated")
-	expectedEvent2 := utils.GetEventString(&expectedMemberCluster2, corev1.EventTypeNormal, eventReasonRoleCreated, "role was created")
+	expectedEvent1 := utils.GetEventString(corev1.EventTypeNormal, eventReasonRoleUpdated, "role was updated")
+	expectedEvent2 := utils.GetEventString(corev1.EventTypeNormal, eventReasonRoleCreated, "role was created")
 
 	tests := map[string]struct {
 		r              *Reconciler
@@ -413,7 +413,7 @@ func TestSyncRole(t *testing.T) {
 						return nil
 					},
 				},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			},
 			memberCluster:  &expectedMemberCluster1,
 			namespaceName:  namespace2,
@@ -431,7 +431,7 @@ func TestSyncRole(t *testing.T) {
 						return nil
 					},
 				},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			},
 			memberCluster:  &expectedMemberCluster2,
 			namespaceName:  namespace3,
@@ -551,8 +551,8 @@ func TestSyncRoleBinding(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "mc3"},
 		Spec:       clusterv1beta1.MemberClusterSpec{Identity: identity},
 	}
-	expectedEvent1 := utils.GetEventString(&expectedMemberCluster1, corev1.EventTypeNormal, eventReasonRoleBindingUpdated, "role binding was updated")
-	expectedEvent2 := utils.GetEventString(&expectedMemberCluster2, corev1.EventTypeNormal, eventReasonRoleBindingCreated, "role binding was created")
+	expectedEvent1 := utils.GetEventString(corev1.EventTypeNormal, eventReasonRoleBindingUpdated, "role binding was updated")
+	expectedEvent2 := utils.GetEventString(corev1.EventTypeNormal, eventReasonRoleBindingCreated, "role binding was created")
 
 	tests := map[string]struct {
 		r             *Reconciler
@@ -655,7 +655,7 @@ func TestSyncRoleBinding(t *testing.T) {
 						return nil
 					},
 					MockUpdate: updateMock},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			},
 			memberCluster: &expectedMemberCluster1,
 			namespaceName: namespace2,
@@ -670,7 +670,7 @@ func TestSyncRoleBinding(t *testing.T) {
 						return apierrors.NewNotFound(schema.GroupResource{Group: "", Resource: "Namespace"}, "namespace")
 					},
 					MockCreate: createMock},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			},
 			memberCluster: &expectedMemberCluster2,
 			namespaceName: namespace3,
@@ -779,8 +779,8 @@ func TestSyncInternalMemberCluster(t *testing.T) {
 		Spec:       clusterv1beta1.MemberClusterSpec{HeartbeatPeriodSeconds: 30},
 	}
 
-	expectedEvent1 := utils.GetEventString(&expectedLeavingMemberCluster, corev1.EventTypeNormal, eventReasonIMCSpecUpdated, "internal member cluster spec updated")
-	expectedEvent2 := utils.GetEventString(&expectedMemberCluster2, corev1.EventTypeNormal, eventReasonIMCCreated, "Internal member cluster was created")
+	expectedEvent1 := utils.GetEventString(corev1.EventTypeNormal, eventReasonIMCSpecUpdated, "internal member cluster spec updated")
+	expectedEvent2 := utils.GetEventString(corev1.EventTypeNormal, eventReasonIMCCreated, "Internal member cluster was created")
 
 	tests := map[string]struct {
 		r                               *Reconciler
@@ -795,7 +795,7 @@ func TestSyncInternalMemberCluster(t *testing.T) {
 			r: &Reconciler{
 				Client: &test.MockClient{
 					MockUpdate: updateMock},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			},
 			memberCluster: &expectedLeavingMemberCluster,
 			namespaceName: namespace1,
@@ -842,7 +842,7 @@ func TestSyncInternalMemberCluster(t *testing.T) {
 			r: &Reconciler{
 				Client: &test.MockClient{
 					MockCreate: createMock},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			},
 			memberCluster:                   &expectedMemberCluster2,
 			namespaceName:                   "fleet-mc4",
@@ -891,7 +891,7 @@ func TestSyncInternalMemberCluster(t *testing.T) {
 }
 
 func TestMarkMemberClusterJoined(t *testing.T) {
-	recorder := utils.NewFakeRecorder(1)
+	recorder := events.NewFakeRecorder(1)
 	memberCluster := &clusterv1beta1.MemberCluster{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       clusterv1beta1.InternalMemberClusterKind,
@@ -902,7 +902,7 @@ func TestMarkMemberClusterJoined(t *testing.T) {
 
 	// check that the correct event is emitted
 	event := <-recorder.Events
-	expected := utils.GetEventString(memberCluster, corev1.EventTypeNormal, reasonMemberClusterJoined, "member cluster joined")
+	expected := utils.GetEventString(corev1.EventTypeNormal, reasonMemberClusterJoined, "member cluster joined")
 	if event != expected {
 		t.Errorf("markMemberClusterJoined() emitted event %v, want %v", event, expected)
 	}
@@ -932,7 +932,7 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 	}{
 		"copy with Joined condition": {
 			r: &Reconciler{
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 				agents: map[clusterv1beta1.AgentType]bool{
 					clusterv1beta1.MemberAgent:              true,
 					clusterv1beta1.ServiceExportImportAgent: true,
@@ -1102,7 +1102,7 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 		},
 		"copy with Left condition": {
 			r: &Reconciler{
-				recorder: utils.NewFakeRecorder(2),
+				recorder: events.NewFakeRecorder(2),
 				agents: map[clusterv1beta1.AgentType]bool{
 					clusterv1beta1.MemberAgent:              true,
 					clusterv1beta1.ServiceExportImportAgent: true,
@@ -1208,7 +1208,7 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 		},
 		"copy with Unknown condition": {
 			r: &Reconciler{
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 				agents: map[clusterv1beta1.AgentType]bool{
 					clusterv1beta1.MemberAgent:              true,
 					clusterv1beta1.ServiceExportImportAgent: true,
@@ -1308,7 +1308,7 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 		},
 		"No Agent Status": {
 			r: &Reconciler{
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 				agents: map[clusterv1beta1.AgentType]bool{
 					clusterv1beta1.MemberAgent: true,
 				},
@@ -1355,7 +1355,7 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 		},
 		"Internal member cluster is nil": {
 			r: &Reconciler{
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 				agents: map[clusterv1beta1.AgentType]bool{
 					clusterv1beta1.MemberAgent: true,
 				},
@@ -1366,7 +1366,7 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 		},
 		"other agent type reported in the status and should be ignored": {
 			r: &Reconciler{
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 				agents: map[clusterv1beta1.AgentType]bool{
 					clusterv1beta1.MemberAgent:              true,
 					clusterv1beta1.ServiceExportImportAgent: true,
@@ -1490,7 +1490,7 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 		},
 		"less agent type reported in the status": {
 			r: &Reconciler{
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 				agents: map[clusterv1beta1.AgentType]bool{
 					clusterv1beta1.MemberAgent:              true,
 					clusterv1beta1.ServiceExportImportAgent: true,
@@ -1566,7 +1566,7 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 		},
 		"condition is not reported in the status": {
 			r: &Reconciler{
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 				agents: map[clusterv1beta1.AgentType]bool{
 					clusterv1beta1.MemberAgent:              true,
 					clusterv1beta1.ServiceExportImportAgent: true,
@@ -1650,7 +1650,7 @@ func TestSyncInternalMemberClusterStatus(t *testing.T) {
 		},
 		"agent type is not reported in the status": {
 			r: &Reconciler{
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 				agents: map[clusterv1beta1.AgentType]bool{
 					clusterv1beta1.MemberAgent:              true,
 					clusterv1beta1.ServiceExportImportAgent: true,
@@ -1768,7 +1768,7 @@ func TestUpdateMemberClusterStatus(t *testing.T) {
 					count++
 					return nil
 				}},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			},
 			memberCluster: &clusterv1beta1.MemberCluster{},
 			wantedError:   "",
@@ -1785,7 +1785,7 @@ func TestUpdateMemberClusterStatus(t *testing.T) {
 					}
 					return apierrors.NewServerTimeout(schema.GroupResource{}, "", 1)
 				}},
-				recorder: utils.NewFakeRecorder(10),
+				recorder: events.NewFakeRecorder(10),
 			},
 			memberCluster: &clusterv1beta1.MemberCluster{Spec: clusterv1beta1.MemberClusterSpec{HeartbeatPeriodSeconds: int32(5)}},
 			wantedError:   "",
@@ -1799,7 +1799,7 @@ func TestUpdateMemberClusterStatus(t *testing.T) {
 					count++
 					return apierrors.NewServerTimeout(schema.GroupResource{}, "", 1)
 				}},
-				recorder: utils.NewFakeRecorder(10),
+				recorder: events.NewFakeRecorder(10),
 			},
 			memberCluster: &clusterv1beta1.MemberCluster{},
 			wantedError:   "The  operation against  could not be completed at this time, please try again.",
@@ -1813,7 +1813,7 @@ func TestUpdateMemberClusterStatus(t *testing.T) {
 					count++
 					return errors.New("random update error")
 				}},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			},
 			memberCluster: &clusterv1beta1.MemberCluster{},
 			wantedError:   "random update error",
@@ -1856,7 +1856,7 @@ func TestHandleDelete(t *testing.T) {
 	}{
 		"do nothing when the mc has no finalizer": {
 			r: &Reconciler{Client: &test.MockClient{},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			},
 			memberCluster: &clusterv1beta1.MemberCluster{},
 			wantResult:    ctrl.Result{},
@@ -1879,7 +1879,7 @@ func TestHandleDelete(t *testing.T) {
 					}
 					return nil
 				}},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			},
 			memberCluster: memberClusterWithFinalizer.DeepCopy(),
 			wantResult:    ctrl.Result{},
@@ -1900,7 +1900,7 @@ func TestHandleDelete(t *testing.T) {
 					}
 					return nil
 				}},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			},
 			memberCluster: memberClusterWithFinalizer.DeepCopy(),
 			wantResult:    ctrl.Result{RequeueAfter: time.Second},
@@ -1921,7 +1921,7 @@ func TestHandleDelete(t *testing.T) {
 					}
 					return nil
 				}},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			},
 			memberCluster: memberClusterWithFinalizer.DeepCopy(),
 			wantResult:    ctrl.Result{RequeueAfter: time.Second},
@@ -1960,7 +1960,7 @@ func TestHandleDelete(t *testing.T) {
 						return nil
 					},
 				},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			},
 			memberCluster: memberClusterWithFinalizer.DeepCopy(),
 			wantResult:    ctrl.Result{Requeue: true},

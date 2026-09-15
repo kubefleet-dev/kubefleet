@@ -77,14 +77,14 @@ var (
 )
 
 func TestMarkInternalMemberClusterJoined(t *testing.T) {
-	r := Reconciler{recorder: utils.NewFakeRecorder(1)}
+	r := Reconciler{recorder: events.NewFakeRecorder(1)}
 	internalMemberCluster := &clusterv1beta1.InternalMemberCluster{}
 
 	r.markInternalMemberClusterJoined(internalMemberCluster)
 
 	// check that the correct event is emitted
 	event := <-r.recorder.(*events.FakeRecorder).Events
-	expected := utils.GetEventString(internalMemberCluster, corev1.EventTypeNormal, EventReasonInternalMemberClusterJoined, "internal member cluster joined")
+	expected := utils.GetEventString(corev1.EventTypeNormal, EventReasonInternalMemberClusterJoined, "internal member cluster joined")
 	if event != expected {
 		t.Errorf("markInternalMemberClusterJoined() emitted event %v, want %v", event, expected)
 	}
@@ -98,14 +98,14 @@ func TestMarkInternalMemberClusterJoined(t *testing.T) {
 }
 
 func TestMarkInternalMemberClusterLeft(t *testing.T) {
-	r := Reconciler{recorder: utils.NewFakeRecorder(1)}
+	r := Reconciler{recorder: events.NewFakeRecorder(1)}
 	internalMemberCluster := &clusterv1beta1.InternalMemberCluster{}
 
 	r.markInternalMemberClusterLeft(internalMemberCluster)
 
 	// check that the correct event is emitted
 	event := <-r.recorder.(*events.FakeRecorder).Events
-	expected := utils.GetEventString(internalMemberCluster, corev1.EventTypeNormal, EventReasonInternalMemberClusterLeft, "internal member cluster left")
+	expected := utils.GetEventString(corev1.EventTypeNormal, EventReasonInternalMemberClusterLeft, "internal member cluster left")
 	if event != expected {
 		t.Errorf("markInternalMemberClusterLeft() emitted event %v, want %v", event, expected)
 	}
@@ -119,7 +119,7 @@ func TestMarkInternalMemberClusterLeft(t *testing.T) {
 }
 
 func TestMarkInternalMemberClusterJoinFailed(t *testing.T) {
-	r := Reconciler{recorder: utils.NewFakeRecorder(1)}
+	r := Reconciler{recorder: events.NewFakeRecorder(1)}
 	internalMemberCluster := &clusterv1beta1.InternalMemberCluster{}
 	joinErr := errors.New("join failed")
 
@@ -127,7 +127,7 @@ func TestMarkInternalMemberClusterJoinFailed(t *testing.T) {
 
 	// check that the correct event is emitted
 	event := <-r.recorder.(*events.FakeRecorder).Events
-	wantEvent := utils.GetEventString(internalMemberCluster, corev1.EventTypeNormal, EventReasonInternalMemberClusterFailedToJoin, "internal member cluster failed to join")
+	wantEvent := utils.GetEventString(corev1.EventTypeNormal, EventReasonInternalMemberClusterFailedToJoin, "internal member cluster failed to join")
 	if event != wantEvent {
 		t.Errorf("markInternalMemberClusterJoinFailed() emitted event %v, want %v", event, wantEvent)
 	}
@@ -141,7 +141,7 @@ func TestMarkInternalMemberClusterJoinFailed(t *testing.T) {
 }
 
 func TestMarkInternalMemberClusterLeaveFailed(t *testing.T) {
-	r := Reconciler{recorder: utils.NewFakeRecorder(1)}
+	r := Reconciler{recorder: events.NewFakeRecorder(1)}
 	internalMemberCluster := &clusterv1beta1.InternalMemberCluster{}
 	leaveErr := errors.New("leave failed")
 
@@ -149,7 +149,7 @@ func TestMarkInternalMemberClusterLeaveFailed(t *testing.T) {
 
 	// check that the correct event is emitted
 	event := <-r.recorder.(*events.FakeRecorder).Events
-	wantEvent := utils.GetEventString(internalMemberCluster, corev1.EventTypeNormal, EventReasonInternalMemberClusterFailedToLeave, "internal member cluster failed to leave")
+	wantEvent := utils.GetEventString(corev1.EventTypeNormal, EventReasonInternalMemberClusterFailedToLeave, "internal member cluster failed to leave")
 	if event != wantEvent {
 		t.Errorf("markInternalMemberClusterLeaveFailed() emitted event %v, want %v", event, wantEvent)
 	}
@@ -179,14 +179,14 @@ func TestUpdateMemberAgentHeartBeat(t *testing.T) {
 }
 
 func TestMarkInternalMemberClusterHealthy(t *testing.T) {
-	r := Reconciler{recorder: utils.NewFakeRecorder(1)}
+	r := Reconciler{recorder: events.NewFakeRecorder(1)}
 	internalMemberCluster := &clusterv1beta1.InternalMemberCluster{}
 
 	r.markInternalMemberClusterHealthy(internalMemberCluster)
 
 	// check that the correct event is emitted
 	event := <-r.recorder.(*events.FakeRecorder).Events
-	expected := utils.GetEventString(internalMemberCluster, corev1.EventTypeNormal, EventReasonInternalMemberClusterHealthy, "internal member cluster healthy")
+	expected := utils.GetEventString(corev1.EventTypeNormal, EventReasonInternalMemberClusterHealthy, "internal member cluster healthy")
 	if event != expected {
 		t.Errorf("markInternalMemberClusterHealthy() emitted event %v, want %v", event, expected)
 	}
@@ -202,13 +202,13 @@ func TestMarkInternalMemberClusterHealthy(t *testing.T) {
 func TestMarkInternalMemberClusterHeartbeatUnhealthy(t *testing.T) {
 	internalMemberCluster := &clusterv1beta1.InternalMemberCluster{}
 	err := errors.New("rand-err-msg")
-	r := Reconciler{recorder: utils.NewFakeRecorder(1)}
+	r := Reconciler{recorder: events.NewFakeRecorder(1)}
 
 	r.markInternalMemberClusterUnhealthy(internalMemberCluster, err)
 
 	// check that the correct event is emitted
 	event := <-r.recorder.(*events.FakeRecorder).Events
-	expected := utils.GetEventString(internalMemberCluster, corev1.EventTypeWarning, EventReasonInternalMemberClusterUnhealthy, "internal member cluster unhealthy")
+	expected := utils.GetEventString(corev1.EventTypeWarning, EventReasonInternalMemberClusterUnhealthy, "internal member cluster unhealthy")
 	if event != expected {
 		t.Errorf("markInternalMemberClusterUnhealthy() emitted event %v, want %v", event, expected)
 	}
@@ -523,7 +523,7 @@ func TestReportClusterPropertiesWithPropertyProviderTooManyCalls(t *testing.T) {
 				propertyProviderCfg: &propertyProviderConfig{
 					propertyProvider: nrpp,
 				},
-				recorder: utils.NewFakeRecorder(maxQueuedPropertyCollectionCalls + 1),
+				recorder: events.NewFakeRecorder(maxQueuedPropertyCollectionCalls + 1),
 			}
 			for i := 0; i < maxQueuedPropertyCollectionCalls; i++ {
 				// Invoke the method with no expectations for returns.
@@ -598,7 +598,7 @@ func TestReportClusterPropertiesWithPropertyProviderTimedOut(t *testing.T) {
 				propertyProviderCfg: &propertyProviderConfig{
 					propertyProvider: nrpp,
 				},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			}
 
 			if err := r.reportClusterPropertiesWithPropertyProvider(ctx, tc.imc); err == nil {
@@ -727,7 +727,7 @@ func TestReportClusterPropertiesWithPropertyProvider(t *testing.T) {
 				propertyProviderCfg: &propertyProviderConfig{
 					propertyProvider: &dummyProvider{},
 				},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			}
 
 			if err := r.reportClusterPropertiesWithPropertyProvider(ctx, tc.imc); err != nil {
@@ -1518,7 +1518,7 @@ func TestConnectToPropertyProvider(t *testing.T) {
 				propertyProviderCfg: &propertyProviderConfig{
 					propertyProvider: tc.propertyProvider,
 				},
-				recorder: utils.NewFakeRecorder(1),
+				recorder: events.NewFakeRecorder(1),
 			}
 
 			imc := imcTemplate.DeepCopy()

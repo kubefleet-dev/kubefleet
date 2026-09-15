@@ -34,7 +34,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/events"
 )
 
 var (
@@ -50,13 +49,8 @@ const (
 	TestCaseMsg string = "\nTest case:  %s"
 )
 
-// NewFakeRecorder makes a new fake event recorder.
-func NewFakeRecorder(bufferSize int) *events.FakeRecorder {
-	return events.NewFakeRecorder(bufferSize)
-}
-
 // GetEventString gets the exact string literal of the event created by the fake event library.
-func GetEventString(_ runtime.Object, eventtype, reason, messageFmt string, args ...any) string {
+func GetEventString(eventtype, reason, messageFmt string, args ...any) string {
 	return fmt.Sprintf(eventtype+" "+reason+" "+messageFmt, args...)
 }
 
