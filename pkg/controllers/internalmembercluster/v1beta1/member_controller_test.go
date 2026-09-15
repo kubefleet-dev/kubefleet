@@ -35,7 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -84,7 +84,7 @@ func TestMarkInternalMemberClusterJoined(t *testing.T) {
 	r.markInternalMemberClusterJoined(internalMemberCluster)
 
 	// check that the correct event is emitted
-	event := <-r.recorder.(*record.FakeRecorder).Events
+	event := <-r.recorder.(*events.FakeRecorder).Events
 	expected := utils.GetEventString(internalMemberCluster, corev1.EventTypeNormal, EventReasonInternalMemberClusterJoined, "internal member cluster joined")
 	assert.Equal(t, expected, event, utils.TestCaseMsg, "TestMarkInternalMemberClusterJoined")
 
@@ -101,7 +101,7 @@ func TestMarkInternalMemberClusterLeft(t *testing.T) {
 	r.markInternalMemberClusterLeft(internalMemberCluster)
 
 	// check that the correct event is emitted
-	event := <-r.recorder.(*record.FakeRecorder).Events
+	event := <-r.recorder.(*events.FakeRecorder).Events
 	expected := utils.GetEventString(internalMemberCluster, corev1.EventTypeNormal, EventReasonInternalMemberClusterLeft, "internal member cluster left")
 	assert.Equal(t, expected, event, utils.TestCaseMsg, "TestMarkInternalMemberClusterLeft")
 
@@ -130,7 +130,7 @@ func TestMarkInternalMemberClusterHealthy(t *testing.T) {
 	r.markInternalMemberClusterHealthy(internalMemberCluster)
 
 	// check that the correct event is emitted
-	event := <-r.recorder.(*record.FakeRecorder).Events
+	event := <-r.recorder.(*events.FakeRecorder).Events
 	expected := utils.GetEventString(internalMemberCluster, corev1.EventTypeNormal, EventReasonInternalMemberClusterHealthy, "internal member cluster healthy")
 	assert.Equal(t, expected, event, utils.TestCaseMsg, "TestMarkInternalMemberClusterHealthy")
 
@@ -148,7 +148,7 @@ func TestMarkInternalMemberClusterHeartbeatUnhealthy(t *testing.T) {
 	r.markInternalMemberClusterUnhealthy(internalMemberCluster, err)
 
 	// check that the correct event is emitted
-	event := <-r.recorder.(*record.FakeRecorder).Events
+	event := <-r.recorder.(*events.FakeRecorder).Events
 	expected := utils.GetEventString(internalMemberCluster, corev1.EventTypeWarning, EventReasonInternalMemberClusterUnhealthy, "internal member cluster unhealthy")
 	assert.Equal(t, expected, event, utils.TestCaseMsg, "TestMarkInternalMemberClusterHeartbeatUnhealthy")
 

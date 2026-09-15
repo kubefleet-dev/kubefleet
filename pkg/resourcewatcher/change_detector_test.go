@@ -99,7 +99,7 @@ func TestChangeDetector_discoverResources(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create fake discovery client
-			fakeClient := fake.NewSimpleClientset()
+			fakeClient := fake.NewClientset()
 			fakeDiscovery, ok := fakeClient.Discovery().(*fakediscovery.FakeDiscovery)
 			if !ok {
 				t.Fatal("Failed to cast to FakeDiscovery")

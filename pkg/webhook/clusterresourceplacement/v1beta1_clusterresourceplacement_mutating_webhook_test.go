@@ -19,6 +19,7 @@ package clusterresourceplacement
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"testing"
 
 	"gomodules.xyz/jsonpatch/v2"
@@ -378,7 +379,7 @@ func TestMutatingHandle(t *testing.T) {
 					{
 						Operation: "add",
 						Path:      "/spec/revisionHistoryLimit",
-						Value:     float64(defaulter.DefaultRevisionHistoryLimitValue),
+						Value:     json.Number(strconv.Itoa(defaulter.DefaultRevisionHistoryLimitValue)),
 					},
 				},
 				AdmissionResponse: admissionv1.AdmissionResponse{
@@ -450,7 +451,7 @@ func TestMutatingHandle(t *testing.T) {
 						Value: map[string]any{
 							"maxSurge":                 defaulter.DefaultMaxSurgeValue,
 							"maxUnavailable":           defaulter.DefaultMaxUnavailableValue,
-							"unavailablePeriodSeconds": float64(defaulter.DefaultUnavailablePeriodSeconds),
+							"unavailablePeriodSeconds": json.Number(strconv.Itoa(defaulter.DefaultUnavailablePeriodSeconds)),
 						},
 					},
 					{
@@ -529,7 +530,7 @@ func TestMutatingHandle(t *testing.T) {
 						Value: map[string]any{
 							"maxSurge":                 defaulter.DefaultMaxSurgeValue,
 							"maxUnavailable":           defaulter.DefaultMaxUnavailableValue,
-							"unavailablePeriodSeconds": float64(defaulter.DefaultUnavailablePeriodSeconds),
+							"unavailablePeriodSeconds": json.Number(strconv.Itoa(defaulter.DefaultUnavailablePeriodSeconds)),
 						},
 					},
 				},
@@ -688,7 +689,7 @@ func TestMutatingHandle(t *testing.T) {
 						Value: map[string]any{
 							"maxSurge":                 defaulter.DefaultMaxSurgeValue,
 							"maxUnavailable":           defaulter.DefaultMaxUnavailableValue,
-							"unavailablePeriodSeconds": float64(defaulter.DefaultUnavailablePeriodSeconds),
+							"unavailablePeriodSeconds": json.Number(strconv.Itoa(defaulter.DefaultUnavailablePeriodSeconds)),
 						},
 					},
 					{
@@ -704,7 +705,7 @@ func TestMutatingHandle(t *testing.T) {
 					{
 						Operation: "add",
 						Path:      "/spec/revisionHistoryLimit",
-						Value:     float64(defaulter.DefaultRevisionHistoryLimitValue),
+						Value:     json.Number(strconv.Itoa(defaulter.DefaultRevisionHistoryLimitValue)),
 					},
 				},
 			},

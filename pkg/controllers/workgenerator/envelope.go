@@ -121,7 +121,7 @@ func (r *Reconciler) createOrUpdateEnvelopeCRWorkObj(
 			"resourceBinding", klog.KObj(binding),
 			"resourceSnapshot", klog.KObj(resourceSnapshot),
 			"envelope", envelopeReader.GetEnvelopeObjRef())
-		r.recorder.Eventf(binding, corev1.EventTypeWarning, "DuplicateEnvelopeWorks",
+		r.recorder.Eventf(binding, nil, corev1.EventTypeWarning, "DuplicateEnvelopeWorks", "GenerateWork",
 			"Multiple Work objects (%v) found for envelope %v in namespace %s; delete all but the oldest to recover",
 			workNames, envelopeReader.GetEnvelopeObjRef(), fmt.Sprintf(utils.NamespaceNameFormat, binding.GetBindingSpec().TargetCluster))
 		return nil, false, controller.NewUnexpectedBehaviorError(wrappedErr)
