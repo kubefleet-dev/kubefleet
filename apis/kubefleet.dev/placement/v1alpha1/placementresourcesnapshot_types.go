@@ -37,7 +37,8 @@ const (
 	// The snapshot of the sub-index 0 is considered the primary snapshot of the same index.
 
 	// PlacementResourceSnapshotOwnedByLabelKey is a label key that denotes the owner placement policy of
-	// a placement resource snapshot. Its value is the name of the owner placement policy.
+	// a placement resource snapshot. Its value is the name of the owner placement policy. KubeFleet
+	// might truncate the name and add a hash suffix as needed.
 	//
 	// This label is set on all placement resource snapshots.
 	PlacementResourceSnapshotOwnedByLabelKey = "placement.kubefleet.dev/placement-resource-snapshot-owned-by"
