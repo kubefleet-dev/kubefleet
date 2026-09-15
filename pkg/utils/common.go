@@ -118,6 +118,9 @@ var (
 		APIGroups: []string{placementv1beta1.GroupVersion.Group},
 		Resources: []string{"*"},
 	}
+	// EventRule grants access to core/v1 Events. The Fleet controllers have
+	// moved to the events.k8s.io recorder, but this rule is still required:
+	// the fleet-networking agents that share this role emit core/v1 Events.
 	EventRule = rbacv1.PolicyRule{
 		Verbs:     []string{"get", "list", "update", "patch", "watch", "create"},
 		APIGroups: []string{""},
