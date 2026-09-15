@@ -27,7 +27,6 @@ import (
 	"github.com/crossplane/crossplane-runtime/v2/pkg/test"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -340,14 +339,20 @@ func TestSyncNamespace(t *testing.T) {
 			if tt.r.recorder != nil {
 				fakeRecorder := tt.r.recorder.(*events.FakeRecorder)
 				event := <-fakeRecorder.Events
-				assert.Equal(t, tt.wantedEvent, event)
+				if event != tt.wantedEvent {
+					t.Errorf("emitted event %v, want %v", event, tt.wantedEvent)
+				}
 			}
 			if tt.wantedError == "" {
-				assert.Equal(t, err, nil, utils.TestCaseMsg, testName)
-			} else {
-				assert.Contains(t, err.Error(), tt.wantedError, utils.TestCaseMsg, testName)
+				if err != nil {
+					t.Errorf("syncNamespace() error = %v, want nil", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tt.wantedError) {
+				t.Errorf("syncNamespace() error = %v, want error containing %q", err, tt.wantedError)
 			}
-			assert.Equalf(t, tt.wantedNamespaceName, got, utils.TestCaseMsg, testName)
+			if got != tt.wantedNamespaceName {
+				t.Errorf("syncNamespace() = %q, want %q", got, tt.wantedNamespaceName)
+			}
 		})
 	}
 }
@@ -493,14 +498,20 @@ func TestSyncRole(t *testing.T) {
 			if tt.r.recorder != nil {
 				fakeRecorder := tt.r.recorder.(*events.FakeRecorder)
 				event := <-fakeRecorder.Events
-				assert.Equal(t, tt.wantedEvent, event)
+				if event != tt.wantedEvent {
+					t.Errorf("emitted event %v, want %v", event, tt.wantedEvent)
+				}
 			}
 			if tt.wantedError == "" {
-				assert.Equal(t, err, nil, utils.TestCaseMsg, testName)
-			} else {
-				assert.Contains(t, err.Error(), tt.wantedError, utils.TestCaseMsg, testName)
+				if err != nil {
+					t.Errorf("syncRole() error = %v, want nil", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tt.wantedError) {
+				t.Errorf("syncRole() error = %v, want error containing %q", err, tt.wantedError)
 			}
-			assert.Equalf(t, tt.wantedRoleName, got, utils.TestCaseMsg, testName)
+			if got != tt.wantedRoleName {
+				t.Errorf("syncRole() = %q, want %q", got, tt.wantedRoleName)
+			}
 		})
 	}
 }
@@ -723,12 +734,16 @@ func TestSyncRoleBinding(t *testing.T) {
 			if tt.r.recorder != nil {
 				fakeRecorder := tt.r.recorder.(*events.FakeRecorder)
 				event := <-fakeRecorder.Events
-				assert.Equal(t, tt.wantedEvent, event)
+				if event != tt.wantedEvent {
+					t.Errorf("emitted event %v, want %v", event, tt.wantedEvent)
+				}
 			}
 			if tt.wantedError == "" {
-				assert.Equal(t, err, nil, utils.TestCaseMsg, testName)
-			} else {
-				assert.Contains(t, err.Error(), tt.wantedError, utils.TestCaseMsg, testName)
+				if err != nil {
+					t.Errorf("syncRoleBinding() error = %v, want nil", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tt.wantedError) {
+				t.Errorf("syncRoleBinding() error = %v, want error containing %q", err, tt.wantedError)
 			}
 		})
 	}
@@ -855,15 +870,21 @@ func TestSyncInternalMemberCluster(t *testing.T) {
 			if tt.r.recorder != nil {
 				fakeRecorder := tt.r.recorder.(*events.FakeRecorder)
 				event := <-fakeRecorder.Events
-				assert.Equal(t, tt.wantedEvent, event)
+				if event != tt.wantedEvent {
+					t.Errorf("emitted event %v, want %v", event, tt.wantedEvent)
+				}
 			}
 			if tt.wantedInternalMemberClusterSpec != nil {
-				assert.Equal(t, *tt.wantedInternalMemberClusterSpec, got.Spec, utils.TestCaseMsg, testName)
+				if diff := cmp.Diff(got.Spec, *tt.wantedInternalMemberClusterSpec); diff != "" {
+					t.Errorf("syncInternalMemberCluster() spec mismatch (-got, +want):\n%s", diff)
+				}
 			}
 			if tt.wantedError == "" {
-				assert.Equal(t, err, nil, utils.TestCaseMsg, testName)
-			} else {
-				assert.Contains(t, err.Error(), tt.wantedError, utils.TestCaseMsg, testName)
+				if err != nil {
+					t.Errorf("syncInternalMemberCluster() error = %v, want nil", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tt.wantedError) {
+				t.Errorf("syncInternalMemberCluster() error = %v, want error containing %q", err, tt.wantedError)
 			}
 		})
 	}
@@ -882,7 +903,9 @@ func TestMarkMemberClusterJoined(t *testing.T) {
 	// check that the correct event is emitted
 	event := <-recorder.Events
 	expected := utils.GetEventString(memberCluster, corev1.EventTypeNormal, reasonMemberClusterJoined, "member cluster joined")
-	assert.Equal(t, expected, event)
+	if event != expected {
+		t.Errorf("markMemberClusterJoined() emitted event %v, want %v", event, expected)
+	}
 
 	// Check expected conditions.
 	expectedConditions := []metav1.Condition{
@@ -891,7 +914,9 @@ func TestMarkMemberClusterJoined(t *testing.T) {
 
 	for i := range expectedConditions {
 		actualCondition := memberCluster.GetCondition(expectedConditions[i].Type)
-		assert.Equal(t, "", cmp.Diff(&expectedConditions[i], actualCondition, cmpopts.IgnoreTypes(time.Time{})))
+		if diff := cmp.Diff(actualCondition, &expectedConditions[i], cmpopts.IgnoreTypes(time.Time{})); diff != "" {
+			t.Errorf("markMemberClusterJoined() condition mismatch (-got, +want):\n%s", diff)
+		}
 	}
 }
 
@@ -1803,11 +1828,15 @@ func TestUpdateMemberClusterStatus(t *testing.T) {
 			count = -1
 			err := tt.r.updateMemberClusterStatus(context.Background(), tt.memberCluster)
 			if tt.wantedError == "" {
-				assert.Equal(t, err, nil, utils.TestCaseMsg, testName)
-			} else {
-				assert.Contains(t, err.Error(), tt.wantedError, utils.TestCaseMsg, testName)
+				if err != nil {
+					t.Errorf("updateMemberClusterStatus() error = %v, want nil", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tt.wantedError) {
+				t.Errorf("updateMemberClusterStatus() error = %v, want error containing %q", err, tt.wantedError)
 			}
-			assert.Equal(t, tt.verifyNumberOfRetry(), true, utils.TestCaseMsg, testName)
+			if !tt.verifyNumberOfRetry() {
+				t.Error("updateMemberClusterStatus() retried an unexpected number of times")
+			}
 		})
 	}
 }

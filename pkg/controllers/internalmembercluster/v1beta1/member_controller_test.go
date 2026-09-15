@@ -26,7 +26,6 @@ import (
 	"github.com/crossplane/crossplane-runtime/v2/pkg/test"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -86,12 +85,16 @@ func TestMarkInternalMemberClusterJoined(t *testing.T) {
 	// check that the correct event is emitted
 	event := <-r.recorder.(*events.FakeRecorder).Events
 	expected := utils.GetEventString(internalMemberCluster, corev1.EventTypeNormal, EventReasonInternalMemberClusterJoined, "internal member cluster joined")
-	assert.Equal(t, expected, event, utils.TestCaseMsg, "TestMarkInternalMemberClusterJoined")
+	if event != expected {
+		t.Errorf("markInternalMemberClusterJoined() emitted event %v, want %v", event, expected)
+	}
 
 	// Check expected condition.
 	expectedCondition := metav1.Condition{Type: string(clusterv1beta1.AgentJoined), Status: metav1.ConditionTrue, Reason: EventReasonInternalMemberClusterJoined}
 	actualCondition := internalMemberCluster.GetConditionWithType(clusterv1beta1.MemberAgent, expectedCondition.Type)
-	assert.Equal(t, "", cmp.Diff(expectedCondition, *(actualCondition), cmpopts.IgnoreTypes(time.Time{})), utils.TestCaseMsg, "TestMarkInternalMemberClusterJoined")
+	if diff := cmp.Diff(*actualCondition, expectedCondition, cmpopts.IgnoreTypes(time.Time{})); diff != "" {
+		t.Errorf("markInternalMemberClusterJoined() condition mismatch (-got, +want):\n%s", diff)
+	}
 }
 
 func TestMarkInternalMemberClusterLeft(t *testing.T) {
@@ -103,12 +106,16 @@ func TestMarkInternalMemberClusterLeft(t *testing.T) {
 	// check that the correct event is emitted
 	event := <-r.recorder.(*events.FakeRecorder).Events
 	expected := utils.GetEventString(internalMemberCluster, corev1.EventTypeNormal, EventReasonInternalMemberClusterLeft, "internal member cluster left")
-	assert.Equal(t, expected, event, utils.TestCaseMsg, "TestMarkInternalMemberClusterLeft")
+	if event != expected {
+		t.Errorf("markInternalMemberClusterLeft() emitted event %v, want %v", event, expected)
+	}
 
 	// Check expected conditions.
 	expectedCondition := metav1.Condition{Type: string(clusterv1beta1.AgentJoined), Status: metav1.ConditionFalse, Reason: EventReasonInternalMemberClusterLeft}
 	actualCondition := internalMemberCluster.GetConditionWithType(clusterv1beta1.MemberAgent, expectedCondition.Type)
-	assert.Equal(t, "", cmp.Diff(expectedCondition, *(actualCondition), cmpopts.IgnoreTypes(time.Time{})), utils.TestCaseMsg, "TestMarkInternalMemberClusterLeft")
+	if diff := cmp.Diff(*actualCondition, expectedCondition, cmpopts.IgnoreTypes(time.Time{})); diff != "" {
+		t.Errorf("markInternalMemberClusterLeft() condition mismatch (-got, +want):\n%s", diff)
+	}
 }
 
 func TestMarkInternalMemberClusterJoinFailed(t *testing.T) {
@@ -160,11 +167,15 @@ func TestUpdateMemberAgentHeartBeat(t *testing.T) {
 
 	updateMemberAgentHeartBeat(internalMemberCluster)
 	lastReceivedHeartBeat := internalMemberCluster.Status.AgentStatus[0].LastReceivedHeartbeat
-	assert.NotNil(t, lastReceivedHeartBeat)
+	if lastReceivedHeartBeat.IsZero() {
+		t.Fatal("updateMemberAgentHeartBeat() left LastReceivedHeartbeat unset")
+	}
 
 	updateMemberAgentHeartBeat(internalMemberCluster)
 	newLastReceivedHeartBeat := internalMemberCluster.Status.AgentStatus[0].LastReceivedHeartbeat
-	assert.NotEqual(t, lastReceivedHeartBeat, newLastReceivedHeartBeat)
+	if newLastReceivedHeartBeat.Time.Equal(lastReceivedHeartBeat.Time) {
+		t.Errorf("updateMemberAgentHeartBeat() LastReceivedHeartbeat = %v, want a time after %v", newLastReceivedHeartBeat, lastReceivedHeartBeat)
+	}
 }
 
 func TestMarkInternalMemberClusterHealthy(t *testing.T) {
@@ -176,12 +187,16 @@ func TestMarkInternalMemberClusterHealthy(t *testing.T) {
 	// check that the correct event is emitted
 	event := <-r.recorder.(*events.FakeRecorder).Events
 	expected := utils.GetEventString(internalMemberCluster, corev1.EventTypeNormal, EventReasonInternalMemberClusterHealthy, "internal member cluster healthy")
-	assert.Equal(t, expected, event, utils.TestCaseMsg, "TestMarkInternalMemberClusterHealthy")
+	if event != expected {
+		t.Errorf("markInternalMemberClusterHealthy() emitted event %v, want %v", event, expected)
+	}
 
 	// Check expected conditions.
 	expectedCondition := metav1.Condition{Type: string(clusterv1beta1.AgentHealthy), Status: metav1.ConditionTrue, Reason: EventReasonInternalMemberClusterHealthy}
 	actualCondition := internalMemberCluster.GetConditionWithType(clusterv1beta1.MemberAgent, expectedCondition.Type)
-	assert.Equal(t, "", cmp.Diff(expectedCondition, *(actualCondition), cmpopts.IgnoreTypes(time.Time{})), utils.TestCaseMsg, "TestMarkInternalMemberClusterHealthy")
+	if diff := cmp.Diff(*actualCondition, expectedCondition, cmpopts.IgnoreTypes(time.Time{})); diff != "" {
+		t.Errorf("markInternalMemberClusterHealthy() condition mismatch (-got, +want):\n%s", diff)
+	}
 }
 
 func TestMarkInternalMemberClusterHeartbeatUnhealthy(t *testing.T) {
@@ -194,12 +209,16 @@ func TestMarkInternalMemberClusterHeartbeatUnhealthy(t *testing.T) {
 	// check that the correct event is emitted
 	event := <-r.recorder.(*events.FakeRecorder).Events
 	expected := utils.GetEventString(internalMemberCluster, corev1.EventTypeWarning, EventReasonInternalMemberClusterUnhealthy, "internal member cluster unhealthy")
-	assert.Equal(t, expected, event, utils.TestCaseMsg, "TestMarkInternalMemberClusterHeartbeatUnhealthy")
+	if event != expected {
+		t.Errorf("markInternalMemberClusterUnhealthy() emitted event %v, want %v", event, expected)
+	}
 
 	// Check expected conditions.
 	expectedCondition := metav1.Condition{Type: string(clusterv1beta1.AgentHealthy), Status: metav1.ConditionFalse, Reason: EventReasonInternalMemberClusterUnhealthy, Message: "rand-err-msg"}
 	actualCondition := internalMemberCluster.GetConditionWithType(clusterv1beta1.MemberAgent, expectedCondition.Type)
-	assert.Equal(t, "", cmp.Diff(expectedCondition, *(actualCondition), cmpopts.IgnoreTypes(time.Time{})), utils.TestCaseMsg, "TestMarkInternalMemberClusterHeartbeatUnhealthy")
+	if diff := cmp.Diff(*actualCondition, expectedCondition, cmpopts.IgnoreTypes(time.Time{})); diff != "" {
+		t.Errorf("markInternalMemberClusterUnhealthy() condition mismatch (-got, +want):\n%s", diff)
+	}
 }
 
 func TestUpdateInternalMemberClusterWithRetry(t *testing.T) {
@@ -266,7 +285,9 @@ func TestUpdateInternalMemberClusterWithRetry(t *testing.T) {
 	for testName, testCase := range testCases {
 		t.Run(testName, func(t *testing.T) {
 			err := testCase.r.updateInternalMemberClusterWithRetry(context.Background(), testCase.internalMemberCluster)
-			assert.Equal(t, testCase.wantErr, err, utils.TestCaseMsg, testName)
+			if diff := cmp.Diff(err, testCase.wantErr); diff != "" {
+				t.Errorf("updateInternalMemberClusterWithRetry() error mismatch (-got, +want):\n%s", diff)
+			}
 		})
 	}
 }
@@ -365,7 +386,9 @@ func TestSetConditionWithType(t *testing.T) {
 	for testName, testCase := range testCases {
 		t.Run(testName, func(t *testing.T) {
 			testCase.internalMemberCluster.SetConditionsWithType(clusterv1beta1.MemberAgent, testCase.condition)
-			assert.Equal(t, "", cmp.Diff(testCase.wantedAgentStatus, testCase.internalMemberCluster.GetAgentStatus(clusterv1beta1.MemberAgent), cmpopts.IgnoreTypes(time.Time{})))
+			if diff := cmp.Diff(testCase.internalMemberCluster.GetAgentStatus(clusterv1beta1.MemberAgent), testCase.wantedAgentStatus, cmpopts.IgnoreTypes(time.Time{})); diff != "" {
+				t.Errorf("SetConditionsWithType() agent status mismatch (-got, +want):\n%s", diff)
+			}
 		})
 	}
 }
@@ -432,7 +455,9 @@ func TestGetConditionWithType(t *testing.T) {
 	for testName, testCase := range testCases {
 		t.Run(testName, func(t *testing.T) {
 			actualCondition := testCase.internalMemberCluster.GetConditionWithType(clusterv1beta1.MemberAgent, testCase.conditionType)
-			assert.Equal(t, testCase.wantedCondition, actualCondition)
+			if diff := cmp.Diff(actualCondition, testCase.wantedCondition); diff != "" {
+				t.Errorf("GetConditionWithType() mismatch (-got, +want):\n%s", diff)
+			}
 		})
 	}
 }
