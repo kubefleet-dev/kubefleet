@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The KubeFleet Authors.
+Copyright 2026 The KubeFleet Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta1
+package v1
 
 import (
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -24,7 +24,6 @@ import (
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster,categories={fleet,fleet-placement},shortName=crpe
 // +kubebuilder:subresource:status
-// +kubebuilder:storageversion
 // +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Valid")].status`,name="Valid",type=string
 // +kubebuilder:printcolumn:JSONPath=`.status.conditions[?(@.type=="Executed")].status`,name="Executed",type=string
 

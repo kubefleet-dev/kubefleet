@@ -234,13 +234,15 @@ var (
 			// disappear from the status of the MemberCluster object.
 			c.Type == string(clusterv1beta1.ConditionTypeClusterPropertyProviderStarted)
 	})
-	ignoreTimeTypeFields                                      = cmpopts.IgnoreTypes(time.Time{}, metav1.Time{})
-	ignorePlacementStatusDriftedPlacementsTimestampFields     = cmpopts.IgnoreFields(placementv1beta1.DriftedResourcePlacement{}, "ObservationTime", "FirstDriftedObservedTime")
-	ignorePlacementStatusDriftedPlacementsTimestampFieldsV1   = cmpopts.IgnoreFields(placementv1.DriftedResourcePlacement{}, "ObservationTime", "FirstDriftedObservedTime")
-	ignorePlacementStatusDiffedPlacementsTimestampFields      = cmpopts.IgnoreFields(placementv1beta1.DiffedResourcePlacement{}, "ObservationTime", "FirstDiffedObservedTime")
-	ignorePlacementStatusDiffedPlacementsTimestampFieldsV1    = cmpopts.IgnoreFields(placementv1.DiffedResourcePlacement{}, "ObservationTime", "FirstDiffedObservedTime")
-	ignorePerClusterPlacementStatusObservedResourceIndexField = cmpopts.IgnoreFields(placementv1beta1.PerClusterPlacementStatus{}, "ObservedResourceIndex")
-	ignorePlacementStatusObservedResourceIndexField           = cmpopts.IgnoreFields(placementv1beta1.PlacementStatus{}, "ObservedResourceIndex")
+	ignoreTimeTypeFields                                        = cmpopts.IgnoreTypes(time.Time{}, metav1.Time{})
+	ignorePlacementStatusDriftedPlacementsTimestampFields       = cmpopts.IgnoreFields(placementv1beta1.DriftedResourcePlacement{}, "ObservationTime", "FirstDriftedObservedTime")
+	ignorePlacementStatusDriftedPlacementsTimestampFieldsV1     = cmpopts.IgnoreFields(placementv1.DriftedResourcePlacement{}, "ObservationTime", "FirstDriftedObservedTime")
+	ignorePlacementStatusDiffedPlacementsTimestampFields        = cmpopts.IgnoreFields(placementv1beta1.DiffedResourcePlacement{}, "ObservationTime", "FirstDiffedObservedTime")
+	ignorePlacementStatusDiffedPlacementsTimestampFieldsV1      = cmpopts.IgnoreFields(placementv1.DiffedResourcePlacement{}, "ObservationTime", "FirstDiffedObservedTime")
+	ignorePerClusterPlacementStatusObservedResourceIndexField   = cmpopts.IgnoreFields(placementv1beta1.PerClusterPlacementStatus{}, "ObservedResourceIndex")
+	ignorePerClusterPlacementStatusObservedResourceIndexFieldV1 = cmpopts.IgnoreFields(placementv1.PerClusterPlacementStatus{}, "ObservedResourceIndex")
+	ignorePlacementStatusObservedResourceIndexField             = cmpopts.IgnoreFields(placementv1beta1.PlacementStatus{}, "ObservedResourceIndex")
+	ignorePlacementStatusObservedResourceIndexFieldV1           = cmpopts.IgnoreFields(placementv1.PlacementStatus{}, "ObservedResourceIndex")
 
 	placementStatusCmpOptions = cmp.Options{
 		cmpopts.SortSlices(lessFuncCondition),
