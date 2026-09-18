@@ -10,20 +10,20 @@ require (
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/go-logr/logr v1.4.4
 	github.com/google/go-cmp v0.7.0
-	github.com/onsi/ginkgo/v2 v2.32.0
-	github.com/onsi/gomega v1.42.1
+	github.com/onsi/ginkgo/v2 v2.32.2
+	github.com/onsi/gomega v1.43.0
 	github.com/prometheus/client_golang v1.24.1
-	github.com/prometheus/client_model v0.6.2
+	github.com/prometheus/client_model v0.6.3
 	github.com/qri-io/jsonpointer v0.1.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.12.1
-	github.com/wI2L/jsondiff v0.6.0
-	go.goms.io/fleet-networking v0.3.3
+	github.com/wI2L/jsondiff v0.7.1
+	go.goms.io/fleet-networking v0.3.44
 	go.uber.org/atomic v1.11.0
 	go.uber.org/zap v1.28.0
-	golang.org/x/sync v0.22.0
-	golang.org/x/time v0.15.0
+	golang.org/x/sync v0.23.0
+	golang.org/x/time v0.16.0
 	gomodules.xyz/jsonpatch/v2 v2.5.0
 	k8s.io/api v0.35.8
 	k8s.io/apiextensions-apiserver v0.35.8
