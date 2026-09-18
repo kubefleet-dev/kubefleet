@@ -80,8 +80,15 @@ const (
 	MemberNameLabel = FleetPrefix + "member-name"
 
 	// KubeFleetPrefix is the prefix used for the labels/annotations of the kubefleet.dev APIs. Like
-	// FleetPrefix, it is reserved: users may not set unprefixed keys, and the member cluster label
-	// guard treats both prefixes alike.
+	// FleetPrefix, it is reserved for KubeFleet's own keys, per the Kubernetes convention that
+	// leaves unprefixed keys to end users.
+	//
+	// The two prefixes are not exempted alike by the member cluster label guard: where that guard
+	// is on, a FleetPrefix label may be modified by any user, while a KubeFleetPrefix one may be
+	// modified only by a service account, so that the hub agent can seed ClusterAliasLabel without
+	// opening a scheduling label to everyone. Users in system:masters bypass the guard entirely and
+	// may modify either; note that this is narrower than the administrator checks elsewhere in the
+	// webhook, so a kubeadm:cluster-admins user is still subject to it.
 	KubeFleetPrefix = "kubefleet.dev/"
 
 	// ClusterAliasLabel is a label on MemberCluster objects that names the cluster for placement by

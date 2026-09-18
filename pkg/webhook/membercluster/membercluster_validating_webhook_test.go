@@ -215,28 +215,74 @@ func TestHandleClusterAliasCollision(t *testing.T) {
 	}
 }
 
-// TestClusterAliasCollisionWarningTruncatesHolders covers the many-holders path: the message caps
-// the listed clusters so it stays inside the API server's warning-length budget.
+// TestClusterAliasCollisionWarningTruncatesHolders covers the many-holders path: the message names
+// at most three holders and summarizes the rest, with the surplus counted over every holder rather
+// than over the names kept.
 func TestClusterAliasCollisionWarningTruncatesHolders(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name    string
+		holders int
+		want    string
+	}{
+		{name: "one holder is named on its own", holders: 1, want: "holder-0"},
+		{name: "holders up to the cap are all named", holders: 3, want: "holder-0, holder-1, holder-2"},
+		{name: "one holder past the cap is summarized", holders: 4, want: "holder-0, holder-1, holder-2, and 1 more"},
+		{name: "many holders are counted in full", holders: 6, want: "holder-0, holder-1, holder-2, and 3 more"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			scheme := runtime.NewScheme()
+			if err := clusterv1beta1.AddToScheme(scheme); err != nil {
+				t.Fatalf("failed to add member cluster scheme: %v", err)
+			}
+			seed := make([]client.Object, 0, tc.holders+2)
+			for i := 0; i < tc.holders; i++ {
+				seed = append(seed, memberClusterWithAlias(fmt.Sprintf("holder-%d", i), "web-primary"))
+			}
+			// Decoys: the count must come from the alias, not from the fleet size. These fail the
+			// selector, so dropping it from the List would show up here as an inflated count.
+			seed = append(seed, memberClusterWithAlias("other-alias", "db-primary"), memberClusterWithAlias("no-alias", ""))
+			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(seed...).Build()
+			v := &memberClusterValidator{client: c, decoder: admission.NewDecoder(scheme)}
+
+			got := v.clusterAliasCollisionWarning(context.Background(), memberClusterWithAlias("newcomer", "web-primary"))
+			// The holder list is pinned up to the semicolon that ends it, so that a case naming
+			// fewer holders than the cap also asserts that no surplus summary was appended.
+			if want := fmt.Sprintf("used by %s;", tc.want); !strings.Contains(got, want) {
+				t.Errorf("clusterAliasCollisionWarning() = %q, want it to name the holders as %q", got, want)
+			}
+		})
+	}
+}
+
+// TestClusterAliasCollisionWarningEmptyAlias covers the guard on the alias value: a member cluster
+// carrying the alias label with an explicit empty value is not an alias at all, and must not be
+// matched against every other cluster whose alias is likewise empty.
+func TestClusterAliasCollisionWarningEmptyAlias(t *testing.T) {
 	t.Parallel()
 
 	scheme := runtime.NewScheme()
 	if err := clusterv1beta1.AddToScheme(scheme); err != nil {
 		t.Fatalf("failed to add member cluster scheme: %v", err)
 	}
-	seed := make([]client.Object, 0, 6)
-	for i := 0; i < 6; i++ {
-		seed = append(seed, memberClusterWithAlias(fmt.Sprintf("holder-%d", i), "web-primary"))
+	emptyAliasCluster := func(name string) *clusterv1beta1.MemberCluster {
+		return &clusterv1beta1.MemberCluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   name,
+				Labels: map[string]string{placementv1beta1.ClusterAliasLabel: ""},
+			},
+		}
 	}
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(seed...).Build()
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(emptyAliasCluster("other")).Build()
 	v := &memberClusterValidator{client: c, decoder: admission.NewDecoder(scheme)}
 
-	got := v.clusterAliasCollisionWarning(context.Background(), memberClusterWithAlias("newcomer", "web-primary"))
-	if !strings.Contains(got, "and 3 more") {
-		t.Errorf("clusterAliasCollisionWarning() = %q, want it to summarize the surplus holders as \"and 3 more\"", got)
-	}
-	if len(got) > 256 {
-		t.Errorf("clusterAliasCollisionWarning() message is %d bytes, want it within the API server's 256-byte warning budget", len(got))
+	if got := v.clusterAliasCollisionWarning(context.Background(), emptyAliasCluster("newcomer")); got != "" {
+		t.Errorf("clusterAliasCollisionWarning() = %q, want no warning for an empty alias value", got)
 	}
 }
 

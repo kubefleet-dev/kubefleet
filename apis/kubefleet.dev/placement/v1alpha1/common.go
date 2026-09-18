@@ -16,6 +16,18 @@ limitations under the License.
 
 package v1alpha1
 
+const (
+	// The Kinds of API resource types in this package.
+	ClusterClaimKind                     = "ClusterClaim"
+	PlacementPolicyKind                  = "PlacementPolicy"
+	ClusterPlacementPolicyKind           = "ClusterPlacementPolicy"
+	PlacementBindingKind                 = "PlacementBinding"
+	ClusterPlacementBindingKind          = "ClusterPlacementBinding"
+	PlacementResourceSnapshotKind        = "PlacementResourceSnapshot"
+	ClusterPlacementResourceSnapshotKind = "ClusterPlacementResourceSnapshot"
+	WorkKind                             = "Work"
+)
+
 // The annotation and label keys that KubeFleet reserves for the placement APIs.
 //
 // Note that these keys carry the KubeFleet domain itself rather than the API group; they are

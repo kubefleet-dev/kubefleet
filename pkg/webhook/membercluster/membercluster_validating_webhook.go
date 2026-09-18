@@ -113,32 +113,39 @@ func (v *memberClusterValidator) clusterAliasCollisionWarning(ctx context.Contex
 		return ""
 	}
 
+	// The list is served from the manager's cache, so it costs no API call, and the label selector
+	// is applied before the cache copies anything: only the clusters that actually hold the alias
+	// are copied out, rather than the whole inventory on every member cluster admission.
 	memberClusterList := &clusterv1beta1.MemberClusterList{}
-	if err := v.client.List(ctx, memberClusterList); err != nil {
+	if err := v.client.List(ctx, memberClusterList, client.MatchingLabels{placementv1beta1.ClusterAliasLabel: alias}); err != nil {
 		klog.V(2).ErrorS(err, "Failed to list member clusters for the alias uniqueness check; admitting without a warning", "memberCluster", klog.KObj(mc))
 		return ""
 	}
 
-	holders := make([]string, 0, len(memberClusterList.Items))
+	// The message names at most a few holders: it is read on a terminal, and the actionable half is
+	// the alias value and that someone else holds it, not an exhaustive roll call. Only those few
+	// names are kept, while the count runs over all of them, so that a fleet where every cluster
+	// carries the alias is reported accurately without collecting a name per cluster.
+	const maxNamedHolders = 3
+	named := make([]string, 0, maxNamedHolders+1)
+	total := 0
 	for i := range memberClusterList.Items {
 		other := &memberClusterList.Items[i]
 		if other.Name == mc.Name {
+			// The cluster under admission holds the alias by definition; only another holder is
+			// a collision.
 			continue
 		}
-		if other.Labels[placementv1beta1.ClusterAliasLabel] == alias {
-			holders = append(holders, other.Name)
+		total++
+		if len(named) < maxNamedHolders {
+			named = append(named, other.Name)
 		}
 	}
-	if len(holders) == 0 {
+	if total == 0 {
 		return ""
 	}
-	// The message leads with the alias value and lists at most a few holders: an admission warning
-	// is truncated by the API server past 256 bytes, and the admin already knows which label they
-	// set, so the actionable half -- the value and who else holds it -- must fit inside that budget.
-	const maxListedHolders = 3
-	listed := holders
-	if len(listed) > maxListedHolders {
-		listed = append(listed[:maxListedHolders:maxListedHolders], fmt.Sprintf("and %d more", len(holders)-maxListedHolders))
+	if total > maxNamedHolders {
+		named = append(named, fmt.Sprintf("and %d more", total-maxNamedHolders))
 	}
-	return fmt.Sprintf("cluster alias %q is already used by %s; an alias-based cluster selector will match more than one cluster while this is the case", alias, strings.Join(listed, ", "))
+	return fmt.Sprintf("cluster alias %q is already used by %s; an alias-based cluster selector will match more than one cluster while this is the case", alias, strings.Join(named, ", "))
 }
