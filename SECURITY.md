@@ -1,9 +1,8 @@
 # Security
 
 <!--
-TODO: The "Supported versions", "Response SLO", and "Coordinated disclosure" sections
-below are provisional pending maintainer agreement on kubefleet-dev/kubefleet#693 (Q3)
-and the discussion on PR #713. Update once those decisions land.
+TODO: The "Response SLO" and "Coordinated disclosure" sections below are still provisional;
+see kubefleet-dev/kubefleet#693. The supported-versions policy is settled.
 -->
 
 The KubeFleet maintainers takes the security of the project very seriously; we greatly welcomes
@@ -14,10 +13,10 @@ below to report it to the KubeFleet team.
 
 ## Supported versions
 
-KubeFleet is pre-1.0 and *targets* an `N`/`N-1` support window: the latest minor release and
-the one immediately preceding it receive security patches. The project has maintained a roughly
-2–3 month minor-release cadence since `v0.2`, giving approximately four to six months of patch
-coverage from the GA of any given minor. Minor cadence slippage is possible while we are pre-1.0.
+KubeFleet supports an `N`/`N-1` window: the latest minor release and the one immediately
+preceding it receive security patches. Minor releases are cut roughly every three months, so a
+minor receives patches for approximately six months from its GA. Exact dates may slip while the
+project is pre-1.0; the window is always the two most recent minors regardless of dates.
 
 | Version | Supported |
 | --- | --- |
