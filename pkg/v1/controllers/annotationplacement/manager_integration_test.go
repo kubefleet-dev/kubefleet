@@ -19,7 +19,6 @@ package annotationplacement
 import (
 	"context"
 	"fmt"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -29,10 +28,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -47,25 +45,20 @@ var _ = Describe("annotation based placement under a manager", Ordered, func() {
 		managerCtx    context.Context
 		stopManager   context.CancelFunc
 		managerDone   chan struct{}
-		sourceEvents  chan event.TypedGenericEvent[client.Object]
+		sourceQueue   *SourceQueue
 		configMap     *corev1.ConfigMap
-		managedEvents *record.FakeRecorder
+		managedEvents *events.FakeRecorder
 	)
 
 	// report hands the resource watcher's view of a resource to the controller, as the hub agent's
-	// change detector would on every event for an annotated resource. The send is bounded so that a
-	// channel source that never started fails the spec instead of hanging it.
+	// change detector would on every event for an annotated resource.
 	report := func(object client.Object) {
 		source := &unstructured.Unstructured{}
 		content, err := runtime.DefaultUnstructuredConverter.ToUnstructured(object)
 		Expect(err).Should(Succeed())
 		source.SetUnstructuredContent(content)
 		source.SetGroupVersionKind(configMapGVK)
-		select {
-		case sourceEvents <- event.TypedGenericEvent[client.Object]{Object: source}:
-		case <-time.After(eventuallyTimeoutDuration):
-			Fail("the controller never took the resource event; is the channel source running?")
-		}
+		sourceQueue.Add(source)
 	}
 
 	managedPolicy := func() (kfplacementv1alpha1.PlacementPolicyAccessor, error) {
@@ -82,15 +75,15 @@ var _ = Describe("annotation based placement under a manager", Ordered, func() {
 		})
 		Expect(err).Should(Succeed())
 
-		sourceEvents = make(chan event.TypedGenericEvent[client.Object])
-		managedEvents = record.NewFakeRecorder(100)
+		sourceQueue = &SourceQueue{}
+		managedEvents = events.NewFakeRecorder(100)
 		managed := &Reconciler{
 			Client:     mgr.GetClient(),
 			APIReader:  mgr.GetAPIReader(),
 			RESTMapper: mgr.GetRESTMapper(),
 			Recorder:   managedEvents,
 		}
-		Expect(managed.SetupWithManager(mgr, sourceEvents)).Should(Succeed())
+		Expect(managed.SetupWithManager(mgr, sourceQueue)).Should(Succeed())
 		managerDone = make(chan struct{})
 		go func() {
 			defer GinkgoRecover()

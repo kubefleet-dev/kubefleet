@@ -18,10 +18,12 @@ package annotationplacement
 
 import (
 	"context"
+	"sync"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -29,30 +31,90 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	kferrors "github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
 )
 
 const controllerName = "annotation-placement-controller"
 
-// SetupWithManager registers the controller with the manager.
+// SourceQueue is how the resource watcher hands annotated resources to this controller.
 //
 // The annotated resources are of any kind the hub agent watches, which the manager's cache does not
-// know ahead of time, so their events arrive on the given channel -- from the resource watcher, in
-// the hub agent -- rather than from a watch of their own. The generated policies are watched through
+// know ahead of time, so they cannot be watched through the manager and must be fed in instead.
+// The feed is a source rather than a channel so that the producer is never blocked and repeated
+// reports of one resource collapse: Add writes straight into the controller's own workqueue, which
+// never blocks a writer and drops a request already queued for the same resource. A channel would
+// push both problems onto the resource watcher, which has a whole fleet's events to deliver and no
+// business waiting on this controller.
+//
+// Resources reported before the manager starts are held until it does, so the watcher does not have
+// to know when the controller became ready. That buffer is unbounded and is only ever drained by
+// the controller calling Start, so a producer must not outlive the manager it was created for: in
+// the hub agent both are started together under the same leader election.
+//
+// The zero value is ready to use.
+type SourceQueue struct {
+	mu      sync.Mutex
+	queue   workqueue.TypedRateLimitingInterface[Request]
+	pending map[Request]struct{}
+}
+
+// Add reports an annotated resource. It never blocks, and it is safe to call from any goroutine
+// and before the manager has started.
+func (q *SourceQueue) Add(object client.Object) {
+	req := RequestFor(object)
+	if req.Kind == "" {
+		klog.ErrorS(nil, "Skipped a resource that names no kind", "obj", klog.KObj(object))
+		return
+	}
+
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.queue == nil {
+		if q.pending == nil {
+			q.pending = make(map[Request]struct{})
+		}
+		// Collapsed the same way the controller's queue collapses, so a resource reported many
+		// times before the manager started still costs one reconcile once it has.
+		q.pending[req] = struct{}{}
+		return
+	}
+	q.queue.Add(req)
+}
+
+// Start hands the queue to the controller. It is called by the controller, never directly.
+func (q *SourceQueue) Start(_ context.Context, queue workqueue.TypedRateLimitingInterface[Request]) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.queue = queue
+	for req := range q.pending {
+		queue.Add(req)
+	}
+	q.pending = nil
+	return nil
+}
+
+// SetupWithManager registers the controller with the manager.
+//
+// Annotated resources arrive through the given SourceQueue -- fed by the resource watcher, in the
+// hub agent -- rather than from a watch of their own. The generated policies are watched through
 // the manager, and an event on one enqueues the resource it was generated from: without that, an
 // edit or a deletion of a generated policy produces no event on its resource, and for a resource
 // that never changes again the policy would stay missing or wrong forever.
 //
 // The caller owns what the controller cannot decide for itself: the placement.kubefleet.dev types
-// must be registered in the manager's scheme, the hub agent must hold RBAC to read, create, update,
-// and delete the two policy kinds, and the channel's sender is expected to buffer it to the event
-// rate it produces -- the channel source blocks its dispatcher on a full channel.
-func (r *Reconciler) SetupWithManager(mgr ctrl.Manager, sourceEvents <-chan event.TypedGenericEvent[client.Object]) error {
+// must be registered in the manager's scheme, and the hub agent must hold RBAC to read, create,
+// update, and delete the two policy kinds.
+func (r *Reconciler) SetupWithManager(mgr ctrl.Manager, sources *SourceQueue) error {
+	if sources == nil {
+		// Reported here rather than left to panic once the manager starts the source: the caller
+		// already checks this error, and a controller with nothing feeding it places nothing.
+		return kferrors.NewUnexpectedError(nil, "the annotated resource source is nil", "controller", controllerName)
+	}
 	return builder.TypedControllerManagedBy[Request](mgr).
 		Named(controllerName).
-		WatchesRawSource(source.TypedChannel(sourceEvents, handler.TypedEnqueueRequestsFromMapFunc(mapSourceToRequest))).
+		WatchesRawSource(sources).
 		Watches(
 			&kfplacementv1alpha1.PlacementPolicy{},
 			handler.TypedEnqueueRequestsFromMapFunc(mapGeneratedPolicyToSource),
@@ -78,16 +140,6 @@ func generatedPolicyDrift() predicate.Predicate {
 		},
 	}
 	return predicate.Or(predicate.GenerationChangedPredicate{}, predicate.LabelChangedPredicate{}, ownerReferencesChanged)
-}
-
-// mapSourceToRequest enqueues an annotated resource the resource watcher reported.
-func mapSourceToRequest(_ context.Context, source client.Object) []Request {
-	req := RequestFor(source)
-	if req.Kind == "" {
-		klog.ErrorS(nil, "Skipped a resource event that names no kind", "obj", klog.KObj(source))
-		return nil
-	}
-	return []Request{req}
 }
 
 // mapGeneratedPolicyToSource enqueues the resource that generated a policy, identified from the

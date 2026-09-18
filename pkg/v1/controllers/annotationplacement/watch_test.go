@@ -25,6 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
@@ -127,7 +128,31 @@ func TestMapGeneratedPolicyToSource(t *testing.T) {
 	}
 }
 
-func TestMapSourceToRequest(t *testing.T) {
+// newTestQueue returns the controller workqueue a source is started with, so that a test can see
+// exactly what a SourceQueue enqueued.
+func newTestQueue() *testQueue {
+	return &testQueue{TypedRateLimitingInterface: workqueue.NewTypedRateLimitingQueue[Request](workqueue.DefaultTypedControllerRateLimiter[Request]())}
+}
+
+type testQueue struct {
+	workqueue.TypedRateLimitingInterface[Request]
+}
+
+// drain returns every queued request in order, leaving the queue empty.
+func (q *testQueue) drain() []Request {
+	var got []Request
+	for q.Len() > 0 {
+		req, shutdown := q.Get()
+		if shutdown {
+			break
+		}
+		got = append(got, req)
+		q.Done(req)
+	}
+	return got
+}
+
+func TestSourceQueueAdd(t *testing.T) {
 	testCases := []struct {
 		name   string
 		source client.Object
@@ -154,9 +179,15 @@ func TestMapSourceToRequest(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := mapSourceToRequest(context.Background(), tc.source)
-			if diff := cmp.Diff(got, tc.want, cmpopts.EquateEmpty()); diff != "" {
-				t.Errorf("mapSourceToRequest() mismatch (-got, +want):\n%s", diff)
+			q := &SourceQueue{}
+			queue := newTestQueue()
+			if err := q.Start(context.Background(), queue); err != nil {
+				t.Fatalf("Start() = %v, want no error", err)
+			}
+			q.Add(tc.source)
+
+			if diff := cmp.Diff(queue.drain(), tc.want, cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("SourceQueue.Add() enqueued (-got, +want):\n%s", diff)
 			}
 		})
 	}
@@ -216,5 +247,41 @@ func TestGeneratedPolicyDrift(t *testing.T) {
 				t.Errorf("generatedPolicyDrift().Update() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestSourceQueueHoldsUntilStarted pins that a resource reported before the manager started is not
+// lost: the watcher does not have to know when this controller became ready.
+func TestSourceQueueHoldsUntilStarted(t *testing.T) {
+	q := &SourceQueue{}
+	q.Add(sourceObject(deploymentGVK, "prod", "web"))
+
+	queue := newTestQueue()
+	if err := q.Start(context.Background(), queue); err != nil {
+		t.Fatalf("Start() = %v, want no error", err)
+	}
+
+	want := []Request{{GroupVersionKind: deploymentGVK, NamespacedName: client.ObjectKey{Namespace: "prod", Name: "web"}}}
+	if diff := cmp.Diff(queue.drain(), want); diff != "" {
+		t.Errorf("SourceQueue.Add() before Start enqueued (-got, +want):\n%s", diff)
+	}
+}
+
+// TestSourceQueueDeduplicates pins the reason this is a queue rather than a channel: a burst of
+// reports for one resource costs one reconcile, not one per report.
+func TestSourceQueueDeduplicates(t *testing.T) {
+	q := &SourceQueue{}
+	queue := newTestQueue()
+	if err := q.Start(context.Background(), queue); err != nil {
+		t.Fatalf("Start() = %v, want no error", err)
+	}
+
+	source := sourceObject(deploymentGVK, "prod", "web")
+	for i := 0; i < 5; i++ {
+		q.Add(source)
+	}
+
+	if got := queue.Len(); got != 1 {
+		t.Errorf("SourceQueue.Add() x5 queued %d items, want 1", got)
 	}
 }

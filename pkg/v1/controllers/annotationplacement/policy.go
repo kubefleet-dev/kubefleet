@@ -223,7 +223,10 @@ func desiredPolicy(source *unstructured.Unstructured, selectors []kfplacementv1a
 	policy.SetLabels(parentLabels(gvk, source.GetName()))
 	policy.SetOwnerReferences([]metav1.OwnerReference{parentOwnerReference(source)})
 	*policy.GetSpec() = kfplacementv1alpha1.PlacementPolicySpec{
-		ClusterSelectors:             withAPIDefaults(selectors),
+		ClusterSelectors: withAPIDefaults(selectors),
+		// Only the annotated resource is selected; nothing it depends on. Selecting dependencies
+		// is tracked in #927, where the questions are which references count, whether following
+		// them should be opt-in, and how the closure stays fresh as the source changes.
 		ResourceSelectors:            []kfplacementv1alpha1.ResourceSelector{parentResourceSelector(source)},
 		ResourceRevisionHistoryLimit: ptr.To(defaultResourceRevisionHistoryLimit),
 	}

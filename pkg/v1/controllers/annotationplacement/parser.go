@@ -32,6 +32,7 @@ import (
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	kferrors "github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
 )
 
 const (
@@ -81,16 +82,19 @@ var shorthandLabelKeys = map[string]string{
 // parseClusterSelectors converts the value of the kubefleet.dev/cluster-selectors annotation into
 // the cluster selectors of a placement policy.
 //
-// Errors returned by this function are always caused by the annotation's own contents; they are
-// never transient, and a caller should surface them to the user rather than retry.
+// Errors returned by this function are always caused by the annotation's own contents, so they are
+// categorized as user errors: they are never transient, and a caller should surface them to the
+// user rather than retry. The message stays human-readable, since it is what the event recorded on
+// the annotated resource shows: the category is for callers, the text is for whoever wrote the
+// annotation.
 func parseClusterSelectors(value string) ([]kfplacementv1alpha1.ClusterSelector, error) {
 	if strings.TrimSpace(value) == "" {
-		return nil, fmt.Errorf("the annotation value is empty; it must list at least one cluster selector")
+		return nil, kferrors.NewUserError(nil, "the annotation value is empty; it must list at least one cluster selector")
 	}
 
 	segments := strings.Split(value, selectorSeparator)
 	if len(segments) > maxSelectors {
-		return nil, fmt.Errorf("the annotation lists %d cluster selectors, more than the supported maximum of %d", len(segments), maxSelectors)
+		return nil, kferrors.NewUserError(nil, fmt.Sprintf("the annotation lists %d cluster selectors, more than the supported maximum of %d", len(segments), maxSelectors))
 	}
 
 	selectors := make([]kfplacementv1alpha1.ClusterSelector, 0, len(segments))
@@ -99,7 +103,7 @@ func parseClusterSelectors(value string) ([]kfplacementv1alpha1.ClusterSelector,
 		if err != nil {
 			// The index is 1-based: it is read by whoever wrote the annotation, who counts the
 			// selectors in it by eye.
-			return nil, fmt.Errorf("cluster selector %d (%q) is invalid: %w", idx+1, strings.TrimSpace(segment), err)
+			return nil, kferrors.NewUserError(err, fmt.Sprintf("cluster selector %d (%q) is invalid", idx+1, strings.TrimSpace(segment)))
 		}
 		selectors = append(selectors, selector)
 	}

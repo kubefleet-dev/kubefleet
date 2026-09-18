@@ -28,7 +28,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
@@ -42,7 +42,7 @@ var (
 	restConfig    *rest.Config
 	hubClient     client.Client
 	reconciler    *Reconciler
-	eventRecorder *record.FakeRecorder
+	eventRecorder *events.FakeRecorder
 	ctx           context.Context
 	cancel        context.CancelFunc
 )
@@ -77,7 +77,7 @@ var _ = BeforeSuite(func() {
 
 	// The recorder is buffered generously: an unread event blocks the reconciler that records it,
 	// which would surface as a timeout somewhere unrelated rather than as a failed expectation.
-	eventRecorder = record.NewFakeRecorder(100)
+	eventRecorder = events.NewFakeRecorder(100)
 	reconciler = &Reconciler{
 		// The envtest client reads straight from the API server, so it serves as the API reader
 		// too; there is no cache to fall behind here.

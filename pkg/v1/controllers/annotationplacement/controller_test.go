@@ -32,7 +32,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -92,9 +93,9 @@ func newRESTMapper() meta.RESTMapper {
 // newReconciler wires a reconciler whose API server holds the given annotated resources and
 // policies. One fake client backs both the policy client and the API reader, so the two are always
 // consistent, which is what every test here wants.
-func newReconciler(t *testing.T, funcs interceptor.Funcs, objects ...client.Object) (*Reconciler, *record.FakeRecorder) {
+func newReconciler(t *testing.T, funcs interceptor.Funcs, objects ...client.Object) (*Reconciler, *events.FakeRecorder) {
 	t.Helper()
-	recorder := record.NewFakeRecorder(10)
+	recorder := events.NewFakeRecorder(10)
 	c := fake.NewClientBuilder().WithScheme(newScheme(t)).WithObjects(objects...).WithInterceptorFuncs(funcs).Build()
 	return &Reconciler{
 		Client:     c,
@@ -105,7 +106,7 @@ func newReconciler(t *testing.T, funcs interceptor.Funcs, objects ...client.Obje
 }
 
 // recordedReasons drains the recorder and returns the reason of every event it holds.
-func recordedReasons(recorder *record.FakeRecorder) []string {
+func recordedReasons(recorder *events.FakeRecorder) []string {
 	reasons := make([]string, 0, len(recorder.Events))
 	for {
 		select {
@@ -794,15 +795,13 @@ func TestReconcileUnknownKind(t *testing.T) {
 	}
 }
 
-// TestReconcileResolvesRemovedVersion covers a request whose recorded version is no longer served
-// while the kind lives on under another. The generated policy watch can enqueue such a request, and
-// treating the removed version as a gone kind would wrongly delete a policy that is still wanted;
-// the reconciler falls back to the served version and keeps the policy in sync instead.
-//
-// The cluster scoped case additionally pins that scope comes from the resolved mapping: read under
-// the stale version, the source would be looked up in a namespace it does not live in and taken for
-// deleted.
-func TestReconcileResolvesRemovedVersion(t *testing.T) {
+// TestReconcileKeepsPolicyWhenOnlyVersionRetired covers a request whose recorded version is no
+// longer served while the kind lives on under another. The generated policy watch can enqueue such
+// a request, and treating the retired version as a gone kind would delete a policy that is still
+// wanted. The resource is deliberately not re-read under the served version -- that version may not
+// exist on the member clusters -- so the round is retried instead, and API discovery re-reports the
+// resource under the served version.
+func TestReconcileKeepsPolicyWhenOnlyVersionRetired(t *testing.T) {
 	testCases := []struct {
 		name   string
 		source *unstructured.Unstructured
@@ -826,13 +825,26 @@ func TestReconcileResolvesRemovedVersion(t *testing.T) {
 			ctx := context.Background()
 			r, recorder := newReconciler(t, interceptor.Funcs{}, tc.source)
 
-			if _, err := r.Reconcile(ctx, tc.req); err != nil {
-				t.Fatalf("Reconcile(%v) = %v, want no error", tc.req, err)
+			// An existing policy stands in for one generated before the version was retired; the
+			// round must leave it alone rather than take it for the policy of a gone kind.
+			existing := desiredPolicy(tc.source, mustParse(t, oneSelector))
+			if err := r.Create(ctx, existing); err != nil {
+				t.Fatalf("Create(%v) = %v, want no error", klog.KObj(existing), err)
+			}
+
+			// Dropped, not retried: no error and no requeue, since the resource is re-reported
+			// under the served version as a different request.
+			res, err := r.Reconcile(ctx, tc.req)
+			if err != nil {
+				t.Errorf("Reconcile(%v) = %v, want the retired version dropped rather than retried", tc.req, err)
+			}
+			if res.RequeueAfter != 0 {
+				t.Errorf("Reconcile(%v) = %+v, want no requeue for a version that will never come back", tc.req, res)
 			}
 			if _, found := policyFrom(ctx, t, r, tc.source); !found {
-				t.Errorf("Reconcile(%v) generated no policy, want the removed version resolved to the served one", tc.req)
+				t.Errorf("Reconcile(%v) deleted the generated policy, want it kept while the kind is still served", tc.req)
 			}
-			if diff := cmp.Diff(recordedReasons(recorder), []string{EventReasonPolicyCreated}); diff != "" {
+			if diff := cmp.Diff(recordedReasons(recorder), []string(nil), cmpopts.EquateEmpty()); diff != "" {
 				t.Errorf("Reconcile(%v) recorded events mismatch (-got, +want):\n%s", tc.req, diff)
 			}
 		})

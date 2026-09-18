@@ -30,7 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -75,6 +75,12 @@ const (
 // policy carries no owner reference to the source and the annotation does not change, yet a
 // conflict left in place must not be re-examined at a fixed, busy pace forever.
 var errForeignPolicy = errors.New("a policy at the generated name was not generated from the annotation")
+
+// errRetiredVersion reports that the version a request names is no longer served while its kind
+// still is. The request cannot be retried as it stands -- the resource is re-reported under the
+// served version as a different request, which is what reconciles it -- so it is dropped rather
+// than requeued, and the generated policy is left alone.
+var errRetiredVersion = errors.New("the version the resource was reported under is no longer served")
 
 // Request identifies the resource a reconciliation is for.
 //
@@ -127,7 +133,7 @@ type Reconciler struct {
 	RESTMapper meta.RESTMapper
 
 	// Recorder records the outcome of a reconciliation on the annotated resource.
-	Recorder record.EventRecorder
+	Recorder events.EventRecorder
 
 	// ShouldPlace reports whether a resource is one KubeFleet places at all, mirroring the filter
 	// the resource watcher applies to its events. For example, a Deployment in a user namespace
@@ -159,13 +165,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req Request) (ctrl.Result, e
 
 	source, err := r.sourceObject(ctx, req)
 	switch {
+	case errors.Is(err, errRetiredVersion):
+		// Dropped rather than retried: this request names a version that is gone, and no number of
+		// retries brings it back. API discovery asks for server-preferred versions, so the resource
+		// is re-reported under the served one as a fresh request, and that is what reconciles it.
+		// The generated policy stands untouched in the meantime, since its kind still places.
+		klog.V(2).InfoS("Dropped a request naming a version that is no longer served", "obj", req)
+		return ctrl.Result{}, nil
 	case apierrors.IsNotFound(err), meta.IsNoMatchError(err):
 		// The resource is gone, or its whole kind is (the CRD was removed; the generated policy
-		// watch enqueues a stale policy's owner). The delete is issued from here rather than left
-		// to garbage collection: the collector removes a dependent only once every owner is gone,
-		// and the merge deliberately preserves owner references that other parties added -- any
-		// live one of which would keep the policy standing indefinitely. Deleting explicitly is
-		// idempotent, so at worst it beats the collector to an object that was doomed anyway.
+		// watch enqueues a stale policy's owner). The generated policy is KubeFleet's own object,
+		// so it is always deleted here rather than left to garbage collection, which would wait on
+		// every owner reference -- including the foreign ones the merge deliberately preserves.
 		_, deleted, err := r.deleteGeneratedPolicy(ctx, req.GroupVersionKind, req.Namespace, req.Name)
 		switch {
 		case err != nil:
@@ -205,7 +216,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req Request) (ctrl.Result, e
 		// left standing: the desired state is now unknown, and tearing down a running placement is
 		// a worse answer to a typo than leaving the last one the user did express.
 		klog.V(2).InfoS("The annotation cannot be parsed", "obj", req, "err", err)
-		r.Recorder.Eventf(source, corev1.EventTypeWarning, EventReasonInvalidAnnotation,
+		r.Recorder.Eventf(source, nil, corev1.EventTypeWarning, EventReasonInvalidAnnotation, "ParseAnnotation",
 			"The %s annotation is not valid and no placement policy was generated from it: %s", kfplacementv1alpha1.ClusterSelectorsAnnotation, err)
 		return ctrl.Result{}, nil
 	}
@@ -217,15 +228,23 @@ func (r *Reconciler) Reconcile(ctx context.Context, req Request) (ctrl.Result, e
 // A not-found error and a no-match error (the kind itself is unknown) are returned as they are, so
 // that the caller can tell the two apart from a read that failed.
 func (r *Reconciler) sourceObject(ctx context.Context, req Request) (*unstructured.Unstructured, error) {
+	// The resource is read under the version the request names and no other. Falling back to
+	// whatever version is served now would quietly retarget placement at a version the member
+	// clusters may not serve, turning a clear failure here into a confusing one later; and it
+	// would buy nothing, since API discovery asks for server-preferred versions, so a resource
+	// seen under a retired version is re-reported under the current one and reconciled again.
 	restMapping, err := r.RESTMapper.RESTMapping(req.GroupKind(), req.Version)
-	if meta.IsNoMatchError(err) && req.Version != "" {
-		// The version the request recorded may have been removed while the kind lives on under a
-		// newer served version -- a policy generated for it is still valid, so the served mapping
-		// is tried before concluding the kind is gone.
-		restMapping, err = r.RESTMapper.RESTMapping(req.GroupKind())
-	}
 	if err != nil {
 		if meta.IsNoMatchError(err) {
+			// A no-match means either that the kind is gone or that only this version is. The two
+			// call for opposite answers -- a gone kind should take its generated policy with it,
+			// while a retired version should not, since the kind still places -- so they are told
+			// apart by asking for the kind without a version. Only the truly gone kind is reported
+			// as a no-match; a retired version is transient, and the re-report that discovery
+			// produces under the served version reconciles it.
+			if _, kindErr := r.RESTMapper.RESTMapping(req.GroupKind()); kindErr == nil {
+				return nil, errRetiredVersion
+			}
 			return nil, err
 		}
 		return nil, kferrors.NewUnexpectedError(err, "failed to resolve the resource of the annotated object", "obj", req)
@@ -233,9 +252,8 @@ func (r *Reconciler) sourceObject(ctx context.Context, req Request) (*unstructur
 
 	source := &unstructured.Unstructured{}
 	source.SetGroupVersionKind(restMapping.GroupVersionKind)
-	// Scope is read from the mapping just resolved, not from the request: the request's version may
-	// be one the fallback above replaced, and the mapping carries the authoritative scope for the
-	// resource the object is actually read through. A cluster-scoped read must not name a namespace.
+	// Scope comes from the mapping rather than from the request, since the mapping is what the read
+	// actually goes through. A cluster-scoped read must not name a namespace.
 	key := client.ObjectKey{Name: req.Name}
 	if restMapping.Scope.Name() != meta.RESTScopeNameRoot {
 		key.Namespace = req.Namespace
@@ -275,7 +293,7 @@ func (r *Reconciler) syncPolicy(ctx context.Context, source *unstructured.Unstru
 	switch {
 	case errors.Is(err, errForeignPolicy):
 		klog.V(2).InfoS("A policy at the generated name was not generated by this controller; leaving it untouched", "obj", klog.KObj(source), "policy", klog.KObj(policy))
-		r.Recorder.Eventf(source, corev1.EventTypeWarning, EventReasonPolicyConflict,
+		r.Recorder.Eventf(source, nil, corev1.EventTypeWarning, EventReasonPolicyConflict, "GeneratePolicy",
 			"A %s named %s already exists and was not generated from the %s annotation; it was left unchanged", generatedPolicyKind(source.GetNamespace()), policy.GetName(), kfplacementv1alpha1.ClusterSelectorsAnnotation)
 		return kferrors.NewUserError(err, "the generated name is taken", "obj", klog.KObj(source), "policy", klog.KObj(policy))
 	case apierrors.IsAlreadyExists(err):
@@ -293,11 +311,11 @@ func (r *Reconciler) syncPolicy(ctx context.Context, source *unstructured.Unstru
 	switch result {
 	case controllerutil.OperationResultCreated:
 		klog.V(2).InfoS("Created the generated placement policy", "obj", klog.KObj(source), "policy", klog.KObj(policy))
-		r.Recorder.Eventf(source, corev1.EventTypeNormal, EventReasonPolicyCreated,
+		r.Recorder.Eventf(source, nil, corev1.EventTypeNormal, EventReasonPolicyCreated, "GeneratePolicy",
 			"Created the %s %s from the %s annotation", generatedPolicyKind(source.GetNamespace()), policy.GetName(), kfplacementv1alpha1.ClusterSelectorsAnnotation)
 	case controllerutil.OperationResultUpdated:
 		klog.V(2).InfoS("Updated the generated placement policy", "obj", klog.KObj(source), "policy", klog.KObj(policy))
-		r.Recorder.Eventf(source, corev1.EventTypeNormal, EventReasonPolicyUpdated,
+		r.Recorder.Eventf(source, nil, corev1.EventTypeNormal, EventReasonPolicyUpdated, "GeneratePolicy",
 			"Updated the %s %s from the %s annotation", generatedPolicyKind(source.GetNamespace()), policy.GetName(), kfplacementv1alpha1.ClusterSelectorsAnnotation)
 	default:
 		klog.V(3).InfoS("The generated placement policy is already up to date", "obj", klog.KObj(source), "policy", klog.KObj(policy))
@@ -322,7 +340,7 @@ func (r *Reconciler) deletePolicy(ctx context.Context, source *unstructured.Unst
 		return nil
 	}
 	klog.V(2).InfoS("Deleted the generated placement policy", "obj", klog.KObj(source), "policy", klog.KRef(source.GetNamespace(), name))
-	r.Recorder.Eventf(source, corev1.EventTypeNormal, EventReasonPolicyDeleted, "Deleted the %s %s because %s", generatedPolicyKind(source.GetNamespace()), name, cause)
+	r.Recorder.Eventf(source, nil, corev1.EventTypeNormal, EventReasonPolicyDeleted, "DeletePolicy", "Deleted the %s %s because %s", generatedPolicyKind(source.GetNamespace()), name, cause)
 	return nil
 }
 
