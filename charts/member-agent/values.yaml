@@ -34,7 +34,10 @@ config:
   hubCA: <certificate-authority-data>
   identityKey: "identity-key-path"
   identityCert: "identity-cert-path"
-  CABundle: "ca-bundle-path"
+  # CABundle is a file path to a CA bundle used to verify the hub cluster's TLS certificate.
+  # Optional and mutually exclusive with hubCA: leave empty ("") to trust the hub's CA via
+  # hubCA (or the system trust store) instead.
+  CABundle: ""
   azureCloudConfig:
     cloud: ""
     tenantId: ""

@@ -103,8 +103,10 @@ spec:
             value:  "{{ .Values.config.identityKey }}"
           - name: IDENTITY_CERT
             value:  "{{ .Values.config.identityCert }}"
+          {{- if .Values.config.CABundle }}
           - name: CA_BUNDLE
             value:  "{{ .Values.config.CABundle }}"
+          {{- end }}
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
