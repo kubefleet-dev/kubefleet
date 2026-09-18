@@ -375,6 +375,42 @@ spec:
           spec:
             description: The desired state of ClusterStagedUpdateStrategy.
             properties:
+              deleteStageTasks:
+                description: |-
+                  DeleteStageTasks is the collection of tasks that must complete before the deletion stage starts.
+                  Each task is executed in parallel and there cannot be more than one task of the same type.
+                items:
+                  description: StageTask is the pre or post stage task that needs
+                    to be completed before starting or moving to the next stage.
+                  properties:
+                    type:
+                      description: The type of the before or after stage task.
+                      enum:
+                      - TimedWait
+                      - Approval
+                      type: string
+                    waitTime:
+                      description: |-
+                        The time to wait after all the clusters in the current stage complete the update before moving to the next stage.
+                        Only hours (h), minutes (m), and seconds (s) units are accepted.
+                      pattern: ^(?:(?:0|[1-9][0-9]*)(\.[0-9]+)?(?:s|m|h))+$
+                      type: string
+                  required:
+                  - type
+                  type: object
+                maxItems: 2
+                type: array
+                x-kubernetes-validations:
+                - message: deleteStageTasks cannot have two tasks of the same type
+                  rule: '!(self.size() == 2 && self[0].type == self[1].type)'
+                - message: DeleteStageTaskType is Approval, waitTime is not allowed
+                  rule: '!self.exists(e, e.type == ''Approval'' && has(e.waitTime))'
+                - message: DeleteStageTaskType is TimedWait, waitTime is required
+                  rule: '!self.exists(e, e.type == ''TimedWait'' && !has(e.waitTime))'
+                - message: DeleteStageTaskType is TimedWait, waitTime must be greater
+                    than zero
+                  rule: '!self.exists(e, e.type == ''TimedWait'' && has(e.waitTime)
+                    && duration(e.waitTime) <= duration(''0s''))'
               stages:
                 description: Stage specifies the configuration for each update stage.
                 items:

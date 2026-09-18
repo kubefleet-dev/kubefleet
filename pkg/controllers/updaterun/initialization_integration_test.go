@@ -697,7 +697,11 @@ var _ = Describe("Updaterun initialization tests", func() {
 		})
 
 		It("Should generate the cluster update stage in the status as expected", func() {
-			By("Creating a clusterStagedUpdateStrategy")
+			By("Creating a clusterStagedUpdateStrategy with delete stage tasks")
+			updateStrategy.Spec.DeleteStageTasks = []placementv1beta1.StageTask{
+				{Type: placementv1beta1.StageTaskTypeApproval},
+				{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: time.Minute}},
+			}
 			Expect(k8sClient.Create(ctx, updateStrategy)).To(Succeed())
 
 			By("Creating a new clusterStagedUpdateRun")
@@ -1171,6 +1175,15 @@ func generateInitializedStatus(
 		},
 	}
 	populateStageTaskStatuses(status, updateRun.Name, updateStrategy.Spec.Stages)
+	if len(updateStrategy.Spec.DeleteStageTasks) > 0 {
+		status.DeletionStageStatus.AfterStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(updateStrategy.Spec.DeleteStageTasks))
+		for i, task := range updateStrategy.Spec.DeleteStageTasks {
+			status.DeletionStageStatus.AfterStageTaskStatus[i].Type = task.Type
+			if task.Type == placementv1beta1.StageTaskTypeApproval {
+				status.DeletionStageStatus.AfterStageTaskStatus[i].ApprovalRequestName = fmt.Sprintf(placementv1beta1.DeleteStageApprovalTaskNameFmt, updateRun.Name)
+			}
+		}
+	}
 	return status
 }
 

@@ -613,7 +613,7 @@ func TestStopDeleteStage(t *testing.T) {
 			},
 		},
 		{
-			name: "cluster not marked as deleting and binding not deleting",
+			name: "cluster waiting on delete stage tasks should stop without deleting its binding",
 			updateRun: &placementv1beta1.ClusterStagedUpdateRun{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-updaterun",
@@ -640,7 +640,7 @@ func TestStopDeleteStage(t *testing.T) {
 					},
 				},
 			},
-			wantFinished: false,
+			wantFinished: true,
 			wantError:    nil,
 			wantProgressCond: metav1.Condition{
 				Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
