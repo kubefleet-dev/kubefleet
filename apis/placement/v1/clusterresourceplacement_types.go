@@ -1688,6 +1688,8 @@ func (rpl *ResourcePlacementList) GetPlacementObjs() []PlacementObj {
 
 // ClusterResourcePlacementStatus is a namespaced resource that mirrors the PlacementStatus of a corresponding
 // ClusterResourcePlacement object. This allows namespace-scoped access to cluster-scoped placement status.
+// Non-empty ValueInMember and ValueInHub fields in drift and diff details are replaced with
+// "(redacted for security reasons)" in the namespaced copy.
 // The LastUpdatedTime field is updated whenever the object is updated.
 //
 // This object will be created within the target namespace that contains resources being managed by the CRP.
@@ -1700,7 +1702,8 @@ type ClusterResourcePlacementStatus struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// Source status copied from the corresponding ClusterResourcePlacement.
+	// Source status copied from the corresponding ClusterResourcePlacement, with non-empty member and hub values
+	// in drift and diff details redacted for security reasons.
 	// +kubebuilder:validation:Required
 	PlacementStatus `json:"sourceStatus,omitempty"`
 

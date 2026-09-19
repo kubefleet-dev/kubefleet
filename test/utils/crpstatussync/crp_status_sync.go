@@ -14,6 +14,8 @@ import (
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
+const redactedPatchValue = "(redacted for security reasons)"
+
 var (
 	// Define comparison options for ignoring auto-generated and time-dependent fields.
 	crpsCmpOpts = []cmp.Option{
@@ -51,6 +53,7 @@ func CRPSStatusMatchesCRPActual(ctx context.Context, client client.Client, crpNa
 			}
 		}
 		expectedStatus.Conditions = filteredConditions
+		redactPlacementStatusPatchValues(expectedStatus)
 
 		wantCRPS := &placementv1beta1.ClusterResourcePlacementStatus{
 			ObjectMeta: metav1.ObjectMeta{
@@ -76,5 +79,28 @@ func CRPSStatusMatchesCRPActual(ctx context.Context, client client.Client, crpNa
 		}
 
 		return nil
+	}
+}
+
+func redactPlacementStatusPatchValues(status *placementv1beta1.PlacementStatus) {
+	for clusterIdx := range status.PerClusterPlacementStatuses {
+		clusterStatus := &status.PerClusterPlacementStatuses[clusterIdx]
+		for placementIdx := range clusterStatus.DriftedPlacements {
+			redactPatchDetails(clusterStatus.DriftedPlacements[placementIdx].ObservedDrifts)
+		}
+		for placementIdx := range clusterStatus.DiffedPlacements {
+			redactPatchDetails(clusterStatus.DiffedPlacements[placementIdx].ObservedDiffs)
+		}
+	}
+}
+
+func redactPatchDetails(details []placementv1beta1.PatchDetail) {
+	for idx := range details {
+		if details[idx].ValueInMember != "" {
+			details[idx].ValueInMember = redactedPatchValue
+		}
+		if details[idx].ValueInHub != "" {
+			details[idx].ValueInHub = redactedPatchValue
+		}
 	}
 }
