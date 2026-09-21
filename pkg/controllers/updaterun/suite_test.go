@@ -45,6 +45,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	controller "github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/resourceeligibility"
 )
 
 var (
@@ -123,10 +124,9 @@ var _ = BeforeSuite(func() {
 
 	// Setup our main reconciler.
 	resourceSelectorResolver = controller.ResourceSelectorResolver{
-		RestMapper:        mgr.GetRESTMapper(),
-		InformerManager:   dynamicInformerManager,
-		ResourceConfig:    utils.NewResourceConfig(false),
-		SkippedNamespaces: map[string]bool{},
+		RestMapper:                 mgr.GetRESTMapper(),
+		InformerManager:            dynamicInformerManager,
+		ResourceEligibilityChecker: resourceeligibility.DefaultForV0APIs(mgr.GetRESTMapper()),
 	}
 	err = (&Reconciler{
 		Client:                   k8sClient,

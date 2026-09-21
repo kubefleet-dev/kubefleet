@@ -42,9 +42,9 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/bindingwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/placementwatcher"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/schedulingpolicysnapshot"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/resourceeligibility"
 )
 
 var (
@@ -112,12 +112,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).Should(Succeed(), "failed to create manager")
 
 	resourceSelectorResolver := controller.ResourceSelectorResolver{
-		RestMapper:      mgr.GetRESTMapper(),
-		InformerManager: informer.NewInformerManager(dynamicClient, 5*time.Minute, ctx.Done()),
-		ResourceConfig:  utils.NewResourceConfig(false),
-		SkippedNamespaces: map[string]bool{
-			"default": true,
-		},
+		RestMapper:                 mgr.GetRESTMapper(),
+		InformerManager:            informer.NewInformerManager(dynamicClient, 5*time.Minute, ctx.Done()),
+		ResourceEligibilityChecker: resourceeligibility.DefaultForV0APIs(mgr.GetRESTMapper()),
 	}
 	resourceSnapshotResolver := controller.NewResourceSnapshotResolver(mgr.GetClient(), mgr.GetScheme())
 	reconciler := &Reconciler{
