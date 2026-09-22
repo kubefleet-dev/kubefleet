@@ -1,6 +1,9 @@
 {{- $useSidecar := and (not .Values.useCAAuth) (not .Values.useKubeconfig) }}
 {{- $mountIdentitySecret := and .Values.useCAAuth .Values.config.identitySecretName }}
 {{- $mountHubKubeconfig := and (not .Values.useCAAuth) .Values.useKubeconfig }}
+{{- if and .Values.useKubeconfig (not .Values.config.hubKubeconfigSecretName) }}
+{{- fail "config.hubKubeconfigSecretName must be set when useKubeconfig is true (it names the Secret, key \"kubeconfig\", to mount as the hub kubeconfig)" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:

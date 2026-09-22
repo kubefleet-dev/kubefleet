@@ -104,7 +104,7 @@ helm upgrade member-agent kubefleet/member-agent --namespace fleet-system
 | tlsClientInsecure       | Skip TLS server certificate verification when the member agent connects to the hub cluster. Leave this `false` unless you explicitly trust the endpoint and understand the risk.                                                            | `false`                                              |
 | useCAAuth               | Use certificate-based authentication for the hub connection instead of the token-based path.                                                                                                                                                  | `false`                                              |
 | useKubeconfig        | Authenticate to the hub cluster via a full kubeconfig instead of the refresh-token sidecar or `useCAAuth`. The vendor-neutral way to authenticate via a federated identity. Mutually exclusive with `useCAAuth`. See [Hub connection via kubeconfig](#hub-connection-via-kubeconfig-federated-identity-any-vendor). | `false`                                              |
-| config.hubKubeconfigSecretName | The name of a Secret (key `kubeconfig`) containing a full kubeconfig for the hub connection, mounted and passed to the process via the `KUBE_CONFIG_PATH` environment variable. Only used when `useKubeconfig` is `true`. | ``                                                   |
+| config.hubKubeconfigSecretName | The name of a Secret (key `kubeconfig`) containing a full kubeconfig for the hub connection, mounted and passed to the process via the `KUBE_CONFIG_PATH` environment variable. Required (the chart fails to render otherwise) when `useKubeconfig` is `true`. | ``                                                   |
 | podLabels               | Extra labels applied to the member-agent pod template — e.g. workload-identity labels a `hubKubeconfigSecretName` exec plugin needs.                                                                                                          | `{}`                                                 |
 | serviceAccountAnnotations | Extra annotations applied to the member-agent ServiceAccount — e.g. workload-identity annotations a `hubKubeconfigSecretName` exec plugin needs.                                                                                            | `{}`                                                 |
 | extraVolumes / extraVolumeMounts / extraInitContainers | Standard passthroughs (rendered via `toYaml`) for getting an exec plugin binary, or a workload-API socket, into the pod without a custom image. `extraVolumeMounts` applies to the member-agent container.               | `[]`                                                 |
@@ -143,6 +143,24 @@ provides (`client.authentication.k8s.io`, the same mechanism `kubectl` itself us
 vendor-specific — the plugin binary, its arguments, and any workload-identity metadata — lives
 entirely in the kubeconfig you write and the `podLabels`/`serviceAccountAnnotations` values you set;
 none of it is baked into this chart.
+
+**Kubeconfig mode is fully authoritative for the hub connection.** Once `useKubeconfig` is set, the
+loaded kubeconfig's own server URL, TLS configuration, and authentication are used as-is; none of
+the following are consulted, even if also set: `config.hubURL`/`HUB_SERVER_URL`, `useCAAuth`,
+`tlsClientInsecure`/`--tls-insecure`, `config.CABundle`/`CA_BUNDLE`, `config.hubCA`/
+`HUB_CERTIFICATE_AUTHORITY`, and the refresh-token sidecar's `CONFIG_PATH`/`IDENTITY_KEY`/
+`IDENTITY_CERT`. If you need TLS verification disabled for testing, set
+`insecure-skip-tls-verify: true` on the kubeconfig's own `cluster` entry rather than
+`tlsClientInsecure` — the latter has no effect in this mode.
+
+**Security considerations**: the hub kubeconfig can carry — directly or via its exec plugin's
+own credentials — everything needed to authenticate to the hub cluster, so treat the Secret
+holding it like any other high-value credential (restrict who can `get`/`list` it via RBAC, as
+you would `hub-kubeconfig-secret` or `hub-identity` for the other modes). Prefer mounting the
+kubeconfig and any exec-plugin binary via Secrets/`extraVolumes` rather than embedding secret
+material in Helm values or `--set` flags — values and `--set` arguments can end up in shell
+history, `helm get values` output, or process listings, none of which apply to a Secret mounted
+as a file.
 
 Three worked examples:
 

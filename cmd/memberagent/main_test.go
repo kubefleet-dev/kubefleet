@@ -214,6 +214,26 @@ func Test_buildHubConfig(t *testing.T) {
 		assert.Equal(t, "https://hub.fixture.example.com", config.Host)
 		assert.Equal(t, "fixture-bearer-token", config.BearerToken)
 	})
+	t.Run("use hub kubeconfig with an exec credential plugin - success", func(t *testing.T) {
+		// Exercises the users[].user.exec flow this feature exists for (a federated-identity
+		// exec plugin, e.g. kubelogin/aws-iam-authenticator/gke-gcloud-auth-plugin), as opposed
+		// to the plain-bearer-token fixture above. clientcmd populates rest.Config.ExecProvider
+		// from the exec stanza but does not invoke the plugin binary at ClientConfig() time -
+		// that only happens lazily on the first real HTTP request - so this can assert on the
+		// parsed exec configuration without needing "kubelogin" to actually be on PATH.
+		t.Setenv("KUBE_CONFIG_PATH", "./testdata/kubeconfig-exec")
+		config, err := buildHubConfig("", options.HubConnectivityOptions{
+			UseKubeConfig: true,
+		})
+		assert.NotNil(t, config)
+		assert.Nil(t, err)
+		assert.Equal(t, "https://hub.fixture.example.com", config.Host)
+		if assert.NotNil(t, config.ExecProvider) {
+			assert.Equal(t, "kubelogin", config.ExecProvider.Command)
+			assert.Equal(t, []string{"get-token", "--server-id", "fixture-server-id", "--login", "workloadidentity"}, config.ExecProvider.Args)
+			assert.Equal(t, "client.authentication.k8s.io/v1", config.ExecProvider.APIVersion)
+		}
+	})
 	t.Run("use hub kubeconfig, no path - error", func(t *testing.T) {
 		config, err := buildHubConfig("", options.HubConnectivityOptions{
 			UseKubeConfig: true,
