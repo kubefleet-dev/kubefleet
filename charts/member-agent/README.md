@@ -219,7 +219,7 @@ helm install member-agent ./charts/member-agent/ \
   --set config.memberClusterName=<member-cluster-name> \
   --set useKubeconfig=true \
   --set config.hubKubeconfigSecretName=hub-kubeconfig \
-  --set podLabels."azure\.workload\.identity/use"=true \
+  --set-string podLabels."azure\.workload\.identity/use"=true \
   --set serviceAccountAnnotations."azure\.workload\.identity/client-id"=<uami-client-id>
 ```
 Equivalent `member-agent` invocation: `KUBE_CONFIG_PATH=/etc/kubefleet/hub-kubeconfig/kubeconfig --use-kubeconfig=true`
@@ -275,10 +275,11 @@ kubectl create secret generic hub-kubeconfig --namespace fleet-system --from-fil
 helm install member-agent ./charts/member-agent/ \
   --namespace fleet-system \
   --create-namespace \
+  -f values-kubelogin-init.yaml \
   --set config.memberClusterName=<member-cluster-name> \
   --set useKubeconfig=true \
   --set config.hubKubeconfigSecretName=hub-kubeconfig \
-  --set podLabels."azure\.workload\.identity/use"=true \
+  --set-string podLabels."azure\.workload\.identity/use"=true \
   --set serviceAccountAnnotations."azure\.workload\.identity/client-id"=<uami-client-id>
 ```
 Equivalent `member-agent` invocation: `KUBE_CONFIG_PATH=/etc/kubefleet/hub-kubeconfig/kubeconfig --use-kubeconfig=true`
@@ -315,6 +316,7 @@ kubectl create secret generic hub-kubeconfig --namespace fleet-system --from-fil
 helm install member-agent ./charts/member-agent/ \
   --namespace fleet-system \
   --create-namespace \
+  -f values-kubelogin-init.yaml \
   --set config.memberClusterName=<member-cluster-name> \
   --set useKubeconfig=true \
   --set config.hubKubeconfigSecretName=hub-kubeconfig
@@ -356,6 +358,7 @@ kubectl create secret generic hub-kubeconfig --namespace fleet-system --from-fil
 helm install member-agent ./charts/member-agent/ \
   --namespace fleet-system \
   --create-namespace \
+  -f values-kubelogin-init.yaml \
   --set config.memberClusterName=<member-cluster-name> \
   --set useKubeconfig=true \
   --set config.hubKubeconfigSecretName=hub-kubeconfig
@@ -395,15 +398,19 @@ kubectl create secret generic hub-kubeconfig --namespace fleet-system --from-fil
 helm install member-agent ./charts/member-agent/ \
   --namespace fleet-system \
   --create-namespace \
+  -f values-kubelogin-init.yaml \
   --set config.memberClusterName=<member-cluster-name> \
   --set useKubeconfig=true \
   --set config.hubKubeconfigSecretName=hub-kubeconfig \
-  --set 'extraVolumes[0].name=spn-cert' \
-  --set 'extraVolumes[0].secret.secretName=spn-cert' \
-  --set 'extraVolumeMounts[0].name=spn-cert' \
-  --set 'extraVolumeMounts[0].mountPath=/etc/kubefleet/spn-cert' \
-  --set 'extraVolumeMounts[0].readOnly=true'
+  --set 'extraVolumes[1].name=spn-cert' \
+  --set 'extraVolumes[1].secret.secretName=spn-cert' \
+  --set 'extraVolumeMounts[1].name=spn-cert' \
+  --set 'extraVolumeMounts[1].mountPath=/etc/kubefleet/spn-cert' \
+  --set 'extraVolumeMounts[1].readOnly=true'
 ```
+`values-kubelogin-init.yaml` already occupies index `0` of `extraVolumes`/`extraVolumeMounts` (the
+`kubelogin-bin` `emptyDir`), so the certificate Secret's volume/mount use index `1` here to avoid
+overwriting it.
 Equivalent `member-agent` invocation: `KUBE_CONFIG_PATH=/etc/kubefleet/hub-kubeconfig/kubeconfig --use-kubeconfig=true`
 
 ### AWS / EKS (IRSA)
