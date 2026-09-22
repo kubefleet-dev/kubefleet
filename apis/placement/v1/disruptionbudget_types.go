@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The KubeFleet Authors.
+Copyright 2026 The KubeFleet Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1beta1
+package v1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,7 +23,6 @@ import (
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Cluster,categories={fleet,fleet-placement},shortName=crpdb
-// +kubebuilder:storageversion
 
 // ClusterResourcePlacementDisruptionBudget is the policy applied to a ClusterResourcePlacement
 // object that specifies its disruption budget, i.e., how many placements (clusters) can be
