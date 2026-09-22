@@ -280,22 +280,11 @@ var _ = Describe("placement policy scheduling status", Ordered, func() {
 		}, eventuallyTimeout, pollInterval).Should(Succeed())
 	})
 
-	// KNOWN GAP (API, pinned): the count field's regex pattern constrains only the string form
-	// of the IntOrString; integer zero bypasses CRD validation entirely. The controller rejects
-	// it at evaluation time and surfaces InvalidClusterSelectors. The API should add a CEL rule
-	// (e.g., type(self.count) == int ? self.count >= 1 : true).
-	It("KNOWN GAP: integer count zero passes admission and is rejected by the controller instead", func() {
+	// The gap this used to pin is closed: #829 added the CEL rule bounding the integer form of
+	// count, so zero is now rejected at admission and never reaches the controller.
+	It("rejects an integer count of zero at admission", func() {
 		policy := newPolicy(nextName("pp"), regionSelector("eastus2", ptr.To(intstr.FromInt32(0)), nil))
-		Expect(k8sClient.Create(ctx, policy)).Should(Succeed(), "count: 0 is currently accepted at admission — flip this once the CEL guard exists")
-
-		Eventually(func(g Gomega) {
-			fetched := &kfplacementv1alpha1.PlacementPolicy{}
-			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(policy), fetched)).Should(Succeed())
-			cond := meta.FindStatusCondition(fetched.Status.Conditions, kfplacementv1alpha1.PlacementPolicyCondTypeScheduled)
-			g.Expect(cond).NotTo(BeNil())
-			g.Expect(cond.Status).Should(Equal(metav1.ConditionFalse))
-			g.Expect(cond.Reason).Should(Equal(reasonInvalidClusterSelectors))
-		}, eventuallyTimeout, pollInterval).Should(Succeed())
+		Expect(k8sClient.Create(ctx, policy)).ShouldNot(Succeed(), "count: 0 must be rejected by the CEL guard on the integer form")
 	})
 
 	// KNOWN GAP (API, pinned): numeric operators in matchLabelExpressions pass admission; the

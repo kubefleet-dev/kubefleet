@@ -8,13 +8,13 @@ package demonstrating the current behavior.
 
 ## API gaps found while implementing
 
-1. **`ClusterSelector.count` accepts non-positive integers** (*pinned*). The
-   field is `XIntOrString` with `Pattern="^([1-9][0-9]{0,2}|All)$"`, but a
-   pattern only constrains the string form; integer values bypass it entirely,
-   so `count: 0` and `count: -1` pass CRD validation. The controller rejects
-   them at evaluation time (`resolveCounts`), surfacing
-   `Scheduled=False/InvalidClusterSelectors`. Suggested API fix: a CEL rule
-   such as `type(self.count) == int ? self.count >= 1 : true`.
+1. **`ClusterSelector.count` accepts non-positive integers** (*closed*). The
+   field is `XIntOrString` with `Pattern="^([1-9][0-9]{0,2}|All)$"`, and a
+   pattern only constrains the string form, so `count: 0` and `count: -1` used
+   to bypass CRD validation and be rejected by the controller at evaluation
+   time instead. #829 added the CEL rule bounding the integer form, so they are
+   now rejected at admission; the controller's own check remains as a backstop
+   for objects admitted before the rule shipped.
 
 2. **Numeric operators are accepted in `matchLabelExpressions` at admission**
    (*pinned*). `MatchLabelExpressions` reuses the
