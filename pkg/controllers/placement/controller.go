@@ -457,17 +457,6 @@ func (r *Reconciler) ensureLatestPolicySnapshot(ctx context.Context, placementOb
 		latest.SetLabels(labels)
 		needUpdate = true
 	}
-	placementGeneration, err := annotations.ExtractObservedPlacementGenerationFromPolicySnapshot(latest)
-	if err != nil {
-		klog.ErrorS(err, "Failed to parse the placement generation from the annotations", "policySnapshot", latestKObj)
-		return controller.NewUnexpectedBehaviorError(err)
-	}
-	if placementGeneration != placementObj.GetGeneration() {
-		annotations := latest.GetAnnotations()
-		annotations[fleetv1beta1.CRPGenerationAnnotation] = strconv.FormatInt(placementObj.GetGeneration(), 10)
-		latest.SetAnnotations(annotations)
-		needUpdate = true
-	}
 
 	// Handle NumberOfClusters annotation for selectN type placements
 	placementSpec := placementObj.GetPlacementSpec()
@@ -798,9 +787,6 @@ func buildScheduledCondition(placementObj fleetv1beta1.PlacementObj, latestSched
 	if scheduledCondition == nil ||
 		// defensive check and not needed for now as the policySnapshot should be immutable.
 		scheduledCondition.ObservedGeneration < latestSchedulingPolicySnapshot.GetGeneration() ||
-		// We have numberOfCluster annotation added on the placement and it won't change the placement generation.
-		// So that we need to compare the placement observedCRPGeneration reported by the scheduler.
-		latestSchedulingPolicySnapshot.GetPolicySnapshotStatus().ObservedCRPGeneration < placementObj.GetGeneration() ||
 		scheduledCondition.Status == metav1.ConditionUnknown {
 		return metav1.Condition{
 			Status:             metav1.ConditionUnknown,
