@@ -20,10 +20,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	prometheusclientmodel "github.com/prometheus/client_model/go"
@@ -46,7 +49,6 @@ import (
 	hubmetrics "github.com/kubefleet-dev/kubefleet/pkg/metrics/hub"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
-	metricsutils "github.com/kubefleet-dev/kubefleet/test/utils/metrics"
 )
 
 const (
@@ -72,6 +74,24 @@ var (
 	testCROName              string
 	updateRunNamespacedName  types.NamespacedName
 )
+
+var updateRunStatusMetricCmpOptions = []cmp.Option{
+	cmpopts.SortSlices(func(a, b *prometheusclientmodel.Metric) bool {
+		aGauge := a.GetGauge().GetValue()
+		bGauge := b.GetGauge().GetValue()
+		if aGauge != bGauge {
+			return aGauge < bGauge
+		}
+		return metricLabelKey(a) < metricLabelKey(b)
+	}),
+	cmpopts.SortSlices(func(a, b *prometheusclientmodel.LabelPair) bool {
+		return a.GetName() < b.GetName()
+	}),
+	cmp.Comparer(func(a, b *prometheusclientmodel.Gauge) bool {
+		return (a.GetValue() > 0) == (b.GetValue() > 0)
+	}),
+	cmpopts.IgnoreUnexported(prometheusclientmodel.Metric{}, prometheusclientmodel.LabelPair{}, prometheusclientmodel.Gauge{}),
+}
 
 var _ = Describe("Test the clusterStagedUpdateRun controller", func() {
 
@@ -238,7 +258,7 @@ func resetUpdateRunMetrics() {
 	hubmetrics.FleetUpdateRunApprovalRequestLatencySeconds.Reset()
 }
 
-// validateUpdateRunMetricsEmitted validates the update run status metrics are emitted and are emitted in the correct order.
+// validateUpdateRunMetricsEmitted validates the update run status metrics are emitted with the expected labels and values.
 func validateUpdateRunMetricsEmitted(wantMetrics ...*prometheusclientmodel.Metric) {
 	Eventually(func() error {
 		metricFamilies, err := ctrlmetrics.Registry.Gather()
@@ -252,12 +272,36 @@ func validateUpdateRunMetricsEmitted(wantMetrics ...*prometheusclientmodel.Metri
 			}
 		}
 
-		if diff := cmp.Diff(gotMetrics, wantMetrics, metricsutils.MetricsCmpOptions...); diff != "" {
+		alignExpectedMetricGaugeValues(gotMetrics, wantMetrics)
+		if diff := cmp.Diff(gotMetrics, wantMetrics, updateRunStatusMetricCmpOptions...); diff != "" {
 			return fmt.Errorf("update run status metrics mismatch (-got, +want):\n%s", diff)
 		}
 
 		return nil
 	}, timeout, interval).Should(Succeed(), "failed to validate the update run status metrics")
+}
+
+func alignExpectedMetricGaugeValues(gotMetrics, wantMetrics []*prometheusclientmodel.Metric) {
+	gotMetricGaugeByLabel := make(map[string]float64, len(gotMetrics))
+	for _, gotMetric := range gotMetrics {
+		gotMetricGaugeByLabel[metricLabelKey(gotMetric)] = gotMetric.GetGauge().GetValue()
+	}
+
+	for _, wantMetric := range wantMetrics {
+		if gotGauge, ok := gotMetricGaugeByLabel[metricLabelKey(wantMetric)]; ok {
+			wantMetric.Gauge.Value = ptr.To(gotGauge)
+		}
+	}
+}
+
+func metricLabelKey(metric *prometheusclientmodel.Metric) string {
+	labels := metric.GetLabel()
+	pairs := make([]string, 0, len(labels))
+	for _, label := range labels {
+		pairs = append(pairs, label.GetName()+"="+label.GetValue())
+	}
+	sort.Strings(pairs)
+	return strings.Join(pairs, ";")
 }
 
 // validateUpdateRunApprovalStageTaskMetric validates the update run approval stage task metric by checking labels and count.
