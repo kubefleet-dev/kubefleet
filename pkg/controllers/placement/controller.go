@@ -868,14 +868,16 @@ func emitPlacementStatusMetric(placementObj fleetv1beta1.PlacementObj) {
 	// Check Placement Scheduled condition.
 	status := "nil"
 	reason := "nil"
+	metricTimestamp := placementObj.GetCreationTimestamp()
 	scheduledConditionType := getPlacementScheduledConditionType(placementObj)
 	cond := placementObj.GetCondition(scheduledConditionType)
 	if !condition.IsConditionStatusTrue(cond, placementObj.GetGeneration()) {
 		if cond != nil && cond.ObservedGeneration == placementObj.GetGeneration() {
 			status = string(cond.Status)
 			reason = cond.Reason
+			metricTimestamp = cond.LastTransitionTime
 		}
-		hubmetrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), scheduledConditionType, status, reason).SetToCurrentTime()
+		hubmetrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), scheduledConditionType, status, reason).Set(float64(metricTimestamp.UnixNano()) / float64(time.Second))
 		return
 	}
 
@@ -888,13 +890,15 @@ func emitPlacementStatusMetric(placementObj fleetv1beta1.PlacementObj) {
 			if cond != nil && cond.ObservedGeneration == placementObj.GetGeneration() {
 				status = string(cond.Status)
 				reason = cond.Reason
+				metricTimestamp = cond.LastTransitionTime
 			}
-			hubmetrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), conditionType, status, reason).SetToCurrentTime()
+			hubmetrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), conditionType, status, reason).Set(float64(metricTimestamp.UnixNano()) / float64(time.Second))
 			return
 		}
 	}
 
 	// Emit the "Completed" condition metric to indicate that the placement has completed.
-	// This condition is used solely for metric reporting purposes.
-	hubmetrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), "Completed", string(metav1.ConditionTrue), "Completed").SetToCurrentTime()
+	// This condition is used solely for metric reporting purposes. Its timestamp is when the final
+	// expected condition transitioned to true and established completion.
+	hubmetrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), "Completed", string(metav1.ConditionTrue), "Completed").Set(float64(cond.LastTransitionTime.UnixNano()) / float64(time.Second))
 }
