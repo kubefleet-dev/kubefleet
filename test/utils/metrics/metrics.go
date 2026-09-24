@@ -15,6 +15,9 @@ limitations under the License.
 package metrics
 
 import (
+	"sort"
+	"strings"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	prometheusclientmodel "github.com/prometheus/client_model/go"
@@ -22,12 +25,19 @@ import (
 
 var (
 	// MetricsCmpOptions defines comparison options for Prometheus metric structures.
-	// - Sorting metric value and its labels for deterministic ordering,
+	// - Sorting metrics by their label identity for deterministic ordering (labels
+	//   uniquely identify a metric, whereas gauge values, e.g. persisted transition
+	//   timestamps, only have second-level precision once round-tripped through the
+	//   API server and so can legitimately tie across distinct metrics),
+	// - Sorting metric labels for deterministic ordering,
 	// - Comparing gauge values based on whether they were meaningfully set (i.e., > 0),
+	//   which stays permissive for consumers (e.g. the placement package) that still
+	//   derive their expected gauge value from time.Now() rather than a persisted
+	//   condition timestamp,
 	// - Ignoring unexported fields to avoid false mismatches due to internal state.
 	MetricsCmpOptions = []cmp.Option{
 		cmpopts.SortSlices(func(a, b *prometheusclientmodel.Metric) bool {
-			return a.GetGauge().GetValue() < b.GetGauge().GetValue() // sort by time
+			return metricLabelKey(a) < metricLabelKey(b)
 		}),
 		cmpopts.SortSlices(func(a, b *prometheusclientmodel.LabelPair) bool {
 			return a.GetName() < b.GetName() // Sort by label
@@ -38,3 +48,17 @@ var (
 		cmpopts.IgnoreUnexported(prometheusclientmodel.Metric{}, prometheusclientmodel.LabelPair{}, prometheusclientmodel.Gauge{}),
 	}
 )
+
+// metricLabelKey builds a stable, deterministic key from a metric's label pairs
+// (sorted by name) so that metrics can be sorted, and thus paired for comparison,
+// by identity rather than by their gauge value, which may tie across distinct
+// metrics (e.g. two condition transitions persisted within the same second).
+func metricLabelKey(m *prometheusclientmodel.Metric) string {
+	labels := m.GetLabel()
+	pairs := make([]string, 0, len(labels))
+	for _, l := range labels {
+		pairs = append(pairs, l.GetName()+"="+l.GetValue())
+	}
+	sort.Strings(pairs)
+	return strings.Join(pairs, ";")
+}
