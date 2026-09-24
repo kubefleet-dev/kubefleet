@@ -1235,7 +1235,6 @@ func TestPickBindingsToRoll(t *testing.T) {
 		wantWaitTime                time.Duration
 		wantErr                     error
 	}{
-		// TODO: add more tests
 		"test scheduled binding to bound, latest resources and nil overrides - rollout allowed": {
 			allBindingsFunc: func() []*placementv1beta1.ClusterResourceBinding {
 				return []*placementv1beta1.ClusterResourceBinding{
