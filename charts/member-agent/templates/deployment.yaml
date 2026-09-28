@@ -118,7 +118,7 @@ spec:
           {{- end }}
           - name: MEMBER_CLUSTER_NAME
             value: "{{ .Values.config.memberClusterName }}"
-          {{- if not $mountHubKubeconfig }}
+          {{- if and (not $mountHubKubeconfig) .Values.config.hubCA }}
           - name: HUB_CERTIFICATE_AUTHORITY
             value: "{{ .Values.config.hubCA }}"
           {{- end }}
@@ -127,8 +127,10 @@ spec:
             value:  "{{ if .Values.config.identitySecretName }}/etc/kubefleet/hub-identity/tls.key{{ else }}{{ .Values.config.identityKey }}{{ end }}"
           - name: IDENTITY_CERT
             value:  "{{ if .Values.config.identitySecretName }}/etc/kubefleet/hub-identity/tls.crt{{ else }}{{ .Values.config.identityCert }}{{ end }}"
+          {{- if .Values.config.CABundle }}
           - name: CA_BUNDLE
             value:  "{{ .Values.config.CABundle }}"
+          {{- end }}
           {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
