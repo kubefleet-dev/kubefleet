@@ -880,6 +880,7 @@ func emitPlacementStatusMetric(placementObj fleetv1beta1.PlacementObj) {
 		hubmetrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), scheduledConditionType, status, reason).Set(float64(metricTimestamp.UnixNano()) / float64(time.Second))
 		return
 	}
+	completionTimestamp := cond.LastTransitionTime
 
 	// Check placement expected conditions.
 	expectedCondTypes := determineExpectedPlacementAndResourcePlacementStatusCondType(placementObj)
@@ -895,10 +896,11 @@ func emitPlacementStatusMetric(placementObj fleetv1beta1.PlacementObj) {
 			hubmetrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), conditionType, status, reason).Set(float64(metricTimestamp.UnixNano()) / float64(time.Second))
 			return
 		}
+		completionTimestamp = cond.LastTransitionTime
 	}
 
 	// Emit the "Completed" condition metric to indicate that the placement has completed.
-	// This condition is used solely for metric reporting purposes. Its timestamp is when the final
-	// expected condition transitioned to true and established completion.
-	hubmetrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), "Completed", string(metav1.ConditionTrue), "Completed").Set(float64(cond.LastTransitionTime.UnixNano()) / float64(time.Second))
+	// Completed is a synthetic metric label, not a persisted condition. Its timestamp is the
+	// transition time of the final real condition that established completion.
+	hubmetrics.FleetPlacementStatusLastTimeStampSeconds.WithLabelValues(placementObj.GetNamespace(), placementObj.GetName(), strconv.FormatInt(placementObj.GetGeneration(), 10), "Completed", string(metav1.ConditionTrue), "Completed").Set(float64(completionTimestamp.UnixNano()) / float64(time.Second))
 }
