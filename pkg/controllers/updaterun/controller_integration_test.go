@@ -511,7 +511,7 @@ func generateInitializationSucceededMetric(state placementv1beta1.State, updateR
 		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionInitialized),
 			string(metav1.ConditionTrue), condition.UpdateRunInitializeSucceededReason, string(hubmetrics.UpdateRunFailureTypeNone)),
 		Gauge: &prometheusclientmodel.Gauge{
-			Value: ptr.To(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionInitialized, condition.UpdateRunInitializeSucceededReason)),
+			Value: new(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionInitialized, condition.UpdateRunInitializeSucceededReason)),
 		},
 	}
 }
@@ -521,7 +521,7 @@ func generateInitializationFailedMetric(state placementv1beta1.State, updateRun 
 		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionInitialized),
 			string(metav1.ConditionFalse), condition.UpdateRunInitializeFailedReason, failureType),
 		Gauge: &prometheusclientmodel.Gauge{
-			Value: ptr.To(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionInitialized, condition.UpdateRunInitializeFailedReason)),
+			Value: new(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionInitialized, condition.UpdateRunInitializeFailedReason)),
 		},
 	}
 }
@@ -531,7 +531,7 @@ func generateProgressingMetric(state placementv1beta1.State, updateRun *placemen
 		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionProgressing),
 			string(metav1.ConditionTrue), condition.UpdateRunProgressingReason, string(hubmetrics.UpdateRunFailureTypeNone)),
 		Gauge: &prometheusclientmodel.Gauge{
-			Value: ptr.To(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, condition.UpdateRunProgressingReason)),
+			Value: new(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, condition.UpdateRunProgressingReason)),
 		},
 	}
 }
@@ -541,7 +541,7 @@ func generateWaitingMetric(state placementv1beta1.State, updateRun *placementv1b
 		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionProgressing),
 			string(metav1.ConditionFalse), condition.UpdateRunWaitingReason, string(hubmetrics.UpdateRunFailureTypeNone)),
 		Gauge: &prometheusclientmodel.Gauge{
-			Value: ptr.To(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, condition.UpdateRunWaitingReason)),
+			Value: new(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, condition.UpdateRunWaitingReason)),
 		},
 	}
 }
@@ -551,7 +551,7 @@ func generateStuckMetric(state placementv1beta1.State, updateRun *placementv1bet
 		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionProgressing),
 			string(metav1.ConditionFalse), condition.UpdateRunStuckReason, string(hubmetrics.UpdateRunFailureTypeInternalError)),
 		Gauge: &prometheusclientmodel.Gauge{
-			Value: ptr.To(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, condition.UpdateRunStuckReason)),
+			Value: new(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, condition.UpdateRunStuckReason)),
 		},
 	}
 }
@@ -561,7 +561,7 @@ func generateFailedMetric(state placementv1beta1.State, updateRun *placementv1be
 		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionSucceeded),
 			string(metav1.ConditionFalse), condition.UpdateRunFailedReason, failureType),
 		Gauge: &prometheusclientmodel.Gauge{
-			Value: ptr.To(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionSucceeded, condition.UpdateRunFailedReason)),
+			Value: new(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionSucceeded, condition.UpdateRunFailedReason)),
 		},
 	}
 }
@@ -571,7 +571,7 @@ func generateStoppingMetric(state placementv1beta1.State, updateRun *placementv1
 		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionProgressing),
 			string(metav1.ConditionUnknown), condition.UpdateRunStoppingReason, string(hubmetrics.UpdateRunFailureTypeNone)),
 		Gauge: &prometheusclientmodel.Gauge{
-			Value: ptr.To(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, condition.UpdateRunStoppingReason)),
+			Value: new(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, condition.UpdateRunStoppingReason)),
 		},
 	}
 }
@@ -581,7 +581,7 @@ func generateStoppedMetric(state placementv1beta1.State, updateRun *placementv1b
 		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionProgressing),
 			string(metav1.ConditionFalse), condition.UpdateRunStoppedReason, string(hubmetrics.UpdateRunFailureTypeNone)),
 		Gauge: &prometheusclientmodel.Gauge{
-			Value: ptr.To(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, condition.UpdateRunStoppedReason)),
+			Value: new(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionProgressing, condition.UpdateRunStoppedReason)),
 		},
 	}
 }
@@ -591,7 +591,7 @@ func generateSucceededMetric(state placementv1beta1.State, updateRun *placementv
 		Label: generateMetricsLabels(updateRun, string(state), string(placementv1beta1.StagedUpdateRunConditionSucceeded),
 			string(metav1.ConditionTrue), condition.UpdateRunSucceededReason, string(hubmetrics.UpdateRunFailureTypeNone)),
 		Gauge: &prometheusclientmodel.Gauge{
-			Value: ptr.To(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionSucceeded, condition.UpdateRunSucceededReason)),
+			Value: new(conditionTransitionTimeSeconds(updateRun, placementv1beta1.StagedUpdateRunConditionSucceeded, condition.UpdateRunSucceededReason)),
 		},
 	}
 }
