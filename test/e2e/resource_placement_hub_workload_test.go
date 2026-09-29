@@ -120,7 +120,8 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 		}
 		crpKey := types.NamespacedName{Name: crpName}
 		crpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(crpKey, wantSelectedResources, allMemberClusterNames, nil, "0", true)
-		Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		// It takes a while for Fleet to find out that the job has completed, as it checks with a backoff.
+		Eventually(crpStatusUpdatedActual, 3*workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 	})
 
 	AfterAll(func() {
