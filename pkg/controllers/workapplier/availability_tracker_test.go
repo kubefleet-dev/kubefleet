@@ -18,6 +18,8 @@ package workapplier
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -678,6 +680,74 @@ func TestTrackJobAvailability(t *testing.T) {
 			}
 			if gotResTyp != tc.wantAvailabilityResultType {
 				t.Errorf("manifestProcessingAvailabilityResultType = %v, want %v", gotResTyp, tc.wantAvailabilityResultType)
+			}
+		})
+	}
+}
+
+// TestTrackAvailabilityWithMalformedObject tests that the availability trackers report an object that cannot be
+// converted to its typed form.
+func TestTrackAvailabilityWithMalformedObject(t *testing.T) {
+	testCases := []struct {
+		name               string
+		gvr                schema.GroupVersionResource
+		wantErrMsgContains string
+	}{
+		{
+			name:               "deployment",
+			gvr:                utils.DeploymentGVR,
+			wantErrMsgContains: "failed to convert the unstructured object to a deployment",
+		},
+		{
+			name:               "stateful set",
+			gvr:                utils.StatefulSetGVR,
+			wantErrMsgContains: "failed to convert the unstructured object to a stateful set",
+		},
+		{
+			name:               "daemon set",
+			gvr:                utils.DaemonSetGVR,
+			wantErrMsgContains: "failed to convert the unstructured object to a daemon set",
+		},
+		{
+			name:               "job",
+			gvr:                utils.JobGVR,
+			wantErrMsgContains: "failed to convert the unstructured object to a job",
+		},
+		{
+			name:               "service",
+			gvr:                utils.ServiceGVR,
+			wantErrMsgContains: "failed to convert the unstructured object to a service",
+		},
+		{
+			name:               "custom resource definition",
+			gvr:                utils.CustomResourceDefinitionGVR,
+			wantErrMsgContains: "failed to convert the unstructured object to a custom resource definition",
+		},
+		{
+			name:               "pod disruption budget",
+			gvr:                utils.PodDisruptionBudgetGVR,
+			wantErrMsgContains: "failed to convert the unstructured object to a pod disruption budget",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// The spec of any of the tracked objects is an object rather than a string.
+			malformedObj := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"spec": "malformed",
+				},
+			}
+
+			gotResTyp, err := trackInMemberClusterObjAvailabilityByGVR(&tc.gvr, malformedObj)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErrMsgContains) {
+				t.Fatalf("trackInMemberClusterObjAvailabilityByGVR() = %v, want error with message %q", err, tc.wantErrMsgContains)
+			}
+			if errors.Unwrap(err) == nil {
+				t.Errorf("trackInMemberClusterObjAvailabilityByGVR() = %v, want an error that wraps the conversion error", err)
+			}
+			if gotResTyp != AvailabilityResultTypeFailed {
+				t.Errorf("manifestProcessingAvailabilityResultType = %v, want %v", gotResTyp, AvailabilityResultTypeFailed)
 			}
 		})
 	}
