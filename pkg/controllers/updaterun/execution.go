@@ -83,7 +83,8 @@ func (r *Reconciler) execute(
 			// No need to wait to get to the next stage.
 			return false, 0, nil
 		}
-		approved, err := r.checkBeforeStageTasksStatus(ctx, updatingStageIndex, updateRun)
+		beforeStageTasks := updateRunStatus.UpdateStrategySnapshot.Stages[updatingStageIndex].BeforeStageTasks
+		approved, err := r.checkBeforeStageTasksStatus(ctx, updatingStageStatus, beforeStageTasks, updateRun)
 		if err != nil {
 			return false, 0, err
 		}
@@ -104,22 +105,25 @@ func (r *Reconciler) execute(
 	return r.executeDeleteStage(ctx, updateRun, toBeDeletedBindings)
 }
 
-// checkBeforeStageTasksStatus checks if the before stage tasks have finished.
+// checkBeforeStageTasksStatus checks if the before stage tasks of a stage, an update stage or the delete stage,
+// have finished.
 // It returns if the before stage tasks have finished or error if the before stage tasks failed.
-func (r *Reconciler) checkBeforeStageTasksStatus(ctx context.Context, updatingStageIndex int, updateRun placementv1beta1.UpdateRunObj) (bool, error) {
+func (r *Reconciler) checkBeforeStageTasksStatus(
+	ctx context.Context,
+	stageStatus *placementv1beta1.StageUpdatingStatus,
+	tasks []placementv1beta1.StageTask,
+	updateRun placementv1beta1.UpdateRunObj,
+) (bool, error) {
 	updateRunRef := klog.KObj(updateRun)
-	updateRunStatus := updateRun.GetUpdateRunStatus()
-	updatingStage := &updateRunStatus.UpdateStrategySnapshot.Stages[updatingStageIndex]
-	if updatingStage.BeforeStageTasks == nil {
-		klog.V(2).InfoS("There is no before stage task for this stage", "stage", updatingStage.Name, "updateRun", updateRunRef)
+	if len(tasks) == 0 {
+		klog.V(2).InfoS("There is no before stage task for this stage", "stage", stageStatus.StageName, "updateRun", updateRunRef)
 		return true, nil
 	}
 
-	updatingStageStatus := &updateRunStatus.StagesStatus[updatingStageIndex]
-	for i, task := range updatingStage.BeforeStageTasks {
+	for i, task := range tasks {
 		switch task.Type {
 		case placementv1beta1.StageTaskTypeApproval:
-			approved, err := r.handleStageApprovalTask(ctx, &updatingStageStatus.BeforeStageTaskStatus[i], updatingStage.Name, updateRun, placementv1beta1.BeforeStageTaskLabelValue)
+			approved, err := r.handleStageApprovalTask(ctx, &stageStatus.BeforeStageTaskStatus[i], stageStatus.StageName, updateRun, placementv1beta1.BeforeStageTaskLabelValue)
 			if err != nil {
 				return false, err
 			}
@@ -127,7 +131,7 @@ func (r *Reconciler) checkBeforeStageTasksStatus(ctx context.Context, updatingSt
 		default:
 			// Approval is the only supported before stage task.
 			unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("found unsupported task type in before stage tasks: %s", task.Type))
-			klog.ErrorS(unexpectedErr, "Task type is not supported in before stage tasks", "stage", updatingStage.Name, "updateRun", updateRunRef, "taskType", task.Type)
+			klog.ErrorS(unexpectedErr, "Task type is not supported in before stage tasks", "stage", stageStatus.StageName, "updateRun", updateRunRef, "taskType", task.Type)
 			return false, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
 		}
 	}
@@ -271,7 +275,7 @@ func (r *Reconciler) executeUpdatingStage(
 			// If cluster update has been running for more than "updateRunStuckThreshold", mark the update run as stuck.
 			timeElapsed := time.Since(clusterStartedCond.LastTransitionTime.Time)
 			if timeElapsed > updateRunStuckThreshold {
-				klog.V(2).InfoS("Time waiting for cluster update to finish passes threshold, mark the update run as stuck", "time elapsed", timeElapsed, "threshold", updateRunStuckThreshold, "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
+				klog.V(2).InfoS("Time waiting for cluster update to finish passes threshold, mark the update run as stuck", "timeElapsed", timeElapsed, "threshold", updateRunStuckThreshold, "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
 				stuckClusterNames = append(stuckClusterNames, clusterStatus.ClusterName)
 			}
 		}
@@ -345,47 +349,24 @@ func (r *Reconciler) executeDeleteStage(
 	updateRunRef := klog.KObj(updateRun)
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	existingDeleteStageStatus := updateRunStatus.DeletionStageStatus
-	passed, waitTime, err := r.checkBeforeDeleteStageTasksStatus(ctx, updateRun, toBeDeletedBindings)
+	approved, err := r.checkBeforeDeleteStageTasksStatus(ctx, updateRun, toBeDeletedBindings)
 	if err != nil {
 		return false, 0, err
 	}
-	if !passed {
-		return false, waitTime, nil
-	}
-	existingDeleteStageClusterMap := make(map[string]*placementv1beta1.ClusterUpdatingStatus, len(existingDeleteStageStatus.Clusters))
-	for i := range existingDeleteStageStatus.Clusters {
-		existingDeleteStageClusterMap[existingDeleteStageStatus.Clusters[i].ClusterName] = &existingDeleteStageStatus.Clusters[i]
+	if !approved {
+		return false, stageUpdatingWaitTime, nil
 	}
 	// Mark the delete stage as started in case it's not.
-	markStageUpdatingProgressStarted(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration())
+	markStageUpdatingProgressStarted(existingDeleteStageStatus, updateRun.GetGeneration())
+	toBeStartedClusters, err := syncDeleteStageClusterStatuses(updateRun, toBeDeletedBindings)
+	if err != nil {
+		return false, 0, err
+	}
 	for _, binding := range toBeDeletedBindings {
-		bindingSpec := binding.GetBindingSpec()
-		curCluster, exist := existingDeleteStageClusterMap[bindingSpec.TargetCluster]
-		if !exist {
-			// This is unexpected because we already checked in validation.
-			missingErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the to be deleted cluster `%s` is not in the deleting stage during execution", bindingSpec.TargetCluster))
-			klog.ErrorS(missingErr, "The cluster in the deleting stage does not include all the to be deleted binding", "updateRun", updateRunRef)
-			return false, 0, fmt.Errorf("%w: %s", errStagedUpdatedAborted, missingErr.Error())
-		}
-		// In validation, we already check the binding must exist in the status.
-		delete(existingDeleteStageClusterMap, bindingSpec.TargetCluster)
-		// Make sure the cluster is not marked as deleted as the binding is still there.
-		if condition.IsConditionStatusTrue(meta.FindStatusCondition(curCluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded)), updateRun.GetGeneration()) {
-			unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the deleted cluster `%s` in the deleting stage still has a binding", bindingSpec.TargetCluster))
-			klog.ErrorS(unexpectedErr, "The cluster in the deleting stage is not removed yet but marked as deleted", "cluster", curCluster.ClusterName, "updateRun", updateRunRef)
-			return false, 0, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
-		}
-		if condition.IsConditionStatusTrue(meta.FindStatusCondition(curCluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted)), updateRun.GetGeneration()) {
-			// The cluster status is marked as being deleted.
-			if binding.GetDeletionTimestamp().IsZero() {
-				// The cluster is marked as deleting but the binding is not deleting.
-				unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the cluster `%s` in the deleting stage is marked as deleting but its corresponding binding is not deleting", curCluster.ClusterName))
-				klog.ErrorS(unexpectedErr, "The binding should be deleting before we mark a cluster deleting", "clusterStatus", curCluster, "updateRun", updateRunRef)
-				return false, 0, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
-			}
+		curCluster, toBeStarted := toBeStartedClusters[binding.GetBindingSpec().TargetCluster]
+		if !toBeStarted {
 			continue
 		}
-		// The cluster status is not deleting yet
 		if err := r.Client.Delete(ctx, binding); err != nil {
 			klog.ErrorS(err, "Failed to delete a binding in the update run", "binding", klog.KObj(binding), "cluster", curCluster.ClusterName, "updateRun", updateRunRef)
 			return false, 0, controller.NewAPIServerError(false, err)
@@ -393,104 +374,131 @@ func (r *Reconciler) executeDeleteStage(
 		klog.V(2).InfoS("Deleted a binding pointing to a to be deleted cluster", "binding", klog.KObj(binding), "cluster", curCluster.ClusterName, "updateRun", updateRunRef)
 		markClusterUpdatingStarted(curCluster, updateRun.GetGeneration())
 	}
+	klog.InfoS("The delete stage is progressing", "numberOfDeletingClusters", len(toBeDeletedBindings), "updateRun", updateRunRef)
+	if len(toBeDeletedBindings) == 0 {
+		markStageUpdatingSucceeded(existingDeleteStageStatus, updateRun.GetGeneration())
+	}
+	return len(toBeDeletedBindings) == 0, clusterUpdatingWaitTime, nil
+}
+
+// syncDeleteStageClusterStatuses checks the clusters in the delete stage against the bindings that are still to be
+// deleted and marks the clusters with no binding left as succeeded in memory.
+// It returns the clusters with a binding whose deletion has not started, by their names.
+func syncDeleteStageClusterStatuses(
+	updateRun placementv1beta1.UpdateRunObj,
+	toBeDeletedBindings []placementv1beta1.BindingObj,
+) (map[string]*placementv1beta1.ClusterUpdatingStatus, error) {
+	updateRunRef := klog.KObj(updateRun)
+	deleteStageStatus := updateRun.GetUpdateRunStatus().DeletionStageStatus
+	deletedClusters := make(map[string]*placementv1beta1.ClusterUpdatingStatus, len(deleteStageStatus.Clusters))
+	for i := range deleteStageStatus.Clusters {
+		deletedClusters[deleteStageStatus.Clusters[i].ClusterName] = &deleteStageStatus.Clusters[i]
+	}
+	toBeStartedClusters := make(map[string]*placementv1beta1.ClusterUpdatingStatus, len(toBeDeletedBindings))
+	for _, binding := range toBeDeletedBindings {
+		bindingSpec := binding.GetBindingSpec()
+		curCluster, exist := deletedClusters[bindingSpec.TargetCluster]
+		if !exist {
+			// This is unexpected because we already checked in validation.
+			missingErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the to be deleted cluster `%s` is not in the deleting stage", bindingSpec.TargetCluster))
+			klog.ErrorS(missingErr, "The cluster in the deleting stage does not include all the to be deleted binding", "updateRun", updateRunRef)
+			return nil, fmt.Errorf("%w: %s", errStagedUpdatedAborted, missingErr.Error())
+		}
+		// The binding is still there, so the cluster is not deleted.
+		delete(deletedClusters, bindingSpec.TargetCluster)
+		// Make sure the cluster is not marked as deleted as the binding is still there.
+		if condition.IsConditionStatusTrue(meta.FindStatusCondition(curCluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionSucceeded)), updateRun.GetGeneration()) {
+			unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the deleted cluster `%s` in the deleting stage still has a binding", bindingSpec.TargetCluster))
+			klog.ErrorS(unexpectedErr, "The cluster in the deleting stage is not removed yet but marked as deleted", "cluster", curCluster.ClusterName, "updateRun", updateRunRef)
+			return nil, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
+		}
+		if !condition.IsConditionStatusTrue(meta.FindStatusCondition(curCluster.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted)), updateRun.GetGeneration()) {
+			// The cluster status is not deleting yet.
+			toBeStartedClusters[bindingSpec.TargetCluster] = curCluster
+			continue
+		}
+		// The cluster status is marked as being deleted.
+		if binding.GetDeletionTimestamp().IsZero() {
+			// The cluster is marked as deleting but the binding is not deleting.
+			unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the cluster `%s` in the deleting stage is marked as deleting but its corresponding binding is not deleting", curCluster.ClusterName))
+			klog.ErrorS(unexpectedErr, "The binding should be deleting before we mark a cluster deleting", "clusterStatus", curCluster, "updateRun", updateRunRef)
+			return nil, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
+		}
+	}
 	// The rest of the clusters in the stage are not in the toBeDeletedBindings so it should be marked as delete succeeded.
-	for _, clusterStatus := range existingDeleteStageClusterMap {
+	for _, clusterStatus := range deletedClusters {
 		// Make sure the cluster is marked as deleted.
 		if !condition.IsConditionStatusTrue(meta.FindStatusCondition(clusterStatus.Conditions, string(placementv1beta1.ClusterUpdatingConditionStarted)), updateRun.GetGeneration()) {
 			markClusterUpdatingStarted(clusterStatus, updateRun.GetGeneration())
 		}
 		markClusterUpdatingSucceeded(clusterStatus, updateRun.GetGeneration())
 	}
-	klog.InfoS("The delete stage is progressing", "numberOfDeletingClusters", len(toBeDeletedBindings), "updateRun", updateRunRef)
-	if len(toBeDeletedBindings) == 0 {
-		markStageUpdatingSucceeded(updateRunStatus.DeletionStageStatus, updateRun.GetGeneration())
-	}
-	return len(toBeDeletedBindings) == 0, clusterUpdatingWaitTime, nil
+	return toBeStartedClusters, nil
 }
 
 // checkBeforeDeleteStageTasksStatus checks if the before stage tasks of the delete stage have finished.
-// It returns if the delete stage can start deleting the bindings, the time to wait before rechecking the tasks
-// and any error encountered.
+// It returns if the delete stage can start deleting the bindings or error if the before stage tasks failed.
 func (r *Reconciler) checkBeforeDeleteStageTasksStatus(
 	ctx context.Context,
 	updateRun placementv1beta1.UpdateRunObj,
 	toBeDeletedBindings []placementv1beta1.BindingObj,
-) (bool, time.Duration, error) {
+) (bool, error) {
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	deleteStage := updateRunStatus.UpdateStrategySnapshot.DeleteStage
 	deleteStageStatus := updateRunStatus.DeletionStageStatus
 	// The tasks only gate the start of the deletion. Same as the update stages with no clusters, the delete stage
 	// skips its tasks if there is nothing to delete.
 	if deleteStage == nil || len(deleteStage.BeforeStageTasks) == 0 || len(toBeDeletedBindings) == 0 || deleteStageStatus.StartTime != nil {
-		return true, 0, nil
+		return true, nil
 	}
-
-	markStageUpdatingWaiting(deleteStageStatus, updateRun.GetGeneration(), "Not all before-stage tasks are completed, waiting to start deleting")
-	markUpdateRunWaiting(updateRun, fmt.Sprintf(condition.UpdateRunWaitingMessageFmt, "before-stage", deleteStageStatus.StageName))
-	passed, waitTime, err := r.checkStageTasksStatus(ctx, deleteStageStatus, deleteStage.BeforeStageTasks, deleteStageStatus.BeforeStageTaskStatus, updateRun, placementv1beta1.BeforeStageTaskLabelValue)
+	approved, err := r.checkBeforeStageTasksStatus(ctx, deleteStageStatus, deleteStage.BeforeStageTasks, updateRun)
 	if err != nil {
-		return false, 0, err
+		return false, err
 	}
-	if !passed {
-		if waitTime < 0 {
-			waitTime = stageUpdatingWaitTime
-		}
-		return false, waitTime, nil
+	if !approved {
+		markStageUpdatingWaiting(deleteStageStatus, updateRun.GetGeneration(), "Not all before-stage tasks are completed, waiting for approval")
+		markUpdateRunWaiting(updateRun, fmt.Sprintf(condition.UpdateRunWaitingMessageFmt, "before-stage", deleteStageStatus.StageName))
+		return false, nil
 	}
 	markUpdateRunProgressing(updateRun)
-	return true, 0, nil
+	return true, nil
 }
 
 // checkAfterStageTasksStatus checks if the after stage tasks have finished.
 // It returns if the after stage tasks have finished or error if the after stage tasks failed.
-// It also returns the time to wait before rechecking the wait type of task. It turns -1 if the task is not a wait type.
+// It also returns the time to wait before rechecking the wait type of task. It returns -1 if the task is not a wait type.
 func (r *Reconciler) checkAfterStageTasksStatus(ctx context.Context, updatingStageIndex int, updateRun placementv1beta1.UpdateRunObj) (bool, time.Duration, error) {
+	updateRunRef := klog.KObj(updateRun)
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	updatingStageStatus := &updateRunStatus.StagesStatus[updatingStageIndex]
 	updatingStage := &updateRunStatus.UpdateStrategySnapshot.Stages[updatingStageIndex]
-	if updatingStage.AfterStageTasks == nil {
-		klog.V(2).InfoS("There is no after stage task for this stage", "stage", updatingStage.Name, "updateRun", klog.KObj(updateRun))
+	if len(updatingStage.AfterStageTasks) == 0 {
+		klog.V(2).InfoS("There is no after stage task for this stage", "stage", updatingStage.Name, "updateRun", updateRunRef)
 		return true, 0, nil
 	}
-	return r.checkStageTasksStatus(ctx, updatingStageStatus, updatingStage.AfterStageTasks, updatingStageStatus.AfterStageTaskStatus, updateRun, placementv1beta1.AfterStageTaskLabelValue)
-}
-
-// checkStageTasksStatus checks if the tasks of a stage, which are of the given stage task type, have finished.
-// The wait time of a timed wait task starts when the stage starts to wait for the tasks.
-// It returns if the tasks have finished or error if the tasks failed.
-// It also returns the time to wait before rechecking the wait type of task. It turns -1 if the task is not a wait type.
-func (r *Reconciler) checkStageTasksStatus(
-	ctx context.Context,
-	stageStatus *placementv1beta1.StageUpdatingStatus,
-	tasks []placementv1beta1.StageTask,
-	taskStatuses []placementv1beta1.StageTaskStatus,
-	updateRun placementv1beta1.UpdateRunObj,
-	stageTaskType string,
-) (bool, time.Duration, error) {
-	updateRunRef := klog.KObj(updateRun)
 	passed := true
-	stageWaitTime := time.Duration(-1)
-	for i, task := range tasks {
+	afterStageWaitTime := time.Duration(-1)
+	for i, task := range updatingStage.AfterStageTasks {
 		switch task.Type {
 		case placementv1beta1.StageTaskTypeTimedWait:
 			// The wait time is measured from the latest transition of the stage, which a stop and a resume of the
 			// update run move; a wait that has elapsed once stays elapsed.
-			if meta.IsStatusConditionTrue(taskStatuses[i].Conditions, string(placementv1beta1.StageTaskConditionWaitTimeElapsed)) {
+			if meta.IsStatusConditionTrue(updatingStageStatus.AfterStageTaskStatus[i].Conditions, string(placementv1beta1.StageTaskConditionWaitTimeElapsed)) {
 				continue
 			}
-			waitStartTime := meta.FindStatusCondition(stageStatus.Conditions, string(placementv1beta1.StageUpdatingConditionProgressing)).LastTransitionTime.Time
+			waitStartTime := meta.FindStatusCondition(updatingStageStatus.Conditions, string(placementv1beta1.StageUpdatingConditionProgressing)).LastTransitionTime.Time
 			// Check if the wait time has passed.
 			waitTime := time.Until(waitStartTime.Add(task.WaitTime.Duration))
 			if waitTime > 0 {
-				klog.V(2).InfoS("The stage task still need to wait", "taskType", stageTaskType, "waitStartTime", waitStartTime, "waitTime", task.WaitTime, "stage", stageStatus.StageName, "updateRun", updateRunRef)
+				klog.V(2).InfoS("The after stage task still need to wait", "waitStartTime", waitStartTime, "waitTime", task.WaitTime, "stage", updatingStage.Name, "updateRun", updateRunRef)
 				passed = false
-				stageWaitTime = waitTime
+				afterStageWaitTime = waitTime
 			} else {
-				markStageTaskWaitTimeElapsed(&taskStatuses[i], updateRun.GetGeneration(), stageTaskType)
-				klog.V(2).InfoS("The stage wait task has completed", "taskType", stageTaskType, "stage", stageStatus.StageName, "updateRun", updateRunRef)
+				markAfterStageWaitTimeElapsed(&updatingStageStatus.AfterStageTaskStatus[i], updateRun.GetGeneration())
+				klog.V(2).InfoS("The after stage wait task has completed", "stage", updatingStage.Name, "updateRun", updateRunRef)
 			}
 		case placementv1beta1.StageTaskTypeApproval:
-			approved, err := r.handleStageApprovalTask(ctx, &taskStatuses[i], stageStatus.StageName, updateRun, stageTaskType)
+			approved, err := r.handleStageApprovalTask(ctx, &updatingStageStatus.AfterStageTaskStatus[i], updatingStage.Name, updateRun, placementv1beta1.AfterStageTaskLabelValue)
 			if err != nil {
 				return false, -1, err
 			}
@@ -500,9 +508,9 @@ func (r *Reconciler) checkStageTasksStatus(
 		}
 	}
 	if passed {
-		stageWaitTime = 0
+		afterStageWaitTime = 0
 	}
-	return passed, stageWaitTime, nil
+	return passed, afterStageWaitTime, nil
 }
 
 // handleStageApprovalTask handles the approval task logic for before or after stage tasks.
@@ -525,52 +533,52 @@ func (r *Reconciler) handleStageApprovalTask(
 	// Check if the approval request has been created.
 	approvalRequest := buildApprovalRequestObject(types.NamespacedName{Name: stageTaskStatus.ApprovalRequestName, Namespace: updateRun.GetNamespace()}, stageName, updateRun.GetName(), stageTaskType)
 	requestRef := klog.KObj(approvalRequest)
-	if err := r.Client.Create(ctx, approvalRequest); err != nil {
-		if apierrors.IsAlreadyExists(err) {
-			// The approval task already exists.
-			markStageTaskRequestCreated(stageTaskStatus, updateRun.GetGeneration())
-			if err = r.Client.Get(ctx, client.ObjectKeyFromObject(approvalRequest), approvalRequest); err != nil {
-				klog.ErrorS(err, "Failed to get the already existing approval request", "approvalRequest", requestRef, "stage", stageName, "updateRun", updateRunRef)
-				return false, controller.NewAPIServerError(true, err)
-			}
-			approvalRequestSpec := approvalRequest.GetApprovalRequestSpec()
-			if approvalRequestSpec.TargetStage != stageName || approvalRequestSpec.TargetUpdateRun != updateRun.GetName() {
-				unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the approval request task `%s/%s` is targeting update run `%s/%s` and stage `%s`, want target update run `%s/%s and stage `%s`", approvalRequest.GetNamespace(), approvalRequest.GetName(), approvalRequest.GetNamespace(), approvalRequestSpec.TargetUpdateRun, approvalRequestSpec.TargetStage, approvalRequest.GetNamespace(), updateRun.GetName(), stageName))
-				klog.ErrorS(unexpectedErr, "Found an approval request targeting wrong stage", "approvalRequestTask", requestRef, "stage", stageName, "updateRun", updateRunRef)
-				return false, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
-			}
-			approvalRequestStatus := approvalRequest.GetApprovalRequestStatus()
-			approvalAccepted := condition.IsConditionStatusTrue(meta.FindStatusCondition(approvalRequestStatus.Conditions, string(placementv1beta1.ApprovalRequestConditionApprovalAccepted)), approvalRequest.GetGeneration())
-			approved := condition.IsConditionStatusTrue(meta.FindStatusCondition(approvalRequestStatus.Conditions, string(placementv1beta1.ApprovalRequestConditionApproved)), approvalRequest.GetGeneration())
-			if !approvalAccepted && !approved {
-				klog.V(2).InfoS("The approval request has not been approved yet", "approvalRequestTask", requestRef, "stage", stageName, "updateRun", updateRunRef)
-				return false, nil
-			}
-			if approved {
-				klog.V(2).InfoS("The approval request has been approved", "approvalRequestTask", requestRef, "stage", stageName, "updateRun", updateRunRef)
-				if !approvalAccepted {
-					if err = r.updateApprovalRequestAccepted(ctx, approvalRequest); err != nil {
-						klog.ErrorS(err, "Failed to accept the approved approval request", "approvalRequest", requestRef, "stage", stageName, "updateRun", updateRunRef)
-						// retriable err
-						return false, err
-					}
-				}
-			} else {
-				// Approved state should not change once the approval is accepted.
-				klog.V(2).InfoS("The approval request has been approval-accepted, ignoring changing back to unapproved", "approvalRequestTask", requestRef, "stage", stageName, "updateRun", updateRunRef)
-			}
-			markStageTaskRequestApproved(stageTaskStatus, updateRun, stageTaskType)
-		} else {
-			// retriable error
-			klog.ErrorS(err, "Failed to create the approval request", "approvalRequest", requestRef, "stage", stageName, "updateRun", updateRunRef)
-			return false, controller.NewAPIServerError(false, err)
-		}
-	} else {
+	err := r.Client.Create(ctx, approvalRequest)
+	if err == nil {
 		// The approval request has been created for the first time.
 		klog.V(2).InfoS("The approval request has been created", "approvalRequestTask", requestRef, "stage", stageName, "updateRun", updateRunRef)
 		markStageTaskRequestCreated(stageTaskStatus, updateRun.GetGeneration())
 		return false, nil
 	}
+	if !apierrors.IsAlreadyExists(err) {
+		// retriable error
+		klog.ErrorS(err, "Failed to create the approval request", "approvalRequest", requestRef, "stage", stageName, "updateRun", updateRunRef)
+		return false, controller.NewAPIServerError(false, err)
+	}
+
+	// The approval task already exists.
+	markStageTaskRequestCreated(stageTaskStatus, updateRun.GetGeneration())
+	if err = r.Client.Get(ctx, client.ObjectKeyFromObject(approvalRequest), approvalRequest); err != nil {
+		klog.ErrorS(err, "Failed to get the already existing approval request", "approvalRequest", requestRef, "stage", stageName, "updateRun", updateRunRef)
+		return false, controller.NewAPIServerError(true, err)
+	}
+	approvalRequestSpec := approvalRequest.GetApprovalRequestSpec()
+	if approvalRequestSpec.TargetStage != stageName || approvalRequestSpec.TargetUpdateRun != updateRun.GetName() {
+		unexpectedErr := controller.NewUnexpectedBehaviorError(fmt.Errorf("the approval request task `%s/%s` is targeting update run `%s/%s` and stage `%s`, want target update run `%s/%s` and stage `%s`", approvalRequest.GetNamespace(), approvalRequest.GetName(), approvalRequest.GetNamespace(), approvalRequestSpec.TargetUpdateRun, approvalRequestSpec.TargetStage, approvalRequest.GetNamespace(), updateRun.GetName(), stageName))
+		klog.ErrorS(unexpectedErr, "Found an approval request targeting wrong stage", "approvalRequestTask", requestRef, "stage", stageName, "updateRun", updateRunRef)
+		return false, fmt.Errorf("%w: %s", errStagedUpdatedAborted, unexpectedErr.Error())
+	}
+	approvalRequestStatus := approvalRequest.GetApprovalRequestStatus()
+	approvalAccepted := condition.IsConditionStatusTrue(meta.FindStatusCondition(approvalRequestStatus.Conditions, string(placementv1beta1.ApprovalRequestConditionApprovalAccepted)), approvalRequest.GetGeneration())
+	approved := condition.IsConditionStatusTrue(meta.FindStatusCondition(approvalRequestStatus.Conditions, string(placementv1beta1.ApprovalRequestConditionApproved)), approvalRequest.GetGeneration())
+	switch {
+	case !approvalAccepted && !approved:
+		klog.V(2).InfoS("The approval request has not been approved yet", "approvalRequestTask", requestRef, "stage", stageName, "updateRun", updateRunRef)
+		return false, nil
+	case !approved:
+		// Approved state should not change once the approval is accepted.
+		klog.V(2).InfoS("The approval request has been approval-accepted, ignoring changing back to unapproved", "approvalRequestTask", requestRef, "stage", stageName, "updateRun", updateRunRef)
+	case !approvalAccepted:
+		klog.V(2).InfoS("The approval request has been approved", "approvalRequestTask", requestRef, "stage", stageName, "updateRun", updateRunRef)
+		if err = r.updateApprovalRequestAccepted(ctx, approvalRequest); err != nil {
+			klog.ErrorS(err, "Failed to accept the approved approval request", "approvalRequest", requestRef, "stage", stageName, "updateRun", updateRunRef)
+			// retriable err
+			return false, err
+		}
+	default:
+		klog.V(2).InfoS("The approval request has been approved", "approvalRequestTask", requestRef, "stage", stageName, "updateRun", updateRunRef)
+	}
+	markStageTaskRequestApproved(stageTaskStatus, updateRun, stageTaskType)
 	return true, nil
 }
 
@@ -755,19 +763,13 @@ func markUpdateRunStuck(updateRun placementv1beta1.UpdateRunObj, stageName strin
 	})
 }
 
+// generateStuckClustersString lists up to 3 of the stuck clusters.
 func generateStuckClustersString(stuckClusterNames []string) string {
-	if len(stuckClusterNames) == 0 {
-		return ""
-	}
 	if len(stuckClusterNames) <= 3 {
 		return strings.Join(stuckClusterNames, ", ")
 	}
 	// Print first 3 if more than 3 stuck clusters.
-	clustersToShow := stuckClusterNames
-	if len(stuckClusterNames) > 3 {
-		clustersToShow = stuckClusterNames[:3]
-	}
-	return strings.Join(clustersToShow, ", ") + "..."
+	return strings.Join(stuckClusterNames[:3], ", ") + "..."
 }
 
 // markUpdateRunWaiting marks the updateRun as waiting in memory.
@@ -930,17 +932,13 @@ func markStageTaskRequestApproved(stageTaskStatus *placementv1beta1.StageTaskSta
 	recordApprovalRequestLatency(stageTaskStatus, updateRun, taskType)
 }
 
-// markStageTaskWaitTimeElapsed marks the TimeWait before or after stage task as TimeElapsed in memory.
-func markStageTaskWaitTimeElapsed(stageTaskStatus *placementv1beta1.StageTaskStatus, generation int64, stageTaskType string) {
-	reason := condition.AfterStageTaskWaitTimeElapsedReason
-	if stageTaskType == placementv1beta1.BeforeStageTaskLabelValue {
-		reason = condition.BeforeStageTaskWaitTimeElapsedReason
-	}
-	meta.SetStatusCondition(&stageTaskStatus.Conditions, metav1.Condition{
+// markAfterStageWaitTimeElapsed marks the TimeWait after stage task as TimeElapsed in memory.
+func markAfterStageWaitTimeElapsed(afterStageTaskStatus *placementv1beta1.StageTaskStatus, generation int64) {
+	meta.SetStatusCondition(&afterStageTaskStatus.Conditions, metav1.Condition{
 		Type:               string(placementv1beta1.StageTaskConditionWaitTimeElapsed),
 		Status:             metav1.ConditionTrue,
 		ObservedGeneration: generation,
-		Reason:             reason,
+		Reason:             condition.AfterStageTaskWaitTimeElapsedReason,
 		Message:            "Wait time elapsed",
 	})
 }

@@ -202,7 +202,7 @@ func buildStageTaskStatuses(
 			taskStatuses[i].ApprovalRequestName = fmt.Sprintf(approvalRequestNameFmt, updateRun.GetName(), stageName)
 		}
 		if completed {
-			taskStatuses[i].Conditions = updateRunStageTaskSucceedConditions(updateRun.GetGeneration(), task.Type, approvalRequestNameFmt == placementv1beta1.BeforeStageApprovalTaskNameFmt)
+			taskStatuses[i].Conditions = updateRunStageTaskSucceedConditions(updateRun.GetGeneration(), task.Type)
 		}
 	}
 	return taskStatuses
@@ -218,7 +218,7 @@ func buildDeletionStageStatus(
 	// The tasks are skipped if the delete stage has 0 clusters.
 	if len(wantUnscheduledClusters) > 0 {
 		for i := range deleteStageStatus.BeforeStageTaskStatus {
-			deleteStageStatus.BeforeStageTaskStatus[i].Conditions = updateRunStageTaskSucceedConditions(updateRun.GetGeneration(), deleteStageStatus.BeforeStageTaskStatus[i].Type, true)
+			deleteStageStatus.BeforeStageTaskStatus[i].Conditions = updateRunStageTaskSucceedConditions(updateRun.GetGeneration(), deleteStageStatus.BeforeStageTaskStatus[i].Type)
 		}
 	}
 	return deleteStageStatus
@@ -294,7 +294,7 @@ func updateRunStageSkippedNoClustersConditions(generation int64) []metav1.Condit
 	}
 }
 
-func updateRunStageTaskSucceedConditions(generation int64, taskType placementv1beta1.StageTaskType, beforeStage bool) []metav1.Condition {
+func updateRunStageTaskSucceedConditions(generation int64, taskType placementv1beta1.StageTaskType) []metav1.Condition {
 	if taskType == placementv1beta1.StageTaskTypeApproval {
 		return []metav1.Condition{
 			{
@@ -311,15 +311,11 @@ func updateRunStageTaskSucceedConditions(generation int64, taskType placementv1b
 			},
 		}
 	}
-	waitTimeElapsedReason := condition.AfterStageTaskWaitTimeElapsedReason
-	if beforeStage {
-		waitTimeElapsedReason = condition.BeforeStageTaskWaitTimeElapsedReason
-	}
 	return []metav1.Condition{
 		{
 			Type:               string(placementv1beta1.StageTaskConditionWaitTimeElapsed),
 			Status:             metav1.ConditionTrue,
-			Reason:             waitTimeElapsedReason,
+			Reason:             condition.AfterStageTaskWaitTimeElapsedReason,
 			ObservedGeneration: generation,
 		},
 	}

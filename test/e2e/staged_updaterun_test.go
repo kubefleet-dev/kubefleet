@@ -788,7 +788,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 				return hubClient.Get(ctx, client.ObjectKey{Name: fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRunNames[1], placementv1beta1.UpdateRunDeleteStageTaskName), Namespace: testNamespace}, appReq)
 			}, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to get the approval request of the delete stage")
 
-			By("Validating the resources are kept after the wait time of the delete stage has passed")
+			By("Validating the resources are kept while the delete stage waits for the approval")
 			checkIfPlacedWorkResourcesOnMemberClustersConsistently(allMemberClusters)
 		})
 

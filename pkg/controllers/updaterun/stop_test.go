@@ -888,13 +888,13 @@ func TestStopDeleteStage(t *testing.T) {
 
 			// Verify error expectation.
 			if (tt.wantError != nil) != (gotErr != nil) {
-				t.Fatalf("stopUpdatingStage() want error: %v, got error: %v", tt.wantError, gotErr)
+				t.Fatalf("stopDeleteStage() want error: %v, got error: %v", tt.wantError, gotErr)
 			}
 
 			// Verify error message contains expected substring.
 			if tt.wantError != nil && gotErr != nil {
 				if !strings.Contains(gotErr.Error(), tt.wantError.Error()) {
-					t.Fatalf("stopUpdatingStage() want error: %v, got error: %v", tt.wantError, gotErr)
+					t.Fatalf("stopDeleteStage() want error: %v, got error: %v", tt.wantError, gotErr)
 				}
 			}
 

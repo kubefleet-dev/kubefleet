@@ -1309,7 +1309,9 @@ func TestCheckBeforeStageTasksStatus_NegativeCases(t *testing.T) {
 				Client: fakeClient,
 			}
 			ctx := context.Background()
-			_, gotErr := r.checkBeforeStageTasksStatus(ctx, tt.stageIndex, tt.updateRun)
+			status := tt.updateRun.GetUpdateRunStatus()
+			tasks := status.UpdateStrategySnapshot.Stages[tt.stageIndex].BeforeStageTasks
+			_, gotErr := r.checkBeforeStageTasksStatus(ctx, &status.StagesStatus[tt.stageIndex], tasks, tt.updateRun)
 			if gotErr == nil {
 				t.Fatalf("checkBeforeStageTasksStatus() want error but got nil")
 			}
@@ -1329,14 +1331,10 @@ func TestExecuteDeleteStage(t *testing.T) {
 		clusterName   = "cluster-1"
 	)
 	approvalRequestName := fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRunName, placementv1beta1.UpdateRunDeleteStageTaskName)
-	waitTime := &metav1.Duration{Duration: time.Hour}
 	now := metav1.Now()
-	longAgo := metav1.NewTime(now.Add(-2 * time.Hour))
 
 	approvalTask := placementv1beta1.StageTask{Type: placementv1beta1.StageTaskTypeApproval}
-	timedWaitTask := placementv1beta1.StageTask{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: waitTime}
 	approvalTaskStatus := placementv1beta1.StageTaskStatus{Type: placementv1beta1.StageTaskTypeApproval, ApprovalRequestName: approvalRequestName}
-	timedWaitTaskStatus := placementv1beta1.StageTaskStatus{Type: placementv1beta1.StageTaskTypeTimedWait}
 	newCondition := func(condType any, status metav1.ConditionStatus, reason string) metav1.Condition {
 		return metav1.Condition{Type: fmt.Sprint(condType), Status: status, Reason: reason, ObservedGeneration: 1}
 	}
@@ -1346,7 +1344,6 @@ func TestExecuteDeleteStage(t *testing.T) {
 	runProgressingCond := newCondition(placementv1beta1.StagedUpdateRunConditionProgressing, metav1.ConditionTrue, condition.UpdateRunProgressingReason)
 	requestCreatedCond := newCondition(placementv1beta1.StageTaskConditionApprovalRequestCreated, metav1.ConditionTrue, condition.StageTaskApprovalRequestCreatedReason)
 	requestApprovedCond := newCondition(placementv1beta1.StageTaskConditionApprovalRequestApproved, metav1.ConditionTrue, condition.StageTaskApprovalRequestApprovedReason)
-	waitTimeElapsedCond := newCondition(placementv1beta1.StageTaskConditionWaitTimeElapsed, metav1.ConditionTrue, condition.BeforeStageTaskWaitTimeElapsedReason)
 	clusterStartedCond := newCondition(placementv1beta1.ClusterUpdatingConditionStarted, metav1.ConditionTrue, condition.ClusterUpdatingStartedReason)
 	approvedRequest := &placementv1beta1.ClusterApprovalRequest{
 		ObjectMeta: metav1.ObjectMeta{Name: approvalRequestName, Generation: 1},
@@ -1371,12 +1368,9 @@ func TestExecuteDeleteStage(t *testing.T) {
 		approvalRequest   *placementv1beta1.ClusterApprovalRequest
 		noBinding         bool
 		wantFinished      bool
-		// wantWaitTime is the wanted wait time; with wantRemainingWaitTime set, it is the upper bound of the
-		// remaining wait time of a pending timed wait task.
-		wantWaitTime          time.Duration
-		wantRemainingWaitTime bool
-		wantErr               error
-		wantBindingKept       bool
+		wantWaitTime      time.Duration
+		wantErr           error
+		wantBindingKept   bool
 		// wantDeleteStageStatus is the wanted status of the delete stage, whose name and clusters are defaulted.
 		wantDeleteStageStatus placementv1beta1.StageUpdatingStatus
 		wantRunConditions     []metav1.Condition
@@ -1389,21 +1383,6 @@ func TestExecuteDeleteStage(t *testing.T) {
 				Clusters:   []placementv1beta1.ClusterUpdatingStatus{{ClusterName: clusterName, Conditions: []metav1.Condition{clusterStartedCond}}},
 				Conditions: []metav1.Condition{stageStartedCond},
 			},
-		},
-		{
-			name:  "pending timed wait task should keep the binding",
-			tasks: []placementv1beta1.StageTask{timedWaitTask},
-			deleteStageStatus: placementv1beta1.StageUpdatingStatus{
-				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{timedWaitTaskStatus},
-			},
-			wantWaitTime:          waitTime.Duration,
-			wantRemainingWaitTime: true,
-			wantBindingKept:       true,
-			wantDeleteStageStatus: placementv1beta1.StageUpdatingStatus{
-				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{timedWaitTaskStatus},
-				Conditions:            []metav1.Condition{stageWaitingCond},
-			},
-			wantRunConditions: []metav1.Condition{runWaitingCond},
 		},
 		{
 			name:  "pending approval task should create the approval request and keep the binding",
@@ -1425,122 +1404,25 @@ func TestExecuteDeleteStage(t *testing.T) {
 			wantApprovalRequest: true,
 		},
 		{
-			name:  "approved approval task with pending timed wait task should keep the binding",
-			tasks: []placementv1beta1.StageTask{approvalTask, timedWaitTask},
+			name:  "approved approval task should delete the binding",
+			tasks: []placementv1beta1.StageTask{approvalTask},
 			deleteStageStatus: placementv1beta1.StageUpdatingStatus{
-				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{approvalTaskStatus, timedWaitTaskStatus},
-			},
-			approvalRequest:       approvedRequest,
-			wantWaitTime:          waitTime.Duration,
-			wantRemainingWaitTime: true,
-			wantBindingKept:       true,
-			wantDeleteStageStatus: placementv1beta1.StageUpdatingStatus{
-				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{
-					{
-						Type:                placementv1beta1.StageTaskTypeApproval,
-						ApprovalRequestName: approvalRequestName,
-						Conditions:          []metav1.Condition{requestCreatedCond, requestApprovedCond},
-					},
-					timedWaitTaskStatus,
-				},
-				Conditions: []metav1.Condition{stageWaitingCond},
-			},
-			wantRunConditions:   []metav1.Condition{runWaitingCond},
-			wantApprovalRequest: true,
-		},
-		{
-			name:  "elapsed timed wait task with pending approval task should keep the binding",
-			tasks: []placementv1beta1.StageTask{timedWaitTask, approvalTask},
-			deleteStageStatus: placementv1beta1.StageUpdatingStatus{
-				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{timedWaitTaskStatus, approvalTaskStatus},
-				Conditions: []metav1.Condition{{
-					Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
-					Status:             metav1.ConditionFalse,
-					Reason:             condition.StageUpdatingWaitingReason,
-					ObservedGeneration: 1,
-					LastTransitionTime: longAgo,
-				}},
-			},
-			wantWaitTime:    stageUpdatingWaitTime,
-			wantBindingKept: true,
-			wantDeleteStageStatus: placementv1beta1.StageUpdatingStatus{
-				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{
-					{
-						Type:       placementv1beta1.StageTaskTypeTimedWait,
-						Conditions: []metav1.Condition{waitTimeElapsedCond},
-					},
-					{
-						Type:                placementv1beta1.StageTaskTypeApproval,
-						ApprovalRequestName: approvalRequestName,
-						Conditions:          []metav1.Condition{requestCreatedCond},
-					},
-				},
-				Conditions: []metav1.Condition{stageWaitingCond},
-			},
-			wantRunConditions:   []metav1.Condition{runWaitingCond},
-			wantApprovalRequest: true,
-		},
-		{
-			name:  "completed tasks should delete the binding",
-			tasks: []placementv1beta1.StageTask{timedWaitTask, approvalTask},
-			deleteStageStatus: placementv1beta1.StageUpdatingStatus{
-				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{timedWaitTaskStatus, approvalTaskStatus},
-				Conditions: []metav1.Condition{{
-					Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
-					Status:             metav1.ConditionFalse,
-					Reason:             condition.StageUpdatingWaitingReason,
-					ObservedGeneration: 1,
-					LastTransitionTime: longAgo,
-				}},
+				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{approvalTaskStatus},
+				Conditions:            []metav1.Condition{stageWaitingCond},
 			},
 			approvalRequest: approvedRequest,
 			wantWaitTime:    clusterUpdatingWaitTime,
 			wantDeleteStageStatus: placementv1beta1.StageUpdatingStatus{
 				Clusters: []placementv1beta1.ClusterUpdatingStatus{{ClusterName: clusterName, Conditions: []metav1.Condition{clusterStartedCond}}},
-				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{
-					{
-						Type:       placementv1beta1.StageTaskTypeTimedWait,
-						Conditions: []metav1.Condition{waitTimeElapsedCond},
-					},
-					{
-						Type:                placementv1beta1.StageTaskTypeApproval,
-						ApprovalRequestName: approvalRequestName,
-						Conditions:          []metav1.Condition{requestCreatedCond, requestApprovedCond},
-					},
-				},
+				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{{
+					Type:                placementv1beta1.StageTaskTypeApproval,
+					ApprovalRequestName: approvalRequestName,
+					Conditions:          []metav1.Condition{requestCreatedCond, requestApprovedCond},
+				}},
 				Conditions: []metav1.Condition{stageStartedCond},
 			},
 			wantRunConditions:   []metav1.Condition{runProgressingCond},
 			wantApprovalRequest: true,
-		},
-		{
-			// A stop and a resume of the update run move the latest transition of the delete stage, which the wait
-			// time is measured from.
-			name:  "elapsed timed wait task should stay elapsed after the delete stage transitions again",
-			tasks: []placementv1beta1.StageTask{timedWaitTask},
-			deleteStageStatus: placementv1beta1.StageUpdatingStatus{
-				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{{
-					Type:       placementv1beta1.StageTaskTypeTimedWait,
-					Conditions: []metav1.Condition{waitTimeElapsedCond},
-				}},
-				Conditions: []metav1.Condition{{
-					Type:               string(placementv1beta1.StageUpdatingConditionProgressing),
-					Status:             metav1.ConditionFalse,
-					Reason:             condition.StageUpdatingStoppedReason,
-					ObservedGeneration: 1,
-					LastTransitionTime: now,
-				}},
-			},
-			wantWaitTime: clusterUpdatingWaitTime,
-			wantDeleteStageStatus: placementv1beta1.StageUpdatingStatus{
-				Clusters: []placementv1beta1.ClusterUpdatingStatus{{ClusterName: clusterName, Conditions: []metav1.Condition{clusterStartedCond}}},
-				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{{
-					Type:       placementv1beta1.StageTaskTypeTimedWait,
-					Conditions: []metav1.Condition{waitTimeElapsedCond},
-				}},
-				Conditions: []metav1.Condition{stageStartedCond},
-			},
-			wantRunConditions: []metav1.Condition{runProgressingCond},
 		},
 		{
 			name:  "accepted approval request that is unapproved afterwards should still delete the binding",
@@ -1572,33 +1454,34 @@ func TestExecuteDeleteStage(t *testing.T) {
 			wantApprovalRequest: true,
 		},
 		{
+			// A delete stage that has started is not gated again, so no approval request is created.
 			name:  "tasks should not be checked again after the delete stage has started",
-			tasks: []placementv1beta1.StageTask{timedWaitTask},
+			tasks: []placementv1beta1.StageTask{approvalTask},
 			deleteStageStatus: placementv1beta1.StageUpdatingStatus{
 				StartTime:             &now,
-				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{timedWaitTaskStatus},
+				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{approvalTaskStatus},
 				Conditions:            []metav1.Condition{stageStartedCond},
 			},
 			wantWaitTime: clusterUpdatingWaitTime,
 			wantDeleteStageStatus: placementv1beta1.StageUpdatingStatus{
 				Clusters:              []placementv1beta1.ClusterUpdatingStatus{{ClusterName: clusterName, Conditions: []metav1.Condition{clusterStartedCond}}},
-				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{timedWaitTaskStatus},
+				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{approvalTaskStatus},
 				Conditions:            []metav1.Condition{stageStartedCond},
 			},
 		},
 		{
 			name:  "tasks should be skipped when there is no cluster to delete",
-			tasks: []placementv1beta1.StageTask{timedWaitTask, approvalTask},
+			tasks: []placementv1beta1.StageTask{approvalTask},
 			deleteStageStatus: placementv1beta1.StageUpdatingStatus{
 				Clusters:              noClusters,
-				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{timedWaitTaskStatus, approvalTaskStatus},
+				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{approvalTaskStatus},
 			},
 			noBinding:    true,
 			wantFinished: true,
 			wantWaitTime: clusterUpdatingWaitTime,
 			wantDeleteStageStatus: placementv1beta1.StageUpdatingStatus{
 				Clusters:              noClusters,
-				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{timedWaitTaskStatus, approvalTaskStatus},
+				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{approvalTaskStatus},
 				Conditions: []metav1.Condition{
 					newCondition(placementv1beta1.StageUpdatingConditionProgressing, metav1.ConditionFalse, condition.StageUpdatingSucceededReason),
 					newCondition(placementv1beta1.StageUpdatingConditionSucceeded, metav1.ConditionTrue, condition.StageUpdatingSucceededReason),
@@ -1607,9 +1490,9 @@ func TestExecuteDeleteStage(t *testing.T) {
 		},
 		{
 			name:  "tasks should be skipped when the bindings are already deleted",
-			tasks: []placementv1beta1.StageTask{timedWaitTask, approvalTask},
+			tasks: []placementv1beta1.StageTask{approvalTask},
 			deleteStageStatus: placementv1beta1.StageUpdatingStatus{
-				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{timedWaitTaskStatus, approvalTaskStatus},
+				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{approvalTaskStatus},
 			},
 			noBinding:    true,
 			wantFinished: true,
@@ -1622,7 +1505,7 @@ func TestExecuteDeleteStage(t *testing.T) {
 						newCondition(placementv1beta1.ClusterUpdatingConditionSucceeded, metav1.ConditionTrue, condition.ClusterUpdatingSucceededReason),
 					},
 				}},
-				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{timedWaitTaskStatus, approvalTaskStatus},
+				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{approvalTaskStatus},
 				Conditions: []metav1.Condition{
 					newCondition(placementv1beta1.StageUpdatingConditionProgressing, metav1.ConditionFalse, condition.StageUpdatingSucceededReason),
 					newCondition(placementv1beta1.StageUpdatingConditionSucceeded, metav1.ConditionTrue, condition.StageUpdatingSucceededReason),
@@ -1650,10 +1533,21 @@ func TestExecuteDeleteStage(t *testing.T) {
 					ApprovalRequestName: approvalRequestName,
 					Conditions:          []metav1.Condition{requestCreatedCond},
 				}},
-				Conditions: []metav1.Condition{stageWaitingCond},
 			},
-			wantRunConditions:   []metav1.Condition{runWaitingCond},
 			wantApprovalRequest: true,
+		},
+		{
+			// The API rejects a TimedWait task on the delete stage, so this only happens with a corrupted snapshot.
+			name:  "unsupported timed wait task should abort the update run",
+			tasks: []placementv1beta1.StageTask{{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: time.Hour}}},
+			deleteStageStatus: placementv1beta1.StageUpdatingStatus{
+				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{{Type: placementv1beta1.StageTaskTypeTimedWait}},
+			},
+			wantErr:         errStagedUpdatedAborted,
+			wantBindingKept: true,
+			wantDeleteStageStatus: placementv1beta1.StageUpdatingStatus{
+				BeforeStageTaskStatus: []placementv1beta1.StageTaskStatus{{Type: placementv1beta1.StageTaskTypeTimedWait}},
+			},
 		},
 	}
 
@@ -1705,11 +1599,7 @@ func TestExecuteDeleteStage(t *testing.T) {
 			if gotFinished != tt.wantFinished {
 				t.Errorf("executeDeleteStage() finished = %v, want %v", gotFinished, tt.wantFinished)
 			}
-			if tt.wantRemainingWaitTime {
-				if diff := tt.wantWaitTime - gotWaitTime; diff < 0 || diff > time.Minute {
-					t.Errorf("executeDeleteStage() waitTime = %v, want at most a minute less than %v", gotWaitTime, tt.wantWaitTime)
-				}
-			} else if gotWaitTime != tt.wantWaitTime {
+			if gotWaitTime != tt.wantWaitTime {
 				t.Errorf("executeDeleteStage() waitTime = %v, want %v", gotWaitTime, tt.wantWaitTime)
 			}
 

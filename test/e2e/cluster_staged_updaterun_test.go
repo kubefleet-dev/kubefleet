@@ -789,7 +789,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 				return hubClient.Get(ctx, client.ObjectKey{Name: fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRunNames[1], placementv1beta1.UpdateRunDeleteStageTaskName)}, appReq)
 			}, updateRunEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to get the approval request of the delete stage")
 
-			By("Validating the resources are kept after the wait time of the delete stage has passed")
+			By("Validating the resources are kept while the delete stage waits for the approval")
 			checkIfPlacedWorkResourcesOnMemberClustersConsistently(allMemberClusters)
 		})
 
@@ -2114,7 +2114,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Label
 })
 
 // updateStrategySpecWithDeleteStageTasks returns an update strategy that updates all the clusters in one stage
-// and waits for a timed wait and an approval before the delete stage.
+// and waits for an approval before the delete stage.
 func updateStrategySpecWithDeleteStageTasks() placementv1beta1.UpdateStrategySpec {
 	return placementv1beta1.UpdateStrategySpec{
 		Stages: []placementv1beta1.StageConfig{
@@ -2126,12 +2126,6 @@ func updateStrategySpecWithDeleteStageTasks() placementv1beta1.UpdateStrategySpe
 		},
 		DeleteStage: &placementv1beta1.DeleteStageConfig{
 			BeforeStageTasks: []placementv1beta1.StageTask{
-				{
-					Type: placementv1beta1.StageTaskTypeTimedWait,
-					WaitTime: &metav1.Duration{
-						Duration: time.Second * 5,
-					},
-				},
 				{
 					Type: placementv1beta1.StageTaskTypeApproval,
 				},

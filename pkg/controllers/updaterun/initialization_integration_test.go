@@ -697,11 +697,10 @@ var _ = Describe("Updaterun initialization tests", func() {
 		})
 
 		It("Should generate the cluster update stage in the status as expected", func() {
-			By("Creating a clusterStagedUpdateStrategy with before stage tasks for the delete stage")
+			By("Creating a clusterStagedUpdateStrategy with a before stage approval task for the delete stage")
 			updateStrategy.Spec.DeleteStage = &placementv1beta1.DeleteStageConfig{
 				BeforeStageTasks: []placementv1beta1.StageTask{
 					{Type: placementv1beta1.StageTaskTypeApproval},
-					{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: time.Minute}},
 				},
 			}
 			Expect(k8sClient.Create(ctx, updateStrategy)).To(Succeed())

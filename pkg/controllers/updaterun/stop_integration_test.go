@@ -627,8 +627,6 @@ var _ = Describe("UpdateRun stop tests", func() {
 	})
 
 	Context("Cluster staged update run should stop and resume at the before-stage tasks of the delete stage", Ordered, func() {
-		// The wait is long enough that a wait restarted by the stop would not elapse within the timeout after resuming.
-		deleteStageWaitTime := time.Second * 25
 		var approvalRequestName string
 
 		getUpdateRun := func() (*placementv1beta1.ClusterStagedUpdateRun, error) {
@@ -653,15 +651,11 @@ var _ = Describe("UpdateRun stop tests", func() {
 		}
 
 		BeforeAll(func() {
-			By("Reassigning the strategy to have no stage tasks and the delete stage with before-stage tasks")
+			By("Reassigning the strategy to have no stage tasks and the delete stage with a before-stage approval task")
 			updateStrategy.Spec.Stages[0].BeforeStageTasks = nil
 			updateStrategy.Spec.Stages[0].AfterStageTasks = nil
 			updateStrategy.Spec.DeleteStage = &placementv1beta1.DeleteStageConfig{
 				BeforeStageTasks: []placementv1beta1.StageTask{
-					{
-						Type:     placementv1beta1.StageTaskTypeTimedWait,
-						WaitTime: &metav1.Duration{Duration: deleteStageWaitTime},
-					},
 					{
 						Type: placementv1beta1.StageTaskTypeApproval,
 					},
@@ -704,24 +698,21 @@ var _ = Describe("UpdateRun stop tests", func() {
 			}, 3*timeout, interval).Should(Succeed(), "failed to complete the 1st stage")
 		})
 
-		It("Should wait at the delete stage until the wait time elapses and the approval request is created", func() {
+		It("Should wait at the delete stage once the approval request is created", func() {
 			Eventually(func() error {
 				gotUpdateRun, err := getUpdateRun()
 				if err != nil {
 					return err
 				}
 				deleteStageStatus := gotUpdateRun.Status.DeletionStageStatus
-				if !meta.IsStatusConditionTrue(deleteStageStatus.BeforeStageTaskStatus[0].Conditions, string(placementv1beta1.StageTaskConditionWaitTimeElapsed)) {
-					return fmt.Errorf("the wait time of the delete stage has not elapsed yet")
-				}
-				if !meta.IsStatusConditionTrue(deleteStageStatus.BeforeStageTaskStatus[1].Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestCreated)) {
+				if !meta.IsStatusConditionTrue(deleteStageStatus.BeforeStageTaskStatus[0].Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestCreated)) {
 					return fmt.Errorf("the approval request of the delete stage has not been created yet")
 				}
 				if deleteStageStatus.StartTime != nil {
 					return fmt.Errorf("the delete stage has started before its tasks completed")
 				}
 				return nil
-			}, deleteStageWaitTime+timeout, interval).Should(Succeed(), "failed to wait at the delete stage")
+			}, timeout, interval).Should(Succeed(), "failed to wait at the delete stage")
 
 			Expect(toBeDeletedBindingsKeptActual()).To(Succeed(), "the to-be-deleted bindings should be kept while waiting")
 		})
@@ -751,10 +742,10 @@ var _ = Describe("UpdateRun stop tests", func() {
 			Consistently(toBeDeletedBindingsKeptActual, 2*stageUpdatingWaitTime, interval).Should(Succeed(), "the to-be-deleted bindings should be kept while stopped")
 		})
 
-		It("Should delete the bindings without waiting again and complete the update run when state is Run", func() {
+		It("Should delete the bindings and complete the update run when state is Run", func() {
 			updateRun = updateClusterStagedUpdateRunState(updateRun.Name, placementv1beta1.StateRun)
 
-			By("Validating the to-be-deleted bindings are deleted before a restarted wait could elapse")
+			By("Validating the to-be-deleted bindings are deleted")
 			Eventually(func() error {
 				for i := numTargetClusters; i < numTargetClusters+numUnscheduledClusters; i++ {
 					binding := &placementv1beta1.ClusterResourceBinding{}
@@ -775,7 +766,7 @@ var _ = Describe("UpdateRun stop tests", func() {
 				if err != nil {
 					return err
 				}
-				if !meta.IsStatusConditionTrue(gotUpdateRun.Status.DeletionStageStatus.BeforeStageTaskStatus[1].Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestApproved)) {
+				if !meta.IsStatusConditionTrue(gotUpdateRun.Status.DeletionStageStatus.BeforeStageTaskStatus[0].Conditions, string(placementv1beta1.StageTaskConditionApprovalRequestApproved)) {
 					return fmt.Errorf("the approval task of the delete stage is not approved")
 				}
 				if !meta.IsStatusConditionTrue(gotUpdateRun.Status.Conditions, string(placementv1beta1.StagedUpdateRunConditionSucceeded)) {

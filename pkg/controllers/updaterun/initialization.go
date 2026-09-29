@@ -289,7 +289,7 @@ func (r *Reconciler) generateStagesByStrategy(
 	if updateStrategySpec.DeleteStage != nil {
 		deleteStageTasks = updateStrategySpec.DeleteStage.BeforeStageTasks
 	}
-	if err := validateStageTasks("beforeStageTasks", deleteStageTasks); err != nil {
+	if err := validateBeforeStageTask(deleteStageTasks); err != nil {
 		klog.ErrorS(err, "Failed to validate the before stage tasks of the delete stage", "updateStrategy", strategyKey, "updateRun", updateRunRef)
 		// no more retries here.
 		invalidBeforeStageErr := controller.NewUserError(fmt.Errorf("the before stage tasks are invalid, updateStrategy: `%s`, stage: %s, err: %s", strategyKey, placementv1beta1.UpdateRunDeleteStageName, err.Error()))
@@ -317,15 +317,8 @@ func (r *Reconciler) generateStagesByStrategy(
 		Clusters:  toBeDeletedClusters,
 	}
 	// Create the before stage tasks of the delete stage.
-	if len(deleteStageTasks) > 0 {
-		updateRunStatus.DeletionStageStatus.BeforeStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(deleteStageTasks))
-	}
-	for i, task := range deleteStageTasks {
-		updateRunStatus.DeletionStageStatus.BeforeStageTaskStatus[i].Type = task.Type
-		if task.Type == placementv1beta1.StageTaskTypeApproval {
-			updateRunStatus.DeletionStageStatus.BeforeStageTaskStatus[i].ApprovalRequestName = fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.GetName(), placementv1beta1.UpdateRunDeleteStageTaskName)
-		}
-	}
+	updateRunStatus.DeletionStageStatus.BeforeStageTaskStatus = buildStageTaskStatuses(deleteStageTasks,
+		fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.GetName(), placementv1beta1.UpdateRunDeleteStageTaskName))
 	return nil
 }
 
@@ -436,21 +429,11 @@ func (r *Reconciler) computeRunStageStatus(
 		}
 
 		// Create the before stage tasks.
-		curStageUpdatingStatus.BeforeStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(stage.BeforeStageTasks))
-		for i, task := range stage.BeforeStageTasks {
-			curStageUpdatingStatus.BeforeStageTaskStatus[i].Type = task.Type
-			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				curStageUpdatingStatus.BeforeStageTaskStatus[i].ApprovalRequestName = fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
-			}
-		}
+		curStageUpdatingStatus.BeforeStageTaskStatus = buildStageTaskStatuses(stage.BeforeStageTasks,
+			fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name))
 		// Create the after stage tasks.
-		curStageUpdatingStatus.AfterStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(stage.AfterStageTasks))
-		for i, task := range stage.AfterStageTasks {
-			curStageUpdatingStatus.AfterStageTaskStatus[i].Type = task.Type
-			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				curStageUpdatingStatus.AfterStageTaskStatus[i].ApprovalRequestName = fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name)
-			}
-		}
+		curStageUpdatingStatus.AfterStageTaskStatus = buildStageTaskStatuses(stage.AfterStageTasks,
+			fmt.Sprintf(placementv1beta1.AfterStageApprovalTaskNameFmt, updateRun.GetName(), stage.Name))
 		stagesStatus = append(stagesStatus, curStageUpdatingStatus)
 	}
 	updateRunStatus.StagesStatus = stagesStatus
@@ -473,6 +456,19 @@ func (r *Reconciler) computeRunStageStatus(
 	return nil
 }
 
+// buildStageTaskStatuses builds the statuses of the given tasks of a stage, where approvalRequestName is the name of
+// the approval request of the Approval task.
+func buildStageTaskStatuses(tasks []placementv1beta1.StageTask, approvalRequestName string) []placementv1beta1.StageTaskStatus {
+	taskStatuses := make([]placementv1beta1.StageTaskStatus, len(tasks))
+	for i, task := range tasks {
+		taskStatuses[i].Type = task.Type
+		if task.Type == placementv1beta1.StageTaskTypeApproval {
+			taskStatuses[i].ApprovalRequestName = approvalRequestName
+		}
+	}
+	return taskStatuses
+}
+
 // validateBeforeStageTask validates the beforeStageTasks in the stage defined in the UpdateStrategy.
 // The error returned from this function is not retriable.
 func validateBeforeStageTask(tasks []placementv1beta1.StageTask) error {
@@ -493,14 +489,8 @@ func validateBeforeStageTask(tasks []placementv1beta1.StageTask) error {
 // validateAfterStageTask validates the afterStageTasks in the stage defined in the UpdateStrategy.
 // The error returned from this function is not retriable.
 func validateAfterStageTask(tasks []placementv1beta1.StageTask) error {
-	return validateStageTasks("afterStageTasks", tasks)
-}
-
-// validateStageTasks validates the tasks of a stage that can be of any type, where field is the name of the tasks field.
-// The error returned from this function is not retriable.
-func validateStageTasks(field string, tasks []placementv1beta1.StageTask) error {
 	if len(tasks) == 2 && tasks[0].Type == tasks[1].Type {
-		return fmt.Errorf("%s cannot have two tasks of the same type: %s", field, tasks[0].Type)
+		return fmt.Errorf("afterStageTasks cannot have two tasks of the same type: %s", tasks[0].Type)
 	}
 	for i, task := range tasks {
 		if task.Type == placementv1beta1.StageTaskTypeTimedWait {
