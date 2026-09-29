@@ -697,10 +697,12 @@ var _ = Describe("Updaterun initialization tests", func() {
 		})
 
 		It("Should generate the cluster update stage in the status as expected", func() {
-			By("Creating a clusterStagedUpdateStrategy with delete stage tasks")
-			updateStrategy.Spec.DeleteStageTasks = []placementv1beta1.StageTask{
-				{Type: placementv1beta1.StageTaskTypeApproval},
-				{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: time.Minute}},
+			By("Creating a clusterStagedUpdateStrategy with before stage tasks for the delete stage")
+			updateStrategy.Spec.DeleteStage = &placementv1beta1.DeleteStageConfig{
+				BeforeStageTasks: []placementv1beta1.StageTask{
+					{Type: placementv1beta1.StageTaskTypeApproval},
+					{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: time.Minute}},
+				},
 			}
 			Expect(k8sClient.Create(ctx, updateStrategy)).To(Succeed())
 
@@ -1106,12 +1108,21 @@ func validateFailedInitCondition(ctx context.Context, updateRun *placementv1beta
 }
 
 // populateStageTaskStatuses populates the BeforeStageTaskStatus and AfterStageTaskStatus
-// for all stages in the status based on the strategy configuration.
+// for all stages, including the delete stage, in the status based on the strategy configuration.
 func populateStageTaskStatuses(
 	status *placementv1beta1.UpdateRunStatus,
 	updateRunName string,
-	stages []placementv1beta1.StageConfig,
+	strategy *placementv1beta1.UpdateStrategySpec,
 ) {
+	stages := strategy.Stages
+	if strategy.DeleteStage != nil && status.DeletionStageStatus != nil {
+		status.DeletionStageStatus.BeforeStageTaskStatus = buildTaskStatuses(
+			strategy.DeleteStage.BeforeStageTasks,
+			placementv1beta1.BeforeStageApprovalTaskNameFmt,
+			updateRunName,
+			placementv1beta1.UpdateRunDeleteStageTaskName,
+		)
+	}
 	for i := range status.StagesStatus {
 		status.StagesStatus[i].BeforeStageTaskStatus = buildTaskStatuses(
 			stages[i].BeforeStageTasks,
@@ -1174,16 +1185,7 @@ func generateInitializedStatus(
 			generateTrueCondition(updateRun, placementv1beta1.StagedUpdateRunConditionInitialized),
 		},
 	}
-	populateStageTaskStatuses(status, updateRun.Name, updateStrategy.Spec.Stages)
-	if len(updateStrategy.Spec.DeleteStageTasks) > 0 {
-		status.DeletionStageStatus.AfterStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(updateStrategy.Spec.DeleteStageTasks))
-		for i, task := range updateStrategy.Spec.DeleteStageTasks {
-			status.DeletionStageStatus.AfterStageTaskStatus[i].Type = task.Type
-			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				status.DeletionStageStatus.AfterStageTaskStatus[i].ApprovalRequestName = fmt.Sprintf(placementv1beta1.DeleteStageApprovalTaskNameFmt, updateRun.Name)
-			}
-		}
-	}
+	populateStageTaskStatuses(status, updateRun.Name, &updateStrategy.Spec)
 	return status
 }
 

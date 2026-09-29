@@ -267,15 +267,27 @@ type UpdateStrategySpec struct {
 	// +kubebuilder:validation:Required
 	Stages []StageConfig `json:"stages"`
 
-	// DeleteStageTasks is the collection of tasks that must complete before the deletion stage starts.
-	// Each task is executed in parallel and there cannot be more than one task of the same type.
-	// +kubebuilder:validation:MaxItems=2
+	// DeleteStage specifies the configuration for the delete stage, which runs after all the update stages
+	// complete and removes the resources from the clusters that are no longer selected by the placement.
+	// If not specified, the delete stage starts as soon as the last update stage completes.
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:XValidation:rule="!(self.size() == 2 && self[0].type == self[1].type)",message="deleteStageTasks cannot have two tasks of the same type"
-	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'Approval' && has(e.waitTime))",message="DeleteStageTaskType is Approval, waitTime is not allowed"
-	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'TimedWait' && !has(e.waitTime))",message="DeleteStageTaskType is TimedWait, waitTime is required"
-	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'TimedWait' && has(e.waitTime) && duration(e.waitTime) <= duration('0s'))",message="DeleteStageTaskType is TimedWait, waitTime must be greater than zero"
-	DeleteStageTasks []StageTask `json:"deleteStageTasks,omitempty"`
+	DeleteStage *DeleteStageConfig `json:"deleteStage,omitempty"`
+}
+
+// DeleteStageConfig describes the delete stage.
+type DeleteStageConfig struct {
+	// The collection of tasks that needs to be completed successfully before the delete stage starts removing
+	// the resources. Each task is executed in parallel and there cannot be more than one task of the same type.
+	// Unlike an update stage, the delete stage can wait for a TimedWait task before it starts; the wait time starts
+	// when the delete stage starts to wait for its tasks, which is right after the last update stage completes.
+	// The tasks are skipped if there is no cluster to remove the resources from.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=2
+	// +kubebuilder:validation:XValidation:rule="!(self.size() == 2 && self[0].type == self[1].type)",message="beforeStageTasks cannot have two tasks of the same type"
+	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'Approval' && has(e.waitTime))",message="BeforeStageTaskType is Approval, waitTime is not allowed"
+	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'TimedWait' && !has(e.waitTime))",message="BeforeStageTaskType is TimedWait, waitTime is required"
+	// +kubebuilder:validation:XValidation:rule="!self.exists(e, e.type == 'TimedWait' && has(e.waitTime) && duration(e.waitTime) <= duration('0s'))",message="BeforeStageTaskType is TimedWait, waitTime must be greater than zero"
+	BeforeStageTasks []StageTask `json:"beforeStageTasks,omitempty"`
 }
 
 // ClusterStagedUpdateStrategyList contains a list of StagedUpdateStrategy.
@@ -356,7 +368,9 @@ type StageTask struct {
 	// +kubebuilder:validation:Required
 	Type StageTaskType `json:"type"`
 
-	// The time to wait after all the clusters in the current stage complete the update before moving to the next stage.
+	// The time to wait for a TimedWait task, measured from when the stage starts to wait for its tasks: once all
+	// the clusters in the stage complete the update for an after-stage task, and before any resources are removed
+	// for a before-stage task of the delete stage.
 	// Only hours (h), minutes (m), and seconds (s) units are accepted.
 	// +kubebuilder:validation:Pattern="^(?:(?:0|[1-9][0-9]*)(\\.[0-9]+)?(?:s|m|h))+$"
 	// +kubebuilder:validation:Type=string
@@ -465,7 +479,8 @@ type StageUpdatingStatus struct {
 	AfterStageTaskStatus []StageTaskStatus `json:"afterStageTaskStatus,omitempty"`
 
 	// The status of the pre-update tasks associated with the current stage.
-	// +kubebuilder:validation:MaxItems=1
+	// An update stage has at most one such task, while the delete stage can have two.
+	// +kubebuilder:validation:MaxItems=2
 	// +kubebuilder:validation:Optional
 	BeforeStageTaskStatus []StageTaskStatus `json:"beforeStageTaskStatus,omitempty"`
 

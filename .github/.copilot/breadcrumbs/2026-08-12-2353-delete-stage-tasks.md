@@ -1,33 +1,40 @@
-# Support Delete Stage Tasks
+# Support Before-Stage Tasks on the Delete Stage
 
 ## Overview
 
-Allow staged update strategies to gate the implicit deletion stage with the existing Approval and TimedWait task types.
+Allow staged update strategies to gate the delete stage with the existing Approval and TimedWait task types,
+so that removing the resources from the clusters that left a placement can be held until a soak time passes
+and/or a sign-off is given.
 
 ## Plan
 
-1. Add `deleteStageTasks` to the shared update strategy API with the same validation as after-stage tasks.
-2. Snapshot and initialize delete-stage task statuses.
-3. Refactor the after-stage task evaluator to accept a stage configuration and status directly, then use it before deleting bindings.
-4. Add API validation, unit, and cluster-scoped/namespaced integration coverage.
-5. Regenerate API code and CRDs, then run targeted tests and repository quality checks.
+1. Add an optional `deleteStage` to the shared update strategy API, with `beforeStageTasks`.
+2. Snapshot the tasks and initialize their statuses as the `beforeStageTaskStatus` of the delete stage.
+3. Evaluate the tasks with the same code that evaluates the after-stage tasks of the update stages.
+4. Add API validation, unit, integration and E2E coverage for both cluster-scoped and namespaced runs.
+5. Regenerate API code and CRDs, then run the tests and the repository quality checks.
+
+## Decisions
+
+- The delete stage is configured as a stage (`deleteStage.beforeStageTasks`) rather than with a delete stage
+  specific task list, so that the API, the status and the approval requests use the same vocabulary as the
+  update stages, and so that the delete stage can take more configurations later.
+- Unlike the update stages, the before-stage tasks of the delete stage can have a TimedWait task. Its wait time
+  starts when the last update stage completes.
+- The approval request is named `<updateRun>-before-delete-stage` with the generic before-stage name format.
+  `delete-stage` also is the stage label value of the approval request, as the name of the delete stage,
+  `kubernetes-fleet.io/deleteStage`, is not a valid label value. An update stage cannot have this name.
+- The tasks only gate the start of the deletion and they are skipped if there is no cluster to delete, the same
+  as an update stage with no clusters.
+- An update run that is stopped while it waits for the tasks stops without deleting any binding.
 
 ## Success Criteria
 
-- [x] Unset delete-stage tasks preserve immediate deletion.
-- [x] Approval and timed waits can independently gate deletion.
-- [x] Approval and timed waits run concurrently and both must pass.
-- [x] Cluster-scoped and namespaced runs retain bindings until their gate passes.
+- [x] No delete stage configuration preserves immediate deletion.
+- [x] Approval and timed wait tasks run concurrently and both must pass before any binding is deleted.
+- [x] Cluster-scoped and namespaced runs keep the bindings until the tasks pass.
 - [x] Generated API and CRD artifacts are current.
-- [x] Targeted tests and available repository quality checks pass.
 
-## Approval
+## Follow-ups
 
-Implementation was explicitly requested in the issue task.
-
-## Implementation Notes
-
-- Delete-stage approvals reuse the after-stage task machinery and labels.
-- The delete stage uses a label-safe value for approval requests while retaining its canonical status/spec stage name.
-- Gates run only before deletion starts; stopping while gated leaves bindings intact.
-- Documentation updates are deferred to the separate documentation repository.
+- Document the delete stage configuration in the staged update docs (website repository).

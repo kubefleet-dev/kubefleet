@@ -218,6 +218,9 @@ const (
 	// AfterStageTaskWaitTimeElapsedReason is the reason string of condition if the wait time for after stage task has elapsed.
 	AfterStageTaskWaitTimeElapsedReason = "AfterStageTaskWaitTimeElapsed"
 
+	// BeforeStageTaskWaitTimeElapsedReason is the reason string of condition if the wait time for before stage task has elapsed.
+	BeforeStageTaskWaitTimeElapsedReason = "BeforeStageTaskWaitTimeElapsed"
+
 	// ApprovalRequestApprovalAcceptedReason is the reason string of condition if the approval of the approval request has been accepted.
 	ApprovalRequestApprovalAcceptedReason = "ApprovalRequestApprovalAccepted"
 

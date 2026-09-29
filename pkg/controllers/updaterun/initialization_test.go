@@ -17,12 +17,17 @@ limitations under the License.
 package updaterun
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -167,5 +172,96 @@ func TestValidateAfterStageTask(t *testing.T) {
 				t.Errorf("validateAfterStageTask() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestValidateStageTasks(t *testing.T) {
+	tests := []struct {
+		name       string
+		tasks      []placementv1beta1.StageTask
+		wantErrMsg string
+	}{
+		{
+			name: "valid timed wait and approval tasks",
+			tasks: []placementv1beta1.StageTask{
+				{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: time.Minute}},
+				{Type: placementv1beta1.StageTaskTypeApproval},
+			},
+		},
+		{
+			name: "two tasks of the same type",
+			tasks: []placementv1beta1.StageTask{
+				{Type: placementv1beta1.StageTaskTypeApproval},
+				{Type: placementv1beta1.StageTaskTypeApproval},
+			},
+			wantErrMsg: "beforeStageTasks cannot have two tasks of the same type: Approval",
+		},
+		{
+			name: "timed wait task with no wait time",
+			tasks: []placementv1beta1.StageTask{
+				{Type: placementv1beta1.StageTaskTypeApproval},
+				{Type: placementv1beta1.StageTaskTypeTimedWait},
+			},
+			wantErrMsg: "task 1 of type TimedWait has wait duration set to nil",
+		},
+		{
+			name: "timed wait task with zero wait time",
+			tasks: []placementv1beta1.StageTask{
+				{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: &metav1.Duration{}},
+			},
+			wantErrMsg: "task 0 of type TimedWait has wait duration <= 0",
+		},
+		{
+			name: "timed wait task with negative wait time",
+			tasks: []placementv1beta1.StageTask{
+				{Type: placementv1beta1.StageTaskTypeTimedWait, WaitTime: &metav1.Duration{Duration: -time.Minute}},
+			},
+			wantErrMsg: "task 0 of type TimedWait has wait duration <= 0",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateStageTasks("beforeStageTasks", tt.tasks)
+			if tt.wantErrMsg == "" {
+				if err != nil {
+					t.Errorf("validateStageTasks() error = %v, want no error", err)
+				}
+				return
+			}
+			if err == nil || err.Error() != tt.wantErrMsg {
+				t.Errorf("validateStageTasks() error = %v, want %v", err, tt.wantErrMsg)
+			}
+		})
+	}
+}
+
+// TestGenerateStagesByStrategy_InvalidDeleteStageTasks tests that an update run whose strategy has invalid before
+// stage tasks in its delete stage fails the validation.
+func TestGenerateStagesByStrategy_InvalidDeleteStageTasks(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := placementv1beta1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme() = %v, want no error", err)
+	}
+	strategy := &placementv1beta1.ClusterStagedUpdateStrategy{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-strategy"},
+		Spec: placementv1beta1.UpdateStrategySpec{
+			DeleteStage: &placementv1beta1.DeleteStageConfig{
+				BeforeStageTasks: []placementv1beta1.StageTask{{Type: placementv1beta1.StageTaskTypeTimedWait}},
+			},
+		},
+	}
+	r := &Reconciler{Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(strategy).Build()}
+	updateRun := &placementv1beta1.ClusterStagedUpdateRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-update-run", Generation: 1},
+		Spec:       placementv1beta1.UpdateRunSpec{StagedUpdateStrategyName: strategy.Name},
+	}
+
+	err := r.generateStagesByStrategy(context.Background(), nil, nil, updateRun)
+	if !errors.Is(err, errValidationFailed) {
+		t.Fatalf("generateStagesByStrategy() error = %v, want %v", err, errValidationFailed)
+	}
+	wantErrMsg := fmt.Sprintf("the before stage tasks are invalid, updateStrategy: `/test-strategy`, stage: %s, err: task 0 of type TimedWait has wait duration set to nil", placementv1beta1.UpdateRunDeleteStageName)
+	if !strings.Contains(err.Error(), wantErrMsg) {
+		t.Errorf("generateStagesByStrategy() error = %v, want an error containing %q", err, wantErrMsg)
 	}
 }

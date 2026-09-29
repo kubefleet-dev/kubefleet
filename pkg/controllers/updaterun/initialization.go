@@ -282,13 +282,18 @@ func (r *Reconciler) generateStagesByStrategy(
 	updateStrategySpec := updateStrategy.GetUpdateStrategySpec()
 	updateRunStatus.UpdateStrategySnapshot = updateStrategySpec
 
-	// Remove waitTime from the updateRun status for Approval tasks.
+	// Remove waitTime from the updateRun status for BeforeStageTask and AfterStageTask for type Approval.
 	removeWaitTimeFromUpdateRunStatus(updateRun)
 
-	if err := validateAfterStageTask(updateStrategySpec.DeleteStageTasks); err != nil {
-		klog.ErrorS(err, "Failed to validate the delete stage tasks", "updateStrategy", strategyKey, "updateRun", updateRunRef)
-		invalidDeleteStageErr := controller.NewUserError(fmt.Errorf("the delete stage tasks are invalid, updateStrategy: `%s`, err: %s", strategyKey, err.Error()))
-		return fmt.Errorf("%w: %s", errValidationFailed, invalidDeleteStageErr.Error())
+	var deleteStageTasks []placementv1beta1.StageTask
+	if updateStrategySpec.DeleteStage != nil {
+		deleteStageTasks = updateStrategySpec.DeleteStage.BeforeStageTasks
+	}
+	if err := validateStageTasks("beforeStageTasks", deleteStageTasks); err != nil {
+		klog.ErrorS(err, "Failed to validate the before stage tasks of the delete stage", "updateStrategy", strategyKey, "updateRun", updateRunRef)
+		// no more retries here.
+		invalidBeforeStageErr := controller.NewUserError(fmt.Errorf("the before stage tasks are invalid, updateStrategy: `%s`, stage: %s, err: %s", strategyKey, placementv1beta1.UpdateRunDeleteStageName, err.Error()))
+		return fmt.Errorf("%w: %s", errValidationFailed, invalidBeforeStageErr.Error())
 	}
 
 	// Compute the update stages.
@@ -311,13 +316,14 @@ func (r *Reconciler) generateStagesByStrategy(
 		StageName: placementv1beta1.UpdateRunDeleteStageName,
 		Clusters:  toBeDeletedClusters,
 	}
-	if len(updateStrategySpec.DeleteStageTasks) > 0 {
-		updateRunStatus.DeletionStageStatus.AfterStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(updateStrategySpec.DeleteStageTasks))
-		for i, task := range updateStrategySpec.DeleteStageTasks {
-			updateRunStatus.DeletionStageStatus.AfterStageTaskStatus[i].Type = task.Type
-			if task.Type == placementv1beta1.StageTaskTypeApproval {
-				updateRunStatus.DeletionStageStatus.AfterStageTaskStatus[i].ApprovalRequestName = fmt.Sprintf(placementv1beta1.DeleteStageApprovalTaskNameFmt, updateRun.GetName())
-			}
+	// Create the before stage tasks of the delete stage.
+	if len(deleteStageTasks) > 0 {
+		updateRunStatus.DeletionStageStatus.BeforeStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(deleteStageTasks))
+	}
+	for i, task := range deleteStageTasks {
+		updateRunStatus.DeletionStageStatus.BeforeStageTaskStatus[i].Type = task.Type
+		if task.Type == placementv1beta1.StageTaskTypeApproval {
+			updateRunStatus.DeletionStageStatus.BeforeStageTaskStatus[i].ApprovalRequestName = fmt.Sprintf(placementv1beta1.BeforeStageApprovalTaskNameFmt, updateRun.GetName(), placementv1beta1.UpdateRunDeleteStageTaskName)
 		}
 	}
 	return nil
@@ -487,8 +493,14 @@ func validateBeforeStageTask(tasks []placementv1beta1.StageTask) error {
 // validateAfterStageTask validates the afterStageTasks in the stage defined in the UpdateStrategy.
 // The error returned from this function is not retriable.
 func validateAfterStageTask(tasks []placementv1beta1.StageTask) error {
+	return validateStageTasks("afterStageTasks", tasks)
+}
+
+// validateStageTasks validates the tasks of a stage that can be of any type, where field is the name of the tasks field.
+// The error returned from this function is not retriable.
+func validateStageTasks(field string, tasks []placementv1beta1.StageTask) error {
 	if len(tasks) == 2 && tasks[0].Type == tasks[1].Type {
-		return fmt.Errorf("afterStageTasks cannot have two tasks of the same type: %s", tasks[0].Type)
+		return fmt.Errorf("%s cannot have two tasks of the same type: %s", field, tasks[0].Type)
 	}
 	for i, task := range tasks {
 		if task.Type == placementv1beta1.StageTaskTypeTimedWait {
