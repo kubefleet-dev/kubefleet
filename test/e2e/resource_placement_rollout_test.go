@@ -19,6 +19,7 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -738,10 +739,12 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 		})
 	})
 
-	Context("Test an RP tracks job availability during rollout", Ordered, func() {
+	Context("Test an RP place workload objects successfully, block rollout based on job availability", Ordered, func() {
 		workNamespace := appNamespace()
-		var wantSelectedResources []placementv1beta1.ResourceIdentifier
+		var wantSelectedResources, wantSelectedResourcesWithLongRunningJob []placementv1beta1.ResourceIdentifier
 		var longRunningJob batchv1.Job
+		// It takes a while for Fleet to find out that a job has completed, as it checks with a backoff.
+		jobEventuallyDuration := 3 * workloadEventuallyDuration
 
 		BeforeAll(func() {
 			// Create the test resources.
@@ -754,9 +757,9 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 					Namespace: workNamespace.Name,
 				},
 			}
-			longRunningJob = *testJob.DeepCopy()
-			longRunningJob.Name += "-long-running"
-			longRunningJob.Spec.Template.Spec.Containers[0].Command = []string{"sh", "-c", "sleep 3600"}
+			longRunningJob = buildLongRunningJob(&testJob)
+			wantSelectedResourcesWithLongRunningJob = slices.Clone(wantSelectedResources)
+			wantSelectedResourcesWithLongRunningJob[0].Name = longRunningJob.Name
 		})
 
 		It("create the job resource in the namespace", func() {
@@ -787,16 +790,17 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 			Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create RP")
 		})
 
+		// The job is available once it completes.
 		It("should update RP status as expected", func() {
 			rpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(rpKey, wantSelectedResources, allMemberClusterNames, nil, "0", true)
-			Eventually(rpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
+			Eventually(rpStatusUpdatedActual, jobEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
 		It("should place the resources on all member clusters", func() {
 			for idx := range allMemberClusters {
 				memberCluster := allMemberClusters[idx]
 				workResourcesPlacedActual := waitForJobToBePlaced(memberCluster, &testJob)
-				Eventually(workResourcesPlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster.ClusterName)
+				Eventually(workResourcesPlacedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster.ClusterName)
 			}
 		})
 
@@ -810,14 +814,13 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 			Expect(hubClient.Get(ctx, rpKey, &rp)).To(Succeed(), "Failed to get RP")
 			rp.Spec.ResourceSelectors[0].Name = longRunningJob.Name
 			Expect(hubClient.Update(ctx, &rp)).To(Succeed(), "Failed to update RP")
-
-			wantSelectedResources[0].Name = longRunningJob.Name
 		})
 
-		It("should report the job as not yet available and block rollout", func() {
-			notYetAvailableJobIdentifier := wantSelectedResources[0]
-			rpStatusActual := safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResources, notYetAvailableJobIdentifier, allMemberClusterNames, "1", 1)
-			Eventually(rpStatusActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
+		// The long-running job is not available, so the rollout is blocked on the first cluster.
+		It("should update RP status as expected", func() {
+			rpStatusActual := safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResourcesWithLongRunningJob, wantSelectedResourcesWithLongRunningJob[0], allMemberClusterNames, "1", 1)
+			Eventually(rpStatusActual, jobEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
+			Consistently(rpStatusActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep the rollout blocked")
 		})
 	})
 })

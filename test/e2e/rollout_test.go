@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -655,15 +656,26 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 		})
 	})
 
-	Context("Test a CRP place workload objects successfully, don't block rollout based on job availability", Ordered, func() {
+	Context("Test a CRP place workload objects successfully, block rollout based on job availability", Ordered, func() {
 		crpName := fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())
 		workNamespace := appNamespace()
 		var wantSelectedResources []placementv1beta1.ResourceIdentifier
-		var testJob batchv1.Job
-		unAvailablePeriodSeconds := 15
+		var longRunningJobIdentifier placementv1beta1.ResourceIdentifier
+		var testJob, longRunningJob batchv1.Job
+		// It takes a while for Fleet to find out that a job has completed, as it checks with a backoff.
+		jobEventuallyDuration := 3 * workloadEventuallyDuration
+
 		BeforeAll(func() {
 			// Create the test resources.
 			readJobTestManifest(&testJob)
+			longRunningJob = buildLongRunningJob(&testJob)
+			longRunningJobIdentifier = placementv1beta1.ResourceIdentifier{
+				Group:     batchv1.SchemeGroupVersion.Group,
+				Version:   batchv1.SchemeGroupVersion.Version,
+				Kind:      utils.JobKind,
+				Name:      longRunningJob.Name,
+				Namespace: workNamespace.Name,
+			}
 			wantSelectedResources = []placementv1beta1.ResourceIdentifier{
 				{
 					Kind:    utils.NamespaceKind,
@@ -688,41 +700,34 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 
 		It("create the CRP that select the namespace", func() {
 			crp := buildCRPForSafeRollout()
-			// the job we are trying to propagate takes 10s to complete. MaxUnavailable is set to 1. So setting UnavailablePeriodSeconds to 15s
-			// so that after each rollout phase we only wait for 15s before proceeding to the next since Job is not trackable,
-			// we want rollout to finish in a reasonable time.
-			crp.Spec.Strategy.RollingUpdate.UnavailablePeriodSeconds = ptr.To(unAvailablePeriodSeconds)
 			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
-		})
-
-		It("should update CRP status as expected", func() {
-			crpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(types.NamespacedName{Name: crpName}, wantSelectedResources, allMemberClusterNames, nil, "0", false)
-			Eventually(crpStatusUpdatedActual, 2*time.Duration(unAvailablePeriodSeconds)*time.Second, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
 		It("should place the resources on all member clusters", func() {
 			for idx := range allMemberClusters {
 				memberCluster := allMemberClusters[idx]
 				workResourcesPlacedActual := waitForJobToBePlaced(memberCluster, &testJob)
-				Eventually(workResourcesPlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster.ClusterName)
+				Eventually(workResourcesPlacedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster.ClusterName)
 			}
 		})
 
-		It("suspend job", func() {
-			Eventually(func() error {
-				var job batchv1.Job
-				err := hubClient.Get(ctx, types.NamespacedName{Name: testJob.Name, Namespace: testJob.Namespace}, &job)
-				if err != nil {
-					return err
-				}
-				job.Spec.Suspend = ptr.To(true)
-				return hubClient.Update(ctx, &job)
-			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to suspend job")
-		})
-		// job is not trackable, so we need to wait for a bit longer for each roll out
+		// The job is available once it completes.
 		It("should update CRP status as expected", func() {
-			crpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(types.NamespacedName{Name: crpName}, wantSelectedResources, allMemberClusterNames, nil, "1", false)
-			Eventually(crpStatusUpdatedActual, 5*time.Duration(unAvailablePeriodSeconds)*time.Second, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+			crpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(types.NamespacedName{Name: crpName}, wantSelectedResources, allMemberClusterNames, nil, "0", true)
+			Eventually(crpStatusUpdatedActual, jobEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		})
+
+		It("create the long-running job resource in the namespace", func() {
+			longRunningJob.Namespace = workNamespace.Name
+			Expect(hubClient.Create(ctx, &longRunningJob)).To(Succeed(), "Failed to create test job %s", longRunningJob.Name)
+		})
+
+		// The long-running job is not available, so the rollout is blocked on the first cluster.
+		It("should update CRP status as expected", func() {
+			wantSelectedResourcesWithLongRunningJob := append(slices.Clone(wantSelectedResources), longRunningJobIdentifier)
+			crpStatusActual := safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResourcesWithLongRunningJob, longRunningJobIdentifier, allMemberClusterNames, "1", 1)
+			Eventually(crpStatusActual, jobEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+			Consistently(crpStatusActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep the rollout blocked")
 		})
 
 		AfterAll(func() {
@@ -1114,6 +1119,16 @@ func waitForServiceToReady(memberCluster *framework.Cluster, testService *corev1
 		}
 		return errors.New("service is not ready")
 	}
+}
+
+// buildLongRunningJob returns a copy of the job that never completes within a test.
+func buildLongRunningJob(job *batchv1.Job) batchv1.Job {
+	longRunningJob := *job.DeepCopy()
+	longRunningJob.Name = job.Name + "-long-running"
+	longRunningJob.Spec.Template.Spec.Containers[0].Command = []string{"sh", "-c", "sleep 3600"}
+	// Do not wait for the pod to terminate when the job is removed.
+	longRunningJob.Spec.Template.Spec.TerminationGracePeriodSeconds = ptr.To(int64(0))
+	return longRunningJob
 }
 
 func waitForJobToBePlaced(memberCluster *framework.Cluster, testJob *batchv1.Job) func() error {

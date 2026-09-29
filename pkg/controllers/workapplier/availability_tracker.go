@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/component-helpers/apps/poddisruptionbudget"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
@@ -220,17 +221,33 @@ func trackJobAvailability(inMemberClusterObj *unstructured.Unstructured) (Manife
 		return AvailabilityResultTypeFailed, wrappedErr
 	}
 
-	if job.Spec.Suspend != nil && *job.Spec.Suspend {
+	// Check if the job is available.
+	//
+	// A job is available once it has completed. A failed job is terminal and never becomes available;
+	// Fleet reports it as not yet available, the same as any other workload that fails to become ready.
+	// Note that a job cannot be completed and failed at the same time.
+	for _, cond := range job.Status.Conditions {
+		if cond.Status != corev1.ConditionTrue {
+			continue
+		}
+		switch cond.Type {
+		case batchv1.JobComplete:
+			klog.V(2).InfoS("Job is available", "job", klog.KObj(inMemberClusterObj))
+			return AvailabilityResultTypeAvailable, nil
+		case batchv1.JobFailed, batchv1.JobFailureTarget:
+			// The Job controller adds the Failed condition once the pods of a job that is to fail have terminated.
+			klog.V(2).InfoS("Job has failed and will not become available", "job", klog.KObj(inMemberClusterObj), "reason", cond.Reason)
+			return AvailabilityResultTypeNotYetAvailable, nil
+		}
+	}
+
+	// A suspended job does not run until it is resumed, e.g., by a job queueing system in the member cluster,
+	// so there is nothing for Fleet to wait for.
+	if ptr.Deref(job.Spec.Suspend, false) {
 		klog.V(2).InfoS("Job is suspended, consider it to be immediately available", "job", klog.KObj(inMemberClusterObj))
 		return AvailabilityResultTypeAvailable, nil
 	}
-	for _, condition := range job.Status.Conditions {
-		if condition.Type == batchv1.JobComplete && condition.Status == corev1.ConditionTrue {
-			klog.V(2).InfoS("Job is available", "job", klog.KObj(inMemberClusterObj))
-			return AvailabilityResultTypeAvailable, nil
-		}
-	}
-	klog.V(2).InfoS("Job is not complete yet, will check later to see if it becomes available", "job", klog.KObj(inMemberClusterObj))
+	klog.V(2).InfoS("Job is not completed yet, will check later to see if it becomes available", "job", klog.KObj(inMemberClusterObj))
 	return AvailabilityResultTypeNotYetAvailable, nil
 }
 
