@@ -50,8 +50,9 @@ func TestRetrieveResourceUsageFrom(t *testing.T) {
 					corev1.ResourceMemory: resource.MustParse("40Gi"),
 				},
 				Allocatable: corev1.ResourceList{
-					corev1.ResourceCPU:    resource.MustParse("8"),
-					corev1.ResourceMemory: resource.MustParse("36Gi"),
+					corev1.ResourceCPU:              resource.MustParse("8"),
+					corev1.ResourceMemory:           resource.MustParse("36Gi"),
+					corev1.ResourceEphemeralStorage: resource.MustParse("100Gi"),
 				},
 				Available: corev1.ResourceList{
 					corev1.ResourceCPU:    resource.MustParse("2"),
@@ -69,7 +70,7 @@ func TestRetrieveResourceUsageFrom(t *testing.T) {
 		expectedToFail bool
 	}{
 		{
-			name:           "invalid property name (multiple segments)",
+			name:           "invalid property name (prefix not trimmed)",
 			propertyName:   "resources.kubernetes-fleet.io/allocatable-cpu",
 			expectedToFail: true,
 		},
@@ -110,6 +111,12 @@ func TestRetrieveResourceUsageFrom(t *testing.T) {
 			propertyName: "available-cpu",
 			cluster:      cluster,
 			wantQuantity: ptr.To(resource.MustParse("2")),
+		},
+		{
+			name:         "resource name containing dashes",
+			propertyName: "allocatable-ephemeral-storage",
+			cluster:      cluster,
+			wantQuantity: ptr.To(resource.MustParse("100Gi")),
 		},
 	}
 
