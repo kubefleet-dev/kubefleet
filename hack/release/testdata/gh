@@ -9,6 +9,9 @@
 #   FAKE_GH_ASSETS   asset rows as "name;state;size", one per line
 #   FAKE_GH_DOWNLOAD good | corrupt - whether the downloaded bundle matches its
 #                    recorded checksum
+#   FAKE_GH_CLI_MISSING  when set, checksums.txt still names the CLI archive but
+#                    the archive itself is not downloaded - an asset the release
+#                    promises and never finished uploading
 #   FAKE_GH_LOG      file every invocation is appended to
 #
 # The --jq expressions are handed to the real jq so the scripts' own filters are
@@ -67,6 +70,20 @@ case "${1:-} ${2:-}" in
       printf 'tampered\n' >"${dir}/kubefleet-crds-${TAG}.tgz"
     fi
     echo "${sum}" >"${dir}/kubefleet-crds-${TAG}.tgz.sha256"
+
+    # The kubectl-fleet archives, listed the way `make cli-package` writes
+    # checksums.txt: bare filenames, one line each.
+    archive="kubectl-fleet-linux-amd64.tar.gz"
+    printf 'pretend-archive\n' >"${dir}/${archive}"
+    if command -v sha256sum >/dev/null 2>&1; then
+      cli_sum="$(cd "${dir}" && sha256sum "${archive}")"
+    else
+      cli_sum="$(cd "${dir}" && shasum -a 256 "${archive}")"
+    fi
+    echo "${cli_sum}" >"${dir}/checksums.txt"
+    if [ -n "${FAKE_GH_CLI_MISSING:-}" ]; then
+      rm -f "${dir}/${archive}"
+    fi
     exit 0
     ;;
   "release create" | "release edit" | "release upload")

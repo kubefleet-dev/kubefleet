@@ -17,9 +17,11 @@ limitations under the License.
 package draincluster
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -63,10 +65,11 @@ func NewCmdDrainCluster() *cobra.Command {
 		Short: "Drain a member cluster",
 		Long:  "Drain a member cluster by cordoning it and removing propagated resources",
 		RunE: func(command *cobra.Command, args []string) error {
-			if err := o.setupClient(); err != nil {
+			var err error
+			if o.hubClient, err = toolsutils.NewHubClient(o.hubClusterContext); err != nil {
 				return err
 			}
-			return o.runDrain()
+			return o.runDrain(command.Context())
 		},
 	}
 
@@ -82,8 +85,8 @@ func NewCmdDrainCluster() *cobra.Command {
 	return cmd
 }
 
-func (o *drainOptions) runDrain() error {
-	ctx, cancel := context.WithTimeout(context.Background(), o.timeout)
+func (o *drainOptions) runDrain(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, o.timeout)
 	defer cancel()
 
 	isDrainSuccessful, err := o.drain(ctx)
@@ -109,22 +112,6 @@ func (o *drainOptions) runDrain() error {
 	}
 
 	log.Printf("reminder: uncordon the cluster %s to remove cordon taint if needed", o.clusterName)
-	return nil
-}
-
-// setupClient creates and configures the Kubernetes client
-func (o *drainOptions) setupClient() error {
-	scheme, err := toolsutils.NewFleetScheme()
-	if err != nil {
-		return fmt.Errorf("failed to create runtime scheme: %w", err)
-	}
-
-	hubClient, err := toolsutils.GetClusterClientFromClusterContext(o.hubClusterContext, scheme)
-	if err != nil {
-		return fmt.Errorf("failed to create hub cluster client: %w", err)
-	}
-
-	o.hubClient = hubClient
 	return nil
 }
 
@@ -226,11 +213,8 @@ func (o *drainOptions) cordon(ctx context.Context) error {
 			return err
 		}
 
-		// search to see cordonTaint already exists on the cluster.
-		for i := range mc.Spec.Taints {
-			if mc.Spec.Taints[i] == toolsutils.CordonTaint {
-				return nil
-			}
+		if slices.Contains(mc.Spec.Taints, toolsutils.CordonTaint) {
+			return nil
 		}
 
 		// add taint to member cluster to cordon.
@@ -289,14 +273,5 @@ func generateDrainEvictionName(crpName, targetCluster string) (string, error) {
 }
 
 func generateResourceIdentifierKey(r placementv1beta1.ResourceIdentifier) string {
-	if len(r.Group) == 0 && len(r.Namespace) == 0 {
-		return fmt.Sprintf(resourceIdentifierKeyFormat, "''", r.Version, r.Kind, "''", r.Name)
-	}
-	if len(r.Group) == 0 {
-		return fmt.Sprintf(resourceIdentifierKeyFormat, "''", r.Version, r.Kind, r.Namespace, r.Name)
-	}
-	if len(r.Namespace) == 0 {
-		return fmt.Sprintf(resourceIdentifierKeyFormat, r.Group, r.Version, r.Kind, "''", r.Name)
-	}
-	return fmt.Sprintf(resourceIdentifierKeyFormat, r.Group, r.Version, r.Kind, r.Namespace, r.Name)
+	return fmt.Sprintf(resourceIdentifierKeyFormat, cmp.Or(r.Group, "''"), r.Version, r.Kind, cmp.Or(r.Namespace, "''"), r.Name)
 }
