@@ -33,6 +33,7 @@ import (
 
 const (
 	noNamespaceResourceSelectorMsg = "NamespaceAccessible ClusterResourcePlacement doesn't specify a resource selector which selects a namespace"
+	redactedPatchValue             = "(redacted for security reasons)"
 
 	failedCRPSMessageFmt           = "Failed to create or update ClusterResourcePlacementStatus: %v"
 	successfulCRPSMessageFmt       = "Successfully created or updated ClusterResourcePlacementStatus in namespace '%s'"
@@ -86,6 +87,15 @@ func isNamespaceAccessibleCRP(placementObj placementv1beta1.PlacementObj) bool {
 // Returns a filtered copy of the status with all conditions except StatusSynced.
 func filterStatusSyncedCondition(status *placementv1beta1.PlacementStatus) *placementv1beta1.PlacementStatus {
 	filteredStatus := status.DeepCopy()
+	for idx := range filteredStatus.PerClusterPlacementStatuses {
+		clusterStatus := &filteredStatus.PerClusterPlacementStatuses[idx]
+		for placementIdx := range clusterStatus.DriftedPlacements {
+			redactPatchDetailValues(clusterStatus.DriftedPlacements[placementIdx].ObservedDrifts)
+		}
+		for placementIdx := range clusterStatus.DiffedPlacements {
+			redactPatchDetailValues(clusterStatus.DiffedPlacements[placementIdx].ObservedDiffs)
+		}
+	}
 
 	// Filter out the ClusterResourcePlacementStatusSynced condition.
 	filteredConditions := make([]metav1.Condition, 0, len(filteredStatus.Conditions))
@@ -97,6 +107,17 @@ func filterStatusSyncedCondition(status *placementv1beta1.PlacementStatus) *plac
 	filteredStatus.Conditions = filteredConditions
 
 	return filteredStatus
+}
+
+func redactPatchDetailValues(details []placementv1beta1.PatchDetail) {
+	for idx := range details {
+		if details[idx].ValueInMember != "" {
+			details[idx].ValueInMember = redactedPatchValue
+		}
+		if details[idx].ValueInHub != "" {
+			details[idx].ValueInHub = redactedPatchValue
+		}
+	}
 }
 
 // buildStatusSyncedCondition creates a StatusSynced condition based on the sync result.
