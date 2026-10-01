@@ -493,7 +493,7 @@ func handleApprovalRequestDelete(obj client.Object, q workqueue.TypedRateLimitin
 }
 
 func removeWaitTimeFromUpdateRunStatus(updateRun placementv1beta1.UpdateRunObj) {
-	// Remove waitTime from the updateRun status for BeforeStageTask and AfterStageTask for type Approval.
+	// Remove waitTime from the updateRun status for Approval tasks.
 	updateRunStatus := updateRun.GetUpdateRunStatus()
 	if updateRunStatus.UpdateStrategySnapshot != nil {
 		for i := range updateRunStatus.UpdateStrategySnapshot.Stages {
@@ -506,6 +506,11 @@ func removeWaitTimeFromUpdateRunStatus(updateRun placementv1beta1.UpdateRunObj) 
 				if updateRunStatus.UpdateStrategySnapshot.Stages[i].AfterStageTasks[j].Type == placementv1beta1.StageTaskTypeApproval {
 					updateRunStatus.UpdateStrategySnapshot.Stages[i].AfterStageTasks[j].WaitTime = nil
 				}
+			}
+		}
+		for i := range updateRunStatus.UpdateStrategySnapshot.DeleteStageTasks {
+			if updateRunStatus.UpdateStrategySnapshot.DeleteStageTasks[i].Type == placementv1beta1.StageTaskTypeApproval {
+				updateRunStatus.UpdateStrategySnapshot.DeleteStageTasks[i].WaitTime = nil
 			}
 		}
 	}

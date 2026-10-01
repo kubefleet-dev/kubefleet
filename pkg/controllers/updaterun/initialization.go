@@ -282,8 +282,14 @@ func (r *Reconciler) generateStagesByStrategy(
 	updateStrategySpec := updateStrategy.GetUpdateStrategySpec()
 	updateRunStatus.UpdateStrategySnapshot = updateStrategySpec
 
-	// Remove waitTime from the updateRun status for BeforeStageTask and AfterStageTask for type Approval.
+	// Remove waitTime from the updateRun status for Approval tasks.
 	removeWaitTimeFromUpdateRunStatus(updateRun)
+
+	if err := validateAfterStageTask(updateStrategySpec.DeleteStageTasks); err != nil {
+		klog.ErrorS(err, "Failed to validate the delete stage tasks", "updateStrategy", strategyKey, "updateRun", updateRunRef)
+		invalidDeleteStageErr := controller.NewUserError(fmt.Errorf("the delete stage tasks are invalid, updateStrategy: `%s`, err: %s", strategyKey, err.Error()))
+		return fmt.Errorf("%w: %s", errValidationFailed, invalidDeleteStageErr.Error())
+	}
 
 	// Compute the update stages.
 	if err := r.computeRunStageStatus(ctx, scheduledBindings, updateRun); err != nil {
@@ -304,6 +310,15 @@ func (r *Reconciler) generateStagesByStrategy(
 	updateRunStatus.DeletionStageStatus = &placementv1beta1.StageUpdatingStatus{
 		StageName: placementv1beta1.UpdateRunDeleteStageName,
 		Clusters:  toBeDeletedClusters,
+	}
+	if len(updateStrategySpec.DeleteStageTasks) > 0 {
+		updateRunStatus.DeletionStageStatus.AfterStageTaskStatus = make([]placementv1beta1.StageTaskStatus, len(updateStrategySpec.DeleteStageTasks))
+		for i, task := range updateStrategySpec.DeleteStageTasks {
+			updateRunStatus.DeletionStageStatus.AfterStageTaskStatus[i].Type = task.Type
+			if task.Type == placementv1beta1.StageTaskTypeApproval {
+				updateRunStatus.DeletionStageStatus.AfterStageTaskStatus[i].ApprovalRequestName = fmt.Sprintf(placementv1beta1.DeleteStageApprovalTaskNameFmt, updateRun.GetName())
+			}
+		}
 	}
 	return nil
 }

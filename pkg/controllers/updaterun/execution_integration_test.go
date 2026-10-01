@@ -1966,6 +1966,88 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 	})
 })
 
+var _ = Describe("Delete stage task execution tests", func() {
+	It("Should gate cluster-scoped binding deletion on approval", func() {
+		verifyDeleteStageApprovalGate(false)
+	})
+
+	It("Should gate namespaced binding deletion on approval", func() {
+		verifyDeleteStageApprovalGate(true)
+	})
+})
+
+func verifyDeleteStageApprovalGate(namespaced bool) {
+	name := fmt.Sprintf("delete-stage-gate-%d", GinkgoParallelProcess())
+	namespace := ""
+	var updateRun placementv1beta1.UpdateRunObj
+	var binding placementv1beta1.BindingObj
+	var approvalRequest placementv1beta1.ApprovalRequestObj
+	if namespaced {
+		namespace = testNamespaceName
+		updateRun = &placementv1beta1.StagedUpdateRun{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace, Generation: 1}}
+		binding = &placementv1beta1.ResourceBinding{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+			Spec:       placementv1beta1.ResourceBindingSpec{TargetCluster: "cluster-1"},
+		}
+		approvalRequest = &placementv1beta1.ApprovalRequest{}
+	} else {
+		updateRun = &placementv1beta1.ClusterStagedUpdateRun{ObjectMeta: metav1.ObjectMeta{Name: name, Generation: 1}}
+		binding = &placementv1beta1.ClusterResourceBinding{
+			ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec:       placementv1beta1.ResourceBindingSpec{TargetCluster: "cluster-1"},
+		}
+		approvalRequest = &placementv1beta1.ClusterApprovalRequest{}
+	}
+	approvalRequestName := fmt.Sprintf(placementv1beta1.DeleteStageApprovalTaskNameFmt, name)
+	updateRunStatus := updateRun.GetUpdateRunStatus()
+	updateRunStatus.UpdateStrategySnapshot = &placementv1beta1.UpdateStrategySpec{
+		DeleteStageTasks: []placementv1beta1.StageTask{{Type: placementv1beta1.StageTaskTypeApproval}},
+	}
+	updateRunStatus.DeletionStageStatus = &placementv1beta1.StageUpdatingStatus{
+		StageName: placementv1beta1.UpdateRunDeleteStageName,
+		Clusters:  []placementv1beta1.ClusterUpdatingStatus{{ClusterName: "cluster-1"}},
+		AfterStageTaskStatus: []placementv1beta1.StageTaskStatus{{
+			Type:                placementv1beta1.StageTaskTypeApproval,
+			ApprovalRequestName: approvalRequestName,
+		}},
+	}
+
+	Expect(k8sClient.Create(ctx, binding)).Should(Succeed())
+	DeferCleanup(func() {
+		_ = k8sClient.Delete(ctx, binding)
+		_ = k8sClient.Delete(ctx, approvalRequest)
+	})
+
+	r := &Reconciler{Client: k8sClient}
+	finished, _, err := r.executeDeleteStage(ctx, updateRun, []placementv1beta1.BindingObj{binding})
+	Expect(err).NotTo(HaveOccurred())
+	Expect(finished).To(BeFalse())
+	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, binding)).Should(Succeed())
+
+	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: approvalRequestName, Namespace: namespace}, approvalRequest)).Should(Succeed())
+	Expect(approvalRequest.GetLabels()[placementv1beta1.TargetUpdatingStageNameLabel]).To(Equal(placementv1beta1.UpdateRunDeleteStageLabelValue))
+	approvalRequestStatus := approvalRequest.GetApprovalRequestStatus()
+	meta.SetStatusCondition(&approvalRequestStatus.Conditions, metav1.Condition{
+		Type:               string(placementv1beta1.ApprovalRequestConditionApproved),
+		Status:             metav1.ConditionTrue,
+		ObservedGeneration: approvalRequest.GetGeneration(),
+		Reason:             "Approved",
+		Message:            "approved",
+	})
+	Expect(k8sClient.Status().Update(ctx, approvalRequest)).Should(Succeed())
+
+	finished, _, err = r.executeDeleteStage(ctx, updateRun, []placementv1beta1.BindingObj{binding})
+	Expect(err).NotTo(HaveOccurred())
+	Expect(finished).To(BeFalse())
+	Eventually(func() error {
+		err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, binding)
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("binding get error = %v, want not found", err)
+	}, timeout, interval).Should(Succeed(), "binding should be deleted after approval")
+}
+
 func validateBindingState(ctx context.Context, binding *placementv1beta1.ClusterResourceBinding, resourceSnapshotName string, updateRun *placementv1beta1.ClusterStagedUpdateRun, clusterStatus *placementv1beta1.ClusterUpdatingStatus) {
 	Eventually(func() error {
 		if err := k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding); err != nil {
