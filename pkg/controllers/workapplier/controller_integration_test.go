@@ -3834,7 +3834,7 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionTrue,
-					Reason: condition.WorkNotTrackableReason,
+					Reason: condition.WorkAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -3882,7 +3882,7 @@ var _ = Describe("drift detection and takeover", func() {
 						{
 							Type:               fleetv1beta1.WorkConditionTypeAvailable,
 							Status:             metav1.ConditionTrue,
-							Reason:             string(AvailabilityResultTypeNotTrackable),
+							Reason:             string(AvailabilityResultTypeAvailable),
 							ObservedGeneration: 1,
 						},
 					},
