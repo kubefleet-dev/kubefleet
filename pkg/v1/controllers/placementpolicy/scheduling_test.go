@@ -75,8 +75,8 @@ func TestAggregateCounts(t *testing.T) {
 		{
 			name: "integer counts sum per selector",
 			outcomes: []selectorOutcome{
-				{counts: resolvedCounts{desired: 2, minimum: 2}, matched: []string{"a", "b", "c"}},
-				{counts: resolvedCounts{desired: 3, minimum: 3}, matched: []string{"a"}},
+				{counts: resolvedCounts{desired: 2, minimum: 2}, matched: []string{"a", "b", "c"}, chosen: []string{"a", "b"}},
+				{counts: resolvedCounts{desired: 3, minimum: 3}, matched: []string{"a"}, chosen: []string{"a"}},
 			},
 			wantDesired:   5,
 			wantScheduled: 3,
@@ -84,7 +84,7 @@ func TestAggregateCounts(t *testing.T) {
 		{
 			name: "selectAll desired floors at the minimum when unfulfilled",
 			outcomes: []selectorOutcome{
-				{counts: resolvedCounts{selectAll: true, minimum: 2}, matched: []string{"a"}},
+				{counts: resolvedCounts{selectAll: true, minimum: 2}, matched: []string{"a"}, chosen: []string{"a"}},
 			},
 			wantDesired:   2,
 			wantScheduled: 1,
@@ -92,7 +92,7 @@ func TestAggregateCounts(t *testing.T) {
 		{
 			name: "selectAll desired follows the match count when fulfilled",
 			outcomes: []selectorOutcome{
-				{counts: resolvedCounts{selectAll: true, minimum: 1}, matched: []string{"a", "b", "c"}},
+				{counts: resolvedCounts{selectAll: true, minimum: 1}, matched: []string{"a", "b", "c"}, chosen: []string{"a", "b", "c"}},
 			},
 			wantDesired:   3,
 			wantScheduled: 3,

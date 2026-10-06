@@ -18,7 +18,7 @@ package placementpolicy
 
 import (
 	"math"
-	"sort"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -59,6 +59,14 @@ type selectorOutcome struct {
 	// matched holds the names of the schedulable clusters that satisfy the selector terms,
 	// sorted for determinism.
 	matched []string
+	// sticky holds, sorted, the names of the clusters an existing binding may stick to but
+	// that are neither counted nor newly picked: they satisfy the selector terms but are not
+	// schedulable right now (ineligible, or carrying a taint the policy does not tolerate), or
+	// their reported data could not be evaluated at all. See chooseClusters.
+	sticky []string
+	// chosen holds the names of the clusters counted as selected for this selector, sorted;
+	// chooseClusters fills it in.
+	chosen []string
 	// terms references the originating selector's terms; the claim lifecycle propagates them
 	// onto ClusterClaim objects for unfulfilled selectors.
 	terms []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm
@@ -77,17 +85,6 @@ func int32Len(s []string) int32 {
 		return math.MaxInt32
 	}
 	return int32(n)
-}
-
-// selected returns the names of the clusters counted as selected by this selector: every
-// matching cluster when the selector requests all of them, and the first desired-count names
-// otherwise. The first-N choice is a deterministic placeholder; refined ranking arrives with
-// the scheduling framework support for the new placement experience.
-func (o *selectorOutcome) selected() []string {
-	if o.counts.selectAll || int32Len(o.matched) <= o.counts.desired {
-		return o.matched
-	}
-	return o.matched[:o.counts.desired]
 }
 
 // fulfilled reports whether the selector has reached its fulfillment floor (minCount).
@@ -111,15 +108,18 @@ func (o *selectorOutcome) satisfiedInFull() bool {
 // selector matching all available clusters, per the API contract.
 func evaluateSelectors(spec *kfplacementv1alpha1.PlacementPolicySpec, clusters []clusterv1beta1.MemberCluster, checker eligibilityChecker) ([]selectorOutcome, error) {
 	schedulable := make([]*clusterv1beta1.MemberCluster, 0, len(clusters))
+	// unschedulable keeps the clusters a binding may stick to while they are temporarily out
+	// of the running. A cluster on its way out is left out, so that its binding is released.
+	var unschedulable []*clusterv1beta1.MemberCluster
 	for i := range clusters {
 		cluster := &clusters[i]
-		if eligible, _ := checker.IsEligible(cluster); !eligible {
-			continue
+		eligible, _ := checker.IsEligible(cluster)
+		switch {
+		case eligible && taintsTolerated(cluster.Spec.Taints, spec.Tolerations):
+			schedulable = append(schedulable, cluster)
+		case cluster.DeletionTimestamp.IsZero():
+			unschedulable = append(unschedulable, cluster)
 		}
-		if !taintsTolerated(cluster.Spec.Taints, spec.Tolerations) {
-			continue
-		}
-		schedulable = append(schedulable, cluster)
 	}
 
 	selectors := spec.ClusterSelectors
@@ -148,30 +148,40 @@ func evaluateSelectors(spec *kfplacementv1alpha1.PlacementPolicySpec, clusters [
 			return nil, err
 		}
 
-		var matched []string
-		for _, cluster := range schedulable {
-			ok, err := matchesTerms(cluster, selector.Terms)
-			if err != nil {
-				// validateTerms has vetted the selector itself, so an evaluation error stems
-				// from malformed runtime data self-reported by this cluster (e.g., a property
-				// value that is not a quantity); one misbehaving cluster must not fail the
-				// whole policy, so the cluster is treated as not matching.
-				klog.V(2).InfoS("Skipping a member cluster whose reported data cannot be evaluated", "memberCluster", cluster.Name, "error", err)
-				continue
-			}
-			if ok {
-				matched = append(matched, cluster.Name)
-			}
-		}
-		sort.Strings(matched)
+		matched, unevaluable := matchingClusterNames(schedulable, selector.Terms)
+		alsoMatched, alsoUnevaluable := matchingClusterNames(unschedulable, selector.Terms)
+		sticky := slices.Concat(alsoMatched, unevaluable, alsoUnevaluable)
+		slices.Sort(sticky)
 		outcomes = append(outcomes, selectorOutcome{
 			counts:          counts,
 			matched:         matched,
+			sticky:          sticky,
 			terms:           selector.Terms,
 			whenUnfulfilled: selector.WhenUnfulfilled,
 		})
 	}
 	return outcomes, nil
+}
+
+// matchingClusterNames returns, sorted, the names of the clusters that satisfy the terms, and
+// separately the names of those whose data could not be evaluated. validateTerms has vetted the
+// selector itself, so an evaluation error stems from malformed runtime data self-reported by
+// the cluster (e.g., a property value that is not a quantity); one misbehaving cluster must not
+// fail the whole policy, so it is reported apart rather than failing the evaluation.
+func matchingClusterNames(clusters []*clusterv1beta1.MemberCluster, terms []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm) (matched, unevaluable []string) {
+	for _, cluster := range clusters {
+		ok, err := matchesTerms(cluster, terms)
+		if err != nil {
+			klog.V(2).InfoS("Skipping a member cluster whose reported data cannot be evaluated", "memberCluster", cluster.Name, "error", err)
+			unevaluable = append(unevaluable, cluster.Name)
+			continue
+		}
+		if ok {
+			matched = append(matched, cluster.Name)
+		}
+	}
+	slices.Sort(matched)
+	return matched, unevaluable
 }
 
 // aggregateCounts sums the desired and selected cluster counts across all selector outcomes.
@@ -188,7 +198,7 @@ func aggregateCounts(outcomes []selectorOutcome) (desired, scheduled int32) {
 		} else {
 			desired += o.counts.desired
 		}
-		scheduled += int32Len(o.selected())
+		scheduled += int32Len(o.chosen)
 	}
 	return desired, scheduled
 }
