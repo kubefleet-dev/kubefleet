@@ -1,0 +1,205 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: clusterproviderclasses.placement.kubefleet.dev
+spec:
+  group: placement.kubefleet.dev
+  names:
+    categories:
+    - kubefleet
+    - kubefleet-placement
+    kind: ClusterProviderClass
+    listKind: ClusterProviderClassList
+    plural: clusterproviderclasses
+    singular: clusterproviderclass
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.provisionerName
+      name: Provisioner
+      type: string
+    - jsonPath: .spec.approval
+      name: Approval
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          ClusterProviderClass is a KubeFleet API that names the provider which fulfills cluster claims,
+          the selector terms that provider understands, and how claims of the class are approved and how
+          long they may stand. Placement policies reference a class by name; the class is cluster-scoped
+          and owned by the platform administrator, in the way a StorageClass or GatewayClass is.
+
+          A class references the platform's own blueprint (such as a Cluster API ClusterClass) through its
+          parameters; KubeFleet never interprets them.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: The specification of the cluster provider class.
+            properties:
+              approval:
+                default: Manual
+                description: How claims of this class are approved. Defaults to Manual.
+                enum:
+                - Manual
+                - Automatic
+                type: string
+              joinTimeout:
+                description: |-
+                  How long a fulfilled claim may wait for its cluster to become eligible for scheduling before
+                  KubeFleet marks it expired; the provider then deprovisions the cluster if it never joined.
+                  Counted from completion. Defaults to 30 minutes.
+                type: string
+                x-kubernetes-validations:
+                - message: must be a positive duration
+                  rule: duration(self) > duration('0s')
+              maxProvisionDuration:
+                description: |-
+                  How long a provider may work on an accepted claim before its transient errors become
+                  permanent and the claim fails. Counted from acceptance. Defaults to 60 minutes.
+                type: string
+                x-kubernetes-validations:
+                - message: must be a positive duration
+                  rule: duration(self) > duration('0s')
+              onFailure:
+                default: Hold
+                description: |-
+                  What KubeFleet does with a claim of this class once it has failed or expired. Defaults to
+                  Hold.
+                enum:
+                - Hold
+                - Retry
+                type: string
+              parameters:
+                additionalProperties:
+                  type: string
+                description: |-
+                  Opaque parameters passed to the provider with every claim of this class, such as the name of
+                  the platform blueprint to provision from. KubeFleet does not interpret them.
+                maxProperties: 64
+                type: object
+              pendingClaimTTL:
+                description: |-
+                  How long an approved claim may wait for a provider to accept it before KubeFleet marks it
+                  expired. Counted from the moment the claim is approved; an unapproved claim never expires.
+                  Defaults to 30 minutes.
+                type: string
+                x-kubernetes-validations:
+                - message: must be a positive duration
+                  rule: duration(self) > duration('0s')
+              provisionerName:
+                description: |-
+                  The name of the provider that fulfills cluster claims of this class, which the provider's
+                  fulfiller uses to recognize the claims meant for it. A domain-qualified name, such as
+                  capi.kubefleet.dev, is recommended.
+
+                  This field is immutable: in-flight claims are held by the fulfiller that accepted them, and
+                  re-pointing a class would orphan them.
+                maxLength: 253
+                minLength: 1
+                type: string
+              retryAfter:
+                description: |-
+                  How long a failed or expired claim is kept before it is withdrawn and a fresh claim is
+                  issued, when onFailure is Retry. Defaults to 15 minutes.
+                type: string
+                x-kubernetes-validations:
+                - message: must be a positive duration
+                  rule: duration(self) > duration('0s')
+              selectorVocabulary:
+                description: |-
+                  The selector terms the provider understands. A placement policy whose unfulfilled cluster
+                  selector uses a key, value, or property outside this vocabulary gets no cluster claim for
+                  that selector; the policy reports why. When left unset, no selector term is claimable except
+                  a selector with no terms at all.
+                properties:
+                  labelKeys:
+                    description: |-
+                      The label keys a cluster selector may match on, each optionally restricted to a set of
+                      values.
+                    items:
+                      description: |-
+                        LabelKeyRule admits a label key, and optionally only some of its values, into a provider's
+                        vocabulary.
+                      properties:
+                        key:
+                          description: The label key.
+                          maxLength: 317
+                          minLength: 1
+                          type: string
+                        values:
+                          description: The values the provider accepts for the key.
+                            When empty, any value is accepted.
+                          items:
+                            type: string
+                          maxItems: 64
+                          type: array
+                      required:
+                      - key
+                      type: object
+                    maxItems: 64
+                    type: array
+                  propertyKeys:
+                    description: |-
+                      The cluster property keys a cluster selector may use in a property expression, each
+                      optionally bounded.
+                    items:
+                      description: |-
+                        PropertyKeyRule admits a cluster property key, optionally within bounds, into a provider's
+                        vocabulary.
+                      properties:
+                        key:
+                          description: |-
+                            The property key, e.g. kubernetes-fleet.io/node-count or
+                            resources.kubernetes-fleet.io/allocatable-cpu.
+                          maxLength: 317
+                          minLength: 1
+                          type: string
+                        max:
+                          description: The largest value, as a Kubernetes quantity,
+                            the provider can deliver for the property.
+                          type: string
+                        min:
+                          description: The smallest value, as a Kubernetes quantity,
+                            the provider can deliver for the property.
+                          type: string
+                      required:
+                      - key
+                      type: object
+                    maxItems: 64
+                    type: array
+                type: object
+            required:
+            - provisionerName
+            type: object
+            x-kubernetes-validations:
+            - message: the provisionerName field is immutable
+              rule: self.provisionerName == oldSelf.provisionerName
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources: {}
