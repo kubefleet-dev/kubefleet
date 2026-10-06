@@ -154,6 +154,18 @@ func policyRefOf(obj client.Object) *kfplacementv1alpha1.ObjectReference {
 	return claim.Spec.PlacementPolicyRef
 }
 
+// mapClassToPlacementPolicies enqueues every PlacementPolicy on a cluster provider class event.
+// A class change (its vocabulary, its approval mode, which class is the default) can affect any
+// policy that names it or names none, and classes change rarely.
+func (r *Reconciler) mapClassToPlacementPolicies(ctx context.Context, obj client.Object) []reconcile.Request {
+	return r.mapMemberClusterToPlacementPolicies(ctx, obj)
+}
+
+// mapClassToClusterPlacementPolicies is mapClassToPlacementPolicies for ClusterPlacementPolicy.
+func (r *Reconciler) mapClassToClusterPlacementPolicies(ctx context.Context, obj client.Object) []reconcile.Request {
+	return r.mapMemberClusterToClusterPlacementPolicies(ctx, obj)
+}
+
 // mapMemberClusterToClusterPlacementPolicies enqueues every ClusterPlacementPolicy on a member
 // cluster event.
 func (r *Reconciler) mapMemberClusterToClusterPlacementPolicies(ctx context.Context, _ client.Object) []reconcile.Request {
