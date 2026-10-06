@@ -118,9 +118,56 @@ package demonstrating the current behavior.
   admitted keys. A comparison is judged by whether some value within the
   class's bounds satisfies it, since its value is a threshold rather than the
   cluster delivered -- `Le 200` under a max of 100 is claimable, `Gt 100` is
-  not. A class with no vocabulary admits only a selector with no terms. The
-  per-fleet concurrency limit remains a config surface for the terminal-state
-  unit.
+  not. A class with no vocabulary admits only a selector with no terms.
+- **A terminal claim is the record of what happened.** `Completed=False/Failed`
+  (the provider gave up), `Expired=True` (this controller timed it out), or
+  `Approved=False/Denied` (an approver said no) keeps its name and its
+  per-policy slot, is never written to again, and is named in the `Scheduled`
+  message as held; `desiredClaims` cannot re-create it while it stands. It
+  leaves the way any claim does -- the selector is satisfied by other
+  clusters, or its terms or class change -- or, for a class with
+  `onFailure: Retry`, is withdrawn `retryAfter` after it became terminal so a
+  fresh claim is issued. Two records are held even under `Retry`: a denial,
+  since a human said no, and a `NotMatching` expiry, since its cluster is a
+  member in its own right that nobody deprovisions, so retrying would
+  provision another cluster every `retryAfter` for as long as the mismatch
+  lasts (relabelling the cluster onto the selector rotates it instead). A
+  `JoinTimeout` record whose cluster joins late is rotated like a completed
+  claim: it did its job. Every reconcile that holds a record raises a
+  `ClusterClaimHeld` warning naming it, and every expiry this controller
+  stamps raises `ClusterClaimExpired`; a provider's `Failed` and an
+  approver's `Denied` are their transitions to announce.
+- **Expiry is judged by the class's timers, on the periodic requeue and
+  exactly at the deadline.** `PendingTimeout` fires `pendingClaimTTL` after
+  `Approved=True` when neither `Accepted` nor the provider's finalizer
+  appeared -- the finalizer alone counts, since it is the first of the
+  provider's two acceptance writes. `JoinTimeout` fires `joinTimeout` after
+  `Completed=True` when the provisioned cluster is not eligible now;
+  `NotMatching` when it is eligible but not counted for the selector (its
+  taints, or a term it fails -- the message says which). An unapproved claim
+  never expires. The stamp is a resourceVersion-conditional status update, so
+  a provider's acceptance landing first makes it conflict and the next pass
+  re-judges. Timers are judged only with a resolved class that still admits
+  the claim's terms; a claim held through a vanished class or a narrowed
+  vocabulary waits. A reconcile that finds a running timer requeues for its
+  deadline rather than the periodic interval.
+- **Two concurrency limits, the smaller wins.** The policy's own
+  `spec.maxConcurrentClusterClaims` (default 1; it only matters to a policy
+  with several selectors, since a claim's identity is the selector) and the
+  fleet-wide limit from `WithMaxConcurrentClusterClaims` (default 1) bound how
+  many claims a policy has outstanding, in any state -- terminal and
+  unapproved claims occupy per-policy slots too. The limits apply when a
+  claim is issued, never to what is wanted: a claim in flight for a later
+  selector is kept while an earlier selector waits for a slot. The fleet-wide limit counts,
+  from an uncached list, the claims across the fleet that are approved or of
+  an `Automatic` class and neither terminal nor being withdrawn; the count
+  and the create (with its approval stamp) run under one mutex shared by the
+  two controllers, so in one leader-elected hub agent the limit is exact for
+  `Automatic` classes. For `Manual` classes it bounds issuance only: an
+  approver may approve several outstanding claims at once, and the
+  provider's own concurrency limit is the backstop. A policy held at the
+  fleet-wide limit says so in its `Scheduled` message and is re-enqueued
+  when any claim leaves the active set.
 - **The class and the vocabulary gate issuing, never keeping.** A claim that
   is outstanding stays wanted while its selector is unfulfilled and its terms
   unchanged, even if the policy resolves to no class for the moment (the class
@@ -192,6 +239,6 @@ Releasing the claim-cleanup finalizer is gated on an uncached list of ALL
 cluster claims, filtered by each claim's immutable `spec.placementPolicyRef`
 -- the ownership labels are mutable, and a label-stripped claim vanishing
 from a label-selected list would be orphaned permanently. This trades a
-full-collection read per deleting policy for that guarantee; cheap while the
-per-policy claim budget is 1, worth revisiting together with the
-configurable concurrency limits.
+full-collection read per deleting policy for that guarantee, and the
+fleet-wide limit takes the same read per issued claim; both are cheap at the
+claim volumes the limits allow.
