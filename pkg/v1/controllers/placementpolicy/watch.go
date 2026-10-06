@@ -154,6 +154,42 @@ func policyRefOf(obj client.Object) *kfplacementv1alpha1.ObjectReference {
 	return claim.Spec.PlacementPolicyRef
 }
 
+// mapToAllPlacementPolicies enqueues every PlacementPolicy on a cluster provider class event, and
+// on a cluster claim freeing a fleet-wide slot. A class change (its vocabulary, its approval mode,
+// which class is the default) can affect any policy that names it or names none, and classes
+// change rarely; a freed slot can be taken by any policy waiting on the fleet-wide limit, and
+// claims leave the active set rarely too.
+func (r *Reconciler) mapToAllPlacementPolicies(ctx context.Context, obj client.Object) []reconcile.Request {
+	return r.mapMemberClusterToPlacementPolicies(ctx, obj)
+}
+
+// mapToAllClusterPlacementPolicies is mapToAllPlacementPolicies for ClusterPlacementPolicy.
+func (r *Reconciler) mapToAllClusterPlacementPolicies(ctx context.Context, obj client.Object) []reconcile.Request {
+	return r.mapMemberClusterToClusterPlacementPolicies(ctx, obj)
+}
+
+// claimFreesFleetSlot admits the claim events after which a policy waiting on the fleet-wide
+// limit may issue: a claim gone, or one that left the active set by being withdrawn or becoming
+// terminal. The claim's own policy is enqueued by the owner mapper for every event regardless.
+func claimFreesFleetSlot() predicate.Funcs {
+	leftActiveSet := func(claim *kfplacementv1alpha1.ClusterClaim) bool {
+		return !claim.DeletionTimestamp.IsZero() || terminalCondition(claim) != nil
+	}
+	return predicate.Funcs{
+		CreateFunc: func(event.CreateEvent) bool { return false },
+		DeleteFunc: func(event.DeleteEvent) bool { return true },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldClaim, oldOK := e.ObjectOld.(*kfplacementv1alpha1.ClusterClaim)
+			newClaim, newOK := e.ObjectNew.(*kfplacementv1alpha1.ClusterClaim)
+			if !oldOK || !newOK {
+				return true
+			}
+			return !leftActiveSet(oldClaim) && leftActiveSet(newClaim)
+		},
+		GenericFunc: func(event.GenericEvent) bool { return false },
+	}
+}
+
 // mapMemberClusterToClusterPlacementPolicies enqueues every ClusterPlacementPolicy on a member
 // cluster event.
 func (r *Reconciler) mapMemberClusterToClusterPlacementPolicies(ctx context.Context, _ client.Object) []reconcile.Request {

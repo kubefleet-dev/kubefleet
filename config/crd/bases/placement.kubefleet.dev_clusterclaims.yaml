@@ -45,6 +45,16 @@ spec:
           spec:
             description: The specification of the cluster claim.
             properties:
+              clusterProviderClassName:
+                description: |-
+                  The name of the ClusterProviderClass whose provider should fulfill this claim. KubeFleet sets
+                  it when it issues the claim, from the placement policy's class or the fleet's default class;
+                  providers use it to recognize the claims meant for them.
+
+                  This field is immutable once set.
+                maxLength: 253
+                minLength: 1
+                type: string
               clusterSelectorTerms:
                 description: |-
                   The cluster selector terms that describe the requirements for a new member cluster.
@@ -224,6 +234,9 @@ spec:
             - message: the clusterSelectorTerms field cannot be added or removed after
                 creation
               rule: has(self.clusterSelectorTerms) == has(oldSelf.clusterSelectorTerms)
+            - message: the clusterProviderClassName field is immutable once set
+              rule: '!has(oldSelf.clusterProviderClassName) || (has(self.clusterProviderClassName)
+                && self.clusterProviderClassName == oldSelf.clusterProviderClassName)'
           status:
             description: The observed status of the cluster claim.
             properties:
@@ -283,11 +296,19 @@ spec:
                   - status
                   - type
                   type: object
+                maxItems: 16
                 type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
               lastObservedMostRecentClusterCreationTimestamp:
                 description: |-
-                  The last observed most recent creation timestamp across all the member clusters. This field is used
-                  as an expedient solution to verify if a cluster claim is still valid for consideration, i.e.,
+                  The last observed most recent creation timestamp across all the member clusters (FEP-0001 calls this
+                  field LatestObservedClusterCreationTimestamp). It is unset while KubeFleet has not stamped it yet, or
+                  when the claim was issued into a fleet with no member clusters; in both cases there is nothing for
+                  the claim to be stale against.
+
+                  This field is used as an expedient solution to verify if a cluster claim is still valid for consideration, i.e.,
                   if the currently observed most recent cluster creation timestamp is later than this timestamp in the
                   status, a new member cluster must have been created after the cluster claim was created,
                   and thus the cluster claim should be considered stale and can be ignored. The placement policy
@@ -310,6 +331,26 @@ spec:
                   the different, freshly created claim that has taken its name.
                 type: string
             type: object
+            x-kubernetes-validations:
+            - message: provisionedClusterName must be set when the Completed condition
+                is True
+              rule: '!has(self.conditions) || !self.conditions.exists(c, c.type ==
+                ''Completed'' && c.status == ''True'') || (has(self.provisionedClusterName)
+                && size(self.provisionedClusterName) > 0)'
+            - message: a fulfilled cluster claim cannot be marked as not completed
+              rule: '!has(oldSelf.conditions) || !oldSelf.conditions.exists(c, c.type
+                == ''Completed'' && c.status == ''True'') || (has(self.conditions)
+                && self.conditions.exists(c, c.type == ''Completed'' && c.status ==
+                ''True''))'
+            - message: a failed cluster claim cannot be marked as anything else
+              rule: '!has(oldSelf.conditions) || !oldSelf.conditions.exists(c, c.type
+                == ''Completed'' && c.status == ''False'' && c.reason == ''Failed'')
+                || (has(self.conditions) && self.conditions.exists(c, c.type == ''Completed''
+                && c.status == ''False'' && c.reason == ''Failed''))'
+            - message: an expired cluster claim cannot be marked as not expired
+              rule: '!has(oldSelf.conditions) || !oldSelf.conditions.exists(c, c.type
+                == ''Expired'' && c.status == ''True'') || (has(self.conditions) &&
+                self.conditions.exists(c, c.type == ''Expired'' && c.status == ''True''))'
         required:
         - spec
         type: object
