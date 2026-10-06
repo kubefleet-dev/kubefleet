@@ -18,22 +18,19 @@ package placementpolicy
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"slices"
-	"strings"
 
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/naming"
 )
 
 const (
@@ -49,48 +46,12 @@ const (
 	// claimNameBaseMaxLength bounds the policy-name prefix inside a generated claim name so
 	// the full name stays well within the 253-character object name limit.
 	claimNameBaseMaxLength = 200
-
-	// nameHashLength is the number of hexadecimal characters of the name hash carried by
-	// generated names. Sixteen characters (64 bits) keep collisions out of reach even for a
-	// deliberate search, which matters because two policies whose names collide would select
-	// each other's claims.
-	nameHashLength = 16
-
-	// labelValuePrefixMaxLength bounds the policy-name prefix inside the ownership label value.
-	// Object names may be up to 253 characters while label values are capped at 63, so longer
-	// names are shortened to this prefix plus a dash and the name hash.
-	labelValuePrefixMaxLength = validation.LabelValueMaxLength - nameHashLength - 1
 )
-
-// policyNameLabelValue renders a policy name as a valid label value: names that already fit are
-// used as they are, and longer ones are shortened to a prefix plus a hash of the full name, so
-// that two policies whose names share a prefix still select distinct claims.
-func policyNameLabelValue(name string) string {
-	if len(name) <= validation.LabelValueMaxLength {
-		return name
-	}
-	// Trim any trailing separators the truncation may have exposed; a label value must start
-	// and end with an alphanumeric character. Object names always start with an alphanumeric
-	// character, so the trimmed prefix can never become empty.
-	return fmt.Sprintf("%s-%s", trimNameSeparators(name[:labelValuePrefixMaxLength]), hashOf(name))
-}
-
-// hashOf returns a short, collision-resistant hash of a string.
-func hashOf(s string) string {
-	sum := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(sum[:])[:nameHashLength]
-}
-
-// trimNameSeparators removes the separator characters a truncation may have left at the end of
-// an object name fragment, so that appending a dash cannot produce an invalid name.
-func trimNameSeparators(fragment string) string {
-	return strings.TrimRight(fragment, "-_.")
-}
 
 // claimOwnershipLabels returns the labels that select the claims of a policy.
 func claimOwnershipLabels(policy kfplacementv1alpha1.PlacementPolicyAccessor) client.MatchingLabels {
 	return client.MatchingLabels{
-		kfplacementv1alpha1.ClusterClaimPlacementPolicyNameLabel:      policyNameLabelValue(policy.GetName()),
+		kfplacementv1alpha1.ClusterClaimPlacementPolicyNameLabel:      naming.LabelValue(policy.GetName()),
 		kfplacementv1alpha1.ClusterClaimPlacementPolicyNamespaceLabel: policy.GetNamespace(),
 	}
 }
@@ -101,13 +62,8 @@ func claimOwnershipLabels(policy kfplacementv1alpha1.PlacementPolicyAccessor) cl
 // namespaces must not collide. Determinism matters: creation is get-or-create, so a restarted
 // reconciler converges on the same claim instead of issuing a duplicate.
 func claimName(policy kfplacementv1alpha1.PlacementPolicyAccessor, selectorIndex int) string {
-	base := policy.GetName()
-	if len(base) > claimNameBaseMaxLength {
-		// Truncation can land on a separator, which would make the generated name start a
-		// label with a dash and fail API validation.
-		base = trimNameSeparators(base[:claimNameBaseMaxLength])
-	}
-	return fmt.Sprintf("%s-%d-%s", base, selectorIndex, hashOf(policy.GetNamespace()+"/"+policy.GetName()))
+	base := naming.Truncate(policy.GetName(), claimNameBaseMaxLength)
+	return fmt.Sprintf("%s-%d-%s", base, selectorIndex, naming.Hash(policy.GetNamespace()+"/"+policy.GetName()))
 }
 
 // desiredClaim describes a claim the policy currently wants outstanding.

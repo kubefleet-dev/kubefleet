@@ -30,6 +30,15 @@ import (
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 )
 
+// eligibilityChecker is the subset of the scheduler's cluster eligibility gate that the
+// placement policy controller depends on. Selector fulfillment is judged against this predicate
+// rather than raw label matching, so that a cluster only counts once it is actually usable for
+// scheduling (member agent online, heartbeating, and joined); taking it as an interface keeps
+// the predicate pluggable and fakeable in tests.
+type eligibilityChecker interface {
+	IsEligible(cluster *clusterv1beta1.MemberCluster) (eligible bool, reason string)
+}
+
 // The Scheduled condition uses the reason constants defined on the API
 // (PlacementPolicyScheduledCondReasonFoundAllClusters and
 // PlacementPolicyScheduledCondReasonFailedToFindSomeClusters), which encode a binary contract:
