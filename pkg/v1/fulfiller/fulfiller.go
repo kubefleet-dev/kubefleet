@@ -33,7 +33,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -133,8 +133,9 @@ type Options struct {
 	// PollInterval is how often an in-progress provision is retried. Defaults to 30 seconds.
 	PollInterval time.Duration
 	// Recorder, when set, receives an event for every acceptance, progress report, fulfillment,
-	// failure, and cleanup problem. The events rule in the framework's RBAC is needed only then.
-	Recorder record.EventRecorder
+	// failure, and cleanup problem; pass the manager's GetEventRecorder. The events rule in the
+	// framework's RBAC is needed only then.
+	Recorder events.EventRecorder
 }
 
 // Reconciler fulfills the cluster claims of one provider.
@@ -147,7 +148,7 @@ type Reconciler struct {
 	provisioner     Provisioner
 	eligibility     *clustereligibilitychecker.ClusterEligibilityChecker
 	pollInterval    time.Duration
-	recorder        record.EventRecorder
+	recorder        events.EventRecorder
 }
 
 const defaultPollInterval = 30 * time.Second

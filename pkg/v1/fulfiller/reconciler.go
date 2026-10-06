@@ -378,6 +378,6 @@ func (r *Reconciler) release(ctx context.Context, claim *kfplacementv1alpha1.Clu
 
 func (r *Reconciler) event(claim *kfplacementv1alpha1.ClusterClaim, eventType, reason, format string, args ...any) {
 	if r.recorder != nil {
-		r.recorder.Eventf(claim, eventType, reason, format, args...)
+		r.recorder.Eventf(claim, nil, eventType, reason, "Fulfill", format, args...)
 	}
 }

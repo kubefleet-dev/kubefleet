@@ -19,6 +19,6 @@ rules:
 - apiGroups: ["cluster.kubernetes-fleet.io"]
   resources: ["memberclusters"]
   verbs: ["get", "list", "watch"]
-- apiGroups: [""]
+- apiGroups: ["", "events.k8s.io"]
   resources: ["events"]
   verbs: ["create", "patch"]
