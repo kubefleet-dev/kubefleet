@@ -181,10 +181,16 @@ rules:
       - placementpolicies
       - clusterplacementpolicies
     verbs: ["get", "list", "watch", "update"]
+  # Policy status takes patch as well as update: the binding manager role lock verifies that
+  # its view of the policy is still fresh with a dry-run status patch whenever it claims,
+  # re-confirms, or relinquishes the role.
   - apiGroups: ["placement.kubefleet.dev"]
     resources:
       - placementpolicies/status
       - clusterplacementpolicies/status
+    verbs: ["update", "patch"]
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources:
       - clusterclaims/status
     verbs: ["update"]
   - apiGroups: ["placement.kubefleet.dev"]
