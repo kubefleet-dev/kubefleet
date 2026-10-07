@@ -168,7 +168,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	resourceSnapshotResolver.Config = controller.NewResourceSnapshotConfig(opts.PlacementMgmtOpts.ResourceSnapshotCreationMinimumInterval, opts.PlacementMgmtOpts.ResourceChangesCollectionDuration)
 	pc := &placement.Reconciler{
 		Client:                   mgr.GetClient(),
-		Recorder:                 mgr.GetEventRecorderFor(placementControllerName),
+		Recorder:                 mgr.GetEventRecorder(placementControllerName),
 		Scheme:                   mgr.GetScheme(),
 		UncachedReader:           mgr.GetAPIReader(),
 		ResourceSelectorResolver: resourceSelectorResolver,
@@ -496,7 +496,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	klog.Info("Setting up resource change controller")
 	rcr := &resourcechange.Reconciler{
 		DynamicClient:               dynamicClient,
-		Recorder:                    mgr.GetEventRecorderFor(resourceChangeControllerName),
+		Recorder:                    mgr.GetEventRecorder(resourceChangeControllerName),
 		RestMapper:                  mgr.GetRESTMapper(),
 		InformerManager:             dynamicInformerManager,
 		PlacementControllerV1Beta1:  clusterResourcePlacementControllerV1Beta1,

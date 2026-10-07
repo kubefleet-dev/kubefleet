@@ -6,11 +6,13 @@ on:
     paths:
       - ".github/workflows/**"
       - ".github/release.yml"
+      - "hack/release/**"
   pull_request:
     branches: [main, "release-*"]
     paths:
       - ".github/workflows/**"
       - ".github/release.yml"
+      - "hack/release/**"
 
 permissions:
   contents: read
@@ -22,7 +24,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
 
@@ -43,3 +45,11 @@ jobs:
 
       - name: Run actionlint
         run: actionlint -color
+
+      # The release scripts live outside the workflow files, so actionlint's
+      # embedded-shell checking does not reach them.
+      - name: Shellcheck the release scripts
+        run: shellcheck hack/release/*.sh hack/release/testdata/gh
+
+      - name: Test the release scripts
+        run: ./hack/release/test-release-scripts.sh

@@ -68,7 +68,7 @@ GOIMPORTS_VER := v0.42.0
 GOIMPORTS_BIN := goimports
 GOIMPORTS := $(abspath $(TOOLS_BIN_DIR)/$(GOIMPORTS_BIN)-$(GOIMPORTS_VER))
 
-GOLANGCI_LINT_VER := v1.64.7
+GOLANGCI_LINT_VER := v2.13.2
 GOLANGCI_LINT_BIN := golangci-lint
 GOLANGCI_LINT := $(abspath $(TOOLS_BIN_DIR)/$(GOLANGCI_LINT_BIN)-$(GOLANGCI_LINT_VER))
 
@@ -87,7 +87,7 @@ GO_INSTALL := ./hack/go-install.sh
 ## --------------------------------------
 
 $(GOLANGCI_LINT):
-	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) github.com/golangci/golangci-lint/cmd/golangci-lint $(GOLANGCI_LINT_BIN) $(GOLANGCI_LINT_VER)
+	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) github.com/golangci/golangci-lint/v2/cmd/golangci-lint $(GOLANGCI_LINT_BIN) $(GOLANGCI_LINT_VER)
 
 $(CONTROLLER_GEN):
 	GOBIN=$(TOOLS_BIN_DIR) $(GO_INSTALL) sigs.k8s.io/controller-tools/cmd/controller-gen $(CONTROLLER_GEN_BIN) $(CONTROLLER_GEN_VER)
@@ -115,11 +115,11 @@ help: ## Display this help
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) ## Run fast linting
-	$(GOLANGCI_LINT) run -v
+	$(GOLANGCI_LINT) run -v --fast-only
 
 .PHONY: lint-full
 lint-full: $(GOLANGCI_LINT) ## Run slower linters to detect possible issues
-	$(GOLANGCI_LINT) run -v --fast=false
+	$(GOLANGCI_LINT) run -v
 
 ## --------------------------------------
 ## Development
@@ -253,8 +253,29 @@ BUILDKIT_VERSION ?= v0.18.1
 # and are pinned by digest as well as tag: a floating reference on a privileged
 # release-path container is a supply-chain risk. The binfmt mirror digest is
 # byte-identical to the upstream docker.io/tonistiigi/binfmt tag it mirrors.
+#
+# qemu-user-static has no manifest list - neither upstream nor on the mirror. It
+# is a single linux/amd64 schema-2 manifest, which is all setup-qemu needs: the
+# QEMU_IMAGE branch runs only when TARGET_ARCH is amd64. Obtain its digest with a
+# request that names a schema-2 or OCI media type (substitute QEMU_VERSION for the
+# tag):
+#
+#   curl -sI -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' \
+#     https://mcr.microsoft.com/v2/mirror/docker/multiarch/qemu-user-static/manifests/7.2.0-1 \
+#     | grep -i docker-content-digest
+#
+# `docker manifest inspect -v` and `docker buildx imagetools inspect` also report
+# the correct digest. What does NOT is a bare `curl -sI` sending no Accept header,
+# or one naming only the manifest-list type: MCR then answers with a deprecated
+# schema-1 `v1+prettyjws` view synthesised on demand from the schema-2 manifest.
+# The digest it advertises is stable, but it is never stored as a manifest
+# revision, so fetching by it returns "manifest unknown" and every pull of a pin
+# taken that way fails - most likely how the previous pin here was produced.
+#
+# Both mirrors carry exactly one tag today, so bumping either version below needs
+# MCR to onboard the new tag first.
 QEMU_VERSION ?= 7.2.0-1
-QEMU_IMAGE ?= mcr.microsoft.com/mirror/docker/multiarch/qemu-user-static:$(QEMU_VERSION)@sha256:cb0dff994856c640b6080bfbd5983352e7856221a989625ea3e232cb7eff4507
+QEMU_IMAGE ?= mcr.microsoft.com/mirror/docker/multiarch/qemu-user-static:$(QEMU_VERSION)@sha256:fe60359c92e86a43cc87b3d906006245f77bfc0565676b80004cc666e4feb9f0
 BINFMT_VERSION ?= qemu-v9.2.2-52
 BINFMT_IMAGE ?= mcr.microsoft.com/mirror/docker/tonistiigi/binfmt:$(BINFMT_VERSION)@sha256:1b804311fe87047a4c96d38b4b3ef6f62fca8cd125265917a9e3dc3c996c39e6
 
@@ -302,9 +323,9 @@ crd-package: ## Package the raw CRDs into a release tarball with a SHA-256 check
 	@echo "Packaged CRDs into $(CRD_PACKAGE_DIR)/$(CRD_PACKAGE_NAME).tgz"
 
 .PHONY: crd-verify
-crd-verify: ## Verify the chart CRD directories cover every CRD in config/crd/bases; note (chenyu1): kubefleet.dev CRDs are ignored for now until the implementation is completed.
+crd-verify: ## Verify the chart CRD directories cover every CRD in config/crd/bases; note (chenyu1): placement.kubefleet.dev and rollout.kubefleet.dev CRDs are ignored for now until the implementation is completed.
 	@bases="$$(mktemp)"; charts="$$(mktemp)"; \
-	ls config/crd/bases/ | grep -v '^placement\.kubefleet\.dev' | sort > "$$bases"; \
+	ls config/crd/bases/ | grep -Ev '^(placement|rollout)\.kubefleet\.dev' | sort > "$$bases"; \
 	{ ls charts/hub-agent/templates/crds/; ls charts/member-agent/templates/crds/; } | sort > "$$charts"; \
 	missing="$$(comm -3 "$$bases" "$$charts")"; \
 	rm -f "$$bases" "$$charts"; \
