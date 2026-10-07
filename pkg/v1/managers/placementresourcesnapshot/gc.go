@@ -141,8 +141,7 @@ func (m *Manager) garbageCollect(ctx context.Context, snapshotGCRequest snapshot
 		return errors.Wraps(err, "failed to check if the placement resource snapshot is in use by any placement bindings")
 	}
 	if inUse {
-		// The snapshot will be left alone for now; next GC attempt will happen when a new snapshot is being
-		// created.
+		// The snapshot will be left alone for now; the manager will check again at the next GC attempt.
 		klog.V(2).InfoS("The placement resource snapshot is still in use by some placement bindings; skipping garbage collection",
 			"snapshotGarbageCollectionRequest", snapshotGCRequest)
 		return nil

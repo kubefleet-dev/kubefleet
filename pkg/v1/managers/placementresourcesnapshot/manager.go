@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package placementresourcesnapshot provides the manager for handling placement resource snapshots in KubeFleet.
 package placementresourcesnapshot
 
 import (
@@ -88,6 +89,15 @@ func New(mgr ctrl.Manager,
 			"manager", managerName, "limit", minSlotCnt, "actual", muSlotCnt)
 	}
 
+	if maxPerSnapshotResourceDataSizeBytes < MinPerSnapshotResourceDataSizeBytes || maxPerSnapshotResourceDataSizeBytes > MaxPerSnapshotResourceDataSizeBytes {
+		return nil, errors.NewUserError(nil, "an inappropriate max per snapshot resource data size is set",
+			"manager", managerName, "limitRange", fmt.Sprintf("%d~%d", MinPerSnapshotResourceDataSizeBytes, MaxPerSnapshotResourceDataSizeBytes), "actual", maxPerSnapshotResourceDataSizeBytes)
+	}
+	if maxPerSnapshotResourceCnt < MinPerSnapshotResourceCnt || maxPerSnapshotResourceCnt > MaxPerSnapshotResourceCnt {
+		return nil, errors.NewUserError(nil, "an inappropriate max per snapshot resource count is set",
+			"manager", managerName, "limitRange", fmt.Sprintf("%d~%d", MinPerSnapshotResourceCnt, MaxPerSnapshotResourceCnt), "actual", maxPerSnapshotResourceCnt)
+	}
+
 	// Set up the resource snapshot GC workqueue.
 	//
 	// The work queue uses an exponential backoff rate limiter (power of 2, starting at 1 second and capped
@@ -145,6 +155,12 @@ func (m *Manager) Start(ctx context.Context) error {
 				wrappedErr := errors.Wraps(err, "", "snapshotGarbageCollectionRequest", snapshotGCRequest)
 				klog.ErrorS(wrappedErr, "Failed to garbage collect placement resource snapshot", errors.Args(wrappedErr)...)
 				m.gcwq.Done(snapshotGCRequest)
+
+				// No need to requeue if the manager sees an unexpected error.
+				if errors.Category(err) == errors.ErrCategoryUnexpected {
+					m.gcwq.Forget(snapshotGCRequest)
+					continue
+				}
 				m.gcwq.AddRateLimited(snapshotGCRequest)
 				continue
 			}

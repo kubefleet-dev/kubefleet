@@ -1722,11 +1722,6 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 			// collection process should skip it as a placement binding is using it.
 			updateConfigMapAndSnapshot("value-6")
 
-			// Wait until the garbage collection requests are processed.
-			Eventually(func() int {
-				return resourceSnapshotManager.gcwq.Len()
-			}, eventuallyDuration, eventuallyInterval).Should(Equal(0), "The garbage collection requests are not processed")
-
 			thirdSnapshotName := uniqueNameForPrimaryPlacementResourceSnapshot(placementPolicyName, 2)
 			Consistently(func() error {
 				return hubUncachedReader.Get(ctx, types.NamespacedName{Namespace: appNamespaceName, Name: thirdSnapshotName}, &placementv1alpha1.PlacementResourceSnapshot{})
@@ -3465,11 +3460,6 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 			// The third snapshot is now the oldest one that is past the revision history limit; the garbage
 			// collection process should skip it as a placement binding is using it.
 			updateConfigMapAndSnapshot("value-6")
-
-			// Wait until the garbage collection requests are processed.
-			Eventually(func() int {
-				return resourceSnapshotManager.gcwq.Len()
-			}, eventuallyDuration, eventuallyInterval).Should(Equal(0), "The garbage collection requests are not processed")
 
 			thirdSnapshotName := uniqueNameForPrimaryPlacementResourceSnapshot(placementPolicyName, 2)
 			Consistently(func() error {

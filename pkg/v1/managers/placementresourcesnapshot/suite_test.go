@@ -139,7 +139,7 @@ var _ = BeforeSuite(func() {
 
 	By("Setting up the field indexes")
 	// The indexes must be set up before the manager starts.
-	Expect(fieldindexers.SetupWithHubControllerManager(ctx, hubMgr)).To(Succeed())
+	Expect(fieldindexers.SetupWithHubAgentControllerManager(ctx, hubMgr)).To(Succeed())
 
 	By("Setting up the placement resource snapshot manager")
 	hubDynamicClient, err := dynamic.NewForConfig(hubCfg)

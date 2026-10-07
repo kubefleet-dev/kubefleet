@@ -46,6 +46,12 @@ const (
 	// the placement resource snapshot object, such as metadata and labels.
 	DefaultMaxPerSnapshotResourceDataSizeBytes = 1258291 // 1.2 MiB, or ~1.26 MB.
 	DefaultMaxPerSnapshotResourceCnt           = 50
+
+	// The minimum and maximum limits for the size and count of resources in a single placement resource snapshot.
+	MinPerSnapshotResourceDataSizeBytes = 2000 // 2 KB.
+	MinPerSnapshotResourceCnt           = 2
+	MaxPerSnapshotResourceDataSizeBytes = 1468000 // 1.4 MiB, or ~1.47 MB.
+	MaxPerSnapshotResourceCnt           = 100
 )
 
 const (
