@@ -160,7 +160,7 @@ rules:
     verbs: ["get", "list", "watch", "create"]
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
-    resourceNames: ["136224848560.hub.fleet.azure.com"]
+    resourceNames: ["hub.kubefleet.io"]
     verbs: ["update", "patch"]
 
   # Events for controller recording. The controllers use the events.k8s.io
