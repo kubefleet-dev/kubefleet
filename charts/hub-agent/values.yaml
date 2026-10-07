@@ -48,6 +48,13 @@ affinity: {}
 enableClusterInventoryAPI: true
 enableStagedUpdateRunAPIs: true
 enableEvictionAPIs: true
+# The experimental FEP-0001 placement policy APIs (placement.kubefleet.dev/v1alpha1). Off by
+# default; their CRDs are installed either way.
+enablePlacementPolicyAPIs: false
+# The fleet-wide number of cluster claims that may be outstanding at once under the placement
+# policy APIs, counting claims that are approved or belong to a class that approves
+# automatically; see --max-concurrent-cluster-claims.
+maxConcurrentClusterClaims: 1
 
 enablePprof: true
 pprofPort: 6065

@@ -109,6 +109,8 @@ _See [helm install](https://helm.sh/docs/helm/helm_install/) for command documen
 | `enableClusterInventoryAPI` | Enable cluster inventory APIs | `true` |
 | `enableStagedUpdateRunAPIs` | Enable staged update run APIs | `true` |
 | `enableEvictionAPIs` | Enable eviction APIs | `true` |
+| `enablePlacementPolicyAPIs` | Enable the experimental FEP-0001 placement policy APIs (`placement.kubefleet.dev/v1alpha1`) | `false` |
+| `maxConcurrentClusterClaims` | Fleet-wide number of cluster claims that may be outstanding at once under the placement policy APIs (approved, or of a class that approves automatically) | `1` |
 | `enablePprof` | Enable pprof endpoint | `true` |
 | `pprofPort` | pprof server port | `6065` |
 | `hubAPIQPS` | QPS for fleet-apiserver (not including events/node heartbeat) | `250` |

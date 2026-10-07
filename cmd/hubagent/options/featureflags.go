@@ -46,6 +46,11 @@ type FeatureFlags struct {
 	// with minimal disruptions.
 	EnableEvictionAPIs bool
 
+	// Enable the FEP-0001 placement policy APIs (placement.kubefleet.dev/v1alpha1) in the KubeFleet
+	// hub agent or not: the PlacementPolicy and ClusterPlacementPolicy controllers, the cluster
+	// claims they issue, and the bindings they create. Experimental; off by default.
+	EnablePlacementPolicyAPIs bool
+
 	// Enable the ResourcePlacement API support in the KubeFleet hub agent or not.
 	//
 	// ResourcePlacement APIs are a set of KubeFleet APIs for processing namespace scoped resource placements.
@@ -66,6 +71,13 @@ func (o *FeatureFlags) AddFlags(flags *flag.FlagSet) {
 		"enable-cluster-inventory-apis",
 		true,
 		"Enable the ClusterInventory API support in the KubeFleet hub agent or not.",
+	)
+
+	flags.BoolVar(
+		&o.EnablePlacementPolicyAPIs,
+		"enable-placement-policy-apis",
+		false,
+		"Enable the experimental FEP-0001 placement policy APIs (placement.kubefleet.dev/v1alpha1) in the KubeFleet hub agent or not.",
 	)
 
 	flags.BoolVar(

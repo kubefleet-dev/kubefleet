@@ -171,6 +171,46 @@ rules:
     resources: ["events"]
     verbs: ["create", "patch"]
 
+  {{- if .Values.enablePlacementPolicyAPIs }}
+  # The experimental FEP-0001 placement policy APIs. The hub agent issues and withdraws cluster
+  # claims (create/delete), stamps their status (the automatic approval and expiry), holds the
+  # approve verb that the claim approval admission policy gates the Approved condition on, reads
+  # cluster provider classes, and manages the bindings and resource snapshots of its policies.
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources:
+      - placementpolicies
+      - clusterplacementpolicies
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources:
+      - placementpolicies/status
+      - clusterplacementpolicies/status
+      - clusterclaims/status
+    verbs: ["update"]
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources:
+      - clusterclaims
+    verbs: ["get", "list", "watch", "create", "update", "delete", "approve"]
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources:
+      - clusterproviderclasses
+    verbs: ["get", "list", "watch"]
+  # Bindings are created, updated and deleted; resource snapshots are created and deleted.
+  # Bindings carry a controller reference to their policy with blockOwnerDeletion, which a hub
+  # running the OwnerReferencesPermissionEnforcement admission plugin would additionally gate on
+  # update of the policies' finalizers subresource.
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources:
+      - placementbindings
+      - clusterplacementbindings
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources:
+      - placementresourcesnapshots
+      - clusterplacementresourcesnapshots
+    verbs: ["get", "list", "watch", "create", "delete"]
+  {{- end }}
+
   # CRD discovery for resource change detection.
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
