@@ -17,6 +17,7 @@ limitations under the License.
 package e2e
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -225,7 +226,28 @@ var _ = Describe("cluster claim fulfillment", Label("custom"), Ordered, Serial, 
 		}
 	})
 
+	// dumpState attaches the policies, claims, provisioned clusters, and bindings to the report of a
+	// failed spec, since the hub agent's leader log is not among the artifacts CI collects.
+	dumpState := func() {
+		if !CurrentSpecReport().Failed() {
+			return
+		}
+		for _, list := range []client.ObjectList{
+			&kfplacementv1alpha1.PlacementPolicyList{}, &kfplacementv1alpha1.ClusterClaimList{},
+			&kfplacementv1alpha1.PlacementBindingList{}, &clusterv1beta1.MemberClusterList{},
+			&kfplacementv1alpha1.ClusterProviderClassList{},
+		} {
+			if err := hubClient.List(ctx, list); err != nil {
+				AddReportEntry(fmt.Sprintf("%T", list), err.Error())
+				continue
+			}
+			raw, _ := json.MarshalIndent(list, "", "  ")
+			AddReportEntry(fmt.Sprintf("%T", list), string(raw))
+		}
+	}
+
 	AfterEach(func() {
+		dumpState()
 		referenceProvider.SetBehaviour(reference.Fulfill)
 		policies := &kfplacementv1alpha1.PlacementPolicyList{}
 		Expect(hubClient.List(ctx, policies, client.InNamespace(claimFulfillmentNS))).Should(Succeed())
