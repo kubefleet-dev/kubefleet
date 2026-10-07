@@ -298,13 +298,13 @@ claim volumes the limits allow.
 
 The placement policy controllers run behind `--enable-placement-policy-apis`
 (chart value `enablePlacementPolicyAPIs`), which also requires the v1beta1
-APIs. With the flag on, the hub agent checks that the `placement.kubefleet.dev`
-CRDs it serves are installed, builds the placement resource snapshot manager,
-and registers the `PlacementPolicy` and `ClusterPlacementPolicy` reconcilers
-with the fleet-wide claim limit from `--max-concurrent-cluster-claims` (chart
-value `maxConcurrentClusterClaims`, default 1). The chart ships all nine CRDs
-of the group, `Work` included, so that the group is whole on the hub even
-though eight are checked and nothing in the hub agent serves `Work` yet.
+APIs. With the flag on, the hub agent checks that all nine `placement.kubefleet.dev`
+CRDs are installed, registers the hub field indexes (the snapshot manager lists
+snapshots through them, and they also index `Work`, which is why `Work` is in
+the check), builds the placement resource snapshot manager, and registers the
+`PlacementPolicy` and `ClusterPlacementPolicy` reconcilers with the fleet-wide
+claim limit from `--max-concurrent-cluster-claims` (chart value
+`maxConcurrentClusterClaims`, default 1).
 
 The chart's RBAC for the group is conditional on the same value and includes
 the `approve` verb on `clusterclaims`, which the claim approval admission

@@ -62,6 +62,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/placementpolicy"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/managers/placementresourcesnapshot"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/fieldindexers"
 )
 
 const (
@@ -113,6 +114,8 @@ var (
 		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.ClusterPlacementBindingKind),
 		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.PlacementResourceSnapshotKind),
 		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.ClusterPlacementResourceSnapshotKind),
+		// The hub field indexes start a Work informer, so the CRD must be present.
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.WorkKind),
 	}
 
 	clusterStagedUpdateRunGVKs = []schema.GroupVersionKind{
@@ -310,6 +313,12 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 				}
 			}
 			klog.Info("Setting up the placement policy controllers")
+			// The snapshot manager lists snapshots through cache field indexes, which must exist
+			// before the manager starts.
+			if err := fieldindexers.SetupWithHubAgentControllerManager(ctx, mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up the field indexes for the placement policy controllers")
+				return err
+			}
 			snapshots, snapshotErr := placementresourcesnapshot.New(mgr, dynamicClient, dynamicInformerManager, mgr.GetRESTMapper(), placementResourceSnapshotSlots)
 			if snapshotErr != nil {
 				klog.ErrorS(snapshotErr, "Unable to set up the placement resource snapshot manager")
