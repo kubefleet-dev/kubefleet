@@ -342,9 +342,21 @@ spec:
               rule: '!has(oldSelf.conditions) || !oldSelf.conditions.exists(c, c.type
                 == ''Expired'' && c.status == ''True'') || (has(self.conditions) &&
                 self.conditions.exists(c, c.type == ''Expired'' && c.status == ''True''))'
+            - message: the Completed condition must carry the Fulfilled reason when
+                True
+              rule: '!has(self.conditions) || !self.conditions.exists(c, c.type ==
+                ''Completed'' && c.status == ''True'' && c.reason != ''Fulfilled'')'
+            - message: the Expired condition must carry the PendingTimeout, JoinTimeout,
+                or NotMatching reason when True
+              rule: '!has(self.conditions) || !self.conditions.exists(c, c.type ==
+                ''Expired'' && c.status == ''True'' && !(c.reason in [''PendingTimeout'',
+                ''JoinTimeout'', ''NotMatching'']))'
         required:
         - spec
         type: object
+        x-kubernetes-validations:
+        - message: the status of a cluster claim cannot be removed
+          rule: '!has(oldSelf.status) || has(self.status)'
     served: true
     storage: true
     subresources:

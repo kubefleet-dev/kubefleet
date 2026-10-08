@@ -24,7 +24,10 @@ import (
 const (
 	// ClusterClaimCondTypeApproved is set by an approver (or by KubeFleet itself, when the claim's
 	// class approves automatically). No provider may act on a claim before it is True. False with
-	// the Denied reason is terminal.
+	// the Denied reason is not pinned: an approver may still approve a claim it denied. Who may
+	// change this condition is gated on the RBAC approve verb only when the hub agent's admission
+	// policy manager enables restrictClusterClaimApproval; without it, anyone who can update the
+	// claim's status can approve it.
 	ClusterClaimCondTypeApproved = "Approved"
 	// ClusterClaimCondTypeAccepted is set by the provider that has taken the claim, together with
 	// its finalizer; its transition time starts the clock on the class's maxProvisionDuration.
@@ -65,6 +68,7 @@ const (
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,categories={kubefleet, kubefleet-placement}
 // +kubebuilder:storageversion
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.status) || has(self.status)",message="the status of a cluster claim cannot be removed"
 type ClusterClaim struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -116,12 +120,16 @@ type ClusterClaimSpec struct {
 // Terminal states are pinned: a fulfilled claim cannot be marked as not completed, a failed one
 // cannot be marked as anything else, and an expired one stays expired. A fulfilled claim must name
 // its cluster. Denied is deliberately not pinned, so that an approver may still approve a claim it
-// denied.
+// denied. The terminal tuples are fixed: Completed=True must carry the Fulfilled reason, and
+// Expired=True one of the Expired reasons. Removing the status object altogether is rejected on
+// the ClusterClaim itself, since these rules only run while it exists.
 //
 // +kubebuilder:validation:XValidation:rule="!has(self.conditions) || !self.conditions.exists(c, c.type == 'Completed' && c.status == 'True') || (has(self.provisionedClusterName) && size(self.provisionedClusterName) > 0)",message="provisionedClusterName must be set when the Completed condition is True"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.conditions) || !oldSelf.conditions.exists(c, c.type == 'Completed' && c.status == 'True') || (has(self.conditions) && self.conditions.exists(c, c.type == 'Completed' && c.status == 'True'))",message="a fulfilled cluster claim cannot be marked as not completed"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.conditions) || !oldSelf.conditions.exists(c, c.type == 'Completed' && c.status == 'False' && c.reason == 'Failed') || (has(self.conditions) && self.conditions.exists(c, c.type == 'Completed' && c.status == 'False' && c.reason == 'Failed'))",message="a failed cluster claim cannot be marked as anything else"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.conditions) || !oldSelf.conditions.exists(c, c.type == 'Expired' && c.status == 'True') || (has(self.conditions) && self.conditions.exists(c, c.type == 'Expired' && c.status == 'True'))",message="an expired cluster claim cannot be marked as not expired"
+// +kubebuilder:validation:XValidation:rule="!has(self.conditions) || !self.conditions.exists(c, c.type == 'Completed' && c.status == 'True' && c.reason != 'Fulfilled')",message="the Completed condition must carry the Fulfilled reason when True"
+// +kubebuilder:validation:XValidation:rule="!has(self.conditions) || !self.conditions.exists(c, c.type == 'Expired' && c.status == 'True' && !(c.reason in ['PendingTimeout', 'JoinTimeout', 'NotMatching']))",message="the Expired condition must carry the PendingTimeout, JoinTimeout, or NotMatching reason when True"
 type ClusterClaimStatus struct {
 	// A list of observed conditions of the cluster claim.
 	//
