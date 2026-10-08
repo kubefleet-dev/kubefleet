@@ -51,7 +51,7 @@ type Request struct {
 	ClaimName string
 	ClaimUID  types.UID
 	// ClusterName is the name the provider must register the cluster under: the name of the
-	// MemberCluster object, a DNS label of at most 49 characters (it has to fit the hub's
+	// MemberCluster object, a DNS label of at most 50 characters (it has to fit the hub's
 	// fleet-member-<name> namespace). The framework derives it from the claim and records it on
 	// the claim before the first Provision call, so it is the same on every call for one claim
 	// and a provider restarted mid-flight resumes rather than duplicates. Providers use this
@@ -124,11 +124,11 @@ type Options struct {
 	// the hub's placement policy controller runs with so that both sides judge a cluster alike.
 	Eligibility []clustereligibilitychecker.Option
 	// APIReader reads the claim at the start of a round, and the member cluster a deprovision
-	// decision rests on, from the API server rather than the cache; pass the manager's
-	// GetAPIReader. Without it the framework still works, through the cached client, but a
-	// round can then start on a view that lags the previous round's write and repeat a provider
-	// call, which the one-call-per-round property relies on it not doing. The member cluster
-	// list that identity and freshness are judged on stays cached.
+	// decision rests on, from the API server rather than the cache. It defaults to the manager's
+	// GetAPIReader in SetupWithManager. It must never be a cached client: a round could then start
+	// on a view that lags the previous round's write and repeat a provider call, and a deprovision
+	// could act on a stale view that misses a cluster's join and delete a joined cluster. The
+	// member cluster list that identity and freshness are judged on stays cached.
 	APIReader client.Reader
 	// PollInterval is how often an in-progress provision is retried. Defaults to 30 seconds.
 	PollInterval time.Duration
@@ -157,9 +157,6 @@ func New(hubClient client.Client, opts Options) *Reconciler {
 	if opts.PollInterval <= 0 {
 		opts.PollInterval = defaultPollInterval
 	}
-	if opts.APIReader == nil {
-		opts.APIReader = hubClient
-	}
 	return &Reconciler{
 		Client:          hubClient,
 		reader:          opts.APIReader,
@@ -171,13 +168,23 @@ func New(hubClient client.Client, opts Options) *Reconciler {
 	}
 }
 
-// SetupWithManager registers the reconciler on the hub manager. The controller is named after
-// the provider, so that two providers in one process do not collide. Only claims are watched: a
-// provision in progress is polled every PollInterval rather than watched through MemberClusters,
-// which keeps the framework to one informer at the cost of up to one interval of latency.
+// SetupWithManager registers the reconciler on the hub manager, under a controller named after
+// the provider (see controllerName). Only claims are watched: a provision in progress is polled
+// every PollInterval rather than watched through MemberClusters, which keeps the framework to
+// one informer at the cost of up to one interval of latency.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if r.reader == nil {
+		r.reader = mgr.GetAPIReader()
+	}
 	return ctrl.NewControllerManagedBy(mgr).
-		Named("fulfiller-" + naming.Sanitize(r.provisionerName)).
+		Named(controllerName(r.provisionerName)).
 		For(&kfplacementv1alpha1.ClusterClaim{}).
 		Complete(r)
+}
+
+// controllerName names a provider's controller. Sanitizing is lossy (infra.example.dev and
+// infra-example.dev both become infra-example-dev), so the hash of the full name keeps two
+// providers apart.
+func controllerName(provisionerName string) string {
+	return "fulfiller-" + naming.Sanitize(provisionerName) + "-" + naming.Hash(provisionerName)
 }

@@ -66,7 +66,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	if err := r.Get(ctx, client.ObjectKey{Name: claim.Spec.ClusterProviderClassName}, class); err != nil {
 		if apierrors.IsNotFound(err) {
 			// Without the class there is no provisioner name to match and no parameters to hand
-			// the provider, on withdrawal included; a missing class never fails a claim.
+			// the provider, on withdrawal included; a missing class never fails a claim. A claim a
+			// provider accepted keeps its finalizer here, deletion included, until the class is
+			// recreated. Protecting classes in use, with a finalizer or an admission policy, is left
+			// until operators need it.
 			klog.V(2).InfoS("The claim's class is missing; will check again", "clusterClaim", claim.Name, "class", claim.Spec.ClusterProviderClassName)
 			return ctrl.Result{RequeueAfter: classRetryAfter}, nil
 		}
