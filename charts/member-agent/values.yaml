@@ -59,7 +59,7 @@ azure:
 tlsClientInsecure: false
 useCAAuth: false
 
-enablePprof: true
+enablePprof: false
 pprofPort: 6065
 hubPprofPort: 6066
 

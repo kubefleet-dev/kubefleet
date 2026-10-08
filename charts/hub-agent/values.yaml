@@ -48,7 +48,7 @@ enableClusterInventoryAPI: true
 enableStagedUpdateRunAPIs: true
 enableEvictionAPIs: true
 
-enablePprof: true
+enablePprof: false
 pprofPort: 6065
 
 hubAPIQPS: 250
