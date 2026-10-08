@@ -226,7 +226,8 @@ func (r *Reconciler) reconcileBindings(ctx context.Context, policy kfplacementv1
 		switch {
 		case !bound:
 			toCreate = append(toCreate, clusterName)
-		case !apiequality.Semantic.DeepEqual(binding.GetSpec().ClusterSelectors, selectorsFor(clusterName)):
+		case !apiequality.Semantic.DeepEqual(binding.GetSpec().ClusterSelectors, selectorsFor(clusterName)),
+			!apiequality.Semantic.DeepEqual(binding.GetSpec().SyncStrategy, policy.GetSpec().SyncStrategy):
 			toUpdate = append(toUpdate, binding)
 		}
 	}
@@ -274,6 +275,7 @@ func (r *Reconciler) reconcileBindings(ctx context.Context, policy kfplacementv1
 	}
 	for _, binding := range toUpdate {
 		binding.GetSpec().ClusterSelectors = selectorsFor(binding.GetSpec().ClusterName)
+		binding.GetSpec().SyncStrategy = policy.GetSpec().SyncStrategy.DeepCopy()
 		if err := r.Update(ctx, binding); err != nil {
 			return false, err
 		}
