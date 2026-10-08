@@ -196,6 +196,9 @@ var _ = Describe("cluster claim fulfillment", Label("custom"), Ordered, Serial, 
 
 	BeforeAll(func() {
 		Expect(client.IgnoreAlreadyExists(hubClient.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: claimFulfillmentNS}}))).Should(Succeed())
+		// The policies select this ConfigMap; without it the resource snapshot, and so every
+		// binding, fails.
+		Expect(client.IgnoreAlreadyExists(hubClient.Create(ctx, &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "app", Namespace: claimFulfillmentNS}}))).Should(Succeed())
 		By("granting the approver and the tenant the RBAC to write claim status, and only the approver the approve verb")
 		roles := []struct {
 			name     string

@@ -201,10 +201,16 @@ rules:
     resources:
       - clusterproviderclasses
     verbs: ["get", "list", "watch"]
+  # Bindings and resource snapshots carry a controller reference to their policy with
+  # blockOwnerDeletion, which a hub running the OwnerReferencesPermissionEnforcement admission
+  # plugin (off by default upstream, on in some distributions) gates on update of the policies'
+  # finalizers subresource.
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources:
+      - placementpolicies/finalizers
+      - clusterplacementpolicies/finalizers
+    verbs: ["update"]
   # Bindings are created, updated and deleted; resource snapshots are created and deleted.
-  # Bindings carry a controller reference to their policy with blockOwnerDeletion, which a hub
-  # running the OwnerReferencesPermissionEnforcement admission plugin would additionally gate on
-  # update of the policies' finalizers subresource.
   - apiGroups: ["placement.kubefleet.dev"]
     resources:
       - placementbindings
