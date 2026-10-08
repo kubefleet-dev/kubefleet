@@ -173,6 +173,9 @@ func propertyViolation(className string, rules map[string]kfplacementv1alpha1.Pr
 		bounds[i] = &parsed
 	}
 	lower, upper := bounds[0], bounds[1]
+	if lower != nil && upper != nil && lower.Cmp(*upper) > 0 {
+		return fmt.Sprintf("the bounds [%s, %s] of property key %q in the cluster provider class %q are inverted, so no quantity lies within them", *rule.Min, *rule.Max, expr.Key, className)
+	}
 	// A comparison is claimable when some quantity within the class's bounds satisfies it: the
 	// value is a threshold, not the cluster the provider delivers. Eq names a point, which must lie
 	// within the bounds; Gt/Ge need room above the threshold below the max; Lt/Le need room below

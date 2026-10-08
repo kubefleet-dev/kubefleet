@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -229,6 +230,9 @@ func TestReconcileClaimsCountsUnlistedClaim(t *testing.T) {
 	}
 	if report.outstanding != 1 {
 		t.Errorf("reconcileClaims() counted %d outstanding, want 1 for the unlisted claim", report.outstanding)
+	}
+	if want := map[string]int{claimStatePending: 1}; !cmp.Equal(report.states, want) {
+		t.Errorf("reconcileClaims() reported states %v, want %v so that the metric sums to the outstanding count", report.states, want)
 	}
 	if err := c.Get(context.Background(), types.NamespacedName{Name: claimName(policy, 1)}, &kfplacementv1alpha1.ClusterClaim{}); !apierrors.IsNotFound(err) {
 		t.Errorf("reconcileClaims() issued the second selector's claim past the limit (get = %v), want NotFound", err)
