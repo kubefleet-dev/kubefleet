@@ -62,7 +62,7 @@ RUN echo "Building memberagent with GOOS=${TARGETOS} GOARCH=${TARGETARCH} CC=$(r
 # The pinned digest must reference a multi-arch image index so BuildKit can
 # resolve the matching base layer for each target architecture.
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM gcr.io/distroless/base:nonroot@sha256:0896741ba5bafd3ac87ea025a5f578952f2d238ddc3614cb368acc983a687aa2
+FROM gcr.io/distroless/base:nonroot@sha256:a0d70d6a97cd697d9362bc2aae4a6560dd65817e365d0043b07325a97975dc91
 WORKDIR /
 COPY --link --from=builder /workspace/memberagent .
 USER 65532:65532
