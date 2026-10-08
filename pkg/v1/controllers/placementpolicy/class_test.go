@@ -60,6 +60,9 @@ func TestVocabularyViolation(t *testing.T) {
 	broken := classWithVocabulary("broken", &kfplacementv1alpha1.SelectorVocabulary{
 		PropertyKeys: []kfplacementv1alpha1.PropertyKeyRule{{Key: propertyprovider.NodeCountProperty, Max: ptr.To("lots")}},
 	})
+	inverted := classWithVocabulary("inverted", &kfplacementv1alpha1.SelectorVocabulary{
+		PropertyKeys: []kfplacementv1alpha1.PropertyKeyRule{{Key: propertyprovider.NodeCountProperty, Min: ptr.To("100"), Max: ptr.To("1")}},
+	})
 	labelExpr := func(key string, op kfplacementv1alpha1.LabelClusterPropertyExpressionOperator, values ...string) kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm {
 		return kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{
 			MatchLabelExpressions: []kfplacementv1alpha1.LabelClusterPropertyExpression{{Key: key, Operator: op, Values: values}},
@@ -116,6 +119,12 @@ func TestVocabularyViolation(t *testing.T) {
 			class: bounded,
 			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{labelExpr(regionLabel, kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorNotIn, "eastus")},
 			want:  `the label expression on key "topology.kubernetes.io/region" uses operator NotIn, which does not say what to provision; only In is claimable`,
+		},
+		{
+			name:  "inverted bounds hold no quantity, so even Ge 0 is unmet",
+			class: inverted,
+			terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{propertyExpr(propertyprovider.NodeCountProperty, kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorGe, "0")},
+			want:  `the bounds [100, 1] of property key "kubernetes-fleet.io/node-count" in the cluster provider class "inverted" are inverted, so no quantity lies within them`,
 		},
 		{name: "property within bounds", class: bounded, terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{propertyExpr(propertyprovider.NodeCountProperty, kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorGe, "8")}, want: ""},
 		{name: "Eq on the bound", class: bounded, terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{propertyExpr(propertyprovider.NodeCountProperty, kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorEq, "100")}, want: ""},

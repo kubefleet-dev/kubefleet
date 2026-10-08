@@ -680,15 +680,16 @@ func (r *Reconciler) ensureFinalizer(ctx context.Context, policy kfplacementv1al
 // The API enforces the reference's immutability, which is what makes it, unlike the ownership
 // labels, fit to gate the cleanup finalizer's release.
 //
-// The comparison deliberately ignores the reference's API group and version: kind, namespace,
-// and name identify the same object across an API promotion, and a version-strict comparison
-// would orphan every outstanding claim the moment the policy API moved to a new version.
+// The comparison deliberately ignores the reference's version: an API promotion keeps the group,
+// kind, namespace, and name, and a version-strict comparison would orphan every outstanding claim
+// the moment the policy API moved to a new version. The group is part of the identity: a claim
+// naming another group's PlacementPolicy is not this policy's.
 func claimBelongsTo(claim *kfplacementv1alpha1.ClusterClaim, ref *kfplacementv1alpha1.ObjectReference) bool {
 	got := claim.Spec.PlacementPolicyRef
 	if got == nil || ref == nil {
 		return false
 	}
-	return got.Kind == ref.Kind && got.Name == ref.Name && got.Namespace == ref.Namespace
+	return got.APIGroup == ref.APIGroup && got.Kind == ref.Kind && got.Name == ref.Name && got.Namespace == ref.Namespace
 }
 
 // listClaims returns the cluster claims belonging to a policy, matched on the immutable
