@@ -29,19 +29,19 @@ import (
 const (
 	// clusterNamePrefixMaxLength bounds how much of the claim name survives in the cluster name.
 	// The hub creates a namespace named fleet-member-<cluster>, a DNS label of at most 63
-	// characters, which leaves 50 for the cluster name: 36 of prefix, a dash, and 12 of hash.
-	clusterNamePrefixMaxLength = 36
-	clusterNameHashLength      = 12
+	// characters, which leaves 50 for the cluster name: 33 of prefix, a dash, and the full
+	// naming.HashLength (16) of hash.
+	clusterNamePrefixMaxLength = 33
 )
 
 // ClusterNameFor derives the name of the cluster provisioned for a claim. The prefix keeps the
 // name readable; the hash of the claim's UID keeps two claims that share a name — KubeFleet
 // re-issues a claim under the same name for the next cluster of the same selector — from sharing
-// a cluster. The result is a DNS label of at most 49 characters.
+// a cluster. The result is a DNS label of at most 50 characters.
 func ClusterNameFor(claim *kfplacementv1alpha1.ClusterClaim) string {
 	return fmt.Sprintf("%s-%s",
 		naming.Sanitize(naming.Truncate(claim.Name, clusterNamePrefixMaxLength)),
-		naming.Hash(string(claim.UID))[:clusterNameHashLength])
+		naming.Hash(string(claim.UID)))
 }
 
 // OwnershipLabels are the labels a provider must set on the MemberCluster it registers for the

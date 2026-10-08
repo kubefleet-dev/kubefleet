@@ -29,6 +29,7 @@ import (
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/naming"
 )
 
 func claimNamed(name string, uid types.UID) *kfplacementv1alpha1.ClusterClaim {
@@ -68,13 +69,16 @@ func TestClusterNameFor(t *testing.T) {
 	}{
 		{name: "short claim name", claim: claimNamed("app-0-abcdef0123456789", "uid-1")},
 		{name: "long dotted claim name", claim: claimNamed(long, "uid-2")},
-		{name: "separator at the truncation point", claim: claimNamed(strings.Repeat("a", 35)+"."+strings.Repeat("b", 50), "uid-3")},
+		{name: "separator at the truncation point", claim: claimNamed(strings.Repeat("a", 32)+"."+strings.Repeat("b", 50), "uid-3")},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := ClusterNameFor(tc.claim)
 			if errs := validation.IsDNS1123Label(got); len(errs) > 0 {
 				t.Errorf("ClusterNameFor() = %q, want a DNS label, got errors %v", got, errs)
+			}
+			if suffix := got[strings.LastIndex(got, "-")+1:]; len(suffix) != naming.HashLength {
+				t.Errorf("ClusterNameFor() = %q ends in a hash of %d characters, want the full %d", got, len(suffix), naming.HashLength)
 			}
 			if len(got) > 50 {
 				t.Errorf("ClusterNameFor() = %q has length %d, want at most 50 so that fleet-member-%s fits a DNS label", got, len(got), got)
@@ -173,5 +177,17 @@ func TestIsTerminal(t *testing.T) {
 				t.Errorf("isTerminal(%v) = %t, want %t", tc.conditions, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestControllerName checks that two provisioner names that sanitize alike still get distinct
+// controller names, since controller-runtime refuses to start two controllers of one name.
+func TestControllerName(t *testing.T) {
+	a, b := controllerName("infra.example.dev"), controllerName("infra-example.dev")
+	if a == b {
+		t.Errorf("controllerName() = %q for both infra.example.dev and infra-example.dev, want distinct names", a)
+	}
+	if again := controllerName("infra.example.dev"); again != a {
+		t.Errorf("controllerName(infra.example.dev) = %q on the second call, want the deterministic %q", again, a)
 	}
 }

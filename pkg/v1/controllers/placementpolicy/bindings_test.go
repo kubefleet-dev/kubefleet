@@ -340,7 +340,7 @@ func TestReconcileBindingsUpdatesSyncStrategy(t *testing.T) {
 	}
 	policy := bindingManagerHeldBy(controllerName)
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(policy).WithStatusSubresource(policy).Build()
-	r := NewReconciler(c, c, snapshotStub{})
+	r := NewReconciler(c, c, snapshotStub{}, nil)
 	outcomes := []selectorOutcome{{counts: resolvedCounts{desired: 1}, matched: []string{"east-1"}, chosen: []string{"east-1"}}}
 	chosen := map[string][]int{"east-1": {0}}
 
