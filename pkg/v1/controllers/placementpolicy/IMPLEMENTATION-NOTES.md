@@ -1,4 +1,4 @@
-# Implementation notes: FEP-0001 placement policy controller (#786)
+# Implementation notes: FEP-0001 placement policy controller (#786, #788)
 
 Observations collected while implementing the controller against the
 `placement.kubefleet.dev/v1alpha1` APIs. Items in "API gaps" are candidate
@@ -54,9 +54,60 @@ package demonstrating the current behavior.
   matching — a provisioner-created or newly registered cluster does not count
   until its member agent is online, heartbeating, and joined. See the
   discussion on #791.
-- **Selected-cluster choice is first-N over sorted names** — a deterministic
-  placeholder until the scheduling framework support lands; the counts are
-  what matter to the status surface today.
+- **Clusters are ranked per the FEP's preferences** (`scoring.go`): on node
+  count (fewer is better), available CPU, and available memory (more is
+  better), each normalized to 0–100 against the candidates' own min and max,
+  summed, with the name as the tie-breaker. A cluster that does not report a
+  metric scores 0 on it, the least preferred position either way; a malformed
+  value is treated the same. The candidates are the schedulable clusters that
+  match the selector and are not already chosen, so the normalization is
+  per selector per round — the FEP's "among all clusters that match the
+  cluster selector".
+- **Preferences are sticky, and stickiness survives an outage**
+  (`chooseClusters`): a bound cluster keeps its binding while it exists and
+  still matches a selector's terms, even when it is not schedulable (agent
+  dark, or an untolerated taint appeared). Unbinding on a transient outage
+  would tear resources down on a cluster that may be back in minutes, which
+  neither the current scheduler nor the FEP's "sticky once made" ask for.
+  An unschedulable bound cluster does not count toward the selector, so the
+  gap is filled from the schedulable candidates; when the cluster returns the
+  policy is briefly overpicked (`scheduledClusters` above `desiredClusters`), which the
+  count then trims: the newest bindings go first (creation timestamp, to the
+  second, then name), so a scale-down undoes the latest picks and a cluster
+  back from an outage, being the older binding, wins over its replacement.
+  The same trim also absorbs a duplicate pick made from a stale binding list
+  (the cache lagging a create by one round). A bound cluster that no longer
+  matches any selector, or has left the fleet, is unbound at once —
+  scheduling changes apply immediately in the new placement experience.
+- **One binding per cluster per policy, counting toward every selector it
+  matches**: selectors are processed in order, and a cluster chosen for an
+  earlier selector satisfies each later selector whose terms it matches
+  before any new cluster is ranked for it, per the FEP's overlapping-selectors
+  note. The binding's informational `spec.clusterSelectors` lists the terms of
+  every selector the cluster currently serves and is kept up to date; the
+  selector *hashes* the FEP mentions keeping in annotations have no key in the
+  API yet, so nothing writes them.
+- **Binding changes run under the binding manager role** (`bindingmanager`),
+  the FEP's mutual exclusion between scheduling decision changes and rollouts:
+  the role is claimed only when a create, update, or delete is actually due,
+  and released once every change is through. A failed write returns with the
+  role still held, so the retry resumes under the role it already has (the
+  FEP's restart semantics); a role held by another process backs the policy
+  off for ten seconds rather than blocking the rest of the reconcile, which
+  still refreshes claims and status.
+- **A binding needs a resource snapshot to roll out**, so the controller takes
+  the placement resource snapshot manager as a seam (`snapshotter`) and asks it
+  for the current snapshot — creating the first one, per the FEP's "when a
+  placement is first created" — only on the path that creates a binding. The
+  seam exists for the same reason as `eligibilityChecker`: the real manager
+  needs a dynamic client and informer manager the envtest suite has no use
+  for. Nothing writes `status.latestResourceRevisionName` yet; it is the
+  snapshot manager's to report, not the controller's.
+- **Bindings are owned by the policy** through a controller reference —
+  policy and binding share a scope, so unlike claims they can be garbage
+  collected — and the controller `Owns()` them: a binding deleted out of band
+  is recreated, while binding status writes by the work generator are filtered
+  out by the generation predicate.
 - **Heartbeat-noise suppression**: member cluster watch events pass through a
   projection predicate that ignores heartbeat/observation timestamps;
   time-driven eligibility transitions (e.g., heartbeats going stale) are
