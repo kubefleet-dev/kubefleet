@@ -31,6 +31,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/bindingwatcher"
@@ -59,6 +60,9 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/placementpolicy"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/managers/placementresourcesnapshot"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/fieldindexers"
 )
 
 const (
@@ -71,6 +75,10 @@ const (
 
 	schedulerQueueName = "scheduler-queue"
 )
+
+// placementResourceSnapshotSlots is the lock striping of the placement resource snapshot
+// manager: one mutex per slot, policies hashed across them; the manager's minimum.
+const placementResourceSnapshotSlots int32 = 256
 
 var (
 	v1Beta1RequiredGVKs = []schema.GroupVersionKind{
@@ -94,6 +102,20 @@ var (
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ResourceBindingKind),
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ResourceSnapshotKind),
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.SchedulingPolicySnapshotKind),
+	}
+
+	// The FEP-0001 placement policy APIs, which the hub agent serves only when told to.
+	placementPolicyGVKs = []schema.GroupVersionKind{
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.PlacementPolicyKind),
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.ClusterPlacementPolicyKind),
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.ClusterClaimKind),
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.ClusterProviderClassKind),
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.PlacementBindingKind),
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.ClusterPlacementBindingKind),
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.PlacementResourceSnapshotKind),
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.ClusterPlacementResourceSnapshotKind),
+		// The hub field indexes start a Work informer, so the CRD must be present.
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.WorkKind),
 	}
 
 	clusterStagedUpdateRunGVKs = []schema.GroupVersionKind{
@@ -279,6 +301,42 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 				InformerManager:         dynamicInformerManager,
 			}).SetupWithManagerForResourcePlacement(mgr); err != nil {
 				klog.ErrorS(err, "Unable to set up rollout controller for resourcePlacement")
+				return err
+			}
+		}
+
+		if opts.FeatureFlags.EnablePlacementPolicyAPIs {
+			for _, gvk := range placementPolicyGVKs {
+				if err = utils.CheckCRDInstalled(discoverClient, gvk); err != nil {
+					klog.ErrorS(err, "Unable to find the required CRD", "GVK", gvk)
+					return err
+				}
+			}
+			klog.Info("Setting up the placement policy controllers")
+			// The snapshot manager lists snapshots through cache field indexes, which must exist
+			// before the manager starts.
+			if err := fieldindexers.SetupWithHubAgentControllerManager(ctx, mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up the field indexes for the placement policy controllers")
+				return err
+			}
+			snapshots, snapshotErr := placementresourcesnapshot.New(mgr, dynamicClient, dynamicInformerManager, mgr.GetRESTMapper(), placementResourceSnapshotSlots)
+			if snapshotErr != nil {
+				klog.ErrorS(snapshotErr, "Unable to set up the placement resource snapshot manager")
+				return snapshotErr
+			}
+			// The option is validated to [1, 100], so the conversion cannot overflow.
+			claimLimit := int32(opts.PlacementMgmtOpts.MaxConcurrentClusterClaims) //nolint:gosec
+			policies := placementpolicy.NewReconciler(
+				mgr.GetClient(), mgr.GetAPIReader(), snapshots,
+				mgr.GetEventRecorder("placement-policy-controller"),
+				placementpolicy.WithMaxConcurrentClusterClaims(claimLimit),
+			)
+			if err := policies.SetupWithManagerForPlacementPolicy(mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up the placement policy controller")
+				return err
+			}
+			if err := policies.SetupWithManagerForClusterPlacementPolicy(mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up the cluster placement policy controller")
 				return err
 			}
 		}

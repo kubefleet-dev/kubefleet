@@ -528,6 +528,7 @@ func TestPlacementManagementOptions(t *testing.T) {
 				ConcurrentResourceChangeSyncs: 20,
 				MaxFleetSize:                  100,
 				MaxConcurrentClusterPlacement: 100,
+				MaxConcurrentClusterClaims:    1,
 				PlacementControllerWorkQueueRateLimiterOpts: RateLimitOptions{
 					RateLimiterBaseDelay:  5 * time.Millisecond,
 					RateLimiterMaxDelay:   60 * time.Second,
@@ -549,6 +550,7 @@ func TestPlacementManagementOptions(t *testing.T) {
 				"--concurrent-resource-change-syncs=30",
 				"--max-fleet-size=150",
 				"--max-concurrent-cluster-placement=120",
+				"--max-concurrent-cluster-claims=3",
 				"--resource-snapshot-creation-minimum-interval=45s",
 				"--resource-changes-collection-duration=20s",
 			},
@@ -560,6 +562,7 @@ func TestPlacementManagementOptions(t *testing.T) {
 				ConcurrentResourceChangeSyncs: 30,
 				MaxFleetSize:                  150,
 				MaxConcurrentClusterPlacement: 120,
+				MaxConcurrentClusterClaims:    3,
 				PlacementControllerWorkQueueRateLimiterOpts: RateLimitOptions{
 					RateLimiterBaseDelay:  5 * time.Millisecond,
 					RateLimiterMaxDelay:   60 * time.Second,
@@ -639,6 +642,27 @@ func TestPlacementManagementOptions(t *testing.T) {
 			args:             []string{"--max-concurrent-cluster-placement=9"},
 			wantErred:        true,
 			wantErrMsgSubStr: "number of max concurrent cluster placements must be in the range [10, 200]",
+		},
+		{
+			name:             "max concurrent cluster claims parse error",
+			flagSetName:      "maxConcurrentClusterClaimsParseError",
+			args:             []string{"--max-concurrent-cluster-claims=many"},
+			wantErred:        true,
+			wantErrMsgSubStr: "failed to parse int value",
+		},
+		{
+			name:             "max concurrent cluster claims out of range (too small)",
+			flagSetName:      "maxConcurrentClusterClaimsOutOfRangeTooSmall",
+			args:             []string{"--max-concurrent-cluster-claims=0"},
+			wantErred:        true,
+			wantErrMsgSubStr: "number of max concurrent cluster claims must be in the range [1, 100]",
+		},
+		{
+			name:             "max concurrent cluster claims out of range (too large)",
+			flagSetName:      "maxConcurrentClusterClaimsOutOfRangeTooLarge",
+			args:             []string{"--max-concurrent-cluster-claims=101"},
+			wantErred:        true,
+			wantErrMsgSubStr: "number of max concurrent cluster claims must be in the range [1, 100]",
 		},
 		{
 			name:             "max concurrent cluster placement out of range (too large)",

@@ -293,3 +293,30 @@ from a label-selected list would be orphaned permanently. This trades a
 full-collection read per deleting policy for that guarantee, and the
 fleet-wide limit takes the same read per issued claim; both are cheap at the
 claim volumes the limits allow.
+
+## How the hub agent runs these controllers
+
+The placement policy controllers run behind `--enable-placement-policy-apis`
+(chart value `enablePlacementPolicyAPIs`), which also requires the v1beta1
+APIs. With the flag on, the hub agent checks that all nine `placement.kubefleet.dev`
+CRDs are installed, registers the hub field indexes (the snapshot manager lists
+snapshots through them, and they also index `Work`, which is why `Work` is in
+the check), builds the placement resource snapshot manager, and registers the
+`PlacementPolicy` and `ClusterPlacementPolicy` reconcilers with the fleet-wide
+claim limit from `--max-concurrent-cluster-claims` (chart value
+`maxConcurrentClusterClaims`, default 1).
+
+The chart's RBAC for the group is conditional on the same value and includes
+the `approve` verb on `clusterclaims`, which the claim approval admission
+policy (`restrictClusterClaimApproval` in the admission policy manager
+config, off by default) gates the `Approved` condition on; without the verb
+an `Automatic` class's own stamps would be denied. Cluster providers are not
+part of the chart: a provider runs against the hub with the fulfiller
+framework and its own RBAC (`config/rbac/fulfiller/`), and one that writes
+member agent status, as the reference provider does, needs its identity on
+the member-cluster webhook's whitelist -- the kind e2e sidesteps that by
+running the reference provider in-process as the cluster admin.
+
+Still outside the hub agent: the `annotationplacement` controller, which
+needs the resource watcher to feed its `SourceQueue` and lands with that
+hook; and the `capi-fulfiller` image and chart.

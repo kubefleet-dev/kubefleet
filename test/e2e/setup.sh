@@ -54,13 +54,28 @@ RESERVED_CLUSTER_COUNT=${MEMBER_CLUSTER_COUNT}
 # Create the kind clusters
 echo "Creating the kind clusters..."
 
+# A cluster that already exists is kept, so that a run interrupted after some clusters came up
+# (kind on a loaded machine can fail to boot a multi-node cluster) resumes rather than fails on
+# the ones that did.
+cluster_exists() {
+    kind get clusters 2>/dev/null | grep -qx "$1"
+}
+
 # Create the hub cluster
-kind create cluster --name $HUB_CLUSTER --image=$KIND_IMAGE --kubeconfig=$KUBECONFIG
+if cluster_exists "$HUB_CLUSTER"; then
+    echo "Cluster $HUB_CLUSTER already exists; keeping it"
+    kind export kubeconfig --name "$HUB_CLUSTER" --kubeconfig="$KUBECONFIG"
+else
+    kind create cluster --name $HUB_CLUSTER --image=$KIND_IMAGE --kubeconfig=$KUBECONFIG
+fi
 
 # Create the member clusters
 for (( i=0; i<${MEMBER_CLUSTER_COUNT}; i++ ));
 do
-    if [ "$i" -lt $RESERVED_CLUSTER_COUNT ]; then
+    if cluster_exists "${MEMBER_CLUSTERS[$i]}"; then
+        echo "Cluster ${MEMBER_CLUSTERS[$i]} already exists; keeping it"
+        kind export kubeconfig --name "${MEMBER_CLUSTERS[$i]}" --kubeconfig="$KUBECONFIG"
+    elif [ "$i" -lt $RESERVED_CLUSTER_COUNT ]; then
         kind create cluster --name  "${MEMBER_CLUSTERS[$i]}" --image=$KIND_IMAGE --kubeconfig=$KUBECONFIG --config ./kindconfigs/${MEMBER_CLUSTERS[$i]}.yaml
     else
         kind create cluster --name  "${MEMBER_CLUSTERS[$i]}" --image=$KIND_IMAGE --kubeconfig=$KUBECONFIG
@@ -150,6 +165,8 @@ helm install hub-agent ../../charts/hub-agent/ \
     --set clusterUnhealthyThreshold="3m0s" \
     --set logFileMaxSize=100000 \
     --set MaxConcurrentClusterPlacement=200 \
+    --set enablePlacementPolicyAPIs=true \
+    --set maxConcurrentClusterClaims=2 \
     --set-file additionalConfigData.admissionPolicyManagerCfg=admission_policy_manager_cfg.yaml \
     --set admissionPolicyManagerConfigName=admissionPolicyManagerCfg \
     --set enableAdmissionPolicyManager=true \

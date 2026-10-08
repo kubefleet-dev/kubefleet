@@ -99,6 +99,12 @@ type PlacementManagementOptions struct {
 	// the value higher increases the concurrency of such controllers.
 	MaxConcurrentClusterPlacement int
 
+	// The fleet-wide number of cluster claims that may be outstanding at once under the
+	// experimental placement policy APIs, counting claims that are approved or belong to a
+	// cluster provider class that approves automatically. Unlike MaxConcurrentClusterPlacement this bounds work handed to cluster
+	// providers, not controller concurrency.
+	MaxConcurrentClusterClaims int
+
 	// The rate limiting options for work queues in use by several placement related controllers.
 	PlacementControllerWorkQueueRateLimiterOpts RateLimitOptions
 
@@ -160,6 +166,12 @@ func (o *PlacementManagementOptions) AddFlags(flags *flag.FlagSet) {
 		newMaxConcurrentClusterPlacementValueWithValidation(100, &o.MaxConcurrentClusterPlacement),
 		"max-concurrent-cluster-placement",
 		"The expected maximum number of placements that are allowed to run concurrently. This is used specifically for setting the number of concurrent workers for several key placement related controllers. Default is 100. Must be a positive integer value in the range [10, 200].",
+	)
+
+	flags.Var(
+		newMaxConcurrentClusterClaimsValueWithValidation(1, &o.MaxConcurrentClusterClaims),
+		"max-concurrent-cluster-claims",
+		"The fleet-wide number of cluster claims that may be outstanding at once under the experimental placement policy APIs, counting claims that are approved or belong to a class that approves automatically. Default is 1. Must be a positive integer value in the range [1, 100].",
 	)
 
 	o.PlacementControllerWorkQueueRateLimiterOpts.AddFlags(flags)
@@ -303,6 +315,29 @@ func (v *MaxConcurrentClusterPlacementValueWithValidation) Set(s string) error {
 func newMaxConcurrentClusterPlacementValueWithValidation(defaultVal int, p *int) *MaxConcurrentClusterPlacementValueWithValidation {
 	*p = defaultVal
 	return (*MaxConcurrentClusterPlacementValueWithValidation)(p)
+}
+
+type MaxConcurrentClusterClaimsValueWithValidation int
+
+func (v *MaxConcurrentClusterClaimsValueWithValidation) String() string {
+	return fmt.Sprintf("%d", *v)
+}
+
+func (v *MaxConcurrentClusterClaimsValueWithValidation) Set(s string) error {
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return fmt.Errorf("failed to parse int value: %w", err)
+	}
+	if n < 1 || n > 100 {
+		return fmt.Errorf("number of max concurrent cluster claims must be in the range [1, 100]")
+	}
+	*v = MaxConcurrentClusterClaimsValueWithValidation(n)
+	return nil
+}
+
+func newMaxConcurrentClusterClaimsValueWithValidation(defaultVal int, p *int) *MaxConcurrentClusterClaimsValueWithValidation {
+	*p = defaultVal
+	return (*MaxConcurrentClusterClaimsValueWithValidation)(p)
 }
 
 type ResourceSnapshotCreationMinimumIntervalValueWithValidation time.Duration
