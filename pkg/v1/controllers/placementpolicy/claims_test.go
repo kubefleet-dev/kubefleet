@@ -200,7 +200,7 @@ func TestDesiredClaims(t *testing.T) {
 
 func TestClaimReadyToRotate(t *testing.T) {
 	completed := func() []metav1.Condition {
-		return []metav1.Condition{{Type: kfplacementv1alpha1.ClusterClaimCondTypeCompleted, Status: metav1.ConditionTrue, Reason: "Provisioned"}}
+		return []metav1.Condition{{Type: kfplacementv1alpha1.ClusterClaimCondTypeCompleted, Status: metav1.ConditionTrue, Reason: "Fulfilled"}}
 	}
 	claim := func(conds []metav1.Condition, provisioned *string) *kfplacementv1alpha1.ClusterClaim {
 		return &kfplacementv1alpha1.ClusterClaim{
@@ -270,6 +270,37 @@ func TestClaimReadyToRotate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := claimReadyToRotate(tc.claim, tc.outcome); got != tc.want {
 				t.Errorf("claimReadyToRotate() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestClaimBelongsTo checks that ownership survives a version change but not a group change.
+func TestClaimBelongsTo(t *testing.T) {
+	ref := &kfplacementv1alpha1.ObjectReference{
+		APIGroup: kfplacementv1alpha1.GroupVersion.Group, APIVersion: "v1alpha1",
+		Kind: kfplacementv1alpha1.PlacementPolicyKind, Namespace: "work", Name: "app",
+	}
+	withRef := func(mutate func(r *kfplacementv1alpha1.ObjectReference)) *kfplacementv1alpha1.ClusterClaim {
+		got := ref.DeepCopy()
+		mutate(got)
+		return &kfplacementv1alpha1.ClusterClaim{Spec: kfplacementv1alpha1.ClusterClaimSpec{PlacementPolicyRef: got}}
+	}
+	testCases := []struct {
+		name  string
+		claim *kfplacementv1alpha1.ClusterClaim
+		want  bool
+	}{
+		{name: "same reference", claim: withRef(func(*kfplacementv1alpha1.ObjectReference) {}), want: true},
+		{name: "another version", claim: withRef(func(r *kfplacementv1alpha1.ObjectReference) { r.APIVersion = "v1" }), want: true},
+		{name: "another group", claim: withRef(func(r *kfplacementv1alpha1.ObjectReference) { r.APIGroup = "other.example.dev" }), want: false},
+		{name: "another name", claim: withRef(func(r *kfplacementv1alpha1.ObjectReference) { r.Name = "other" }), want: false},
+		{name: "no reference", claim: &kfplacementv1alpha1.ClusterClaim{}, want: false},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := claimBelongsTo(tc.claim, ref); got != tc.want {
+				t.Errorf("claimBelongsTo() = %t, want %t", got, tc.want)
 			}
 		})
 	}
