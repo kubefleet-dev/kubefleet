@@ -19,6 +19,7 @@ package admissionpolicymanager
 import (
 	"context"
 	"flag"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -32,6 +33,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
+
+	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
@@ -45,6 +48,14 @@ var (
 	ctx    context.Context
 	cancel context.CancelFunc
 )
+
+// suiteConfigs returns the defaults plus the claim approval generator, whose policy the suite
+// exercises; it is off by default, which a unit test pins.
+func suiteConfigs() *PolicyGeneratorConfigs {
+	configs := *DefaultPolicyGeneratorConfigs
+	configs.ClusterClaimApprovalVAPGeneratorConfig = &ClusterClaimApprovalValidatingAdmissionPolicyGenerator{}
+	return &configs
+}
 
 var (
 	eventuallyDuration = time.Second * 10
@@ -70,7 +81,11 @@ var _ = BeforeSuite(func() {
 	ctrl.SetLogger(logger)
 
 	By("Bootstrapping test environment")
-	testEnv = &envtest.Environment{}
+	testEnv = &envtest.Environment{
+		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing: true,
+	}
+	Expect(kfplacementv1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 
 	var err error
 	cfg, err = testEnv.Start()
@@ -94,7 +109,7 @@ var _ = BeforeSuite(func() {
 	Expect(hubUncachedClient).ToNot(BeNil())
 
 	By("Setting up the policy manager")
-	policyManager, err := New(hubUncachedClient, DefaultPolicyGeneratorConfigs)
+	policyManager, err := New(hubUncachedClient, suiteConfigs())
 	Expect(err).ToNot(HaveOccurred())
 	Expect(policyManager).ToNot(BeNil())
 	Expect(policyManager.Start(ctx)).To(Succeed())

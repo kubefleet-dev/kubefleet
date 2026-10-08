@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -76,7 +77,9 @@ func addManagedByPartOfAndComponentLabels(obj metav1.Object) {
 // in CEL string literals (e.g., backslash, double quotes, and single quotes).
 func validateCELStringLiterals(strs ...string) error {
 	for _, str := range strs {
-		if strings.ContainsAny(str, illegalCELStringChars) {
+		// A control character (a newline from a JSON config, say) inside a CEL string literal
+		// fails compilation, which the API server rejects and the manager fails to start on.
+		if strings.ContainsAny(str, illegalCELStringChars) || strings.ContainsFunc(str, unicode.IsControl) {
 			return errors.NewUserError(nil, "string literal contains illegal characters for a CEL expression", "value", str)
 		}
 	}
