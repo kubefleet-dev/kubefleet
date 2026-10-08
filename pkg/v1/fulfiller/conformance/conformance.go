@@ -535,5 +535,5 @@ func (s *suite) derivesValidName(t *testing.T) {
 	g.Eventually(s.fulfilled(claim), eventuallyTimeout, pollInterval).Should(gomega.Succeed())
 	name := *claim.Status.ProvisionedClusterName
 	g.Expect(validation.IsDNS1123Label(name)).To(gomega.BeEmpty(), "the cluster name %q is a DNS label", name)
-	g.Expect(len(name)).To(gomega.BeNumerically("<=", 49), "the cluster name fits fleet-member-<name>")
+	g.Expect(len(name)).To(gomega.BeNumerically("<=", 50), "the cluster name fits fleet-member-<name>")
 }
