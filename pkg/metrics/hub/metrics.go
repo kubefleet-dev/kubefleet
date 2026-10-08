@@ -62,13 +62,23 @@ var (
 	}, []string{"namespace", "name", "generation", "conditionType", "status", "reason"})
 
 	// FleetPlacementPolicyActiveClusterClaims is a prometheus metric which holds the number of
-	// cluster claims a placement policy currently has outstanding, including claims that are
-	// being withdrawn and not yet observed gone, held by a provisioner finalizer or not. The
+	// cluster claims a placement policy currently has outstanding, by state: pending (not yet
+	// approved), approved, accepted (a provider took it), completed, terminal (failed, expired,
+	// or denied, kept as the record), and terminating (being withdrawn and not yet observed
+	// gone). Every claim is in exactly one state, so the sum over the state label is the
+	// policy's outstanding claim count, which the gauge reported without the label before. The
 	// namespace label is empty for cluster-scoped placement policies.
 	FleetPlacementPolicyActiveClusterClaims = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "fleet_workload_placement_policy_active_cluster_claims",
-		Help: "Number of cluster claims currently outstanding for a placement policy",
-	}, []string{"namespace", "name"})
+		Help: "Number of cluster claims currently outstanding for a placement policy, by state",
+	}, []string{"namespace", "name", "state"})
+
+	// FleetPlacementPolicyClusterClaimExpirations is a prometheus metric which counts the cluster
+	// claims the hub agent expired on a placement policy's behalf, by the Expired reason.
+	FleetPlacementPolicyClusterClaimExpirations = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "fleet_workload_placement_policy_cluster_claim_expirations_total",
+		Help: "Number of cluster claims expired for a placement policy, by reason",
+	}, []string{"namespace", "name", "reason"})
 
 	// FleetUpdateRunStatusLastTimestampSeconds is a prometheus metric which holds the
 	// last update timestamp of update run status in seconds.
@@ -126,6 +136,7 @@ func init() {
 		FleetPlacementStatusLastTimeStampSeconds,
 		FleetPlacementPolicyStatusLastTimestampSeconds,
 		FleetPlacementPolicyActiveClusterClaims,
+		FleetPlacementPolicyClusterClaimExpirations,
 		FleetEvictionStatus,
 		FleetUpdateRunStatusLastTimestampSeconds,
 		FleetUpdateRunApprovalRequestLatencySeconds,

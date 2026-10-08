@@ -291,7 +291,7 @@ func TestReconcileBindingsReleasesLeftOverRole(t *testing.T) {
 	}
 	policy := bindingManagerHeldBy(controllerName)
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(policy).WithStatusSubresource(policy).Build()
-	r := NewReconciler(c, c, snapshotStub{})
+	r := NewReconciler(c, c, snapshotStub{}, nil)
 
 	roleHeld, err := r.reconcileBindings(context.Background(), policy, nil, map[string][]int{}, nil)
 	if err != nil || roleHeld {
@@ -315,7 +315,7 @@ func TestReconcileBindingsBacksOffWhenRoleIsHeld(t *testing.T) {
 	}
 	policy := bindingManagerHeldBy("rollout-controller")
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(policy).WithStatusSubresource(policy).Build()
-	r := NewReconciler(c, c, snapshotStub{})
+	r := NewReconciler(c, c, snapshotStub{}, nil)
 
 	outcomes := []selectorOutcome{{counts: resolvedCounts{desired: 1}, matched: []string{"east-1"}, chosen: []string{"east-1"}}}
 	roleHeld, err := r.reconcileBindings(context.Background(), policy, outcomes, map[string][]int{"east-1": {0}}, nil)
@@ -340,7 +340,7 @@ func TestReconcileBindingsUpdatesSyncStrategy(t *testing.T) {
 	}
 	policy := bindingManagerHeldBy(controllerName)
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(policy).WithStatusSubresource(policy).Build()
-	r := NewReconciler(c, c, snapshotStub{})
+	r := NewReconciler(c, c, snapshotStub{}, nil)
 	outcomes := []selectorOutcome{{counts: resolvedCounts{desired: 1}, matched: []string{"east-1"}, chosen: []string{"east-1"}}}
 	chosen := map[string][]int{"east-1": {0}}
 

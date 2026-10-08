@@ -1,0 +1,16 @@
+# What the reference provider needs on top of the framework's and the provider's roles when it
+# simulates the member agent: it writes the agent status onto the clusters it registers --
+# MemberCluster.status where no hub agent runs, InternalMemberCluster.status where one does, which
+# it reads through the cache, hence list and watch. On a hub with a member-cluster webhook the
+# provider's identity must also be whitelisted for those status writes.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubefleet-fulfiller-reference
+rules:
+- apiGroups: ["cluster.kubernetes-fleet.io"]
+  resources: ["memberclusters/status", "internalmemberclusters/status"]
+  verbs: ["update", "patch"]
+- apiGroups: ["cluster.kubernetes-fleet.io"]
+  resources: ["internalmemberclusters"]
+  verbs: ["get", "list", "watch"]

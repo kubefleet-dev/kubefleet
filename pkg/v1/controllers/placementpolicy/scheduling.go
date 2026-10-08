@@ -127,6 +127,8 @@ func evaluateSelectors(spec *kfplacementv1alpha1.PlacementPolicySpec, clusters [
 		// The synthesized selector mirrors what CRD defaulting would have produced had the
 		// user written it out — including the AddClusterClaim default, so that a bare policy
 		// in a fleet with no schedulable clusters can still signal that a cluster is needed.
+		// Having no terms, it is within any class's vocabulary, so the claim goes to whichever
+		// class the policy resolves to -- the one it names, else the fleet's default.
 		selectors = []kfplacementv1alpha1.ClusterSelector{
 			{
 				Count:           ptr.To(intstr.FromString(countAllClusters)),
@@ -207,7 +209,11 @@ func aggregateCounts(outcomes []selectorOutcome) (desired, scheduled int32) {
 // honoring the API's binary contract: True only when every selector has found all of its
 // desired clusters. Whether the minCount floor has at least been reached everywhere is surfaced
 // through the message, not a separate reason or status.
-func scheduledCondition(generation int64, outcomes []selectorOutcome) metav1.Condition {
+//
+// The note, when non-empty, says why an unfulfilled selector gets no cluster claim (no class, or a
+// term outside the class's vocabulary); it is appended to the message so that the condition keeps
+// its binary reason contract while still telling the user what to fix.
+func scheduledCondition(generation int64, outcomes []selectorOutcome, note string) metav1.Condition {
 	allInFull, allFulfilled := true, true
 	for i := range outcomes {
 		if !outcomes[i].satisfiedInFull() {
@@ -218,6 +224,12 @@ func scheduledCondition(generation int64, outcomes []selectorOutcome) metav1.Con
 		}
 	}
 
+	withNote := func(message string) string {
+		if note == "" {
+			return message
+		}
+		return message + "; " + note
+	}
 	switch {
 	case allInFull:
 		return metav1.Condition{
@@ -232,7 +244,7 @@ func scheduledCondition(generation int64, outcomes []selectorOutcome) metav1.Con
 			Type:               kfplacementv1alpha1.PlacementPolicyCondTypeScheduled,
 			Status:             metav1.ConditionFalse,
 			Reason:             kfplacementv1alpha1.PlacementPolicyScheduledCondReasonFailedToFindSomeClusters,
-			Message:            "All cluster selectors have reached their minimum cluster counts, but some are still short of their desired counts",
+			Message:            withNote("All cluster selectors have reached their minimum cluster counts, but some are still short of their desired counts"),
 			ObservedGeneration: generation,
 		}
 	default:
@@ -240,7 +252,7 @@ func scheduledCondition(generation int64, outcomes []selectorOutcome) metav1.Con
 			Type:               kfplacementv1alpha1.PlacementPolicyCondTypeScheduled,
 			Status:             metav1.ConditionFalse,
 			Reason:             kfplacementv1alpha1.PlacementPolicyScheduledCondReasonFailedToFindSomeClusters,
-			Message:            "One or more cluster selectors have not found their minimum numbers of clusters",
+			Message:            withNote("One or more cluster selectors have not found their minimum numbers of clusters"),
 			ObservedGeneration: generation,
 		}
 	}

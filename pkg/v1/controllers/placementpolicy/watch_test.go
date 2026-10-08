@@ -146,3 +146,32 @@ func TestMemberClusterSchedulingRelevantChanges(t *testing.T) {
 		})
 	}
 }
+
+func TestClaimFreesFleetSlot(t *testing.T) {
+	active := &kfplacementv1alpha1.ClusterClaim{}
+	terminating := &kfplacementv1alpha1.ClusterClaim{ObjectMeta: metav1.ObjectMeta{DeletionTimestamp: &metav1.Time{Time: time.Now()}}}
+	terminal := &kfplacementv1alpha1.ClusterClaim{Status: kfplacementv1alpha1.ClusterClaimStatus{Conditions: []metav1.Condition{{
+		Type: kfplacementv1alpha1.ClusterClaimCondTypeExpired, Status: metav1.ConditionTrue, Reason: kfplacementv1alpha1.ClusterClaimExpiredCondReasonPendingTimeout,
+	}}}}
+	p := claimFreesFleetSlot()
+	testCases := []struct {
+		name     string
+		old, new *kfplacementv1alpha1.ClusterClaim
+		want     bool
+	}{
+		{name: "still active", old: active, new: active, want: false},
+		{name: "withdrawn", old: active, new: terminating, want: true},
+		{name: "became terminal", old: active, new: terminal, want: true},
+		{name: "already terminal", old: terminal, new: terminal, want: false},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := p.Update(event.UpdateEvent{ObjectOld: tc.old, ObjectNew: tc.new}); got != tc.want {
+				t.Errorf("claimFreesFleetSlot().Update() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+	if !p.Delete(event.DeleteEvent{Object: active}) || p.Create(event.CreateEvent{Object: active}) {
+		t.Errorf("claimFreesFleetSlot() admits creates or drops deletes, want the opposite")
+	}
+}

@@ -29,9 +29,8 @@ import (
 // reportPolicyMetrics publishes the scheduling status and the outstanding claim count for a
 // policy. The namespace label is empty for cluster-scoped policies, which is how the two kinds
 // are told apart in the metric.
-func reportPolicyMetrics(policy kfplacementv1alpha1.PlacementPolicyAccessor, status *kfplacementv1alpha1.PlacementPolicyStatus, scheduledCond metav1.Condition) {
+func reportPolicyMetrics(policy kfplacementv1alpha1.PlacementPolicyAccessor, claims *claimReport, scheduledCond metav1.Condition) {
 	namespace, name := policy.GetNamespace(), policy.GetName()
-
 	hubmetrics.FleetPlacementPolicyStatusLastTimestampSeconds.
 		WithLabelValues(
 			namespace,
@@ -41,12 +40,21 @@ func reportPolicyMetrics(policy kfplacementv1alpha1.PlacementPolicyAccessor, sta
 			string(scheduledCond.Status),
 			scheduledCond.Reason,
 		).SetToCurrentTime()
-
-	if status.ActiveClusterClaims != nil {
-		hubmetrics.FleetPlacementPolicyActiveClusterClaims.
-			WithLabelValues(namespace, name).
-			Set(float64(*status.ActiveClusterClaims))
+	if claims == nil {
+		return
 	}
+	// Every state is set, to zero when empty, so a state a policy's claims left behind does not
+	// keep reporting its last count.
+	for _, state := range claimStates {
+		hubmetrics.FleetPlacementPolicyActiveClusterClaims.
+			WithLabelValues(namespace, name, state).
+			Set(float64(claims.states[state]))
+	}
+}
+
+// reportClaimExpiry counts a cluster claim the controller expired on the policy's behalf.
+func reportClaimExpiry(policy kfplacementv1alpha1.PlacementPolicyAccessor, reason string) {
+	hubmetrics.FleetPlacementPolicyClusterClaimExpirations.WithLabelValues(policy.GetNamespace(), policy.GetName(), reason).Inc()
 }
 
 // forgetPolicyMetrics drops the metric series of a policy that has been deleted, so that gauges
@@ -59,6 +67,10 @@ func forgetPolicyMetrics(namespace, name string) {
 		"name":      name,
 	})
 	hubmetrics.FleetPlacementPolicyActiveClusterClaims.DeletePartialMatch(prometheus.Labels{
+		"namespace": namespace,
+		"name":      name,
+	})
+	hubmetrics.FleetPlacementPolicyClusterClaimExpirations.DeletePartialMatch(prometheus.Labels{
 		"namespace": namespace,
 		"name":      name,
 	})
