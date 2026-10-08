@@ -57,6 +57,10 @@ const (
 // A class references the platform's own blueprint (such as a Cluster API ClusterClass) through its
 // parameters; KubeFleet never interprets them.
 //
+// Do not delete a class while claims it governs are outstanding: a provider needs the class to
+// release a claim it accepted, so such claims wait, finalizer and all, until the class is
+// recreated.
+//
 // +genclient
 // +genclient:nonNamespaced
 // +kubebuilder:object:root=true
@@ -159,6 +163,8 @@ type SelectorVocabulary struct {
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=64
+	// +listType=map
+	// +listMapKey=key
 	LabelKeys []LabelKeyRule `json:"labelKeys,omitempty"`
 
 	// The cluster property keys a cluster selector may use in a property expression, each
@@ -166,6 +172,8 @@ type SelectorVocabulary struct {
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxItems=64
+	// +listType=map
+	// +listMapKey=key
 	PropertyKeys []PropertyKeyRule `json:"propertyKeys,omitempty"`
 }
 
