@@ -330,3 +330,39 @@ func TestReconcileBindingsBacksOffWhenRoleIsHeld(t *testing.T) {
 		t.Errorf("reconcileBindings() created %d bindings while the role was held elsewhere, want 0", len(bindings.Items))
 	}
 }
+
+// TestReconcileBindingsUpdatesSyncStrategy pins that a change to a policy's sync strategy reaches
+// the bindings it already has, not only the ones it creates afterwards.
+func TestReconcileBindingsUpdatesSyncStrategy(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kfplacementv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme() = %v, want no error", err)
+	}
+	policy := bindingManagerHeldBy(controllerName)
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(policy).WithStatusSubresource(policy).Build()
+	r := NewReconciler(c, c, snapshotStub{}, nil)
+	outcomes := []selectorOutcome{{counts: resolvedCounts{desired: 1}, matched: []string{"east-1"}, chosen: []string{"east-1"}}}
+	chosen := map[string][]int{"east-1": {0}}
+
+	if _, err := r.reconcileBindings(context.Background(), policy, outcomes, chosen, nil); err != nil {
+		t.Fatalf("reconcileBindings() = %v, want no error", err)
+	}
+	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "default", Name: "pp"}, policy); err != nil {
+		t.Fatalf("Get() = %v, want no error", err)
+	}
+	policy.Spec.SyncStrategy = &kfplacementv1alpha1.SyncStrategy{ApplyMethod: kfplacementv1alpha1.ApplyMethodServerSideApply}
+	if _, err := r.reconcileBindings(context.Background(), policy, outcomes, chosen, nil); err != nil {
+		t.Fatalf("reconcileBindings() = %v, want no error", err)
+	}
+
+	bindings := &kfplacementv1alpha1.PlacementBindingList{}
+	if err := c.List(context.Background(), bindings); err != nil {
+		t.Fatalf("List() = %v, want no error", err)
+	}
+	if len(bindings.Items) != 1 {
+		t.Fatalf("reconcileBindings() left %d bindings, want 1", len(bindings.Items))
+	}
+	if diff := cmp.Diff(policy.Spec.SyncStrategy, bindings.Items[0].Spec.SyncStrategy); diff != "" {
+		t.Errorf("binding sync strategy mismatch (-want +got):\n%s", diff)
+	}
+}

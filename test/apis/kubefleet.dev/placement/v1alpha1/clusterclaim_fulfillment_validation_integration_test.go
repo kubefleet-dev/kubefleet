@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -191,6 +192,32 @@ var _ = Describe("Test ClusterClaim fulfillment API validation", func() {
 			} {
 				Expect(setCondition(claim, cond)).Should(Succeed(), "condition %s/%s", cond.Type, cond.Reason)
 			}
+		})
+	})
+
+	Context("the terminal tuples", func() {
+		It("requires the Fulfilled reason on a True Completed condition", func() {
+			claim := newClaim("completed-reason")
+			createClaim(claim)
+			claim.Status.ProvisionedClusterName = ptr.To("c1")
+			Expect(setCondition(claim, completed(metav1.ConditionTrue, placementv1alpha1.ClusterClaimCompletedCondReasonFailed, ""))).
+				Should(MatchError(ContainSubstring("the Completed condition must carry the Fulfilled reason when True")))
+		})
+
+		It("requires a contract reason on a True Expired condition", func() {
+			claim := newClaim("expired-reason")
+			createClaim(claim)
+			Expect(setCondition(claim, metav1.Condition{Type: placementv1alpha1.ClusterClaimCondTypeExpired, Status: metav1.ConditionTrue, Reason: "Bogus"})).
+				Should(MatchError(ContainSubstring("the Expired condition must carry the PendingTimeout, JoinTimeout, or NotMatching reason when True")))
+		})
+
+		It("refuses to drop the status object, which would bypass the terminal pins", func() {
+			claim := newClaim("status-null")
+			createClaim(claim)
+			claim.Status.ProvisionedClusterName = ptr.To("c1")
+			Expect(setCondition(claim, completed(metav1.ConditionTrue, placementv1alpha1.ClusterClaimCompletedCondReasonFulfilled, ""))).Should(Succeed())
+			Expect(hubClient.Status().Patch(ctx, claim, client.RawPatch(types.MergePatchType, []byte(`{"status":null}`)))).
+				Should(MatchError(ContainSubstring("the status of a cluster claim cannot be removed")))
 		})
 	})
 

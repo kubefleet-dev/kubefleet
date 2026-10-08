@@ -253,7 +253,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 				g.Expect(err).ShouldNot(HaveOccurred()) // any other read error fails loudly rather than passing as a skip
 				claim.Status.ProvisionedClusterName = ptr.To(clusterName)
 				meta.SetStatusCondition(&claim.Status.Conditions, metav1.Condition{
-					Type: kfplacementv1alpha1.ClusterClaimCondTypeCompleted, Status: metav1.ConditionTrue, Reason: "Provisioned",
+					Type: kfplacementv1alpha1.ClusterClaimCondTypeCompleted, Status: metav1.ConditionTrue, Reason: "Fulfilled",
 				})
 				g.Expect(k8sClient.Status().Update(ctx, claim)).Should(Succeed())
 			}, eventuallyTimeout, pollInterval).Should(Succeed())

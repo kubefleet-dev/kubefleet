@@ -165,7 +165,8 @@ type claimRound struct {
 type claimReport struct {
 	// outstanding counts the policy's claims, in whatever state, including ones being withdrawn.
 	outstanding int32
-	// states counts the outstanding claims by claimState, for the metric.
+	// states counts the outstanding claims by claimState, for the metric; it always sums to
+	// outstanding, since both are only ever bumped together, through count.
 	states map[string]int
 	// held says, for the Scheduled message, why terminal claims are kept and why a wanted claim
 	// waits on the fleet-wide limit.
@@ -173,6 +174,12 @@ type claimReport struct {
 	// nextDeadline is the earliest moment a kept claim's timer fires -- an expiry, or a retry --
 	// and zero when none is pending; the reconcile requeues for it.
 	nextDeadline time.Time
+}
+
+// count records one outstanding claim in the given state.
+func (rep *claimReport) count(state string) {
+	rep.outstanding++
+	rep.states[state]++
 }
 
 func (rep *claimReport) note(deadline time.Time) {
@@ -214,13 +221,12 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, round claimRound) (cla
 	for i := range existing {
 		claim := &existing[i]
 		listed[claim.Name] = true
-		rep.states[claimState(claim)]++
 		if !claim.DeletionTimestamp.IsZero() {
 			// Already being withdrawn: the claim still occupies its name and budget slot
 			// regardless of whether its terms happen to match the currently wanted set (a
 			// fulfillment flap can re-want identical terms mid-teardown), and an object on
 			// its way out receives no further status writes.
-			rep.outstanding++
+			rep.count(claimStateTerminating)
 			delete(wantedByName, claim.Name)
 			continue
 		}
@@ -238,10 +244,10 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, round claimRound) (cla
 		}
 		if keep {
 			delete(wantedByName, claim.Name)
-			rep.outstanding++
 			if err := r.syncKeptClaim(ctx, claim, &w, round, &rep); err != nil {
 				return rep, err
 			}
+			rep.count(claimState(claim))
 			continue
 		}
 		klog.V(2).InfoS("Withdrawing a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy))
@@ -254,7 +260,7 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, round claimRound) (cla
 			// can hold it in Terminating past this reconcile, and a differently-named claim created
 			// below would otherwise stand beside it, exceeding the concurrency budget. The claim
 			// watch re-queues the policy once the object is truly gone, and the slot frees then.
-			rep.outstanding++
+			rep.count(claimStateTerminating)
 		}
 	}
 
@@ -304,12 +310,12 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, round claimRound) (cla
 			rep.held = append(rep.held, fmt.Sprintf("cluster claim %q waits for the fleet-wide limit of %d concurrent cluster claims", w.name, r.maxConcurrentClaims))
 			return rep, nil
 		case outcome == issued:
-			rep.outstanding++
+			rep.count(claimStatePending)
 		case outcome == issueOccupied && !listed[w.name]:
 			// The name is taken by a claim the cache has yet to show -- the previous round's
 			// own create, most likely -- which no slot counts yet. It is counted now, or a
 			// policy of several selectors could be issued past its limit under cache lag.
-			rep.outstanding++
+			rep.count(claimStatePending)
 		}
 	}
 	return rep, nil
@@ -674,15 +680,16 @@ func (r *Reconciler) ensureFinalizer(ctx context.Context, policy kfplacementv1al
 // The API enforces the reference's immutability, which is what makes it, unlike the ownership
 // labels, fit to gate the cleanup finalizer's release.
 //
-// The comparison deliberately ignores the reference's API group and version: kind, namespace,
-// and name identify the same object across an API promotion, and a version-strict comparison
-// would orphan every outstanding claim the moment the policy API moved to a new version.
+// The comparison deliberately ignores the reference's version: an API promotion keeps the group,
+// kind, namespace, and name, and a version-strict comparison would orphan every outstanding claim
+// the moment the policy API moved to a new version. The group is part of the identity: a claim
+// naming another group's PlacementPolicy is not this policy's.
 func claimBelongsTo(claim *kfplacementv1alpha1.ClusterClaim, ref *kfplacementv1alpha1.ObjectReference) bool {
 	got := claim.Spec.PlacementPolicyRef
 	if got == nil || ref == nil {
 		return false
 	}
-	return got.Kind == ref.Kind && got.Name == ref.Name && got.Namespace == ref.Namespace
+	return got.APIGroup == ref.APIGroup && got.Kind == ref.Kind && got.Name == ref.Name && got.Namespace == ref.Namespace
 }
 
 // listClaims returns the cluster claims belonging to a policy, matched on the immutable

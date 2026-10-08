@@ -36,6 +36,7 @@ import (
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/naming"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/fulfiller"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/fulfiller/capi"
 )
@@ -70,7 +71,8 @@ func main() {
 		HealthProbeBindAddress:  *healthProbeBindAddress,
 		LeaderElection:          *leaderElect,
 		LeaderElectionNamespace: *leaderElectionNamespace,
-		LeaderElectionID:        "capi-fulfiller.kubefleet.dev",
+		// One lease per provider: bridges serving different provisioner names elect separately.
+		LeaderElectionID: "capi-fulfiller-" + naming.Sanitize(naming.Truncate(*provisionerName, 200)) + "-" + naming.Hash(*provisionerName),
 		// A replica that stops hands the lease over at once rather than letting it expire.
 		LeaderElectionReleaseOnCancel: true,
 	})

@@ -136,5 +136,13 @@ var _ = Describe("Test ClusterProviderClass API validation", func() {
 		class = newClass("empty-label-key")
 		class.Spec.SelectorVocabulary = &placementv1alpha1.SelectorVocabulary{LabelKeys: []placementv1alpha1.LabelKeyRule{{Key: ""}}}
 		Expect(hubClient.Create(ctx, class)).Should(MatchError(ContainSubstring("should be at least 1 chars")))
+
+		class = newClass("duplicate-label-key")
+		class.Spec.SelectorVocabulary = &placementv1alpha1.SelectorVocabulary{LabelKeys: []placementv1alpha1.LabelKeyRule{{Key: "a"}, {Key: "a"}}}
+		Expect(hubClient.Create(ctx, class)).Should(MatchError(ContainSubstring("Duplicate value")))
+
+		class = newClass("duplicate-property-key")
+		class.Spec.SelectorVocabulary = &placementv1alpha1.SelectorVocabulary{PropertyKeys: []placementv1alpha1.PropertyKeyRule{{Key: "a"}, {Key: "a"}}}
+		Expect(hubClient.Create(ctx, class)).Should(MatchError(ContainSubstring("Duplicate value")))
 	})
 })

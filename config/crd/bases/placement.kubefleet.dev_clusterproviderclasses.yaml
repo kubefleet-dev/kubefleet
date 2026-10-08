@@ -38,6 +38,10 @@ spec:
 
           A class references the platform's own blueprint (such as a Cluster API ClusterClass) through its
           parameters; KubeFleet never interprets them.
+
+          Do not delete a class while claims it governs are outstanding: a provider needs the class to
+          release a claim it accepted, so such claims wait, finalizer and all, until the class is
+          recreated.
         properties:
           apiVersion:
             description: |-
@@ -161,6 +165,9 @@ spec:
                       type: object
                     maxItems: 64
                     type: array
+                    x-kubernetes-list-map-keys:
+                    - key
+                    x-kubernetes-list-type: map
                   propertyKeys:
                     description: |-
                       The cluster property keys a cluster selector may use in a property expression, each
@@ -190,6 +197,9 @@ spec:
                       type: object
                     maxItems: 64
                     type: array
+                    x-kubernetes-list-map-keys:
+                    - key
+                    x-kubernetes-list-type: map
                 type: object
             required:
             - provisionerName
