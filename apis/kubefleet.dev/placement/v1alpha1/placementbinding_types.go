@@ -20,6 +20,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	// PlacementBindingOwnedByLabelKey is a label key that denotes the owner placement policy of
+	// a placement binding. Its value is the name of the owner placement policy. KubeFleet
+	// might truncate the name and add a hash suffix as needed.
+	//
+	// This label is set on all placement bindings.
+	PlacementBindingOwnedByLabelKey = "placement.kubefleet.dev/owned-by-placement-policy"
+)
+
 // The condition types for the PlacementBinding and ClusterPlacementBinding APIs.
 const (
 	PlacementBindingCondTypeSynchronized = "Synchronized"
