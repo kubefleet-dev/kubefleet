@@ -70,6 +70,14 @@ func claimName(policy kfplacementv1alpha1.PlacementPolicyAccessor, selectorIndex
 type desiredClaim struct {
 	name  string
 	terms []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm
+	// class is the ClusterProviderClass the claim is stamped with when issued; nil when the policy
+	// resolves to none. A kept claim of another class no longer serves the selector and is replaced.
+	class *kfplacementv1alpha1.ClusterProviderClass
+	// blocked says why no claim can be issued for the selector right now -- no class, or terms
+	// outside the class's vocabulary -- and is "" when one can. It gates issuing only: a claim
+	// already outstanding for the selector is kept, so a class that vanishes for a moment or a
+	// vocabulary that narrows never withdraws provisioning that is in flight.
+	blocked string
 	// outcome is the selector this claim serves. It is what lets the reconcile decide when a
 	// completed claim has done its job and should be rotated to provision the next cluster.
 	outcome *selectorOutcome
@@ -77,20 +85,55 @@ type desiredClaim struct {
 
 // desiredClaims returns the claims the policy should have outstanding given the selector
 // outcomes: one claim per unfulfilled selector that opted into AddClusterClaim, in selector
-// order, capped by the per-policy concurrency limit.
-func desiredClaims(policy kfplacementv1alpha1.PlacementPolicyAccessor, outcomes []selectorOutcome) []desiredClaim {
-	wanted := make([]desiredClaim, 0, maxConcurrentClaimsPerPolicy)
+// order, with the issuable ones capped by the per-policy concurrency limit.
+//
+// noClass is why the policy resolves to no class, or "" when class is set. The second value is
+// the first reason, in selector order, that a wanted claim cannot be issued -- deterministic
+// across reconciles, and empty when every wanted claim is issuable or nothing is wanted at all, so
+// that a satisfied policy in a fleet without classes reports nothing.
+func desiredClaims(policy kfplacementv1alpha1.PlacementPolicyAccessor, outcomes []selectorOutcome, class *kfplacementv1alpha1.ClusterProviderClass, noClass string) (wanted []desiredClaim, note string) {
+	wanted = make([]desiredClaim, 0, maxConcurrentClaimsPerPolicy)
+	issuable := 0
 	for i := range outcomes {
 		o := &outcomes[i]
 		if o.satisfiedInFull() || o.whenUnfulfilled != kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim {
 			continue
 		}
-		wanted = append(wanted, desiredClaim{name: claimName(policy, i), terms: o.terms, outcome: o})
-		if len(wanted) >= maxConcurrentClaimsPerPolicy {
-			break
+		w := desiredClaim{name: claimName(policy, i), terms: o.terms, class: class, outcome: o}
+		switch {
+		case class == nil:
+			w.blocked = noClass
+		default:
+			if msg := vocabularyViolation(class, o.terms); msg != "" {
+				w.blocked = fmt.Sprintf("no new cluster claim is issued for cluster selector %d: %s", i, msg)
+			}
 		}
+		if w.blocked != "" {
+			if note == "" {
+				note = w.blocked
+			}
+			wanted = append(wanted, w)
+			continue
+		}
+		if issuable >= maxConcurrentClaimsPerPolicy {
+			continue
+		}
+		wanted = append(wanted, w)
+		issuable++
 	}
-	return wanted
+	return wanted, note
+}
+
+// claimStillWanted reports whether an outstanding claim still serves the wanted claim of its
+// name: it was issued for the same terms, and for the same class when one resolves now. A claim
+// serves only its original terms and class; if either changed on the policy, the claim is
+// withdrawn and a fresh one issued on a later pass. When no class resolves the stamp is not
+// judged, since there is nothing to compare it with and the claim may be mid-provisioning.
+func claimStillWanted(claim *kfplacementv1alpha1.ClusterClaim, w desiredClaim) bool {
+	if !apiequality.Semantic.DeepEqual(claim.Spec.ClusterSelectorTerms, w.terms) {
+		return false
+	}
+	return w.class == nil || claim.Spec.ClusterProviderClassName == w.class.Name
 }
 
 // claimReadyToRotate reports whether a claim has done its job -- the provisioner marked it completed
@@ -122,7 +165,7 @@ func claimReadyToRotate(claim *kfplacementv1alpha1.ClusterClaim, outcome *select
 // A claim held in Terminating by a provisioner finalizer still counts toward the concurrency
 // budget (its deterministic name also blocks re-creation), so a slow provisioner teardown can
 // never cause double-provisioning for the same selector.
-func (r *Reconciler) reconcileClaims(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, outcomes []selectorOutcome, mostRecentClusterCreation metav1.Time) (int32, error) {
+func (r *Reconciler) reconcileClaims(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, wanted []desiredClaim, mostRecentClusterCreation metav1.Time) (int32, error) {
 	existing, err := r.listClaims(ctx, policy)
 	if err != nil {
 		return 0, err
@@ -135,7 +178,6 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy kfplacementv1al
 		}
 	}
 
-	wanted := desiredClaims(policy, outcomes)
 	wantedByName := make(map[string]desiredClaim, len(wanted))
 	for _, w := range wanted {
 		wantedByName[w.name] = w
@@ -154,9 +196,7 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy kfplacementv1al
 			continue
 		}
 		w, stillWanted := wantedByName[claim.Name]
-		// A claim only serves its original terms; if the policy's selector changed, the
-		// outstanding claim is withdrawn and a fresh one is issued on a later pass.
-		keep := stillWanted && apiequality.Semantic.DeepEqual(claim.Spec.ClusterSelectorTerms, w.terms)
+		keep := stillWanted && claimStillWanted(claim, w)
 		if keep && claimReadyToRotate(claim, w.outcome) {
 			// The provisioner has provisioned an eligible cluster for this claim, but the selector
 			// still needs more. The completed claim is not kept: it falls through to the withdrawal
@@ -171,7 +211,14 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy kfplacementv1al
 			if err := r.reconcileClaimLabels(ctx, claim, policy); err != nil {
 				return outstanding, err
 			}
-			if err := r.refreshClaimFreshness(ctx, claim, mostRecentClusterCreation); err != nil {
+			// A claim held through a vocabulary that narrowed under it is not approved on the
+			// class's behalf: the class no longer admits what the claim asks for, so approval stays
+			// with an approver, as it would for a claim the class cannot issue.
+			class := w.class
+			if w.blocked != "" {
+				class = nil
+			}
+			if err := r.syncClaimStatus(ctx, claim, class, mostRecentClusterCreation); err != nil {
 				return outstanding, err
 			}
 			continue
@@ -193,6 +240,16 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy kfplacementv1al
 		// below would otherwise stand beside it, exceeding the concurrency budget. The claim
 		// watch re-queues the policy once the object is truly gone, and the slot frees then.
 		outstanding++
+	}
+
+	// A blocked entry exists only to keep a claim that is already outstanding; once the existing
+	// claims are matched it has no further role, and must not count as something to create -- or
+	// the cleanup finalizer would land on, and never leave, a claim-free policy in a fleet with no
+	// resolvable class.
+	for name, w := range wantedByName {
+		if w.blocked != "" {
+			delete(wantedByName, name)
+		}
 	}
 
 	if len(wantedByName) == 0 {
@@ -227,8 +284,9 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy kfplacementv1al
 				Labels: claimOwnershipLabels(policy),
 			},
 			Spec: kfplacementv1alpha1.ClusterClaimSpec{
-				PlacementPolicyRef:   policyReference(policy),
-				ClusterSelectorTerms: w.terms,
+				PlacementPolicyRef:       policyReference(policy),
+				ClusterSelectorTerms:     w.terms,
+				ClusterProviderClassName: w.class.Name,
 			},
 		}
 		if outstanding >= maxConcurrentClaimsPerPolicy {
@@ -248,13 +306,35 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy kfplacementv1al
 			return outstanding, err
 		}
 		outstanding++
-		// Stamp the freshness marker at creation, per the FEP: the claim carries the latest
-		// observed cluster creation timestamp from the moment provisioners can see it.
-		if err := r.refreshClaimFreshness(ctx, claim, mostRecentClusterCreation); err != nil {
+		// Stamp the freshness marker and the automatic approval right after creation, per the
+		// FEP: the claim carries the latest observed cluster creation timestamp from the moment
+		// provisioners can see it.
+		if err := r.syncClaimStatus(ctx, claim, w.class, mostRecentClusterCreation); err != nil {
 			return outstanding, err
 		}
 	}
 	return outstanding, nil
+}
+
+// approveAutomatically stamps Approved on a claim whose class approves automatically, reporting
+// whether it changed the claim. It runs at creation and again on every reconcile of a kept claim
+// that has no Approved entry: approval is a second write after the create, so a controller stopped
+// between the two would otherwise leave a claim no provider may act on and that, being unapproved,
+// never expires. A claim that already carries an Approved entry -- an approver's, a denial, or this
+// controller's own -- is left alone, as is a claim whose policy resolves to no class right now.
+func approveAutomatically(claim *kfplacementv1alpha1.ClusterClaim, class *kfplacementv1alpha1.ClusterProviderClass) bool {
+	if class == nil || class.Spec.Approval != kfplacementv1alpha1.ClusterClaimApprovalModeAutomatic ||
+		meta.FindStatusCondition(claim.Status.Conditions, kfplacementv1alpha1.ClusterClaimCondTypeApproved) != nil {
+		return false
+	}
+	meta.SetStatusCondition(&claim.Status.Conditions, metav1.Condition{
+		Type:               kfplacementv1alpha1.ClusterClaimCondTypeApproved,
+		Status:             metav1.ConditionTrue,
+		Reason:             kfplacementv1alpha1.ClusterClaimApprovedCondReasonAutomaticallyApproved,
+		Message:            fmt.Sprintf("Approved automatically per the cluster provider class %s", class.Name),
+		ObservedGeneration: claim.Generation,
+	})
+	return true
 }
 
 // reconcileClaimLabels restores the ownership labels on a kept claim. The controller itself finds
@@ -292,21 +372,35 @@ func (r *Reconciler) reconcileClaimLabels(ctx context.Context, claim *kfplacemen
 }
 
 // refreshClaimFreshness advances the claim's freshness marker when clusters joined after the
-// last observation; provisioners use the marker to tell that the claim has been re-evaluated
-// and is still wanted.
-func (r *Reconciler) refreshClaimFreshness(ctx context.Context, claim *kfplacementv1alpha1.ClusterClaim, mostRecent metav1.Time) error {
+// last observation, reporting whether it did; provisioners use the marker to tell that the claim
+// has been re-evaluated and is still wanted.
+func refreshClaimFreshness(claim *kfplacementv1alpha1.ClusterClaim, mostRecent metav1.Time) bool {
 	if mostRecent.IsZero() {
-		return nil
+		return false
 	}
 	observed := claim.Status.LastObservedMostRecentClusterCreationTimestamp
 	if observed != nil && !mostRecent.After(observed.Time) {
-		return nil
+		return false
 	}
 	claim.Status.LastObservedMostRecentClusterCreationTimestamp = &mostRecent
-	// Conflicts are expected steady-state once a provisioner co-writes the claim status; the
-	// provisioner's own write re-enqueues the policy through the claim watch, so the refresh
-	// simply retries then. This only-advance guard above is also what terminates the
-	// claim-watch self-loop: a refresh fires one echo reconcile, which then no-ops here.
+	return true
+}
+
+// syncClaimStatus writes the freshness marker and the automatic approval in one status update,
+// so that a conflict on one can never strand the other: the two are the only status fields this
+// controller owns on a claim, and both are no-ops once in place, which is what terminates the
+// claim-watch self-loop -- a write fires one echo reconcile, which then changes nothing here.
+//
+// Conflicts are expected steady-state once a provisioner co-writes the claim status; the
+// provisioner's own write re-enqueues the policy through the claim watch, so the sync simply
+// retries then. A NotFound means the claim was withdrawn out from under us, which a later pass
+// reconciles.
+func (r *Reconciler) syncClaimStatus(ctx context.Context, claim *kfplacementv1alpha1.ClusterClaim, class *kfplacementv1alpha1.ClusterProviderClass, mostRecent metav1.Time) error {
+	refreshed := refreshClaimFreshness(claim, mostRecent)
+	approved := approveAutomatically(claim, class)
+	if !refreshed && !approved {
+		return nil
+	}
 	if err := r.Status().Update(ctx, claim); err != nil && !errors.IsNotFound(err) && !errors.IsConflict(err) {
 		return err
 	}

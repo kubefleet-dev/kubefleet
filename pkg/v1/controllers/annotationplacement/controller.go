@@ -396,7 +396,11 @@ func (r *Reconciler) deleteGeneratedPolicy(ctx context.Context, gvk schema.Group
 // controller and that tool taking turns undoing each other. Whether anything changed is for the
 // caller to judge by comparing the object before and after.
 func applyDesiredPolicy(actual, desired kfplacementv1alpha1.PlacementPolicyAccessor, source *unstructured.Unstructured, scheme *runtime.Scheme) error {
+	// The class and the claim limit cannot be written in an annotation, so they are the user's to
+	// set on the generated policy, and they survive the sync like a label would.
+	class, limit := actual.GetSpec().ClusterProviderClassName, actual.GetSpec().MaxConcurrentClusterClaims
 	desired.GetSpec().DeepCopyInto(actual.GetSpec())
+	actual.GetSpec().ClusterProviderClassName, actual.GetSpec().MaxConcurrentClusterClaims = class, limit
 
 	labels := actual.GetLabels()
 	if labels == nil {
