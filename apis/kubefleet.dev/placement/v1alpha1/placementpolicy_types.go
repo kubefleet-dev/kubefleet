@@ -149,9 +149,14 @@ type PlacementPolicySpec struct {
 	// +kubebuilder:validation:MaxLength=253
 	ClusterProviderClassName *string `json:"clusterProviderClassName,omitempty"`
 
-	// The number of cluster claims this placement policy may have outstanding at once, capped by
-	// the fleet-wide limit. A claim serves one cluster selector, so this only matters to a policy
-	// with several selectors. Defaults to 1.
+	// The number of cluster claims this placement policy may have outstanding at once, in any
+	// state: a claim that failed, expired, or was denied is kept as the record and occupies a
+	// slot until it is withdrawn, as does a claim still waiting for approval. A claim serves one
+	// cluster selector, so this only matters to a policy with several selectors. The hub agent's
+	// fleet-wide limit caps it; that limit counts approved claims and claims of classes that
+	// approve automatically across all policies, so approving several outstanding claims of a
+	// manually approved class at once can exceed it -- the provider's own concurrency limit is
+	// the backstop. Defaults to 1.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:Minimum=1

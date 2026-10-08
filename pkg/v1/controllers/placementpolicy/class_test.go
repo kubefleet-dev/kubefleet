@@ -261,7 +261,7 @@ func TestDesiredClaimsVocabulary(t *testing.T) {
 			wantNote:     antarcticaBlocked,
 		},
 		{
-			name:         "the claimable selector after an unclaimable one still gets the budget",
+			name:         "the claimable selector after an unclaimable one is issuable",
 			class:        eastOnly,
 			outcomes:     []selectorOutcome{unfulfilled(regionTerms("antarctica")), unfulfilled(regionTerms("eastus"))},
 			wantWanted:   []string{claimName(policy, 0), claimName(policy, 1)},

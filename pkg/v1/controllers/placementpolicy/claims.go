@@ -20,7 +20,9 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -29,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/naming"
 )
@@ -37,11 +40,6 @@ const (
 	// claimCleanupFinalizer marks policies with outstanding cluster claims; deleting such a
 	// policy first withdraws its claims.
 	claimCleanupFinalizer = "placement.kubefleet.dev/claim-cleanup"
-
-	// maxConcurrentClaimsPerPolicy is the number of cluster claims a single policy may have in
-	// flight, per the FEP's default of one; the user-configurable per-fleet and per-placement
-	// limits are a config surface that arrives separately.
-	maxConcurrentClaimsPerPolicy = 1
 
 	// claimNameBaseMaxLength bounds the policy-name prefix inside a generated claim name so
 	// the full name stays well within the 253-character object name limit.
@@ -85,15 +83,17 @@ type desiredClaim struct {
 
 // desiredClaims returns the claims the policy should have outstanding given the selector
 // outcomes: one claim per unfulfilled selector that opted into AddClusterClaim, in selector
-// order, with the issuable ones capped by the per-policy concurrency limit.
+// order. The concurrency limits apply when claims are issued, never to what is wanted: a claim
+// that exists for a later selector stays wanted, and kept, even while an earlier selector waits
+// for a slot, so a limit that tightens or a cluster that leaves never withdraws provisioning in
+// flight.
 //
 // noClass is why the policy resolves to no class, or "" when class is set. The second value is
 // the first reason, in selector order, that a wanted claim cannot be issued -- deterministic
 // across reconciles, and empty when every wanted claim is issuable or nothing is wanted at all, so
 // that a satisfied policy in a fleet without classes reports nothing.
 func desiredClaims(policy kfplacementv1alpha1.PlacementPolicyAccessor, outcomes []selectorOutcome, class *kfplacementv1alpha1.ClusterProviderClass, noClass string) (wanted []desiredClaim, note string) {
-	wanted = make([]desiredClaim, 0, maxConcurrentClaimsPerPolicy)
-	issuable := 0
+	wanted = make([]desiredClaim, 0, len(outcomes))
 	for i := range outcomes {
 		o := &outcomes[i]
 		if o.satisfiedInFull() || o.whenUnfulfilled != kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim {
@@ -108,18 +108,10 @@ func desiredClaims(policy kfplacementv1alpha1.PlacementPolicyAccessor, outcomes 
 				w.blocked = fmt.Sprintf("no new cluster claim is issued for cluster selector %d: %s", i, msg)
 			}
 		}
-		if w.blocked != "" {
-			if note == "" {
-				note = w.blocked
-			}
-			wanted = append(wanted, w)
-			continue
-		}
-		if issuable >= maxConcurrentClaimsPerPolicy {
-			continue
+		if w.blocked != "" && note == "" {
+			note = w.blocked
 		}
 		wanted = append(wanted, w)
-		issuable++
 	}
 	return wanted, note
 }
@@ -157,41 +149,84 @@ func claimReadyToRotate(claim *kfplacementv1alpha1.ClusterClaim, outcome *select
 	return provisioned != nil && slices.Contains(outcome.matched, *provisioned)
 }
 
+// claimRound is what one reconcile of a policy's claims works from.
+type claimRound struct {
+	policy kfplacementv1alpha1.PlacementPolicyAccessor
+	wanted []desiredClaim
+	// clusters indexes the fleet by name, for judging a completed claim's cluster.
+	clusters map[string]*clusterv1beta1.MemberCluster
+	// limit is the policy's effective concurrency limit, min(policy, fleet).
+	limit                     int32
+	mostRecentClusterCreation metav1.Time
+	now                       time.Time
+}
+
+// claimReport is what one reconcile of a policy's claims found.
+type claimReport struct {
+	// outstanding counts the policy's claims, in whatever state, including ones being withdrawn.
+	outstanding int32
+	// states counts the outstanding claims by claimState, for the metric; it always sums to
+	// outstanding, since both are only ever bumped together, through count.
+	states map[string]int
+	// held says, for the Scheduled message, why terminal claims are kept and why a wanted claim
+	// waits on the fleet-wide limit.
+	held []string
+	// nextDeadline is the earliest moment a kept claim's timer fires -- an expiry, or a retry --
+	// and zero when none is pending; the reconcile requeues for it.
+	nextDeadline time.Time
+}
+
+// count records one outstanding claim in the given state.
+func (rep *claimReport) count(state string) {
+	rep.outstanding++
+	rep.states[state]++
+}
+
+func (rep *claimReport) note(deadline time.Time) {
+	if !deadline.IsZero() && (rep.nextDeadline.IsZero() || deadline.Before(rep.nextDeadline)) {
+		rep.nextDeadline = deadline
+	}
+}
+
 // reconcileClaims drives the policy's cluster claims toward the desired set: it withdraws
 // claims whose selector is fulfilled or gone, refreshes the freshness marker on claims that
-// are still wanted, and issues new claims within the concurrency budget. It returns the number
-// of claims outstanding for the policy.
+// are still wanted, expires kept claims that ran out of time under their class, holds or retries
+// terminal claims, and issues new claims within the concurrency budgets.
 //
 // A claim held in Terminating by a provisioner finalizer still counts toward the concurrency
 // budget (its deterministic name also blocks re-creation), so a slow provisioner teardown can
-// never cause double-provisioning for the same selector.
-func (r *Reconciler) reconcileClaims(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, wanted []desiredClaim, mostRecentClusterCreation metav1.Time) (int32, error) {
+// never cause double-provisioning for the same selector. A terminal claim counts the same way:
+// it is the record of what happened, and the selector is not re-claimed while the record stands.
+func (r *Reconciler) reconcileClaims(ctx context.Context, round claimRound) (claimReport, error) {
+	policy := round.policy
+	rep := claimReport{states: make(map[string]int, len(claimStates))}
 	existing, err := r.listClaims(ctx, policy)
 	if err != nil {
-		return 0, err
+		return rep, err
 	}
 	if len(existing) > 0 {
 		// Re-assert the cleanup finalizer while any claim exists, so an out-of-band finalizer
 		// removal self-heals instead of leaving claims orphanable.
 		if err := r.ensureFinalizer(ctx, policy); err != nil {
-			return 0, err
+			return rep, err
 		}
 	}
 
-	wantedByName := make(map[string]desiredClaim, len(wanted))
-	for _, w := range wanted {
+	wantedByName := make(map[string]desiredClaim, len(round.wanted))
+	for _, w := range round.wanted {
 		wantedByName[w.name] = w
 	}
 
-	var outstanding int32
+	listed := make(map[string]bool, len(existing))
 	for i := range existing {
 		claim := &existing[i]
+		listed[claim.Name] = true
 		if !claim.DeletionTimestamp.IsZero() {
 			// Already being withdrawn: the claim still occupies its name and budget slot
 			// regardless of whether its terms happen to match the currently wanted set (a
 			// fulfillment flap can re-want identical terms mid-teardown), and an object on
 			// its way out receives no further status writes.
-			outstanding++
+			rep.count(claimStateTerminating)
 			delete(wantedByName, claim.Name)
 			continue
 		}
@@ -203,43 +238,30 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy kfplacementv1al
 			// below and, its entry left in wantedByName, is reissued on a later pass so the provisioner
 			// gets a fresh claim for the next cluster. Rotation is gated on the provisioned cluster
 			// being eligible, so the next claim is never issued before this one's cluster is confirmed.
+			// This also resumes a claim expired as JoinTimeout whose cluster joined late: the record
+			// is withdrawn because it did its job after all.
 			keep = false
 		}
 		if keep {
 			delete(wantedByName, claim.Name)
-			outstanding++
-			if err := r.reconcileClaimLabels(ctx, claim, policy); err != nil {
-				return outstanding, err
+			if err := r.syncKeptClaim(ctx, claim, &w, round, &rep); err != nil {
+				return rep, err
 			}
-			// A claim held through a vocabulary that narrowed under it is not approved on the
-			// class's behalf: the class no longer admits what the claim asks for, so approval stays
-			// with an approver, as it would for a claim the class cannot issue.
-			class := w.class
-			if w.blocked != "" {
-				class = nil
-			}
-			if err := r.syncClaimStatus(ctx, claim, class, mostRecentClusterCreation); err != nil {
-				return outstanding, err
-			}
+			rep.count(claimState(claim))
 			continue
 		}
 		klog.V(2).InfoS("Withdrawing a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy))
-		// The delete is pinned to the UID the cache showed: claim names are deterministic, so a
-		// cache that has yet to see an earlier withdrawal can still list the predecessor after its
-		// successor was created under the same name, and an unpinned delete would withdraw the
-		// successor. A UID mismatch fails with a conflict, and the requeue retries on a fresher view.
-		if err := r.Delete(ctx, claim, client.Preconditions{UID: &claim.UID}); err != nil {
-			if errors.IsNotFound(err) {
-				// Already fully gone; it occupies nothing.
-				continue
-			}
-			return outstanding, err
+		gone, err := r.withdrawClaim(ctx, claim)
+		if err != nil {
+			return rep, err
 		}
-		// A claim withdrawn this pass still occupies its budget slot: a provisioner finalizer
-		// can hold it in Terminating past this reconcile, and a differently-named claim created
-		// below would otherwise stand beside it, exceeding the concurrency budget. The claim
-		// watch re-queues the policy once the object is truly gone, and the slot frees then.
-		outstanding++
+		if !gone {
+			// A claim withdrawn this pass still occupies its budget slot: a provisioner finalizer
+			// can hold it in Terminating past this reconcile, and a differently-named claim created
+			// below would otherwise stand beside it, exceeding the concurrency budget. The claim
+			// watch re-queues the policy once the object is truly gone, and the slot frees then.
+			rep.count(claimStateTerminating)
+		}
 	}
 
 	// A blocked entry exists only to keep a claim that is already outstanding; once the existing
@@ -259,61 +281,244 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy kfplacementv1al
 		// carry the finalizer forever, and disabling the feature and then deleting such a claim-free
 		// policy would hang its deletion with no controller left to clear it, outside the documented
 		// outstanding-claims caveat.
-		if outstanding == 0 {
+		if rep.outstanding == 0 {
 			if err := r.releaseFinalizerIfNoClaims(ctx, policy); err != nil {
-				return outstanding, err
+				return rep, err
 			}
 		}
-		return outstanding, nil
+		return rep, nil
 	}
 
 	// The cleanup finalizer lands on the policy before any claim is created, so a crash
 	// between the two writes cannot orphan a claim.
 	if err := r.ensureFinalizer(ctx, policy); err != nil {
-		return outstanding, err
+		return rep, err
 	}
-	for _, w := range wanted {
+	for _, w := range round.wanted {
 		if _, still := wantedByName[w.name]; !still {
 			continue
 		}
-		claim := &kfplacementv1alpha1.ClusterClaim{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: w.name,
-				// The labels select a policy's claims; spec.placementPolicyRef below carries
-				// the policy's authoritative identity, which a label value cannot always hold.
-				Labels: claimOwnershipLabels(policy),
-			},
-			Spec: kfplacementv1alpha1.ClusterClaimSpec{
-				PlacementPolicyRef:       policyReference(policy),
-				ClusterSelectorTerms:     w.terms,
-				ClusterProviderClassName: w.class.Name,
-			},
-		}
-		if outstanding >= maxConcurrentClaimsPerPolicy {
+		if rep.outstanding >= round.limit {
 			// Every slot is taken, by kept claims or by ones withdrawn moments ago that may
 			// still be terminating; the create is retried when a watch frees a slot.
 			break
 		}
-		klog.V(2).InfoS("Adding a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy))
-		if err := r.Create(ctx, claim); err != nil {
-			if errors.IsAlreadyExists(err) {
-				// The deterministic name is still occupied — most commonly by this round's own
-				// withdraw of a same-named claim that a provisioner finalizer holds in
-				// Terminating. The claim watch re-queues the policy once the old object is
-				// gone, and the create is retried then.
-				continue
-			}
-			return outstanding, err
-		}
-		outstanding++
-		// Stamp the freshness marker and the automatic approval right after creation, per the
-		// FEP: the claim carries the latest observed cluster creation timestamp from the moment
-		// provisioners can see it.
-		if err := r.syncClaimStatus(ctx, claim, w.class, mostRecentClusterCreation); err != nil {
-			return outstanding, err
+		switch outcome, err := r.issueClaim(ctx, policy, &w, round); {
+		case err != nil:
+			return rep, err
+		case outcome == issueLimited:
+			rep.held = append(rep.held, fmt.Sprintf("cluster claim %q waits for the fleet-wide limit of %d concurrent cluster claims", w.name, r.maxConcurrentClaims))
+			return rep, nil
+		case outcome == issued:
+			rep.count(claimStatePending)
+		case outcome == issueOccupied && !listed[w.name]:
+			// The name is taken by a claim the cache has yet to show -- the previous round's
+			// own create, most likely -- which no slot counts yet. It is counted now, or a
+			// policy of several selectors could be issued past its limit under cache lag.
+			rep.count(claimStatePending)
 		}
 	}
-	return outstanding, nil
+	return rep, nil
+}
+
+// syncKeptClaim brings a kept claim up to date: a terminal one is held as the record, and
+// withdrawn to retry when its class says so and the wait has passed; a live one has its labels,
+// its freshness marker, and its automatic approval re-asserted, and its timers judged.
+func (r *Reconciler) syncKeptClaim(ctx context.Context, claim *kfplacementv1alpha1.ClusterClaim, w *desiredClaim, round claimRound, rep *claimReport) error {
+	if terminal := terminalCondition(claim); terminal != nil {
+		// The record of a failure, an expiry, or a denial. It is held, counted, and never
+		// written to; a class that retries withdraws it once retryAfter has passed, and the
+		// name is re-issued on a later pass like any withdrawn claim.
+		if w.class != nil && w.blocked == "" {
+			if deadline, retry := retryDeadline(terminal, &w.class.Spec); retry {
+				if !round.now.Before(deadline) {
+					klog.V(2).InfoS("Withdrawing a terminal cluster claim to retry", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(round.policy), "reason", terminal.Reason)
+					_, err := r.withdrawClaim(ctx, claim)
+					return err
+				}
+				rep.note(deadline)
+			}
+		}
+		note := heldNote(claim, terminal)
+		rep.held = append(rep.held, note)
+		// Raised on every pass that holds the record; the events API folds the repeats into one
+		// series with a count, which is the record's age in reconciles.
+		if r.recorder != nil {
+			r.recorder.Eventf(round.policy, claim, corev1.EventTypeWarning, EventReasonClaimHeld, "HoldClaim", "%s", eventNote(note))
+		}
+		return nil
+	}
+
+	if err := r.reconcileClaimLabels(ctx, claim, round.policy); err != nil {
+		return err
+	}
+	// A claim held through a vocabulary that narrowed under it is not approved on the
+	// class's behalf: the class no longer admits what the claim asks for, so approval stays
+	// with an approver, as it would for a claim the class cannot issue. Its timers are not
+	// judged either, nor are those of a claim whose class is gone: the class is where the
+	// timers live.
+	class := w.class
+	if w.blocked != "" {
+		class = nil
+	}
+	if err := r.syncClaimStatus(ctx, claim, class, round.mostRecentClusterCreation, round.now); err != nil {
+		return err
+	}
+	if class == nil {
+		return nil
+	}
+	deadline, err := r.expireIfDue(ctx, claim, class, w, round)
+	if err != nil {
+		return err
+	}
+	rep.note(deadline)
+	return nil
+}
+
+// withdrawClaim deletes a claim pinned to the UID the cache showed: claim names are deterministic,
+// so a cache that has yet to see an earlier withdrawal can still list the predecessor after its
+// successor was created under the same name, and an unpinned delete would withdraw the successor.
+// A UID mismatch fails with a conflict, and the requeue retries on a fresher view. It reports
+// whether the claim was already fully gone, in which case it occupies nothing.
+func (r *Reconciler) withdrawClaim(ctx context.Context, claim *kfplacementv1alpha1.ClusterClaim) (gone bool, err error) {
+	if err := r.Delete(ctx, claim, client.Preconditions{UID: &claim.UID}); err != nil {
+		if errors.IsNotFound(err) {
+			return true, nil
+		}
+		return false, err
+	}
+	return false, nil
+}
+
+// issueOutcome is what issueClaim did.
+type issueOutcome int
+
+const (
+	// issued means the claim was created and occupies a slot.
+	issued issueOutcome = iota
+	// issueOccupied means the name is still taken by a claim that is not where the list showed
+	// it: this round's own withdrawal, held in Terminating by a provisioner finalizer and already
+	// counted, or a claim the cache has yet to show at all, which the caller counts. The claim
+	// watch re-queues the policy either way.
+	issueOccupied
+	// issueLimited means the fleet-wide limit is reached; nothing was created.
+	issueLimited
+)
+
+// issueClaim creates a wanted claim and stamps its status, under the fleet-wide limit: the fleet's
+// active claims are counted from the API server inside a critical section the two controllers of
+// this Reconciler share, and the create and the automatic approval both happen inside it, so that
+// in one leader-elected hub agent the limit is exact for Automatic classes. For Manual classes it
+// bounds issuance only -- an approver may approve several outstanding claims at once, and the
+// provider's own concurrency limit is the backstop. It reports false when the limit is reached.
+func (r *Reconciler) issueClaim(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, w *desiredClaim, round claimRound) (issueOutcome, error) {
+	r.claimMu.Lock()
+	defer r.claimMu.Unlock()
+
+	active, err := r.countFleetActiveClaims(ctx)
+	if err != nil {
+		return issueLimited, err
+	}
+	if active >= r.maxConcurrentClaims {
+		klog.V(2).InfoS("Holding a cluster claim at the fleet-wide limit", "clusterClaim", w.name, "placementPolicy", klog.KObj(policy), "active", active, "limit", r.maxConcurrentClaims)
+		return issueLimited, nil
+	}
+
+	claim := &kfplacementv1alpha1.ClusterClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: w.name,
+			// The labels select a policy's claims; spec.placementPolicyRef below carries
+			// the policy's authoritative identity, which a label value cannot always hold.
+			Labels: claimOwnershipLabels(policy),
+		},
+		Spec: kfplacementv1alpha1.ClusterClaimSpec{
+			PlacementPolicyRef:       policyReference(policy),
+			ClusterSelectorTerms:     w.terms,
+			ClusterProviderClassName: w.class.Name,
+		},
+	}
+	klog.V(2).InfoS("Adding a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy))
+	if err := r.Create(ctx, claim); err != nil {
+		if errors.IsAlreadyExists(err) {
+			return issueOccupied, nil
+		}
+		return issueLimited, err
+	}
+	// Stamp the freshness marker and the automatic approval right after creation, per the
+	// FEP: the claim carries the latest observed cluster creation timestamp from the moment
+	// provisioners can see it.
+	return issued, r.syncClaimStatus(ctx, claim, w.class, round.mostRecentClusterCreation, round.now)
+}
+
+// countFleetActiveClaims counts, from the API server, the claims across the fleet that hold a
+// provider's attention or are about to: approved, or of an Automatic class whether or not the
+// approval stamp has landed yet; terminal claims and claims being withdrawn are records, not work.
+func (r *Reconciler) countFleetActiveClaims(ctx context.Context) (int32, error) {
+	claims := &kfplacementv1alpha1.ClusterClaimList{}
+	if err := r.uncachedReader.List(ctx, claims); err != nil {
+		return 0, err
+	}
+	classes := &kfplacementv1alpha1.ClusterProviderClassList{}
+	if err := r.List(ctx, classes); err != nil {
+		return 0, err
+	}
+	automatic := make(map[string]bool, len(classes.Items))
+	for i := range classes.Items {
+		automatic[classes.Items[i].Name] = classes.Items[i].Spec.Approval == kfplacementv1alpha1.ClusterClaimApprovalModeAutomatic
+	}
+	var active int32
+	for i := range claims.Items {
+		claim := &claims.Items[i]
+		if !claim.DeletionTimestamp.IsZero() || terminalCondition(claim) != nil {
+			continue
+		}
+		if meta.IsStatusConditionTrue(claim.Status.Conditions, kfplacementv1alpha1.ClusterClaimCondTypeApproved) || automatic[claim.Spec.ClusterProviderClassName] {
+			active++
+		}
+	}
+	return active, nil
+}
+
+// expireIfDue stamps Expired on a kept claim that has run out of time under its class, and returns
+// the deadline of the timer that is still running otherwise. The write is a resourceVersion-conditional
+// update: a provider's acceptance landing first makes it conflict, and the requeue re-judges on the
+// fresher object, so an accepted claim can never be expired out from under its provider.
+func (r *Reconciler) expireIfDue(ctx context.Context, claim *kfplacementv1alpha1.ClusterClaim, class *kfplacementv1alpha1.ClusterProviderClass, w *desiredClaim, round claimRound) (time.Time, error) {
+	var cluster *clusterv1beta1.MemberCluster
+	if claim.Status.ProvisionedClusterName != nil {
+		cluster = round.clusters[*claim.Status.ProvisionedClusterName]
+	}
+	eligible := func(mc *clusterv1beta1.MemberCluster) bool {
+		ok, _ := r.eligibility.IsEligible(mc)
+		return ok
+	}
+	unmatched := func(mc *clusterv1beta1.MemberCluster) string {
+		return whyUnmatched(mc, w.terms, round.policy.GetSpec().Tolerations)
+	}
+	verdict, deadline := judgeExpiry(claim, &class.Spec, round.now, cluster, eligible, unmatched)
+	if verdict == nil {
+		return deadline, nil
+	}
+	meta.SetStatusCondition(&claim.Status.Conditions, metav1.Condition{
+		Type:               kfplacementv1alpha1.ClusterClaimCondTypeExpired,
+		Status:             metav1.ConditionTrue,
+		Reason:             verdict.reason,
+		Message:            verdict.message,
+		ObservedGeneration: claim.Generation,
+		LastTransitionTime: metav1.NewTime(round.now),
+	})
+	klog.V(2).InfoS("Expiring a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(round.policy), "reason", verdict.reason)
+	if err := r.Status().Update(ctx, claim); err != nil {
+		if errors.IsNotFound(err) || errors.IsConflict(err) {
+			return time.Time{}, nil
+		}
+		return time.Time{}, err
+	}
+	reportClaimExpiry(round.policy, verdict.reason)
+	if r.recorder != nil {
+		r.recorder.Eventf(round.policy, claim, corev1.EventTypeWarning, EventReasonClaimExpired, "ExpireClaim", "%s", eventNote(fmt.Sprintf("cluster claim %s expired as %s: %s", claim.Name, verdict.reason, verdict.message)))
+	}
+	return time.Time{}, nil
 }
 
 // approveAutomatically stamps Approved on a claim whose class approves automatically, reporting
@@ -322,7 +527,7 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy kfplacementv1al
 // between the two would otherwise leave a claim no provider may act on and that, being unapproved,
 // never expires. A claim that already carries an Approved entry -- an approver's, a denial, or this
 // controller's own -- is left alone, as is a claim whose policy resolves to no class right now.
-func approveAutomatically(claim *kfplacementv1alpha1.ClusterClaim, class *kfplacementv1alpha1.ClusterProviderClass) bool {
+func approveAutomatically(claim *kfplacementv1alpha1.ClusterClaim, class *kfplacementv1alpha1.ClusterProviderClass, now time.Time) bool {
 	if class == nil || class.Spec.Approval != kfplacementv1alpha1.ClusterClaimApprovalModeAutomatic ||
 		meta.FindStatusCondition(claim.Status.Conditions, kfplacementv1alpha1.ClusterClaimCondTypeApproved) != nil {
 		return false
@@ -333,6 +538,7 @@ func approveAutomatically(claim *kfplacementv1alpha1.ClusterClaim, class *kfplac
 		Reason:             kfplacementv1alpha1.ClusterClaimApprovedCondReasonAutomaticallyApproved,
 		Message:            fmt.Sprintf("Approved automatically per the cluster provider class %s", class.Name),
 		ObservedGeneration: claim.Generation,
+		LastTransitionTime: metav1.NewTime(now),
 	})
 	return true
 }
@@ -395,9 +601,9 @@ func refreshClaimFreshness(claim *kfplacementv1alpha1.ClusterClaim, mostRecent m
 // provisioner's own write re-enqueues the policy through the claim watch, so the sync simply
 // retries then. A NotFound means the claim was withdrawn out from under us, which a later pass
 // reconciles.
-func (r *Reconciler) syncClaimStatus(ctx context.Context, claim *kfplacementv1alpha1.ClusterClaim, class *kfplacementv1alpha1.ClusterProviderClass, mostRecent metav1.Time) error {
+func (r *Reconciler) syncClaimStatus(ctx context.Context, claim *kfplacementv1alpha1.ClusterClaim, class *kfplacementv1alpha1.ClusterProviderClass, mostRecent metav1.Time, now time.Time) error {
 	refreshed := refreshClaimFreshness(claim, mostRecent)
-	approved := approveAutomatically(claim, class)
+	approved := approveAutomatically(claim, class, now)
 	if !refreshed && !approved {
 		return nil
 	}

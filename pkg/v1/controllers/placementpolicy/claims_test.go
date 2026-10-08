@@ -19,6 +19,7 @@ package placementpolicy
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -134,7 +135,7 @@ func TestDesiredClaims(t *testing.T) {
 			want: []desiredClaim{{name: claimName(policyFor("app", "tenant-a"), 0), terms: regionTerms("eastus")}},
 		},
 		{
-			name: "budget caps at one claim across multiple unfulfilled selectors",
+			name: "every unfulfilled selector is wanted; the limits apply at issuing, not here",
 			outcomes: []selectorOutcome{
 				{
 					counts:          resolvedCounts{desired: 1, minimum: 1},
@@ -147,7 +148,10 @@ func TestDesiredClaims(t *testing.T) {
 					whenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim,
 				},
 			},
-			want: []desiredClaim{{name: claimName(policyFor("app", "tenant-a"), 0), terms: regionTerms("eastus")}},
+			want: []desiredClaim{
+				{name: claimName(policyFor("app", "tenant-a"), 0), terms: regionTerms("eastus")},
+				{name: claimName(policyFor("app", "tenant-a"), 1), terms: regionTerms("westus")},
+			},
 		},
 		{
 			name: "fulfilled selectors and KeepSearching selectors yield no claims",
@@ -253,7 +257,7 @@ func TestApproveAutomatically(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := approveAutomatically(tc.claim, tc.class); got != tc.wantChanged {
+			if got := approveAutomatically(tc.claim, tc.class, time.Now()); got != tc.wantChanged {
 				t.Errorf("approveAutomatically() = %t, want %t", got, tc.wantChanged)
 			}
 			gotReason := ""

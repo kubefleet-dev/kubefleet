@@ -22,6 +22,8 @@ package placementpolicy
 
 import (
 	"context"
+	"strings"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -31,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/clock"
 	runtime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -58,6 +61,20 @@ const (
 	// that cannot be issued: the policy resolves to no cluster provider class, or the selector's
 	// terms fall outside the class's vocabulary. The note says which.
 	EventReasonClaimNotIssued = "ClusterClaimNotIssued"
+	// EventReasonClaimExpired is recorded, as a warning, when the controller expires one of the
+	// policy's cluster claims; the note names the claim and the reason.
+	EventReasonClaimExpired = "ClusterClaimExpired"
+	// EventReasonClaimHeld is recorded, as a warning, on every reconcile that finds one of the
+	// policy's cluster claims terminal -- failed, expired, or denied -- and held as the record;
+	// the note names the claim and why.
+	EventReasonClaimHeld = "ClusterClaimHeld"
+
+	// defaultMaxConcurrentClaims is the fleet-wide number of cluster claims that may hold a
+	// provider's attention at once, per the FEP's default of one; WithMaxConcurrentClusterClaims
+	// raises it.
+	defaultMaxConcurrentClaims = 1
+	// defaultMaxConcurrentClaimsPerPolicy applies to a policy that sets no limit of its own.
+	defaultMaxConcurrentClaimsPerPolicy = 1
 
 	// maxEventNoteLength is the API server's limit on an event's note; a longer one is rejected.
 	maxEventNoteLength = 1024
@@ -87,18 +104,60 @@ type Reconciler struct {
 
 	// recorder reports, on the policy, why a selector gets no cluster claim.
 	recorder events.EventRecorder
+
+	// clock is the time source for judging claim expiry and retry deadlines. The transition
+	// times those deadlines count from are stamped with the wall clock by whoever writes the
+	// condition, so a test that swaps this clock must keep it near wall-clock time.
+	clock clock.Clock
+
+	// maxConcurrentClaims is the fleet-wide limit on active cluster claims; claimMu serializes
+	// the count-then-create under it across the two controllers this Reconciler serves.
+	maxConcurrentClaims int32
+	claimMu             sync.Mutex
+}
+
+// Option configures a Reconciler.
+type Option func(*Reconciler)
+
+// WithMaxConcurrentClusterClaims sets the fleet-wide number of cluster claims that may be active
+// at once: approved, or of an Automatic class. The limit is exact for Automatic classes; for
+// Manual classes it bounds issuance only, since an approver may approve several outstanding
+// claims at once, and the provider's own concurrency limit is the backstop. A policy's own
+// spec.maxConcurrentClusterClaims never exceeds it. Values below one are ignored.
+func WithMaxConcurrentClusterClaims(n int32) Option {
+	return func(r *Reconciler) {
+		if n >= 1 {
+			r.maxConcurrentClaims = n
+		}
+	}
 }
 
 // NewReconciler returns a Reconciler that judges cluster fulfillment with the scheduler's
 // standard cluster eligibility gate and records events through the given recorder, which may be
 // nil.
-func NewReconciler(c client.Client, uncachedReader client.Reader, recorder events.EventRecorder) *Reconciler {
-	return &Reconciler{
-		Client:         c,
-		uncachedReader: uncachedReader,
-		eligibility:    clustereligibilitychecker.New(),
-		recorder:       recorder,
+func NewReconciler(c client.Client, uncachedReader client.Reader, recorder events.EventRecorder, opts ...Option) *Reconciler {
+	r := &Reconciler{
+		Client:              c,
+		uncachedReader:      uncachedReader,
+		eligibility:         clustereligibilitychecker.New(),
+		recorder:            recorder,
+		clock:               clock.RealClock{},
+		maxConcurrentClaims: defaultMaxConcurrentClaims,
 	}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r
+}
+
+// claimLimit returns the policy's effective concurrency limit: its own, else the default of one,
+// never above the fleet-wide limit.
+func (r *Reconciler) claimLimit(policy kfplacementv1alpha1.PlacementPolicyAccessor) int32 {
+	limit := int32(defaultMaxConcurrentClaimsPerPolicy)
+	if own := policy.GetSpec().MaxConcurrentClusterClaims; own != nil {
+		limit = *own
+	}
+	return min(limit, r.maxConcurrentClaims)
 }
 
 // Reconcile runs a single reconciliation round for a PlacementPolicy or ClusterPlacementPolicy object.
@@ -133,8 +192,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		return runtime.Result{}, err
 	}
 	var mostRecentClusterCreation metav1.Time
+	clustersByName := make(map[string]*clusterv1beta1.MemberCluster, len(memberClusters.Items))
 	for i := range memberClusters.Items {
-		if ts := memberClusters.Items[i].CreationTimestamp; ts.After(mostRecentClusterCreation.Time) {
+		cluster := &memberClusters.Items[i]
+		clustersByName[cluster.Name] = cluster
+		if ts := cluster.CreationTimestamp; ts.After(mostRecentClusterCreation.Time) {
 			mostRecentClusterCreation = ts
 		}
 	}
@@ -160,17 +222,29 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		r.recorder.Eventf(policy, nil, corev1.EventTypeWarning, EventReasonClaimNotIssued, "IssueClaim", "%s", eventNote(claimNote))
 	}
 
-	activeClaims, claimErr := r.reconcileClaims(ctx, policy, wanted, mostRecentClusterCreation)
+	now := r.clock.Now()
+	report, claimErr := r.reconcileClaims(ctx, claimRound{
+		policy:                    policy,
+		wanted:                    wanted,
+		clusters:                  clustersByName,
+		limit:                     r.claimLimit(policy),
+		mostRecentClusterCreation: mostRecentClusterCreation,
+		now:                       now,
+	})
 	// The scheduling status is written even when claim reconciliation failed partway, but the
 	// claim count is published only from a completed round: a failed round returns whatever it
 	// had counted when it stopped, which would misreport the claims that the rest of the round
-	// never reached. A nil count leaves the last completed round's value standing; the retry
+	// never reached. A nil report leaves the last completed round's value standing; the retry
 	// corrects it.
-	reportedClaims := &activeClaims
+	reported := &report
 	if claimErr != nil {
-		reportedClaims = nil
+		reported = nil
 	}
-	if err := r.updateStatus(ctx, policy, outcomes, reportedClaims, scheduledCondition(policy.GetGeneration(), outcomes, claimNote)); err != nil {
+	notes := append([]string{}, report.held...)
+	if claimNote != "" {
+		notes = append([]string{claimNote}, notes...)
+	}
+	if err := r.updateStatus(ctx, policy, outcomes, reported, scheduledCondition(policy.GetGeneration(), outcomes, strings.Join(notes, "; "))); err != nil {
 		return runtime.Result{}, err
 	}
 	if claimErr != nil {
@@ -185,13 +259,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 			break
 		}
 	}
+	// A claim timer that fires sooner than the periodic re-evaluation is waited for exactly;
+	// one that already fired is acted on this pass, so a deadline in the past is not a wait.
+	if until := report.nextDeadline.Sub(now); !report.nextDeadline.IsZero() && until > 0 && until < requeueAfter {
+		requeueAfter = until
+	}
 	return runtime.Result{RequeueAfter: requeueAfter}, nil
 }
 
 // updateStatus writes the scheduling outcome onto the policy status, skipping the API call when
 // nothing has changed. A nil outcome list clears the cluster counts (used when the selectors
 // cannot be evaluated at all); a nil activeClaims leaves the current claim count untouched.
-func (r *Reconciler) updateStatus(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, outcomes []selectorOutcome, activeClaims *int32, scheduledCond metav1.Condition) error {
+func (r *Reconciler) updateStatus(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, outcomes []selectorOutcome, claims *claimReport, scheduledCond metav1.Condition) error {
 	status := policy.GetStatus()
 	observedStatus := status.DeepCopy()
 
@@ -203,12 +282,12 @@ func (r *Reconciler) updateStatus(ctx context.Context, policy kfplacementv1alpha
 		status.DesiredClusters = &desired
 		status.ScheduledClusters = &scheduled
 	}
-	if activeClaims != nil {
-		status.ActiveClusterClaims = activeClaims
+	if claims != nil {
+		status.ActiveClusterClaims = &claims.outstanding
 	}
 	meta.SetStatusCondition(&status.Conditions, scheduledCond)
 
-	reportPolicyMetrics(policy, status, scheduledCond)
+	reportPolicyMetrics(policy, claims, scheduledCond)
 
 	if apiequality.Semantic.DeepEqual(observedStatus, status) {
 		return nil
@@ -252,8 +331,13 @@ func (r *Reconciler) SetupWithManagerForPlacementPolicy(mgr runtime.Manager) err
 			handler.EnqueueRequestsFromMapFunc(r.mapClaimToPlacementPolicy),
 		).
 		Watches(
+			&kfplacementv1alpha1.ClusterClaim{},
+			handler.EnqueueRequestsFromMapFunc(r.mapToAllPlacementPolicies),
+			builder.WithPredicates(claimFreesFleetSlot()),
+		).
+		Watches(
 			&kfplacementv1alpha1.ClusterProviderClass{},
-			handler.EnqueueRequestsFromMapFunc(r.mapClassToPlacementPolicies),
+			handler.EnqueueRequestsFromMapFunc(r.mapToAllPlacementPolicies),
 		).
 		Complete(r)
 }
@@ -274,8 +358,13 @@ func (r *Reconciler) SetupWithManagerForClusterPlacementPolicy(mgr runtime.Manag
 			handler.EnqueueRequestsFromMapFunc(r.mapClaimToClusterPlacementPolicy),
 		).
 		Watches(
+			&kfplacementv1alpha1.ClusterClaim{},
+			handler.EnqueueRequestsFromMapFunc(r.mapToAllClusterPlacementPolicies),
+			builder.WithPredicates(claimFreesFleetSlot()),
+		).
+		Watches(
 			&kfplacementv1alpha1.ClusterProviderClass{},
-			handler.EnqueueRequestsFromMapFunc(r.mapClassToClusterPlacementPolicies),
+			handler.EnqueueRequestsFromMapFunc(r.mapToAllClusterPlacementPolicies),
 		).
 		Complete(r)
 }
