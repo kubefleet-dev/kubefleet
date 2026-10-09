@@ -908,6 +908,184 @@ var _ = Describe("applying manifests", func() {
 		})
 	})
 
+	Context("track the availability of a job", Ordered, func() {
+		workName := fmt.Sprintf(workNameTemplate, utils.RandStr())
+		// The environment prepared by the envtest package does not support namespace
+		// deletion; each test case would use a new namespace.
+		nsName := fmt.Sprintf(nsNameTemplate, utils.RandStr())
+
+		var appliedWorkOwnerRef *metav1.OwnerReference
+
+		// The envtest environment runs no Job controller, so the Job stays incomplete until the
+		// test suite marks it as complete.
+		jobWorkStatusUpdatedActual := func(jobAvailable bool) func() error {
+			workAvailableCond := metav1.Condition{
+				Type:   fleetv1beta1.WorkConditionTypeAvailable,
+				Status: metav1.ConditionFalse,
+				Reason: condition.WorkNotAllManifestsAvailableReason,
+			}
+			jobAvailableCond := metav1.Condition{
+				Type:               fleetv1beta1.WorkConditionTypeAvailable,
+				Status:             metav1.ConditionFalse,
+				Reason:             string(AvailabilityResultTypeNotYetAvailable),
+				ObservedGeneration: 1,
+			}
+			if jobAvailable {
+				workAvailableCond.Status = metav1.ConditionTrue
+				workAvailableCond.Reason = condition.WorkAllManifestsAvailableReason
+				jobAvailableCond.Status = metav1.ConditionTrue
+				jobAvailableCond.Reason = string(AvailabilityResultTypeAvailable)
+			}
+
+			workConds := []metav1.Condition{
+				{
+					Type:   fleetv1beta1.WorkConditionTypeApplied,
+					Status: metav1.ConditionTrue,
+					Reason: condition.WorkAllManifestsAppliedReason,
+				},
+				workAvailableCond,
+			}
+			manifestConds := []fleetv1beta1.ManifestCondition{
+				{
+					Identifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:  0,
+						Group:    "",
+						Version:  "v1",
+						Kind:     "Namespace",
+						Resource: "namespaces",
+						Name:     nsName,
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeApplied,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(ApplyOrReportDiffResTypeApplied),
+							ObservedGeneration: 0,
+						},
+						{
+							Type:               fleetv1beta1.WorkConditionTypeAvailable,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(AvailabilityResultTypeAvailable),
+							ObservedGeneration: 0,
+						},
+					},
+				},
+				{
+					Identifier: fleetv1beta1.WorkResourceIdentifier{
+						Ordinal:   1,
+						Group:     "batch",
+						Version:   "v1",
+						Kind:      "Job",
+						Resource:  "jobs",
+						Name:      jobName,
+						Namespace: nsName,
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:               fleetv1beta1.WorkConditionTypeApplied,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(ApplyOrReportDiffResTypeApplied),
+							ObservedGeneration: 1,
+						},
+						jobAvailableCond,
+					},
+				},
+			}
+			return workStatusUpdated(memberReservedNSName1, workName, workConds, manifestConds, nil, nil)
+		}
+
+		BeforeAll(func() {
+			// Prepare a NS object.
+			regularNS := ns.DeepCopy()
+			regularNS.Name = nsName
+			regularNSJSON := marshalK8sObjJSON(regularNS)
+
+			// Prepare a Job object that runs right away.
+			regularJob := job.DeepCopy()
+			regularJob.Namespace = nsName
+			regularJob.Name = jobName
+			regularJobJSON := marshalK8sObjJSON(regularJob)
+
+			// Create a new Work object with all the manifest JSONs.
+			createWorkObject(workName, memberReservedNSName1, nil, nil, regularNSJSON, regularJobJSON)
+		})
+
+		It("should add cleanup finalizer to the Work object", func() {
+			finalizerAddedActual := workFinalizerAddedActual(memberReservedNSName1, workName)
+			Eventually(finalizerAddedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to add cleanup finalizer to the Work object")
+		})
+
+		It("should prepare an AppliedWork object", func() {
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
+			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an AppliedWork object")
+
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, memberReservedNSName1, workName)
+		})
+
+		It("should apply the manifests", func() {
+			regularNSObjectAppliedActual := regularNSObjectAppliedActual(memberClient1, nsName, appliedWorkOwnerRef)
+			Eventually(regularNSObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the namespace object")
+
+			regularJobObjectAppliedActual := regularJobObjectAppliedActual(nsName, jobName, appliedWorkOwnerRef)
+			Eventually(regularJobObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the job object")
+		})
+
+		It("should report the incomplete job as not yet available", func() {
+			workStatusUpdatedActual := jobWorkStatusUpdatedActual(false)
+			Eventually(workStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update work status")
+			Consistently(workStatusUpdatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "The incomplete job should not become available")
+		})
+
+		It("can mark the job as complete", func() {
+			gotJob := &batchv1.Job{}
+			Expect(memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: jobName}, gotJob)).To(Succeed(), "Failed to retrieve the Job object")
+
+			// Since Kubernetes 1.31 (the version is set by ENVTEST_K8S_VERSION in the Makefile), the API server
+			// requires the SuccessCriteriaMet condition before the Complete condition, as the Job controller sets both.
+			now := metav1.Now()
+			gotJob.Status = batchv1.JobStatus{
+				StartTime:      &now,
+				CompletionTime: &now,
+				Succeeded:      ptr.Deref(gotJob.Spec.Completions, 1),
+				Conditions: []batchv1.JobCondition{
+					{
+						Type:               batchv1.JobSuccessCriteriaMet,
+						Status:             corev1.ConditionTrue,
+						LastProbeTime:      now,
+						LastTransitionTime: now,
+					},
+					{
+						Type:               batchv1.JobComplete,
+						Status:             corev1.ConditionTrue,
+						LastProbeTime:      now,
+						LastTransitionTime: now,
+					},
+				},
+			}
+			Expect(memberClient1.Status().Update(ctx, gotJob)).To(Succeed(), "Failed to mark the Job object as complete")
+		})
+
+		It("should report the completed job as available", func() {
+			workStatusUpdatedActual := jobWorkStatusUpdatedActual(true)
+			Eventually(workStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update work status")
+		})
+
+		AfterAll(func() {
+			// Delete the Work object and related resources.
+			deleteWorkObject(workName, memberReservedNSName1)
+
+			// Ensure that the AppliedWork object has been removed.
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
+			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the AppliedWork object")
+
+			workRemovedActual := testutilsactuals.WorkObjectRemovedActual(ctx, hubClient, workName, memberReservedNSName1)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the Work object")
+
+			// The environment prepared by the envtest package does not support namespace
+			// deletion; consequently this test suite would not attempt to verify its deletion.
+		})
+	})
+
 	Context("garbage collect removed manifests", Ordered, func() {
 		workName := fmt.Sprintf(workNameTemplate, utils.RandStr())
 		// The environment prepared by the envtest package does not support namespace
@@ -3834,7 +4012,7 @@ var _ = Describe("drift detection and takeover", func() {
 				{
 					Type:   fleetv1beta1.WorkConditionTypeAvailable,
 					Status: metav1.ConditionTrue,
-					Reason: condition.WorkNotTrackableReason,
+					Reason: condition.WorkAllManifestsAvailableReason,
 				},
 			}
 			manifestConds := []fleetv1beta1.ManifestCondition{
@@ -3882,7 +4060,7 @@ var _ = Describe("drift detection and takeover", func() {
 						{
 							Type:               fleetv1beta1.WorkConditionTypeAvailable,
 							Status:             metav1.ConditionTrue,
-							Reason:             string(AvailabilityResultTypeNotTrackable),
+							Reason:             string(AvailabilityResultTypeAvailable),
 							ObservedGeneration: 1,
 						},
 					},
