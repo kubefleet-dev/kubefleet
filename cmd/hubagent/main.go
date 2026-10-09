@@ -143,7 +143,7 @@ func main() {
 		LeaseDuration:           &opts.LeaderElectionOpts.LeaseDuration.Duration,
 		RenewDeadline:           &opts.LeaderElectionOpts.RenewDeadline.Duration,
 		RetryPeriod:             &opts.LeaderElectionOpts.RetryPeriod.Duration,
-		LeaderElectionID:        "136224848560.hub.fleet.azure.com",
+		LeaderElectionID:        "hub.kubefleet.io",
 		LeaderElectionNamespace: opts.LeaderElectionOpts.ResourceNamespace,
 		HealthProbeBindAddress:  opts.CtrlMgrOpts.HealthProbeBindAddress,
 		Metrics: metricsserver.Options{
