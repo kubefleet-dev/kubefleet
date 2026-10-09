@@ -54,6 +54,10 @@ const (
 	// WorkOwnedByBindingCustomFieldName is the name of the custom field that indexes Work objects by their owner
 	// placement bindings.
 	WorkOwnedByBindingCustomFieldName = "workOwnedByBinding"
+
+	// PlacementBindingOwnedByCustomFieldName is the name of the custom field that indexes placement binding objects
+	// by their owner placement policies.
+	PlacementBindingOwnedByCustomFieldName = "placementBindingOwnedBy"
 )
 
 const (
@@ -108,6 +112,18 @@ var (
 		}
 		return []string{fmt.Sprintf(WorkOwnedByBindingCustomFieldValFmt, ownerNS, ownerBinding)}, nil
 	}
+
+	placementBindingOwnedByFieldExtractor fieldValueExtractor = func(obj client.Object) ([]string, error) {
+		binding, ok := obj.(placementv1alpha1.PlacementBindingAccessor)
+		if !ok {
+			return nil, errors.NewUnexpectedError(nil, "object is not a placement binding")
+		}
+		placementPolicyName := binding.GetSpec().PlacementPolicyName
+		if placementPolicyName == "" {
+			return nil, errors.NewUnexpectedError(nil, "placement binding is missing the placement policy name in its spec")
+		}
+		return []string{placementPolicyName}, nil
+	}
 )
 
 // SetupWithHubAgentControllerManager sets up the indices that controllers from the KubeFleet hub agent need to run properly.
@@ -149,6 +165,20 @@ func SetupWithHubAgentControllerManager(ctx context.Context, mgr ctrl.Manager) e
 		WorkOwnedByBindingCustomFieldName, workOwnedByBindingFieldExtractor,
 	); err != nil {
 		return errors.Wraps(err, "failed to set up work owner binding field index")
+	}
+
+	if err := indexCompositeField(ctx, fieldIdxer,
+		&placementv1alpha1.PlacementBinding{},
+		PlacementBindingOwnedByCustomFieldName, placementBindingOwnedByFieldExtractor,
+	); err != nil {
+		return errors.Wraps(err, "failed to set up placement binding owner field index")
+	}
+
+	if err := indexCompositeField(ctx, fieldIdxer,
+		&placementv1alpha1.ClusterPlacementBinding{},
+		PlacementBindingOwnedByCustomFieldName, placementBindingOwnedByFieldExtractor,
+	); err != nil {
+		return errors.Wraps(err, "failed to set up cluster placement binding owner field index")
 	}
 
 	return nil

@@ -36,7 +36,7 @@ const (
 
 	// The condition type of stage tasks to execute in StagedUpdateRun and ClusterStagedUpdateRun API objects.
 	StagedUpdateRunTaskCondTypeApprovalRequestCreated  = "ApprovalRequestCreated"
-	StagedUpdateRunTaskCondTypeApprovalRequestApproved = "ApprovalRequestApproved"
+	StagedUpdateRunTaskCondTypeApprovalRequestAccepted = "ApprovalRequestAccepted"
 	StagedUpdateRunTaskCondTypeTimedWaitStarted        = "TimedWaitStarted"
 	StagedUpdateRunTaskCondTypeWaitTimeElapsed         = "WaitTimeElapsed"
 )
@@ -44,12 +44,30 @@ const (
 // The reasons for the respective condition types.
 const (
 	StagedUpdateRunInitializedCondReasonPreppedResourceSnapshotAndAllStages = "PreppedResourceSnapshotAndAllStages"
+	StagedUpdateRunInitializedCondReasonFailed                              = "Failed"
+
+	StagedUpdateRunStartedCondReasonUpdateStarted = "UpdateStarted"
+
+	StagedUpdateRunPerStageStartedCondReasonUpdateStarted = "UpdateStarted"
+
+	StagedUpdateRunPerStageCompletedCondReasonSucceeded          = "Succeeded"
+	StagedUpdateRunPerStageCompletedCondReasonPartiallySucceeded = "PartiallySucceeded"
+	StagedUpdateRunPerStageCompletedCondReasonFailed             = "Failed"
+
+	StagedUpdateRunPerClusterStartedCondReasonUpdateStarted = "UpdateStarted"
+
+	StagedUpdateRunPerClusterCompletedCondReasonSucceeded = "UpdateSucceeded"
+	StagedUpdateRunPerClusterCompletedCondReasonFailed    = "FailedToUpdate"
 
 	StagedUpdateRunTaskApprovalRequestCreatedCondReasonCreated   = "RequestCreated"
-	StagedUpdateRunTaskApprovalRequestApprovedCondReasonApproved = "RequestApproved"
+	StagedUpdateRunTaskApprovalRequestAcceptedCondReasonAccepted = "RequestAccepted"
 
 	StagedUpdateRunTaskTimedWaitStartedCondReasonTimerStarted = "TimerStarted"
 	StagedUpdateRunTaskWaitTimeElapsedCondReasonTimerElapsed  = "TimerElapsed"
+
+	StagedUpdateRunCompletedCondReasonSucceeded          = "Succeeded"
+	StagedUpdateRunCompletedCondReasonPartiallySucceeded = "PartiallySucceeded"
+	StagedUpdateRunCompletedCondReasonFailed             = "Failed"
 )
 
 // StagedUpdateRun is the KubeFleet API that enables users to roll out resource changes for a placement policy
@@ -158,8 +176,8 @@ type StagedUpdateRunFailurePolicy struct {
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=1
-	// +kubebuilder:validation:Minimum=1
-	MaxAllowedClusterFailures int32 `json:"maxAllowedClusterFailures,omitempty"`
+	// +kubebuilder:validation:Minimum=0
+	MaxAllowedClusterFailures *int32 `json:"maxAllowedClusterFailures,omitempty"`
 
 	// The maximum time to wait for a rollout to a cluster to complete before KubeFleet considers the rollout to have
 	// failed for the cluster.
