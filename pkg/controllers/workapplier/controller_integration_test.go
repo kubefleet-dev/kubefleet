@@ -3023,9 +3023,7 @@ var _ = Describe("drift detection and takeover", func() {
 						ObservedInMemberClusterGeneration: &regularDeploy.Generation,
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
-								Path:          "/spec/replicas",
-								ValueInMember: "2",
-								ValueInHub:    "1",
+								Path: "/spec/replicas",
 							},
 						},
 					},
@@ -3255,15 +3253,13 @@ var _ = Describe("drift detection and takeover", func() {
 						ObservedInMemberClusterGeneration: &regularNS.Generation,
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
-								Path:          "/metadata/labels/foo",
-								ValueInMember: dummyLabelValue1,
+								Path: "/metadata/labels/foo",
 							},
 							// TO-DO (chenyu1): This is a namespace specific field; consider
 							// if this should be added as an exception which allows ignoring
 							// this diff automatically.
 							{
-								Path:          "/spec/finalizers",
-								ValueInMember: "[kubernetes]",
+								Path: "/spec/finalizers",
 							},
 						},
 					},
@@ -3289,36 +3285,20 @@ var _ = Describe("drift detection and takeover", func() {
 					DiffDetails: &fleetv1beta1.DiffDetails{
 						ObservedInMemberClusterGeneration: &regularDeploy.Generation,
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
-							{Path: "/spec/progressDeadlineSeconds", ValueInMember: "600"},
-							{
-								Path:          "/spec/replicas",
-								ValueInMember: "2",
-								ValueInHub:    "1",
-							},
-							{Path: "/spec/revisionHistoryLimit", ValueInMember: "10"},
-							{
-								Path:          "/spec/strategy/rollingUpdate",
-								ValueInMember: "map[maxSurge:25% maxUnavailable:25%]",
-							},
-							{Path: "/spec/strategy/type", ValueInMember: "RollingUpdate"},
-							{
-								Path:          "/spec/template/spec/containers/0/imagePullPolicy",
-								ValueInMember: "Always",
-							},
-							{Path: "/spec/template/spec/containers/0/ports/0/protocol", ValueInMember: "TCP"},
-							{
-								Path:          "/spec/template/spec/containers/0/terminationMessagePath",
-								ValueInMember: "/dev/termination-log",
-							},
-							{
-								Path:          "/spec/template/spec/containers/0/terminationMessagePolicy",
-								ValueInMember: "File",
-							},
-							{Path: "/spec/template/spec/dnsPolicy", ValueInMember: "ClusterFirst"},
-							{Path: "/spec/template/spec/restartPolicy", ValueInMember: "Always"},
-							{Path: "/spec/template/spec/schedulerName", ValueInMember: "default-scheduler"},
-							{Path: "/spec/template/spec/securityContext", ValueInMember: "map[]"},
-							{Path: "/spec/template/spec/terminationGracePeriodSeconds", ValueInMember: "30"},
+							{Path: "/spec/progressDeadlineSeconds"},
+							{Path: "/spec/replicas"},
+							{Path: "/spec/revisionHistoryLimit"},
+							{Path: "/spec/strategy/rollingUpdate"},
+							{Path: "/spec/strategy/type"},
+							{Path: "/spec/template/spec/containers/0/imagePullPolicy"},
+							{Path: "/spec/template/spec/containers/0/ports/0/protocol"},
+							{Path: "/spec/template/spec/containers/0/terminationMessagePath"},
+							{Path: "/spec/template/spec/containers/0/terminationMessagePolicy"},
+							{Path: "/spec/template/spec/dnsPolicy"},
+							{Path: "/spec/template/spec/restartPolicy"},
+							{Path: "/spec/template/spec/schedulerName"},
+							{Path: "/spec/template/spec/securityContext"},
+							{Path: "/spec/template/spec/terminationGracePeriodSeconds"},
 						},
 					},
 				},
@@ -6145,8 +6125,7 @@ var _ = Describe("report diff", func() {
 					DiffDetails: &fleetv1beta1.DiffDetails{
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
-								Path:       "/",
-								ValueInHub: "(the whole object)",
+								Path: "/",
 							},
 						},
 					},
@@ -6680,9 +6659,7 @@ var _ = Describe("report diff", func() {
 					DiffDetails: &fleetv1beta1.DiffDetails{
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
-								Path:          "/spec/replicas",
-								ValueInHub:    "1",
-								ValueInMember: "2",
+								Path: "/spec/replicas",
 							},
 						},
 						ObservedInMemberClusterGeneration: ptr.To(int64(1)),
@@ -6808,8 +6785,7 @@ var _ = Describe("report diff", func() {
 					DiffDetails: &fleetv1beta1.DiffDetails{
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
-								Path:       "/",
-								ValueInHub: "(the whole object)",
+								Path: "/",
 							},
 						},
 					},
@@ -6968,14 +6944,10 @@ var _ = Describe("report diff", func() {
 						ObservedInMemberClusterGeneration: &regularJob.Generation,
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
-								Path:          "/spec/completions",
-								ValueInMember: "2",
-								ValueInHub:    "3",
+								Path: "/spec/completions",
 							},
 							{
-								Path:          "/spec/template/spec/containers/0/image",
-								ValueInMember: "busybox",
-								ValueInHub:    "busybox:v0.0.1",
+								Path: "/spec/template/spec/containers/0/image",
 							},
 						},
 					},
@@ -7390,9 +7362,7 @@ var _ = Describe("report diff", func() {
 						ObservedInMemberClusterGeneration: &regularCM.Generation,
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
-								Path:          fmt.Sprintf("/data/%s", dummyLabelKey),
-								ValueInMember: dummyLabelValue2,
-								ValueInHub:    dummyLabelValue1,
+								Path: fmt.Sprintf("/data/%s", dummyLabelKey),
 							},
 						},
 					},
@@ -7419,9 +7389,7 @@ var _ = Describe("report diff", func() {
 						ObservedInMemberClusterGeneration: &regularSecret.Generation,
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
-								Path:          fmt.Sprintf("/data/%s", dummyLabelKey),
-								ValueInHub:    "(redacted for security reasons)",
-								ValueInMember: "(redacted for security reasons)",
+								Path: fmt.Sprintf("/data/%s", dummyLabelKey),
 							},
 						},
 					},
@@ -7479,8 +7447,7 @@ var _ = Describe("report diff", func() {
 						ObservedInMemberClusterGeneration: &regularNS.Generation,
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
-								Path:          "/spec/finalizers",
-								ValueInMember: "[kubernetes]",
+								Path: "/spec/finalizers",
 							},
 						},
 					},
@@ -7507,13 +7474,10 @@ var _ = Describe("report diff", func() {
 						ObservedInMemberClusterGeneration: &regularCM.Generation,
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
-								Path:          fmt.Sprintf("/data/%s", dummyLabelKey),
-								ValueInMember: dummyLabelValue2,
-								ValueInHub:    dummyLabelValue1,
+								Path: fmt.Sprintf("/data/%s", dummyLabelKey),
 							},
 							{
-								Path:          fmt.Sprintf("/metadata/labels/%s", dummyLabelKey),
-								ValueInMember: dummyLabelValue1,
+								Path: fmt.Sprintf("/metadata/labels/%s", dummyLabelKey),
 							},
 						},
 					},
@@ -7540,17 +7504,13 @@ var _ = Describe("report diff", func() {
 						ObservedInMemberClusterGeneration: &regularSecret.Generation,
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
-								Path:          fmt.Sprintf("/data/%s", dummyLabelKey),
-								ValueInHub:    "(redacted for security reasons)",
-								ValueInMember: "(redacted for security reasons)",
+								Path: fmt.Sprintf("/data/%s", dummyLabelKey),
 							},
 							{
-								Path:          fmt.Sprintf("/data/%s", "fooStr"),
-								ValueInMember: "(redacted for security reasons)",
+								Path: fmt.Sprintf("/data/%s", "fooStr"),
 							},
 							{
-								Path:          "/type",
-								ValueInMember: "Opaque",
+								Path: "/type",
 							},
 						},
 					},
@@ -8540,9 +8500,7 @@ var _ = Describe("handling different apply strategies", func() {
 						ObservedInMemberClusterGeneration: ptr.To(int64(1)),
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
-								Path:          "/spec/replicas",
-								ValueInMember: "2",
-								ValueInHub:    "1",
+								Path: "/spec/replicas",
 							},
 						},
 					},
