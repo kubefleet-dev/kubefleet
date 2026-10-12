@@ -28,7 +28,6 @@ import (
 	"k8s.io/klog/v2"
 
 	rolloutv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/rollout/v1alpha1"
-	"github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
 	kferrors "github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
 )
 
@@ -240,7 +239,7 @@ func (r *Reconciler) createApprovalRequest(
 	// The controller must return the AlreadyExists error instead of ignoring it, as the approval request found right now
 	// might have already been processed.
 	if err != nil {
-		return errors.NewAPIServerError(err, "failed to create approval request", false, "approvalRequest", klog.KObj(approvalRequest))
+		return kferrors.NewAPIServerError(err, "failed to create approval request", false, "approvalRequest", klog.KObj(approvalRequest))
 	}
 	return nil
 }
