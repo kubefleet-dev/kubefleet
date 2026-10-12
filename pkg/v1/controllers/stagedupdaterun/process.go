@@ -697,6 +697,10 @@ func (r *Reconciler) refreshOneCluster(
 			break
 		}
 
+		// Note again that the controller here does a best-effort check only; for performance reasons, the check
+		// always reads using the cached client, and as result we might observe stale data. This is alright
+		// as concurrent staged update runs follow a last-writer-wins approach and the binding manager lock promises
+		// that no other changes would be made to the binding in normal ops.
 		bindingStatus := binding.GetStatus()
 		synchronizedCond := meta.FindStatusCondition(bindingStatus.Conditions, placementv1alpha1.PlacementBindingCondTypeSynchronized)
 		availableCond := meta.FindStatusCondition(bindingStatus.Conditions, placementv1alpha1.PlacementBindingCondTypeAvailable)

@@ -156,6 +156,12 @@ func (r *Reconciler) executeApprovalStageTask(
 	}
 
 	// Check if the approval request is owned by the staged update run. If not, delete it and return an error.
+	//
+	// This is primarily added as a safeguard against situations where staged update runs are re-created yet
+	// the GC process hasn't caught up and old approval requests from same-named staged update runs might still exist.
+	//
+	// Note that approvel requests are typically considered to be objects always created by the staged update run
+	// controller; users are not expected to create or manage them directly.
 	if !metav1.IsControlledBy(approvalRequest, stagedUpdateRun) {
 		klog.V(2).InfoS("Approval request is not owned by the staged update run; deleting it",
 			"approvalRequest", klog.KObj(approvalRequest), "stage", stage.StageName, "stagedUpdateRun", klog.KObj(stagedUpdateRun))
