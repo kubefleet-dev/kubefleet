@@ -260,6 +260,11 @@ func (r *Reconciler) reconcileBindings(ctx context.Context, policy kfplacementv1
 		return true, nil
 	}
 
+	// A taken binding name blocks only its own cluster: the occupant cannot be dealt with here, so
+	// the rest of the changes go through, the role is released -- only a person or the garbage
+	// collector can clear the way, and holding the role meanwhile would block the policy's rollouts
+	// -- and the first such error is returned for a retry.
+	var takenName error
 	if len(toCreate) > 0 {
 		snapshots, _, err := r.snapshots.SnapshotResourcesIfNoSnapshotExists(ctx, policy)
 		if err != nil {
@@ -274,8 +279,19 @@ func (r *Reconciler) reconcileBindings(ctx context.Context, policy kfplacementv1
 				return false, err
 			}
 			klog.V(2).InfoS("Binding a cluster", "placementPolicy", klog.KObj(policy), "memberCluster", clusterName, "placementBinding", binding.GetName())
-			if err := r.Create(ctx, binding); err != nil && !errors.IsAlreadyExists(err) {
-				return false, kferrors.NewAPIServerError(err, "failed to create the placement binding", false, "placementBinding", klog.KObj(binding))
+			if err := r.Create(ctx, binding); err != nil {
+				if !errors.IsAlreadyExists(err) {
+					return false, kferrors.NewAPIServerError(err, "failed to create the placement binding", false, "placementBinding", klog.KObj(binding))
+				}
+				if err := r.adoptOrReportBindingOccupant(ctx, policy, binding); err != nil {
+					if category := kferrors.Category(err); category != kferrors.ErrCategoryUser && category != kferrors.ErrCategoryTransient {
+						return false, err
+					}
+					klog.ErrorS(err, "Cannot bind a cluster: the binding name is taken", kferrors.Args(err)...)
+					if takenName == nil {
+						takenName = err
+					}
+				}
 			}
 		}
 	}
@@ -294,7 +310,67 @@ func (r *Reconciler) reconcileBindings(ctx context.Context, policy kfplacementv1
 		}
 	}
 
-	return false, bindingmanager.RelinquishRoleFor(ctx, r.Client, policy, controllerName, ref)
+	if err := bindingmanager.RelinquishRoleFor(ctx, r.Client, policy, controllerName, ref); err != nil {
+		return false, err
+	}
+	return false, takenName
+}
+
+// adoptOrReportBindingOccupant settles a binding name the policy failed to create because it is
+// taken. The occupant is read uncached, since the cache is what failed to show it:
+//   - one the policy already controls is a create the cache has yet to show, and needs nothing;
+//   - one being deleted frees the name shortly, and a later round creates the binding;
+//   - an orphan of the policy's name for the same cluster -- left by an earlier policy of the same
+//     name deleted without cascading -- is adopted and brought up to date, the way a ReplicaSet
+//     adopts an orphaned pod, rather than leaving the cluster unbound behind a name the policy cannot
+//     take; deleting it instead would tear down the workloads the orphaning kept running. Adoption
+//     makes the policy's desired state win, so a suspension the orphan carried is lifted;
+//   - one still controlled by an earlier policy of the same name is a transient error: the garbage
+//     collector removes it shortly;
+//   - one any other object controls is a user error: without it the cluster would stay unbound with
+//     nothing saying why.
+func (r *Reconciler) adoptOrReportBindingOccupant(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, want kfplacementv1alpha1.PlacementBindingAccessor) error {
+	var occupant kfplacementv1alpha1.PlacementBindingAccessor = &kfplacementv1alpha1.PlacementBinding{}
+	if policy.GetNamespace() == "" {
+		occupant = &kfplacementv1alpha1.ClusterPlacementBinding{}
+	}
+	if err := r.uncachedReader.Get(ctx, client.ObjectKeyFromObject(want), occupant); err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return kferrors.NewAPIServerError(err, "failed to get the placement binding occupying the name", false, "placementBinding", klog.KObj(want))
+	}
+	switch {
+	case metav1.IsControlledBy(occupant, policy), !occupant.GetDeletionTimestamp().IsZero():
+		return nil
+	case metav1.GetControllerOf(occupant) == nil && occupant.GetSpec().PlacementPolicyName == policy.GetName() &&
+		occupant.GetSpec().ClusterName == want.GetSpec().ClusterName:
+		klog.V(2).InfoS("Adopting an orphaned placement binding", "placementPolicy", klog.KObj(policy), "placementBinding", klog.KObj(occupant))
+		if err := controllerutil.SetControllerReference(policy, occupant, r.Scheme()); err != nil {
+			return kferrors.NewUnexpectedError(err, "failed to set the controller reference on the placement binding", "placementBinding", klog.KObj(occupant))
+		}
+		occupant.SetSpec(*want.GetSpec())
+		if err := r.Update(ctx, occupant); err != nil {
+			return kferrors.NewAPIServerError(err, "failed to adopt the orphaned placement binding", false, "placementBinding", klog.KObj(occupant))
+		}
+		return nil
+	case isEarlierPolicyOfSameName(metav1.GetControllerOf(occupant), policy):
+		return kferrors.NewTransientError(nil, "the placement binding name is taken by a binding of an earlier policy of the same name, awaiting garbage collection",
+			"placementBinding", klog.KObj(occupant), "placementPolicy", klog.KObj(policy))
+	default:
+		return kferrors.NewUserError(nil, "the placement binding name is taken by a binding the policy does not control",
+			"placementBinding", klog.KObj(occupant), "placementPolicy", klog.KObj(policy), "controller", metav1.GetControllerOf(occupant))
+	}
+}
+
+// isEarlierPolicyOfSameName reports whether a controller reference names a policy of the same kind
+// and name as the given one, but another incarnation of it.
+func isEarlierPolicyOfSameName(ref *metav1.OwnerReference, policy kfplacementv1alpha1.PlacementPolicyAccessor) bool {
+	kind := kfplacementv1alpha1.PlacementPolicyKind
+	if policy.GetNamespace() == "" {
+		kind = kfplacementv1alpha1.ClusterPlacementPolicyKind
+	}
+	return ref != nil && ref.Kind == kind && ref.Name == policy.GetName() && ref.UID != policy.GetUID()
 }
 
 // newBinding builds the binding between a policy and a cluster, owned by the policy so that

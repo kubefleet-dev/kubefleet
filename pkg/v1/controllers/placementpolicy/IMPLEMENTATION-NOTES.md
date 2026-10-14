@@ -121,6 +121,21 @@ package demonstrating the current behavior.
   collected — and the controller `Owns()` them: a binding deleted out of band
   is recreated, while binding status writes by the work generator are filtered
   out by the generation predicate.
+- **A taken binding name is settled, not ignored**: binding names are
+  deterministic, so a policy deleted without cascading and recreated under
+  the same name finds its old bindings in the way. Such an orphan (no
+  controller, same `spec.placementPolicyName` and cluster) is adopted and
+  brought up to date — the policy's desired state wins, lifting a suspension
+  the orphan carried — the way a ReplicaSet adopts an orphaned pod; deleting
+  it would tear down the workloads the orphaning kept running. A binding still
+  controlled by an earlier policy of the same name is reported as transient
+  (the garbage collector removes it), and one any other object controls as a
+  user error. Either way only that cluster waits: the round's other changes go
+  through and the role is released before the error is returned.
+- **Invalid selectors release the binding manager role**: a role a failed
+  binding write left held is normally kept for the retry to resume under, but
+  once the selectors are invalid no binding change can follow until the spec
+  is fixed, so the role is released rather than blocking rollouts.
 - **Heartbeat-noise suppression**: member cluster watch events pass through a
   projection predicate that ignores heartbeat/observation timestamps;
   time-driven eligibility transitions (e.g., heartbeats going stale) are
