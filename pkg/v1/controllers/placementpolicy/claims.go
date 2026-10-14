@@ -219,10 +219,8 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, round claimRound) (cla
 		wantedByName[w.name] = w
 	}
 
-	listed := make(map[string]bool, len(existing))
 	for i := range existing {
 		claim := &existing[i]
-		listed[claim.Name] = true
 		if !claim.DeletionTimestamp.IsZero() {
 			// Already being withdrawn: the claim still occupies its name and budget slot
 			// regardless of whether its terms happen to match the currently wanted set (a
@@ -296,6 +294,24 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, round claimRound) (cla
 	if err := r.ensureFinalizer(ctx, policy); err != nil {
 		return rep, err
 	}
+	// The budget so far was counted from the cache, which can lag a claim created moments ago:
+	// one issued last round for a selector that has since been satisfied would be missing, and a
+	// claim for the next selector, under another name, would stand beside it. Claims the cache
+	// has yet to show are counted from the API server whenever the cached count would still let
+	// one be issued. (A claim created after this read, by a replica that has just lost
+	// leadership, can still slip past; leader election makes that window negligible.)
+	//
+	// ponytail: lists every claim in the fleet uncached, but only on rounds that could issue
+	// one; the ownership labels cannot narrow it server-side, being mutable.
+	if rep.outstanding < round.limit {
+		unseen, err := r.countUnseenClaims(ctx, policy, existing)
+		if err != nil {
+			return rep, err
+		}
+		for range unseen {
+			rep.count(claimStatePending)
+		}
+	}
 	for _, w := range round.wanted {
 		if _, still := wantedByName[w.name]; !still {
 			continue
@@ -312,11 +328,6 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, round claimRound) (cla
 			rep.held = append(rep.held, fmt.Sprintf("cluster claim %q waits for the fleet-wide limit of %d concurrent cluster claims", w.name, r.maxConcurrentClaims))
 			return rep, nil
 		case outcome == issued:
-			rep.count(claimStatePending)
-		case outcome == issueOccupied && !listed[w.name]:
-			// The name is taken by a claim the cache has yet to show -- the previous round's
-			// own create, most likely -- which no slot counts yet. It is counted now, or a
-			// policy of several selectors could be issued past its limit under cache lag.
 			rep.count(claimStatePending)
 		}
 	}
@@ -400,8 +411,8 @@ const (
 	issued issueOutcome = iota
 	// issueOccupied means the name is still taken by a claim that is not where the list showed
 	// it: this round's own withdrawal, held in Terminating by a provisioner finalizer and already
-	// counted, or a claim the cache has yet to show at all, which the caller counts. The claim
-	// watch re-queues the policy either way.
+	// counted, or a claim the cache has yet to show at all, counted before issuing began. The
+	// claim watch re-queues the policy either way.
 	issueOccupied
 	// issueLimited means the fleet-wide limit is reached; nothing was created.
 	issueLimited
@@ -556,6 +567,22 @@ func approveAutomatically(claim *kfplacementv1alpha1.ClusterClaim, class *kfplac
 		LastTransitionTime: metav1.NewTime(now),
 	})
 	return true
+}
+
+// countUnseenClaims counts, from the API server, the claims of the policy that the given cached list
+// does not show.
+func (r *Reconciler) countUnseenClaims(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, seen []kfplacementv1alpha1.ClusterClaim) (int32, error) {
+	claims := &kfplacementv1alpha1.ClusterClaimList{}
+	if err := r.uncachedReader.List(ctx, claims); err != nil {
+		return 0, kferrors.NewAPIServerError(err, "failed to list the cluster claims of the policy", false, "placementPolicy", klog.KObj(policy))
+	}
+	var unseen int32
+	for _, claim := range claimsForPolicy(claims.Items, policy) {
+		if !slices.ContainsFunc(seen, func(c kfplacementv1alpha1.ClusterClaim) bool { return c.UID == claim.UID }) {
+			unseen++
+		}
+	}
+	return unseen, nil
 }
 
 // claimNameOccupiedByPolicy reports whether the claim holding a name this policy failed to create

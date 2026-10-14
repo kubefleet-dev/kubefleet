@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -468,5 +469,88 @@ func TestReconcileClaimsNameOccupied(t *testing.T) {
 				t.Errorf("occupant placementPolicyRef mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+// TestReconcileClaimsCountsClaimsTheCacheHasYetToShow pins the one-claim budget under cache lag: a
+// claim issued last round for selector 0, which the cache has yet to show, still holds the budget
+// when selector 1 is the next one to want a claim, so no second claim is issued beside it.
+func TestReconcileClaimsCountsClaimsTheCacheHasYetToShow(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kfplacementv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme() = %v, want no error", err)
+	}
+	policy := &kfplacementv1alpha1.PlacementPolicy{ObjectMeta: metav1.ObjectMeta{Name: "pp", Namespace: "default"}}
+	lagging := &kfplacementv1alpha1.ClusterClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: claimName(policy, 0), UID: "lagging-uid"},
+		Spec: kfplacementv1alpha1.ClusterClaimSpec{
+			PlacementPolicyRef:   policyReference(policy),
+			ClusterSelectorTerms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{MatchLabels: map[string]string{regionLabel: "eastus"}}},
+		},
+	}
+	apiServer := fake.NewClientBuilder().WithScheme(scheme).WithObjects(policy, lagging).Build()
+	cache := interceptor.NewClient(apiServer, interceptor.Funcs{
+		List: func(ctx context.Context, cl client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+			if _, isClaims := list.(*kfplacementv1alpha1.ClusterClaimList); isClaims {
+				return nil
+			}
+			return cl.List(ctx, list, opts...)
+		},
+	})
+	// Selector 0 has been satisfied since; selector 1 now wants a claim.
+	outcomes := []selectorOutcome{
+		{counts: resolvedCounts{desired: 1, minimum: 1}, matched: []string{"east-1"}, terms: lagging.Spec.ClusterSelectorTerms, whenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim},
+		{counts: resolvedCounts{desired: 1, minimum: 1}, terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{MatchLabels: map[string]string{regionLabel: "westus"}}}, whenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim},
+	}
+
+	r := NewReconciler(cache, apiServer, snapshotStub{}, nil)
+	class := &kfplacementv1alpha1.ClusterProviderClass{
+		ObjectMeta: metav1.ObjectMeta{Name: "standard"},
+		Spec: kfplacementv1alpha1.ClusterProviderClassSpec{
+			SelectorVocabulary: &kfplacementv1alpha1.SelectorVocabulary{LabelKeys: []kfplacementv1alpha1.LabelKeyRule{{Key: regionLabel}}},
+		},
+	}
+	wanted, note := desiredClaims(policy, outcomes, class, "")
+	if len(wanted) != 1 || wanted[0].blocked != "" {
+		t.Fatalf("desiredClaims() = %+v (note %q), want selector 1's claim issuable", wanted, note)
+	}
+	rep, err := r.reconcileClaims(context.Background(), claimRound{policy: policy, wanted: wanted, limit: 1, now: time.Now()})
+	if err != nil {
+		t.Fatalf("reconcileClaims() = %v, want no error", err)
+	}
+	if outstanding := rep.outstanding; outstanding != 1 {
+		t.Errorf("reconcileClaims() = %d outstanding, want the 1 claim the cache has yet to show", outstanding)
+	}
+	if err := apiServer.Get(context.Background(), client.ObjectKey{Name: claimName(policy, 1)}, &kfplacementv1alpha1.ClusterClaim{}); !apierrors.IsNotFound(err) {
+		t.Errorf("Get(selector 1's claim) = %v, want NotFound: a second claim would exceed the budget of one", err)
+	}
+}
+
+// TestCountUnseenClaims pins that claims are told apart by UID: a claim the cache shows is not
+// counted again, while a successor under a name the cache still shows an old claim for is.
+func TestCountUnseenClaims(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kfplacementv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme() = %v, want no error", err)
+	}
+	policy := &kfplacementv1alpha1.PlacementPolicy{ObjectMeta: metav1.ObjectMeta{Name: "pp", Namespace: "default"}}
+	claim := func(name, uid string, ref *kfplacementv1alpha1.ObjectReference) *kfplacementv1alpha1.ClusterClaim {
+		return &kfplacementv1alpha1.ClusterClaim{ObjectMeta: metav1.ObjectMeta{Name: name, UID: types.UID(uid)}, Spec: kfplacementv1alpha1.ClusterClaimSpec{PlacementPolicyRef: ref}}
+	}
+	own := policyReference(policy)
+	seen := claim("pp-0", "seen", own)
+	unseen := claim("pp-1", "unseen", own)
+	foreign := claim("other-0", "foreign", policyReference(policyFor("other", "default")))
+	apiServer := fake.NewClientBuilder().WithScheme(scheme).WithObjects(seen, unseen, foreign).Build()
+	r := NewReconciler(apiServer, apiServer, snapshotStub{}, nil)
+
+	// The cache shows the seen claim and a predecessor of the unseen one under its name.
+	cached := []kfplacementv1alpha1.ClusterClaim{*seen, *claim("pp-1", "predecessor", own)}
+	got, err := r.countUnseenClaims(context.Background(), policy, cached)
+	if err != nil {
+		t.Fatalf("countUnseenClaims() = %v, want no error", err)
+	}
+	if got != 1 {
+		t.Errorf("countUnseenClaims() = %d, want 1: only the successor the cache has yet to show", got)
 	}
 }

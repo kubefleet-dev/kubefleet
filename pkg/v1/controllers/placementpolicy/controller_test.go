@@ -224,3 +224,40 @@ func TestReconcileSchedulesWithoutSnapshot(t *testing.T) {
 		t.Errorf("Reconcile() set latestResourceRevisionName = %q, want it left unset without a snapshot", *fetched.Status.LatestResourceRevisionName)
 	}
 }
+
+// spec is fixed and the role would otherwise block the policy's rollouts.
+func TestReconcileReleasesRoleOnInvalidSelectors(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kfplacementv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme() = %v, want no error", err)
+	}
+	if err := clusterv1beta1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme() = %v, want no error", err)
+	}
+	policy := bindingManagerHeldBy(controllerName)
+	// Admitted by the API, but Gt cannot apply to a label.
+	policy.Spec.ClusterSelectors = []kfplacementv1alpha1.ClusterSelector{{
+		Terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{
+			MatchLabelExpressions: []kfplacementv1alpha1.LabelClusterPropertyExpression{
+				{Key: "tier", Operator: kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorGt, Values: []string{"1"}},
+			},
+		}},
+	}}
+	c := withIndexes(fake.NewClientBuilder().WithScheme(scheme)).WithObjects(policy).WithStatusSubresource(policy).Build()
+	r := NewReconciler(c, c, snapshotStub{}, nil)
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "pp"}}
+
+	if _, err := r.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("Reconcile() = %v, want no error", err)
+	}
+	fetched := &kfplacementv1alpha1.PlacementPolicy{}
+	if err := c.Get(context.Background(), req.NamespacedName, fetched); err != nil {
+		t.Fatalf("Get() = %v, want no error", err)
+	}
+	if fetched.Status.BindingManager != nil {
+		t.Errorf("Reconcile() left the binding manager role as %v, want it released", fetched.Status.BindingManager)
+	}
+	if cond := meta.FindStatusCondition(fetched.Status.Conditions, kfplacementv1alpha1.PlacementPolicyCondTypeScheduled); cond == nil || cond.Reason != reasonInvalidClusterSelectors {
+		t.Errorf("Reconcile() Scheduled condition = %v, want reason %q", cond, reasonInvalidClusterSelectors)
+	}
+}
