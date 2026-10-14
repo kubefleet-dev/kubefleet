@@ -20,9 +20,46 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// The condition types of the ClusterClaim API, and who writes each.
 const (
+	// ClusterClaimCondTypeApproved is set by an approver (or by KubeFleet itself, when the claim's
+	// class approves automatically). No provider may act on a claim before it is True. False with
+	// the Denied reason is not pinned: an approver may still approve a claim it denied. Who may
+	// change this condition is gated on the RBAC approve verb only when the hub agent's admission
+	// policy manager enables restrictClusterClaimApproval; without it, anyone who can update the
+	// claim's status can approve it.
+	ClusterClaimCondTypeApproved = "Approved"
+	// ClusterClaimCondTypeAccepted is set by the provider that has taken the claim, together with
+	// its finalizer; its transition time starts the clock on the class's maxProvisionDuration.
+	ClusterClaimCondTypeAccepted = "Accepted"
+	// ClusterClaimCondTypeCompleted is set by the provider: True with the Fulfilled reason once the
+	// provisioned cluster is registered with the fleet, False with the Failed reason, which is
+	// terminal, when provisioning cannot complete. A fulfilled claim stays fulfilled.
 	ClusterClaimCondTypeCompleted = "Completed"
+	// ClusterClaimCondTypeExpired is set to True by KubeFleet, and is terminal, when a claim has
+	// stood too long: approved but not accepted within the class's pendingClaimTTL (PendingTimeout),
+	// fulfilled but its cluster not eligible for scheduling by joinTimeout (JoinTimeout), or fulfilled
+	// with a cluster that became eligible but can never satisfy the selector (NotMatching).
+	ClusterClaimCondTypeExpired = "Expired"
+)
 
+// The reasons for the conditions of the ClusterClaim API.
+const (
+	ClusterClaimApprovedCondReasonAutomaticallyApproved = "AutomaticallyApproved"
+	ClusterClaimApprovedCondReasonApproved              = "Approved"
+	ClusterClaimApprovedCondReasonDenied                = "Denied"
+
+	ClusterClaimAcceptedCondReasonAccepted = "Accepted"
+
+	ClusterClaimCompletedCondReasonFulfilled = "Fulfilled"
+	ClusterClaimCompletedCondReasonFailed    = "Failed"
+
+	ClusterClaimExpiredCondReasonPendingTimeout = "PendingTimeout"
+	ClusterClaimExpiredCondReasonJoinTimeout    = "JoinTimeout"
+	ClusterClaimExpiredCondReasonNotMatching    = "NotMatching"
+)
+
+const (
 	// ClusterClaimPlacementPolicyNameLabel and ClusterClaimPlacementPolicyNamespaceLabel record the placement
 	// policy that added a cluster claim. Cluster claims are cluster-scoped and cannot carry an
 	// owner reference to a namespaced PlacementPolicy, so these labels are how KubeFleet — and
@@ -49,6 +86,7 @@ const (
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Cluster,categories={kubefleet, kubefleet-placement}
 // +kubebuilder:storageversion
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.status) || has(self.status)",message="the status of a cluster claim cannot be removed"
 type ClusterClaim struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -65,6 +103,7 @@ type ClusterClaim struct {
 // ClusterClaimSpec is the specification of a cluster claim.
 //
 // +kubebuilder:validation:XValidation:rule="has(self.clusterSelectorTerms) == has(oldSelf.clusterSelectorTerms)",message="the clusterSelectorTerms field cannot be added or removed after creation"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.clusterProviderClassName) || (has(self.clusterProviderClassName) && self.clusterProviderClassName == oldSelf.clusterProviderClassName)",message="the clusterProviderClassName field is immutable once set"
 type ClusterClaimSpec struct {
 	// The reference to the placement policy that adds the cluster claim.
 	//
@@ -83,12 +122,41 @@ type ClusterClaimSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="the clusterSelectorTerms field is immutable"
 	ClusterSelectorTerms []ClusterLabelAndPropertySelectorTerm `json:"clusterSelectorTerms,omitempty"`
+
+	// The name of the ClusterProviderClass whose provider should fulfill this claim. KubeFleet sets
+	// it when it issues the claim, from the placement policy's class or the fleet's default class;
+	// providers use it to recognize the claims meant for them.
+	//
+	// This field is immutable once set.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	ClusterProviderClassName string `json:"clusterProviderClassName,omitempty"`
 }
 
+// ClusterClaimStatus is the observed status of a cluster claim.
+//
+// Terminal states are pinned: a fulfilled claim cannot be marked as not completed, a failed one
+// cannot be marked as anything else, and an expired one stays expired. A fulfilled claim must name
+// its cluster. Denied is deliberately not pinned, so that an approver may still approve a claim it
+// denied. The terminal tuples are fixed: Completed=True must carry the Fulfilled reason, and
+// Expired=True one of the Expired reasons. Removing the status object altogether is rejected on
+// the ClusterClaim itself, since these rules only run while it exists.
+//
+// +kubebuilder:validation:XValidation:rule="!has(self.conditions) || !self.conditions.exists(c, c.type == 'Completed' && c.status == 'True') || (has(self.provisionedClusterName) && size(self.provisionedClusterName) > 0)",message="provisionedClusterName must be set when the Completed condition is True"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.conditions) || !oldSelf.conditions.exists(c, c.type == 'Completed' && c.status == 'True') || (has(self.conditions) && self.conditions.exists(c, c.type == 'Completed' && c.status == 'True'))",message="a fulfilled cluster claim cannot be marked as not completed"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.conditions) || !oldSelf.conditions.exists(c, c.type == 'Completed' && c.status == 'False' && c.reason == 'Failed') || (has(self.conditions) && self.conditions.exists(c, c.type == 'Completed' && c.status == 'False' && c.reason == 'Failed'))",message="a failed cluster claim cannot be marked as anything else"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.conditions) || !oldSelf.conditions.exists(c, c.type == 'Expired' && c.status == 'True') || (has(self.conditions) && self.conditions.exists(c, c.type == 'Expired' && c.status == 'True'))",message="an expired cluster claim cannot be marked as not expired"
+// +kubebuilder:validation:XValidation:rule="!has(self.conditions) || !self.conditions.exists(c, c.type == 'Completed' && c.status == 'True' && c.reason != 'Fulfilled')",message="the Completed condition must carry the Fulfilled reason when True"
+// +kubebuilder:validation:XValidation:rule="!has(self.conditions) || !self.conditions.exists(c, c.type == 'Expired' && c.status == 'True' && !(c.reason in ['PendingTimeout', 'JoinTimeout', 'NotMatching']))",message="the Expired condition must carry the PendingTimeout, JoinTimeout, or NotMatching reason when True"
 type ClusterClaimStatus struct {
 	// A list of observed conditions of the cluster claim.
 	//
 	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxItems=16
+	// +listType=map
+	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// The name of the cluster that has been provisioned for this cluster claim, if any.
@@ -105,8 +173,12 @@ type ClusterClaimStatus struct {
 	// +kubebuilder:validation:Optional
 	ProvisionedClusterName *string `json:"provisionedClusterName,omitempty"`
 
-	// The last observed most recent creation timestamp across all the member clusters. This field is used
-	// as an expedient solution to verify if a cluster claim is still valid for consideration, i.e.,
+	// The last observed most recent creation timestamp across all the member clusters (FEP-0001 calls this
+	// field LatestObservedClusterCreationTimestamp). It is unset while KubeFleet has not stamped it yet, or
+	// when the claim was issued into a fleet with no member clusters; in both cases there is nothing for
+	// the claim to be stale against.
+	//
+	// This field is used as an expedient solution to verify if a cluster claim is still valid for consideration, i.e.,
 	// if the currently observed most recent cluster creation timestamp is later than this timestamp in the
 	// status, a new member cluster must have been created after the cluster claim was created,
 	// and thus the cluster claim should be considered stale and can be ignored. The placement policy
