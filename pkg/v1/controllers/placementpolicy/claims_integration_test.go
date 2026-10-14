@@ -539,6 +539,40 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		}, eventuallyTimeout*2, pollInterval).ShouldNot(Succeed(), "the policy should be gone once its claim is")
 	})
 
+	It("leaves a claim of another policy alone when it holds the claim's name", func() {
+		policy := newPolicy(nextName("pp"), regionSelector("norwayeast", ptr.To(intstr.FromInt32(1)), nil))
+		wantClaimName := claimName(policy, 0)
+
+		By("a claim of another policy already holds the deterministic name")
+		squatterRef := policyReference(newPolicy("squatter"))
+		squatter := &kfplacementv1alpha1.ClusterClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: wantClaimName},
+			Spec:       kfplacementv1alpha1.ClusterClaimSpec{PlacementPolicyRef: squatterRef},
+		}
+		Expect(k8sClient.Create(ctx, squatter)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
+
+		By("the policy neither adopts, rewrites, nor withdraws it, and counts no claim")
+		Consistently(func(g Gomega) {
+			fetched := &kfplacementv1alpha1.ClusterClaim{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, fetched)).Should(Succeed())
+			g.Expect(fetched.DeletionTimestamp.IsZero()).Should(BeTrue(), "the other policy's claim must not be withdrawn")
+			g.Expect(fetched.Spec.PlacementPolicyRef).Should(Equal(squatterRef))
+			g.Expect(fetched.Labels).Should(BeEmpty(), "the other policy's claim must not be relabeled")
+			pp := &kfplacementv1alpha1.PlacementPolicy{}
+			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(policy), pp)).Should(Succeed())
+			g.Expect(pp.Status.ActiveClusterClaims).Should(BeNil(), "a round that could not issue its claim publishes no count")
+		}, consistentlyDuration, pollInterval).Should(Succeed())
+
+		By("once the name frees up, the policy issues its own claim")
+		Expect(k8sClient.Delete(ctx, squatter)).Should(Succeed())
+		Eventually(func(g Gomega) {
+			fetched := &kfplacementv1alpha1.ClusterClaim{}
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: wantClaimName}, fetched)).Should(Succeed())
+			g.Expect(claimBelongsTo(fetched, policyReference(policy))).Should(BeTrue())
+		}, eventuallyTimeout*2, pollInterval).Should(Succeed())
+	})
+
 	It("replaces the outstanding claim when the selector terms change", func() {
 		policy := newPolicy(nextName("pp"), regionSelector("spaincentral", ptr.To(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
