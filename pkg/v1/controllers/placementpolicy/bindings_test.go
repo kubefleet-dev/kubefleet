@@ -311,7 +311,7 @@ func TestReconcileBindingsReleasesLeftOverRole(t *testing.T) {
 	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(policy).WithStatusSubresource(policy).Build()
 	r := NewReconciler(c, c, snapshotStub{})
 
-	roleHeld, err := r.reconcileBindings(context.Background(), policy, nil, map[string][]int{}, nil)
+	roleHeld, err := r.reconcileBindings(context.Background(), policy, nil, map[string][]int{}, nil, stubSnapshotName(policy))
 	if err != nil || roleHeld {
 		t.Fatalf("reconcileBindings() = %t, %v, want false, nil", roleHeld, err)
 	}
@@ -336,7 +336,7 @@ func TestReconcileBindingsBacksOffWhenRoleIsHeld(t *testing.T) {
 	r := NewReconciler(c, c, snapshotStub{})
 
 	outcomes := []selectorOutcome{{counts: resolvedCounts{desired: 1}, matched: []string{"east-1"}, chosen: []string{"east-1"}}}
-	roleHeld, err := r.reconcileBindings(context.Background(), policy, outcomes, map[string][]int{"east-1": {0}}, nil)
+	roleHeld, err := r.reconcileBindings(context.Background(), policy, outcomes, map[string][]int{"east-1": {0}}, nil, stubSnapshotName(policy))
 	if err != nil || !roleHeld {
 		t.Fatalf("reconcileBindings() = %t, %v, want true, nil", roleHeld, err)
 	}
@@ -363,7 +363,7 @@ func TestReconcileBindingsUpdatesSyncStrategy(t *testing.T) {
 	chosen := map[string][]int{"east-1": {0}}
 	ctx := context.Background()
 
-	if _, err := r.reconcileBindings(ctx, policy, outcomes, chosen, nil); err != nil {
+	if _, err := r.reconcileBindings(ctx, policy, outcomes, chosen, nil, stubSnapshotName(policy)); err != nil {
 		t.Fatalf("reconcileBindings() = %v, want no error", err)
 	}
 	if err := c.Get(ctx, types.NamespacedName{Namespace: "default", Name: "pp"}, policy); err != nil {
@@ -383,7 +383,7 @@ func TestReconcileBindingsUpdatesSyncStrategy(t *testing.T) {
 	if err != nil || len(existing) != 1 {
 		t.Fatalf("listBindings() = %d bindings, %v, want 1 binding, no error", len(existing), err)
 	}
-	if _, err := r.reconcileBindings(ctx, policy, outcomes, chosen, existing); err != nil {
+	if _, err := r.reconcileBindings(ctx, policy, outcomes, chosen, existing, stubSnapshotName(policy)); err != nil {
 		t.Fatalf("reconcileBindings() = %v, want no error", err)
 	}
 
@@ -396,5 +396,31 @@ func TestReconcileBindingsUpdatesSyncStrategy(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, bindings.Items[0].Spec.SyncStrategy); diff != "" {
 		t.Errorf("binding sync strategy mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestReconcileBindingsWithoutSnapshotLeavesRoleAlone pins that a round with no snapshot and only
+// clusters to bind has nothing to do: it does not reach for the binding manager role at all, so a
+// snapshot outage neither churns the role nor contends with a rollout holding it.
+func TestReconcileBindingsWithoutSnapshotLeavesRoleAlone(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kfplacementv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme() = %v, want no error", err)
+	}
+	policy := bindingManagerHeldBy("rollout-controller")
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(policy).WithStatusSubresource(policy).Build()
+	r := NewReconciler(c, c, snapshotStub{})
+
+	outcomes := []selectorOutcome{{counts: resolvedCounts{desired: 1}, matched: []string{"east-1"}, chosen: []string{"east-1"}}}
+	roleHeld, err := r.reconcileBindings(context.Background(), policy, outcomes, map[string][]int{"east-1": {0}}, nil, "")
+	if err != nil || roleHeld {
+		t.Fatalf("reconcileBindings() = %t, %v, want false, nil: with nothing it can do, the round must not contend for the role", roleHeld, err)
+	}
+	bindings := &kfplacementv1alpha1.PlacementBindingList{}
+	if err := c.List(context.Background(), bindings); err != nil {
+		t.Fatalf("List() = %v, want no error", err)
+	}
+	if len(bindings.Items) != 0 {
+		t.Errorf("reconcileBindings() created %d bindings without a snapshot, want 0", len(bindings.Items))
 	}
 }
