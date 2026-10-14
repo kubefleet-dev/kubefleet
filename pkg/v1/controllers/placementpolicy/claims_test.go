@@ -370,7 +370,7 @@ func TestReconcileClaimsNameOccupied(t *testing.T) {
 				},
 			})
 
-			r := NewReconciler(cache, apiServer)
+			r := NewReconciler(cache, apiServer, snapshotStub{})
 			outstanding, err := r.reconcileClaims(context.Background(), policy, outcomes, metav1.Time{})
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("reconcileClaims() = %v, want error %t", err, tc.wantErr)
