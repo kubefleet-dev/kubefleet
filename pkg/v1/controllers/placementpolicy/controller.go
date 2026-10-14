@@ -32,6 +32,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/clock"
 	runtime "sigs.k8s.io/controller-runtime"
@@ -57,10 +58,12 @@ const (
 	// 5-minute heartbeat timeout so the worst-case detection latency stays near the timeout
 	// itself (timeout + one requeue period, ~7.5 minutes) instead of doubling it.
 	fulfilledRequeueAfter = 150 * time.Second
-	// bindingManagerRetryAfter is the wait before retrying a binding change that found the
-	// policy's binding manager role held by another process (e.g., a rollout in progress). The
-	// FEP has contenders back off and retry rather than wait on the role.
-	bindingManagerRetryAfter = 10 * time.Second
+	// bindingManagerRetryBase and bindingManagerRetryMax bound the exponential backoff before
+	// retrying a binding change that found the policy's binding manager role held by another
+	// process (e.g., a rollout in progress). The FEP has contenders back off and retry rather
+	// than wait on the role; the backoff keeps a long rollout from being polled at a fixed pace.
+	bindingManagerRetryBase = 5 * time.Second
+	bindingManagerRetryMax  = 5 * time.Minute
 
 	// EventReasonClaimNotIssued is recorded, as a warning, when a selector wants a cluster claim
 	// that cannot be issued: the policy resolves to no cluster provider class, or the selector's
@@ -122,6 +125,10 @@ type Reconciler struct {
 	// the count-then-create under it across the two controllers this Reconciler serves.
 	maxConcurrentClaims int32
 	claimMu             sync.Mutex
+
+	// roleBackoff paces the retries of a policy whose binding manager role another process
+	// holds; a round that completes resets the policy's backoff.
+	roleBackoff workqueue.TypedRateLimiter[runtime.Request]
 }
 
 // Option configures a Reconciler.
@@ -152,6 +159,7 @@ func NewReconciler(c client.Client, uncachedReader client.Reader, snapshots snap
 		recorder:            recorder,
 		clock:               clock.RealClock{},
 		maxConcurrentClaims: defaultMaxConcurrentClaims,
+		roleBackoff:         workqueue.NewTypedItemExponentialFailureRateLimiter[runtime.Request](bindingManagerRetryBase, bindingManagerRetryMax),
 	}
 	for _, opt := range opts {
 		opt(r)
@@ -182,11 +190,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	if err != nil {
 		if errors.IsNotFound(err) {
 			klog.V(4).InfoS("Ignoring not-found placement policy", "placementPolicy", req.NamespacedName)
-			// The policy is gone for good; stop reporting metrics for it.
+			// The policy is gone for good; stop reporting metrics for it, and drop its role
+			// backoff so that a policy recreated under the name starts afresh.
 			forgetPolicyMetrics(req.Namespace, req.Name)
+			r.roleBackoff.Forget(req)
 			return runtime.Result{}, nil
 		}
-		klog.ErrorS(err, "Failed to get the placement policy object", "placementPolicy", req.NamespacedName)
+		klog.ErrorS(err, "Failed to get the placement policy object", append(kferrors.Args(err), "placementPolicy", req.NamespacedName)...)
 		return runtime.Result{}, err
 	}
 	if !policy.GetDeletionTimestamp().IsZero() {
@@ -197,8 +207,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 
 	memberClusters := &clusterv1beta1.MemberClusterList{}
 	if err := r.List(ctx, memberClusters); err != nil {
-		klog.ErrorS(err, "Failed to list member clusters", "placementPolicy", req.NamespacedName)
-		return runtime.Result{}, err
+		wrappedErr := kferrors.NewAPIServerError(err, "failed to list member clusters", true, "placementPolicy", req.NamespacedName)
+		klog.ErrorS(wrappedErr, "Failed to list member clusters", kferrors.Args(wrappedErr)...)
+		return runtime.Result{}, wrappedErr
 	}
 	var mostRecentClusterCreation metav1.Time
 	clustersByName := make(map[string]*clusterv1beta1.MemberCluster, len(memberClusters.Items))
@@ -210,7 +221,19 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		}
 	}
 
-	outcomes, err := evaluateSelectors(policy.GetSpec(), memberClusters.Items, r.eligibility)
+	existingBindings, err := r.listBindings(ctx, policy)
+	if err != nil {
+		klog.ErrorS(err, "Failed to list the placement bindings", append(kferrors.Args(err), "placementPolicy", req.NamespacedName)...)
+		return runtime.Result{}, err
+	}
+	bound := make(map[string]metav1.Time, len(existingBindings))
+	recorded := make(map[string][]kfplacementv1alpha1.ClusterSelectorWithTermsOnly, len(existingBindings))
+	for _, binding := range existingBindings {
+		bound[binding.GetSpec().ClusterName] = binding.GetCreationTimestamp()
+		recorded[binding.GetSpec().ClusterName] = binding.GetSpec().ClusterSelectors
+	}
+
+	outcomes, err := evaluateSelectors(policy.GetSpec(), memberClusters.Items, r.eligibility, recorded)
 	if err != nil {
 		// Selector evaluation fails only on invalid selector contents (e.g., an operator
 		// applied to a key it does not support); retrying cannot help until the spec changes,
@@ -221,15 +244,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		return runtime.Result{}, r.updateStatus(ctx, policy, nil, nil, invalidSelectorsCondition(policy.GetGeneration(), err))
 	}
 
-	existingBindings, err := r.listBindings(ctx, policy)
-	if err != nil {
-		klog.ErrorS(err, "Failed to list the placement bindings", "placementPolicy", req.NamespacedName)
-		return runtime.Result{}, err
-	}
-	bound := make(map[string]metav1.Time, len(existingBindings))
-	for _, binding := range existingBindings {
-		bound[binding.GetSpec().ClusterName] = binding.GetCreationTimestamp()
-	}
 	desiredBindings := chooseClusters(outcomes, bound, clustersByName)
 	roleHeld, bindingErr := r.reconcileBindings(ctx, policy, outcomes, desiredBindings, existingBindings)
 
@@ -269,17 +283,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		return runtime.Result{}, err
 	}
 	if bindingErr != nil {
-		klog.ErrorS(bindingErr, "Failed to reconcile the placement bindings", "placementPolicy", req.NamespacedName)
+		klog.ErrorS(bindingErr, "Failed to reconcile the placement bindings", append(kferrors.Args(bindingErr), "placementPolicy", req.NamespacedName)...)
 		return runtime.Result{}, bindingErr
 	}
 	if claimErr != nil {
-		klog.ErrorS(claimErr, "Failed to reconcile the cluster claims", "placementPolicy", req.NamespacedName)
+		klog.ErrorS(claimErr, "Failed to reconcile the cluster claims", append(kferrors.Args(claimErr), "placementPolicy", req.NamespacedName)...)
 		return runtime.Result{}, claimErr
 	}
 	if roleHeld {
 		klog.V(2).InfoS("The binding manager role is held by another process; will retry the binding changes", "placementPolicy", req.NamespacedName)
-		return runtime.Result{RequeueAfter: bindingManagerRetryAfter}, nil
+		return runtime.Result{RequeueAfter: r.roleBackoff.When(req)}, nil
 	}
+	r.roleBackoff.Forget(req)
 
 	requeueAfter := fulfilledRequeueAfter
 	for i := range outcomes {
@@ -322,8 +337,9 @@ func (r *Reconciler) updateStatus(ctx context.Context, policy kfplacementv1alpha
 		return nil
 	}
 	if err := r.Status().Update(ctx, policy); err != nil {
-		klog.ErrorS(err, "Failed to update the placement policy status", "placementPolicy", client.ObjectKeyFromObject(policy))
-		return err
+		wrappedErr := kferrors.NewAPIServerError(err, "failed to update the placement policy status", false, "placementPolicy", client.ObjectKeyFromObject(policy))
+		klog.ErrorS(wrappedErr, "Failed to update the placement policy status", kferrors.Args(wrappedErr)...)
+		return wrappedErr
 	}
 	return nil
 }
@@ -345,7 +361,8 @@ func (r *Reconciler) fetchPolicy(ctx context.Context, req runtime.Request) (kfpl
 }
 
 // SetupWithManagerForPlacementPolicy registers the reconciler with the manager for the
-// namespaced PlacementPolicy API.
+// namespaced PlacementPolicy API. The reconciler lists cluster claims through a cache field index,
+// so fieldindexers.SetupWithHubAgentControllerManager must have run before the manager starts.
 func (r *Reconciler) SetupWithManagerForPlacementPolicy(mgr runtime.Manager) error {
 	return runtime.NewControllerManagedBy(mgr).
 		Named(controllerName).
@@ -373,7 +390,8 @@ func (r *Reconciler) SetupWithManagerForPlacementPolicy(mgr runtime.Manager) err
 }
 
 // SetupWithManagerForClusterPlacementPolicy registers the reconciler with the manager for the
-// cluster-scoped ClusterPlacementPolicy API.
+// cluster-scoped ClusterPlacementPolicy API. Like SetupWithManagerForPlacementPolicy, it relies on
+// the cache field indexes of fieldindexers.SetupWithHubAgentControllerManager.
 func (r *Reconciler) SetupWithManagerForClusterPlacementPolicy(mgr runtime.Manager) error {
 	return runtime.NewControllerManagedBy(mgr).
 		Named("cluster-placement-policy-controller").
