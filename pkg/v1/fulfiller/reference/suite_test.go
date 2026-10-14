@@ -39,6 +39,7 @@ import (
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/placementpolicy"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/fulfiller"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/fieldindexers"
 )
 
 const (
@@ -102,6 +103,8 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).Should(Succeed())
 
+	// The policy controller lists claims and bindings through cache field indexes.
+	Expect(fieldindexers.SetupWithHubAgentControllerManager(ctx, mgr)).Should(Succeed())
 	policies := placementpolicy.NewReconciler(mgr.GetClient(), mgr.GetAPIReader(), snapshotStub{}, mgr.GetEventRecorder("placement-policy-controller"), placementpolicy.WithMaxConcurrentClusterClaims(2))
 	Expect(policies.SetupWithManagerForPlacementPolicy(mgr)).Should(Succeed())
 	Expect(policies.SetupWithManagerForClusterPlacementPolicy(mgr)).Should(Succeed())
