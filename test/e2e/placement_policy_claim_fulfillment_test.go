@@ -285,6 +285,40 @@ var _ = Describe("cluster claim fulfillment", Label("custom"), Ordered, Serial, 
 		}, longEventuallyDuration, eventuallyInterval).Should(Succeed())
 	})
 
+	It("reports a change to a selected resource on the policy promptly, waiting for a rollout", func() {
+		class := createClass(nil)
+		policy := createPolicy(class, regionSelector("antarctica", 2))
+		synchronizedCond := func(g Gomega) *metav1.Condition {
+			fetched := &kfplacementv1alpha1.PlacementPolicy{}
+			g.Expect(hubClient.Get(ctx, client.ObjectKeyFromObject(policy), fetched)).Should(Succeed())
+			g.Expect(fetched.Status.LatestResourceRevisionName).NotTo(BeNil())
+			cond := meta.FindStatusCondition(fetched.Status.Conditions, kfplacementv1alpha1.PlacementPolicyCondTypeSynchronized)
+			g.Expect(cond).NotTo(BeNil())
+			return cond
+		}
+		Eventually(func(g Gomega) {
+			g.Expect(bindingsOf(policy)(g)).Should(HaveLen(2))
+			g.Expect(synchronizedCond(g).Message).ShouldNot(ContainSubstring("have changed since"))
+		}, longEventuallyDuration, eventuallyInterval).Should(Succeed())
+
+		By("editing the selected ConfigMap")
+		Eventually(func() error {
+			cm := &corev1.ConfigMap{}
+			if err := hubClient.Get(ctx, types.NamespacedName{Namespace: claimFulfillmentNS, Name: "app"}, cm); err != nil {
+				return err
+			}
+			cm.Data = map[string]string{"edited": time.Now().Format(time.RFC3339Nano)}
+			return hubClient.Update(ctx, cm)
+		}, eventuallyDuration, eventuallyInterval).Should(Succeed())
+
+		// Well under the policy's periodic requeue, so it is the resource change that wakes it.
+		Eventually(func(g Gomega) {
+			cond := synchronizedCond(g)
+			g.Expect(cond.Status).Should(Equal(metav1.ConditionFalse))
+			g.Expect(cond.Message).Should(ContainSubstring("have changed since"))
+		}, time.Minute, eventuallyInterval).Should(Succeed())
+	})
+
 	It("gates manual approval on the approve verb: a tenant is refused, an approver lets the claim through", func() {
 		class := createClass(func(spec *kfplacementv1alpha1.ClusterProviderClassSpec) {
 			spec.Approval = kfplacementv1alpha1.ClusterClaimApprovalModeManual

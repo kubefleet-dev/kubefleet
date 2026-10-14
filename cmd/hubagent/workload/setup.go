@@ -200,6 +200,9 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	rateLimiter := options.DefaultControllerRateLimiter(opts.PlacementMgmtOpts.PlacementControllerWorkQueueRateLimiterOpts)
 	var clusterResourcePlacementControllerV1Beta1 controller.Controller
 	var resourcePlacementController controller.Controller
+	// placementPolicies is set when the placement policy controllers run, so that the resource
+	// change controller can re-queue the policies a changed resource may be selected by.
+	var placementPolicies *placementpolicy.Reconciler
 
 	if opts.FeatureFlags.EnableV1Beta1APIs {
 		for _, gvk := range v1Beta1RequiredGVKs {
@@ -326,16 +329,16 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			}
 			// The option is validated to [1, 100], so the conversion cannot overflow.
 			claimLimit := int32(opts.PlacementMgmtOpts.MaxConcurrentClusterClaims) //nolint:gosec
-			policies := placementpolicy.NewReconciler(
+			placementPolicies = placementpolicy.NewReconciler(
 				mgr.GetClient(), mgr.GetAPIReader(), snapshots,
 				mgr.GetEventRecorder("placement-policy-controller"),
 				placementpolicy.WithMaxConcurrentClusterClaims(claimLimit),
 			)
-			if err := policies.SetupWithManagerForPlacementPolicy(mgr); err != nil {
+			if err := placementPolicies.SetupWithManagerForPlacementPolicy(mgr); err != nil {
 				klog.ErrorS(err, "Unable to set up the placement policy controller")
 				return err
 			}
-			if err := policies.SetupWithManagerForClusterPlacementPolicy(mgr); err != nil {
+			if err := placementPolicies.SetupWithManagerForClusterPlacementPolicy(mgr); err != nil {
 				klog.ErrorS(err, "Unable to set up the cluster placement policy controller")
 				return err
 			}
@@ -559,6 +562,9 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		InformerManager:             dynamicInformerManager,
 		PlacementControllerV1Beta1:  clusterResourcePlacementControllerV1Beta1,
 		ResourcePlacementController: resourcePlacementController,
+	}
+	if placementPolicies != nil {
+		rcr.EnqueuePlacementPolicies = placementPolicies.EnqueuePoliciesSelecting
 	}
 	resourceChangeController := controller.NewController(resourceChangeControllerName, controller.ClusterWideKeyFunc, rcr.Reconcile, rateLimiter)
 
