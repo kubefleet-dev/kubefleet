@@ -62,6 +62,13 @@ const (
 	// every binding in its scope. The value is the policy name alone: a binding shares its policy's scope, so a
 	// namespaced lookup pairs it with the namespace.
 	PlacementBindingOwnedByPlacementPolicyCustomFieldName = "placementBindingOwnedByPlacementPolicy"
+
+	// ClusterClaimOwnedByPlacementPolicyCustomFieldName is the name of the custom field that indexes cluster
+	// claims by the placement policy that their immutable spec.placementPolicyRef names.
+	//
+	// This is added to help the placement policy controller retrieve the claims of a policy without scanning
+	// every claim in the fleet; the ownership labels are mutable, so the reference is what gets indexed.
+	ClusterClaimOwnedByPlacementPolicyCustomFieldName = "clusterClaimOwnedByPlacementPolicy"
 )
 
 const (
@@ -84,6 +91,13 @@ const (
 	//
 	// The first value is the owner binding namespace, and the second value is the owner binding name.
 	WorkOwnedByBindingCustomFieldValFmt = "%s/%s"
+
+	// ClusterClaimOwnedByPlacementPolicyCustomFieldValFmt is used to format the value for the custom field,
+	// `ClusterClaimOwnedByPlacementPolicyCustomFieldName`.
+	//
+	// The values are the API group, kind, namespace, and name of the referenced placement policy; the API
+	// version is left out so that an API promotion does not orphan the claims of a policy.
+	ClusterClaimOwnedByPlacementPolicyCustomFieldValFmt = "%s/%s/%s/%s"
 )
 
 var (
@@ -125,7 +139,22 @@ var (
 		}
 		return []string{binding.GetSpec().PlacementPolicyName}, nil
 	}
+
+	clusterClaimOwnedByPlacementPolicyFieldExtractor fieldValueExtractor = func(obj client.Object) ([]string, error) {
+		claim, ok := obj.(*placementv1alpha1.ClusterClaim)
+		if !ok || claim.Spec.PlacementPolicyRef == nil {
+			wrappedErr := errors.NewUnexpectedError(nil, "object is not a cluster claim with a placement policy reference")
+			return nil, wrappedErr
+		}
+		return []string{ClusterClaimOwnedByPlacementPolicyCustomFieldVal(claim.Spec.PlacementPolicyRef)}, nil
+	}
 )
+
+// ClusterClaimOwnedByPlacementPolicyCustomFieldVal formats a placement policy reference as the value of the
+// custom field, `ClusterClaimOwnedByPlacementPolicyCustomFieldName`.
+func ClusterClaimOwnedByPlacementPolicyCustomFieldVal(ref *placementv1alpha1.ObjectReference) string {
+	return fmt.Sprintf(ClusterClaimOwnedByPlacementPolicyCustomFieldValFmt, ref.APIGroup, ref.Kind, ref.Namespace, ref.Name)
+}
 
 // SetupWithHubAgentControllerManager sets up the indices that controllers from the KubeFleet hub agent need to run properly.
 //
@@ -180,6 +209,13 @@ func SetupWithHubAgentControllerManager(ctx context.Context, mgr ctrl.Manager) e
 		PlacementBindingOwnedByPlacementPolicyCustomFieldName, placementBindingOwnedByPlacementPolicyFieldExtractor,
 	); err != nil {
 		return errors.Wraps(err, "failed to set up cluster placement binding owner placement policy field index")
+	}
+
+	if err := indexCompositeField(ctx, fieldIdxer,
+		&placementv1alpha1.ClusterClaim{},
+		ClusterClaimOwnedByPlacementPolicyCustomFieldName, clusterClaimOwnedByPlacementPolicyFieldExtractor,
+	); err != nil {
+		return errors.Wraps(err, "failed to set up cluster claim owner placement policy field index")
 	}
 
 	return nil

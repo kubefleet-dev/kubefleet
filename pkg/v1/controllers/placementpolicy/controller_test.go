@@ -65,7 +65,7 @@ func TestReconcilePreservesClaimCountOnFailedRound(t *testing.T) {
 	}
 
 	listErr := errors.New("the claim list is unwell")
-	c := withBindingIndex(fake.NewClientBuilder().WithScheme(scheme)).
+	c := withIndexes(fake.NewClientBuilder().WithScheme(scheme)).
 		WithObjects(policy).
 		WithStatusSubresource(policy).
 		WithInterceptorFuncs(interceptor.Funcs{
@@ -129,7 +129,7 @@ func TestReconcileBacksOffWhileRoleIsHeld(t *testing.T) {
 	}
 	policy := bindingManagerHeldBy("rollout-controller")
 	cluster := testCluster("east-1", nil, nil, nil)
-	c := withBindingIndex(fake.NewClientBuilder().WithScheme(scheme)).
+	c := withIndexes(fake.NewClientBuilder().WithScheme(scheme)).
 		WithObjects(policy, cluster).
 		WithStatusSubresource(policy).
 		Build()

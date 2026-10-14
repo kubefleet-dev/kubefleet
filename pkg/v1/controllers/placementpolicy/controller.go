@@ -107,11 +107,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	if err != nil {
 		if errors.IsNotFound(err) {
 			klog.V(4).InfoS("Ignoring not-found placement policy", "placementPolicy", req.NamespacedName)
-			// The policy is gone for good; stop reporting metrics for it.
+			// The policy is gone for good; stop reporting metrics for it, and drop its role
+			// backoff so that a policy recreated under the name starts afresh.
 			forgetPolicyMetrics(req.Namespace, req.Name)
+			r.roleBackoff.Forget(req)
 			return runtime.Result{}, nil
 		}
-		klog.ErrorS(err, "Failed to get the placement policy object", "placementPolicy", req.NamespacedName)
+		klog.ErrorS(err, "Failed to get the placement policy object", append(kferrors.Args(err), "placementPolicy", req.NamespacedName)...)
 		return runtime.Result{}, err
 	}
 	if !policy.GetDeletionTimestamp().IsZero() {
@@ -122,8 +124,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 
 	memberClusters := &clusterv1beta1.MemberClusterList{}
 	if err := r.List(ctx, memberClusters); err != nil {
-		klog.ErrorS(err, "Failed to list member clusters", "placementPolicy", req.NamespacedName)
-		return runtime.Result{}, err
+		wrappedErr := kferrors.NewAPIServerError(err, "failed to list member clusters", true, "placementPolicy", req.NamespacedName)
+		klog.ErrorS(wrappedErr, "Failed to list member clusters", kferrors.Args(wrappedErr)...)
+		return runtime.Result{}, wrappedErr
 	}
 	var mostRecentClusterCreation metav1.Time
 	for i := range memberClusters.Items {
@@ -134,7 +137,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 
 	existingBindings, err := r.listBindings(ctx, policy)
 	if err != nil {
-		klog.ErrorS(err, "Failed to list the placement bindings", "placementPolicy", req.NamespacedName)
+		klog.ErrorS(err, "Failed to list the placement bindings", append(kferrors.Args(err), "placementPolicy", req.NamespacedName)...)
 		return runtime.Result{}, err
 	}
 	bound := make(map[string]metav1.Time, len(existingBindings))
@@ -176,11 +179,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		return runtime.Result{}, err
 	}
 	if bindingErr != nil {
-		klog.ErrorS(bindingErr, "Failed to reconcile the placement bindings", "placementPolicy", req.NamespacedName)
+		klog.ErrorS(bindingErr, "Failed to reconcile the placement bindings", append(kferrors.Args(bindingErr), "placementPolicy", req.NamespacedName)...)
 		return runtime.Result{}, bindingErr
 	}
 	if claimErr != nil {
-		klog.ErrorS(claimErr, "Failed to reconcile the cluster claims", "placementPolicy", req.NamespacedName)
+		klog.ErrorS(claimErr, "Failed to reconcile the cluster claims", append(kferrors.Args(claimErr), "placementPolicy", req.NamespacedName)...)
 		return runtime.Result{}, claimErr
 	}
 	if roleHeld {
@@ -225,8 +228,9 @@ func (r *Reconciler) updateStatus(ctx context.Context, policy kfplacementv1alpha
 		return nil
 	}
 	if err := r.Status().Update(ctx, policy); err != nil {
-		klog.ErrorS(err, "Failed to update the placement policy status", "placementPolicy", client.ObjectKeyFromObject(policy))
-		return err
+		wrappedErr := kferrors.NewAPIServerError(err, "failed to update the placement policy status", false, "placementPolicy", client.ObjectKeyFromObject(policy))
+		klog.ErrorS(wrappedErr, "Failed to update the placement policy status", kferrors.Args(wrappedErr)...)
+		return wrappedErr
 	}
 	return nil
 }
@@ -248,7 +252,8 @@ func (r *Reconciler) fetchPolicy(ctx context.Context, req runtime.Request) (kfpl
 }
 
 // SetupWithManagerForPlacementPolicy registers the reconciler with the manager for the
-// namespaced PlacementPolicy API.
+// namespaced PlacementPolicy API. The reconciler lists cluster claims through a cache field index,
+// so fieldindexers.SetupWithHubAgentControllerManager must have run before the manager starts.
 func (r *Reconciler) SetupWithManagerForPlacementPolicy(mgr runtime.Manager) error {
 	return runtime.NewControllerManagedBy(mgr).
 		Named(controllerName).
@@ -267,7 +272,8 @@ func (r *Reconciler) SetupWithManagerForPlacementPolicy(mgr runtime.Manager) err
 }
 
 // SetupWithManagerForClusterPlacementPolicy registers the reconciler with the manager for the
-// cluster-scoped ClusterPlacementPolicy API.
+// cluster-scoped ClusterPlacementPolicy API. Like SetupWithManagerForPlacementPolicy, it relies on
+// the cache field indexes of fieldindexers.SetupWithHubAgentControllerManager.
 func (r *Reconciler) SetupWithManagerForClusterPlacementPolicy(mgr runtime.Manager) error {
 	return runtime.NewControllerManagedBy(mgr).
 		Named("cluster-placement-policy-controller").

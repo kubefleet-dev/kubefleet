@@ -88,7 +88,9 @@ package demonstrating the current behavior.
   every selector whose terms its binding still lists. Changing a selector's
   terms re-evaluates its clusters from scratch, as a new scheduling policy does
   for placements; a cluster leaving the fleet, or its binding being deleted,
-  releases it too. A cluster whose reported data cannot be evaluated is named
+  releases it too. The record is the binding itself, so anyone who rewrites a
+  binding's `spec.clusterSelectors` has that cluster re-evaluated from scratch
+  on the next round. A cluster whose reported data cannot be evaluated is named
   on the `Scheduled` condition message, since it keeps its binding uncounted.
 - **One binding per cluster per policy, counting toward every selector it
   matches**: selectors are processed in order, and a cluster chosen for an

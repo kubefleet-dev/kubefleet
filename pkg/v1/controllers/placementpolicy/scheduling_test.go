@@ -302,3 +302,33 @@ func TestScheduledConditionNamesUnevaluableClusters(t *testing.T) {
 		})
 	}
 }
+
+// TestEvaluateSelectorsKeepsClustersSelectedBeforeAcrossSelectors pins that a decision sticks to
+// the selector it was made for by terms, not by position: a cluster recorded for one selector that
+// now matches only another is selected by both, and reordering the selectors keeps the pin.
+func TestEvaluateSelectorsKeepsClustersSelectedBeforeAcrossSelectors(t *testing.T) {
+	eastTerms := []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{MatchLabels: map[string]string{regionLabel: "east"}}}
+	westTerms := []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{MatchLabels: map[string]string{regionLabel: "west"}}}
+	spec := &kfplacementv1alpha1.PlacementPolicySpec{
+		ClusterSelectors: []kfplacementv1alpha1.ClusterSelector{
+			{Terms: westTerms, Count: ptr.To(intstr.FromInt32(1))},
+			{Terms: eastTerms, Count: ptr.To(intstr.FromInt32(1))},
+		},
+	}
+	clusters := []clusterv1beta1.MemberCluster{
+		*testCluster("moved-west", map[string]string{regionLabel: "west"}, nil, nil),
+	}
+	recorded := map[string][]kfplacementv1alpha1.ClusterSelectorWithTermsOnly{"moved-west": {{Terms: eastTerms}}}
+
+	outcomes, err := evaluateSelectors(spec, clusters, allEligible{}, recorded)
+	if err != nil {
+		t.Fatalf("evaluateSelectors() = %v, want no error", err)
+	}
+	var gotMatched [][]string
+	for i := range outcomes {
+		gotMatched = append(gotMatched, outcomes[i].matched)
+	}
+	if diff := cmp.Diff([][]string{{"moved-west"}, {"moved-west"}}, gotMatched); diff != "" {
+		t.Errorf("evaluateSelectors() matched per selector mismatch (-want +got):\n%s", diff)
+	}
+}

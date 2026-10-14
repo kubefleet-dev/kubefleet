@@ -267,16 +267,20 @@ func TestBindingName(t *testing.T) {
 	}
 }
 
-// withBindingIndex registers, on a fake client builder that already has its scheme, the binding
-// index the controller lists bindings through, as fieldindexers.SetupWithHubAgentControllerManager
+// withIndexes registers, on a fake client builder that already has its scheme, the binding and
+// claim indexes the controller lists through, as fieldindexers.SetupWithHubAgentControllerManager
 // does on the real cache.
-func withBindingIndex(b *fake.ClientBuilder) *fake.ClientBuilder {
+func withIndexes(b *fake.ClientBuilder) *fake.ClientBuilder {
 	byPolicyName := func(obj client.Object) []string {
 		return []string{obj.(kfplacementv1alpha1.PlacementBindingAccessor).GetSpec().PlacementPolicyName}
 	}
+	byPolicyRef := func(obj client.Object) []string {
+		return []string{fieldindexers.ClusterClaimOwnedByPlacementPolicyCustomFieldVal(obj.(*kfplacementv1alpha1.ClusterClaim).Spec.PlacementPolicyRef)}
+	}
 	return b.
 		WithIndex(&kfplacementv1alpha1.PlacementBinding{}, fieldindexers.PlacementBindingOwnedByPlacementPolicyCustomFieldName, byPolicyName).
-		WithIndex(&kfplacementv1alpha1.ClusterPlacementBinding{}, fieldindexers.PlacementBindingOwnedByPlacementPolicyCustomFieldName, byPolicyName)
+		WithIndex(&kfplacementv1alpha1.ClusterPlacementBinding{}, fieldindexers.PlacementBindingOwnedByPlacementPolicyCustomFieldName, byPolicyName).
+		WithIndex(&kfplacementv1alpha1.ClusterClaim{}, fieldindexers.ClusterClaimOwnedByPlacementPolicyCustomFieldName, byPolicyRef)
 }
 
 // bindingManagerHeldBy builds a policy whose binding manager role is held by the given
@@ -353,7 +357,7 @@ func TestReconcileBindingsUpdatesSyncStrategy(t *testing.T) {
 		t.Fatalf("AddToScheme() = %v, want no error", err)
 	}
 	policy := bindingManagerHeldBy(controllerName)
-	c := withBindingIndex(fake.NewClientBuilder().WithScheme(scheme)).WithObjects(policy).WithStatusSubresource(policy).Build()
+	c := withIndexes(fake.NewClientBuilder().WithScheme(scheme)).WithObjects(policy).WithStatusSubresource(policy).Build()
 	r := NewReconciler(c, c, snapshotStub{})
 	outcomes := []selectorOutcome{{counts: resolvedCounts{desired: 1}, matched: []string{"east-1"}, chosen: []string{"east-1"}}}
 	chosen := map[string][]int{"east-1": {0}}
