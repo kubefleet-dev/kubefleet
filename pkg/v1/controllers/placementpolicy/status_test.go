@@ -66,7 +66,7 @@ func TestSummarizeResourceStatus(t *testing.T) {
 	}
 
 	got := summarizeResourceStatus(latest, true, targets, bindings)
-	want := resourceStatus{latestRevision: latest, upToDate: true, targets: 6, synchronized: 1, available: 1}
+	want := resourceStatus{latestRevision: latest, current: true, targets: 6, synchronized: 1, available: 1}
 	if diff := cmp.Diff(want, got, cmp.AllowUnexported(resourceStatus{})); diff != "" {
 		t.Errorf("summarizeResourceStatus() mismatch (-want +got):\n%s", diff)
 	}
@@ -81,7 +81,7 @@ func TestResourceStatusConditions(t *testing.T) {
 	}{
 		{
 			name:   "all target clusters synchronized and available",
-			status: resourceStatus{latestRevision: "r1", upToDate: true, targets: 2, synchronized: 2, available: 2},
+			status: resourceStatus{latestRevision: "r1", current: true, targets: 2, synchronized: 2, available: 2},
 			wantSync: metav1.Condition{
 				Type: kfplacementv1alpha1.PlacementPolicyCondTypeSynchronized, Status: metav1.ConditionTrue, ObservedGeneration: 3,
 				Reason:  kfplacementv1alpha1.PlacementPolicySynchronizedCondReasonAllClustersSynchronized,
@@ -95,7 +95,7 @@ func TestResourceStatusConditions(t *testing.T) {
 		},
 		{
 			name:   "rollout in progress",
-			status: resourceStatus{latestRevision: "r1", upToDate: true, targets: 3, synchronized: 1, available: 2},
+			status: resourceStatus{latestRevision: "r1", current: true, targets: 3, synchronized: 1, available: 2},
 			wantSync: metav1.Condition{
 				Type: kfplacementv1alpha1.PlacementPolicyCondTypeSynchronized, Status: metav1.ConditionFalse, ObservedGeneration: 3,
 				Reason:  kfplacementv1alpha1.PlacementPolicySynchronizedCondReasonFailedToSynchronizeSomeClusters,
@@ -109,7 +109,7 @@ func TestResourceStatusConditions(t *testing.T) {
 		},
 		{
 			name:   "resources changed on the hub since the latest revision",
-			status: resourceStatus{latestRevision: "r1", upToDate: false, targets: 2, synchronized: 2, available: 2},
+			status: resourceStatus{latestRevision: "r1", current: false, targets: 2, synchronized: 2, available: 2},
 			wantSync: metav1.Condition{
 				Type: kfplacementv1alpha1.PlacementPolicyCondTypeSynchronized, Status: metav1.ConditionFalse, ObservedGeneration: 3,
 				Reason:  kfplacementv1alpha1.PlacementPolicySynchronizedCondReasonFailedToSynchronizeSomeClusters,
@@ -123,7 +123,7 @@ func TestResourceStatusConditions(t *testing.T) {
 		},
 		{
 			name:   "resources changed with no target clusters",
-			status: resourceStatus{latestRevision: "r0", upToDate: false},
+			status: resourceStatus{latestRevision: "r0", current: false},
 			wantSync: metav1.Condition{
 				Type: kfplacementv1alpha1.PlacementPolicyCondTypeSynchronized, Status: metav1.ConditionTrue, ObservedGeneration: 3,
 				Reason:  kfplacementv1alpha1.PlacementPolicySynchronizedCondReasonAllClustersSynchronized,
@@ -137,7 +137,7 @@ func TestResourceStatusConditions(t *testing.T) {
 		},
 		{
 			name:   "no target clusters",
-			status: resourceStatus{latestRevision: "r0", upToDate: true},
+			status: resourceStatus{latestRevision: "r0", current: true},
 			wantSync: metav1.Condition{
 				Type: kfplacementv1alpha1.PlacementPolicyCondTypeSynchronized, Status: metav1.ConditionTrue, ObservedGeneration: 3,
 				Reason:  kfplacementv1alpha1.PlacementPolicySynchronizedCondReasonAllClustersSynchronized,
