@@ -405,6 +405,10 @@ const (
 	issueOccupied
 	// issueLimited means the fleet-wide limit is reached; nothing was created.
 	issueLimited
+	// issueFreed means the name was taken at the create but its occupant was gone by the read
+	// that followed; nothing was created and nothing occupies a slot. The occupant's deletion
+	// event re-queues the policy, and that pass issues the claim.
+	issueFreed
 )
 
 // issueClaim creates a wanted claim and stamps its status, under the fleet-wide limit: the fleet's
@@ -446,8 +450,12 @@ func (r *Reconciler) issueClaim(ctx context.Context, policy kfplacementv1alpha1.
 		}
 		// A claim of another policy under the name is reported rather than waited on forever;
 		// the watch maps that claim to its own policy, so this one retries on the error backoff.
-		if _, err := r.claimNameOccupiedByPolicy(ctx, claim.Name, policy); err != nil {
+		occupied, err := r.claimNameOccupiedByPolicy(ctx, claim.Name, policy)
+		switch {
+		case err != nil:
 			return issueLimited, err
+		case !occupied:
+			return issueFreed, nil
 		}
 		return issueOccupied, nil
 	}
