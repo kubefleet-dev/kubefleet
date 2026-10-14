@@ -39,6 +39,7 @@ import (
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/clustereligibilitychecker"
 	kferrors "github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/sourcequeue"
 )
 
 const (
@@ -79,6 +80,11 @@ type Reconciler struct {
 	// roleBackoff paces the retries of a policy whose binding manager role another process
 	// holds; a round that completes resets the policy's backoff.
 	roleBackoff workqueue.TypedRateLimiter[runtime.Request]
+
+	// policySource and clusterPolicySource carry the re-queues EnqueuePoliciesSelecting makes when
+	// a selected resource changes, one per controller, since each controller has its own queue.
+	policySource        sourcequeue.Queue[runtime.Request]
+	clusterPolicySource sourcequeue.Queue[runtime.Request]
 }
 
 // NewReconciler returns a Reconciler that judges cluster fulfillment with the scheduler's
@@ -306,6 +312,7 @@ func (r *Reconciler) SetupWithManagerForPlacementPolicy(mgr runtime.Manager) err
 			&kfplacementv1alpha1.ClusterClaim{},
 			handler.EnqueueRequestsFromMapFunc(r.mapClaimToPlacementPolicy),
 		).
+		WatchesRawSource(&r.policySource).
 		Complete(r)
 }
 
@@ -326,5 +333,6 @@ func (r *Reconciler) SetupWithManagerForClusterPlacementPolicy(mgr runtime.Manag
 			&kfplacementv1alpha1.ClusterClaim{},
 			handler.EnqueueRequestsFromMapFunc(r.mapClaimToClusterPlacementPolicy),
 		).
+		WatchesRawSource(&r.clusterPolicySource).
 		Complete(r)
 }
