@@ -35,6 +35,7 @@ import (
 	kferrors "github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/naming"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/bindingmanager"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/fieldindexers"
 )
 
 const (
@@ -84,8 +85,9 @@ func bindingName(policy kfplacementv1alpha1.PlacementPolicyAccessor, clusterName
 // the policy stopped tolerating), because unbinding on an outage would tear resources down on
 // a cluster that may be back in minutes. Such a cluster does not count toward the selector,
 // so the gap is filled from the schedulable candidates, best-ranked first; once the cluster is
-// back it is the older binding, and the replacement is what the count trims. A cluster that
-// matches no selector anymore, or has left the fleet, is unbound.
+// back it is the older binding, and the replacement is what the count trims. A cluster no
+// selector selects anymore -- evaluateSelectors keeps a bound cluster selected until the
+// selector's terms change -- or that has left the fleet, is unbound.
 //
 // Selectors are processed in order, and a cluster chosen for an earlier selector counts toward
 // every later selector it also matches, which is how one cluster may satisfy several selectors.
@@ -156,25 +158,29 @@ func btoi(b bool) int {
 	return 0
 }
 
-// listBindings returns the bindings the policy controls. Ownership is decided by the
-// controller reference rather than spec.placementPolicyName, so a same-named policy in another
-// scope can never adopt these bindings. The list is served from the informer cache; a binding
-// the cache has yet to observe is caught by the AlreadyExists tolerance on create and by the
-// re-queue its own create event fires.
+// listBindings returns the bindings the policy controls. The list is served from the informer
+// cache through the binding index on spec.placementPolicyName (registered by
+// fieldindexers.SetupWithHubAgentControllerManager), within the policy's own scope: a
+// ClusterPlacementPolicy only ever lists cluster-scoped bindings and a PlacementPolicy only the
+// bindings in its namespace. Ownership is still decided by the controller reference, because the
+// name does not tell a policy apart from an earlier, deleted one of the same name whose bindings
+// were orphaned rather than collected. A binding the cache has yet to observe is caught by the
+// AlreadyExists tolerance on create and by the re-queue its own create event fires.
 func (r *Reconciler) listBindings(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor) ([]kfplacementv1alpha1.PlacementBindingAccessor, error) {
+	byPolicy := client.MatchingFields{fieldindexers.PlacementBindingOwnedByPlacementPolicyCustomFieldName: policy.GetName()}
 	var all []kfplacementv1alpha1.PlacementBindingAccessor
 	if policy.GetNamespace() == "" {
 		list := &kfplacementv1alpha1.ClusterPlacementBindingList{}
-		if err := r.List(ctx, list); err != nil {
-			return nil, err
+		if err := r.List(ctx, list, byPolicy); err != nil {
+			return nil, kferrors.NewAPIServerError(err, "failed to list the cluster placement bindings of the policy", true, "placementPolicy", klog.KObj(policy))
 		}
 		for i := range list.Items {
 			all = append(all, &list.Items[i])
 		}
 	} else {
 		list := &kfplacementv1alpha1.PlacementBindingList{}
-		if err := r.List(ctx, list, client.InNamespace(policy.GetNamespace())); err != nil {
-			return nil, err
+		if err := r.List(ctx, list, client.InNamespace(policy.GetNamespace()), byPolicy); err != nil {
+			return nil, kferrors.NewAPIServerError(err, "failed to list the placement bindings of the policy", true, "placementPolicy", klog.KObj(policy))
 		}
 		for i := range list.Items {
 			all = append(all, &list.Items[i])
@@ -269,7 +275,7 @@ func (r *Reconciler) reconcileBindings(ctx context.Context, policy kfplacementv1
 			}
 			klog.V(2).InfoS("Binding a cluster", "placementPolicy", klog.KObj(policy), "memberCluster", clusterName, "placementBinding", binding.GetName())
 			if err := r.Create(ctx, binding); err != nil && !errors.IsAlreadyExists(err) {
-				return false, err
+				return false, kferrors.NewAPIServerError(err, "failed to create the placement binding", false, "placementBinding", klog.KObj(binding))
 			}
 		}
 	}
@@ -277,14 +283,14 @@ func (r *Reconciler) reconcileBindings(ctx context.Context, policy kfplacementv1
 		binding.GetSpec().ClusterSelectors = selectorsFor(binding.GetSpec().ClusterName)
 		binding.GetSpec().SyncStrategy = policy.GetSpec().SyncStrategy.DeepCopy()
 		if err := r.Update(ctx, binding); err != nil {
-			return false, err
+			return false, kferrors.NewAPIServerError(err, "failed to update the placement binding", false, "placementBinding", klog.KObj(binding))
 		}
 	}
 	for _, binding := range toDelete {
 		klog.V(2).InfoS("Unbinding a cluster", "placementPolicy", klog.KObj(policy), "memberCluster", binding.GetSpec().ClusterName, "placementBinding", binding.GetName())
 		uid := binding.GetUID()
 		if err := r.Delete(ctx, binding, client.Preconditions{UID: &uid}); err != nil && !errors.IsNotFound(err) {
-			return false, err
+			return false, kferrors.NewAPIServerError(err, "failed to delete the placement binding", false, "placementBinding", klog.KObj(binding))
 		}
 	}
 
@@ -309,7 +315,7 @@ func (r *Reconciler) newBinding(policy kfplacementv1alpha1.PlacementPolicyAccess
 		binding = &kfplacementv1alpha1.PlacementBinding{ObjectMeta: objectMeta, Spec: spec}
 	}
 	if err := controllerutil.SetControllerReference(policy, binding, r.Scheme()); err != nil {
-		return nil, err
+		return nil, kferrors.NewUnexpectedError(err, "failed to set the controller reference on the placement binding", "placementBinding", klog.KObj(binding))
 	}
 	return binding, nil
 }

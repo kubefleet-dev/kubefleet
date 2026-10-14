@@ -58,6 +58,14 @@ func setJoined(name string, joined metav1.ConditionStatus) {
 	Expect(k8sClient.Status().Update(ctx, mc)).Should(Succeed())
 }
 
+// setRegion relabels the region of a member cluster.
+func setRegion(name, region string) {
+	mc := &clusterv1beta1.MemberCluster{}
+	Expect(k8sClient.Get(ctx, types.NamespacedName{Name: name}, mc)).Should(Succeed())
+	mc.Labels[testRegionLabel] = region
+	Expect(k8sClient.Update(ctx, mc)).Should(Succeed())
+}
+
 // setSelectorCount rewrites the count of a policy's only selector.
 func setSelectorCount(key types.NamespacedName, count int32) {
 	policy := &kfplacementv1alpha1.PlacementPolicy{}
@@ -113,8 +121,9 @@ var _ = Describe("placement binding lifecycle", Ordered, func() {
 		return names
 	}
 	wantBound := func(clusters ...string) func(Gomega) {
+		want := append([]string{}, clusters...)
 		return func(g Gomega) {
-			g.Expect(boundClusters(g)).Should(Equal(clusters))
+			g.Expect(boundClusters(g)).Should(Equal(want))
 		}
 	}
 	wantScheduled := func(status metav1.ConditionStatus, reason string, desired, scheduled int32) {
@@ -191,13 +200,12 @@ var _ = Describe("placement binding lifecycle", Ordered, func() {
 		wantScheduled(metav1.ConditionTrue, kfplacementv1alpha1.PlacementPolicyScheduledCondReasonFoundAllClusters, 2, 2)
 	})
 
-	It("unbinds a cluster that stops matching the selector and fills from what is left", func() {
-		mc := &clusterv1beta1.MemberCluster{}
-		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "binder-c3"}, mc)).Should(Succeed())
-		mc.Labels[testRegionLabel] = "elsewhere"
-		Expect(k8sClient.Update(ctx, mc)).Should(Succeed())
+	It("keeps a bound cluster that stops matching the selector, still counted", func() {
+		setRegion("binder-c3", "elsewhere")
 
-		Eventually(wantBound("binder-c1", "binder-c2"), eventuallyTimeout, pollInterval).Should(Succeed())
+		// The relabel is a scheduling-relevant change, so the policy is reconciled; give that
+		// round time to land before asserting nothing moved.
+		Consistently(wantBound("binder-c1", "binder-c3"), consistentlyDuration, pollInterval).Should(Succeed())
 		wantScheduled(metav1.ConditionTrue, kfplacementv1alpha1.PlacementPolicyScheduledCondReasonFoundAllClusters, 2, 2)
 	})
 
@@ -232,6 +240,22 @@ var _ = Describe("placement binding lifecycle", Ordered, func() {
 		Expect(k8sClient.Delete(ctx, &clusterv1beta1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: "binder-c1"}})).Should(Succeed())
 		Eventually(wantBound("binder-c2"), eventuallyTimeout, pollInterval).Should(Succeed())
 		wantScheduled(metav1.ConditionFalse, kfplacementv1alpha1.PlacementPolicyScheduledCondReasonFailedToFindSomeClusters, 2, 1)
+	})
+
+	It("re-evaluates the bound clusters from scratch when the selector terms change", func() {
+		By("a bound cluster that stops matching stays bound")
+		setRegion("binder-c2", "elsewhere")
+		Consistently(wantBound("binder-c2"), consistentlyDuration, pollInterval).Should(Succeed())
+
+		By("new terms that the cluster does not match release it")
+		policy := &kfplacementv1alpha1.PlacementPolicy{}
+		Expect(k8sClient.Get(ctx, policyKey, policy)).Should(Succeed())
+		policy.Spec.ClusterSelectors[0].Terms = []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{
+			{MatchLabels: map[string]string{testRegionLabel: "nowhere"}},
+		}
+		Expect(k8sClient.Update(ctx, policy)).Should(Succeed())
+		Eventually(wantBound(), eventuallyTimeout, pollInterval).Should(Succeed())
+		wantScheduled(metav1.ConditionFalse, kfplacementv1alpha1.PlacementPolicyScheduledCondReasonFailedToFindSomeClusters, 2, 0)
 	})
 })
 

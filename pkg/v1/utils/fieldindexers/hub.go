@@ -54,6 +54,14 @@ const (
 	// WorkOwnedByBindingCustomFieldName is the name of the custom field that indexes Work objects by their owner
 	// placement bindings.
 	WorkOwnedByBindingCustomFieldName = "workOwnedByBinding"
+
+	// PlacementBindingOwnedByPlacementPolicyCustomFieldName is the name of the custom field that indexes
+	// placement bindings (and cluster placement bindings) by the name of their placement policy.
+	//
+	// This is added to help the placement policy controller retrieve the bindings of a policy without scanning
+	// every binding in its scope. The value is the policy name alone: a binding shares its policy's scope, so a
+	// namespaced lookup pairs it with the namespace.
+	PlacementBindingOwnedByPlacementPolicyCustomFieldName = "placementBindingOwnedByPlacementPolicy"
 )
 
 const (
@@ -108,6 +116,15 @@ var (
 		}
 		return []string{fmt.Sprintf(WorkOwnedByBindingCustomFieldValFmt, ownerNS, ownerBinding)}, nil
 	}
+
+	placementBindingOwnedByPlacementPolicyFieldExtractor fieldValueExtractor = func(obj client.Object) ([]string, error) {
+		binding, ok := obj.(placementv1alpha1.PlacementBindingAccessor)
+		if !ok || binding.GetSpec().PlacementPolicyName == "" {
+			wrappedErr := errors.NewUnexpectedError(nil, "object is not a placement binding with a placement policy name")
+			return nil, wrappedErr
+		}
+		return []string{binding.GetSpec().PlacementPolicyName}, nil
+	}
 )
 
 // SetupWithHubAgentControllerManager sets up the indices that controllers from the KubeFleet hub agent need to run properly.
@@ -149,6 +166,20 @@ func SetupWithHubAgentControllerManager(ctx context.Context, mgr ctrl.Manager) e
 		WorkOwnedByBindingCustomFieldName, workOwnedByBindingFieldExtractor,
 	); err != nil {
 		return errors.Wraps(err, "failed to set up work owner binding field index")
+	}
+
+	if err := indexCompositeField(ctx, fieldIdxer,
+		&placementv1alpha1.PlacementBinding{},
+		PlacementBindingOwnedByPlacementPolicyCustomFieldName, placementBindingOwnedByPlacementPolicyFieldExtractor,
+	); err != nil {
+		return errors.Wraps(err, "failed to set up placement binding owner placement policy field index")
+	}
+
+	if err := indexCompositeField(ctx, fieldIdxer,
+		&placementv1alpha1.ClusterPlacementBinding{},
+		PlacementBindingOwnedByPlacementPolicyCustomFieldName, placementBindingOwnedByPlacementPolicyFieldExtractor,
+	); err != nil {
+		return errors.Wraps(err, "failed to set up cluster placement binding owner placement policy field index")
 	}
 
 	return nil

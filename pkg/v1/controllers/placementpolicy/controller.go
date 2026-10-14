@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	runtime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -52,10 +53,12 @@ const (
 	// 5-minute heartbeat timeout so the worst-case detection latency stays near the timeout
 	// itself (timeout + one requeue period, ~7.5 minutes) instead of doubling it.
 	fulfilledRequeueAfter = 150 * time.Second
-	// bindingManagerRetryAfter is the wait before retrying a binding change that found the
-	// policy's binding manager role held by another process (e.g., a rollout in progress). The
-	// FEP has contenders back off and retry rather than wait on the role.
-	bindingManagerRetryAfter = 10 * time.Second
+	// bindingManagerRetryBase and bindingManagerRetryMax bound the exponential backoff before
+	// retrying a binding change that found the policy's binding manager role held by another
+	// process (e.g., a rollout in progress). The FEP has contenders back off and retry rather
+	// than wait on the role; the backoff keeps a long rollout from being polled at a fixed pace.
+	bindingManagerRetryBase = 5 * time.Second
+	bindingManagerRetryMax  = 5 * time.Minute
 )
 
 // Reconciler reconciles PlacementPolicy and ClusterPlacementPolicy objects.
@@ -73,6 +76,10 @@ type Reconciler struct {
 
 	// snapshots provides the resource snapshot a new binding rolls out.
 	snapshots snapshotter
+
+	// roleBackoff paces the retries of a policy whose binding manager role another process
+	// holds; a round that completes resets the policy's backoff.
+	roleBackoff workqueue.TypedRateLimiter[runtime.Request]
 }
 
 // NewReconciler returns a Reconciler that judges cluster fulfillment with the scheduler's
@@ -83,6 +90,7 @@ func NewReconciler(c client.Client, uncachedReader client.Reader, snapshots snap
 		uncachedReader: uncachedReader,
 		eligibility:    clustereligibilitychecker.New(),
 		snapshots:      snapshots,
+		roleBackoff:    workqueue.NewTypedItemExponentialFailureRateLimiter[runtime.Request](bindingManagerRetryBase, bindingManagerRetryMax),
 	}
 }
 
@@ -124,7 +132,19 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		}
 	}
 
-	outcomes, err := evaluateSelectors(policy.GetSpec(), memberClusters.Items, r.eligibility)
+	existingBindings, err := r.listBindings(ctx, policy)
+	if err != nil {
+		klog.ErrorS(err, "Failed to list the placement bindings", "placementPolicy", req.NamespacedName)
+		return runtime.Result{}, err
+	}
+	bound := make(map[string]metav1.Time, len(existingBindings))
+	recorded := make(map[string][]kfplacementv1alpha1.ClusterSelectorWithTermsOnly, len(existingBindings))
+	for _, binding := range existingBindings {
+		bound[binding.GetSpec().ClusterName] = binding.GetCreationTimestamp()
+		recorded[binding.GetSpec().ClusterName] = binding.GetSpec().ClusterSelectors
+	}
+
+	outcomes, err := evaluateSelectors(policy.GetSpec(), memberClusters.Items, r.eligibility, recorded)
 	if err != nil {
 		// Selector evaluation fails only on invalid selector contents (e.g., an operator
 		// applied to a key it does not support); retrying cannot help until the spec changes,
@@ -135,15 +155,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		return runtime.Result{}, r.updateStatus(ctx, policy, nil, nil, invalidSelectorsCondition(policy.GetGeneration(), err))
 	}
 
-	existingBindings, err := r.listBindings(ctx, policy)
-	if err != nil {
-		klog.ErrorS(err, "Failed to list the placement bindings", "placementPolicy", req.NamespacedName)
-		return runtime.Result{}, err
-	}
-	bound := make(map[string]metav1.Time, len(existingBindings))
-	for _, binding := range existingBindings {
-		bound[binding.GetSpec().ClusterName] = binding.GetCreationTimestamp()
-	}
 	clustersByName := make(map[string]*clusterv1beta1.MemberCluster, len(memberClusters.Items))
 	for i := range memberClusters.Items {
 		clustersByName[memberClusters.Items[i].Name] = &memberClusters.Items[i]
@@ -174,8 +185,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	}
 	if roleHeld {
 		klog.V(2).InfoS("The binding manager role is held by another process; will retry the binding changes", "placementPolicy", req.NamespacedName)
-		return runtime.Result{RequeueAfter: bindingManagerRetryAfter}, nil
+		return runtime.Result{RequeueAfter: r.roleBackoff.When(req)}, nil
 	}
+	r.roleBackoff.Forget(req)
 
 	requeueAfter := fulfilledRequeueAfter
 	for i := range outcomes {

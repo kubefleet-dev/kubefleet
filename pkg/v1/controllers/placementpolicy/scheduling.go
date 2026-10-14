@@ -17,10 +17,13 @@ limitations under the License.
 package placementpolicy
 
 import (
+	"fmt"
 	"math"
 	"slices"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
@@ -64,6 +67,10 @@ type selectorOutcome struct {
 	// schedulable right now (ineligible, or carrying a taint the policy does not tolerate), or
 	// their reported data could not be evaluated at all. See chooseClusters.
 	sticky []string
+	// unevaluable holds, sorted, the names of the clusters whose reported data could not be
+	// evaluated against the selector terms; they are among the sticky ones, and the Scheduled
+	// condition names them, since nothing else tells the user why they are not counted.
+	unevaluable []string
 	// chosen holds the names of the clusters counted as selected for this selector, sorted;
 	// chooseClusters fills it in.
 	chosen []string
@@ -106,7 +113,16 @@ func (o *selectorOutcome) satisfiedInFull() bool {
 // scheduler's eligibility gate (member agent online, heartbeating, and joined) and all of its
 // taints must be tolerated by the policy. An empty selector list is interpreted as a single
 // selector matching all available clusters, per the API contract.
-func evaluateSelectors(spec *kfplacementv1alpha1.PlacementPolicySpec, clusters []clusterv1beta1.MemberCluster, checker eligibilityChecker) ([]selectorOutcome, error) {
+//
+// Scheduling decisions stick, as they do for ClusterResourcePlacement and ResourcePlacement: a
+// cluster bound for a selector stays selected by it even once its labels or properties stop
+// matching, so that a cluster whose properties hover around a selector's threshold (a node count
+// moving with autoscaling) does not have its resources removed and placed again on every swing.
+// recorded maps each bound cluster to the selectors its binding was made for; a cluster stays
+// selected by a selector whose terms the binding still records. Changing the selector's terms is
+// what re-evaluates its clusters from scratch, as a new scheduling policy does for placements; a
+// cluster leaving the fleet, or its binding being deleted, releases it too.
+func evaluateSelectors(spec *kfplacementv1alpha1.PlacementPolicySpec, clusters []clusterv1beta1.MemberCluster, checker eligibilityChecker, recorded map[string][]kfplacementv1alpha1.ClusterSelectorWithTermsOnly) ([]selectorOutcome, error) {
 	schedulable := make([]*clusterv1beta1.MemberCluster, 0, len(clusters))
 	// unschedulable keeps the clusters a binding may stick to while they are temporarily out
 	// of the running. A cluster on its way out is left out, so that its binding is released.
@@ -150,17 +166,41 @@ func evaluateSelectors(spec *kfplacementv1alpha1.PlacementPolicySpec, clusters [
 
 		matched, unevaluable := matchingClusterNames(schedulable, selector.Terms)
 		alsoMatched, alsoUnevaluable := matchingClusterNames(unschedulable, selector.Terms)
-		sticky := slices.Concat(alsoMatched, unevaluable, alsoUnevaluable)
+		matched = append(matched, selectedBefore(schedulable, selector.Terms, recorded, matched, unevaluable)...)
+		slices.Sort(matched)
+		sticky := slices.Concat(alsoMatched, unevaluable, alsoUnevaluable,
+			selectedBefore(unschedulable, selector.Terms, recorded, alsoMatched, alsoUnevaluable))
 		slices.Sort(sticky)
+		unevaluableHere := slices.Concat(unevaluable, alsoUnevaluable)
+		slices.Sort(unevaluableHere)
 		outcomes = append(outcomes, selectorOutcome{
 			counts:          counts,
 			matched:         matched,
 			sticky:          sticky,
+			unevaluable:     unevaluableHere,
 			terms:           selector.Terms,
 			whenUnfulfilled: selector.WhenUnfulfilled,
 		})
 	}
 	return outcomes, nil
+}
+
+// selectedBefore returns the names of the clusters, other than those already accounted for, whose
+// binding records the given selector terms, i.e., that the selector picked earlier and that stay
+// selected by it whether or not they still match.
+func selectedBefore(clusters []*clusterv1beta1.MemberCluster, terms []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm, recorded map[string][]kfplacementv1alpha1.ClusterSelectorWithTermsOnly, accountedFor ...[]string) []string {
+	var names []string
+	for _, cluster := range clusters {
+		if slices.ContainsFunc(accountedFor, func(s []string) bool { return slices.Contains(s, cluster.Name) }) {
+			continue
+		}
+		if slices.ContainsFunc(recorded[cluster.Name], func(s kfplacementv1alpha1.ClusterSelectorWithTermsOnly) bool {
+			return apiequality.Semantic.DeepEqual(s.Terms, terms)
+		}) {
+			names = append(names, cluster.Name)
+		}
+	}
+	return names
 }
 
 // matchingClusterNames returns, sorted, the names of the clusters that satisfy the terms, and
@@ -206,8 +246,34 @@ func aggregateCounts(outcomes []selectorOutcome) (desired, scheduled int32) {
 // scheduledCondition builds the Scheduled condition for a policy from its selector outcomes,
 // honoring the API's binary contract: True only when every selector has found all of its
 // desired clusters. Whether the minCount floor has at least been reached everywhere is surfaced
-// through the message, not a separate reason or status.
+// through the message, not a separate reason or status, as are the member clusters whose reported
+// data cannot be evaluated against the selectors.
 func scheduledCondition(generation int64, outcomes []selectorOutcome) metav1.Condition {
+	cond := scheduledConditionByCounts(generation, outcomes)
+	var unevaluable []string
+	for i := range outcomes {
+		unevaluable = append(unevaluable, outcomes[i].unevaluable...)
+	}
+	if len(unevaluable) > 0 {
+		slices.Sort(unevaluable)
+		cond.Message += fmt.Sprintf("; the data reported by member clusters %s cannot be evaluated against the cluster selectors, so they keep any existing binding but are not counted",
+			truncatedNameList(slices.Compact(unevaluable)))
+	}
+	return cond
+}
+
+// truncatedNameList formats names for a condition message, listing at most a handful so that a
+// fleet-wide problem cannot bloat the policy status.
+func truncatedNameList(names []string) string {
+	const maxListed = 5
+	if len(names) <= maxListed {
+		return strings.Join(names, ", ")
+	}
+	return fmt.Sprintf("%s and %d more", strings.Join(names[:maxListed], ", "), len(names)-maxListed)
+}
+
+// scheduledConditionByCounts builds the Scheduled condition from the selectors' cluster counts.
+func scheduledConditionByCounts(generation int64, outcomes []selectorOutcome) metav1.Condition {
 	allInFull, allFulfilled := true, true
 	for i := range outcomes {
 		if !outcomes[i].satisfiedInFull() {

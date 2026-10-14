@@ -28,10 +28,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/fieldindexers"
 )
 
 // uniformClusters builds a cluster inventory in which every cluster ranks the same, so that the
@@ -265,6 +267,18 @@ func TestBindingName(t *testing.T) {
 	}
 }
 
+// withBindingIndex registers, on a fake client builder that already has its scheme, the binding
+// index the controller lists bindings through, as fieldindexers.SetupWithHubAgentControllerManager
+// does on the real cache.
+func withBindingIndex(b *fake.ClientBuilder) *fake.ClientBuilder {
+	byPolicyName := func(obj client.Object) []string {
+		return []string{obj.(kfplacementv1alpha1.PlacementBindingAccessor).GetSpec().PlacementPolicyName}
+	}
+	return b.
+		WithIndex(&kfplacementv1alpha1.PlacementBinding{}, fieldindexers.PlacementBindingOwnedByPlacementPolicyCustomFieldName, byPolicyName).
+		WithIndex(&kfplacementv1alpha1.ClusterPlacementBinding{}, fieldindexers.PlacementBindingOwnedByPlacementPolicyCustomFieldName, byPolicyName)
+}
+
 // bindingManagerHeldBy builds a policy whose binding manager role is held by the given
 // controller, as a previous round would have left it.
 func bindingManagerHeldBy(controller string) *kfplacementv1alpha1.PlacementPolicy {
@@ -339,30 +353,44 @@ func TestReconcileBindingsUpdatesSyncStrategy(t *testing.T) {
 		t.Fatalf("AddToScheme() = %v, want no error", err)
 	}
 	policy := bindingManagerHeldBy(controllerName)
-	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(policy).WithStatusSubresource(policy).Build()
+	c := withBindingIndex(fake.NewClientBuilder().WithScheme(scheme)).WithObjects(policy).WithStatusSubresource(policy).Build()
 	r := NewReconciler(c, c, snapshotStub{})
 	outcomes := []selectorOutcome{{counts: resolvedCounts{desired: 1}, matched: []string{"east-1"}, chosen: []string{"east-1"}}}
 	chosen := map[string][]int{"east-1": {0}}
+	ctx := context.Background()
 
-	if _, err := r.reconcileBindings(context.Background(), policy, outcomes, chosen, nil); err != nil {
+	if _, err := r.reconcileBindings(ctx, policy, outcomes, chosen, nil); err != nil {
 		t.Fatalf("reconcileBindings() = %v, want no error", err)
 	}
-	if err := c.Get(context.Background(), types.NamespacedName{Namespace: "default", Name: "pp"}, policy); err != nil {
+	if err := c.Get(ctx, types.NamespacedName{Namespace: "default", Name: "pp"}, policy); err != nil {
 		t.Fatalf("Get() = %v, want no error", err)
 	}
 	policy.Spec.SyncStrategy = &kfplacementv1alpha1.SyncStrategy{ApplyMethod: kfplacementv1alpha1.ApplyMethodServerSideApply}
-	if _, err := r.reconcileBindings(context.Background(), policy, outcomes, chosen, nil); err != nil {
+	want := policy.Spec.SyncStrategy.DeepCopy()
+	// The change is written, not just set in memory: claiming the binding manager role re-reads
+	// the policy, as a real round would.
+	if err := c.Update(ctx, policy); err != nil {
+		t.Fatalf("Update() = %v, want no error", err)
+	}
+
+	// The second round sees the binding the first created, so the change has to go through an
+	// update of the existing binding.
+	existing, err := r.listBindings(ctx, policy)
+	if err != nil || len(existing) != 1 {
+		t.Fatalf("listBindings() = %d bindings, %v, want 1 binding, no error", len(existing), err)
+	}
+	if _, err := r.reconcileBindings(ctx, policy, outcomes, chosen, existing); err != nil {
 		t.Fatalf("reconcileBindings() = %v, want no error", err)
 	}
 
 	bindings := &kfplacementv1alpha1.PlacementBindingList{}
-	if err := c.List(context.Background(), bindings); err != nil {
+	if err := c.List(ctx, bindings); err != nil {
 		t.Fatalf("List() = %v, want no error", err)
 	}
 	if len(bindings.Items) != 1 {
 		t.Fatalf("reconcileBindings() left %d bindings, want 1", len(bindings.Items))
 	}
-	if diff := cmp.Diff(policy.Spec.SyncStrategy, bindings.Items[0].Spec.SyncStrategy); diff != "" {
+	if diff := cmp.Diff(want, bindings.Items[0].Spec.SyncStrategy); diff != "" {
 		t.Errorf("binding sync strategy mismatch (-want +got):\n%s", diff)
 	}
 }
