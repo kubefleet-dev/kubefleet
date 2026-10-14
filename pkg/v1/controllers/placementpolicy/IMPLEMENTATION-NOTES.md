@@ -106,16 +106,52 @@ package demonstrating the current behavior.
   and released once every change is through. A failed write returns with the
   role still held, so the retry resumes under the role it already has (the
   FEP's restart semantics); a role held by another process backs the policy
-  off for ten seconds rather than blocking the rest of the reconcile, which
-  still refreshes claims and status.
+  off exponentially (5s up to 5m, reset by a round that completes) rather
+  than blocking the rest of the reconcile, which still refreshes claims and
+  status.
 - **A binding needs a resource snapshot to roll out**, so the controller takes
   the placement resource snapshot manager as a seam (`snapshotter`) and asks it
-  for the current snapshot — creating the first one, per the FEP's "when a
-  placement is first created" — only on the path that creates a binding. The
-  seam exists for the same reason as `eligibilityChecker`: the real manager
-  needs a dynamic client and informer manager the envtest suite has no use
-  for. Nothing writes `status.latestResourceRevisionName` yet; it is the
-  snapshot manager's to report, not the controller's.
+  every round for the current snapshot — creating the first one, per the FEP's
+  "when a placement is first created" — and whether it still matches the
+  selected resources. The seam exists for the same reason as
+  `eligibilityChecker`: the real manager needs a dynamic client and informer
+  manager the envtest suite has no use for. Scheduling changes apply
+  independently of resources, per the FEP: a round that cannot get the
+  snapshot still unbinds, updates, and refreshes claims and the `Scheduled`
+  status, holds back only the new bindings, and is retried.
+- **The status reports how far the latest revision has reached**
+  (`status.go`): `latestResourceRevisionName` is the latest snapshot;
+  `synchronizedClusters` counts the target clusters whose binding names that
+  revision, has had it processed by the work generator, and reports
+  `Synchronized` for its current generation; `resourcesAvailableClusters`
+  counts, of those, the ones reporting `Available` (availability is judged
+  only for the latest revision, as placements judge it only once
+  synchronized). Target clusters include a bound cluster kept while
+  unschedulable, since it still holds the resources. The `Synchronized`
+  condition is true only
+  when every target cluster is synchronized *and* the snapshot still matches
+  the hub — per the FEP a resource change alone takes no snapshot, so until a
+  rollout does, the condition says the resources changed and a rollout is
+  pending. Rolling a new revision out is left to the rollout APIs; this
+  controller only reports. Binding updates wake the policy when their spec or
+  this progress changes (`bindingRelevantChanges`).
+- **A change to a selected resource re-queues the policy**
+  (`EnqueuePoliciesSelecting`): the hub's resource-change controller hands
+  every changed resource's key to the policy controller, which re-queues the
+  policies that may select it — namespaced policies in that namespace, and
+  cluster-scoped ones whose selector names that namespace or none — through a
+  `sourcequeue.Queue` per controller, the never-blocking source the annotation
+  placement controller already uses. Matching is on the key alone (group,
+  kind, name, namespace), so deletions work the same way; label selectors are
+  not evaluated and the version is not compared, both of which can only
+  over-trigger a reconcile, never miss one. The hook is best effort: a failure
+  is logged and the change still reaches the placements. Resources the hub
+  agent's resource watcher drops produce no change events, so their policies
+  notice only on the periodic requeue: skipped namespaces (including
+  `default`, `kube-*`, and `fleet-*`), disabled kinds, and the objects
+  `ShouldPropagateObj` excludes (owned ReplicaSets and ControllerRevisions,
+  `kube-root-ca.crt`, default service accounts and their token secrets, and
+  the like), all of which the snapshot manager can still select.
 - **Bindings are owned by the policy** through a controller reference —
   policy and binding share a scope, so unlike claims they can be garbage
   collected — and the controller `Owns()` them: a binding deleted out of band

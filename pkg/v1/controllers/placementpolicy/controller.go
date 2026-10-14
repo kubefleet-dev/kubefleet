@@ -39,12 +39,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/clustereligibilitychecker"
 	kferrors "github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/sourcequeue"
 )
 
 const (
@@ -129,6 +129,11 @@ type Reconciler struct {
 	// roleBackoff paces the retries of a policy whose binding manager role another process
 	// holds; a round that completes resets the policy's backoff.
 	roleBackoff workqueue.TypedRateLimiter[runtime.Request]
+
+	// policySource and clusterPolicySource carry the re-queues EnqueuePoliciesSelecting makes when
+	// a selected resource changes, one per controller, since each controller has its own queue.
+	policySource        sourcequeue.Queue[runtime.Request]
+	clusterPolicySource sourcequeue.Queue[runtime.Request]
 }
 
 // Option configures a Reconciler.
@@ -241,11 +246,35 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		// claims are deliberately left untouched: their specs reflect the last valid
 		// selectors.
 		klog.ErrorS(err, "Failed to evaluate the cluster selectors", "placementPolicy", req.NamespacedName)
-		return runtime.Result{}, r.updateStatus(ctx, policy, nil, nil, invalidSelectorsCondition(policy.GetGeneration(), err))
+		return runtime.Result{}, r.updateStatus(ctx, policy, nil, nil, invalidSelectorsCondition(policy.GetGeneration(), err), nil)
 	}
 
 	desiredBindings := chooseClusters(outcomes, bound, clustersByName)
-	roleHeld, bindingErr := r.reconcileBindings(ctx, policy, outcomes, desiredBindings, existingBindings)
+
+	// The latest resource snapshot is what new bindings roll out and what the status reports the
+	// target clusters against. Per the FEP the first one is taken when the policy is created;
+	// afterwards a resource change alone takes none, it only shows as the snapshot going stale.
+	//
+	// ponytail: every round re-hashes the selected resources from the informer cache and, when
+	// they still match, confirms with one uncached metadata read; cheap per policy, but it runs on
+	// every member cluster event fanned out to every policy. Cache the verdict per resource
+	// version if that shows up in profiles.
+	//
+	// Scheduling changes apply independently of resource changes, per the FEP, so a round that
+	// cannot get the snapshot still unbinds, updates, and refreshes claims and the Scheduled
+	// status; it only holds back new bindings and leaves the resource status as it was.
+	var latestRevision string
+	var resources *resourceStatus
+	snapshots, upToDate, snapshotErr := r.snapshots.SnapshotResourcesIfNoSnapshotExists(ctx, policy)
+	if snapshotErr == nil && len(snapshots) == 0 {
+		snapshotErr = kferrors.NewUnexpectedError(nil, "the snapshot manager returned no placement resource snapshot", "placementPolicy", klog.KObj(policy))
+	}
+	if snapshotErr == nil {
+		latestRevision = snapshots[0].GetName()
+		summary := summarizeResourceStatus(latestRevision, upToDate, desiredBindings, existingBindings)
+		resources = &summary
+	}
+	roleHeld, bindingErr := r.reconcileBindings(ctx, policy, outcomes, desiredBindings, existingBindings, latestRevision)
 
 	class, noClass, err := r.resolveClass(ctx, policy)
 	if err != nil {
@@ -279,11 +308,17 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	if claimNote != "" {
 		notes = append([]string{claimNote}, notes...)
 	}
-	if err := r.updateStatus(ctx, policy, outcomes, reported, scheduledCondition(policy.GetGeneration(), outcomes, strings.Join(notes, "; "))); err != nil {
+	if err := r.updateStatus(ctx, policy, outcomes, reported, scheduledCondition(policy.GetGeneration(), outcomes, strings.Join(notes, "; ")), resources); err != nil {
 		return runtime.Result{}, err
 	}
 	if bindingErr != nil {
 		klog.ErrorS(bindingErr, "Failed to reconcile the placement bindings", append(kferrors.Args(bindingErr), "placementPolicy", req.NamespacedName)...)
+	}
+	if snapshotErr != nil {
+		klog.ErrorS(snapshotErr, "Failed to take the latest resource snapshot", append(kferrors.Args(snapshotErr), "placementPolicy", req.NamespacedName)...)
+		return runtime.Result{}, snapshotErr
+	}
+	if bindingErr != nil {
 		return runtime.Result{}, bindingErr
 	}
 	if claimErr != nil {
@@ -313,8 +348,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 
 // updateStatus writes the scheduling outcome onto the policy status, skipping the API call when
 // nothing has changed. A nil outcome list clears the cluster counts (used when the selectors
-// cannot be evaluated at all); a nil activeClaims leaves the current claim count untouched.
-func (r *Reconciler) updateStatus(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, outcomes []selectorOutcome, claims *claimReport, scheduledCond metav1.Condition) error {
+// cannot be evaluated at all); a nil claims leaves the current claim count untouched, and a nil
+// resources leaves the resource revision, the synchronization and availability counts, and their
+// conditions untouched.
+func (r *Reconciler) updateStatus(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, outcomes []selectorOutcome, claims *claimReport, scheduledCond metav1.Condition, resources *resourceStatus) error {
 	status := policy.GetStatus()
 	observedStatus := status.DeepCopy()
 
@@ -330,6 +367,13 @@ func (r *Reconciler) updateStatus(ctx context.Context, policy kfplacementv1alpha
 		status.ActiveClusterClaims = &claims.outstanding
 	}
 	meta.SetStatusCondition(&status.Conditions, scheduledCond)
+	if resources != nil {
+		status.LatestResourceRevisionName = &resources.latestRevision
+		status.SynchronizedClusters = &resources.synchronized
+		status.ResourcesAvailableClusters = &resources.available
+		meta.SetStatusCondition(&status.Conditions, resources.synchronizedCondition(policy.GetGeneration()))
+		meta.SetStatusCondition(&status.Conditions, resources.availableCondition(policy.GetGeneration()))
+	}
 
 	reportPolicyMetrics(policy, claims, scheduledCond)
 
@@ -367,7 +411,7 @@ func (r *Reconciler) SetupWithManagerForPlacementPolicy(mgr runtime.Manager) err
 	return runtime.NewControllerManagedBy(mgr).
 		Named(controllerName).
 		For(&kfplacementv1alpha1.PlacementPolicy{}).
-		Owns(&kfplacementv1alpha1.PlacementBinding{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Owns(&kfplacementv1alpha1.PlacementBinding{}, builder.WithPredicates(bindingRelevantChanges())).
 		Watches(
 			&clusterv1beta1.MemberCluster{},
 			handler.EnqueueRequestsFromMapFunc(r.mapMemberClusterToPlacementPolicies),
@@ -386,6 +430,7 @@ func (r *Reconciler) SetupWithManagerForPlacementPolicy(mgr runtime.Manager) err
 			&kfplacementv1alpha1.ClusterProviderClass{},
 			handler.EnqueueRequestsFromMapFunc(r.mapToAllPlacementPolicies),
 		).
+		WatchesRawSource(&r.policySource).
 		Complete(r)
 }
 
@@ -396,7 +441,7 @@ func (r *Reconciler) SetupWithManagerForClusterPlacementPolicy(mgr runtime.Manag
 	return runtime.NewControllerManagedBy(mgr).
 		Named("cluster-placement-policy-controller").
 		For(&kfplacementv1alpha1.ClusterPlacementPolicy{}).
-		Owns(&kfplacementv1alpha1.ClusterPlacementBinding{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Owns(&kfplacementv1alpha1.ClusterPlacementBinding{}, builder.WithPredicates(bindingRelevantChanges())).
 		Watches(
 			&clusterv1beta1.MemberCluster{},
 			handler.EnqueueRequestsFromMapFunc(r.mapMemberClusterToClusterPlacementPolicies),
@@ -415,5 +460,6 @@ func (r *Reconciler) SetupWithManagerForClusterPlacementPolicy(mgr runtime.Manag
 			&kfplacementv1alpha1.ClusterProviderClass{},
 			handler.EnqueueRequestsFromMapFunc(r.mapToAllClusterPlacementPolicies),
 		).
+		WatchesRawSource(&r.clusterPolicySource).
 		Complete(r)
 }
