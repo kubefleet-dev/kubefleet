@@ -81,8 +81,9 @@ type WebhookAndAdmissionPolicyOptions struct {
 	// A file path to the configuration file for the KubeFleet admission policy manager. The file
 	// is a YAML file that specifies configuration for each policy generator available
 	// in the admission policy manager. See the KubeFleet source code for more information.
-	// If not specified, the default configuration will be used, which enables all available
-	// policy generators. This option only applies if the admission policy manager is enabled.
+	// If not specified, the default configuration will be used, which enables every policy
+	// generator except the opt-in ones (restrictClusterClaimApproval), which must be listed in
+	// the file. This option only applies if the admission policy manager is enabled.
 	AdmissionPolicyManagerConfig string
 }
 
@@ -162,7 +163,7 @@ func (o *WebhookAndAdmissionPolicyOptions) AddFlags(flags *flag.FlagSet) {
 		&o.AdmissionPolicyManagerConfig,
 		"admission-policy-manager-config",
 		"",
-		"A file path to the configuration file for the KubeFleet admission policy manager. The file is a JSON or YAML file that specifies configuration for each policy generator available in the admission policy manager. See the KubeFleet source code for more information. If not specified, the default configuration will be used, which enables all available policy generators. This option only applies if the admission policy manager is enabled.",
+		"A file path to the configuration file for the KubeFleet admission policy manager. The file is a JSON or YAML file that specifies configuration for each policy generator available in the admission policy manager. See the KubeFleet source code for more information. If not specified, the default configuration will be used, which enables every policy generator except the opt-in ones (restrictClusterClaimApproval), which must be listed in the file. This option only applies if the admission policy manager is enabled.",
 	)
 }
 

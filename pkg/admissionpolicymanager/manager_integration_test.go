@@ -120,6 +120,46 @@ var _ = Describe("Policies, Policy Bindings and their Effects", Ordered, func() 
 			},
 			{
 				ObjectMeta: metav1.ObjectMeta{
+					Name: clusterClaimApprovalVAPPolicyName,
+					Labels: map[string]string{
+						VAPManagedByKubeFleetLabelKey: VAPManagedByKubeFleetLabelValue,
+						VAPPartOfKubeFleetLabelKey:    VAPPartOfKubeFleetLabelValue,
+						VAPComponentKubeFleetLabelKey: VAPComponentAdmissionPolicyManagerLabelValue,
+					},
+				},
+				Spec: admissionregistrationv1.ValidatingAdmissionPolicySpec{
+					FailurePolicy: ptr.To(admissionregistrationv1.Fail),
+					MatchConstraints: &admissionregistrationv1.MatchResources{
+						NamespaceSelector: &metav1.LabelSelector{},
+						ObjectSelector:    &metav1.LabelSelector{},
+						ResourceRules: []admissionregistrationv1.NamedRuleWithOperations{
+							{
+								RuleWithOperations: admissionregistrationv1.RuleWithOperations{
+									Operations: []admissionregistrationv1.OperationType{
+										admissionregistrationv1.Update,
+									},
+									Rule: admissionregistrationv1.Rule{
+										APIGroups:   []string{"placement.kubefleet.dev"},
+										APIVersions: []string{"v1alpha1"},
+										Resources:   []string{"clusterclaims/status"},
+										Scope:       ptr.To(admissionregistrationv1.ScopeType("*")), // The system-enforced default.
+									},
+								},
+							},
+						},
+						MatchPolicy: ptr.To(admissionregistrationv1.Equivalent), // The system-enforced default.
+					},
+					Validations: []admissionregistrationv1.Validation{
+						{
+							Expression: `((has(object.status) && has(object.status.conditions) ? object.status.conditions : []).filter(c, c.type == "Approved") == (has(oldObject.status) && has(oldObject.status.conditions) ? oldObject.status.conditions : []).filter(c, c.type == "Approved")) || (authorizer.group("placement.kubefleet.dev").resource("clusterclaims").name(object.metadata.name).check("approve").allowed())`,
+							Message:    "setting or changing the Approved condition of a ClusterClaim requires the approve verb on it",
+							Reason:     ptr.To(metav1.StatusReasonForbidden),
+						},
+					},
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
 					Name: svcAccountsAndTokenRequestsVAPPolicyName,
 					Labels: map[string]string{
 						VAPManagedByKubeFleetLabelKey: VAPManagedByKubeFleetLabelValue,
@@ -205,6 +245,22 @@ var _ = Describe("Policies, Policy Bindings and their Effects", Ordered, func() 
 
 	It("should have all the expected bindings", func() {
 		wantPolicyBindings := []admissionregistrationv1.ValidatingAdmissionPolicyBinding{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: clusterClaimApprovalVAPPolicyBindingName,
+					Labels: map[string]string{
+						VAPManagedByKubeFleetLabelKey: VAPManagedByKubeFleetLabelValue,
+						VAPPartOfKubeFleetLabelKey:    VAPPartOfKubeFleetLabelValue,
+						VAPComponentKubeFleetLabelKey: VAPComponentAdmissionPolicyManagerLabelValue,
+					},
+				},
+				Spec: admissionregistrationv1.ValidatingAdmissionPolicyBindingSpec{
+					PolicyName: clusterClaimApprovalVAPPolicyName,
+					ValidationActions: []admissionregistrationv1.ValidationAction{
+						admissionregistrationv1.Deny,
+					},
+				},
+			},
 			{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: podsAndReplicaSetsVAPPolicyBindingName,

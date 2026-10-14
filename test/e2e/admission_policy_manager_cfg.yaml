@@ -2,3 +2,7 @@ denyServiceAccountsAndTokenRequestsInReservedNamespaces:
   ReservedNamespacePrefixes:
     - fleet-
     - kube-
+# The experimental FEP-0001 placement policy APIs are on in the e2e, so the Approved condition
+# of cluster claims is gated on the approve verb. A config file replaces the defaults, which is
+# why the generators above are repeated rather than inherited.
+restrictClusterClaimApproval: {}

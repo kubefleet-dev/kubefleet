@@ -46,25 +46,13 @@ const (
 )
 
 var (
-	// A list of all available policy generators.
-	allGenerators = sets.Set[string]{}
+	// A list of all available policy generators, enabled by default or not.
+	allGenerators = sets.New(
+		PodsAndReplicaSetsVAPGeneratorName,
+		SvcAccountsAndTokenRequestsVAPGeneratorName,
+		ClusterClaimApprovalVAPGeneratorName,
+	)
 )
-
-func init() {
-	// Add all available generators to the set.
-	v := reflect.ValueOf(DefaultPolicyGeneratorConfigs).Elem()
-	for i := range v.NumField() {
-		field := v.Field(i)
-		if field.IsNil() {
-			continue
-		}
-		gen, ok := field.Interface().(ValidatingAdmissionPolicyGenerator)
-		if !ok {
-			continue
-		}
-		allGenerators.Insert(gen.Name())
-	}
-}
 
 // AllGenerators returns a copy of all available policy generators.
 func AllGenerators() sets.Set[string] {

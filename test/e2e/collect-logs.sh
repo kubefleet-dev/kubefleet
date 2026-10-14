@@ -94,10 +94,14 @@ collect_agent_logs_from_node() {
         while read -r logfile; do
             if [ -n "$logfile" ]; then
 
-                # Extract a meaningful filename from the log path
+                # Extract a meaningful filename from the log path. The pod directory is part of
+                # it: the hub agent runs several replicas on one node, and naming the file after the
+                # container alone made every replica's log overwrite the previous one, so the
+                # leader's log -- the one with the controller activity -- was usually lost.
+                local pod_dir=$(basename "$(dirname "$(dirname "$logfile")")")
                 local base_path=$(basename "$(dirname "$logfile")")
                 local original_filename="$(basename "$logfile")"
-                local sanitized_filename="${base_path}_${original_filename}"
+                local sanitized_filename="${pod_dir}_${base_path}_${original_filename}"
 
                 # Remove .gz extension for the output filename if present
                 local output_filename="${sanitized_filename%.gz}"

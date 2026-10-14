@@ -33,6 +33,7 @@ import (
 type PolicyGeneratorConfigs struct {
 	PodsAndReplicaSetsVAPGeneratorConfig          *PodsAndReplicaSetsValidatingAdmissionPolicyGenerator              `json:"denyPodsAndReplicaSetsOutsideReservedNamespaces,omitempty"`
 	SvcAccountsAndTokenRequestsVAPGeneratorConfig *ServiceAccountsAndTokenRequestsValidatingAdmissionPolicyGenerator `json:"denyServiceAccountsAndTokenRequestsInReservedNamespaces,omitempty"`
+	ClusterClaimApprovalVAPGeneratorConfig        *ClusterClaimApprovalValidatingAdmissionPolicyGenerator            `json:"restrictClusterClaimApproval,omitempty"`
 }
 
 // DefaultPolicyGeneratorConfigs is the default configuration for all available admission policy generators.
@@ -43,6 +44,8 @@ var DefaultPolicyGeneratorConfigs = &PolicyGeneratorConfigs{
 	SvcAccountsAndTokenRequestsVAPGeneratorConfig: &ServiceAccountsAndTokenRequestsValidatingAdmissionPolicyGenerator{
 		ReservedNamespacePrefixes: []string{utils.FleetNSNamePrefix, utils.KubeNSNamePrefix},
 	},
+	// The claim approval generator is off by default; it needs the approve verb in the hub
+	// agent's ClusterRole first, see its doc.
 }
 
 // Validate validates each generator configuration in the given PolicyGeneratorConfigs.

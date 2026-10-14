@@ -47,6 +47,7 @@ import (
 	fleetnetworkingv1alpha1 "go.goms.io/fleet-networking/api/v1alpha1"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	placementv1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1"
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -291,6 +292,9 @@ func TestMain(m *testing.M) {
 	if err := clusterv1beta1.AddToScheme(scheme); err != nil {
 		log.Fatalf("failed to add custom APIs (cluster) to the runtime scheme: %v", err)
 	}
+	if err := kfplacementv1alpha1.AddToScheme(scheme); err != nil {
+		log.Fatalf("failed to add custom APIs (kubefleet.dev placement v1alpha1) to the runtime scheme: %v", err)
+	}
 	if err := placementv1alpha1.AddToScheme(scheme); err != nil {
 		log.Fatalf("failed to add custom APIs (placement v1alpha1) to the runtime scheme: %v", err)
 	}
@@ -438,6 +442,9 @@ func maxDuration(a, b time.Duration) time.Duration {
 
 func beforeSuiteForProcess1() {
 	beforeSuiteForAllProcesses()
+	// One reference provider for the whole run: the claim fulfillment specs are Serial, so they
+	// run here, and a second provider in another process would race the behaviour they set.
+	startReferenceFulfiller()
 
 	setAllMemberClustersToJoin()
 	checkIfAllMemberClustersHaveJoined()
