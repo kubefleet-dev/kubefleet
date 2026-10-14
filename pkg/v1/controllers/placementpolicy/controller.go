@@ -255,7 +255,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 				return runtime.Result{}, err
 			}
 		}
-		return runtime.Result{}, r.updateStatus(ctx, policy, nil, nil, invalidSelectorsCondition(policy.GetGeneration(), err), nil)
+		return runtime.Result{}, r.updateStatus(ctx, policy, nil, nil, invalidSelectorsCondition(policy.GetGeneration(), err), nil, nil)
 	}
 
 	desiredBindings := chooseClusters(outcomes, bound, clustersByName)
@@ -271,16 +271,23 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	//
 	// Scheduling changes apply independently of resource changes, per the FEP, so a round that
 	// cannot get the snapshot still unbinds, updates, and refreshes claims and the Scheduled
-	// status; it only holds back new bindings and leaves the resource status as it was.
+	// status; it only holds back new bindings. A transient failure leaves the resource status as it
+	// was, but one that the retries cannot fix on their own, a selected resource that is gone or a
+	// selection the user got wrong, reports the target clusters as not synchronized: the last
+	// round's verdict no longer describes the selected resources.
 	var latestRevision string
 	var resources *resourceStatus
-	snapshots, upToDate, snapshotErr := r.snapshots.SnapshotResourcesIfNoSnapshotExists(ctx, policy)
+	snapshots, current, snapshotErr := r.snapshots.SnapshotResourcesIfNoSnapshotExists(ctx, policy)
 	if snapshotErr == nil && len(snapshots) == 0 {
 		snapshotErr = kferrors.NewUnexpectedError(nil, "the snapshot manager returned no placement resource snapshot", "placementPolicy", klog.KObj(policy))
 	}
+	var selectionErr error
+	if kferrors.Category(snapshotErr) == kferrors.ErrCategoryUser || errors.IsNotFound(snapshotErr) {
+		selectionErr = snapshotErr
+	}
 	if snapshotErr == nil {
 		latestRevision = snapshots[0].GetName()
-		summary := summarizeResourceStatus(latestRevision, upToDate, desiredBindings, existingBindings)
+		summary := summarizeResourceStatus(latestRevision, current, desiredBindings, existingBindings)
 		resources = &summary
 	}
 	roleHeld, bindingErr := r.reconcileBindings(ctx, policy, outcomes, desiredBindings, existingBindings, latestRevision)
@@ -317,7 +324,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	if claimNote != "" {
 		notes = append([]string{claimNote}, notes...)
 	}
-	if err := r.updateStatus(ctx, policy, outcomes, reported, scheduledCondition(policy.GetGeneration(), outcomes, strings.Join(notes, "; ")), resources); err != nil {
+	if err := r.updateStatus(ctx, policy, outcomes, reported, scheduledCondition(policy.GetGeneration(), outcomes, strings.Join(notes, "; ")), resources, selectionErr); err != nil {
 		return runtime.Result{}, err
 	}
 	if bindingErr != nil {
@@ -359,8 +366,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 // nothing has changed. A nil outcome list clears the cluster counts (used when the selectors
 // cannot be evaluated at all); a nil claims leaves the current claim count untouched, and a nil
 // resources leaves the resource revision, the synchronization and availability counts, and their
-// conditions untouched.
-func (r *Reconciler) updateStatus(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, outcomes []selectorOutcome, claims *claimReport, scheduledCond metav1.Condition, resources *resourceStatus) error {
+// conditions untouched, except that a non-nil selectionErr reports the Synchronized condition
+// false.
+func (r *Reconciler) updateStatus(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, outcomes []selectorOutcome, claims *claimReport, scheduledCond metav1.Condition, resources *resourceStatus, selectionErr error) error {
 	status := policy.GetStatus()
 	observedStatus := status.DeepCopy()
 
@@ -382,6 +390,9 @@ func (r *Reconciler) updateStatus(ctx context.Context, policy kfplacementv1alpha
 		status.ResourcesAvailableClusters = &resources.available
 		meta.SetStatusCondition(&status.Conditions, resources.synchronizedCondition(policy.GetGeneration()))
 		meta.SetStatusCondition(&status.Conditions, resources.availableCondition(policy.GetGeneration()))
+	}
+	if selectionErr != nil {
+		meta.SetStatusCondition(&status.Conditions, selectionFailedCondition(policy.GetGeneration(), selectionErr))
 	}
 
 	reportPolicyMetrics(policy, claims, scheduledCond)
