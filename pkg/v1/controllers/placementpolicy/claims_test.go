@@ -17,18 +17,25 @@ limitations under the License.
 package placementpolicy
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	kferrors "github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
 )
 
 func policyFor(name, namespace string) kfplacementv1alpha1.PlacementPolicyAccessor {
@@ -374,6 +381,91 @@ func TestClaimBelongsTo(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := claimBelongsTo(tc.claim, ref); got != tc.want {
 				t.Errorf("claimBelongsTo() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestReconcileClaimsNameOccupied pins how a create that finds its deterministic name taken is
+// handled: a claim of the policy the cache has yet to show holds a budget slot, while a claim of
+// another policy under the name is reported instead of leaving the selector silently unfulfilled.
+func TestReconcileClaimsNameOccupied(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kfplacementv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme() = %v, want no error", err)
+	}
+	terms := []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{MatchLabels: map[string]string{regionLabel: "eastus"}}}
+	outcomes := []selectorOutcome{{
+		counts:          resolvedCounts{desired: 1, minimum: 1},
+		terms:           terms,
+		whenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim,
+	}}
+
+	testCases := []struct {
+		name            string
+		occupantRef     *kfplacementv1alpha1.ObjectReference
+		wantOutstanding int32
+		wantErr         bool
+	}{
+		{
+			name:            "a claim of the policy that the cache has yet to show",
+			occupantRef:     policyReference(policyFor("pp", "default")),
+			wantOutstanding: 1,
+		},
+		{
+			name:        "a claim of another policy",
+			occupantRef: policyReference(policyFor("other", "default")),
+			wantErr:     true,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			policy := &kfplacementv1alpha1.PlacementPolicy{ObjectMeta: metav1.ObjectMeta{Name: "pp", Namespace: "default"}}
+			occupant := &kfplacementv1alpha1.ClusterClaim{
+				ObjectMeta: metav1.ObjectMeta{Name: claimName(policy, 0)},
+				Spec:       kfplacementv1alpha1.ClusterClaimSpec{PlacementPolicyRef: tc.occupantRef, ClusterSelectorTerms: terms},
+			}
+			// The API server holds the occupant; the cache has yet to see it, so both its list and
+			// a cached read come back without it.
+			apiServer := fake.NewClientBuilder().WithScheme(scheme).WithObjects(policy, occupant).Build()
+			cache := interceptor.NewClient(apiServer, interceptor.Funcs{
+				List: func(ctx context.Context, cl client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+					if _, isClaims := list.(*kfplacementv1alpha1.ClusterClaimList); isClaims {
+						return nil
+					}
+					return cl.List(ctx, list, opts...)
+				},
+				Get: func(ctx context.Context, cl client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					if _, isClaim := obj.(*kfplacementv1alpha1.ClusterClaim); isClaim {
+						return apierrors.NewNotFound(kfplacementv1alpha1.GroupVersion.WithResource("clusterclaims").GroupResource(), key.Name)
+					}
+					return cl.Get(ctx, key, obj, opts...)
+				},
+			})
+
+			r := NewReconciler(cache, apiServer, nil)
+			class := &kfplacementv1alpha1.ClusterProviderClass{ObjectMeta: metav1.ObjectMeta{Name: "standard"}}
+			wanted := []desiredClaim{{name: claimName(policy, 0), terms: terms, class: class, outcome: &outcomes[0]}}
+			rep, err := r.reconcileClaims(context.Background(), claimRound{policy: policy, wanted: wanted, limit: 1, now: time.Now()})
+			outstanding := rep.outstanding
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("reconcileClaims() = %v, want error %t", err, tc.wantErr)
+			}
+			if tc.wantErr {
+				if got := kferrors.Category(err); got != kferrors.ErrCategoryUser {
+					t.Errorf("reconcileClaims() error category = %q, want %q", got, kferrors.ErrCategoryUser)
+				}
+			}
+			if outstanding != tc.wantOutstanding {
+				t.Errorf("reconcileClaims() = %d outstanding, want %d", outstanding, tc.wantOutstanding)
+			}
+
+			got := &kfplacementv1alpha1.ClusterClaim{}
+			if err := apiServer.Get(context.Background(), client.ObjectKeyFromObject(occupant), got); err != nil {
+				t.Fatalf("Get(occupant) = %v, want the occupant left in place", err)
+			}
+			if diff := cmp.Diff(tc.occupantRef, got.Spec.PlacementPolicyRef); diff != "" {
+				t.Errorf("occupant placementPolicyRef mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

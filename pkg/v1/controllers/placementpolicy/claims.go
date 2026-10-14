@@ -33,7 +33,9 @@ import (
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	kferrors "github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/naming"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/fieldindexers"
 )
 
 const (
@@ -385,7 +387,7 @@ func (r *Reconciler) withdrawClaim(ctx context.Context, claim *kfplacementv1alph
 		if errors.IsNotFound(err) {
 			return true, nil
 		}
-		return false, err
+		return false, kferrors.NewAPIServerError(err, "failed to withdraw the cluster claim", false, "clusterClaim", klog.KObj(claim))
 	}
 	return false, nil
 }
@@ -439,10 +441,15 @@ func (r *Reconciler) issueClaim(ctx context.Context, policy kfplacementv1alpha1.
 	}
 	klog.V(2).InfoS("Adding a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy))
 	if err := r.Create(ctx, claim); err != nil {
-		if errors.IsAlreadyExists(err) {
-			return issueOccupied, nil
+		if !errors.IsAlreadyExists(err) {
+			return issueLimited, kferrors.NewAPIServerError(err, "failed to add the cluster claim", false, "clusterClaim", klog.KObj(claim))
 		}
-		return issueLimited, err
+		// A claim of another policy under the name is reported rather than waited on forever;
+		// the watch maps that claim to its own policy, so this one retries on the error backoff.
+		if _, err := r.claimNameOccupiedByPolicy(ctx, claim.Name, policy); err != nil {
+			return issueLimited, err
+		}
+		return issueOccupied, nil
 	}
 	// Stamp the freshness marker and the automatic approval right after creation, per the
 	// FEP: the claim carries the latest observed cluster creation timestamp from the moment
@@ -456,11 +463,11 @@ func (r *Reconciler) issueClaim(ctx context.Context, policy kfplacementv1alpha1.
 func (r *Reconciler) countFleetActiveClaims(ctx context.Context) (int32, error) {
 	claims := &kfplacementv1alpha1.ClusterClaimList{}
 	if err := r.uncachedReader.List(ctx, claims); err != nil {
-		return 0, err
+		return 0, kferrors.NewAPIServerError(err, "failed to list the cluster claims of the fleet", false)
 	}
 	classes := &kfplacementv1alpha1.ClusterProviderClassList{}
 	if err := r.List(ctx, classes); err != nil {
-		return 0, err
+		return 0, kferrors.NewAPIServerError(err, "failed to list the cluster provider classes", true)
 	}
 	automatic := make(map[string]bool, len(classes.Items))
 	for i := range classes.Items {
@@ -543,6 +550,29 @@ func approveAutomatically(claim *kfplacementv1alpha1.ClusterClaim, class *kfplac
 	return true
 }
 
+// claimNameOccupiedByPolicy reports whether the claim holding a name this policy failed to create
+// belongs to the policy. The read is uncached, since the cache is what failed to show the occupant.
+// A claim of another policy under the name is a user error, logged with the occupant's reference:
+// the policy cannot issue the claim until the occupant is gone, and without the error its selector
+// would stay unfulfilled with nothing saying why. The error ends the round, leaving any later
+// selector's claim to the retry; the budget is a single claim per policy, so nothing is lost.
+func (r *Reconciler) claimNameOccupiedByPolicy(ctx context.Context, name string, policy kfplacementv1alpha1.PlacementPolicyAccessor) (bool, error) {
+	occupant := &kfplacementv1alpha1.ClusterClaim{}
+	if err := r.uncachedReader.Get(ctx, client.ObjectKey{Name: name}, occupant); err != nil {
+		if errors.IsNotFound(err) {
+			// Gone since the create; its deletion event re-queues the policy, and that pass
+			// issues the claim.
+			return false, nil
+		}
+		return false, kferrors.NewAPIServerError(err, "failed to get the cluster claim occupying the name", false, "clusterClaim", name)
+	}
+	if !claimBelongsTo(occupant, policyReference(policy)) {
+		return false, kferrors.NewUserError(nil, "the cluster claim name is taken by a claim that does not belong to the policy",
+			"clusterClaim", name, "placementPolicy", klog.KObj(policy), "occupantPlacementPolicyRef", occupant.Spec.PlacementPolicyRef)
+	}
+	return true, nil
+}
+
 // reconcileClaimLabels restores the ownership labels on a kept claim. The controller itself finds
 // a policy's claims through the immutable spec.placementPolicyRef, so a stripped or rewritten label
 // never confuses the reconcile; the labels exist for external consumers -- a provisioner watching a
@@ -572,7 +602,7 @@ func (r *Reconciler) reconcileClaimLabels(ctx context.Context, claim *kfplacemen
 	// the repair retries then. A NotFound means the claim was withdrawn out from under us, which a
 	// later pass reconciles.
 	if err := r.Update(ctx, claim); err != nil && !errors.IsNotFound(err) && !errors.IsConflict(err) {
-		return err
+		return kferrors.NewAPIServerError(err, "failed to restore the ownership labels of the cluster claim", false, "clusterClaim", klog.KObj(claim))
 	}
 	return nil
 }
@@ -608,7 +638,7 @@ func (r *Reconciler) syncClaimStatus(ctx context.Context, claim *kfplacementv1al
 		return nil
 	}
 	if err := r.Status().Update(ctx, claim); err != nil && !errors.IsNotFound(err) && !errors.IsConflict(err) {
-		return err
+		return kferrors.NewAPIServerError(err, "failed to sync the status of the cluster claim", false, "clusterClaim", klog.KObj(claim))
 	}
 	return nil
 }
@@ -630,8 +660,9 @@ func (r *Reconciler) cleanupClaims(ctx context.Context, policy kfplacementv1alph
 	// every claim is listed and ownership is decided by the reference.
 	claims := &kfplacementv1alpha1.ClusterClaimList{}
 	if err := r.uncachedReader.List(ctx, claims); err != nil {
-		klog.ErrorS(err, "Failed to list cluster claims for the deleted policy", "placementPolicy", klog.KObj(policy))
-		return err
+		wrappedErr := kferrors.NewAPIServerError(err, "failed to list the cluster claims of the deleted policy", false, "placementPolicy", klog.KObj(policy))
+		klog.ErrorS(wrappedErr, "Failed to list cluster claims for the deleted policy", kferrors.Args(wrappedErr)...)
+		return wrappedErr
 	}
 	ownRef := policyReference(policy)
 	remaining := 0
@@ -651,7 +682,7 @@ func (r *Reconciler) cleanupClaims(ctx context.Context, policy kfplacementv1alph
 				// this claim.
 				continue
 			}
-			return err
+			return kferrors.NewAPIServerError(err, "failed to withdraw the cluster claim of the deleted policy", false, "clusterClaim", klog.KObj(claim))
 		}
 		remaining++
 	}
@@ -664,7 +695,7 @@ func (r *Reconciler) cleanupClaims(ctx context.Context, policy kfplacementv1alph
 	controllerutil.RemoveFinalizer(policy, claimCleanupFinalizer)
 	// Once the finalizer is gone the policy is deleted, and the reconcile that observes its
 	// absence drops the metric series.
-	return r.Update(ctx, policy)
+	return r.updatePolicy(ctx, policy, "failed to release the claim cleanup finalizer")
 }
 
 // ensureFinalizer adds the claim cleanup finalizer to the policy if not present yet.
@@ -673,7 +704,7 @@ func (r *Reconciler) ensureFinalizer(ctx context.Context, policy kfplacementv1al
 		return nil
 	}
 	controllerutil.AddFinalizer(policy, claimCleanupFinalizer)
-	return r.Update(ctx, policy)
+	return r.updatePolicy(ctx, policy, "failed to add the claim cleanup finalizer")
 }
 
 // claimBelongsTo reports whether a claim's immutable back-reference names the given policy.
@@ -701,16 +732,21 @@ func claimBelongsTo(claim *kfplacementv1alpha1.ClusterClaim, ref *kfplacementv1a
 // is fulfilled, changed, or switched to KeepSearching -- and a provisioner could keep acting on it.
 // Matching on the immutable reference, as the cleanup path already does, keeps that from happening.
 //
-// The list is served from the informer cache; a claim the cache has yet to observe is picked up on
-// the re-queue the claim watch fires, which is why the cache is acceptable here while the finalizer
-// release, whose mistake would be permanent, reads through the uncached reader instead.
+// The list is served from the informer cache through the index on that reference (registered by
+// fieldindexers.SetupWithHubAgentControllerManager), so a reconcile reads only its own policy's
+// claims rather than every claim in the fleet. A claim the cache has yet to observe is picked up
+// on the re-queue the claim watch fires, which is why the cache is acceptable here while the
+// finalizer release, whose mistake would be permanent, reads through the uncached reader instead.
 func (r *Reconciler) listClaims(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor) ([]kfplacementv1alpha1.ClusterClaim, error) {
-	all := &kfplacementv1alpha1.ClusterClaimList{}
-	if err := r.List(ctx, all); err != nil {
-		klog.ErrorS(err, "Failed to list cluster claims for the policy", "placementPolicy", klog.KObj(policy))
-		return nil, err
+	claims := &kfplacementv1alpha1.ClusterClaimList{}
+	if err := r.List(ctx, claims, client.MatchingFields{
+		fieldindexers.ClusterClaimOwnedByPlacementPolicyCustomFieldName: fieldindexers.ClusterClaimOwnedByPlacementPolicyCustomFieldVal(policyReference(policy)),
+	}); err != nil {
+		wrappedErr := kferrors.NewAPIServerError(err, "failed to list the cluster claims of the policy", true, "placementPolicy", klog.KObj(policy))
+		klog.ErrorS(wrappedErr, "Failed to list cluster claims for the policy", kferrors.Args(wrappedErr)...)
+		return nil, wrappedErr
 	}
-	return claimsForPolicy(all.Items, policy), nil
+	return claims.Items, nil
 }
 
 // claimsForPolicy returns the claims whose immutable reference names the policy.
@@ -737,14 +773,23 @@ func (r *Reconciler) releaseFinalizerIfNoClaims(ctx context.Context, policy kfpl
 	}
 	claims := &kfplacementv1alpha1.ClusterClaimList{}
 	if err := r.uncachedReader.List(ctx, claims); err != nil {
-		klog.ErrorS(err, "Failed to list cluster claims to release the cleanup finalizer", "placementPolicy", klog.KObj(policy))
-		return err
+		wrappedErr := kferrors.NewAPIServerError(err, "failed to list the cluster claims of the policy", false, "placementPolicy", klog.KObj(policy))
+		klog.ErrorS(wrappedErr, "Failed to list cluster claims to release the cleanup finalizer", kferrors.Args(wrappedErr)...)
+		return wrappedErr
 	}
 	if len(claimsForPolicy(claims.Items, policy)) > 0 {
 		return nil
 	}
 	controllerutil.RemoveFinalizer(policy, claimCleanupFinalizer)
-	return r.Update(ctx, policy)
+	return r.updatePolicy(ctx, policy, "failed to release the claim cleanup finalizer")
+}
+
+// updatePolicy writes the policy object, categorizing a failure as an API server error.
+func (r *Reconciler) updatePolicy(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, desc string) error {
+	if err := r.Update(ctx, policy); err != nil {
+		return kferrors.NewAPIServerError(err, desc, false, "placementPolicy", klog.KObj(policy))
+	}
+	return nil
 }
 
 // policyReference builds the claim's back-reference to its policy.
