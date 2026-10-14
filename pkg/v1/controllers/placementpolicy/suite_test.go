@@ -56,6 +56,10 @@ var (
 )
 
 // defaultClassName names the class the suite marks as the fleet's default.
+// suiteFleetClaimLimit is the fleet-wide claim limit the suite's reconciler runs with: above the
+// per-policy default of one, so that a policy's own limit can be exercised.
+const suiteFleetClaimLimit = 2
+
 const defaultClassName = "default"
 
 // defaultClass builds the suite's default class; specs that remove it recreate it with this.
@@ -135,7 +139,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).Should(Succeed())
 
 	Expect(fieldindexers.SetupWithHubAgentControllerManager(ctx, mgr)).Should(Succeed())
-	reconciler := NewReconciler(mgr.GetClient(), mgr.GetAPIReader(), mgr.GetEventRecorder("placement-policy-controller"))
+	reconciler := NewReconciler(mgr.GetClient(), mgr.GetAPIReader(), mgr.GetEventRecorder("placement-policy-controller"), WithMaxConcurrentClusterClaims(suiteFleetClaimLimit))
 	Expect(reconciler.SetupWithManagerForPlacementPolicy(mgr)).Should(Succeed())
 	Expect(reconciler.SetupWithManagerForClusterPlacementPolicy(mgr)).Should(Succeed())
 

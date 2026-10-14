@@ -20,6 +20,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -142,7 +143,7 @@ func TestDesiredClaims(t *testing.T) {
 			want: []desiredClaim{{name: claimName(policyFor("app", "tenant-a"), 0), terms: regionTerms("eastus")}},
 		},
 		{
-			name: "budget caps at one claim across multiple unfulfilled selectors",
+			name: "every unfulfilled selector is wanted; the limits apply at issuing, not here",
 			outcomes: []selectorOutcome{
 				{
 					counts:          resolvedCounts{desired: 1, minimum: 1},
@@ -155,7 +156,10 @@ func TestDesiredClaims(t *testing.T) {
 					whenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim,
 				},
 			},
-			want: []desiredClaim{{name: claimName(policyFor("app", "tenant-a"), 0), terms: regionTerms("eastus")}},
+			want: []desiredClaim{
+				{name: claimName(policyFor("app", "tenant-a"), 0), terms: regionTerms("eastus")},
+				{name: claimName(policyFor("app", "tenant-a"), 1), terms: regionTerms("westus")},
+			},
 		},
 		{
 			name: "fulfilled selectors and KeepSearching selectors yield no claims",
@@ -261,7 +265,7 @@ func TestApproveAutomatically(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := approveAutomatically(tc.claim, tc.class); got != tc.wantChanged {
+			if got := approveAutomatically(tc.claim, tc.class, time.Now()); got != tc.wantChanged {
 				t.Errorf("approveAutomatically() = %t, want %t", got, tc.wantChanged)
 			}
 			gotReason := ""
@@ -443,7 +447,8 @@ func TestReconcileClaimsNameOccupied(t *testing.T) {
 			r := NewReconciler(cache, apiServer, nil)
 			class := &kfplacementv1alpha1.ClusterProviderClass{ObjectMeta: metav1.ObjectMeta{Name: "standard"}}
 			wanted := []desiredClaim{{name: claimName(policy, 0), terms: terms, class: class, outcome: &outcomes[0]}}
-			outstanding, err := r.reconcileClaims(context.Background(), policy, wanted, metav1.Time{})
+			rep, err := r.reconcileClaims(context.Background(), claimRound{policy: policy, wanted: wanted, limit: 1, now: time.Now()})
+			outstanding := rep.outstanding
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("reconcileClaims() = %v, want error %t", err, tc.wantErr)
 			}
@@ -509,11 +514,11 @@ func TestReconcileClaimsCountsClaimsTheCacheHasYetToShow(t *testing.T) {
 	if len(wanted) != 1 || wanted[0].blocked != "" {
 		t.Fatalf("desiredClaims() = %+v (note %q), want selector 1's claim issuable", wanted, note)
 	}
-	outstanding, err := r.reconcileClaims(context.Background(), policy, wanted, metav1.Time{})
+	rep, err := r.reconcileClaims(context.Background(), claimRound{policy: policy, wanted: wanted, limit: 1, now: time.Now()})
 	if err != nil {
 		t.Fatalf("reconcileClaims() = %v, want no error", err)
 	}
-	if outstanding != 1 {
+	if outstanding := rep.outstanding; outstanding != 1 {
 		t.Errorf("reconcileClaims() = %d outstanding, want the 1 claim the cache has yet to show", outstanding)
 	}
 	if err := apiServer.Get(context.Background(), client.ObjectKey{Name: claimName(policy, 1)}, &kfplacementv1alpha1.ClusterClaim{}); !apierrors.IsNotFound(err) {
