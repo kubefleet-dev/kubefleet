@@ -39,6 +39,7 @@ import (
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/fieldindexers"
 )
 
 const (
@@ -133,6 +134,7 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).Should(Succeed())
 
+	Expect(fieldindexers.SetupWithHubAgentControllerManager(ctx, mgr)).Should(Succeed())
 	reconciler := NewReconciler(mgr.GetClient(), mgr.GetAPIReader(), mgr.GetEventRecorder("placement-policy-controller"))
 	Expect(reconciler.SetupWithManagerForPlacementPolicy(mgr)).Should(Succeed())
 	Expect(reconciler.SetupWithManagerForClusterPlacementPolicy(mgr)).Should(Succeed())
