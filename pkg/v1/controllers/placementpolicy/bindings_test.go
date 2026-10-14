@@ -28,11 +28,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	kferrors "github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/fieldindexers"
 )
 
@@ -396,5 +398,84 @@ func TestReconcileBindingsUpdatesSyncStrategy(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, bindings.Items[0].Spec.SyncStrategy); diff != "" {
 		t.Errorf("binding sync strategy mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestReconcileBindingsSettlesATakenName pins what happens when a binding's deterministic name is
+// already taken: an orphan of the policy's name for the same cluster is adopted and brought up to
+// date, while any other occupant is reported -- as transient when an earlier policy of the same
+// name still controls it -- without holding up the policy's other clusters or its role.
+func TestReconcileBindingsSettlesATakenName(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kfplacementv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme() = %v, want no error", err)
+	}
+	testCases := []struct {
+		name            string
+		owner           *metav1.OwnerReference
+		occupantCluster string
+		wantErrCategory kferrors.ErrCategory
+		wantAdopted     bool
+	}{
+		{name: "an orphan of the policy's name", occupantCluster: "east-1", wantAdopted: true},
+		{name: "an orphan of the policy's name for another cluster", occupantCluster: "west-9", wantErrCategory: kferrors.ErrCategoryUser},
+		{
+			name:            "a binding of an earlier policy of the same name",
+			owner:           &metav1.OwnerReference{APIVersion: kfplacementv1alpha1.GroupVersion.String(), Kind: kfplacementv1alpha1.PlacementPolicyKind, Name: "pp", UID: "earlier-uid", Controller: ptr.To(true)},
+			occupantCluster: "east-1",
+			wantErrCategory: kferrors.ErrCategoryTransient,
+		},
+		{
+			name:            "a binding another object controls",
+			owner:           &metav1.OwnerReference{APIVersion: "v1", Kind: "ConfigMap", Name: "squatter", UID: "squatter-uid", Controller: ptr.To(true)},
+			occupantCluster: "east-1",
+			wantErrCategory: kferrors.ErrCategoryUser,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			policy := bindingManagerHeldBy(controllerName)
+			occupant := &kfplacementv1alpha1.PlacementBinding{
+				ObjectMeta: metav1.ObjectMeta{Name: bindingName(policy, "east-1"), Namespace: "default"},
+				Spec:       kfplacementv1alpha1.PlacementBindingSpec{PlacementPolicyName: "pp", ClusterName: tc.occupantCluster, ResourceSnapshotName: "pp-snapshot-from-before"},
+			}
+			if tc.owner != nil {
+				occupant.OwnerReferences = []metav1.OwnerReference{*tc.owner}
+			}
+			c := withIndexes(fake.NewClientBuilder().WithScheme(scheme)).WithObjects(policy, occupant).WithStatusSubresource(policy).Build()
+			r := NewReconciler(c, c, snapshotStub{}, nil)
+			ctx := context.Background()
+
+			outcomes := []selectorOutcome{{counts: resolvedCounts{desired: 2}, matched: []string{"east-1", "west-2"}, chosen: []string{"east-1", "west-2"}}}
+			_, err := r.reconcileBindings(ctx, policy, outcomes, map[string][]int{"east-1": {0}, "west-2": {0}}, nil)
+			if got := kferrors.Category(err); (err != nil) != (tc.wantErrCategory != "") || (err != nil && got != tc.wantErrCategory) {
+				t.Fatalf("reconcileBindings() = %v (category %q), want error category %q", err, got, tc.wantErrCategory)
+			}
+
+			got := &kfplacementv1alpha1.PlacementBinding{}
+			if err := c.Get(ctx, client.ObjectKeyFromObject(occupant), got); err != nil {
+				t.Fatalf("Get(occupant) = %v, want no error", err)
+			}
+			if adopted := metav1.IsControlledBy(got, policy); adopted != tc.wantAdopted {
+				t.Errorf("occupant controlled by the policy = %t, want %t", adopted, tc.wantAdopted)
+			}
+			if tc.wantAdopted && got.Spec.ResourceSnapshotName != stubSnapshotName(policy) {
+				t.Errorf("adopted binding rolls out %q, want the policy's latest snapshot %q", got.Spec.ResourceSnapshotName, stubSnapshotName(policy))
+			}
+			if !tc.wantAdopted && got.Spec.ClusterName != tc.occupantCluster {
+				t.Errorf("occupant retargeted to cluster %q, want it left on %q", got.Spec.ClusterName, tc.occupantCluster)
+			}
+			// The other cluster is bound regardless, and the role is not left held.
+			if err := c.Get(ctx, types.NamespacedName{Namespace: "default", Name: bindingName(policy, "west-2")}, &kfplacementv1alpha1.PlacementBinding{}); err != nil {
+				t.Errorf("Get(west-2 binding) = %v, want the other cluster bound", err)
+			}
+			fetched := &kfplacementv1alpha1.PlacementPolicy{}
+			if err := c.Get(ctx, types.NamespacedName{Namespace: "default", Name: "pp"}, fetched); err != nil {
+				t.Fatalf("Get(policy) = %v, want no error", err)
+			}
+			if fetched.Status.BindingManager != nil {
+				t.Errorf("reconcileBindings() left the binding manager role as %v, want it released", fetched.Status.BindingManager)
+			}
+		})
 	}
 }
