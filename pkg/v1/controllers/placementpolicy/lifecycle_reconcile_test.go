@@ -208,17 +208,17 @@ func TestReconcileClaimsCountsUnlistedClaim(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: claimName(policy, 0), Labels: claimOwnershipLabels(policy)},
 		Spec:       kfplacementv1alpha1.ClusterClaimSpec{PlacementPolicyRef: policyReference(policy), ClusterSelectorTerms: terms("a"), ClusterProviderClassName: class.Name},
 	}
-	c := fake.NewClientBuilder().WithScheme(lifecycleScheme(t)).WithObjects(policy, class, first).WithStatusSubresource(first).
-		WithInterceptorFuncs(interceptor.Funcs{
-			// The cache lags: the claim list shows nothing, although the first claim exists.
-			List: func(ctx context.Context, cl client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
-				if _, isClaims := list.(*kfplacementv1alpha1.ClusterClaimList); isClaims {
-					return nil
-				}
-				return cl.List(ctx, list, opts...)
-			},
-		}).Build()
-	r := NewReconciler(c, c, nil, WithMaxConcurrentClusterClaims(5))
+	apiServer := fake.NewClientBuilder().WithScheme(lifecycleScheme(t)).WithObjects(policy, class, first).WithStatusSubresource(first).Build()
+	// The cache lags: its claim list shows nothing, although the API server holds the first claim.
+	c := interceptor.NewClient(apiServer, interceptor.Funcs{
+		List: func(ctx context.Context, cl client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+			if _, isClaims := list.(*kfplacementv1alpha1.ClusterClaimList); isClaims {
+				return nil
+			}
+			return cl.List(ctx, list, opts...)
+		},
+	})
+	r := NewReconciler(c, apiServer, nil, WithMaxConcurrentClusterClaims(5))
 	outcomes := []selectorOutcome{
 		{counts: resolvedCounts{desired: 1, minimum: 1}, terms: terms("a"), whenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim},
 		{counts: resolvedCounts{desired: 1, minimum: 1}, terms: terms("b"), whenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim},
