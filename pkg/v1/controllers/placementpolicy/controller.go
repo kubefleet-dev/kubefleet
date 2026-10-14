@@ -39,6 +39,7 @@ import (
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/clustereligibilitychecker"
 	kferrors "github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/bindingmanager"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/sourcequeue"
 )
 
@@ -160,6 +161,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		// claims are deliberately left untouched: their specs reflect the last valid
 		// selectors.
 		klog.ErrorS(err, "Failed to evaluate the cluster selectors", "placementPolicy", req.NamespacedName)
+		// A role a failed binding write left held is kept for the retry to resume under; with the
+		// selectors invalid no binding change can follow until the spec is fixed, so the role is
+		// released rather than left blocking the policy's rollouts in the meantime.
+		if holdsBindingManagerRole(policy) {
+			if err := bindingmanager.RelinquishRoleFor(ctx, r.Client, policy, controllerName, *policyReference(policy)); err != nil {
+				return runtime.Result{}, err
+			}
+		}
 		return runtime.Result{}, r.updateStatus(ctx, policy, nil, nil, invalidSelectorsCondition(policy.GetGeneration(), err), nil)
 	}
 
