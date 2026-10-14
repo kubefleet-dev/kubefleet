@@ -220,6 +220,22 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy kfplacementv1al
 	if err := r.ensureFinalizer(ctx, policy); err != nil {
 		return outstanding, err
 	}
+	// The budget so far was counted from the cache, which can lag a claim created moments ago:
+	// one issued last round for a selector that has since been satisfied would be missing, and a
+	// claim for the next selector, under another name, would stand beside it. Claims the cache
+	// has yet to show are counted from the API server whenever the cached count would still let
+	// one be issued. (A claim created after this read, by a replica that has just lost
+	// leadership, can still slip past; leader election makes that window negligible.)
+	//
+	// ponytail: lists every claim in the fleet uncached, but only on rounds that could issue
+	// one; the ownership labels cannot narrow it server-side, being mutable.
+	if outstanding < maxConcurrentClaimsPerPolicy {
+		unseen, err := r.countUnseenClaims(ctx, policy, existing)
+		if err != nil {
+			return outstanding, err
+		}
+		outstanding += unseen
+	}
 	for _, w := range wanted {
 		if _, still := wantedByName[w.name]; !still {
 			continue
@@ -247,21 +263,17 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy kfplacementv1al
 				return outstanding, kferrors.NewAPIServerError(err, "failed to add the cluster claim", false, "clusterClaim", klog.KObj(claim))
 			}
 			// The deterministic name is still occupied. Most commonly it is this round's own
-			// withdraw of a same-named claim that a provisioner finalizer holds in Terminating,
-			// already counted above; otherwise it may be a claim of this policy the cache has
-			// yet to show, which holds a budget slot too. Either way the claim watch re-queues
-			// the policy once the occupant is gone, and the create is retried then. A claim of
-			// another policy is reported as an error instead; the watch maps that claim to its
-			// own policy, so this one retries on the error backoff.
+			// withdraw of a same-named claim that a provisioner finalizer holds in Terminating;
+			// otherwise it may be a claim of this policy the cache has yet to show. Both are
+			// already counted above, and the claim watch re-queues the policy once the occupant
+			// is gone, so the create is retried then. A claim of another policy is reported as an
+			// error instead; the watch maps that claim to its own policy, so this one retries on
+			// the error backoff.
 			if withdrawn[claim.Name] {
 				continue
 			}
-			occupied, err := r.claimNameOccupiedByPolicy(ctx, claim.Name, policy)
-			if err != nil {
+			if _, err := r.claimNameOccupiedByPolicy(ctx, claim.Name, policy); err != nil {
 				return outstanding, err
-			}
-			if occupied {
-				outstanding++
 			}
 			continue
 		}
@@ -273,6 +285,22 @@ func (r *Reconciler) reconcileClaims(ctx context.Context, policy kfplacementv1al
 		}
 	}
 	return outstanding, nil
+}
+
+// countUnseenClaims counts, from the API server, the claims of the policy that the given cached list
+// does not show.
+func (r *Reconciler) countUnseenClaims(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, seen []kfplacementv1alpha1.ClusterClaim) (int32, error) {
+	claims := &kfplacementv1alpha1.ClusterClaimList{}
+	if err := r.uncachedReader.List(ctx, claims); err != nil {
+		return 0, kferrors.NewAPIServerError(err, "failed to list the cluster claims of the policy", false, "placementPolicy", klog.KObj(policy))
+	}
+	var unseen int32
+	for _, claim := range claimsForPolicy(claims.Items, policy) {
+		if !slices.ContainsFunc(seen, func(c kfplacementv1alpha1.ClusterClaim) bool { return c.UID == claim.UID }) {
+			unseen++
+		}
+	}
+	return unseen, nil
 }
 
 // claimNameOccupiedByPolicy reports whether the claim holding a name this policy failed to create
