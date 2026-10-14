@@ -33,9 +33,9 @@ import (
 type resourceStatus struct {
 	// latestRevision names the policy's latest resource snapshot.
 	latestRevision string
-	// upToDate reports whether that snapshot still matches the selected resources on the hub. When
+	// current reports whether that snapshot still matches the selected resources on the hub. When
 	// it does not, the resources have changed since and wait for a rollout to take a new snapshot.
-	upToDate bool
+	current bool
 	// targets counts the clusters that should hold a binding, including a bound cluster kept while
 	// it is unschedulable: it still holds the resources, so it still counts against the status.
 	targets int32
@@ -53,8 +53,8 @@ type resourceStatus struct {
 // generation; a binding still rolling out an older revision, or one that has not been processed
 // yet, is not. Availability is judged only for the latest revision, as placements judge it only
 // once their resources are synchronized.
-func summarizeResourceStatus(latestRevision string, upToDate bool, targets map[string][]int, bindings []kfplacementv1alpha1.PlacementBindingAccessor) resourceStatus {
-	status := resourceStatus{latestRevision: latestRevision, upToDate: upToDate, targets: int32Len(slices.Collect(maps.Keys(targets)))}
+func summarizeResourceStatus(latestRevision string, current bool, targets map[string][]int, bindings []kfplacementv1alpha1.PlacementBindingAccessor) resourceStatus {
+	status := resourceStatus{latestRevision: latestRevision, current: current, targets: int32Len(slices.Collect(maps.Keys(targets)))}
 	for _, binding := range bindings {
 		if _, isTarget := targets[binding.GetSpec().ClusterName]; !isTarget {
 			continue
@@ -87,7 +87,7 @@ func (s resourceStatus) synchronizedCondition(generation int64) metav1.Condition
 		ObservedGeneration: generation,
 	}
 	switch {
-	case s.targets > 0 && !s.upToDate:
+	case s.targets > 0 && !s.current:
 		cond.Message = fmt.Sprintf("The selected resources have changed since resource revision %s and are waiting for a rollout to reach the target clusters", s.latestRevision)
 	case s.synchronized < s.targets:
 		cond.Message = fmt.Sprintf("%d of %d target clusters have the latest resource revision %s synchronized", s.synchronized, s.targets, s.latestRevision)
@@ -101,6 +101,20 @@ func (s resourceStatus) synchronizedCondition(generation int64) metav1.Condition
 		cond.Message = fmt.Sprintf("All %d target clusters have the latest resource revision %s synchronized", s.targets, s.latestRevision)
 	}
 	return cond
+}
+
+// selectionFailedCondition builds the policy's Synchronized condition for a round whose selected
+// resources cannot be collected for good (until the user or the resources change): the last
+// round's verdict no longer describes them. The API has only the two reasons, so this is reported
+// as FailedToSynchronizeSomeClusters and told apart by its message.
+func selectionFailedCondition(generation int64, err error) metav1.Condition {
+	return metav1.Condition{
+		Type:               kfplacementv1alpha1.PlacementPolicyCondTypeSynchronized,
+		Status:             metav1.ConditionFalse,
+		Reason:             kfplacementv1alpha1.PlacementPolicySynchronizedCondReasonFailedToSynchronizeSomeClusters,
+		Message:            "The selected resources cannot be snapshotted: " + err.Error(),
+		ObservedGeneration: generation,
+	}
 }
 
 // availableCondition builds the policy's Available condition: true when every target cluster has
