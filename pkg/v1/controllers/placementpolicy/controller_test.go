@@ -20,7 +20,9 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/google/go-cmp/cmp"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -63,8 +65,7 @@ func TestReconcilePreservesClaimCountOnFailedRound(t *testing.T) {
 	}
 
 	listErr := errors.New("the claim list is unwell")
-	c := fake.NewClientBuilder().
-		WithScheme(scheme).
+	c := withIndexes(fake.NewClientBuilder().WithScheme(scheme)).
 		WithObjects(policy).
 		WithStatusSubresource(policy).
 		WithInterceptorFuncs(interceptor.Funcs{
@@ -112,5 +113,56 @@ func TestReconcileIgnoresDeletedPolicy(t *testing.T) {
 		if res.RequeueAfter != 0 {
 			t.Errorf("Reconcile(%v) requeued after %v, want no requeue for a policy that no longer exists", name, res.RequeueAfter)
 		}
+	}
+}
+
+// TestReconcileBacksOffWhileRoleIsHeld pins that a policy whose binding manager role another
+// process holds is retried with a growing delay rather than at a fixed pace, and that a round
+// that completes resets the delay.
+func TestReconcileBacksOffWhileRoleIsHeld(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := kfplacementv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme() = %v, want no error", err)
+	}
+	if err := clusterv1beta1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme() = %v, want no error", err)
+	}
+	policy := bindingManagerHeldBy("rollout-controller")
+	cluster := testCluster("east-1", nil, nil, nil)
+	c := withIndexes(fake.NewClientBuilder().WithScheme(scheme)).
+		WithObjects(policy, cluster).
+		WithStatusSubresource(policy).
+		Build()
+	r := NewReconciler(c, c, snapshotStub{}, nil)
+	r.eligibility = allEligible{}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "pp"}}
+
+	var delays []time.Duration
+	for range 3 {
+		res, err := r.Reconcile(context.Background(), req)
+		if err != nil {
+			t.Fatalf("Reconcile() = %v, want no error while the role is held elsewhere", err)
+		}
+		delays = append(delays, res.RequeueAfter)
+	}
+	wantDelays := []time.Duration{bindingManagerRetryBase, 2 * bindingManagerRetryBase, 4 * bindingManagerRetryBase}
+	if diff := cmp.Diff(wantDelays, delays); diff != "" {
+		t.Errorf("Reconcile() requeue delays mismatch (-want +got):\n%s", diff)
+	}
+
+	// The rollout finishes and releases the role; the round completes and the backoff resets.
+	fetched := &kfplacementv1alpha1.PlacementPolicy{}
+	if err := c.Get(context.Background(), req.NamespacedName, fetched); err != nil {
+		t.Fatalf("Get() = %v, want no error", err)
+	}
+	fetched.Status.BindingManager = nil
+	if err := c.Status().Update(context.Background(), fetched); err != nil {
+		t.Fatalf("Status().Update() = %v, want no error", err)
+	}
+	if _, err := r.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("Reconcile() = %v, want no error once the role is free", err)
+	}
+	if got := r.roleBackoff.NumRequeues(req); got != 0 {
+		t.Errorf("roleBackoff.NumRequeues() = %d after a completed round, want 0", got)
 	}
 }

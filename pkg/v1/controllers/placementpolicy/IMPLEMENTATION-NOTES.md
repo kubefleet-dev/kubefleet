@@ -76,9 +76,22 @@ package demonstrating the current behavior.
   second, then name), so a scale-down undoes the latest picks and a cluster
   back from an outage, being the older binding, wins over its replacement.
   The same trim also absorbs a duplicate pick made from a stale binding list
-  (the cache lagging a create by one round). A bound cluster that no longer
-  matches any selector, or has left the fleet, is unbound at once —
-  scheduling changes apply immediately in the new placement experience.
+  (the cache lagging a create by one round).
+- **A scheduling decision sticks until the selector itself changes**
+  (`evaluateSelectors`), as it does for ClusterResourcePlacement and
+  ResourcePlacement: a bound cluster whose labels or properties stop matching
+  keeps its binding and still counts, because a cluster hovering around a
+  property threshold (a node count moving with autoscaling) would otherwise
+  have its resources removed and placed again on every swing, and the people
+  who label clusters are not always the ones who own the placements. The
+  binding's `spec.clusterSelectors` is the record: a cluster stays selected by
+  every selector whose terms its binding still lists. Changing a selector's
+  terms re-evaluates its clusters from scratch, as a new scheduling policy does
+  for placements; a cluster leaving the fleet, or its binding being deleted,
+  releases it too. The record is the binding itself, so anyone who rewrites a
+  binding's `spec.clusterSelectors` has that cluster re-evaluated from scratch
+  on the next round. A cluster whose reported data cannot be evaluated is named
+  on the `Scheduled` condition message, since it keeps its binding uncounted.
 - **One binding per cluster per policy, counting toward every selector it
   matches**: selectors are processed in order, and a cluster chosen for an
   earlier selector satisfies each later selector whose terms it matches
