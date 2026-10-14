@@ -18,6 +18,7 @@ package placementpolicy
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -156,12 +157,18 @@ func TestScheduledCondition(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := scheduledCondition(7, tc.outcomes)
+			got := scheduledCondition(7, tc.outcomes, "")
 			if got.Status != tc.wantStatus || got.Reason != tc.wantReason {
 				t.Errorf("scheduledCondition(7, %v) = %s/%s, want %s/%s", tc.outcomes, got.Status, got.Reason, tc.wantStatus, tc.wantReason)
 			}
 			if got.ObservedGeneration != 7 {
 				t.Errorf("scheduledCondition(7, %v) observedGeneration = %d, want 7", tc.outcomes, got.ObservedGeneration)
+			}
+			// The claim note rides on the message of an unmet condition only; a met one has nothing to explain.
+			noted := scheduledCondition(7, tc.outcomes, "no new cluster claims are issued: why")
+			wantSuffix := "; no new cluster claims are issued: why"
+			if hasNote := strings.HasSuffix(noted.Message, wantSuffix); hasNote != (tc.wantStatus == metav1.ConditionFalse) {
+				t.Errorf("scheduledCondition(7, %v, note) message = %q, want the note appended: %t", tc.outcomes, noted.Message, tc.wantStatus == metav1.ConditionFalse)
 			}
 		})
 	}
@@ -296,7 +303,7 @@ func TestScheduledConditionNamesUnevaluableClusters(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := scheduledCondition(1, tc.outcomes).Message; got != tc.wantMessage {
+			if got := scheduledCondition(1, tc.outcomes, "").Message; got != tc.wantMessage {
 				t.Errorf("scheduledCondition().Message = %q, want %q", got, tc.wantMessage)
 			}
 		})

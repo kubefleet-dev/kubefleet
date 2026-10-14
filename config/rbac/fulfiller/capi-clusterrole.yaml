@@ -1,0 +1,13 @@
+# What the Cluster API bridge needs on the management cluster, which may be a cluster other than
+# the fleet hub: it applies Cluster objects by server-side apply (create and patch), reads them
+# back without a cache, finds its own by label across namespaces, and deletes them. On the hub it
+# needs only the framework's and the provider's roles from this directory, plus a Role on the
+# leader election lease in its namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubefleet-fulfiller-capi
+rules:
+- apiGroups: ["cluster.x-k8s.io"]
+  resources: ["clusters"]
+  verbs: ["get", "list", "create", "patch", "delete"]

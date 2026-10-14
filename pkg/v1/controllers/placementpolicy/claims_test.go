@@ -20,10 +20,12 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -141,7 +143,7 @@ func TestDesiredClaims(t *testing.T) {
 			want: []desiredClaim{{name: claimName(policyFor("app", "tenant-a"), 0), terms: regionTerms("eastus")}},
 		},
 		{
-			name: "budget caps at one claim across multiple unfulfilled selectors",
+			name: "every unfulfilled selector is wanted; the limits apply at issuing, not here",
 			outcomes: []selectorOutcome{
 				{
 					counts:          resolvedCounts{desired: 1, minimum: 1},
@@ -154,7 +156,10 @@ func TestDesiredClaims(t *testing.T) {
 					whenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim,
 				},
 			},
-			want: []desiredClaim{{name: claimName(policyFor("app", "tenant-a"), 0), terms: regionTerms("eastus")}},
+			want: []desiredClaim{
+				{name: claimName(policyFor("app", "tenant-a"), 0), terms: regionTerms("eastus")},
+				{name: claimName(policyFor("app", "tenant-a"), 1), terms: regionTerms("westus")},
+			},
 		},
 		{
 			name: "fulfilled selectors and KeepSearching selectors yield no claims",
@@ -195,12 +200,80 @@ func TestDesiredClaims(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := desiredClaims(policy, tc.outcomes)
+			got, _ := desiredClaims(policy, tc.outcomes, openClass(), "")
 			// The outcome field is a pointer back into tc.outcomes that carries no identity of its
-			// own to assert here; the name/terms selection is what this test pins. Its wiring is
-			// exercised by TestClaimReadyToRotate and the integration tests.
-			if diff := cmp.Diff(got, tc.want, cmp.AllowUnexported(desiredClaim{}), cmpopts.IgnoreFields(desiredClaim{}, "outcome")); diff != "" {
+			// own to assert here, and the class is the same open class for every case; the
+			// name/terms selection is what this test pins. Their wiring is exercised by
+			// TestClaimReadyToRotate, TestDesiredClaimsVocabulary, and the integration tests.
+			if diff := cmp.Diff(got, tc.want, cmp.AllowUnexported(desiredClaim{}), cmpopts.IgnoreFields(desiredClaim{}, "outcome", "class")); diff != "" {
 				t.Errorf("desiredClaims(%v) mismatch (-got, +want):\n%s", tc.outcomes, diff)
+			}
+		})
+	}
+}
+
+func TestClaimStillWanted(t *testing.T) {
+	terms := func(region string) []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm {
+		return []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{MatchLabels: map[string]string{regionLabel: region}}}
+	}
+	claimOf := func(region, class string) *kfplacementv1alpha1.ClusterClaim {
+		return &kfplacementv1alpha1.ClusterClaim{Spec: kfplacementv1alpha1.ClusterClaimSpec{ClusterSelectorTerms: terms(region), ClusterProviderClassName: class}}
+	}
+	standard := classWithVocabulary("standard", nil)
+	testCases := []struct {
+		name  string
+		claim *kfplacementv1alpha1.ClusterClaim
+		want  desiredClaim
+		kept  bool
+	}{
+		{name: "same terms and class", claim: claimOf("eastus", "standard"), want: desiredClaim{terms: terms("eastus"), class: standard}, kept: true},
+		{name: "terms changed", claim: claimOf("eastus", "standard"), want: desiredClaim{terms: terms("westus"), class: standard}, kept: false},
+		{name: "class changed", claim: claimOf("eastus", "legacy"), want: desiredClaim{terms: terms("eastus"), class: standard}, kept: false},
+		{name: "no class resolves: the stamp is not judged", claim: claimOf("eastus", "standard"), want: desiredClaim{terms: terms("eastus"), blocked: "no class"}, kept: true},
+		{name: "vocabulary narrowed under the claim: still kept", claim: claimOf("eastus", "standard"), want: desiredClaim{terms: terms("eastus"), class: standard, blocked: "outside the vocabulary"}, kept: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := claimStillWanted(tc.claim, tc.want); got != tc.kept {
+				t.Errorf("claimStillWanted(%v, %v) = %t, want %t", tc.claim.Spec, tc.want, got, tc.kept)
+			}
+		})
+	}
+}
+
+func TestApproveAutomatically(t *testing.T) {
+	classWithApproval := func(mode kfplacementv1alpha1.ClusterClaimApprovalMode) *kfplacementv1alpha1.ClusterProviderClass {
+		class := classWithVocabulary("auto", nil)
+		class.Spec.Approval = mode
+		return class
+	}
+	claimWith := func(conditions ...metav1.Condition) *kfplacementv1alpha1.ClusterClaim {
+		return &kfplacementv1alpha1.ClusterClaim{Status: kfplacementv1alpha1.ClusterClaimStatus{Conditions: conditions}}
+	}
+	denied := metav1.Condition{Type: kfplacementv1alpha1.ClusterClaimCondTypeApproved, Status: metav1.ConditionFalse, Reason: kfplacementv1alpha1.ClusterClaimApprovedCondReasonDenied}
+	testCases := []struct {
+		name        string
+		claim       *kfplacementv1alpha1.ClusterClaim
+		class       *kfplacementv1alpha1.ClusterProviderClass
+		wantChanged bool
+		wantReason  string
+	}{
+		{name: "automatic class stamps the approval", claim: claimWith(), class: classWithApproval(kfplacementv1alpha1.ClusterClaimApprovalModeAutomatic), wantChanged: true, wantReason: kfplacementv1alpha1.ClusterClaimApprovedCondReasonAutomaticallyApproved},
+		{name: "manual class leaves it to an approver", claim: claimWith(), class: classWithApproval(kfplacementv1alpha1.ClusterClaimApprovalModeManual), wantChanged: false},
+		{name: "no class resolves", claim: claimWith(), class: nil, wantChanged: false},
+		{name: "an existing entry is never overwritten", claim: claimWith(denied), class: classWithApproval(kfplacementv1alpha1.ClusterClaimApprovalModeAutomatic), wantChanged: false, wantReason: kfplacementv1alpha1.ClusterClaimApprovedCondReasonDenied},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := approveAutomatically(tc.claim, tc.class, time.Now()); got != tc.wantChanged {
+				t.Errorf("approveAutomatically() = %t, want %t", got, tc.wantChanged)
+			}
+			gotReason := ""
+			if cond := meta.FindStatusCondition(tc.claim.Status.Conditions, kfplacementv1alpha1.ClusterClaimCondTypeApproved); cond != nil {
+				gotReason = cond.Reason
+			}
+			if gotReason != tc.wantReason {
+				t.Errorf("approveAutomatically() left Approved reason %q, want %q", gotReason, tc.wantReason)
 			}
 		})
 	}
@@ -371,8 +444,11 @@ func TestReconcileClaimsNameOccupied(t *testing.T) {
 				},
 			})
 
-			r := NewReconciler(cache, apiServer, snapshotStub{})
-			outstanding, err := r.reconcileClaims(context.Background(), policy, outcomes, metav1.Time{})
+			r := NewReconciler(cache, apiServer, snapshotStub{}, nil)
+			class := &kfplacementv1alpha1.ClusterProviderClass{ObjectMeta: metav1.ObjectMeta{Name: "standard"}}
+			wanted := []desiredClaim{{name: claimName(policy, 0), terms: terms, class: class, outcome: &outcomes[0]}}
+			rep, err := r.reconcileClaims(context.Background(), claimRound{policy: policy, wanted: wanted, limit: 1, now: time.Now()})
+			outstanding := rep.outstanding
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("reconcileClaims() = %v, want error %t", err, tc.wantErr)
 			}
@@ -427,12 +503,22 @@ func TestReconcileClaimsCountsClaimsTheCacheHasYetToShow(t *testing.T) {
 		{counts: resolvedCounts{desired: 1, minimum: 1}, terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{MatchLabels: map[string]string{regionLabel: "westus"}}}, whenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim},
 	}
 
-	r := NewReconciler(cache, apiServer, snapshotStub{})
-	outstanding, err := r.reconcileClaims(context.Background(), policy, outcomes, metav1.Time{})
+	r := NewReconciler(cache, apiServer, snapshotStub{}, nil)
+	class := &kfplacementv1alpha1.ClusterProviderClass{
+		ObjectMeta: metav1.ObjectMeta{Name: "standard"},
+		Spec: kfplacementv1alpha1.ClusterProviderClassSpec{
+			SelectorVocabulary: &kfplacementv1alpha1.SelectorVocabulary{LabelKeys: []kfplacementv1alpha1.LabelKeyRule{{Key: regionLabel}}},
+		},
+	}
+	wanted, note := desiredClaims(policy, outcomes, class, "")
+	if len(wanted) != 1 || wanted[0].blocked != "" {
+		t.Fatalf("desiredClaims() = %+v (note %q), want selector 1's claim issuable", wanted, note)
+	}
+	rep, err := r.reconcileClaims(context.Background(), claimRound{policy: policy, wanted: wanted, limit: 1, now: time.Now()})
 	if err != nil {
 		t.Fatalf("reconcileClaims() = %v, want no error", err)
 	}
-	if outstanding != 1 {
+	if outstanding := rep.outstanding; outstanding != 1 {
 		t.Errorf("reconcileClaims() = %d outstanding, want the 1 claim the cache has yet to show", outstanding)
 	}
 	if err := apiServer.Get(context.Background(), client.ObjectKey{Name: claimName(policy, 1)}, &kfplacementv1alpha1.ClusterClaim{}); !apierrors.IsNotFound(err) {
@@ -456,7 +542,7 @@ func TestCountUnseenClaims(t *testing.T) {
 	unseen := claim("pp-1", "unseen", own)
 	foreign := claim("other-0", "foreign", policyReference(policyFor("other", "default")))
 	apiServer := fake.NewClientBuilder().WithScheme(scheme).WithObjects(seen, unseen, foreign).Build()
-	r := NewReconciler(apiServer, apiServer, snapshotStub{})
+	r := NewReconciler(apiServer, apiServer, snapshotStub{}, nil)
 
 	// The cache shows the seen claim and a predecessor of the unseen one under its name.
 	cached := []kfplacementv1alpha1.ClusterClaim{*seen, *claim("pp-1", "predecessor", own)}

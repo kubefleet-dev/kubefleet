@@ -44,6 +44,15 @@ spec:
           spec:
             description: The specification of the cluster placement policy.
             properties:
+              clusterProviderClassName:
+                description: |-
+                  The name of the ClusterProviderClass whose provider fulfills the cluster claims this placement
+                  policy issues. When unset, the fleet's default class (the one annotated
+                  placement.kubefleet.dev/is-default-class) is used; when there is none, the policy issues no
+                  cluster claims.
+                maxLength: 253
+                minLength: 1
+                type: string
               clusterSelectors:
                 description: |-
                   A list of cluster selectors that specifies the target clusters where KubeFleet should place
@@ -250,6 +259,20 @@ spec:
                 maxItems: 10
                 minItems: 1
                 type: array
+              maxConcurrentClusterClaims:
+                description: |-
+                  The number of cluster claims this placement policy may have outstanding at once, in any
+                  state: a claim that failed, expired, or was denied is kept as the record and occupies a
+                  slot until it is withdrawn, as does a claim still waiting for approval. A claim serves one
+                  cluster selector, so this only matters to a policy with several selectors. The hub agent's
+                  fleet-wide limit caps it; that limit counts approved claims and claims of classes that
+                  approve automatically across all policies, so approving several outstanding claims of a
+                  manually approved class at once can exceed it -- the provider's own concurrency limit is
+                  the backstop. Defaults to 1.
+                format: int32
+                maximum: 10
+                minimum: 1
+                type: integer
               resourceRevisionHistoryLimit:
                 default: 3
                 description: |-

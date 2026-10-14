@@ -1,0 +1,24 @@
+# The permissions the cluster claim fulfiller framework (pkg/v1/fulfiller) needs on the hub
+# cluster for any provider built on it. The claims' update verb is for metadata only: the
+# provider's finalizer and the annotation that records the cluster name it chose. The events rule
+# is needed only when the provider runs with an event recorder.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubefleet-fulfiller-framework
+rules:
+- apiGroups: ["placement.kubefleet.dev"]
+  resources: ["clusterclaims"]
+  verbs: ["get", "list", "watch", "update"]
+- apiGroups: ["placement.kubefleet.dev"]
+  resources: ["clusterclaims/status"]
+  verbs: ["update"]
+- apiGroups: ["placement.kubefleet.dev"]
+  resources: ["clusterproviderclasses"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["cluster.kubernetes-fleet.io"]
+  resources: ["memberclusters"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["", "events.k8s.io"]
+  resources: ["events"]
+  verbs: ["create", "patch"]

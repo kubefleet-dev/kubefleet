@@ -79,7 +79,7 @@ func TestReconcilePreservesClaimCountOnFailedRound(t *testing.T) {
 		}).
 		Build()
 
-	r := NewReconciler(c, c, snapshotStub{})
+	r := NewReconciler(c, c, snapshotStub{}, nil)
 	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "pp"}})
 	if !errors.Is(err, listErr) {
 		t.Fatalf("Reconcile() = %v, want the claim list error %v so the round is retried", err, listErr)
@@ -104,7 +104,7 @@ func TestReconcileIgnoresDeletedPolicy(t *testing.T) {
 		t.Fatalf("AddToScheme() = %v, want no error", err)
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-	r := NewReconciler(c, c, snapshotStub{})
+	r := NewReconciler(c, c, snapshotStub{}, nil)
 
 	for _, name := range []types.NamespacedName{{Namespace: "default", Name: "gone"}, {Name: "gone"}} {
 		res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: name})
@@ -134,7 +134,7 @@ func TestReconcileBacksOffWhileRoleIsHeld(t *testing.T) {
 		WithObjects(policy, cluster).
 		WithStatusSubresource(policy).
 		Build()
-	r := NewReconciler(c, c, snapshotStub{})
+	r := NewReconciler(c, c, snapshotStub{}, nil)
 	r.eligibility = allEligible{}
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "pp"}}
 
@@ -189,7 +189,7 @@ func TestReconcileReleasesRoleOnInvalidSelectors(t *testing.T) {
 		}},
 	}}
 	c := withIndexes(fake.NewClientBuilder().WithScheme(scheme)).WithObjects(policy).WithStatusSubresource(policy).Build()
-	r := NewReconciler(c, c, snapshotStub{})
+	r := NewReconciler(c, c, snapshotStub{}, nil)
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "pp"}}
 
 	if _, err := r.Reconcile(context.Background(), req); err != nil {

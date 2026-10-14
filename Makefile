@@ -6,6 +6,7 @@ endif
 HUB_AGENT_IMAGE_VERSION ?= $(TAG)
 MEMBER_AGENT_IMAGE_VERSION ?= $(TAG)
 REFRESH_TOKEN_IMAGE_VERSION ?= $(TAG)
+CAPI_FULFILLER_IMAGE_VERSION ?= $(TAG)
 
 # Optional additional tag applied to every image within the same `docker buildx
 # build` invocation. A stable release sets this to the short, v-less version
@@ -16,6 +17,7 @@ IMAGE_EXTRA_TAG ?=
 HUB_AGENT_IMAGE_NAME ?= hub-agent
 MEMBER_AGENT_IMAGE_NAME ?= member-agent
 REFRESH_TOKEN_IMAGE_NAME := refresh-token
+CAPI_FULFILLER_IMAGE_NAME ?= capi-fulfiller
 
 TARGET_OS ?= linux
 TARGET_ARCH ?= amd64
@@ -231,6 +233,7 @@ build: generate fmt vet ## Build agent binaries
 	go build -o bin/hubagent cmd/hubagent/main.go
 	go build -o bin/memberagent cmd/memberagent/main.go
 	go build -o bin/kubectl-fleet ./tools/fleet/
+	go build -o bin/capi-fulfiller cmd/capi-fulfiller/main.go
 
 .PHONY: run-hubagent
 run-hubagent: manifests generate fmt vet ## Run hub-agent from your host
@@ -398,6 +401,17 @@ docker-build-member-agent: docker-buildx-builder ## Build member-agent image
 		--pull \
 		--tag $(REGISTRY)/$(MEMBER_AGENT_IMAGE_NAME):$(MEMBER_AGENT_IMAGE_VERSION) \
 		$(if $(IMAGE_EXTRA_TAG),--tag $(REGISTRY)/$(MEMBER_AGENT_IMAGE_NAME):$(IMAGE_EXTRA_TAG)) \
+		--progress=$(BUILDKIT_PROGRESS_TYPE) .
+
+.PHONY: docker-build-capi-fulfiller
+docker-build-capi-fulfiller: docker-buildx-builder ## Build capi-fulfiller image
+	docker buildx build \
+		--file docker/$(CAPI_FULFILLER_IMAGE_NAME).Dockerfile \
+		--output=$(OUTPUT_TYPE) \
+		--platform=$(PLATFORMS) \
+		--pull \
+		--tag $(REGISTRY)/$(CAPI_FULFILLER_IMAGE_NAME):$(CAPI_FULFILLER_IMAGE_VERSION) \
+		$(if $(IMAGE_EXTRA_TAG),--tag $(REGISTRY)/$(CAPI_FULFILLER_IMAGE_NAME):$(IMAGE_EXTRA_TAG)) \
 		--progress=$(BUILDKIT_PROGRESS_TYPE) .
 
 .PHONY: docker-build-refresh-token
