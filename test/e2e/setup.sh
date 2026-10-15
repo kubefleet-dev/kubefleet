@@ -153,6 +153,7 @@ helm install hub-agent ../../charts/hub-agent/ \
     --set-file additionalConfigData.admissionPolicyManagerCfg=admission_policy_manager_cfg.yaml \
     --set admissionPolicyManagerConfigName=admissionPolicyManagerCfg \
     --set enableAdmissionPolicyManager=true \
+    --set enablePlacementPolicyAPIs=true \
     --set resourceSnapshotCreationMinimumInterval=$RESOURCE_SNAPSHOT_CREATION_MINIMUM_INTERVAL \
     --set resourceChangesCollectionDuration=$RESOURCE_CHANGES_COLLECTION_DURATION \
     --wait \
