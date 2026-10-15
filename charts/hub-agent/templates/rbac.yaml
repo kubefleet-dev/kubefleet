@@ -148,6 +148,38 @@ rules:
     verbs: ["get", "list", "create", "update", "patch", "delete"]
   {{- end }}
 
+  # The experimental FEP-0001 placement policy APIs.
+  {{- if .Values.enablePlacementPolicyAPIs }}
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources: ["placementpolicies", "clusterplacementpolicies"]
+    verbs: ["get", "list", "watch", "update"]
+  # patch: the binding manager role lock checks freshness with a dry-run status patch.
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources: ["placementpolicies/status", "clusterplacementpolicies/status"]
+    verbs: ["update", "patch"]
+  # Bindings and snapshots set blockOwnerDeletion on their policy, which the
+  # OwnerReferencesPermissionEnforcement admission plugin gates on the finalizers subresource.
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources: ["placementpolicies/finalizers", "clusterplacementpolicies/finalizers"]
+    verbs: ["update"]
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources: ["clusterclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources: ["clusterclaims/status"]
+    verbs: ["update"]
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources: ["placementbindings", "clusterplacementbindings"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources: ["placementresourcesnapshots", "clusterplacementresourcesnapshots"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  # The hub field indexes start a Work informer.
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources: ["works"]
+    verbs: ["get", "list", "watch"]
+  {{- end }}
+
   # Leader election. Split into two rules so that only the hub-agent's own
   # election lease can be mutated; a compromised hub-agent cannot hijack
   # another controller's leader election by racing to update its lease.
