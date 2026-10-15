@@ -150,9 +150,10 @@ rules:
 
   # The experimental FEP-0001 placement policy APIs.
   {{- if .Values.enablePlacementPolicyAPIs }}
+  # create/delete: annotation-based placement generates and withdraws policies.
   - apiGroups: ["placement.kubefleet.dev"]
     resources: ["placementpolicies", "clusterplacementpolicies"]
-    verbs: ["get", "list", "watch", "update"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
   # patch: the binding manager role lock checks freshness with a dry-run status patch.
   - apiGroups: ["placement.kubefleet.dev"]
     resources: ["placementpolicies/status", "clusterplacementpolicies/status"]
