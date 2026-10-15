@@ -46,7 +46,7 @@ jobs:
               
       - name: Set up Ginkgo CLI
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@v2.23.4
+          go install github.com/onsi/ginkgo/v2/ginkgo
       
       - name: Prepare necessary environment variables
         run: |
@@ -122,7 +122,7 @@ jobs:
       
       - name: Install Ginkgo CLI
         run: |
-          go install github.com/onsi/ginkgo/v2/ginkgo@v2.23.4
+          go install github.com/onsi/ginkgo/v2/ginkgo
       
       - name: Install Kind
         # Before updating the kind version to use, verify that the current kind image
