@@ -181,7 +181,8 @@ func (f failingSnapshotter) SnapshotResourcesIfNoSnapshotExists(context.Context,
 // TestReconcileSchedulesWithoutSnapshot pins that scheduling does not wait on resources: a round
 // whose snapshot fails still unbinds a cluster that has left and writes the Scheduled status, and
 // only then reports the snapshot error for a retry. A transient failure leaves the Synchronized
-// condition as it was; a selected resource that is gone reports it false.
+// and ResourceCollected conditions as they were; a selected resource that is gone reports both
+// false.
 func TestReconcileSchedulesWithoutSnapshot(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := kfplacementv1alpha1.AddToScheme(scheme); err != nil {
@@ -191,21 +192,24 @@ func TestReconcileSchedulesWithoutSnapshot(t *testing.T) {
 		t.Fatalf("AddToScheme() = %v, want no error", err)
 	}
 	testCases := []struct {
-		name         string
-		snapshotErr  error
-		wantSyncCond metav1.ConditionStatus
+		name              string
+		snapshotErr       error
+		wantSyncCond      metav1.ConditionStatus
+		wantCollectedCond metav1.ConditionStatus
 	}{
 		{
-			name:         "transient failure",
-			snapshotErr:  errors.New("the snapshot manager is unwell"),
-			wantSyncCond: metav1.ConditionTrue,
+			name:              "transient failure",
+			snapshotErr:       errors.New("the snapshot manager is unwell"),
+			wantSyncCond:      metav1.ConditionTrue,
+			wantCollectedCond: metav1.ConditionTrue,
 		},
 		{
 			name: "selected resource gone",
 			// Wrapped as the snapshot manager wraps a failed read of a resource selected by name.
 			snapshotErr: kferrors.Wraps(kferrors.NewAPIServerError(apierrors.NewNotFound(schema.GroupResource{Resource: "configmaps"}, "app"), "failed to get selected resource", true),
 				"failed to retrieve selected resources (name-based selector)"),
-			wantSyncCond: metav1.ConditionFalse,
+			wantSyncCond:      metav1.ConditionFalse,
+			wantCollectedCond: metav1.ConditionFalse,
 		},
 	}
 	for _, tc := range testCases {
@@ -216,6 +220,11 @@ func TestReconcileSchedulesWithoutSnapshot(t *testing.T) {
 				Type:               kfplacementv1alpha1.PlacementPolicyCondTypeSynchronized,
 				Status:             metav1.ConditionTrue,
 				Reason:             kfplacementv1alpha1.PlacementPolicySynchronizedCondReasonAllClustersSynchronized,
+				ObservedGeneration: policy.Generation,
+			}, {
+				Type:               kfplacementv1alpha1.PlacementPolicyCondTypeResourceCollected,
+				Status:             metav1.ConditionTrue,
+				Reason:             kfplacementv1alpha1.PlacementPolicyResourceCollectedCondReasonAllResourcesCollected,
 				ObservedGeneration: policy.Generation,
 			}}
 			gone := &kfplacementv1alpha1.PlacementBinding{
@@ -254,6 +263,13 @@ func TestReconcileSchedulesWithoutSnapshot(t *testing.T) {
 			}
 			if cond := meta.FindStatusCondition(fetched.Status.Conditions, kfplacementv1alpha1.PlacementPolicyCondTypeSynchronized); cond == nil || cond.Status != tc.wantSyncCond {
 				t.Errorf("Reconcile() left Synchronized condition %+v, want status %s", cond, tc.wantSyncCond)
+			}
+			var gotCollected metav1.ConditionStatus
+			if cond := meta.FindStatusCondition(fetched.Status.Conditions, kfplacementv1alpha1.PlacementPolicyCondTypeResourceCollected); cond != nil {
+				gotCollected = cond.Status
+			}
+			if gotCollected != tc.wantCollectedCond {
+				t.Errorf("Reconcile() left ResourceCollected condition status %q, want %q", gotCollected, tc.wantCollectedCond)
 			}
 		})
 	}

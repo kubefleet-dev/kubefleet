@@ -192,6 +192,7 @@ var _ = Describe("placement binding lifecycle", Ordered, func() {
 			g.Expect(status.LatestResourceRevisionName).Should(HaveValue(Equal(revision)))
 			g.Expect(status.SynchronizedClusters).Should(HaveValue(BeZero()))
 			g.Expect(meta.IsStatusConditionFalse(status.Conditions, kfplacementv1alpha1.PlacementPolicyCondTypeSynchronized)).Should(BeTrue())
+			g.Expect(meta.IsStatusConditionTrue(status.Conditions, kfplacementv1alpha1.PlacementPolicyCondTypeResourceCollected)).Should(BeTrue())
 		}, eventuallyTimeout, pollInterval).Should(Succeed())
 
 		By("the bindings report the revision synchronized and available")

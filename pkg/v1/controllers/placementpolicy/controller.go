@@ -199,7 +199,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	}
 	if snapshotErr == nil {
 		latestRevision = snapshots[0].GetName()
-		summary := summarizeResourceStatus(latestRevision, current, desiredBindings, existingBindings)
+		// The summary reads the bindings as listed, before reconcileBindings updates them, which is why
+		// it skips a binding whose sync strategy is still the old one: its conditions hold for its
+		// current generation but describe the old strategy.
+		summary := summarizeResourceStatus(latestRevision, current, policy.GetSpec().SyncStrategy, desiredBindings, existingBindings)
 		resources = &summary
 	}
 	roleHeld, bindingErr := r.reconcileBindings(ctx, policy, outcomes, desiredBindings, existingBindings, latestRevision)
@@ -251,8 +254,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 // nothing has changed. A nil outcome list clears the cluster counts (used when the selectors
 // cannot be evaluated at all); a nil activeClaims leaves the current claim count untouched, and a
 // nil resources leaves the resource revision, the synchronization and availability counts, and
-// their conditions untouched, except that a non-nil selectionErr reports the Synchronized condition
-// false.
+// their conditions untouched, except that a non-nil selectionErr reports the ResourceCollected and
+// Synchronized conditions false.
 func (r *Reconciler) updateStatus(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, outcomes []selectorOutcome, activeClaims *int32, scheduledCond metav1.Condition, resources *resourceStatus, selectionErr error) error {
 	status := policy.GetStatus()
 	observedStatus := status.DeepCopy()
@@ -273,10 +276,12 @@ func (r *Reconciler) updateStatus(ctx context.Context, policy kfplacementv1alpha
 		status.LatestResourceRevisionName = &resources.latestRevision
 		status.SynchronizedClusters = &resources.synchronized
 		status.ResourcesAvailableClusters = &resources.available
+		meta.SetStatusCondition(&status.Conditions, resourceCollectedCondition(policy.GetGeneration(), nil))
 		meta.SetStatusCondition(&status.Conditions, resources.synchronizedCondition(policy.GetGeneration()))
 		meta.SetStatusCondition(&status.Conditions, resources.availableCondition(policy.GetGeneration()))
 	}
 	if selectionErr != nil {
+		meta.SetStatusCondition(&status.Conditions, resourceCollectedCondition(policy.GetGeneration(), selectionErr))
 		meta.SetStatusCondition(&status.Conditions, selectionFailedCondition(policy.GetGeneration(), selectionErr))
 	}
 
