@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
@@ -61,6 +62,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/resourceeligibility"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/annotationplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/placementpolicy"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/managers/placementresourcesnapshot"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/fieldindexers"
@@ -207,6 +209,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	var clusterResourcePlacementControllerV1Beta1 controller.Controller
 	var resourcePlacementController controller.Controller
 	var placementPolicies *placementpolicy.Reconciler
+	var annotatedSources *annotationplacement.SourceQueue
 
 	if opts.FeatureFlags.EnableV1Beta1APIs {
 		for _, gvk := range v1Beta1RequiredGVKs {
@@ -342,6 +345,25 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			}
 			if err := placementPolicies.SetupWithManagerForClusterPlacementPolicy(mgr); err != nil {
 				klog.ErrorS(err, "Unable to set up the cluster placement policy controller")
+				return err
+			}
+			// Annotation-based placement generates the policies above; the resource watcher feeds it.
+			annotatedSources = &annotationplacement.SourceQueue{}
+			enableWorkload := opts.WebhookAndAdmissionPolicyOpts.EnableWorkload
+			if err := (&annotationplacement.Reconciler{
+				Client:     mgr.GetClient(),
+				APIReader:  mgr.GetAPIReader(),
+				RESTMapper: mgr.GetRESTMapper(),
+				Recorder:   mgr.GetEventRecorder("annotation-placement-controller"),
+				// The same filter the resource watcher applies to its events.
+				ShouldPlace: func(source *unstructured.Unstructured) (bool, error) {
+					if !customResourceEligibilityChecker.AllowsNamespace(annotationplacement.SourceNamespace(source)) {
+						return false, nil
+					}
+					return controller.ShouldPropagateObj(dynamicInformerManager, source, enableWorkload)
+				},
+			}).SetupWithManager(mgr, annotatedSources); err != nil {
+				klog.ErrorS(err, "Unable to set up the annotation placement controller")
 				return err
 			}
 		}
@@ -593,6 +615,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		ClusterResourcePlacementControllerV1Beta1: clusterResourcePlacementControllerV1Beta1,
 		ResourcePlacementController:               resourcePlacementController,
 		ResourceChangeController:                  resourceChangeController,
+		AnnotatedSources:                          annotatedSources,
 		InformerManager:                           dynamicInformerManager,
 		ResourceEligibilityChecker:                customResourceEligibilityChecker,
 		ConcurrentPlacementWorker:                 int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxConcurrentClusterPlacement) / 10)),
