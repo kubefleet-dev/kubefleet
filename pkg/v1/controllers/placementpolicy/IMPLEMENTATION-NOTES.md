@@ -72,7 +72,8 @@ package demonstrating the current behavior.
   An unschedulable bound cluster does not count toward the selector, so the
   gap is filled from the schedulable candidates; when the cluster returns the
   policy is briefly overpicked (`scheduledClusters` above `desiredClusters`), which the
-  count then trims: the newest bindings go first (creation timestamp, to the
+  count then trims: the bindings of clusters that no longer satisfy the
+  selector's terms go first, then the newest ones (creation timestamp, to the
   second, then name), so a scale-down undoes the latest picks and a cluster
   back from an outage, being the older binding, wins over its replacement.
   The same trim also absorbs a duplicate pick made from a stale binding list

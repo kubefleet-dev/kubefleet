@@ -226,8 +226,8 @@ func (e eligibleExcept) IsEligible(cluster *clusterv1beta1.MemberCluster) (bool,
 
 // TestEvaluateSelectorsKeepsClustersSelectedBefore pins that a scheduling decision sticks: a
 // cluster whose binding records a selector's terms stays selected by it, counted when it is
-// schedulable and sticky when it is not, even though it no longer matches; a binding made for
-// other terms, or for a cluster that has left, keeps nothing.
+// schedulable and sticky when it is not, even though it no longer matches, and is marked stale;
+// a binding made for other terms, or for a cluster that has left, keeps nothing.
 func TestEvaluateSelectorsKeepsClustersSelectedBefore(t *testing.T) {
 	eastTerms := []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{MatchLabels: map[string]string{regionLabel: "east"}}}
 	oldTerms := []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{MatchLabels: map[string]string{regionLabel: "central"}}}
@@ -262,6 +262,9 @@ func TestEvaluateSelectorsKeepsClustersSelectedBefore(t *testing.T) {
 	}
 	if diff := cmp.Diff([]string{"relabeled-dark"}, outcomes[0].sticky); diff != "" {
 		t.Errorf("evaluateSelectors() sticky mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"relabeled", "relabeled-dark"}, outcomes[0].stale); diff != "" {
+		t.Errorf("evaluateSelectors() stale mismatch (-want +got):\n%s", diff)
 	}
 }
 

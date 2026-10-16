@@ -77,8 +77,9 @@ func bindingName(policy kfplacementv1alpha1.PlacementPolicyAccessor, clusterName
 // Preferences are sticky, per the FEP: a bound cluster keeps its place ahead of any better
 // ranked newcomer, and ranking is never re-applied to bound clusters, since re-ranking them on
 // live metrics would move workloads around as the metrics drift. When a selector's count is
-// lowered, the newest bindings go first, oldest and name breaking ties, so a scale-down undoes
-// the latest picks and nothing else.
+// lowered, the bindings of schedulable clusters that no longer satisfy its terms go first, then
+// the newest ones, oldest and name breaking ties, so a scale-down undoes the latest picks and
+// nothing else.
 //
 // Stickiness survives an outage: a bound cluster that still matches a selector's terms keeps
 // its binding even while it is not schedulable (its agent has gone dark, or it carries a taint
@@ -111,6 +112,7 @@ func chooseClusters(outcomes []selectorOutcome, bound map[string]metav1.Time, cl
 	for i := range outcomes {
 		o := &outcomes[i]
 		schedulable := sets.New(o.matched...)
+		stale := sets.New(o.stale...)
 
 		var kept []string
 		for _, name := range slices.Concat(o.matched, o.sticky) {
@@ -118,7 +120,9 @@ func chooseClusters(outcomes []selectorOutcome, bound map[string]metav1.Time, cl
 				kept = append(kept, name)
 			}
 		}
-		slices.SortFunc(kept, seniority)
+		slices.SortFunc(kept, func(a, b string) int {
+			return cmp.Or(cmp.Compare(btoi(stale.Has(a)), btoi(stale.Has(b))), seniority(a, b))
+		})
 
 		chosen := sets.New[string]()
 		for _, name := range kept {

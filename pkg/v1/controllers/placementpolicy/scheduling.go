@@ -71,6 +71,10 @@ type selectorOutcome struct {
 	// evaluated against the selector terms; they are among the sticky ones, and the Scheduled
 	// condition names them, since nothing else tells the user why they are not counted.
 	unevaluable []string
+	// stale holds, sorted, the names of the clusters, matched or sticky, that the selector keeps
+	// only because their binding records its terms: they no longer satisfy them. A scale-down
+	// trims them first. See chooseClusters.
+	stale []string
 	// chosen holds the names of the clusters counted as selected for this selector, sorted;
 	// chooseClusters fills it in.
 	chosen []string
@@ -166,11 +170,14 @@ func evaluateSelectors(spec *kfplacementv1alpha1.PlacementPolicySpec, clusters [
 
 		matched, unevaluable := matchingClusterNames(schedulable, selector.Terms)
 		alsoMatched, alsoUnevaluable := matchingClusterNames(unschedulable, selector.Terms)
-		matched = append(matched, selectedBefore(schedulable, selector.Terms, recorded, matched, unevaluable)...)
+		staleSchedulable := selectedBefore(schedulable, selector.Terms, recorded, matched, unevaluable)
+		staleUnschedulable := selectedBefore(unschedulable, selector.Terms, recorded, alsoMatched, alsoUnevaluable)
+		matched = append(matched, staleSchedulable...)
 		slices.Sort(matched)
-		sticky := slices.Concat(alsoMatched, unevaluable, alsoUnevaluable,
-			selectedBefore(unschedulable, selector.Terms, recorded, alsoMatched, alsoUnevaluable))
+		sticky := slices.Concat(alsoMatched, unevaluable, alsoUnevaluable, staleUnschedulable)
 		slices.Sort(sticky)
+		stale := slices.Concat(staleSchedulable, staleUnschedulable)
+		slices.Sort(stale)
 		unevaluableHere := slices.Concat(unevaluable, alsoUnevaluable)
 		slices.Sort(unevaluableHere)
 		outcomes = append(outcomes, selectorOutcome{
@@ -178,6 +185,7 @@ func evaluateSelectors(spec *kfplacementv1alpha1.PlacementPolicySpec, clusters [
 			matched:         matched,
 			sticky:          sticky,
 			unevaluable:     unevaluableHere,
+			stale:           stale,
 			terms:           selector.Terms,
 			whenUnfulfilled: selector.WhenUnfulfilled,
 		})

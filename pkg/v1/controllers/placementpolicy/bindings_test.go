@@ -146,6 +146,26 @@ func TestChooseClusters(t *testing.T) {
 			wantChosen:  [][]string{{"older"}},
 		},
 		{
+			name: "a lowered count drops a cluster that no longer matches before the newer matching ones",
+			outcomes: []selectorOutcome{
+				{counts: resolvedCounts{desired: 3}, matched: []string{"a", "b", "c", "d", "drifted"}, stale: []string{"drifted"}},
+			},
+			bound:       boundSince(map[string]int{"drifted": 50, "a": 40, "b": 30, "c": 20, "d": 10}),
+			clusters:    uniformClusters("a", "b", "c", "d", "drifted"),
+			wantDesired: map[string][]int{"a": {0}, "b": {0}, "c": {0}},
+			wantChosen:  [][]string{{"a", "b", "c"}},
+		},
+		{
+			name: "a cluster that no longer matches and went unschedulable sticks but does not count",
+			outcomes: []selectorOutcome{
+				{counts: resolvedCounts{desired: 1}, matched: []string{"a", "b"}, sticky: []string{"drifted-dark"}, stale: []string{"drifted-dark"}},
+			},
+			bound:       boundSince(map[string]int{"drifted-dark": 50, "a": 40, "b": 30}),
+			clusters:    uniformClusters("a", "b", "drifted-dark"),
+			wantDesired: map[string][]int{"a": {0}, "drifted-dark": {0}},
+			wantChosen:  [][]string{{"a"}},
+		},
+		{
 			name: "a cluster back from an outage keeps its binding and the replacement is trimmed",
 			outcomes: []selectorOutcome{
 				{counts: resolvedCounts{desired: 2}, matched: []string{"back", "kept", "replacement"}},
