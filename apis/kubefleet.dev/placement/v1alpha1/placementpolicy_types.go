@@ -121,7 +121,7 @@ type PlacementPolicySpec struct {
 	// failure recovery purposes; one can inspect them to see the past state of the selected resources,
 	// or roll back to a previous revision if the latest revision is not working as expected.
 	//
-	// It is also possible to manually request a new resource revision to be created.
+	// The limit is a soft constraint; KubeFleet may retain more revisions than the specified limit as necessary.
 	//
 	// The default value is 3.
 	//
@@ -565,7 +565,10 @@ type PlacementPolicyStatus struct {
 	// The number of clusters that have resources in the available state, as verified by KubeFleet's availability check.
 	ResourcesAvailableClusters *int32 `json:"resourcesAvailableClusters,omitempty"`
 
-	// The number of active cluster claims that have been submitted by this placement.
+	// The number of active cluster claims that have been submitted by this placement. A claim
+	// that is being withdrawn still counts as active until KubeFleet observes it gone --
+	// whether a provisioner finalizer holds it or the withdrawal simply has not been confirmed
+	// yet -- as it continues to occupy the placement's claim budget.
 	ActiveClusterClaims *int32 `json:"activeClusterClaims,omitempty"`
 
 	// The binding manager that is currently managing the bindings for this placement.

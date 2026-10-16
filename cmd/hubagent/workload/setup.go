@@ -58,6 +58,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/resourceeligibility"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
 )
 
@@ -128,28 +129,37 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	}
 
 	discoverClient := discovery.NewDiscoveryClientForConfigOrDie(config)
-	// AllowedPropagatingAPIs and SkippedPropagatingAPIs are mutually exclusive.
-	// If none of them are set, the resourceConfig by default stores a list of skipped propagation APIs.
-	resourceConfig := utils.NewResourceConfig(opts.PlacementMgmtOpts.AllowedPropagatingAPIs != "")
-	if err = resourceConfig.Parse(opts.PlacementMgmtOpts.AllowedPropagatingAPIs); err != nil {
-		// The program will never go here because the parameters have been checked.
-		return err
-	}
-	if err = resourceConfig.Parse(opts.PlacementMgmtOpts.SkippedPropagatingAPIs); err != nil {
-		// The program will never go here because the parameters have been checked
-		return err
-	}
 
-	// setup namespaces we skip propagation
-	skippedNamespaces := make(map[string]bool)
-	skippedNamespaces["default"] = true
-	optionalSkipNS := strings.Split(opts.PlacementMgmtOpts.SkippedPropagatingNamespaces, ";")
-	for _, ns := range optionalSkipNS {
-		if len(ns) > 0 {
-			klog.InfoS("user specified a namespace to skip", "namespace", ns)
-			skippedNamespaces[ns] = true
+	customResourceEligibilityChecker := resourceeligibility.New(mgr.GetRESTMapper(), nil)
+	if opts.PlacementMgmtOpts.AllowedPropagatingAPIs == "" {
+		// Set up a deny list for placement eligible GVKs.
+		gvks, err := resourceeligibility.ParseGVKs(opts.PlacementMgmtOpts.SkippedPropagatingAPIs)
+		if err != nil {
+			// Normally this branch would never run as the input has been validated beforehand.
+			return err
+		}
+		if err := customResourceEligibilityChecker.SetGVKCheckList(resourceeligibility.GVKEligibilityModeDenyList, gvks); err != nil {
+			return err
+		}
+	} else {
+		// Set up an allow list for placement eligible GVKs.
+		gvks, err := resourceeligibility.ParseGVKs(opts.PlacementMgmtOpts.AllowedPropagatingAPIs)
+		if err != nil {
+			// Normally this branch would never run as the input has been validated beforehand.
+			return err
+		}
+		if err := customResourceEligibilityChecker.SetGVKCheckList(resourceeligibility.GVKEligibilityModeAllowList, gvks); err != nil {
+			return err
 		}
 	}
+
+	// Set up a namespace deny list for namespaces.
+	userDefinedSkippedNSNames := strings.Split(opts.PlacementMgmtOpts.SkippedPropagatingNamespaces, ";")
+	customResourceEligibilityChecker.SetNamespaceCheckList(resourceeligibility.NamespaceEligibilityModeDenyList, userDefinedSkippedNSNames, nil)
+
+	// Build the composite resource eligibility checker for v0 APIs.
+	defaultResourceEligibilityCheckerForV0APIs := resourceeligibility.DefaultForV0APIs(mgr.GetRESTMapper())
+	customResourceEligibilityChecker.Wraps(defaultResourceEligibilityCheckerForV0APIs)
 
 	// the manager for all the dynamically created informers
 	dynamicInformerManager := informer.NewInformerManager(dynamicClient, opts.CtrlMgrOpts.ResyncPeriod.Duration, ctx.Done())
@@ -158,11 +168,10 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 
 	// Set up  a custom controller to reconcile placement objects
 	resourceSelectorResolver := controller.ResourceSelectorResolver{
-		RestMapper:        mgr.GetRESTMapper(),
-		InformerManager:   dynamicInformerManager,
-		ResourceConfig:    resourceConfig,
-		SkippedNamespaces: skippedNamespaces,
-		EnableWorkload:    opts.WebhookAndAdmissionPolicyOpts.EnableWorkload,
+		RestMapper:                 mgr.GetRESTMapper(),
+		InformerManager:            dynamicInformerManager,
+		ResourceEligibilityChecker: customResourceEligibilityChecker,
+		EnableWorkload:             opts.WebhookAndAdmissionPolicyOpts.EnableWorkload,
 	}
 	resourceSnapshotResolver := controller.NewResourceSnapshotResolver(mgr.GetClient(), mgr.GetScheme())
 	resourceSnapshotResolver.Config = controller.NewResourceSnapshotConfig(opts.PlacementMgmtOpts.ResourceSnapshotCreationMinimumInterval, opts.PlacementMgmtOpts.ResourceChangesCollectionDuration)
@@ -508,10 +517,10 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	// This ensures all pods have synced informer caches for webhook validation
 	klog.Info("Setting up informer populator")
 	informerPopulator := &resourcewatcher.InformerPopulator{
-		DiscoveryClient: discoverClient,
-		RESTMapper:      mgr.GetRESTMapper(),
-		InformerManager: dynamicInformerManager,
-		ResourceConfig:  resourceConfig,
+		DiscoveryClient:            discoverClient,
+		RESTMapper:                 mgr.GetRESTMapper(),
+		InformerManager:            dynamicInformerManager,
+		ResourceEligibilityChecker: customResourceEligibilityChecker,
 	}
 
 	if err := mgr.Add(informerPopulator); err != nil {
@@ -528,8 +537,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		ResourcePlacementController:               resourcePlacementController,
 		ResourceChangeController:                  resourceChangeController,
 		InformerManager:                           dynamicInformerManager,
-		ResourceConfig:                            resourceConfig,
-		SkippedNamespaces:                         skippedNamespaces,
+		ResourceEligibilityChecker:                customResourceEligibilityChecker,
 		ConcurrentPlacementWorker:                 int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxConcurrentClusterPlacement) / 10)),
 		ConcurrentResourceChangeWorker:            opts.PlacementMgmtOpts.ConcurrentResourceChangeSyncs,
 		EnableWorkload:                            opts.WebhookAndAdmissionPolicyOpts.EnableWorkload,
