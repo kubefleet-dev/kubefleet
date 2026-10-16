@@ -31,10 +31,10 @@ config:
   provider: secret
   hubURL : https://<hub_cluster_api_server_ip>:<hub_cluster_port>
   memberClusterName: membercluster-sample
-  hubCA: <certificate-authority-data>
+  hubCA: ""
   identityKey: "identity-key-path"
   identityCert: "identity-cert-path"
-  CABundle: "ca-bundle-path"
+  CABundle: ""
   # identitySecretName, when set, mounts a kubernetes.io/tls Secret (keys tls.crt/tls.key) of
   # this name and uses it for IDENTITY_KEY/IDENTITY_CERT instead of the identityKey/identityCert
   # paths above. Only used when useCAAuth is true. Leave empty ("") to keep bringing your own
