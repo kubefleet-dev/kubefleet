@@ -20,11 +20,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	rolloutv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/rollout/v1alpha1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
 )
 
 func (r *Reconciler) markStagedUpdateRunAsInTerminalState(
@@ -62,7 +63,7 @@ func (r *Reconciler) markStagedUpdateRunAsInTerminalState(
 		// The staged update run has already failed to complete; there is nothing to add.
 	}
 
-	if err := r.HubClient.Status().Update(ctx, stagedUpdateRun); err != nil {
+	if err := r.hubClient.Status().Update(ctx, stagedUpdateRun); err != nil {
 		return errors.NewAPIServerError(err, "failed to update the staged update run status", false)
 	}
 	return nil
@@ -83,7 +84,7 @@ func (r *Reconciler) markStagedUpdateRunAsFailedToInitialize(
 		ObservedGeneration: stagedUpdateRun.GetGeneration(),
 	})
 
-	if err := r.HubClient.Status().Update(ctx, stagedUpdateRun); err != nil {
+	if err := r.hubClient.Status().Update(ctx, stagedUpdateRun); err != nil {
 		return errors.NewAPIServerError(err, "failed to update the staged update run status", false)
 	}
 	return nil
@@ -110,8 +111,144 @@ func (r *Reconciler) syncStagedUpdateRunInitializedStatus(
 		ObservedGeneration: stagedUpdateRun.GetGeneration(),
 	})
 
-	if err := r.HubClient.Status().Update(ctx, stagedUpdateRun); err != nil {
+	if err := r.hubClient.Status().Update(ctx, stagedUpdateRun); err != nil {
 		return errors.NewAPIServerError(err, "failed to update the staged update run status", false)
 	}
 	return nil
+}
+
+func (r *Reconciler) markStagedUpdateRunAsSuspended(
+	ctx context.Context,
+	stagedUpdateRun rolloutv1alpha1.StagedUpdateRunAccessor,
+) error {
+	stagedUpdateRunStatus := stagedUpdateRun.GetStatus()
+	suspendedCond := meta.FindStatusCondition(stagedUpdateRunStatus.Conditions, rolloutv1alpha1.StagedUpdateRunCondTypeSuspended)
+	if condition.IsConditionStatusTrue(suspendedCond, stagedUpdateRun.GetGeneration()) {
+		// The staged update run is already marked as suspended; no further action is needed.
+		return nil
+	}
+
+	meta.SetStatusCondition(&stagedUpdateRunStatus.Conditions, metav1.Condition{
+		Type:               rolloutv1alpha1.StagedUpdateRunCondTypeSuspended,
+		Status:             metav1.ConditionTrue,
+		Reason:             rolloutv1alpha1.StagedUpdateRunSuspendedCondReasonSuspended,
+		Message:            "The staged update run has been suspended",
+		ObservedGeneration: stagedUpdateRun.GetGeneration(),
+	})
+
+	if err := r.hubClient.Status().Update(ctx, stagedUpdateRun); err != nil {
+		return errors.NewAPIServerError(err, "failed to update the staged update run status", false)
+	}
+	return nil
+}
+
+func (r *Reconciler) markStagedUpdateRunAsResumedIfApplicable(
+	ctx context.Context,
+	stagedUpdateRun rolloutv1alpha1.StagedUpdateRunAccessor,
+) error {
+	stagedUpdateRunStatus := stagedUpdateRun.GetStatus()
+	suspendedCond := meta.FindStatusCondition(stagedUpdateRunStatus.Conditions, rolloutv1alpha1.StagedUpdateRunCondTypeSuspended)
+	if suspendedCond == nil {
+		// No need to add this condition if the staged update run has never been suspended.
+		return nil
+	}
+	if condition.IsConditionStatusFalse(suspendedCond, stagedUpdateRun.GetGeneration()) &&
+		suspendedCond.Reason == rolloutv1alpha1.StagedUpdateRunSuspendedCondReasonResumed {
+		// The staged update run is already marked as resumed; no further action is needed.
+		return nil
+	}
+
+	meta.SetStatusCondition(&stagedUpdateRunStatus.Conditions, metav1.Condition{
+		Type:               rolloutv1alpha1.StagedUpdateRunCondTypeSuspended,
+		Status:             metav1.ConditionFalse,
+		Reason:             rolloutv1alpha1.StagedUpdateRunSuspendedCondReasonResumed,
+		Message:            "The staged update run has been resumed",
+		ObservedGeneration: stagedUpdateRun.GetGeneration(),
+	})
+
+	if err := r.hubClient.Status().Update(ctx, stagedUpdateRun); err != nil {
+		return errors.NewAPIServerError(err, "failed to update the staged update run status", false)
+	}
+	return nil
+}
+
+// resyncStagedUpdateRunCondIfNeeded refreshes the observed generation of the given condition (e.g., Initialized or
+// Completed) if it has fallen behind the generation of the staged update run (e.g., after the run is suspended or resumed).
+func (r *Reconciler) resyncStagedUpdateRunCondIfNeeded(
+	ctx context.Context,
+	stagedUpdateRun rolloutv1alpha1.StagedUpdateRunAccessor,
+	condType string,
+) error {
+	stagedUpdateRunStatus := stagedUpdateRun.GetStatus()
+	cond := meta.FindStatusCondition(stagedUpdateRunStatus.Conditions, condType)
+	if cond == nil || cond.ObservedGeneration == stagedUpdateRun.GetGeneration() {
+		// The condition has not been set yet, or it is up to date.
+		return nil
+	}
+
+	// Re-set the condition with only the observed generation changed; as the status stays the same, the last
+	// transition time is preserved.
+	updatedCond := *cond
+	updatedCond.ObservedGeneration = stagedUpdateRun.GetGeneration()
+	meta.SetStatusCondition(&stagedUpdateRunStatus.Conditions, updatedCond)
+
+	if err := r.hubClient.Status().Update(ctx, stagedUpdateRun); err != nil {
+		return errors.NewAPIServerError(err, "failed to resync a condition of the staged update run", false,
+			"conditionType", condType)
+	}
+	return nil
+}
+
+func resyncPerStageCondWithNoCommit(
+	stagedUpdateRun rolloutv1alpha1.StagedUpdateRunAccessor,
+	stage *rolloutv1alpha1.PerStageStatus,
+	condType string,
+) {
+	cond := meta.FindStatusCondition(stage.Conditions, condType)
+	if cond == nil || cond.ObservedGeneration == stagedUpdateRun.GetGeneration() {
+		return
+	}
+	updatedCond := *cond
+	updatedCond.ObservedGeneration = stagedUpdateRun.GetGeneration()
+	meta.SetStatusCondition(&stage.Conditions, updatedCond)
+}
+
+func resyncPerClusterCondWithNoCommit(
+	stagedUpdateRun rolloutv1alpha1.StagedUpdateRunAccessor,
+	cluster *rolloutv1alpha1.PerClusterStatus,
+	condType string,
+) {
+	cond := meta.FindStatusCondition(cluster.Conditions, condType)
+	if cond == nil || cond.ObservedGeneration == stagedUpdateRun.GetGeneration() {
+		return
+	}
+	updatedCond := *cond
+	updatedCond.ObservedGeneration = stagedUpdateRun.GetGeneration()
+	meta.SetStatusCondition(&cluster.Conditions, updatedCond)
+}
+
+func markClusterUpdateAsFailedDueToTimeout(
+	stagedUpdateRun rolloutv1alpha1.StagedUpdateRunAccessor,
+	cluster *rolloutv1alpha1.PerClusterStatus,
+) {
+	meta.SetStatusCondition(&cluster.Conditions, metav1.Condition{
+		Type:               rolloutv1alpha1.StagedUpdateRunPerClusterCondTypeCompleted,
+		Status:             metav1.ConditionTrue,
+		Reason:             rolloutv1alpha1.StagedUpdateRunPerClusterCompletedCondReasonFailed,
+		Message:            "The update on the cluster has failed due to timeout",
+		ObservedGeneration: stagedUpdateRun.GetGeneration(),
+	})
+}
+
+func markClusterUpdateAsFailedDueToConflict(
+	stagedUpdateRun rolloutv1alpha1.StagedUpdateRunAccessor,
+	cluster *rolloutv1alpha1.PerClusterStatus,
+) {
+	meta.SetStatusCondition(&cluster.Conditions, metav1.Condition{
+		Type:               rolloutv1alpha1.StagedUpdateRunPerClusterCondTypeCompleted,
+		Status:             metav1.ConditionTrue,
+		Reason:             rolloutv1alpha1.StagedUpdateRunPerClusterCompletedCondReasonFailed,
+		Message:            "The update on the cluster has failed due to resource snapshot name conflict",
+		ObservedGeneration: stagedUpdateRun.GetGeneration(),
+	})
 }

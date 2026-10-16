@@ -25,6 +25,7 @@ const (
 	StagedUpdateRunCondTypeInitialized = "Initialized"
 	StagedUpdateRunCondTypeStarted     = "Started"
 	StagedUpdateRunCondTypeCompleted   = "Completed"
+	StagedUpdateRunCondTypeSuspended   = "Suspended"
 
 	// The condition type of stages to run in StagedUpdateRun and ClusterStagedUpdateRun API objects.
 	StagedUpdateRunPerStageCondTypeStarted   = "Started"
@@ -36,38 +37,46 @@ const (
 
 	// The condition type of stage tasks to execute in StagedUpdateRun and ClusterStagedUpdateRun API objects.
 	StagedUpdateRunTaskCondTypeApprovalRequestCreated  = "ApprovalRequestCreated"
-	StagedUpdateRunTaskCondTypeApprovalRequestAccepted = "ApprovalRequestAccepted"
+	StagedUpdateRunTaskCondTypeApprovalRequestApproved = "ApprovalRequestApproved"
 	StagedUpdateRunTaskCondTypeTimedWaitStarted        = "TimedWaitStarted"
 	StagedUpdateRunTaskCondTypeWaitTimeElapsed         = "WaitTimeElapsed"
 )
 
 // The reasons for the respective condition types.
 const (
+	// The reasons for the run-level condition types.
 	StagedUpdateRunInitializedCondReasonPreppedResourceSnapshotAndAllStages = "PreppedResourceSnapshotAndAllStages"
 	StagedUpdateRunInitializedCondReasonFailed                              = "Failed"
 
 	StagedUpdateRunStartedCondReasonUpdateStarted = "UpdateStarted"
 
+	StagedUpdateRunCompletedCondReasonSucceeded          = "Succeeded"
+	StagedUpdateRunCompletedCondReasonPartiallySucceeded = "PartiallySucceeded"
+	StagedUpdateRunCompletedCondReasonFailed             = "Failed"
+
+	StagedUpdateRunSuspendedCondReasonSuspended = "Suspended"
+	StagedUpdateRunSuspendedCondReasonResumed   = "Resumed"
+
+	// The reasons for the per-stage condition types.
 	StagedUpdateRunPerStageStartedCondReasonUpdateStarted = "UpdateStarted"
 
 	StagedUpdateRunPerStageCompletedCondReasonSucceeded          = "Succeeded"
 	StagedUpdateRunPerStageCompletedCondReasonPartiallySucceeded = "PartiallySucceeded"
 	StagedUpdateRunPerStageCompletedCondReasonFailed             = "Failed"
 
+	// The reasons for the per-cluster condition types.
 	StagedUpdateRunPerClusterStartedCondReasonUpdateStarted = "UpdateStarted"
 
 	StagedUpdateRunPerClusterCompletedCondReasonSucceeded = "UpdateSucceeded"
 	StagedUpdateRunPerClusterCompletedCondReasonFailed    = "FailedToUpdate"
 
-	StagedUpdateRunTaskApprovalRequestCreatedCondReasonCreated   = "RequestCreated"
-	StagedUpdateRunTaskApprovalRequestAcceptedCondReasonAccepted = "RequestAccepted"
+	// The reasons for the per-task condition types.
+	StagedUpdateRunTaskApprovalRequestCreatedCondReasonCreated           = "RequestCreated"
+	StagedUpdateRunTaskApprovalRequestCreatedCondReasonOwnershipMismatch = "RequestOwnershipMismatch"
+	StagedUpdateRunTaskApprovalRequestApprovedCondReasonApproved         = "RequestApproved"
 
 	StagedUpdateRunTaskTimedWaitStartedCondReasonTimerStarted = "TimerStarted"
 	StagedUpdateRunTaskWaitTimeElapsedCondReasonTimerElapsed  = "TimerElapsed"
-
-	StagedUpdateRunCompletedCondReasonSucceeded          = "Succeeded"
-	StagedUpdateRunCompletedCondReasonPartiallySucceeded = "PartiallySucceeded"
-	StagedUpdateRunCompletedCondReasonFailed             = "Failed"
 )
 
 // StagedUpdateRun is the KubeFleet API that enables users to roll out resource changes for a placement policy

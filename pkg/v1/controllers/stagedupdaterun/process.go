@@ -63,42 +63,52 @@ const (
 type clusterProcessingResult string
 
 const (
-	clusterProcessingResultSucceeded clusterProcessingResult = "Succeeded"
-	clusterProcessingResultFailed    clusterProcessingResult = "Failed"
-	clusterProcessingResultErred     clusterProcessingResult = "Erred"
+	clusterProcessingResultSucceeded             clusterProcessingResult = "Succeeded"
+	clusterProcessingResultSucceededYetSuspended clusterProcessingResult = "SucceededYetSuspended"
+	clusterProcessingResultFailed                clusterProcessingResult = "Failed"
+	clusterProcessingResultErred                 clusterProcessingResult = "Erred"
 )
 
-func (r *Reconciler) shouldSkipProcessing(stagedUpdateRunAccessor rolloutv1alpha1.StagedUpdateRunAccessor) bool {
+func (r *Reconciler) shouldSkipProcessing(ctx context.Context,
+	stagedUpdateRun rolloutv1alpha1.StagedUpdateRunAccessor) (bool, error) {
 	// Skip processing if the staged update run is in a terminal state or suspended after being initialized.
 	//
 	// To retry the staged update, one needs to create a new staged update run object.
 
 	// Skip processing if the initialization has failed.
-	initCond := meta.FindStatusCondition(stagedUpdateRunAccessor.GetStatus().Conditions, rolloutv1alpha1.StagedUpdateRunCondTypeInitialized)
+	initCond := meta.FindStatusCondition(stagedUpdateRun.GetStatus().Conditions, rolloutv1alpha1.StagedUpdateRunCondTypeInitialized)
 	if initCond != nil && initCond.Status == metav1.ConditionFalse {
 		// Note that for this branch no observed generation check is needed. Staged update run objects have immutable spec (except
 		// for the suspended switch).
-		klog.V(2).InfoS("The staged update run has failed to initialize; skip further processing", "stagedUpdateRun", klog.KObj(stagedUpdateRunAccessor), "controller", controllerName)
-		return true
+		klog.V(2).InfoS("The staged update run has failed to initialize; skip further processing", "stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
+		return true, r.resyncStagedUpdateRunCondIfNeeded(ctx, stagedUpdateRun, rolloutv1alpha1.StagedUpdateRunCondTypeInitialized)
 	}
 
 	// Skip processing if the staged update run has been completed (successfully or not).
-	completedCond := meta.FindStatusCondition(stagedUpdateRunAccessor.GetStatus().Conditions, rolloutv1alpha1.StagedUpdateRunCondTypeCompleted)
+	completedCond := meta.FindStatusCondition(stagedUpdateRun.GetStatus().Conditions, rolloutv1alpha1.StagedUpdateRunCondTypeCompleted)
 	if completedCond != nil {
 		// Note that for this branch no observed generation check is needed. Staged update run objects have immutable spec (except
 		// for the suspended switch).
 		klog.V(2).InfoS("The staged update run has been completed; skip further processing",
-			"stagedUpdateRun", klog.KObj(stagedUpdateRunAccessor), "controller", controllerName)
-		return true
+			"stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
+		// For simplicity reasons, the controller will not resync the initialized condition in this case.
+		return true, r.resyncStagedUpdateRunCondIfNeeded(ctx, stagedUpdateRun, rolloutv1alpha1.StagedUpdateRunCondTypeCompleted)
 	}
 
 	// Skip processing if the staged update run has been initialized but is suspended.
-	if initCond != nil && initCond.Status == metav1.ConditionTrue && stagedUpdateRunAccessor.GetSpec().Suspended {
-		klog.V(2).InfoS("The staged update run is suspended; skip further processing", "stagedUpdateRun", klog.KObj(stagedUpdateRunAccessor), "controller", controllerName)
-		return true
+	if initCond != nil && initCond.Status == metav1.ConditionTrue && stagedUpdateRun.GetSpec().Suspended {
+		klog.V(2).InfoS("The staged update run is suspended; skip further processing", "stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
+		if err := r.markStagedUpdateRunAsSuspended(ctx, stagedUpdateRun); err != nil {
+			return false, err
+		}
+		return true, r.resyncStagedUpdateRunCondIfNeeded(ctx, stagedUpdateRun, rolloutv1alpha1.StagedUpdateRunCondTypeInitialized)
 	}
 
-	return false
+	// The processing should continue; if the staged update run was previously suspended, mark it as resumed.
+	if err := r.markStagedUpdateRunAsResumedIfApplicable(ctx, stagedUpdateRun); err != nil {
+		return false, err
+	}
+	return false, nil
 }
 
 func (r *Reconciler) process(ctx context.Context, stagedUpdateRun rolloutv1alpha1.StagedUpdateRunAccessor) (
@@ -124,8 +134,9 @@ func (r *Reconciler) process(ctx context.Context, stagedUpdateRun rolloutv1alpha
 	}
 
 	// Check if the staged update run has been marked as started; if not, add the Started condition.
-	if startedCond := meta.FindStatusCondition(stagedUpdateRun.GetStatus().Conditions, rolloutv1alpha1.StagedUpdateRunCondTypeStarted); startedCond == nil {
-		stagedUpdateRunStatus := stagedUpdateRun.GetStatus()
+	stagedUpdateRunStatus := stagedUpdateRun.GetStatus()
+	startedCond := meta.FindStatusCondition(stagedUpdateRunStatus.Conditions, rolloutv1alpha1.StagedUpdateRunCondTypeStarted)
+	if startedCond == nil || startedCond.ObservedGeneration != stagedUpdateRun.GetGeneration() {
 		meta.SetStatusCondition(&stagedUpdateRunStatus.Conditions, metav1.Condition{
 			Type:               rolloutv1alpha1.StagedUpdateRunCondTypeStarted,
 			Status:             metav1.ConditionTrue,
@@ -142,7 +153,7 @@ func (r *Reconciler) process(ctx context.Context, stagedUpdateRun rolloutv1alpha
 	//
 	// a) avoid one staged update run monopolizing the controller's processing capacity for too long; and
 	// b) allow users to see timely updates on the staged update run's progress.
-	childCtx, childCancel := context.WithTimeout(ctx, r.RefreshPeriod)
+	childCtx, childCancel := context.WithTimeout(ctx, r.refreshPeriod)
 	defer childCancel()
 
 	// Prepare the failure policy.
@@ -210,7 +221,6 @@ func (r *Reconciler) process(ctx context.Context, stagedUpdateRun rolloutv1alpha
 	}
 
 	// All stages have completed successfully; mark the staged update run as completed (fully or partially).
-	stagedUpdateRunStatus := stagedUpdateRun.GetStatus()
 	if clusterUpdateTotalFailures.Load() > 0 {
 		meta.SetStatusCondition(&stagedUpdateRunStatus.Conditions, metav1.Condition{
 			Type:               rolloutv1alpha1.StagedUpdateRunCondTypeCompleted,
@@ -246,12 +256,15 @@ func (r *Reconciler) processOneStage(
 		// Move on to process this stage.
 	case stageCompletedCond.Reason == rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonSucceeded:
 		// The stage has already been completed successfully, so skip further processing.
+		resyncPerStageCondWithNoCommit(stagedUpdateRun, stage, rolloutv1alpha1.StagedUpdateRunPerStageCondTypeCompleted)
 		return stageProcessingResultSucceeded, nil, nil
 	case stageCompletedCond.Reason == rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonFailed:
 		// The stage has already been completed and failed, so skip further processing.
+		resyncPerStageCondWithNoCommit(stagedUpdateRun, stage, rolloutv1alpha1.StagedUpdateRunPerStageCondTypeCompleted)
 		return stageProcessingResultFailed, nil, nil
 	case stageCompletedCond.Reason == rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonPartiallySucceeded:
 		// The stage has already been completed with a partial success. Count the cluster update failures.
+		resyncPerStageCondWithNoCommit(stagedUpdateRun, stage, rolloutv1alpha1.StagedUpdateRunPerStageCondTypeCompleted)
 		if err := countClusterUpdateFailures(stage, clusterUpdateTotalFailures); err != nil {
 			return stageProcessingResultErred, nil, kferrors.Wraps(err, "failed to count cluster update failures for partially succeeded stage")
 		}
@@ -265,7 +278,8 @@ func (r *Reconciler) processOneStage(
 	}
 
 	// Mark the stage as started.
-	if startedCond := meta.FindStatusCondition(stage.Conditions, rolloutv1alpha1.StagedUpdateRunPerStageCondTypeStarted); startedCond == nil {
+	startedCond := meta.FindStatusCondition(stage.Conditions, rolloutv1alpha1.StagedUpdateRunPerStageCondTypeStarted)
+	if startedCond == nil || startedCond.ObservedGeneration != stagedUpdateRun.GetGeneration() {
 		meta.SetStatusCondition(&stage.Conditions, metav1.Condition{
 			Type:               rolloutv1alpha1.StagedUpdateRunPerStageCondTypeStarted,
 			Status:             metav1.ConditionTrue,
@@ -311,13 +325,13 @@ func (r *Reconciler) processOneStage(
 
 			for {
 				clusterIdx := nextClusterIdx.Add(1) - 1
-				klog.V(2).InfoS("Processing cluster in the stage", "workerIdx", workerIdx,
-					"clusterIdx", clusterIdx, "stage", stage.StageName, "stagedUpdateRun", klog.KObj(stagedUpdateRun))
 				if clusterIdx >= clusterCnt {
 					klog.V(2).InfoS("No more clusters to process in the stage", "workerIdx", workerIdx,
 						"stage", stage.StageName, "stagedUpdateRun", klog.KObj(stagedUpdateRun))
 					return
 				}
+				klog.V(2).InfoS("Processing cluster in the stage", "workerIdx", workerIdx,
+					"clusterIdx", clusterIdx, "stage", stage.StageName, "stagedUpdateRun", klog.KObj(stagedUpdateRun))
 
 				cluster := &stage.Clusters[clusterIdx]
 				clusterProcessingRes, err := r.refreshOneCluster(childCtx, cluster, stagedUpdateRun, maxWaitTimePerCluster)
@@ -452,9 +466,11 @@ func (r *Reconciler) refreshOneCluster(
 		// There is no update attempt before or it has not been completed yet. Continue with the update process.
 	case completedCond.Reason == rolloutv1alpha1.StagedUpdateRunPerClusterCompletedCondReasonSucceeded:
 		// The update attempt has been completed successfully before.
+		resyncPerClusterCondWithNoCommit(stagedUpdateRun, cluster, rolloutv1alpha1.StagedUpdateRunPerClusterCondTypeCompleted)
 		return clusterProcessingResultSucceeded, nil
 	case completedCond.Reason == rolloutv1alpha1.StagedUpdateRunPerClusterCompletedCondReasonFailed:
 		// The update attempt has failed before.
+		resyncPerClusterCondWithNoCommit(stagedUpdateRun, cluster, rolloutv1alpha1.StagedUpdateRunPerClusterCondTypeCompleted)
 		return clusterProcessingResultFailed, nil
 	default:
 		// Found an unexpected completion reason. Consider this as an unexpected error.
@@ -463,36 +479,24 @@ func (r *Reconciler) refreshOneCluster(
 
 	maxWaitTime := maxWaitTimePerCluster
 
-	markClusterFailedDueToTimeout := func() {
-		meta.SetStatusCondition(&cluster.Conditions, metav1.Condition{
-			Type:               rolloutv1alpha1.StagedUpdateRunPerClusterCondTypeCompleted,
-			Status:             metav1.ConditionTrue,
-			Reason:             rolloutv1alpha1.StagedUpdateRunPerClusterCompletedCondReasonFailed,
-			Message:            fmt.Sprintf("The update on the cluster has failed (it has not completed within the wait time limit of %s)", maxWaitTime),
-			ObservedGeneration: stagedUpdateRun.GetGeneration(),
-		})
-	}
-	markClusterFailedDueToConflict := func() {
-		meta.SetStatusCondition(&cluster.Conditions, metav1.Condition{
-			Type:               rolloutv1alpha1.StagedUpdateRunPerClusterCondTypeCompleted,
-			Status:             metav1.ConditionTrue,
-			Reason:             rolloutv1alpha1.StagedUpdateRunPerClusterCompletedCondReasonFailed,
-			Message:            "The update on the cluster has failed due to a conflict (the resource snapshot name has been modified after the staged update run started processing the cluster)",
-			ObservedGeneration: stagedUpdateRun.GetGeneration(),
-		})
-	}
+	// Note that at this position of the code, it is guaranteed that the staged update run has either never been
+	// suspended or has been resumed.
+	resumedCond := meta.FindStatusCondition(stagedUpdateRun.GetStatus().Conditions, rolloutv1alpha1.StagedUpdateRunCondTypeSuspended)
 
 	// Check if an update attempt has started already for the cluster.
 	startedCond := meta.FindStatusCondition(cluster.Conditions, rolloutv1alpha1.StagedUpdateRunPerClusterCondTypeStarted)
-	if startedCond != nil {
+	resyncPerClusterCondWithNoCommit(stagedUpdateRun, cluster, rolloutv1alpha1.StagedUpdateRunPerClusterCondTypeStarted)
+	if startedCond != nil && !clusterUpdateStartedBeforeRunResumption(startedCond, resumedCond) {
 		// Check if the max wait time has elapsed.
 		//
 		// It is possible that the cluster has been updated successfully before this specific check is run (and
 		// it could happen still within the time limit, but no one is checking at the time); here the controller
 		// takes a more reserved stance and would fail a cluster as long as there is no clear signal found within
 		// the wait time.
+		//
+		// Note that if the cluster update started before run is suspended, we reset the per cluster wait time.
 		if elapsed := time.Since(startedCond.LastTransitionTime.Time); elapsed > maxWaitTime {
-			markClusterFailedDueToTimeout()
+			markClusterUpdateAsFailedDueToTimeout(stagedUpdateRun, cluster)
 			return clusterProcessingResultFailed, nil
 		}
 	}
@@ -508,7 +512,7 @@ func (r *Reconciler) refreshOneCluster(
 	} else {
 		binding = &placementv1alpha1.PlacementBinding{}
 	}
-	if err := r.HubClient.Get(ctx, bindingKey, binding); err != nil {
+	if err := r.hubClient.Get(ctx, bindingKey, binding); err != nil {
 		if apierrors.IsNotFound(err) {
 			// The placement binding cannot be found. Consider the update on the cluster as failed.
 			//
@@ -572,7 +576,7 @@ func (r *Reconciler) refreshOneCluster(
 				return clusterProcessingResultErred, err
 			}
 			if snapshotNameChanged {
-				markClusterFailedDueToConflict()
+				markClusterUpdateAsFailedDueToConflict(stagedUpdateRun, cluster)
 				klog.V(2).InfoS("Failed to update cluster due to resource snapshot name conflict",
 					"placementBinding", klog.KObj(latestBinding), "cluster", cluster.ClusterName, "stagedUpdateRun", klog.KObj(stagedUpdateRun))
 				return clusterProcessingResultFailed, nil
@@ -581,7 +585,7 @@ func (r *Reconciler) refreshOneCluster(
 			binding = latestBinding
 		} else {
 			binding.GetSpec().ResourceSnapshotName = wantResourceSnapshotName
-			if err := r.HubClient.Update(ctx, binding); err != nil {
+			if err := r.hubClient.Update(ctx, binding); err != nil {
 				return clusterProcessingResultErred, kferrors.NewAPIServerError(err,
 					"failed to update the placement binding with the resource snapshot to roll out", false,
 					"placementBinding", klog.KObj(binding), "resourceSnapshotName", wantResourceSnapshotName)
@@ -589,8 +593,11 @@ func (r *Reconciler) refreshOneCluster(
 		}
 	}
 
-	// Mark the cluster as being updated.
-	if startedCond == nil {
+	// Mark the cluster as started updating. Reset the condition (specifically the start time) if the cluster
+	// started updating before the run was suspended.
+	if startedCond == nil ||
+		clusterUpdateStartedBeforeRunResumption(startedCond, resumedCond) {
+		meta.RemoveStatusCondition(&cluster.Conditions, rolloutv1alpha1.StagedUpdateRunPerClusterCondTypeStarted)
 		meta.SetStatusCondition(&cluster.Conditions, metav1.Condition{
 			Type:               rolloutv1alpha1.StagedUpdateRunPerClusterCondTypeStarted,
 			Status:             metav1.ConditionTrue,
@@ -598,7 +605,7 @@ func (r *Reconciler) refreshOneCluster(
 			Message:            "The update on the cluster has started",
 			ObservedGeneration: stagedUpdateRun.GetGeneration(),
 		})
-		// Read the condition back so that its (server-assigned) LastTransitionTime is available for the
+		// Read the condition back so that its (assigned) LastTransitionTime is available for the
 		// wait-time check in the polling loop below.
 		startedCond = meta.FindStatusCondition(cluster.Conditions, rolloutv1alpha1.StagedUpdateRunPerClusterCondTypeStarted)
 	}
@@ -623,21 +630,70 @@ func (r *Reconciler) refreshOneCluster(
 	// return the pre-update version of the binding (same generation and conditions together, both stale);
 	// comparing a freshly re-fetched condition's ObservedGeneration against an equally stale generation
 	// would otherwise spuriously look up-to-date.
-	wantGeneration := binding.GetGeneration()
+	wantBindingGeneration := binding.GetGeneration()
 
 	// Wait for the placement binding to report that the rollout has been synchronized to, and is available
 	// on, the target cluster, polling periodically until either that happens or the context is cancelled
 	// (e.g., the per-run processing time budget has been exhausted, in which case the caller will pick up
 	// where this left off on the next reconciliation pass).
-	bindingNamespacedName := types.NamespacedName{
-		Namespace: binding.GetNamespace(),
-		Name:      binding.GetName(),
-	}
-	isBindingSuspended := false
-	timer := time.NewTimer(r.BindingAvailabilityCheckRateLimiter.When(bindingNamespacedName))
+	timer := time.NewTimer(r.bindingAvailabilityCheckRateLimiter.When(bindingKey))
 	defer timer.Stop()
 	// Reset the availability check rate limiter for this binding after the refreshing completes.
-	defer r.BindingAvailabilityCheckRateLimiter.Forget(bindingNamespacedName)
+	defer r.bindingAvailabilityCheckRateLimiter.Forget(bindingKey)
+	clusterProcessingRes, err := r.waitForOneClusterToBeUpdatedAndAvailable(ctx, stagedUpdateRun, cluster,
+		bindingKey, binding, wantResourceSnapshotName, wantBindingGeneration,
+		startedCond.LastTransitionTime.Time, maxWaitTime, timer)
+	switch {
+	case err != nil || clusterProcessingRes == clusterProcessingResultErred:
+		return clusterProcessingResultErred, kferrors.Wraps(err, "failed to wait for cluster to be updated and available",
+			"placementBinding", klog.KObj(binding))
+	case clusterProcessingRes == clusterProcessingResultFailed:
+		return clusterProcessingResultFailed, nil
+	case clusterProcessingRes == clusterProcessingResultSucceededYetSuspended:
+		meta.SetStatusCondition(&cluster.Conditions, metav1.Condition{
+			Type:               rolloutv1alpha1.StagedUpdateRunPerClusterCondTypeCompleted,
+			Status:             metav1.ConditionTrue,
+			Reason:             rolloutv1alpha1.StagedUpdateRunPerClusterCompletedCondReasonSucceeded,
+			Message:            "The update on the cluster has completed successfully (binding is suspended)",
+			ObservedGeneration: stagedUpdateRun.GetGeneration(),
+		})
+	default: // clusterProcessingRes == clusterProcessingResultSucceeded
+		meta.SetStatusCondition(&cluster.Conditions, metav1.Condition{
+			Type:               rolloutv1alpha1.StagedUpdateRunPerClusterCondTypeCompleted,
+			Status:             metav1.ConditionTrue,
+			Reason:             rolloutv1alpha1.StagedUpdateRunPerClusterCompletedCondReasonSucceeded,
+			Message:            "The update on the cluster has completed successfully",
+			ObservedGeneration: stagedUpdateRun.GetGeneration(),
+		})
+	}
+
+	klog.V(2).InfoS("Successfully updated cluster",
+		"cluster", cluster.ClusterName, "stagedUpdateRun", klog.KObj(stagedUpdateRun))
+	return clusterProcessingResultSucceeded, nil
+}
+
+func clusterUpdateStartedBeforeRunResumption(startedCond, resumedCond *metav1.Condition) bool {
+	if startedCond == nil || resumedCond == nil {
+		return false
+	}
+
+	if startedCond.LastTransitionTime.Before(&resumedCond.LastTransitionTime) {
+		return true
+	}
+	return false
+}
+
+func (r *Reconciler) waitForOneClusterToBeUpdatedAndAvailable(ctx context.Context,
+	stagedUpdateRun rolloutv1alpha1.StagedUpdateRunAccessor,
+	cluster *rolloutv1alpha1.PerClusterStatus,
+	bindingKey types.NamespacedName,
+	binding placementv1alpha1.PlacementBindingAccessor,
+	wantResourceSnapshotName string,
+	wantBindingGeneration int64,
+	updateStartedAt time.Time,
+	maxWaitTime time.Duration,
+	timer *time.Timer,
+) (res clusterProcessingResult, err error) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -654,8 +710,8 @@ func (r *Reconciler) refreshOneCluster(
 		// before the max wait time is reached, yet the controller just wasn't able to observe it in time;
 		// in this case, the controller takes a more reserved stance and would fail a cluster as long as there is
 		// no clear signal found within the wait time.
-		if elapsed := time.Since(startedCond.LastTransitionTime.Time); elapsed > maxWaitTime {
-			markClusterFailedDueToTimeout()
+		if elapsed := time.Since(updateStartedAt); elapsed > maxWaitTime {
+			markClusterUpdateAsFailedDueToTimeout(stagedUpdateRun, cluster)
 			klog.V(2).InfoS("Failed to update cluster as the max wait time has elapsed",
 				"placementBinding", klog.KObj(binding), "cluster", cluster.ClusterName, "stagedUpdateRun", klog.KObj(stagedUpdateRun))
 			return clusterProcessingResultFailed, nil
@@ -664,14 +720,14 @@ func (r *Reconciler) refreshOneCluster(
 		// Re-fetch the binding at the start of every iteration so that the check below always runs
 		// against the latest observed state; without this, the loop would keep re-checking the same
 		// (initial) snapshot of the binding and never notice it becoming synchronized and available.
-		if err := r.HubClient.Get(ctx, bindingKey, binding); err != nil {
+		if err := r.hubClient.Get(ctx, bindingKey, binding); err != nil {
 			return clusterProcessingResultErred, kferrors.NewAPIServerError(err, "failed to get the placement binding", true,
 				"placementBinding", klog.KRef(bindingKey.Namespace, bindingKey.Name))
 		}
 
-		if binding.GetGeneration() < wantGeneration {
+		if binding.GetGeneration() < wantBindingGeneration {
 			// The binding in cache is stale; check again later.
-			timer.Reset(r.BindingAvailabilityCheckRateLimiter.When(bindingNamespacedName))
+			timer.Reset(r.bindingAvailabilityCheckRateLimiter.When(bindingKey))
 			continue
 		}
 
@@ -683,18 +739,17 @@ func (r *Reconciler) refreshOneCluster(
 			// staged update runs: when multiple runs target the same cluster (binding) at the same time,
 			// either the last writer succeeded while the others failed, or they all failed due to timeouts (though
 			// unlikely).
-			markClusterFailedDueToConflict()
+			markClusterUpdateAsFailedDueToConflict(stagedUpdateRun, cluster)
 			klog.V(2).InfoS("Failed to update cluster due to resource snapshot name conflict",
 				"placementBinding", klog.KObj(binding), "cluster", cluster.ClusterName, "stagedUpdateRun", klog.KObj(stagedUpdateRun))
 			return clusterProcessingResultFailed, nil
 		}
 
 		if binding.GetSpec().Suspended {
-			// The binding is suspended; consider the update succeeded.
-			isBindingSuspended = true
-			klog.V(2).InfoS("The placement binding is suspended; considering the update succeeded",
+			// The binding is suspended; consider the update succeeded yet suspended.
+			klog.V(2).InfoS("The placement binding is suspended; considering the update succeeded yet suspended",
 				"placementBinding", klog.KObj(binding), "cluster", cluster.ClusterName, "stagedUpdateRun", klog.KObj(stagedUpdateRun))
-			break
+			return clusterProcessingResultSucceededYetSuspended, nil
 		}
 
 		// Note again that the controller here does a best-effort check only; for performance reasons, the check
@@ -707,26 +762,10 @@ func (r *Reconciler) refreshOneCluster(
 		if condition.IsConditionStatusTrue(synchronizedCond, binding.GetGeneration()) &&
 			condition.IsConditionStatusTrue(availableCond, binding.GetGeneration()) {
 			// The rollout has been synchronized to, and is available on, the target cluster.
-			break
+			return clusterProcessingResultSucceeded, nil
 		}
 
 		// Reset the timer.
-		timer.Reset(r.BindingAvailabilityCheckRateLimiter.When(bindingNamespacedName))
+		timer.Reset(r.bindingAvailabilityCheckRateLimiter.When(bindingKey))
 	}
-
-	// Mark the cluster as updated successfully.
-	klog.V(2).InfoS("Successfully updated cluster",
-		"cluster", cluster.ClusterName, "stagedUpdateRun", klog.KObj(stagedUpdateRun))
-	msg := "The update on the cluster has completed successfully"
-	if isBindingSuspended {
-		msg = "The update on the cluster has completed successfully (binding is suspended)"
-	}
-	meta.SetStatusCondition(&cluster.Conditions, metav1.Condition{
-		Type:               rolloutv1alpha1.StagedUpdateRunPerClusterCondTypeCompleted,
-		Status:             metav1.ConditionTrue,
-		Reason:             rolloutv1alpha1.StagedUpdateRunPerClusterCompletedCondReasonSucceeded,
-		Message:            msg,
-		ObservedGeneration: stagedUpdateRun.GetGeneration(),
-	})
-	return clusterProcessingResultSucceeded, nil
 }

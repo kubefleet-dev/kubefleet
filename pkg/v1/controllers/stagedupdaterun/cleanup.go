@@ -46,7 +46,7 @@ func (r *Reconciler) cleanup(ctx context.Context, stagedUpdateRun rolloutv1alpha
 	default:
 		// Successfully retrieved the linked placement policy; relinquish the binding manager role if currently held.
 		stagedUpdateRunObjRef := stagedUpdateRunObjRef(stagedUpdateRun)
-		if err := bindingmanager.RelinquishRoleFor(ctx, r.HubClient, placementPolicyAccessor, controllerName, stagedUpdateRunObjRef); err != nil {
+		if err := bindingmanager.RelinquishRoleFor(ctx, r.hubClient, placementPolicyAccessor, controllerName, stagedUpdateRunObjRef); err != nil {
 			return errors.Wraps(err, "failed to relinquish the binding manager role")
 		}
 	}
@@ -54,7 +54,7 @@ func (r *Reconciler) cleanup(ctx context.Context, stagedUpdateRun rolloutv1alpha
 	// Drop the cleanup finalizer so that the staged update run object can be deleted.
 	if controllerutil.ContainsFinalizer(stagedUpdateRun, stagedUpdateRunCleanupFinalizer) {
 		controllerutil.RemoveFinalizer(stagedUpdateRun, stagedUpdateRunCleanupFinalizer)
-		if err := r.HubClient.Update(ctx, stagedUpdateRun); err != nil {
+		if err := r.hubClient.Update(ctx, stagedUpdateRun); err != nil {
 			return errors.NewAPIServerError(err, "failed to update staged update run object", false)
 		}
 	}
@@ -68,7 +68,7 @@ func (r *Reconciler) ensureCleanupFinalizer(ctx context.Context, stagedUpdateRun
 	}
 
 	controllerutil.AddFinalizer(stagedUpdateRun, stagedUpdateRunCleanupFinalizer)
-	if err := r.HubClient.Update(ctx, stagedUpdateRun); err != nil {
+	if err := r.hubClient.Update(ctx, stagedUpdateRun); err != nil {
 		return errors.NewAPIServerError(err, "failed to update staged update run object", false)
 	}
 

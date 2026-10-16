@@ -47,7 +47,7 @@ func (r *Reconciler) retrieveStagedUpdateRun(ctx context.Context, key types.Name
 		gvk = rolloutv1alpha1.GroupVersion.WithKind(rolloutv1alpha1.StagedUpdateRunKind)
 	}
 
-	if err := r.HubClient.Get(ctx, key, stagedUpdateRunAccessor); err != nil {
+	if err := r.hubClient.Get(ctx, key, stagedUpdateRunAccessor); err != nil {
 		return nil, errors.NewAPIServerError(err, "failed to get staged update run object", true)
 	}
 	// The controller-runtime client (and the informer cache backing it) does not populate TypeMeta
@@ -73,7 +73,7 @@ func (r *Reconciler) retrieveLinkedPlacementPolicy(
 		placementPolicyAccessor = &placementv1alpha1.PlacementPolicy{}
 	}
 
-	if err := r.HubClient.Get(ctx, placementPolicyKey, placementPolicyAccessor); err != nil {
+	if err := r.hubClient.Get(ctx, placementPolicyKey, placementPolicyAccessor); err != nil {
 		return nil, errors.NewAPIServerError(err, "failed to get placement policy object", true)
 	}
 	return placementPolicyAccessor, nil
@@ -97,7 +97,7 @@ func (r *Reconciler) retrieveStagedUpdateStrategy(
 		stagedUpdateStrategy = &rolloutv1alpha1.StagedUpdateStrategy{}
 	}
 
-	if err := r.HubClient.Get(ctx, strategyKey, stagedUpdateStrategy); err != nil {
+	if err := r.hubClient.Get(ctx, strategyKey, stagedUpdateStrategy); err != nil {
 		return nil, errors.NewAPIServerError(err, "failed to get staged update strategy object", true,
 			"stagedUpdateStrategy", klog.KRef(strategyKey.Namespace, strategyKey.Name))
 	}
@@ -117,7 +117,7 @@ func (r *Reconciler) listAllPlacementBindings(
 	if placementPolicy.GetNamespace() == "" {
 		// The placement policy is cluster-scoped; list all cluster placement bindings owned by it.
 		cpbs := &placementv1alpha1.ClusterPlacementBindingList{}
-		if err := r.HubClient.List(ctx, cpbs, ownerFieldSelector); err != nil {
+		if err := r.hubClient.List(ctx, cpbs, ownerFieldSelector); err != nil {
 			return nil, errors.NewAPIServerError(err, "failed to list cluster placement bindings", true,
 				"placementPolicy", klog.KRef(placementPolicy.GetNamespace(), placementPolicy.GetName()))
 		}
@@ -132,7 +132,7 @@ func (r *Reconciler) listAllPlacementBindings(
 		// The placement policy is namespaced; list all placement bindings owned by it in its namespace.
 		namespaceSelector := client.InNamespace(placementPolicy.GetNamespace())
 		pbs := &placementv1alpha1.PlacementBindingList{}
-		if err := r.HubClient.List(ctx, pbs, namespaceSelector, ownerFieldSelector); err != nil {
+		if err := r.hubClient.List(ctx, pbs, namespaceSelector, ownerFieldSelector); err != nil {
 			return nil, errors.NewAPIServerError(err, "failed to list placement bindings", true,
 				"placementPolicy", klog.KRef(placementPolicy.GetNamespace(), placementPolicy.GetName()))
 		}
@@ -165,7 +165,7 @@ func (r *Reconciler) retrieveReferencedClusters(
 	doWork := func(pieces int) {
 		clusterName := placementBindings[pieces].GetSpec().ClusterName
 		memberCluster := &clusterv1beta1.MemberCluster{}
-		if err := r.HubClient.Get(childCtx, types.NamespacedName{Name: clusterName}, memberCluster); err != nil {
+		if err := r.hubClient.Get(childCtx, types.NamespacedName{Name: clusterName}, memberCluster); err != nil {
 			if apierrors.IsNotFound(err) {
 				// The member cluster does not exist; skip it.
 				klog.V(2).InfoS("Cannot find the member cluster referenced by a placement binding",
@@ -188,7 +188,7 @@ func (r *Reconciler) retrieveReferencedClusters(
 		}
 		memberClusters[pieces] = memberCluster
 	}
-	r.Parallelizer.ParallelizeUntil(childCtx, len(placementBindings), doWork, "retrieveReferencedClusters")
+	r.parallelizer.ParallelizeUntil(childCtx, len(placementBindings), doWork, "retrieveReferencedClusters")
 
 	if err := utilerrors.NewAggregate(errs); err != nil {
 		return nil, someClustersNotRetrieved.Load(), errors.Wraps(err, "aggregated errors occurred when retrieving referenced clusters")

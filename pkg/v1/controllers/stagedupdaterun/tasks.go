@@ -18,6 +18,7 @@ package stagedupdaterun
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -29,6 +30,7 @@ import (
 
 	rolloutv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/rollout/v1alpha1"
 	kferrors "github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/ownerreferences"
 )
 
 // executeBeforeStageTasks executes all the before stage tasks of a stage. It reports whether all the tasks have
@@ -106,8 +108,8 @@ func (r *Reconciler) executeApprovalStageTask(
 	task *rolloutv1alpha1.PerStageTaskStatus,
 	isBeforeStageTask bool,
 ) (shouldContinue bool, requeueAfter *time.Duration, err error) {
-	// Skip the task if it has already been completed (the approval has been accepted).
-	approvalAcceptedCond := meta.FindStatusCondition(task.Conditions, rolloutv1alpha1.StagedUpdateRunTaskCondTypeApprovalRequestAccepted)
+	// Skip the task if it has already been completed (the approval has been received).
+	approvalAcceptedCond := meta.FindStatusCondition(task.Conditions, rolloutv1alpha1.StagedUpdateRunTaskCondTypeApprovalRequestApproved)
 	if approvalAcceptedCond != nil && approvalAcceptedCond.Status == metav1.ConditionTrue {
 		return true, nil, nil
 	}
@@ -141,7 +143,7 @@ func (r *Reconciler) executeApprovalStageTask(
 		approvalRequestNamespacedName = types.NamespacedName{Namespace: stagedUpdateRun.GetNamespace(), Name: approvalRequestName}
 	}
 
-	if err := r.HubClient.Get(ctx, approvalRequestNamespacedName, approvalRequest); err != nil {
+	if err := r.hubClient.Get(ctx, approvalRequestNamespacedName, approvalRequest); err != nil {
 		if apierrors.IsNotFound(err) {
 			// The approval request cannot be found. It might have been deleted by the user; re-create it.
 			if err := r.createApprovalRequest(ctx, stagedUpdateRun, stage, task, isBeforeStageTask); err != nil {
@@ -160,17 +162,41 @@ func (r *Reconciler) executeApprovalStageTask(
 	// This is primarily added as a safeguard against situations where staged update runs are re-created yet
 	// the GC process hasn't caught up and old approval requests from same-named staged update runs might still exist.
 	//
-	// Note that approvel requests are typically considered to be objects always created by the staged update run
+	// Note that approval requests are typically considered to be objects always created by the staged update run
 	// controller; users are not expected to create or manage them directly.
 	if !metav1.IsControlledBy(approvalRequest, stagedUpdateRun) {
-		klog.V(2).InfoS("Approval request is not owned by the staged update run; deleting it",
-			"approvalRequest", klog.KObj(approvalRequest), "stage", stage.StageName, "stagedUpdateRun", klog.KObj(stagedUpdateRun))
-		if err := r.HubClient.Delete(ctx, approvalRequest); err != nil && !apierrors.IsNotFound(err) {
-			return false, nil, kferrors.NewAPIServerError(err, "failed to delete approval request not owned by the staged update run", false,
+		isOwnedBySameNamed, err := ownerreferences.IsOwnedByWithNoUIDCheck(r.hubClient, approvalRequest, stagedUpdateRun)
+		if err != nil {
+			return false, nil, kferrors.Wraps(err, "failed to check ownership of approval request",
 				"approvalRequest", klog.KObj(approvalRequest))
 		}
-		// The approval request will be re-created in the next reconciliation attempt.
-		return false, nil, kferrors.NewTransientError(nil, "the approval request is not owned by the staged update run; deleted it",
+		if isOwnedBySameNamed {
+			// The approval request is owned by a same-named staged update run but not the current one; it should be
+			// deleted so that it can be re-created.
+			klog.V(2).InfoS("Approval request is not owned by the staged update run; deleting it",
+				"approvalRequest", klog.KObj(approvalRequest), "stage", stage.StageName, "stagedUpdateRun", klog.KObj(stagedUpdateRun))
+			if err := r.hubClient.Delete(ctx, approvalRequest); err != nil && !apierrors.IsNotFound(err) {
+				return false, nil, kferrors.NewAPIServerError(err, "failed to delete approval request not owned by the staged update run", false,
+					"approvalRequest", klog.KObj(approvalRequest))
+			}
+			// The approval request will be re-created in the next reconciliation attempt.
+			return false, nil, kferrors.NewTransientError(nil, "the approval request is not owned by the staged update run; deleted it",
+				"approvalRequest", klog.KObj(approvalRequest))
+		}
+		// The approval request is owned by a differently named staged update run or no staged update run at all.
+		klog.V(2).InfoS("Approval request is owned by a differently named staged update run or no staged update run at all",
+			"approvalRequest", klog.KObj(approvalRequest), "stage", stage.StageName, "stagedUpdateRun", klog.KObj(stagedUpdateRun))
+
+		// Flip the ApprovalRequestCreated condition to False so that users are informed of the ownership conflict.
+		meta.SetStatusCondition(&task.Conditions, metav1.Condition{
+			Type:   rolloutv1alpha1.StagedUpdateRunTaskCondTypeApprovalRequestCreated,
+			Status: metav1.ConditionFalse,
+			Reason: rolloutv1alpha1.StagedUpdateRunTaskApprovalRequestCreatedCondReasonOwnershipMismatch,
+			Message: fmt.Sprintf("An approval request %q is found but it is not owned by the staged update run; "+
+				"if the request is manually created, remove it to proceed", approvalRequestName),
+			ObservedGeneration: stagedUpdateRun.GetGeneration(),
+		})
+		return false, nil, kferrors.NewUserError(nil, "an approval request is found but its ownership does not align; if the request is manually created, remove it to proceed",
 			"approvalRequest", klog.KObj(approvalRequest))
 	}
 
@@ -181,11 +207,31 @@ func (r *Reconciler) executeApprovalStageTask(
 		return false, nil, nil
 	}
 
+	// Add an approval accepted condition to the approval request.
+	if !meta.IsStatusConditionTrue(approvalRequest.GetStatus().Conditions, rolloutv1alpha1.ApprovalRequestCondTypeApprovalAccepted) {
+		meta.SetStatusCondition(&approvalRequest.GetStatus().Conditions, metav1.Condition{
+			Type:               rolloutv1alpha1.ApprovalRequestCondTypeApprovalAccepted,
+			Status:             metav1.ConditionTrue,
+			Reason:             rolloutv1alpha1.ApprovalRequestApprovalAcceptedCondReasonAccepted,
+			Message:            "The approval has been accepted by the staged update run",
+			ObservedGeneration: approvalRequest.GetGeneration(),
+		})
+		// Use an update (rather than a patch) so that the write fails with a conflict if the approval request has
+		// changed (e.g., the approval has been revoked) since it was read.
+		if err := r.hubClient.Status().Update(ctx, approvalRequest); err != nil {
+			return false, nil, kferrors.NewAPIServerError(err, "failed to add the approval accepted condition to the approval request", false,
+				"approvalRequest", klog.KObj(approvalRequest))
+		}
+		klog.V(2).InfoS("Accepted the approval of the approval request",
+			"approvalRequest", klog.KObj(approvalRequest), "stage", stage.StageName, "stagedUpdateRun", klog.KObj(stagedUpdateRun))
+	}
+
+	// Mark the approval task as completed in the staged update run status.
 	meta.SetStatusCondition(&task.Conditions, metav1.Condition{
-		Type:               rolloutv1alpha1.StagedUpdateRunTaskCondTypeApprovalRequestAccepted,
+		Type:               rolloutv1alpha1.StagedUpdateRunTaskCondTypeApprovalRequestApproved,
 		Status:             metav1.ConditionTrue,
-		Reason:             rolloutv1alpha1.StagedUpdateRunTaskApprovalRequestAcceptedCondReasonAccepted,
-		Message:            "The approval request has been accepted",
+		Reason:             rolloutv1alpha1.StagedUpdateRunTaskApprovalRequestApprovedCondReasonApproved,
+		Message:            "The approval request has been approved",
 		ObservedGeneration: stagedUpdateRun.GetGeneration(),
 	})
 
@@ -231,7 +277,7 @@ func (r *Reconciler) createApprovalRequest(
 		StageName:           stage.StageName,
 	})
 
-	err := r.HubClient.Create(ctx, approvalRequest)
+	err := r.hubClient.Create(ctx, approvalRequest)
 	if err == nil || apierrors.IsAlreadyExists(err) {
 		// Set the request created condition.
 		meta.SetStatusCondition(&task.Conditions, metav1.Condition{

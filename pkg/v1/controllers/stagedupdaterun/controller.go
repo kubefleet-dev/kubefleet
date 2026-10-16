@@ -44,18 +44,60 @@ const (
 	requeueImmediatelyAfterPeriod = time.Millisecond * 200
 )
 
+const (
+	minRefreshPeriod = time.Second * 30
+
+	bindingManagerClaimRateLimiterBaseDelay      = time.Second * 5
+	bindingManagerClaimRateLimiterMaxDelay       = time.Second * 180
+	bindingAvailabilityCheckRateLimiterBaseDelay = time.Second * 5
+	bindingAvailabilityCheckRateLimiterMaxDelay  = time.Second * 180
+)
+
+// Reconciler helps reconcile stage update run objects.
 type Reconciler struct {
-	HubClient         client.Client
-	HubUncachedClient client.Reader
+	hubClient         client.Client
+	hubUncachedClient client.Reader
 
-	PlacementResourceSnapshotManager *placementresourcesnapshot.Manager
+	placementResourceSnapshotManager *placementresourcesnapshot.Manager
 
-	Parallelizer parallelizer.Parallelizer
+	parallelizer parallelizer.Parallelizer
 
-	BindingManagerClaimRateLimiter      workqueue.TypedRateLimiter[ctrl.Request]
-	BindingAvailabilityCheckRateLimiter workqueue.TypedRateLimiter[types.NamespacedName]
+	bindingManagerClaimRateLimiter      workqueue.TypedRateLimiter[ctrl.Request]
+	bindingAvailabilityCheckRateLimiter workqueue.TypedRateLimiter[types.NamespacedName]
 
-	RefreshPeriod time.Duration
+	refreshPeriod time.Duration
+}
+
+// New creates a Reconciler.
+func New(
+	hubClient client.Client,
+	hubUncachedClient client.Reader,
+	placementResourceSnapshotManager *placementresourcesnapshot.Manager,
+	parallelizer parallelizer.Parallelizer,
+	bindingManagerClaimRateLimiter workqueue.TypedRateLimiter[ctrl.Request],
+	bindingAvailabilityCheckRateLimiter workqueue.TypedRateLimiter[types.NamespacedName],
+	refreshPeriod time.Duration,
+) (*Reconciler, error) {
+	if bindingManagerClaimRateLimiter == nil {
+		bindingManagerClaimRateLimiter = workqueue.NewTypedItemExponentialFailureRateLimiter[ctrl.Request](bindingManagerClaimRateLimiterBaseDelay, bindingManagerClaimRateLimiterMaxDelay)
+	}
+	if bindingAvailabilityCheckRateLimiter == nil {
+		bindingAvailabilityCheckRateLimiter = workqueue.NewTypedItemExponentialFailureRateLimiter[types.NamespacedName](bindingAvailabilityCheckRateLimiterBaseDelay, bindingAvailabilityCheckRateLimiterMaxDelay)
+	}
+
+	if refreshPeriod < minRefreshPeriod {
+		return nil, errors.NewUnexpectedError(nil, "refresh period is too short", "minRefreshPeriod", minRefreshPeriod, "observedRefreshPeriod", refreshPeriod)
+	}
+
+	return &Reconciler{
+		hubClient:                           hubClient,
+		hubUncachedClient:                   hubUncachedClient,
+		placementResourceSnapshotManager:    placementResourceSnapshotManager,
+		parallelizer:                        parallelizer,
+		bindingManagerClaimRateLimiter:      bindingManagerClaimRateLimiter,
+		bindingAvailabilityCheckRateLimiter: bindingAvailabilityCheckRateLimiter,
+		refreshPeriod:                       refreshPeriod,
+	}, nil
 }
 
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -82,18 +124,24 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// Clean things up if the staged update run object has been marked for deletion.
 	if !stagedUpdateRun.GetDeletionTimestamp().IsZero() {
 		if err := r.cleanup(ctx, stagedUpdateRun); err != nil {
-			wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", req.NamespacedName, "controller", controllerName)
+			wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
 			klog.ErrorS(wrappedErr, "Failed to cleanup staged update run", errors.Args(wrappedErr)...)
 			return ctrl.Result{}, wrappedErr
 		}
 		return ctrl.Result{}, nil
 	}
 
-	if r.shouldSkipProcessing(stagedUpdateRun) {
+	shouldSkip, err := r.shouldSkipProcessing(ctx, stagedUpdateRun)
+	if err != nil {
+		wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
+		klog.ErrorS(wrappedErr, "Failed to determine if staged update run should be skipped", errors.Args(wrappedErr)...)
+		return ctrl.Result{}, wrappedErr
+	}
+	if shouldSkip {
 		// The staged update run is already in a terminal state (failed to initialize, complete), or has been
 		// suspended. Give up the binding manager role and drop the cleanup finalizer.
 		if err := r.cleanup(ctx, stagedUpdateRun); err != nil {
-			wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", req.NamespacedName, "controller", controllerName)
+			wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
 			klog.ErrorS(wrappedErr, "Failed to cleanup staged update run", errors.Args(wrappedErr)...)
 			return ctrl.Result{}, wrappedErr
 		}
@@ -102,7 +150,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	// Add a cleanup finalizer to the staged update run object if it doesn't have one.
 	if err := r.ensureCleanupFinalizer(ctx, stagedUpdateRun); err != nil {
-		wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", req.NamespacedName, "controller", controllerName)
+		wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
 		klog.ErrorS(wrappedErr, "Failed to ensure cleanup finalizer on staged update run object", errors.Args(wrappedErr)...)
 		return ctrl.Result{}, wrappedErr
 	}
@@ -114,14 +162,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			// The linked placement policy cannot be found. No need to process the staged update run any more.
 			msg := "No linked placement policy"
 			if err := r.markStagedUpdateRunAsInTerminalState(ctx, stagedUpdateRun, msg); err != nil {
-				wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", req.NamespacedName, "controller", controllerName)
+				wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
 				klog.ErrorS(wrappedErr, "Failed to mark staged update run as in terminal state", errors.Args(wrappedErr)...)
 				return ctrl.Result{}, wrappedErr
 			}
 			// Requeue to handle the terminal state update.
 			return ctrl.Result{RequeueAfter: requeueImmediatelyAfterPeriod}, nil
 		}
-		return ctrl.Result{}, errors.Wraps(err, "failed to retrieve the linked placement policy")
+		wrappedErr := errors.Wraps(err, "failed to retrieve the linked placement policy", "stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
+		klog.ErrorS(wrappedErr, "Failed to retrieve the linked placement policy", errors.Args(wrappedErr)...)
+		return ctrl.Result{}, wrappedErr
 	}
 
 	// Claim the staged update run object as the binding manager for the placement policy.
@@ -129,16 +179,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// interfere with the rollout process.
 	claimed, err := r.claimAsBindingManagerFor(ctx, placementPolicy, stagedUpdateRun)
 	if err != nil {
-		wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", req.NamespacedName, "controller", controllerName)
+		wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
 		klog.ErrorS(wrappedErr, "Failed to claim binding manager role for staged update run", errors.Args(wrappedErr)...)
 		return ctrl.Result{}, wrappedErr
 	}
 	if !claimed {
-		backoffDuration := r.BindingManagerClaimRateLimiter.When(req)
+		backoffDuration := r.bindingManagerClaimRateLimiter.When(req)
 		return ctrl.Result{RequeueAfter: backoffDuration}, nil
 	}
 	// Reset the binding manager claim rate limiter for the staged update run object.
-	r.BindingManagerClaimRateLimiter.Forget(req)
+	r.bindingManagerClaimRateLimiter.Forget(req)
 
 	// Initialize the staged update run (if applicable).
 	if err := r.initialize(ctx, placementPolicy, stagedUpdateRun); err != nil {
@@ -146,21 +196,29 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			// A user error has occurred during initialization; consider the initialization step failed.
 			msg := fmt.Sprintf("failed to initialize staged update run: %v", err)
 			if err := r.markStagedUpdateRunAsFailedToInitialize(ctx, stagedUpdateRun, msg); err != nil {
-				wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", req.NamespacedName, "controller", controllerName)
+				wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
 				klog.ErrorS(wrappedErr, "Failed to mark staged update run as failed to initialize", errors.Args(wrappedErr)...)
 				return ctrl.Result{}, wrappedErr
 			}
 			return ctrl.Result{RequeueAfter: requeueImmediatelyAfterPeriod}, nil
 		}
-		return ctrl.Result{}, err
+		wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
+		klog.ErrorS(wrappedErr, "Failed to initialize staged update run", errors.Args(wrappedErr)...)
+		return ctrl.Result{}, wrappedErr
 	}
 
 	// Before starting processing the staged update run, verify if the run has been suspended and needs to be skipped.
-	if r.shouldSkipProcessing(stagedUpdateRun) {
+	shouldSkip, err = r.shouldSkipProcessing(ctx, stagedUpdateRun)
+	if err != nil {
+		wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
+		klog.ErrorS(wrappedErr, "Failed to determine if staged update run should be skipped", errors.Args(wrappedErr)...)
+		return ctrl.Result{}, wrappedErr
+	}
+	if shouldSkip {
 		// The staged update run is already in a terminal state (failed to initialize, complete), or has been
 		// suspended. Give up the binding manager role and drop the cleanup finalizer.
 		if err := r.cleanup(ctx, stagedUpdateRun); err != nil {
-			wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", req.NamespacedName, "controller", controllerName)
+			wrappedErr := errors.Wraps(err, "", "stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
 			klog.ErrorS(wrappedErr, "Failed to cleanup staged update run", errors.Args(wrappedErr)...)
 			return ctrl.Result{}, wrappedErr
 		}
@@ -170,7 +228,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	// Process the staged update run.
 	allStagesProcessingRes, requeueAfter, processingErr := r.process(ctx, stagedUpdateRun)
 	klog.V(2).InfoS("Processed staged update run",
-		"stagedUpdateRun", req.NamespacedName,
+		"stagedUpdateRun", klog.KObj(stagedUpdateRun),
 		"placementPolicyName", stagedUpdateRun.GetSpec().PlacementPolicyName,
 		"controller", controllerName,
 		"allStagesProcessingRes", allStagesProcessingRes,
@@ -180,16 +238,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	//
 	// Note that this is done regardless of the processing results, so as to keep the users informed of the progress
 	// so far.
-	if updateErr := r.HubClient.Status().Update(ctx, stagedUpdateRun); updateErr != nil {
+	if updateErr := r.hubClient.Status().Update(ctx, stagedUpdateRun); updateErr != nil {
 		wrappedErr := errors.NewAPIServerError(updateErr, "", false,
-			"stagedUpdateRun", req.NamespacedName, "controller", controllerName)
+			"stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
 		klog.ErrorS(wrappedErr, "Failed to update staged update run status", errors.Args(wrappedErr)...)
 		return ctrl.Result{}, wrappedErr
 	}
 
 	// Handle processing errors and requeues accordingly.
 	if processingErr != nil {
-		wrappedErr := errors.Wraps(processingErr, "", "stagedUpdateRun", req.NamespacedName, "controller", controllerName)
+		wrappedErr := errors.Wraps(processingErr, "", "stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
 		klog.ErrorS(wrappedErr, "Failed to process staged update run", errors.Args(wrappedErr)...)
 		return ctrl.Result{}, wrappedErr
 	}
@@ -207,7 +265,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		// An unexpected processing result is yielded; consider this as an unexpected error.
 		wrappedErr := errors.NewUnexpectedError(nil, "encountered an unexpected processing result",
 			"observedProcessingResult", allStagesProcessingRes,
-			"stagedUpdateRun", req.NamespacedName, "controller", controllerName)
+			"stagedUpdateRun", klog.KObj(stagedUpdateRun), "controller", controllerName)
 		klog.ErrorS(wrappedErr, "", errors.Args(wrappedErr)...)
 		return ctrl.Result{}, wrappedErr
 	}

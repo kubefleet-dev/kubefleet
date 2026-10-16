@@ -49,12 +49,14 @@ func (r *Reconciler) initialize(
 		// The staged update run has already been initialized successfully; skip the initialization.
 		klog.V(2).InfoS("Staged update run has been initialized; skip the initialization step",
 			"stagedUpdateRun", klog.KObj(stagedUpdateRun))
-		return nil
+		// If the condition is no longer up to date (its observed generation is behind the current generation), resync it.
+		return r.resyncStagedUpdateRunCondIfNeeded(ctx, stagedUpdateRun, rolloutv1alpha1.StagedUpdateRunCondTypeInitialized)
 	case initCond.Status == metav1.ConditionFalse:
 		// The staged update run has already been initialized and failed; no further processing is needed.
 		klog.V(2).InfoS("Staged update run has failed to initialize; no further processing is needed",
 			"stagedUpdateRun", klog.KObj(stagedUpdateRun))
-		return nil
+		// If the condition is no longer up to date (its observed generation is behind the current generation), resync it.
+		return r.resyncStagedUpdateRunCondIfNeeded(ctx, stagedUpdateRun, rolloutv1alpha1.StagedUpdateRunCondTypeInitialized)
 	}
 
 	// Retrieve the staged update strategy.
@@ -311,8 +313,11 @@ func buildPerStageStatus(
 		beforeStageTaskStatus := rolloutv1alpha1.PerStageTaskStatus{
 			Type: beforeStageTask.Type,
 		}
-		if beforeStageTask.Type == rolloutv1alpha1.StageTaskTypeTimedWait {
-			beforeStageTaskStatus.WaitTime = beforeStageTask.WaitTime
+		if beforeStageTask.Type != rolloutv1alpha1.StageTaskTypeApproval {
+			return rolloutv1alpha1.PerStageStatus{}, errors.NewUserError(nil,
+				"unsupported before-stage task type (only approval task can be added as a before stage task)",
+				"taskType", beforeStageTask.Type,
+				"stage", stage.Name)
 		}
 		beforeStageTaskStatuses = append(beforeStageTaskStatuses, beforeStageTaskStatus)
 	}
@@ -360,7 +365,7 @@ func (r *Reconciler) identifyResourceSnapshotToRollout(
 	resourceSnapshotName := stagedUpdateRun.GetSpec().ResourceSnapshotName
 	if resourceSnapshotName == "" {
 		// If no resource snapshot is explicitly specified, retrieve the latest snapshot or request a new one if the latest is stale.
-		resourceSnapshots, _, err := r.PlacementResourceSnapshotManager.SnapshotResourcesIfStale(
+		resourceSnapshots, _, err := r.placementResourceSnapshotManager.SnapshotResourcesIfStale(
 			ctx, placementPolicy)
 		if err != nil {
 			return nil, errors.Wraps(err, "failed to retrieve or create the latest resource snapshot")
@@ -382,7 +387,7 @@ func (r *Reconciler) identifyResourceSnapshotToRollout(
 		resourceSnapshot = &placementv1alpha1.PlacementResourceSnapshot{}
 	}
 
-	if err := r.HubClient.Get(ctx, snapshotKey, resourceSnapshot); err != nil {
+	if err := r.hubClient.Get(ctx, snapshotKey, resourceSnapshot); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, errors.NewUserError(err, "the explicitly specified resource snapshot does not exist",
 				"resourceSnapshot", klog.KRef(snapshotKey.Namespace, snapshotKey.Name))

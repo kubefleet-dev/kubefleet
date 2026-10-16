@@ -45,7 +45,7 @@ func (r *Reconciler) placementBindingResourceSnapshotChanged(
 
 	// Read from the API server directly, bypassing the (possibly stale) cache.
 	key := types.NamespacedName{Namespace: placementBinding.GetNamespace(), Name: placementBinding.GetName()}
-	if err := r.HubUncachedClient.Get(ctx, key, latestBinding); err != nil {
+	if err := r.hubUncachedClient.Get(ctx, key, latestBinding); err != nil {
 		return false, nil, errors.NewAPIServerError(err, "failed to get the placement binding", false,
 			"placementBinding", klog.KObj(placementBinding))
 	}

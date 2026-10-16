@@ -49,7 +49,7 @@ func (r *Reconciler) claimAsBindingManagerFor(
 	stagedUpdateRun rolloutv1alpha1.StagedUpdateRunAccessor,
 ) (claimed bool, err error) {
 	stagedUpdateRunObjRef := stagedUpdateRunObjRef(stagedUpdateRun)
-	claimed, err = bindingmanager.ClaimRoleAs(ctx, r.HubClient, placementPolicy, controllerName, stagedUpdateRunObjRef)
+	claimed, err = bindingmanager.ClaimRoleAs(ctx, r.hubClient, placementPolicy, controllerName, stagedUpdateRunObjRef)
 	if err != nil {
 		wrappedErr := errors.Wraps(err, "",
 			"stagedUpdateRun", klog.KObj(stagedUpdateRun),
