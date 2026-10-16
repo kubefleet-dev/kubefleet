@@ -17,6 +17,7 @@ limitations under the License.
 package placementpolicy
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -52,7 +53,11 @@ func progressedBinding(cluster, revision string, processed *string, synchronized
 
 func TestSummarizeResourceStatus(t *testing.T) {
 	const latest, older = "pp-snapshot-1", "pp-snapshot-0"
-	targets := map[string][]int{"done": {0}, "rolling": {0}, "unprocessed": {0}, "stale-gen": {0}, "failing": {0}, "no-binding-yet": {0}}
+	targets := map[string][]int{"done": {0}, "rolling": {0}, "unprocessed": {0}, "stale-gen": {0}, "failing": {0}, "no-binding-yet": {0}, "terminating": {0}, "old-strategy": {0}}
+	terminating := progressedBinding("terminating", latest, ptr.To(latest), metav1.ConditionTrue, metav1.ConditionTrue, false)
+	terminating.SetDeletionTimestamp(ptr.To(metav1.Now()))
+	oldStrategy := progressedBinding("old-strategy", latest, ptr.To(latest), metav1.ConditionTrue, metav1.ConditionTrue, false)
+	oldStrategy.GetSpec().SyncStrategy = &kfplacementv1alpha1.SyncStrategy{ApplyMethod: kfplacementv1alpha1.ApplyMethodServerSideApply}
 	bindings := []kfplacementv1alpha1.PlacementBindingAccessor{
 		progressedBinding("done", latest, ptr.To(latest), metav1.ConditionTrue, metav1.ConditionTrue, false),
 		// Still on the older revision: available there, but not synchronized with the latest one.
@@ -63,10 +68,14 @@ func TestSummarizeResourceStatus(t *testing.T) {
 		progressedBinding("failing", latest, ptr.To(latest), metav1.ConditionFalse, metav1.ConditionUnknown, false),
 		// Not a target anymore: on its way out, and not counted at all.
 		progressedBinding("leaving", latest, ptr.To(latest), metav1.ConditionTrue, metav1.ConditionTrue, false),
+		// Being deleted: its conditions outlive the removal of its resources.
+		terminating,
+		// Not yet updated to the policy's sync strategy: its conditions describe the old one.
+		oldStrategy,
 	}
 
-	got := summarizeResourceStatus(latest, true, targets, bindings)
-	want := resourceStatus{latestRevision: latest, current: true, targets: 6, synchronized: 1, available: 1}
+	got := summarizeResourceStatus(latest, true, nil, targets, bindings)
+	want := resourceStatus{latestRevision: latest, current: true, targets: 8, synchronized: 1, outdated: 1, available: 1}
 	if diff := cmp.Diff(want, got, cmp.AllowUnexported(resourceStatus{})); diff != "" {
 		t.Errorf("summarizeResourceStatus() mismatch (-want +got):\n%s", diff)
 	}
@@ -95,16 +104,30 @@ func TestResourceStatusConditions(t *testing.T) {
 		},
 		{
 			name:   "rollout in progress",
-			status: resourceStatus{latestRevision: "r1", current: true, targets: 3, synchronized: 1, available: 2},
+			status: resourceStatus{latestRevision: "r1", current: true, targets: 4, synchronized: 1, outdated: 2, available: 2},
 			wantSync: metav1.Condition{
 				Type: kfplacementv1alpha1.PlacementPolicyCondTypeSynchronized, Status: metav1.ConditionFalse, ObservedGeneration: 3,
-				Reason:  kfplacementv1alpha1.PlacementPolicySynchronizedCondReasonFailedToSynchronizeSomeClusters,
-				Message: "1 of 3 target clusters have the latest resource revision r1 synchronized",
+				Reason:  kfplacementv1alpha1.PlacementPolicySynchronizedCondReasonSomeClustersOnOlderResourceRevision,
+				Message: "1 of 4 target clusters have the latest resource revision r1 synchronized (still on an older revision: 2, yet to apply the latest one: 1)",
 			},
 			wantAvailable: metav1.Condition{
 				Type: kfplacementv1alpha1.PlacementPolicyCondTypeAvailable, Status: metav1.ConditionFalse, ObservedGeneration: 3,
 				Reason:  kfplacementv1alpha1.PlacementPolicyAvailableCondReasonSomeClustersUnavailable,
-				Message: "The resources are available on 2 of 3 target clusters",
+				Message: "The resources are available on 2 of 4 target clusters",
+			},
+		},
+		{
+			name:   "latest revision yet to apply on some target clusters",
+			status: resourceStatus{latestRevision: "r1", current: true, targets: 2, synchronized: 1, available: 1},
+			wantSync: metav1.Condition{
+				Type: kfplacementv1alpha1.PlacementPolicyCondTypeSynchronized, Status: metav1.ConditionFalse, ObservedGeneration: 3,
+				Reason:  kfplacementv1alpha1.PlacementPolicySynchronizedCondReasonFailedToSynchronizeSomeClusters,
+				Message: "1 of 2 target clusters have the latest resource revision r1 synchronized (still on an older revision: 0, yet to apply the latest one: 1)",
+			},
+			wantAvailable: metav1.Condition{
+				Type: kfplacementv1alpha1.PlacementPolicyCondTypeAvailable, Status: metav1.ConditionFalse, ObservedGeneration: 3,
+				Reason:  kfplacementv1alpha1.PlacementPolicyAvailableCondReasonSomeClustersUnavailable,
+				Message: "The resources are available on 1 of 2 target clusters",
 			},
 		},
 		{
@@ -112,13 +135,27 @@ func TestResourceStatusConditions(t *testing.T) {
 			status: resourceStatus{latestRevision: "r1", current: false, targets: 2, synchronized: 2, available: 2},
 			wantSync: metav1.Condition{
 				Type: kfplacementv1alpha1.PlacementPolicyCondTypeSynchronized, Status: metav1.ConditionFalse, ObservedGeneration: 3,
-				Reason:  kfplacementv1alpha1.PlacementPolicySynchronizedCondReasonFailedToSynchronizeSomeClusters,
+				Reason:  kfplacementv1alpha1.PlacementPolicySynchronizedCondReasonResourcesChangedPendingRollout,
 				Message: "The selected resources have changed since resource revision r1 and are waiting for a rollout to reach the target clusters",
 			},
 			wantAvailable: metav1.Condition{
 				Type: kfplacementv1alpha1.PlacementPolicyCondTypeAvailable, Status: metav1.ConditionTrue, ObservedGeneration: 3,
 				Reason:  kfplacementv1alpha1.PlacementPolicyAvailableCondReasonAllClustersAvailable,
 				Message: "The resources are available on all 2 target clusters",
+			},
+		},
+		{
+			name:   "resources changed while some target clusters are on an older revision",
+			status: resourceStatus{latestRevision: "r1", current: false, targets: 2, synchronized: 1, outdated: 1, available: 1},
+			wantSync: metav1.Condition{
+				Type: kfplacementv1alpha1.PlacementPolicyCondTypeSynchronized, Status: metav1.ConditionFalse, ObservedGeneration: 3,
+				Reason:  kfplacementv1alpha1.PlacementPolicySynchronizedCondReasonResourcesChangedPendingRollout,
+				Message: "The selected resources have changed since resource revision r1 and are waiting for a rollout to reach the target clusters",
+			},
+			wantAvailable: metav1.Condition{
+				Type: kfplacementv1alpha1.PlacementPolicyCondTypeAvailable, Status: metav1.ConditionFalse, ObservedGeneration: 3,
+				Reason:  kfplacementv1alpha1.PlacementPolicyAvailableCondReasonSomeClustersUnavailable,
+				Message: "The resources are available on 1 of 2 target clusters",
 			},
 		},
 		{
@@ -157,6 +194,39 @@ func TestResourceStatusConditions(t *testing.T) {
 			}
 			if diff := cmp.Diff(tc.wantAvailable, tc.status.availableCondition(3)); diff != "" {
 				t.Errorf("availableCondition() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestResourceCollectedCondition(t *testing.T) {
+	testCases := []struct {
+		name         string
+		selectionErr error
+		want         metav1.Condition
+	}{
+		{
+			name: "collected",
+			want: metav1.Condition{
+				Type: kfplacementv1alpha1.PlacementPolicyCondTypeResourceCollected, Status: metav1.ConditionTrue, ObservedGeneration: 3,
+				Reason:  kfplacementv1alpha1.PlacementPolicyResourceCollectedCondReasonAllResourcesCollected,
+				Message: "All selected resources have been collected",
+			},
+		},
+		{
+			name:         "cannot be collected",
+			selectionErr: errors.New("configmaps \"app\" not found"),
+			want: metav1.Condition{
+				Type: kfplacementv1alpha1.PlacementPolicyCondTypeResourceCollected, Status: metav1.ConditionFalse, ObservedGeneration: 3,
+				Reason:  kfplacementv1alpha1.PlacementPolicyResourceCollectedCondReasonFailedToCollectSomeResources,
+				Message: "The selected resources cannot be collected: configmaps \"app\" not found",
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if diff := cmp.Diff(tc.want, resourceCollectedCondition(3, tc.selectionErr)); diff != "" {
+				t.Errorf("resourceCollectedCondition() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

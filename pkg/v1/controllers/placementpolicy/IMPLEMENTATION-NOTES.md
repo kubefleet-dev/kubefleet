@@ -127,13 +127,24 @@ package demonstrating the current behavior.
   `Synchronized` for its current generation; `resourcesAvailableClusters`
   counts, of those, the ones reporting `Available` (availability is judged
   only for the latest revision, as placements judge it only once
-  synchronized). Target clusters include a bound cluster kept while
+  synchronized). A binding being deleted, or one not yet updated to the
+  policy's sync strategy, counts as neither: its conditions describe what is
+  going away. Target clusters include a bound cluster kept while
   unschedulable, since it still holds the resources. The `Synchronized`
   condition is true only
   when every target cluster is synchronized *and* the snapshot still matches
   the hub — per the FEP a resource change alone takes no snapshot, so until a
   rollout does, the condition says the resources changed and a rollout is
-  pending. Rolling a new revision out is left to the rollout APIs; this
+  pending (`ResourcesChangedPendingRollout`). Otherwise it reports
+  `SomeClustersOnOlderResourceRevision` while a target cluster is still on an
+  older revision and `FailedToSynchronizeSomeClusters` while the rest have yet
+  to apply the latest one, the message counting both. `ResourceCollected` is
+  true once the selected resources are collected and the snapshot taken or
+  found, false when they cannot be collected for good (a resource selected by
+  name is gone, or the selection is invalid), and left as it was on a
+  transient failure or while the cluster selectors are invalid, since no
+  snapshot is attempted then.
+  Rolling a new revision out is left to the rollout APIs; this
   controller only reports. Binding updates wake the policy when their spec or
   this progress changes (`bindingRelevantChanges`).
 - **Bindings are owned by the policy** through a controller reference —
