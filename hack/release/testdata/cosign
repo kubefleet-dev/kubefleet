@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Stand-in for cosign, used by test-release-scripts.sh. Keyless signing needs a
+# real OIDC identity, so the signing scripts can only be exercised against a
+# stub; what these tests cover is the logic around cosign - which digest gets
+# signed, and what happens when a step fails - not cosign itself.
+#
+# Environment:
+#   FAKE_COSIGN_FAIL  subcommand that should fail: sign | verify | sign-blob |
+#                     verify-blob (default: none)
+#   FAKE_GH_LOG       file every invocation is appended to (shared with the gh stub)
+
+set -uo pipefail
+
+echo "cosign $*" >>"${FAKE_GH_LOG}"
+
+subcommand="${1:-}"
+
+if [ "${subcommand}" = "${FAKE_COSIGN_FAIL:-}" ]; then
+  echo "cosign ${subcommand}: simulated failure" >&2
+  exit 1
+fi
+
+# sign-blob is expected to leave a signature bundle behind.
+if [ "${subcommand}" = "sign-blob" ]; then
+  args=("$@")
+  for i in "${!args[@]}"; do
+    if [ "${args[$i]}" = "--bundle" ]; then
+      printf '{"fake":"bundle"}\n' >"${args[$((i + 1))]}"
+    fi
+  done
+fi
+
+exit 0
