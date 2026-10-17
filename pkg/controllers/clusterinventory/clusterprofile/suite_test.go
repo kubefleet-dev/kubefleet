@@ -29,7 +29,8 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
-	clusterinventory "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
+	clusterinventoryv1alpha1 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
+	clusterinventory "sigs.k8s.io/cluster-inventory-api/apis/v1alpha2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -79,6 +80,8 @@ var _ = BeforeSuite(func() {
 	Expect(cfg).NotTo(BeNil())
 
 	err = clusterinventory.AddToScheme(scheme.Scheme)
+	Expect(err).Should(Succeed())
+	err = clusterinventoryv1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).Should(Succeed())
 	err = clusterv1beta1.AddToScheme(scheme.Scheme)
 	Expect(err).Should(Succeed())
