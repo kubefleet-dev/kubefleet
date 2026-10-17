@@ -501,7 +501,7 @@ func TestGatherSelectedResource(t *testing.T) {
 				},
 			},
 			resourceEligibilityChecker: func() resourceeligibility.Checker {
-				c := resourceeligibility.New(newFakeRESTMapper(), nil)
+				c := resourceeligibility.New(resourceeligibility.CheckerOptions{RestMapper: newFakeRESTMapper(), SkipNSCheck: false, SkipGVKRCheck: false, SkipObjectCheck: false})
 				_ = c.SetGVKCheckList(resourceeligibility.GVKEligibilityModeAllowList, nil)
 				return c
 			}(), // make this allow list - nothing is allowed
@@ -519,7 +519,7 @@ func TestGatherSelectedResource(t *testing.T) {
 				},
 			},
 			resourceEligibilityChecker: func() resourceeligibility.Checker {
-				c := resourceeligibility.New(newFakeRESTMapper(), nil)
+				c := resourceeligibility.New(resourceeligibility.CheckerOptions{RestMapper: newFakeRESTMapper(), SkipNSCheck: false, SkipGVKRCheck: false, SkipObjectCheck: false})
 				_ = c.SetGVKCheckList(resourceeligibility.GVKEligibilityModeAllowList, nil)
 				return c
 			}(), // make this allow list - nothing is allowed
@@ -915,7 +915,7 @@ func TestGatherSelectedResource(t *testing.T) {
 				},
 			},
 			resourceEligibilityChecker: func() resourceeligibility.Checker {
-				c := resourceeligibility.New(newFakeRESTMapper(), resourceeligibility.DefaultForV0APIs(newFakeRESTMapper()))
+				c := resourceeligibility.New(resourceeligibility.CheckerOptions{RestMapper: newFakeRESTMapper(), Wrapped: resourceeligibility.DefaultForV0APIs(newFakeRESTMapper()), SkipNSCheck: false, SkipGVKRCheck: false, SkipObjectCheck: false})
 				_ = c.SetGVKCheckList(resourceeligibility.GVKEligibilityModeDenyList, []schema.GroupVersionKind{utils.DeploymentGVK})
 				return c
 			}(),
@@ -1591,7 +1591,7 @@ func TestGatherSelectedResource(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			checker := tt.resourceEligibilityChecker
 			if checker == nil {
-				checker = resourceeligibility.New(newFakeRESTMapper(), nil)
+				checker = resourceeligibility.New(resourceeligibility.CheckerOptions{RestMapper: newFakeRESTMapper(), SkipNSCheck: false, SkipGVKRCheck: false, SkipObjectCheck: false})
 			}
 			rsr := &ResourceSelectorResolver{
 				ResourceEligibilityChecker: checker,
@@ -2471,7 +2471,7 @@ func TestGatherSelectedResource_ErrorCases(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			checker := tt.resourceEligibilityChecker
 			if checker == nil {
-				checker = resourceeligibility.New(newFakeRESTMapper(), nil)
+				checker = resourceeligibility.New(resourceeligibility.CheckerOptions{RestMapper: newFakeRESTMapper(), SkipNSCheck: false, SkipGVKRCheck: false, SkipObjectCheck: false})
 			}
 			rsr := &ResourceSelectorResolver{
 				ResourceEligibilityChecker: checker,
