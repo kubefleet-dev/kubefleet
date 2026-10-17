@@ -71,12 +71,12 @@ const (
 )
 
 const (
-	WorkAppliedCondPreparingToProcessReason     = "PreparingToProcess"
 	WorkAppliedCondAllManifestsAppliedReason    = "AllManifestsApplied"
 	WorkAppliedCondNotAllManifestsAppliedReason = "SomeManifestsAreNotYetApplied"
 
 	WorkAvailableCondAllManifestsAvailableReason    = "AllManifestsAvailable"
 	WorkAvailableCondNotAllManifestsAvailableReason = "SomeManifestsAreNotYetAvailable"
+	WorkAvailableCondNotAllManifestsTrackableReason = "SomeManifestsAreNotTrackable"
 )
 
 // Work is the KubeFleet API used for synchronizing resources to place between
@@ -216,21 +216,21 @@ type ManifestIdentifier struct {
 	Namespace string `json:"namespace,omitempty"`
 
 	// The name of the manifest.
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
+	// +kubebuilder:validation:Optional
+	Name string `json:"name,omitempty"`
 
 	// The API group, version, kind, and resource of the manifest.
 
 	// +kubebuilder:validation:Optional
 	APIGroup string `json:"apiGroup,omitempty"`
 
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	APIVersion string `json:"apiVersion,omitempty"`
 
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	Kind string `json:"kind,omitempty"`
 
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	Resource string `json:"resource,omitempty"`
 }
 

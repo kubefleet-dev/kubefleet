@@ -349,12 +349,18 @@ func (r *Reconciler) writeAheadPerWorkObjManifestProcessingAttempts(ctx context.
 // prepareExistingManifestStatusIndex indexes the given manifest statuses by their identifier strings, so that
 // the status of a specific manifest can be looked up without scanning the whole list.
 func prepareExistingManifestStatusIndex(manifestStatuses []placementv1alpha1.PerManifestStatus) map[string]int {
-	idx := make(map[string]int, len(manifestStatuses))
+	existingManifestStatusIdx := make(map[string]int, len(manifestStatuses))
 	for i := range manifestStatuses {
 		idStr := formatManifestIdentifierStr(&manifestStatuses[i].Identifier)
-		idx[idStr] = i
+		if _, exists := existingManifestStatusIdx[idStr]; exists {
+			// Skip duplicate identifiers; only the first occurrence is indexed. This is to ensure that upon
+			// duplicated manifests, only the first one, which is also the one that gets actually processed,
+			// is indexed.
+			continue
+		}
+		existingManifestStatusIdx[idStr] = i
 	}
-	return idx
+	return existingManifestStatusIdx
 }
 
 // buildManifestStatusToWriteAhead prepares the status of a manifest for the write-ahead process.
@@ -375,7 +381,7 @@ func buildManifestStatusToWriteAhead(manifestProcessingState *manifestProcessing
 			{
 				Type:               placementv1alpha1.WorkCondTypeApplied,
 				Status:             metav1.ConditionFalse,
-				Reason:             placementv1alpha1.WorkAppliedCondPreparingToProcessReason,
+				Reason:             string(ApplyResTypePreparingToProcess),
 				Message:            "The manifest is being prepared for processing",
 				LastTransitionTime: metav1.Now(),
 			},
@@ -424,19 +430,11 @@ func findLeftOverManifests(
 			continue
 		}
 
-		existingManifestStatus := work.Status.Manifests[existingManifestStatusIdx]
+		existingManifestStatus := &work.Status.Manifests[existingManifestStatusIdx]
 
-		// The work applier assumes that the manifest has been applied if:
-		// a) it has an Applied condition set to the True status; or
-		// b) it has an Applied condition which signals that the object is preparing to be processed.
-		//
 		// Note that the manifest status might not be up-to-date, so the work applier will not check on the
 		// generation information.
-		appliedCond := meta.FindStatusCondition(existingManifestStatus.Conditions, placementv1alpha1.WorkCondTypeApplied)
-		if appliedCond == nil {
-			continue
-		}
-		if appliedCond.Status == metav1.ConditionTrue || appliedCond.Reason == placementv1alpha1.WorkAppliedCondPreparingToProcessReason {
+		if shouldCleanUpManifest(existingManifestStatus) {
 			leftOverManifests = append(leftOverManifests, existingManifestStatus.Identifier)
 		}
 	}
