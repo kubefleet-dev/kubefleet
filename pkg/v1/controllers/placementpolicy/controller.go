@@ -44,16 +44,6 @@ import (
 )
 
 const (
-	// unfulfilledRequeueAfter is the wait before re-evaluating a policy that has not reached
-	// all of its desired cluster counts; it backstops cluster eligibility transitions that do
-	// not surface as watch events (e.g., a member agent heartbeat going stale).
-	unfulfilledRequeueAfter = 2 * time.Minute
-	// fulfilledRequeueAfter is the wait before re-evaluating a fulfilled policy, for the same
-	// backstop reason: a cluster that silently stops heartbeating emits no event, yet it must
-	// eventually stop counting toward fulfillment. Set to half the eligibility checker's
-	// 5-minute heartbeat timeout so the worst-case detection latency stays near the timeout
-	// itself (timeout + one requeue period, ~7.5 minutes) instead of doubling it.
-	fulfilledRequeueAfter = 150 * time.Second
 	// bindingManagerRetryBase and bindingManagerRetryMax bound the exponential backoff before
 	// retrying a binding change that found the policy's binding manager role held by another
 	// process (e.g., a rollout in progress). The FEP has contenders back off and retry rather
@@ -250,12 +240,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	}
 	r.roleBackoff.Forget(req)
 
-	requeueAfter := fulfilledRequeueAfter
-	for i := range outcomes {
-		if !outcomes[i].satisfiedInFull() {
-			requeueAfter = unfulfilledRequeueAfter
-			break
-		}
+	requeueAfter, needed := calculateHeartbeatRequeue(outcomes, memberClusters.Items, r.eligibility.HeartbeatTimeout(), r.eligibility.HealthCheckTimeout(), time.Now())
+	if !needed {
+		return runtime.Result{}, nil
 	}
 	return runtime.Result{RequeueAfter: requeueAfter}, nil
 }
@@ -338,7 +325,7 @@ func (r *Reconciler) SetupWithManagerForPlacementPolicy(mgr runtime.Manager) err
 		Watches(
 			&clusterv1beta1.MemberCluster{},
 			handler.EnqueueRequestsFromMapFunc(r.mapMemberClusterToPlacementPolicies),
-			builder.WithPredicates(memberClusterSchedulingRelevantChanges()),
+			builder.WithPredicates(memberClusterSchedulingRelevantChanges(r.eligibility.HeartbeatTimeout())),
 		).
 		Watches(
 			&kfplacementv1alpha1.ClusterClaim{},
@@ -359,7 +346,7 @@ func (r *Reconciler) SetupWithManagerForClusterPlacementPolicy(mgr runtime.Manag
 		Watches(
 			&clusterv1beta1.MemberCluster{},
 			handler.EnqueueRequestsFromMapFunc(r.mapMemberClusterToClusterPlacementPolicies),
-			builder.WithPredicates(memberClusterSchedulingRelevantChanges()),
+			builder.WithPredicates(memberClusterSchedulingRelevantChanges(r.eligibility.HeartbeatTimeout())),
 		).
 		Watches(
 			&kfplacementv1alpha1.ClusterClaim{},

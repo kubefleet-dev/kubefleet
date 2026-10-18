@@ -180,6 +180,33 @@ func TestIsClusterEligible(t *testing.T) {
 			wantReasonPrefix: "cluster is not connected to the fleet: unhealthy for a prolonged period of time",
 		},
 		{
+			name: "health check fails with zero transition time",
+			cluster: &clusterv1beta1.MemberCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: clusterName,
+				},
+				Status: clusterv1beta1.MemberClusterStatus{
+					AgentStatus: []clusterv1beta1.AgentStatus{
+						{
+							Type: clusterv1beta1.MemberAgent,
+							Conditions: []metav1.Condition{
+								{
+									Type:   string(clusterv1beta1.AgentJoined),
+									Status: metav1.ConditionTrue,
+								},
+								{
+									Type:   string(clusterv1beta1.AgentHealthy),
+									Status: metav1.ConditionFalse,
+								},
+							},
+							LastReceivedHeartbeat: metav1.NewTime(time.Now()),
+						},
+					},
+				},
+			},
+			wantReasonPrefix: "cluster is not connected to the fleet: unhealthy for a prolonged period of time",
+		},
+		{
 			name: "recent health check failure",
 			cluster: &clusterv1beta1.MemberCluster{
 				ObjectMeta: metav1.ObjectMeta{
@@ -247,5 +274,29 @@ func TestIsClusterEligible(t *testing.T) {
 				t.Errorf("IsClusterEligible() reason = %s, want %s", reason, tc.wantReasonPrefix)
 			}
 		})
+	}
+}
+
+// TestTimeouts tests the HeartbeatTimeout and HealthCheckTimeout methods for default and custom timeouts.
+func TestTimeouts(t *testing.T) {
+	defaultChecker := New()
+	if got := defaultChecker.HeartbeatTimeout(); got != DefaultClusterHeartbeatCheckTimeout {
+		t.Errorf("HeartbeatTimeout() = %v, want %v", got, DefaultClusterHeartbeatCheckTimeout)
+	}
+	if got := defaultChecker.HealthCheckTimeout(); got != DefaultClusterHealthCheckTimeout {
+		t.Errorf("HealthCheckTimeout() = %v, want %v", got, DefaultClusterHealthCheckTimeout)
+	}
+
+	customHeartbeat := 10 * time.Minute
+	customHealth := 3 * time.Minute
+	customChecker := New(
+		WithClusterHeartbeatCheckTimeout(customHeartbeat),
+		WithClusterHealthCheckTimeout(customHealth),
+	)
+	if got := customChecker.HeartbeatTimeout(); got != customHeartbeat {
+		t.Errorf("HeartbeatTimeout() = %v, want %v", got, customHeartbeat)
+	}
+	if got := customChecker.HealthCheckTimeout(); got != customHealth {
+		t.Errorf("HealthCheckTimeout() = %v, want %v", got, customHealth)
 	}
 }

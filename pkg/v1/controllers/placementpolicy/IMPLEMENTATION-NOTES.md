@@ -189,11 +189,14 @@ package demonstrating the current behavior.
   once the selectors are invalid no binding change can follow until the spec
   is fixed, so the role is released rather than blocking rollouts.
 - **Heartbeat-noise suppression**: member cluster watch events pass through a
-  projection predicate that ignores heartbeat/observation timestamps;
-  time-driven eligibility transitions (e.g., heartbeats going stale) are
-  covered by periodic requeues instead (fulfilled policies re-check at half
-  the eligibility timeout, bounding worst-case staleness detection at about
-  1.5x the timeout).
+  projection predicate that ignores routine heartbeat/observation timestamps;
+  time-driven eligibility transitions (heartbeats going stale or prolonged
+  unhealthy conditions) are covered by scheduling a requeue at the earliest
+  eligibility staleness deadline among the clusters actively counted by the
+  policy (plus a one-second safety buffer). Policies with no counted clusters
+  do not schedule a staleness requeue; when a previously stale cluster resumes
+  heartbeats, the watch predicate detects the stale-to-fresh recovery and
+  enqueues policies immediately, eliminating the need for periodic polling.
 - **Malformed per-cluster data never fails a policy**: selector specs are
   validated structurally up front, so any evaluation-time error is by
   construction caused by data one cluster self-reported (e.g., a property
