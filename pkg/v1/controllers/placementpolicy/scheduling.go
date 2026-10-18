@@ -19,6 +19,7 @@ package placementpolicy
 import (
 	"math"
 	"sort"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,6 +38,8 @@ import (
 // the predicate pluggable and fakeable in tests.
 type eligibilityChecker interface {
 	IsEligible(cluster *clusterv1beta1.MemberCluster) (eligible bool, reason string)
+	HeartbeatTimeout() time.Duration
+	HealthCheckTimeout() time.Duration
 }
 
 // The Scheduled condition uses the reason constants defined on the API
@@ -50,6 +53,13 @@ const (
 	// e.g., an operator is applied to a key it does not support; unlike
 	// FailedToFindSomeRequiredClusters, waiting for more clusters cannot resolve it.
 	reasonInvalidClusterSelectors = "InvalidClusterSelectors"
+
+	// heartbeatStalenessBuffer is the safety margin added to the heartbeat-staleness deadline.
+	// Because the eligibility checker considers a cluster stale only when time.Since(lastHeartbeat) > timeout
+	// (strict greater-than), adding a small buffer ensures that when the requeued reconciliation runs,
+	// the cluster has genuinely crossed the staleness threshold. It also serves as the positive delay floor
+	// when a deadline has already elapsed or is imminent, preventing tight reconciliation loops.
+	heartbeatStalenessBuffer = 1 * time.Second
 )
 
 // selectorOutcome is the evaluation result of a single cluster selector against the current
@@ -191,6 +201,109 @@ func aggregateCounts(outcomes []selectorOutcome) (desired, scheduled int32) {
 		scheduled += int32Len(o.selected())
 	}
 	return desired, scheduled
+}
+
+// clusterEligibilityDeadline calculates the next time an eligible cluster will cross a
+// staleness threshold (heartbeat timeout or unhealthy grace period expiration) relative to now.
+// If the cluster is not currently eligible or has no future eligibility deadline, it returns (zero, false).
+func clusterEligibilityDeadline(cluster *clusterv1beta1.MemberCluster, heartbeatTimeout, healthTimeout time.Duration, now time.Time) (time.Time, bool) {
+	// A cluster that is deleting has left the fleet; it is not eligible and has no future deadline.
+	if !cluster.GetDeletionTimestamp().IsZero() {
+		return time.Time{}, false
+	}
+
+	memberAgentStatus := cluster.GetAgentStatus(clusterv1beta1.MemberAgent)
+	if memberAgentStatus == nil || memberAgentStatus.LastReceivedHeartbeat.IsZero() {
+		return time.Time{}, false
+	}
+
+	// A cluster whose member agent has not joined is not eligible.
+	joinedCond := cluster.GetAgentCondition(clusterv1beta1.MemberAgent, clusterv1beta1.AgentJoined)
+	if joinedCond == nil || joinedCond.Status != metav1.ConditionTrue {
+		return time.Time{}, false
+	}
+
+	// A cluster without a health condition is not eligible.
+	healthyCond := cluster.GetAgentCondition(clusterv1beta1.MemberAgent, clusterv1beta1.AgentHealthy)
+	if healthyCond == nil {
+		return time.Time{}, false
+	}
+
+	hbDeadline := memberAgentStatus.LastReceivedHeartbeat.Time.Add(heartbeatTimeout)
+	deadline := hbDeadline
+
+	// When AgentHealthy is not ConditionTrue (e.g., ConditionFalse or Unknown), the cluster is
+	// within a temporary grace period expiring at LastTransitionTime + healthTimeout.
+	// If LastTransitionTime is zero, the health condition has no valid transition timestamp and
+	// is considered expired by ClusterEligibilityChecker.IsEligible; return (zero, false) as
+	// the cluster is already ineligible.
+	if healthyCond.Status != metav1.ConditionTrue {
+		if healthyCond.LastTransitionTime.IsZero() {
+			return time.Time{}, false
+		}
+		healthDeadline := healthyCond.LastTransitionTime.Time.Add(healthTimeout)
+		if healthDeadline.Before(deadline) {
+			deadline = healthDeadline
+		}
+	}
+
+	// If the earliest staleness deadline plus safety buffer has already elapsed relative to now,
+	// the cluster has already crossed into ineligibility; avoid scheduling a useless timer.
+	if !deadline.Add(heartbeatStalenessBuffer).After(now) {
+		return time.Time{}, false
+	}
+
+	return deadline, true
+}
+
+// calculateHeartbeatRequeue computes the wait duration until the earliest eligibility
+// staleness deadline (heartbeat staleness or unhealthy grace period expiration) among all
+// clusters actively counted by the policy's selector outcomes.
+//
+// It returns (duration, true) if at least one counted cluster has an active future eligibility
+// deadline, or (0, false) if no counted cluster requires a staleness timer.
+func calculateHeartbeatRequeue(outcomes []selectorOutcome, clusters []clusterv1beta1.MemberCluster, heartbeatTimeout, healthTimeout time.Duration, now time.Time) (time.Duration, bool) {
+	if len(outcomes) == 0 || len(clusters) == 0 {
+		return 0, false
+	}
+
+	clusterMap := make(map[string]*clusterv1beta1.MemberCluster, len(clusters))
+	for i := range clusters {
+		clusterMap[clusters[i].Name] = &clusters[i]
+	}
+
+	var earliestDeadline time.Time
+	hasCountedCluster := false
+
+	for i := range outcomes {
+		for _, name := range outcomes[i].selected() {
+			cluster := clusterMap[name]
+			if cluster == nil {
+				continue
+			}
+
+			deadline, hasDeadline := clusterEligibilityDeadline(cluster, heartbeatTimeout, healthTimeout, now)
+			if !hasDeadline {
+				continue
+			}
+
+			if !hasCountedCluster || deadline.Before(earliestDeadline) {
+				earliestDeadline = deadline
+				hasCountedCluster = true
+			}
+		}
+	}
+
+	if !hasCountedCluster {
+		return 0, false
+	}
+
+	requeueAt := earliestDeadline.Add(heartbeatStalenessBuffer)
+	requeueAfter := requeueAt.Sub(now)
+	if requeueAfter < heartbeatStalenessBuffer {
+		requeueAfter = heartbeatStalenessBuffer
+	}
+	return requeueAfter, true
 }
 
 // scheduledCondition builds the Scheduled condition for a policy from its selector outcomes,
