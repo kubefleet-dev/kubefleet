@@ -18,6 +18,7 @@ package placementpolicy
 
 import (
 	"context"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
@@ -31,6 +32,7 @@ import (
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	"github.com/kubefleet-dev/kubefleet/pkg/scheduler/clustereligibilitychecker"
 )
 
 // memberClusterSchedulingView is a projection of a MemberCluster onto exactly the attributes
@@ -80,10 +82,54 @@ func schedulingViewOf(cluster *clusterv1beta1.MemberCluster) memberClusterSchedu
 	return view
 }
 
+// isHeartbeatRecoveryAt checks if an update represents a member agent recovering from a stale
+// heartbeat back to a fresh heartbeat relative to now.
+func isHeartbeatRecoveryAt(oldCluster, newCluster *clusterv1beta1.MemberCluster, timeout time.Duration, now time.Time) bool {
+	if timeout <= 0 {
+		timeout = clustereligibilitychecker.DefaultClusterHeartbeatCheckTimeout
+	}
+
+	// A terminating cluster has left the fleet and cannot recover to eligibility.
+	if !newCluster.GetDeletionTimestamp().IsZero() {
+		return false
+	}
+
+	newAgentStatus := newCluster.GetAgentStatus(clusterv1beta1.MemberAgent)
+	if newAgentStatus == nil || newAgentStatus.LastReceivedHeartbeat.IsZero() {
+		return false
+	}
+
+	// New heartbeat must be fresh (within the timeout of now).
+	if now.Sub(newAgentStatus.LastReceivedHeartbeat.Time) > timeout {
+		return false
+	}
+
+	oldAgentStatus := oldCluster.GetAgentStatus(clusterv1beta1.MemberAgent)
+	if oldAgentStatus == nil || oldAgentStatus.LastReceivedHeartbeat.IsZero() {
+		// Cluster previously had no recorded member agent heartbeat and now has a fresh one.
+		return true
+	}
+
+	// Heartbeat timestamp must have advanced forward.
+	if !newAgentStatus.LastReceivedHeartbeat.After(oldAgentStatus.LastReceivedHeartbeat.Time) {
+		return false
+	}
+
+	// Old heartbeat must have been stale (older than timeout relative to now).
+	return now.Sub(oldAgentStatus.LastReceivedHeartbeat.Time) > timeout
+}
+
+// isHeartbeatRecovery checks if an update represents a member agent recovering from a stale
+// heartbeat back to a fresh heartbeat.
+func isHeartbeatRecovery(oldCluster, newCluster *clusterv1beta1.MemberCluster, timeout time.Duration) bool {
+	return isHeartbeatRecoveryAt(oldCluster, newCluster, timeout, time.Now())
+}
+
 // memberClusterSchedulingRelevantChanges is a predicate that admits member cluster events only
 // when they can affect scheduling outcomes; in particular, updates that only advance heartbeat
-// or observation timestamps are filtered out.
-func memberClusterSchedulingRelevantChanges() predicate.Predicate {
+// or observation timestamps are filtered out, unless a heartbeat update marks the recovery of a
+// previously stale cluster back to fresh eligibility.
+func memberClusterSchedulingRelevantChanges(heartbeatTimeout time.Duration) predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(event.CreateEvent) bool { return true },
 		DeleteFunc: func(event.DeleteEvent) bool { return true },
@@ -95,6 +141,13 @@ func memberClusterSchedulingRelevantChanges() predicate.Predicate {
 				// watches only; admit the event out of caution.
 				return true
 			}
+
+			// If a previously stale member agent heartbeat has resumed and is now fresh, admit
+			// the event so that placement policies waiting on cluster recovery can reconcile.
+			if isHeartbeatRecovery(oldCluster, newCluster, heartbeatTimeout) {
+				return true
+			}
+
 			return !apiequality.Semantic.DeepEqual(schedulingViewOf(oldCluster), schedulingViewOf(newCluster))
 		},
 		GenericFunc: func(event.GenericEvent) bool { return false },
