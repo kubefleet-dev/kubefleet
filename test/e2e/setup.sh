@@ -226,6 +226,7 @@ do
             --set logVerbosity=5 \
             --set namespace=fleet-system \
             --set priorityQueue.enabled=true \
+            --set enablePlacementPolicyAPIs=true \
             --set workApplierRequeueRateLimiterMaxSlowBackoffDelaySeconds=5 \
             --set workApplierRequeueRateLimiterMaxFastBackoffDelaySeconds=5 \
             --set propertyProvider=$PROPERTY_PROVIDER \
@@ -248,6 +249,7 @@ do
             --set logVerbosity=5 \
             --set namespace=fleet-system \
             --set priorityQueue.enabled=true \
+            --set enablePlacementPolicyAPIs=true \
             --set workApplierRequeueRateLimiterMaxSlowBackoffDelaySeconds=5 \
             --set workApplierRequeueRateLimiterMaxFastBackoffDelaySeconds=5 \
             --set propertyProvider=$PROPERTY_PROVIDER \
