@@ -148,7 +148,7 @@ rules:
     verbs: ["get", "list", "create", "update", "patch", "delete"]
   {{- end }}
 
-  # The experimental FEP-0001 placement policy APIs.
+  # The experimental FEP-0001 placement policy APIs (placement.kubefleet.dev and rollout.kubefleet.dev).
   {{- if .Values.enablePlacementPolicyAPIs }}
   # create/delete: annotation-based placement generates and withdraws policies.
   - apiGroups: ["placement.kubefleet.dev"]
@@ -173,12 +173,37 @@ rules:
     resources: ["placementbindings", "clusterplacementbindings"]
     verbs: ["get", "list", "watch", "create", "update", "delete"]
   - apiGroups: ["placement.kubefleet.dev"]
+    resources: ["placementbindings/status", "clusterplacementbindings/status"]
+    verbs: ["update"]
+  - apiGroups: ["placement.kubefleet.dev"]
     resources: ["placementresourcesnapshots", "clusterplacementresourcesnapshots"]
     verbs: ["get", "list", "watch", "create", "delete"]
-  # The hub field indexes start a Work informer.
   - apiGroups: ["placement.kubefleet.dev"]
     resources: ["works"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  # Secondary Works set blockOwnerDeletion on their primary Work.
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources: ["works/finalizers"]
+    verbs: ["update"]
+  - apiGroups: ["rollout.kubefleet.dev"]
+    resources: ["stagedupdateruns", "clusterstagedupdateruns"]
+    verbs: ["get", "list", "watch", "update"]
+  - apiGroups: ["rollout.kubefleet.dev"]
+    resources: ["stagedupdateruns/status", "clusterstagedupdateruns/status"]
+    verbs: ["update"]
+  # Approval requests set blockOwnerDeletion on their staged update run.
+  - apiGroups: ["rollout.kubefleet.dev"]
+    resources: ["stagedupdateruns/finalizers", "clusterstagedupdateruns/finalizers"]
+    verbs: ["update"]
+  - apiGroups: ["rollout.kubefleet.dev"]
+    resources: ["stagedupdatestrategies", "clusterstagedupdatestrategies"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["rollout.kubefleet.dev"]
+    resources: ["approvalrequests", "clusterapprovalrequests"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["rollout.kubefleet.dev"]
+    resources: ["approvalrequests/status", "clusterapprovalrequests/status"]
+    verbs: ["update"]
   {{- end }}
 
   # Leader election. Split into two rules so that only the hub-agent's own

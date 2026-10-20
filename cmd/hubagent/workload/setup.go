@@ -21,6 +21,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"time"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -33,6 +34,7 @@ import (
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	kfrolloutv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/rollout/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/bindingwatcher"
@@ -60,10 +62,13 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/parallelizer"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/resourceeligibility"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/annotationplacement"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/placementpolicy"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/stagedupdaterun"
+	v1workgenerator "github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/workgenerator"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/managers/placementresourcesnapshot"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/fieldindexers"
 )
@@ -114,8 +119,15 @@ var (
 		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.ClusterPlacementBindingKind),
 		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.PlacementResourceSnapshotKind),
 		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.ClusterPlacementResourceSnapshotKind),
-		// The hub field indexes cover Works too, which starts an informer for them.
+		// The hub field indexes and the work generator cover Works too, which starts an informer for them.
 		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.WorkKind),
+		// The staged update run controller.
+		kfrolloutv1alpha1.GroupVersion.WithKind(kfrolloutv1alpha1.StagedUpdateRunKind),
+		kfrolloutv1alpha1.GroupVersion.WithKind(kfrolloutv1alpha1.ClusterStagedUpdateRunKind),
+		kfrolloutv1alpha1.GroupVersion.WithKind(kfrolloutv1alpha1.StagedUpdateStrategyKind),
+		kfrolloutv1alpha1.GroupVersion.WithKind(kfrolloutv1alpha1.ClusterStagedUpdateStrategyKind),
+		kfrolloutv1alpha1.GroupVersion.WithKind(kfrolloutv1alpha1.ApprovalRequestKind),
+		kfrolloutv1alpha1.GroupVersion.WithKind(kfrolloutv1alpha1.ClusterApprovalRequestKind),
 	}
 
 	clusterStagedUpdateRunGVKs = []schema.GroupVersionKind{
@@ -349,6 +361,24 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			}
 			if err := placementPolicies.SetupWithManagerForClusterPlacementPolicy(mgr); err != nil {
 				klog.ErrorS(err, "Unable to set up the cluster placement policy controller")
+				return err
+			}
+			klog.Info("Setting up the placement policy work generator")
+			if err := v1workgenerator.New(mgr.GetClient(), parallelizer.DefaultNumOfWorkers).
+				SetupWithManager(mgr, int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxFleetSize)/10)*math.Ceil(float64(opts.PlacementMgmtOpts.MaxConcurrentClusterPlacement)/10))); err != nil {
+				klog.ErrorS(err, "Unable to set up the placement policy work generator")
+				return err
+			}
+			klog.Info("Setting up the placement policy staged update run controller")
+			// Nil rate limiters pick the controller defaults; 30s is the shortest refresh period it accepts.
+			stagedUpdateRuns, surErr := stagedupdaterun.New(mgr.GetClient(), mgr.GetAPIReader(), snapshots,
+				parallelizer.NewParallelizer(parallelizer.DefaultNumOfWorkers), nil, nil, 30*time.Second)
+			if surErr != nil {
+				klog.ErrorS(surErr, "Unable to create the placement policy staged update run controller")
+				return surErr
+			}
+			if err := stagedUpdateRuns.SetupWithManager(mgr, int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxConcurrentClusterPlacement)/10))); err != nil {
+				klog.ErrorS(err, "Unable to set up the placement policy staged update run controller")
 				return err
 			}
 			// Annotation-based placement generates the policies above; the resource watcher feeds it.
