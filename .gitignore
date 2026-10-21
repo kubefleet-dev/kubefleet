@@ -51,3 +51,4 @@ _crd-package/
 # Squad: SubSquad activation file (local to this machine)
 .squad-workstream
 .squad/.cache/
+_image-metadata/
