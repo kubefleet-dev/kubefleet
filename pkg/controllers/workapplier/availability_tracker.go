@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	appv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	apiextensionshelpers "k8s.io/apiextensions-apiserver/pkg/apihelpers"
@@ -30,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/component-helpers/apps/poddisruptionbudget"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
@@ -109,6 +111,8 @@ func trackInMemberClusterObjAvailabilityByGVR(
 		return trackStatefulSetAvailability(inMemberClusterObj)
 	case utils.DaemonSetGVR:
 		return trackDaemonSetAvailability(inMemberClusterObj)
+	case utils.JobGVR:
+		return trackJobAvailability(inMemberClusterObj)
 	case utils.ServiceGVR:
 		return trackServiceAvailability(inMemberClusterObj)
 	case utils.CustomResourceDefinitionGVR:
@@ -129,12 +133,9 @@ func trackInMemberClusterObjAvailabilityByGVR(
 
 // trackDeploymentAvailability tracks the availability of a deployment in the member cluster.
 func trackDeploymentAvailability(inMemberClusterObj *unstructured.Unstructured) (ManifestProcessingAvailabilityResultType, error) {
-	var deploy appv1.Deployment
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(inMemberClusterObj.Object, &deploy); err != nil {
-		// Normally this branch should never run.
-		wrappedErr := fmt.Errorf("failed to convert the unstructured object to a deployment: %w", err)
-		_ = controller.NewUnexpectedBehaviorError(wrappedErr)
-		return AvailabilityResultTypeFailed, wrappedErr
+	deploy, err := fromUnstructured[appv1.Deployment](inMemberClusterObj, "deployment")
+	if err != nil {
+		return AvailabilityResultTypeFailed, err
 	}
 
 	// Check if the deployment is available.
@@ -155,17 +156,14 @@ func trackDeploymentAvailability(inMemberClusterObj *unstructured.Unstructured) 
 
 // trackStatefulSetAvailability tracks the availability of a stateful set in the member cluster.
 func trackStatefulSetAvailability(inMemberClusterObj *unstructured.Unstructured) (ManifestProcessingAvailabilityResultType, error) {
-	var statefulSet appv1.StatefulSet
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(inMemberClusterObj.Object, &statefulSet); err != nil {
-		// Normally this branch should never run.
-		wrappedErr := fmt.Errorf("failed to convert the unstructured object to a stateful set: %w", err)
-		_ = controller.NewUnexpectedBehaviorError(wrappedErr)
-		return AvailabilityResultTypeFailed, wrappedErr
+	statefulSet, err := fromUnstructured[appv1.StatefulSet](inMemberClusterObj, "stateful set")
+	if err != nil {
+		return AvailabilityResultTypeFailed, err
 	}
 
 	// Check if the stateful set is available.
 	//
-	// A statefulSet is available if all if its replicas are available and the current replica count
+	// A statefulSet is available if all of its replicas are available and the current replica count
 	// is equal to the updated replica count, which implies that all replicas are up to date.
 	requiredReplicas := int32(1)
 	if statefulSet.Spec.Replicas != nil {
@@ -184,17 +182,14 @@ func trackStatefulSetAvailability(inMemberClusterObj *unstructured.Unstructured)
 
 // trackDaemonSetAvailability tracks the availability of a daemon set in the member cluster.
 func trackDaemonSetAvailability(inMemberClusterObj *unstructured.Unstructured) (ManifestProcessingAvailabilityResultType, error) {
-	var daemonSet appv1.DaemonSet
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(inMemberClusterObj.Object, &daemonSet); err != nil {
-		wrappedErr := fmt.Errorf("failed to convert the unstructured object to a daemon set: %w", err)
-		_ = controller.NewUnexpectedBehaviorError(wrappedErr)
-		// Normally this branch should never run.
-		return AvailabilityResultTypeFailed, wrappedErr
+	daemonSet, err := fromUnstructured[appv1.DaemonSet](inMemberClusterObj, "daemon set")
+	if err != nil {
+		return AvailabilityResultTypeFailed, err
 	}
 
 	// Check if the daemonSet is available.
 	//
-	// A daemonSet is available if all if its desired replicas (the count of which is equal to
+	// A daemonSet is available if all of its desired replicas (the count of which is equal to
 	// the number of applicable nodes in the cluster) are available and the current replica count
 	// is equal to the updated replica count, which implies that all replicas are up to date.
 	if daemonSet.Status.ObservedGeneration == daemonSet.Generation &&
@@ -207,20 +202,52 @@ func trackDaemonSetAvailability(inMemberClusterObj *unstructured.Unstructured) (
 	return AvailabilityResultTypeNotYetAvailable, nil
 }
 
+// trackJobAvailability tracks the availability of a job in the member cluster.
+func trackJobAvailability(inMemberClusterObj *unstructured.Unstructured) (ManifestProcessingAvailabilityResultType, error) {
+	job, err := fromUnstructured[batchv1.Job](inMemberClusterObj, "job")
+	if err != nil {
+		return AvailabilityResultTypeFailed, err
+	}
+
+	// Check if the job is available.
+	//
+	// A job is available once it has completed. A failed job is terminal and never becomes available;
+	// Fleet reports it as not yet available, the same as any other workload that fails to become ready.
+	// Note that a job cannot be completed and failed at the same time.
+	for _, cond := range job.Status.Conditions {
+		if cond.Status != corev1.ConditionTrue {
+			continue
+		}
+		switch cond.Type {
+		case batchv1.JobComplete:
+			klog.V(2).InfoS("Job is available", "job", klog.KObj(inMemberClusterObj))
+			return AvailabilityResultTypeAvailable, nil
+		case batchv1.JobFailed, batchv1.JobFailureTarget:
+			// The Job controller adds the Failed condition once the pods of a job that is to fail have terminated.
+			klog.V(2).InfoS("Job has failed and will not become available", "job", klog.KObj(inMemberClusterObj), "reason", cond.Reason)
+			return AvailabilityResultTypeNotYetAvailable, nil
+		}
+	}
+
+	// A suspended job does not run until it is resumed, e.g., by a job queueing system in the member cluster,
+	// so there is nothing for Fleet to wait for.
+	if ptr.Deref(job.Spec.Suspend, false) {
+		klog.V(2).InfoS("Job is suspended, consider it to be immediately available", "job", klog.KObj(inMemberClusterObj))
+		return AvailabilityResultTypeAvailable, nil
+	}
+	klog.V(2).InfoS("Job is not completed yet, will check later to see if it becomes available", "job", klog.KObj(inMemberClusterObj))
+	return AvailabilityResultTypeNotYetAvailable, nil
+}
+
 // trackServiceAvailability tracks the availability of a service in the member cluster.
 func trackServiceAvailability(inMemberClusterObj *unstructured.Unstructured) (ManifestProcessingAvailabilityResultType, error) {
-	var svc corev1.Service
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(inMemberClusterObj.Object, &svc); err != nil {
-		wrappedErr := fmt.Errorf("failed to convert the unstructured object to a service: %w", err)
-		_ = controller.NewUnexpectedBehaviorError(wrappedErr)
-		return AvailabilityResultTypeFailed, wrappedErr
+	svc, err := fromUnstructured[corev1.Service](inMemberClusterObj, "service")
+	if err != nil {
+		return AvailabilityResultTypeFailed, err
 	}
 	switch svc.Spec.Type {
-	case "":
-		fallthrough // The default service type is ClusterIP.
-	case corev1.ServiceTypeClusterIP:
-		fallthrough
-	case corev1.ServiceTypeNodePort:
+	// The default service type is ClusterIP.
+	case "", corev1.ServiceTypeClusterIP, corev1.ServiceTypeNodePort:
 		// Fleet considers a ClusterIP or NodePort service to be available if it has at least one
 		// IP assigned.
 		if len(svc.Spec.ClusterIPs) > 0 && len(svc.Spec.ClusterIPs[0]) > 0 {
@@ -241,84 +268,79 @@ func trackServiceAvailability(inMemberClusterObj *unstructured.Unstructured) (Ma
 		return AvailabilityResultTypeNotYetAvailable, nil
 	}
 
-	// we don't know how to track the availability of when the service type is externalName
+	// Fleet does not know how to track the availability of an ExternalName service.
 	klog.V(2).InfoS("Cannot determine the availability of external name services; untrack its availability", "service", klog.KObj(inMemberClusterObj))
 	return AvailabilityResultTypeNotTrackable, nil
 }
 
 // trackCRDAvailability tracks the availability of a custom resource definition in the member cluster.
 func trackCRDAvailability(inMemberClusterObj *unstructured.Unstructured) (ManifestProcessingAvailabilityResultType, error) {
-	var crd apiextensionsv1.CustomResourceDefinition
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(inMemberClusterObj.Object, &crd); err != nil {
-		wrappedErr := fmt.Errorf("failed to convert the unstructured object to a custom resource definition: %w", err)
-		_ = controller.NewUnexpectedBehaviorError(wrappedErr)
-		return AvailabilityResultTypeFailed, wrappedErr
+	crd, err := fromUnstructured[apiextensionsv1.CustomResourceDefinition](inMemberClusterObj, "custom resource definition")
+	if err != nil {
+		return AvailabilityResultTypeFailed, err
 	}
 
 	// If both conditions are True, the CRD has become available.
-	if apiextensionshelpers.IsCRDConditionTrue(&crd, apiextensionsv1.Established) && apiextensionshelpers.IsCRDConditionTrue(&crd, apiextensionsv1.NamesAccepted) {
+	if apiextensionshelpers.IsCRDConditionTrue(crd, apiextensionsv1.Established) && apiextensionshelpers.IsCRDConditionTrue(crd, apiextensionsv1.NamesAccepted) {
 		klog.V(2).InfoS("CustomResourceDefinition is available", "customResourceDefinition", klog.KObj(inMemberClusterObj))
 		return AvailabilityResultTypeAvailable, nil
 	}
 
-	klog.V(2).InfoS("Custom resource definition is not ready yet, will check later to see if it becomes available", klog.KObj(inMemberClusterObj))
+	klog.V(2).InfoS("Custom resource definition is not ready yet, will check later to see if it becomes available", "customResourceDefinition", klog.KObj(inMemberClusterObj))
 	return AvailabilityResultTypeNotYetAvailable, nil
 }
 
-// trackPDBAvailability tracks the availability of a pod disruption budget in the member cluster
-func trackPDBAvailability(curObj *unstructured.Unstructured) (ManifestProcessingAvailabilityResultType, error) {
-	var pdb policyv1.PodDisruptionBudget
-	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(curObj.Object, &pdb); err != nil {
-		return AvailabilityResultTypeFailed, controller.NewUnexpectedBehaviorError(err)
+// trackPDBAvailability tracks the availability of a pod disruption budget in the member cluster.
+func trackPDBAvailability(inMemberClusterObj *unstructured.Unstructured) (ManifestProcessingAvailabilityResultType, error) {
+	pdb, err := fromUnstructured[policyv1.PodDisruptionBudget](inMemberClusterObj, "pod disruption budget")
+	if err != nil {
+		return AvailabilityResultTypeFailed, err
 	}
-	// Check if conditions are up-to-date
-	if poddisruptionbudget.ConditionsAreUpToDate(&pdb) {
-		klog.V(2).InfoS("PodDisruptionBudget is available", "pdb", klog.KObj(curObj))
+
+	// Check if the conditions are up-to-date.
+	if poddisruptionbudget.ConditionsAreUpToDate(pdb) {
+		klog.V(2).InfoS("PodDisruptionBudget is available", "pdb", klog.KObj(inMemberClusterObj))
 		return AvailabilityResultTypeAvailable, nil
 	}
-	klog.V(2).InfoS("Still need to wait for PodDisruptionBudget to be available", "pdb", klog.KObj(curObj))
+	klog.V(2).InfoS("Pod disruption budget is not ready yet, will check later to see if it becomes available", "pdb", klog.KObj(inMemberClusterObj))
 	return AvailabilityResultTypeNotYetAvailable, nil
+}
+
+// fromUnstructured converts an object from the member cluster to its typed form. kind describes
+// the object in the returned error.
+func fromUnstructured[T any](inMemberClusterObj *unstructured.Unstructured, kind string) (*T, error) {
+	var obj T
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(inMemberClusterObj.Object, &obj); err != nil {
+		// Normally this branch should never run.
+		wrappedErr := fmt.Errorf("failed to convert the unstructured object to a %s: %w", kind, err)
+		_ = controller.NewUnexpectedBehaviorError(wrappedErr)
+		return nil, wrappedErr
+	}
+	return &obj, nil
 }
 
 // isDataResource checks if the resource is a data resource; such resources are
 // available immediately after creation.
 func isDataResource(gvr schema.GroupVersionResource) bool {
 	switch gvr {
-	case utils.NamespaceGVR:
-		return true
-	case utils.SecretGVR:
-		return true
-	case utils.ConfigMapGVR:
-		return true
-	case utils.RoleGVR:
-		return true
-	case utils.ClusterRoleGVR:
-		return true
-	case utils.RoleBindingGVR:
-		return true
-	case utils.ClusterRoleBindingGVR:
-		return true
-	case utils.ServiceAccountGVR:
-		return true
-	case utils.NetworkPolicyGVR:
-		return true
-	case utils.CSIDriverGVR:
-		return true
-	case utils.CSINodeGVR:
-		return true
-	case utils.StorageClassGVR:
-		return true
-	case utils.CSIStorageCapacityGVR:
-		return true
-	case utils.ControllerRevisionGVR:
-		return true
-	case utils.IngressClassGVR:
-		return true
-	case utils.LimitRangeGVR:
-		return true
-	case utils.ResourceQuotaGVR:
-		return true
-	case utils.PriorityClassGVR:
+	case utils.NamespaceGVR,
+		utils.SecretGVR,
+		utils.ConfigMapGVR,
+		utils.RoleGVR,
+		utils.ClusterRoleGVR,
+		utils.RoleBindingGVR,
+		utils.ClusterRoleBindingGVR,
+		utils.ServiceAccountGVR,
+		utils.NetworkPolicyGVR,
+		utils.CSIDriverGVR,
+		utils.CSINodeGVR,
+		utils.StorageClassGVR,
+		utils.CSIStorageCapacityGVR,
+		utils.ControllerRevisionGVR,
+		utils.IngressClassGVR,
+		utils.LimitRangeGVR,
+		utils.ResourceQuotaGVR,
+		utils.PriorityClassGVR:
 		return true
 	}
 	return false
