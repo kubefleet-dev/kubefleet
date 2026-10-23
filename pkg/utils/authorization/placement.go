@@ -26,20 +26,24 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/resourceeligibility"
 )
 
-// ResourcePlacementAuthorizer reviews source-resource access for ResourcePlacement selectors.
-type ResourcePlacementAuthorizer struct {
+// PlacementAuthorizer reviews source-resource access for CRP and RP selectors.
+type PlacementAuthorizer struct {
 	restMapper                 meta.RESTMapper
 	reviewer                   *Reviewer
 	resourceEligibilityChecker resourceeligibility.Checker
+	namespaceReader            client.Reader
+	namespacedResources        NamespacedResourceInventory
 }
 
-// NewResourcePlacementAuthorizer creates an authorizer for namespaced ResourcePlacements.
-func NewResourcePlacementAuthorizer(restMapper meta.RESTMapper, reviewer *Reviewer, checker resourceeligibility.Checker) (*ResourcePlacementAuthorizer, error) {
+// NewPlacementAuthorizer creates an authorizer for RP and CRP selectors.
+// namespaceReader must be uncached, for example manager.GetAPIReader(). inventory supplies resource types only.
+func NewPlacementAuthorizer(restMapper meta.RESTMapper, reviewer *Reviewer, checker resourceeligibility.Checker, namespaceReader client.Reader, inventory NamespacedResourceInventory) (*PlacementAuthorizer, error) {
 	if restMapper == nil {
 		return nil, errors.New("REST mapper must not be nil")
 	}
@@ -49,37 +53,56 @@ func NewResourcePlacementAuthorizer(restMapper meta.RESTMapper, reviewer *Review
 	if checker == nil {
 		return nil, errors.New("resource eligibility checker must not be nil")
 	}
-	return &ResourcePlacementAuthorizer{
+	if namespaceReader == nil {
+		return nil, errors.New("namespace reader must not be nil")
+	}
+	if inventory == nil {
+		return nil, errors.New("namespaced resource inventory must not be nil")
+	}
+	return &PlacementAuthorizer{
 		restMapper:                 restMapper,
 		reviewer:                   reviewer,
 		resourceEligibilityChecker: checker,
+		namespaceReader:            namespaceReader,
+		namespacedResources:        inventory,
 	}, nil
 }
 
 // Authorize requires get access for named selections and list access for enumerated scopes.
-func (a *ResourcePlacementAuthorizer) Authorize(ctx context.Context, user authenticationv1.UserInfo, placement placementv1beta1.PlacementObj) Result {
-	if a == nil || a.restMapper == nil || a.reviewer == nil || a.resourceEligibilityChecker == nil {
+func (a *PlacementAuthorizer) Authorize(ctx context.Context, user authenticationv1.UserInfo, placement placementv1beta1.PlacementObj) Result {
+	if a == nil || a.restMapper == nil || a.reviewer == nil || a.resourceEligibilityChecker == nil || a.namespaceReader == nil || a.namespacedResources == nil {
 		return Result{Decision: DecisionIndeterminate, Err: fmt.Errorf("placement authorization dependencies are incomplete")}
 	}
-	attributes, err := a.resolve(placement)
+	// Check Namespace access before resolution can reveal names or existence.
+	namespaceChecks, err := a.namespaceChecksForPlacement(placement)
+	if err != nil {
+		return Result{Decision: DecisionIndeterminate, Err: err}
+	}
+	if len(namespaceChecks) != 0 {
+		result := a.reviewer.Authorize(ctx, user, namespaceChecks...)
+		if result.Decision != DecisionAllowed {
+			return result
+		}
+	}
+	attributes, err := a.resolve(ctx, placement)
 	if err != nil {
 		return Result{Decision: DecisionIndeterminate, Err: err}
 	}
 	return a.reviewer.Authorize(ctx, user, attributes...)
 }
 
-func (a *ResourcePlacementAuthorizer) resolve(placement placementv1beta1.PlacementObj) ([]authorizationv1.ResourceAttributes, error) {
+func (a *PlacementAuthorizer) resolve(ctx context.Context, placement placementv1beta1.PlacementObj) ([]authorizationv1.ResourceAttributes, error) {
 	switch placement := placement.(type) {
 	case *placementv1beta1.ResourcePlacement:
 		return a.resolveResourcePlacement(placement)
 	case *placementv1beta1.ClusterResourcePlacement:
-		return nil, errors.New("cluster resource placement authorization is not implemented")
+		return a.resolveClusterResourcePlacement(ctx, placement)
 	default:
 		return nil, fmt.Errorf("unsupported placement type %T", placement)
 	}
 }
 
-func (a *ResourcePlacementAuthorizer) resolveResourcePlacement(rp *placementv1beta1.ResourcePlacement) ([]authorizationv1.ResourceAttributes, error) {
+func (a *PlacementAuthorizer) resolveResourcePlacement(rp *placementv1beta1.ResourcePlacement) ([]authorizationv1.ResourceAttributes, error) {
 	if rp == nil {
 		return nil, fmt.Errorf("resource placement must not be nil")
 	}
@@ -88,7 +111,7 @@ func (a *ResourcePlacementAuthorizer) resolveResourcePlacement(rp *placementv1be
 	}
 	var attributes []authorizationv1.ResourceAttributes
 	for _, selector := range rp.Spec.ResourceSelectors {
-		gvk := schema.GroupVersionKind{Group: selector.Group, Version: selector.Version, Kind: selector.Kind}
+		gvk := selectorGVK(selector)
 		mapping, err := a.restMapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve selector %s: %w", gvk, err)
@@ -108,7 +131,11 @@ func (a *ResourcePlacementAuthorizer) resolveResourcePlacement(rp *placementv1be
 	return attributes, nil
 }
 
-func (a *ResourcePlacementAuthorizer) selectorAttributes(gvr schema.GroupVersionResource, namespace string, selector placementv1beta1.ResourceSelectorTerm) (authorizationv1.ResourceAttributes, error) {
+func selectorGVK(selector placementv1beta1.ResourceSelectorTerm) schema.GroupVersionKind {
+	return schema.GroupVersionKind{Group: selector.Group, Version: selector.Version, Kind: selector.Kind}
+}
+
+func (a *PlacementAuthorizer) selectorAttributes(gvr schema.GroupVersionResource, namespace string, selector placementv1beta1.ResourceSelectorTerm) (authorizationv1.ResourceAttributes, error) {
 	if namespace != "" && !a.resourceEligibilityChecker.AllowsNamespace(namespace) {
 		return authorizationv1.ResourceAttributes{}, fmt.Errorf("namespace %q is not eligible for placement", namespace)
 	}
