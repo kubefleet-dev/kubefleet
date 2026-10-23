@@ -226,6 +226,7 @@ do
             --set logVerbosity=5 \
             --set namespace=fleet-system \
             --set priorityQueue.enabled=true \
+            --set enablePlacementPolicyAPIs=true \
             --set workApplierRequeueRateLimiterMaxSlowBackoffDelaySeconds=5 \
             --set workApplierRequeueRateLimiterMaxFastBackoffDelaySeconds=5 \
             --set propertyProvider=$PROPERTY_PROVIDER \
@@ -248,12 +249,20 @@ do
             --set logVerbosity=5 \
             --set namespace=fleet-system \
             --set priorityQueue.enabled=true \
+            --set enablePlacementPolicyAPIs=true \
             --set workApplierRequeueRateLimiterMaxSlowBackoffDelaySeconds=5 \
             --set workApplierRequeueRateLimiterMaxFastBackoffDelaySeconds=5 \
             --set propertyProvider=$PROPERTY_PROVIDER \
             --set enableNamespaceCollectionInPropertyProvider=true \
             $( [ "$PROPERTY_PROVIDER" = "azure" ] && echo "-f azure_valid_config.yaml" )
     fi
+
+    # The placement policy work applier does not read the v1beta1 work applier flags above; cap its requeue delays
+    # through a test-only environment variable instead, for the same reason. The agent has not joined the fleet yet,
+    # so the restart this triggers is harmless.
+    kubectl set env deployment/member-agent -n fleet-system -c member-agent \
+        TEST_ONLY_PLACEMENT_POLICY_WORK_APPLIER_MAX_REQUEUE_DELAY_SECONDS=5
+    kubectl rollout status deployment/member-agent -n fleet-system --timeout=180s
 done
 
 # Create tools directory if it doesn't exist

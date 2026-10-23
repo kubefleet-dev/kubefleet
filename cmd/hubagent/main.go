@@ -171,10 +171,11 @@ func main() {
 	if opts.FeatureFlags.EnableV1Beta1APIs {
 		klog.Info("Setting up memberCluster v1beta1 controller")
 		if err = (&mcv1beta1.Reconciler{
-			Client:                  mgr.GetClient(),
-			NetworkingAgentsEnabled: opts.ClusterMgmtOpts.NetworkingAgentsEnabled,
-			MaxConcurrentReconciles: int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxFleetSize) / 100)), //one member cluster reconciler routine per 100 member clusters
-			ForceDeleteWaitTime:     opts.ClusterMgmtOpts.ForceDeleteWaitTime.Duration,
+			Client:                     mgr.GetClient(),
+			NetworkingAgentsEnabled:    opts.ClusterMgmtOpts.NetworkingAgentsEnabled,
+			MaxConcurrentReconciles:    int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxFleetSize) / 100)), //one member cluster reconciler routine per 100 member clusters
+			ForceDeleteWaitTime:        opts.ClusterMgmtOpts.ForceDeleteWaitTime.Duration,
+			PlacementPolicyAPIsEnabled: opts.FeatureFlags.EnablePlacementPolicyAPIs,
 		}).SetupWithManager(mgr, "membercluster-controller"); err != nil {
 			klog.ErrorS(err, "unable to create v1beta1 controller", "controller", "MemberCluster")
 			exitWithErrorFunc()
@@ -229,7 +230,10 @@ func main() {
 	ctx := ctrl.SetupSignalHandler()
 
 	if opts.WebhookAndAdmissionPolicyOpts.EnableAdmissionPolicyManager {
-		policyManagerCfgs := admissionpolicymanager.DefaultPolicyGeneratorConfigs
+		policyManagerCfgs := admissionpolicymanager.DefaultPolicyGeneratorConfigsForV0APIs
+		if opts.FeatureFlags.EnablePlacementPolicyAPIs {
+			policyManagerCfgs = admissionpolicymanager.DefaultPolicyGeneratorConfigsForV1APIs
+		}
 		if len(opts.WebhookAndAdmissionPolicyOpts.AdmissionPolicyManagerConfig) != 0 {
 			// Read user-provided admission policy manager config from given path.
 			cfgData, err := os.ReadFile(opts.WebhookAndAdmissionPolicyOpts.AdmissionPolicyManagerConfig)

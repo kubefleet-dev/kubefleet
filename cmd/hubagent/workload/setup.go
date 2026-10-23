@@ -23,7 +23,6 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
@@ -66,6 +65,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/resourceeligibility"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/annotationplacement"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/autorollout"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/placementpolicy"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/stagedupdaterun"
 	v1workgenerator "github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/workgenerator"
@@ -86,6 +86,15 @@ const (
 
 // placementResourceSnapshotSlots is the snapshot manager's lock striping; its minimum.
 const placementResourceSnapshotSlots int32 = 256
+
+// Fixed concurrency for the experimental placement policy controllers. These are deliberately not derived from
+// the placement management flags (--max-fleet-size, --max-concurrent-cluster-placement), which tune the
+// v1beta1 controllers only.
+const (
+	placementPolicyWorkGeneratorConcurrentReconciles   = 10
+	placementPolicyStagedUpdateRunConcurrentReconciles = 5
+	placementPolicyAutoRolloutConcurrentReconciles     = 5
+)
 
 var (
 	v1Beta1RequiredGVKs = []schema.GroupVersionKind{
@@ -205,8 +214,8 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	}
 
 	// Build the composite resource eligibility checker for v0 APIs.
-	defaultResourceEligibilityCheckerForV0APIs := resourceeligibility.DefaultForV0APIs(mgr.GetRESTMapper())
-	customResourceEligibilityChecker.Wraps(defaultResourceEligibilityCheckerForV0APIs)
+	v0ResourceEligibilityChecker := customResourceEligibilityChecker.DeepCopy()
+	v0ResourceEligibilityChecker.Wraps(resourceeligibility.DefaultForV0APIs(mgr.GetRESTMapper()))
 
 	// The same user-supplied filters for the v1 APIs (placement policies); the v1 built-in ones deny a few more kinds than v0.
 	v1ResourceEligibilityChecker := customResourceEligibilityChecker.DeepCopy()
@@ -221,7 +230,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	resourceSelectorResolver := controller.ResourceSelectorResolver{
 		RestMapper:                 mgr.GetRESTMapper(),
 		InformerManager:            dynamicInformerManager,
-		ResourceEligibilityChecker: customResourceEligibilityChecker,
+		ResourceEligibilityChecker: v0ResourceEligibilityChecker,
 		EnableWorkload:             opts.WebhookAndAdmissionPolicyOpts.EnableWorkload,
 	}
 	resourceSnapshotResolver := controller.NewResourceSnapshotResolver(mgr.GetClient(), mgr.GetScheme())
@@ -383,7 +392,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			}
 			klog.Info("Setting up the placement policy work generator")
 			if err := v1workgenerator.New(mgr.GetClient(), parallelizer.DefaultNumOfWorkers).
-				SetupWithManager(mgr, int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxFleetSize)/10)*math.Ceil(float64(opts.PlacementMgmtOpts.MaxConcurrentClusterPlacement)/10))); err != nil {
+				SetupWithManager(mgr, placementPolicyWorkGeneratorConcurrentReconciles); err != nil {
 				klog.ErrorS(err, "Unable to set up the placement policy work generator")
 				return err
 			}
@@ -395,27 +404,29 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 				klog.ErrorS(surErr, "Unable to create the placement policy staged update run controller")
 				return surErr
 			}
-			if err := stagedUpdateRuns.SetupWithManager(mgr, int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxConcurrentClusterPlacement)/10))); err != nil {
+			if err := stagedUpdateRuns.SetupWithManager(mgr, placementPolicyStagedUpdateRunConcurrentReconciles); err != nil {
 				klog.ErrorS(err, "Unable to set up the placement policy staged update run controller")
+				return err
+			}
+			klog.Info("Setting up the placement policy auto-rollout controller")
+			// A nil parallelizer and rate limiter pick the controller defaults.
+			autoRollouts, arErr := autorollout.New(mgr.GetClient(), snapshots, nil, nil, mgr.GetEventRecorder("auto-rollout-controller"))
+			if arErr != nil {
+				klog.ErrorS(arErr, "Unable to create the placement policy auto-rollout controller")
+				return arErr
+			}
+			if err := autoRollouts.SetupWithManager(mgr, placementPolicyAutoRolloutConcurrentReconciles); err != nil {
+				klog.ErrorS(err, "Unable to set up the placement policy auto-rollout controller")
 				return err
 			}
 			// Annotation-based placement generates the policies above; the resource watcher feeds it.
 			annotatedSources = &annotationplacement.SourceQueue{}
-			enableWorkload := opts.WebhookAndAdmissionPolicyOpts.EnableWorkload
 			if err := (&annotationplacement.Reconciler{
-				Client:     mgr.GetClient(),
-				APIReader:  mgr.GetAPIReader(),
-				RESTMapper: mgr.GetRESTMapper(),
-				Recorder:   mgr.GetEventRecorder("annotation-placement-controller"),
-				// The v1 kind and namespace filters, plus the object filter the resource watcher applies,
-				// which the checker does not cover.
-				ShouldPlace: func(source *unstructured.Unstructured) (bool, error) {
-					if !v1ResourceEligibilityChecker.AllowsGVK(source.GroupVersionKind()) ||
-						!v1ResourceEligibilityChecker.AllowsNamespace(annotationplacement.SourceNamespace(source)) {
-						return false, nil
-					}
-					return controller.ShouldPropagateObj(dynamicInformerManager, source, enableWorkload)
-				},
+				Client:                     mgr.GetClient(),
+				APIReader:                  mgr.GetAPIReader(),
+				RESTMapper:                 mgr.GetRESTMapper(),
+				Recorder:                   mgr.GetEventRecorder("annotation-placement-controller"),
+				ResourceEligibilityChecker: v1ResourceEligibilityChecker,
 			}).SetupWithManager(mgr, annotatedSources); err != nil {
 				klog.ErrorS(err, "Unable to set up the annotation placement controller")
 				return err
@@ -649,11 +660,16 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	// Set up the InformerPopulator that runs on ALL pods (leader and followers)
 	// This ensures all pods have synced informer caches for webhook validation
 	klog.Info("Setting up informer populator")
+	checkerForV1APIsInInformerPopulator := v1ResourceEligibilityChecker
+	if !opts.FeatureFlags.EnablePlacementPolicyAPIs {
+		checkerForV1APIsInInformerPopulator = nil
+	}
 	informerPopulator := &resourcewatcher.InformerPopulator{
-		DiscoveryClient:            discoverClient,
-		RESTMapper:                 mgr.GetRESTMapper(),
-		InformerManager:            dynamicInformerManager,
-		ResourceEligibilityChecker: customResourceEligibilityChecker,
+		DiscoveryClient:                     discoverClient,
+		RESTMapper:                          mgr.GetRESTMapper(),
+		InformerManager:                     dynamicInformerManager,
+		ResourceEligibilityCheckerForV0APIs: v0ResourceEligibilityChecker,
+		ResourceEligibilityCheckerForV1APIs: checkerForV1APIsInInformerPopulator,
 	}
 
 	if err := mgr.Add(informerPopulator); err != nil {
@@ -663,6 +679,10 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 
 	// Set up a runner that starts all the custom controllers we created above
 	// This runs ONLY on the leader and adds event handlers to the informers created by InformerPopulator
+	checkerForV1APIsInChangeDetector := v1ResourceEligibilityChecker
+	if !opts.FeatureFlags.EnablePlacementPolicyAPIs {
+		checkerForV1APIsInChangeDetector = nil
+	}
 	resourceChangeDetector := &resourcewatcher.ChangeDetector{
 		DiscoveryClient: discoverClient,
 		RESTMapper:      mgr.GetRESTMapper(),
@@ -671,7 +691,8 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		ResourceChangeController:                  resourceChangeController,
 		AnnotatedSources:                          annotatedSources,
 		InformerManager:                           dynamicInformerManager,
-		ResourceEligibilityChecker:                customResourceEligibilityChecker,
+		ResourceEligibilityCheckerForV0APIs:       v0ResourceEligibilityChecker,
+		ResourceEligibilityCheckerForV1APIs:       checkerForV1APIsInChangeDetector,
 		ConcurrentPlacementWorker:                 int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxConcurrentClusterPlacement) / 10)),
 		ConcurrentResourceChangeWorker:            opts.PlacementMgmtOpts.ConcurrentResourceChangeSyncs,
 		EnableWorkload:                            opts.WebhookAndAdmissionPolicyOpts.EnableWorkload,
