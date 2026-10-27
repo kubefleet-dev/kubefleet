@@ -382,7 +382,10 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 				klog.ErrorS(err, "Unable to add the placement resource snapshot manager")
 				return err
 			}
-			placementPolicies = placementpolicy.NewReconciler(mgr.GetClient(), mgr.GetAPIReader(), snapshots, mgr.GetEventRecorder("placement-policy-controller"))
+			// The option is validated to [1, 100], so the conversion cannot overflow.
+			claimLimit := int32(opts.PlacementMgmtOpts.MaxConcurrentClusterClaims) //nolint:gosec
+			placementPolicies = placementpolicy.NewReconciler(mgr.GetClient(), mgr.GetAPIReader(), snapshots,
+				mgr.GetEventRecorder("placement-policy-controller"), placementpolicy.WithMaxConcurrentClusterClaims(claimLimit))
 			if err := placementPolicies.SetupWithManagerForPlacementPolicy(mgr); err != nil {
 				klog.ErrorS(err, "Unable to set up the placement policy controller")
 				return err
