@@ -457,11 +457,13 @@ func beforeSuiteForProcess1() {
 	setupInvalidClusters()
 	createResourcesForFleetGuardRail()
 	createTestResourceCRD()
+	createDefaultClusterProviderClass()
 }
 
 var _ = SynchronizedBeforeSuite(beforeSuiteForProcess1, beforeSuiteForAllProcesses)
 
 var _ = SynchronizedAfterSuite(func() {}, func() {
+	deleteDefaultClusterProviderClass()
 	deleteResourcesForFleetGuardRail()
 	deleteTestResourceCRD()
 	setAllMemberClustersToLeave()

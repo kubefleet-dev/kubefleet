@@ -395,13 +395,18 @@ func (r *Reconciler) deleteGeneratedPolicy(ctx context.Context, gvk schema.Group
 
 // applyDesiredPolicy brings a live generated policy in line with the desired one.
 //
-// Only what this controller generates is overwritten: the spec, the provenance labels, and the owner
-// reference to the annotated resource. Labels and annotations that something else added are left
+// Only what this controller generates is overwritten: the spec (except the cluster provider class
+// and claim limit a user set), the provenance labels, and the owner reference to the annotated
+// resource. Labels and annotations that something else added are left
 // alone, so that a generated policy can be labelled by an operator or a GitOps tool without this
 // controller and that tool taking turns undoing each other. Whether anything changed is for the
 // caller to judge by comparing the object before and after.
 func applyDesiredPolicy(actual, desired kfplacementv1alpha1.PlacementPolicyAccessor, source *unstructured.Unstructured, scheme *runtime.Scheme) error {
+	// The class and the claim limit cannot be written in an annotation, so they are the user's to
+	// set on the generated policy, and they survive the sync like a label would.
+	class, limit := actual.GetSpec().ClusterProviderClassName, actual.GetSpec().MaxConcurrentClusterClaims
 	desired.GetSpec().DeepCopyInto(actual.GetSpec())
+	actual.GetSpec().ClusterProviderClassName, actual.GetSpec().MaxConcurrentClusterClaims = class, limit
 
 	labels := actual.GetLabels()
 	if labels == nil {

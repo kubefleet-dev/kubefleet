@@ -112,7 +112,7 @@ func TestEnqueuePoliciesSelecting(t *testing.T) {
 		&kfplacementv1alpha1.ClusterPlacementPolicy{ObjectMeta: metav1.ObjectMeta{Name: "fleet-wide"}, Spec: kfplacementv1alpha1.PlacementPolicySpec{ResourceSelectors: selecting}},
 		&kfplacementv1alpha1.ClusterPlacementPolicy{ObjectMeta: metav1.ObjectMeta{Name: "other-kind"}, Spec: kfplacementv1alpha1.PlacementPolicySpec{ResourceSelectors: other}},
 	).Build()
-	r := NewReconciler(c, c, snapshotStub{})
+	r := NewReconciler(c, c, snapshotStub{}, nil)
 
 	if err := r.EnqueuePoliciesSelecting(context.Background(), resourceKey("", "v1", "ConfigMap", "team-a", "app")); err != nil {
 		t.Fatalf("EnqueuePoliciesSelecting() = %v, want no error", err)

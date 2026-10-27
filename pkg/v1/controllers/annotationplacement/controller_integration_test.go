@@ -262,6 +262,28 @@ var _ = Describe("annotation based placement", func() {
 			Expect(drainEvents()).Should(Equal([]string{EventReasonPolicyUpdated}))
 		})
 
+		It("should keep a class and a claim limit someone set on the policy", func() {
+			policy, err := generatedPolicyFor(configMapGVK, configMap)
+			Expect(err).Should(Succeed())
+			policy.GetSpec().ClusterProviderClassName = ptr.To("standard")
+			policy.GetSpec().MaxConcurrentClusterClaims = ptr.To(int32(3))
+			Expect(hubClient.Update(ctx, policy)).Should(Succeed())
+
+			// Neither field can be written in the annotation, so a sync must not undo them.
+			annotate(configMap, "region=eastus,count=2")
+			Expect(reconcile(configMapGVK, configMap)).Should(Succeed())
+
+			synced, err := generatedPolicyFor(configMapGVK, configMap)
+			Expect(err).Should(Succeed())
+			Expect(synced.GetSpec().ClusterProviderClassName).Should(Equal(ptr.To("standard")))
+			Expect(synced.GetSpec().MaxConcurrentClusterClaims).Should(Equal(ptr.To(int32(3))))
+			Expect(synced.GetSpec().ClusterSelectors).Should(HaveLen(1))
+			Expect(drainEvents()).Should(Equal([]string{EventReasonPolicyUpdated}))
+			annotate(configMap, "region=eastus")
+			Expect(reconcile(configMapGVK, configMap)).Should(Succeed())
+			Expect(drainEvents()).Should(Equal([]string{EventReasonPolicyUpdated}))
+		})
+
 		It("should recreate the policy when someone deletes it", func() {
 			policy, err := generatedPolicyFor(configMapGVK, configMap)
 			Expect(err).Should(Succeed())

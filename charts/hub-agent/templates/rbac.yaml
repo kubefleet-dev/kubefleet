@@ -172,6 +172,10 @@ rules:
   - apiGroups: ["placement.kubefleet.dev"]
     resources: ["clusterclaims/status"]
     verbs: ["update"]
+  # Placement policies resolve the cluster provider class their claims go to.
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources: ["clusterproviderclasses"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: ["placement.kubefleet.dev"]
     resources: ["placementbindings", "clusterplacementbindings"]
     verbs: ["get", "list", "watch", "create", "update", "delete"]

@@ -235,10 +235,50 @@ package demonstrating the current behavior.
   synthesized "all clusters" selector inherits the API's `AddClusterClaim`
   default, so a bare policy facing an empty fleet still signals that a
   cluster is needed rather than silently waiting forever.
-- **The FEP's eligible-keys allowlist is not implemented yet** (same status
-  as the per-fleet concurrency limit): the only opt-out today is the
-  per-selector `whenUnfulfilled: KeepSearching`. Both belong to the config
-  surface the FEP describes in prose only.
+- **The FEP's eligible-keys allowlist is the class's selector vocabulary.** A
+  claim goes to the `ClusterProviderClass` the policy names, else the fleet's
+  single default class; a selector whose terms fall outside that class's
+  vocabulary gets no claim, and a policy with no resolvable class gets none at
+  all. Either way the `Scheduled` condition keeps its binary reason and says
+  why in its message, and a `ClusterClaimNotIssued` warning event is raised,
+  so the condition contract the FEP defines is unchanged. Both fire only when
+  some selector actually wants a claim: a satisfied policy, or one whose
+  selectors all `KeepSearching`, reports nothing in a fleet with no classes.
+  Only terms that say what to provision are claimable: label matchers, `In`
+  label expressions, and `Eq`/`Gt`/`Ge`/`Lt`/`Le` property comparisons on
+  admitted keys. A comparison is judged by whether some value within the
+  class's bounds satisfies it, since its value is a threshold rather than the
+  cluster delivered -- `Le 200` under a max of 100 is claimable, `Gt 100` is
+  not. A class with no vocabulary admits only a selector with no terms. The
+  per-fleet concurrency limit remains a config surface for the terminal-state
+  unit.
+- **The class and the vocabulary gate issuing, never keeping.** A claim that
+  is outstanding stays wanted while its selector is unfulfilled and its terms
+  unchanged, even if the policy resolves to no class for the moment (the class
+  was deleted, or two classes are marked default while an admin moves the
+  annotation) or the vocabulary narrowed under it. Withdrawing there would
+  tear down provisioning in flight for a transient admin state; the FEP
+  validates the vocabulary "when a claim would be issued". The one exception
+  is a class that resolves to a *different* class, below.
+- **Automatic approval is re-asserted, not only stamped.** `Approved` is a
+  second write after the create, so a controller stopped between the two
+  would leave a claim that no provider may act on and that, being
+  unapproved, never expires; every reconcile of a kept claim of an
+  `Automatic` class with no `Approved` entry stamps it, in the same status
+  write as the freshness marker so a conflict on one cannot strand the
+  other. A claim already carrying an entry -- an approver's, or a denial --
+  is left alone. Flipping a class from `Manual` to `Automatic` therefore
+  approves every kept claim of it that no approver has ruled on yet.
+- **A class change replaces the claim** the way a term change does: the
+  class is part of what makes an outstanding claim still wanted, since the
+  claim is stamped with it and providers filter on the stamp. The same holds
+  for a policy that is deleted and recreated by `annotationplacement`: the
+  regenerated policy starts without a class or a claim limit, which the sync
+  otherwise preserves on an existing policy.
+- **The controller watches `ClusterProviderClass`**, so the hub's cache must
+  be able to list it: the hub agent checks that the CRD is installed before
+  it starts the placement policy controllers, and its ClusterRole can list
+  the classes.
 
 ## How a claim records the policy that owns it
 
@@ -267,13 +307,11 @@ retry forever, with the policy silently never getting a claim.
   that policy in `Terminating` and leaves its claims in place until the
   controller runs again, at which point reconciliation resumes and completes
   the cleanup. This mirrors the existing behavior of the staged update run
-  APIs and their finalizer; the integration PR that wires the controller in
-  should document it on the enabling flag and in the chart README rather than
-  work around it, since removing a finalizer without a controller to withdraw
-  the claims would orphan them instead.
-- **Not wired into the hub agent yet.** The controller is dormant code until
-  the integration PR adds the flag, scheme registration, RBAC, and the chart
-  CRDs; its kind e2e is parked at `parked/fep0001-placement-policy-e2e`.
+  APIs and their finalizer. It belongs in the docs of the enabling flag and the
+  chart README rather than in a workaround, since removing a finalizer without
+  a controller to withdraw the claims would orphan them instead.
+- **The hub agent runs the controller** when `--enable-placement-policy-apis`
+  is set; its kind e2e is `test/e2e/placement_policy_test.go`.
 - **Restarting the hub agent mid-flow is safe**: claim creation is
   get-or-create on a deterministic name, and the finalizer is added before the
   first claim exists, so no window can orphan a claim.
