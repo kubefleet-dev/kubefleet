@@ -370,3 +370,29 @@ func TestReconcileClassLookupFailure(t *testing.T) {
 		t.Errorf("Reconcile() wrote no Scheduled condition, want the scheduling status written")
 	}
 }
+
+func TestClaimLimit(t *testing.T) {
+	testCases := []struct {
+		name   string
+		policy *int32
+		fleet  int32
+		want   int32
+	}{
+		{name: "defaults", fleet: 1, want: 1},
+		{name: "policy below the fleet", policy: ptr.To[int32](2), fleet: 5, want: 2},
+		{name: "policy above the fleet", policy: ptr.To[int32](5), fleet: 2, want: 2},
+		{name: "no policy limit, larger fleet", fleet: 3, want: 1},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := NewReconciler(nil, nil, nil, nil, WithMaxConcurrentClusterClaims(tc.fleet))
+			policy := &kfplacementv1alpha1.PlacementPolicy{Spec: kfplacementv1alpha1.PlacementPolicySpec{MaxConcurrentClusterClaims: tc.policy}}
+			if got := r.claimLimit(policy); got != tc.want {
+				t.Errorf("claimLimit(policy=%v, fleet=%d) = %d, want %d", tc.policy, tc.fleet, got, tc.want)
+			}
+		})
+	}
+	if r := NewReconciler(nil, nil, nil, nil, WithMaxConcurrentClusterClaims(0)); r.maxConcurrentClaims != defaultMaxConcurrentClaims {
+		t.Errorf("WithMaxConcurrentClusterClaims(0) set the fleet limit to %d, want the default %d kept", r.maxConcurrentClaims, defaultMaxConcurrentClaims)
+	}
+}

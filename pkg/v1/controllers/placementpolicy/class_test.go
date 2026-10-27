@@ -39,8 +39,15 @@ const (
 	testProvisionerName = "test.kubefleet.dev"
 	testRegion          = "eastus"
 	testOtherRegion     = "westus"
-	testEnvLabel        = "env"
-	isDefaultClassValue = "true"
+	testThirdRegion     = "australiaeast"
+	// testLifecycleNamespace holds the policies of the claim lifecycle specs.
+	testLifecycleNamespace = "work"
+	testClassName          = "standard"
+	testClaimName          = "claim"
+	testEnvValue           = "prod"
+	testThreeName          = "three"
+	testEnvLabel           = "env"
+	isDefaultClassValue    = "true"
 )
 
 func openClass() *kfplacementv1alpha1.ClusterProviderClass {
@@ -271,7 +278,7 @@ func TestDesiredClaimsVocabulary(t *testing.T) {
 			wantNote:     antarcticaBlocked,
 		},
 		{
-			name:         "the claimable selector after an unclaimable one still gets the budget",
+			name:         "the claimable selector after an unclaimable one is issuable",
 			class:        eastOnly,
 			outcomes:     []selectorOutcome{unfulfilled(regionTerms("antarctica")), unfulfilled(regionTerms(testRegion))},
 			wantWanted:   []string{claimName(policy, 0), claimName(policy, 1)},
