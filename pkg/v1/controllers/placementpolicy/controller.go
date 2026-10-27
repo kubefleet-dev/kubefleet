@@ -22,18 +22,22 @@ package placementpolicy
 
 import (
 	"context"
+	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	runtime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -60,7 +64,25 @@ const (
 	// than wait on the role; the backoff keeps a long rollout from being polled at a fixed pace.
 	bindingManagerRetryBase = 5 * time.Second
 	bindingManagerRetryMax  = 5 * time.Minute
+
+	// EventReasonClaimNotIssued is recorded, as a warning, when a selector wants a cluster claim
+	// that cannot be issued: the policy resolves to no cluster provider class, or the selector's
+	// terms fall outside the class's vocabulary. The note says which.
+	EventReasonClaimNotIssued = "ClusterClaimNotIssued"
+
+	// maxEventNoteLength is the API server's limit on an event's note; a longer one is rejected.
+	maxEventNoteLength = 1024
 )
+
+// eventNote fits a status message into an event note. The Scheduled message carries the full
+// text; the event only needs to point at it.
+func eventNote(message string) string {
+	if len(message) <= maxEventNoteLength {
+		return message
+	}
+	// The cut can land inside a multi-byte character; drop the partial one.
+	return strings.ToValidUTF8(message[:maxEventNoteLength-3], "") + "..."
+}
 
 // Reconciler reconciles PlacementPolicy and ClusterPlacementPolicy objects.
 //
@@ -86,17 +108,22 @@ type Reconciler struct {
 	// a selected resource changes, one per controller, since each controller has its own queue.
 	policySource        sourcequeue.Queue[runtime.Request]
 	clusterPolicySource sourcequeue.Queue[runtime.Request]
+
+	// recorder reports, on the policy, why a selector gets no cluster claim.
+	recorder events.EventRecorder
 }
 
 // NewReconciler returns a Reconciler that judges cluster fulfillment with the scheduler's
-// standard cluster eligibility gate and takes resource snapshots through the given manager.
-func NewReconciler(c client.Client, uncachedReader client.Reader, snapshots snapshotter) *Reconciler {
+// standard cluster eligibility gate, takes resource snapshots through the given manager, and records
+// events through the given recorder, which may be nil.
+func NewReconciler(c client.Client, uncachedReader client.Reader, snapshots snapshotter, recorder events.EventRecorder) *Reconciler {
 	return &Reconciler{
 		Client:         c,
 		uncachedReader: uncachedReader,
 		eligibility:    clustereligibilitychecker.New(),
 		snapshots:      snapshots,
 		roleBackoff:    workqueue.NewTypedItemExponentialFailureRateLimiter[runtime.Request](bindingManagerRetryBase, bindingManagerRetryMax),
+		recorder:       recorder,
 	}
 }
 
@@ -217,7 +244,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	}
 	roleHeld, bindingErr := r.reconcileBindings(ctx, policy, outcomes, desiredBindings, existingBindings, latestRevision)
 
-	activeClaims, claimErr := r.reconcileClaims(ctx, policy, outcomes, mostRecentClusterCreation)
+	// A class that cannot be looked up leaves the claims untouched this round -- reconciling them
+	// against no class would withdraw them -- but the rest of the round, the status included, goes
+	// ahead, and the error is retried like a claim error.
+	var activeClaims int32
+	wanted, claimNote, claimErr := r.wantedClaims(ctx, policy, outcomes)
+	if claimErr == nil {
+		activeClaims, claimErr = r.reconcileClaims(ctx, policy, wanted, mostRecentClusterCreation)
+	}
 	// The scheduling status is written even when claim reconciliation failed partway, but the
 	// claim count is published only from a completed round: a failed round returns whatever it
 	// had counted when it stopped, which would misreport the claims that the rest of the round
@@ -227,7 +261,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 	if claimErr != nil {
 		reportedClaims = nil
 	}
-	if err := r.updateStatus(ctx, policy, outcomes, reportedClaims, scheduledCondition(policy.GetGeneration(), outcomes), resources, selectionErr); err != nil {
+	if err := r.updateStatus(ctx, policy, outcomes, reportedClaims, scheduledCondition(policy.GetGeneration(), outcomes, claimNote), resources, selectionErr); err != nil {
 		return runtime.Result{}, err
 	}
 	if bindingErr != nil {
@@ -258,6 +292,23 @@ func (r *Reconciler) Reconcile(ctx context.Context, req runtime.Request) (runtim
 		}
 	}
 	return runtime.Result{RequeueAfter: requeueAfter}, nil
+}
+
+// wantedClaims returns the cluster claims the policy wants for the selector outcomes, under the
+// cluster provider class it resolves to, and why a wanted claim cannot be issued, if one cannot; the
+// reason is also recorded as a warning event on the policy.
+func (r *Reconciler) wantedClaims(ctx context.Context, policy kfplacementv1alpha1.PlacementPolicyAccessor, outcomes []selectorOutcome) ([]desiredClaim, string, error) {
+	class, noClass, err := r.resolveClass(ctx, policy)
+	if err != nil {
+		return nil, "", err
+	}
+	wanted, note := desiredClaims(policy, outcomes, class, noClass)
+	// Raised on every reconcile that cannot issue a wanted claim; the events API folds the repeats
+	// into one series with a count.
+	if note != "" && r.recorder != nil {
+		r.recorder.Eventf(policy, nil, corev1.EventTypeWarning, EventReasonClaimNotIssued, "IssueClaim", "%s", eventNote(note))
+	}
+	return wanted, note, nil
 }
 
 // updateStatus writes the scheduling outcome onto the policy status, skipping the API call when
@@ -345,6 +396,12 @@ func (r *Reconciler) SetupWithManagerForPlacementPolicy(mgr runtime.Manager) err
 			handler.EnqueueRequestsFromMapFunc(r.mapClaimToPlacementPolicy),
 		).
 		WatchesRawSource(&r.policySource).
+		Watches(
+			&kfplacementv1alpha1.ClusterProviderClass{},
+			handler.EnqueueRequestsFromMapFunc(r.mapClassToPlacementPolicies),
+			// Only the spec and the default-class annotation change which claims a policy can issue.
+			builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{})),
+		).
 		Complete(r)
 }
 
@@ -366,5 +423,11 @@ func (r *Reconciler) SetupWithManagerForClusterPlacementPolicy(mgr runtime.Manag
 			handler.EnqueueRequestsFromMapFunc(r.mapClaimToClusterPlacementPolicy),
 		).
 		WatchesRawSource(&r.clusterPolicySource).
+		Watches(
+			&kfplacementv1alpha1.ClusterProviderClass{},
+			handler.EnqueueRequestsFromMapFunc(r.mapClassToClusterPlacementPolicies),
+			// Only the spec and the default-class annotation change which claims a policy can issue.
+			builder.WithPredicates(predicate.Or(predicate.GenerationChangedPredicate{}, predicate.AnnotationChangedPredicate{})),
+		).
 		Complete(r)
 }

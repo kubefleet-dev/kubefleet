@@ -615,7 +615,8 @@ func placementPolicyClaimActual(key types.NamespacedName, wantTerms []kfplacemen
 			Namespace:  key.Namespace,
 			Name:       key.Name,
 		},
-		ClusterSelectorTerms: wantTerms,
+		ClusterSelectorTerms:     wantTerms,
+		ClusterProviderClassName: defaultClusterProviderClassName,
 	}
 	return func() error {
 		claims, err := claimsOfPolicy(key.Name, key.Namespace)

@@ -70,6 +70,25 @@ func stubSnapshotName(policy kfplacementv1alpha1.PlacementPolicyAccessor) string
 	return policy.GetName() + "-snapshot-0"
 }
 
+// defaultClassName names the class the suite marks as the fleet's default.
+const defaultClassName = "default"
+
+// defaultClass builds the suite's default class; specs that remove it recreate it with this.
+func defaultClass() *kfplacementv1alpha1.ClusterProviderClass {
+	return &kfplacementv1alpha1.ClusterProviderClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        defaultClassName,
+			Annotations: map[string]string{kfplacementv1alpha1.IsDefaultClusterProviderClassAnnotation: isDefaultClassValue},
+		},
+		Spec: kfplacementv1alpha1.ClusterProviderClassSpec{
+			ProvisionerName: testProvisionerName,
+			SelectorVocabulary: &kfplacementv1alpha1.SelectorVocabulary{
+				LabelKeys: []kfplacementv1alpha1.LabelKeyRule{{Key: testRegionLabel}},
+			},
+		},
+	}
+}
+
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 
@@ -111,6 +130,12 @@ var _ = BeforeSuite(func() {
 	}
 	Expect(k8sClient.Create(ctx, &ns)).Should(Succeed(), "failed to create namespace")
 
+	By("creating the fleet's default cluster provider class")
+	// Claims go to a class; without one no policy in this suite would issue any. The default
+	// admits the region label with any value, which is every selector the suite writes, and
+	// approves manually, so specs that act as the provider are not raced by an approval stamp.
+	Expect(k8sClient.Create(ctx, defaultClass())).Should(Succeed())
+
 	By("starting the controller manager")
 	klog.InitFlags(flag.CommandLine)
 	flag.Parse()
@@ -125,7 +150,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).Should(Succeed())
 
 	Expect(fieldindexers.SetupWithHubAgentControllerManager(ctx, mgr)).Should(Succeed())
-	reconciler := NewReconciler(mgr.GetClient(), mgr.GetAPIReader(), snapshotStub{})
+	reconciler := NewReconciler(mgr.GetClient(), mgr.GetAPIReader(), snapshotStub{}, mgr.GetEventRecorder("placement-policy-controller"))
 	Expect(reconciler.SetupWithManagerForPlacementPolicy(mgr)).Should(Succeed())
 	Expect(reconciler.SetupWithManagerForClusterPlacementPolicy(mgr)).Should(Succeed())
 

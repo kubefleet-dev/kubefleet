@@ -82,7 +82,7 @@ func TestReconcilePreservesClaimCountOnFailedRound(t *testing.T) {
 		}).
 		Build()
 
-	r := NewReconciler(c, c, snapshotStub{})
+	r := NewReconciler(c, c, snapshotStub{}, nil)
 	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "pp"}})
 	if !errors.Is(err, listErr) {
 		t.Fatalf("Reconcile() = %v, want the claim list error %v so the round is retried", err, listErr)
@@ -107,7 +107,7 @@ func TestReconcileIgnoresDeletedPolicy(t *testing.T) {
 		t.Fatalf("AddToScheme() = %v, want no error", err)
 	}
 	c := fake.NewClientBuilder().WithScheme(scheme).Build()
-	r := NewReconciler(c, c, snapshotStub{})
+	r := NewReconciler(c, c, snapshotStub{}, nil)
 
 	for _, name := range []types.NamespacedName{{Namespace: "default", Name: "gone"}, {Name: "gone"}} {
 		res, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: name})
@@ -137,7 +137,7 @@ func TestReconcileBacksOffWhileRoleIsHeld(t *testing.T) {
 		WithObjects(policy, cluster).
 		WithStatusSubresource(policy).
 		Build()
-	r := NewReconciler(c, c, snapshotStub{})
+	r := NewReconciler(c, c, snapshotStub{}, nil)
 	r.eligibility = allEligible{}
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "pp"}}
 
@@ -240,7 +240,7 @@ func TestReconcileSchedulesWithoutSnapshot(t *testing.T) {
 				WithObjects(policy, gone).
 				WithStatusSubresource(policy).
 				Build()
-			r := NewReconciler(c, c, failingSnapshotter{err: tc.snapshotErr})
+			r := NewReconciler(c, c, failingSnapshotter{err: tc.snapshotErr}, nil)
 			r.eligibility = allEligible{}
 			req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "pp"}}
 
@@ -306,7 +306,7 @@ func TestReconcileReleasesRoleOnInvalidSelectors(t *testing.T) {
 		}},
 	}}
 	c := withIndexes(fake.NewClientBuilder().WithScheme(scheme)).WithObjects(policy).WithStatusSubresource(policy).Build()
-	r := NewReconciler(c, c, snapshotStub{})
+	r := NewReconciler(c, c, snapshotStub{}, nil)
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "pp"}}
 
 	if _, err := r.Reconcile(context.Background(), req); err != nil {
@@ -321,5 +321,52 @@ func TestReconcileReleasesRoleOnInvalidSelectors(t *testing.T) {
 	}
 	if cond := meta.FindStatusCondition(fetched.Status.Conditions, kfplacementv1alpha1.PlacementPolicyCondTypeScheduled); cond == nil || cond.Reason != reasonInvalidClusterSelectors {
 		t.Errorf("Reconcile() Scheduled condition = %v, want reason %q", cond, reasonInvalidClusterSelectors)
+	}
+}
+
+// TestReconcileClassLookupFailure pins that a cluster provider class that cannot be looked up
+// leaves the policy's claims alone -- reconciling them against no class would withdraw them --
+// while the scheduling status is still written and the error is returned for a retry.
+func TestReconcileClassLookupFailure(t *testing.T) {
+	scheme := runtime.NewScheme()
+	for _, add := range []func(*runtime.Scheme) error{kfplacementv1alpha1.AddToScheme, clusterv1beta1.AddToScheme} {
+		if err := add(scheme); err != nil {
+			t.Fatalf("AddToScheme() = %v, want no error", err)
+		}
+	}
+	policy := &kfplacementv1alpha1.PlacementPolicy{ObjectMeta: metav1.ObjectMeta{Name: "pp", Namespace: "default", UID: "pp-uid", Generation: 1}}
+	claim := &kfplacementv1alpha1.ClusterClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: claimName(policy, 0), Labels: claimOwnershipLabels(policy)},
+		Spec:       kfplacementv1alpha1.ClusterClaimSpec{PlacementPolicyRef: policyReference(policy)},
+	}
+	lookupErr := errors.New("the API server is unwell")
+	c := withIndexes(fake.NewClientBuilder().WithScheme(scheme)).
+		WithObjects(policy, claim).
+		WithStatusSubresource(policy).
+		WithInterceptorFuncs(interceptor.Funcs{
+			List: func(ctx context.Context, cl client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+				if _, isClasses := list.(*kfplacementv1alpha1.ClusterProviderClassList); isClasses {
+					return lookupErr
+				}
+				return cl.List(ctx, list, opts...)
+			},
+		}).
+		Build()
+	r := NewReconciler(c, c, snapshotStub{}, nil)
+	r.eligibility = allEligible{}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "pp"}}
+
+	if _, err := r.Reconcile(context.Background(), req); !errors.Is(err, lookupErr) {
+		t.Fatalf("Reconcile() = %v, want the class lookup error %v so the round is retried", err, lookupErr)
+	}
+	if err := c.Get(context.Background(), client.ObjectKeyFromObject(claim), &kfplacementv1alpha1.ClusterClaim{}); err != nil {
+		t.Errorf("Get(claim) = %v, want the claim left in place", err)
+	}
+	fetched := &kfplacementv1alpha1.PlacementPolicy{}
+	if err := c.Get(context.Background(), req.NamespacedName, fetched); err != nil {
+		t.Fatalf("Get() = %v, want no error", err)
+	}
+	if meta.FindStatusCondition(fetched.Status.Conditions, kfplacementv1alpha1.PlacementPolicyCondTypeScheduled) == nil {
+		t.Errorf("Reconcile() wrote no Scheduled condition, want the scheduling status written")
 	}
 }
