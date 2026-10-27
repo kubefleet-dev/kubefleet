@@ -37,6 +37,9 @@ type PolicyGeneratorConfigs struct {
 	// only be enabled if the workload controllers of kube-controller-manager have been disabled in the hub cluster;
 	// see AnnotatedForPlacementObjectsValidatingAdmissionPolicyGenerator for more information.
 	AnnotatedForPlacementObjectsVAPGeneratorConfig *AnnotatedForPlacementObjectsValidatingAdmissionPolicyGenerator `json:"denyPlacementAnnotationIfNoPlacementPolicyAPIAccess,omitempty"`
+	// The generator is off by default: enabling it before the hub agent can approve cluster claims would deny
+	// the hub agent's own automatic approvals.
+	ClusterClaimApprovalVAPGeneratorConfig *ClusterClaimApprovalValidatingAdmissionPolicyGenerator `json:"restrictClusterClaimApproval,omitempty"`
 }
 
 // DefaultPolicyGeneratorConfigsForV0APIs is the default configuration of admission policy generators
@@ -52,8 +55,8 @@ var DefaultPolicyGeneratorConfigsForV0APIs = &PolicyGeneratorConfigs{
 
 // DefaultPolicyGeneratorConfigsForV1APIs is the default configuration of admission policy generators
 // for placement with v1 APIs (placement policies). It covers all available admission policy generators
-// except the placement annotation one (DenyPlacementAnnotationIfNoPlacementPolicyAPIAccess), which must be
-// enabled explicitly.
+// except the placement annotation one (DenyPlacementAnnotationIfNoPlacementPolicyAPIAccess) and the claim
+// approval one (RestrictClusterClaimApproval), which must be enabled explicitly.
 var DefaultPolicyGeneratorConfigsForV1APIs = &PolicyGeneratorConfigs{
 	PodsAndReplicaSetsVAPGeneratorConfig: &PodsAndReplicaSetsValidatingAdmissionPolicyGenerator{
 		ReservedNamespacePrefixes: []string{utils.FleetNSNamePrefix, utils.KubeNSNamePrefix},
