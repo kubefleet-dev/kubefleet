@@ -164,9 +164,11 @@ rules:
   - apiGroups: ["placement.kubefleet.dev"]
     resources: ["placementpolicies/finalizers", "clusterplacementpolicies/finalizers"]
     verbs: ["update"]
+  # approve: the hub agent approves the claims of classes that approve automatically, which the
+  # claim approval admission policy (restrictClusterClaimApproval) gates on this verb.
   - apiGroups: ["placement.kubefleet.dev"]
     resources: ["clusterclaims"]
-    verbs: ["get", "list", "watch", "create", "update", "delete"]
+    verbs: ["get", "list", "watch", "create", "update", "delete", "approve"]
   - apiGroups: ["placement.kubefleet.dev"]
     resources: ["clusterclaims/status"]
     verbs: ["update"]
