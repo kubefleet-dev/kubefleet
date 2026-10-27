@@ -37,6 +37,9 @@ const (
 	clusterPlacementPolicyPropertyExpressionsNameTemplate = "cpp-property-expressions-%d"
 	placementPolicyInvalidSelectorNameTemplate            = "pp-invalid-selector-%d"
 	placementPolicyClaimTermsChangedNameTemplate          = "pp-claim-terms-changed-%d"
+
+	// neverSetLabelName is a label no member cluster carries.
+	neverSetLabelName = "fleet-e2e/never-set"
 )
 
 // setPlacementPolicySelectorTerms replaces the terms of the policy's first cluster selector. A change to the terms
@@ -167,10 +170,8 @@ var _ = Describe("placement policy scheduling with cluster selector options", La
 			Namespace: appNamespace().Name,
 			Name:      fmt.Sprintf(placementPolicyLabelExpressionsNameTemplate, GinkgoParallelProcess()),
 		}
-		// Every member cluster carries the env label, and none carries this one, so Exists and DoesNotExist are
-		// each checked against a label that is present and one that is absent.
-		const neverSetLabelName = "fleet-e2e/never-set"
-
+		// Every member cluster carries the env label, and none carries neverSetLabelName, so Exists and
+		// DoesNotExist are each checked against a label that is present and one that is absent.
 		labelExpressionTerm := func(exprs ...kfplacementv1alpha1.LabelClusterPropertyExpression) kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm {
 			return kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{MatchLabelExpressions: exprs}
 		}
@@ -218,7 +219,6 @@ var _ = Describe("placement policy scheduling with cluster selector options", La
 		AfterAll(func() {
 			// The work resources must go even if removing the policy fails; otherwise they leak into later specs.
 			defer cleanupWorkResourcesOnHubAndMembers()
-			// Deleting the policy also withdraws its cluster claim.
 			ensurePlacementPolicyRemoved(policyKey)
 		})
 
@@ -246,16 +246,17 @@ var _ = Describe("placement policy scheduling with cluster selector options", La
 			setPlacementPolicySelectorTerms(policyKey, mismatchingPresenceTerms)
 		})
 
-		It("should unbind every member cluster and add a cluster claim", func() {
+		It("should unbind every member cluster and add no cluster claim", func() {
 			Eventually(noPlacementPolicyBindingsActual(policyKey), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to unbind every member cluster")
 			Eventually(appConfigMapRemovedFromClustersActual(allMemberClusters...), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to remove the ConfigMap from every member cluster")
-			Eventually(placementPolicyClaimActual(policyKey, mismatchingPresenceTerms), eventuallyDuration, eventuallyInterval).
-				Should(Succeed(), "Failed to add the cluster claim")
-			// A count: All selector wants at least one cluster.
-			Eventually(placementPolicyStatusActual(policyKey, unfulfilledPlacementPolicyStatus(1, 0, 1)), eventuallyDuration, eventuallyInterval).
+			// A count: All selector wants at least one cluster, but Exists and DoesNotExist do not say what to
+			// provision, so no cluster claim is issued for them; only In is claimable.
+			Eventually(placementPolicyStatusActual(policyKey, unfulfilledPlacementPolicyStatus(1, 0, 0)), eventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected placement policy status")
+			Consistently(noPlacementPolicyClaimsActual(policyKey), consistentlyDuration, consistentlyInterval).
+				Should(Succeed(), "A cluster claim was added for presence expressions")
 		})
 	})
 
