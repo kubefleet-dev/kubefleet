@@ -512,7 +512,7 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 				Spec: placementv1beta1.PlacementSpec{
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(2)),
+						NumberOfClusters: new(int32(2)),
 					},
 					Strategy: placementv1beta1.RolloutStrategy{
 						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{
@@ -604,7 +604,7 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 				Spec: placementv1beta1.PlacementSpec{
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(1)),
+						NumberOfClusters: new(int32(1)),
 					},
 					Strategy: placementv1beta1.RolloutStrategy{
 						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{
@@ -634,7 +634,7 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 				Spec: placementv1beta1.PlacementSpec{
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(1)),
+						NumberOfClusters: new(int32(1)),
 					},
 					Strategy: placementv1beta1.RolloutStrategy{},
 				},
@@ -660,7 +660,7 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 				Spec: placementv1beta1.PlacementSpec{
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(1)),
+						NumberOfClusters: new(int32(1)),
 					},
 					Strategy: placementv1beta1.RolloutStrategy{
 						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{
@@ -688,7 +688,7 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 				Spec: placementv1beta1.PlacementSpec{
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(1)),
+						NumberOfClusters: new(int32(1)),
 					},
 					Strategy: placementv1beta1.RolloutStrategy{
 						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{
@@ -716,7 +716,7 @@ func TestValidatePlacementObjectForOriginalResourceStatusBackReporting(t *testin
 				Spec: placementv1beta1.PlacementSpec{
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(1)),
+						NumberOfClusters: new(int32(1)),
 					},
 					Strategy: placementv1beta1.RolloutStrategy{
 						ReportBackStrategy: &placementv1beta1.ReportBackStrategy{

@@ -24,7 +24,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
@@ -142,7 +141,7 @@ var _ = Describe("drift detection", func() {
 
 		It("can introduce a drift on the deployment and add a label that the manifest does not specify", func() {
 			updateDeploymentInMemberCluster(memberClient1, nsName, deployName, func(deploy *appsv1.Deployment) {
-				deploy.Spec.Replicas = ptr.To(int32(2))
+				deploy.Spec.Replicas = new(int32(2))
 				deploy.Labels = map[string]string{
 					memberOnlyLabelKey: memberOnlyLabelValue,
 				}
@@ -385,7 +384,7 @@ var _ = Describe("drift detection", func() {
 
 		It("can introduce a drift on the deployment", func() {
 			driftedDeploy = updateDeploymentInMemberCluster(memberClient1, nsName, deployName, func(deploy *appsv1.Deployment) {
-				deploy.Spec.Replicas = ptr.To(int32(2))
+				deploy.Spec.Replicas = new(int32(2))
 			})
 		})
 
@@ -417,7 +416,7 @@ var _ = Describe("drift detection", func() {
 						},
 					},
 					DiffDetails: &placementv1alpha1.DiffDetails{
-						ObservedInMemberClusterGeneration: ptr.To(int64(2)),
+						ObservedInMemberClusterGeneration: new(int64(2)),
 						ObservedDiffs: []placementv1alpha1.PatchDetail{
 							{
 								Path:          "/spec/replicas",
@@ -443,7 +442,7 @@ var _ = Describe("drift detection", func() {
 
 		It("can change the drift on the deployment", func() {
 			updateDeploymentInMemberCluster(memberClient1, nsName, deployName, func(deploy *appsv1.Deployment) {
-				deploy.Spec.Replicas = ptr.To(int32(3))
+				deploy.Spec.Replicas = new(int32(3))
 			})
 		})
 
@@ -473,7 +472,7 @@ var _ = Describe("drift detection", func() {
 						},
 					},
 					DiffDetails: &placementv1alpha1.DiffDetails{
-						ObservedInMemberClusterGeneration: ptr.To(int64(3)),
+						ObservedInMemberClusterGeneration: new(int64(3)),
 						ObservedDiffs: []placementv1alpha1.PatchDetail{
 							{
 								Path:          "/spec/replicas",
@@ -498,7 +497,7 @@ var _ = Describe("drift detection", func() {
 
 		It("can revert the drift on the deployment", func() {
 			updateDeploymentInMemberCluster(memberClient1, nsName, deployName, func(deploy *appsv1.Deployment) {
-				deploy.Spec.Replicas = ptr.To(int32(1))
+				deploy.Spec.Replicas = new(int32(1))
 			})
 		})
 
@@ -734,7 +733,7 @@ var _ = Describe("drift detection", func() {
 						},
 					},
 					DiffDetails: &placementv1alpha1.DiffDetails{
-						ObservedInMemberClusterGeneration: ptr.To(int64(0)),
+						ObservedInMemberClusterGeneration: new(int64(0)),
 						ObservedDiffs: []placementv1alpha1.PatchDetail{
 							{
 								Path:          fmt.Sprintf("/metadata/labels/%s", memberOnlyLabelKey),
@@ -862,7 +861,7 @@ var _ = Describe("drift detection", func() {
 
 		It("can introduce a drift on the deployment", func() {
 			updateDeploymentInMemberCluster(memberClient1, nsName, deployName, func(deploy *appsv1.Deployment) {
-				deploy.Spec.Replicas = ptr.To(int32(2))
+				deploy.Spec.Replicas = new(int32(2))
 			})
 		})
 
@@ -892,7 +891,7 @@ var _ = Describe("drift detection", func() {
 						},
 					},
 					DiffDetails: &placementv1alpha1.DiffDetails{
-						ObservedInMemberClusterGeneration: ptr.To(int64(2)),
+						ObservedInMemberClusterGeneration: new(int64(2)),
 						ObservedDiffs: []placementv1alpha1.PatchDetail{
 							{
 								Path:          "/spec/replicas",
@@ -1019,7 +1018,7 @@ var _ = Describe("drift detection", func() {
 					},
 				},
 				DiffDetails: &placementv1alpha1.DiffDetails{
-					ObservedInMemberClusterGeneration: ptr.To(int64(0)),
+					ObservedInMemberClusterGeneration: new(int64(0)),
 					ObservedDiffs: []placementv1alpha1.PatchDetail{
 						{
 							Path:          "/spec/finalizers",
@@ -1152,7 +1151,7 @@ var _ = Describe("drift detection", func() {
 						},
 					},
 					DiffDetails: &placementv1alpha1.DiffDetails{
-						ObservedInMemberClusterGeneration: ptr.To(int64(0)),
+						ObservedInMemberClusterGeneration: new(int64(0)),
 						ObservedDiffs: []placementv1alpha1.PatchDetail{
 							{
 								Path:          fmt.Sprintf("/metadata/labels/%s", memberOnlyLabelKey),

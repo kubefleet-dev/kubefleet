@@ -29,7 +29,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 
 	placementv1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -286,7 +285,7 @@ func buildWantPlacementStatusV1(
 			Conditions:            perClusterRolloutCompletedConditions(placementGeneration, true, false),
 		})
 	}
-	for i := 0; i < len(wantUnselectedClusters); i++ {
+	for range wantUnselectedClusters {
 		wantPerClusterPlacementStatuses = append(wantPerClusterPlacementStatuses, placementv1.PerClusterPlacementStatus{
 			Conditions: perClusterScheduleFailedConditions(placementGeneration),
 		})
@@ -364,8 +363,8 @@ var _ = Describe("takeover, drift detection, and reportDiff mode (v1beta1 to v1)
 					Strategy: placementv1.RolloutStrategy{
 						Type: placementv1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1.RollingUpdateConfig{
-							MaxUnavailable:           ptr.To(intstr.FromString("100%")),
-							UnavailablePeriodSeconds: ptr.To(1),
+							MaxUnavailable:           new(intstr.FromString("100%")),
+							UnavailablePeriodSeconds: new(1),
 						},
 						ApplyStrategy: &placementv1.ApplyStrategy{
 							ComparisonOption: placementv1.ComparisonOptionTypePartialComparison,
@@ -415,7 +414,7 @@ var _ = Describe("takeover, drift detection, and reportDiff mode (v1beta1 to v1)
 										Kind:    "Namespace",
 										Name:    nsName,
 									},
-									TargetClusterObservedGeneration: ptr.To(int64(0)),
+									TargetClusterObservedGeneration: new(int64(0)),
 									ObservedDiffs: []placementv1.PatchDetail{
 										{
 											Path:          fmt.Sprintf("/metadata/labels/%s", managedDataFieldKey),
@@ -494,8 +493,8 @@ var _ = Describe("takeover, drift detection, and reportDiff mode (v1beta1 to v1)
 					Strategy: placementv1.RolloutStrategy{
 						Type: placementv1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1.RollingUpdateConfig{
-							MaxUnavailable:           ptr.To(intstr.FromString("100%")),
-							UnavailablePeriodSeconds: ptr.To(1),
+							MaxUnavailable:           new(intstr.FromString("100%")),
+							UnavailablePeriodSeconds: new(1),
 						},
 						ApplyStrategy: &placementv1.ApplyStrategy{
 							ComparisonOption: placementv1.ComparisonOptionTypePartialComparison,
@@ -649,8 +648,8 @@ var _ = Describe("takeover, drift detection, and reportDiff mode (v1beta1 to v1)
 					Strategy: placementv1.RolloutStrategy{
 						Type: placementv1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1.RollingUpdateConfig{
-							MaxUnavailable:           ptr.To(intstr.FromString("100%")),
-							UnavailablePeriodSeconds: ptr.To(1),
+							MaxUnavailable:           new(intstr.FromString("100%")),
+							UnavailablePeriodSeconds: new(1),
 						},
 						ApplyStrategy: &placementv1.ApplyStrategy{
 							Type:             placementv1.ApplyStrategyTypeReportDiff,
@@ -686,7 +685,7 @@ var _ = Describe("takeover, drift detection, and reportDiff mode (v1beta1 to v1)
 										Kind:    "Namespace",
 										Name:    nsName,
 									},
-									TargetClusterObservedGeneration: ptr.To(int64(0)),
+									TargetClusterObservedGeneration: new(int64(0)),
 									ObservedDiffs: []placementv1.PatchDetail{
 										{
 											Path:          fmt.Sprintf("/metadata/labels/%s", managedDataFieldKey),
@@ -775,7 +774,7 @@ var _ = Describe("eviction and disruption budget", func() {
 					Name: crpName,
 				},
 				Spec: placementv1.PlacementDisruptionBudgetSpec{
-					MinAvailable: ptr.To(intstr.FromInt32(int32(len(allMemberClusterNames)))),
+					MinAvailable: new(intstr.FromInt32(int32(len(allMemberClusterNames)))),
 				},
 			}
 			Expect(hubClient.Create(ctx, crpdb)).To(Succeed(), "Failed to create CRP disruption budget %s", crpName)
@@ -827,7 +826,7 @@ var _ = Describe("eviction and disruption budget", func() {
 				Spec: placementv1.PlacementSpec{
 					Policy: &placementv1.PlacementPolicy{
 						PlacementType:    placementv1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(len(allMemberClusterNames))),
+						NumberOfClusters: new(int32(len(allMemberClusterNames))),
 					},
 					ResourceSelectors: []placementv1.ResourceSelectorTerm{
 						{
@@ -860,7 +859,7 @@ var _ = Describe("eviction and disruption budget", func() {
 					Name: crpName,
 				},
 				Spec: placementv1.PlacementDisruptionBudgetSpec{
-					MaxUnavailable: ptr.To(intstr.FromInt32(1)),
+					MaxUnavailable: new(intstr.FromInt32(1)),
 				},
 			}
 			Expect(hubClient.Create(ctx, crpdb)).To(Succeed(), "Failed to create CRP disruption budget %s", crpName)

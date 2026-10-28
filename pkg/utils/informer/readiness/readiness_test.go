@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/utils/ptr"
 
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
 	testinformer "github.com/kubefleet-dev/kubefleet/test/utils/informer"
@@ -56,7 +55,7 @@ func TestReadinessChecker(t *testing.T) {
 					{Group: "", Version: "v1", Kind: "Secret"}:    true,
 					{Group: "", Version: "v1", Kind: "Namespace"}: true,
 				},
-				InformerSynced: ptr.To(true), // this makes all informers synced
+				InformerSynced: new(true), // this makes all informers synced
 			},
 			expectError: false,
 		},
@@ -69,7 +68,7 @@ func TestReadinessChecker(t *testing.T) {
 					{Group: "", Version: "v1", Kind: "Namespace"}: false,
 				},
 				IsClusterScopedResource: true,
-				InformerSynced:          ptr.To(false), // this makes all informers not synced
+				InformerSynced:          new(false), // this makes all informers not synced
 			},
 			expectError:   true,
 			errorContains: "informers not synced yet",
@@ -108,7 +107,7 @@ func TestReadinessChecker_NoneSync(t *testing.T) {
 			{Group: "apps", Version: "v1", Kind: "Deployment"}: false,
 			{Group: "", Version: "v1", Kind: "Namespace"}:      false,
 		},
-		InformerSynced: ptr.To(false), // this makes all informers not synced
+		InformerSynced: new(false), // this makes all informers not synced
 	}
 
 	checker := InformerReadinessChecker(mockManager)
@@ -138,7 +137,7 @@ func TestReadinessChecker_AllSyncedMultipleResources(t *testing.T) {
 			{Group: "", Version: "v1", Kind: "Namespace"}:                            true,
 			{Group: "rbac.authorization.k8s.io", Version: "v1", Kind: "ClusterRole"}: true,
 		},
-		InformerSynced: ptr.To(true), // this makes all informers synced
+		InformerSynced: new(true), // this makes all informers synced
 	}
 
 	checker := InformerReadinessChecker(mockManager)

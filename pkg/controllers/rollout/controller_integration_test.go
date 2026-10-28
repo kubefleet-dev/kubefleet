@@ -32,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -446,7 +445,7 @@ var _ = Describe("Test the rollout Controller", func() {
 
 		// simulate that some of the bindings are available and not trackable.
 		firstApplied := 3
-		for i := 0; i < firstApplied; i++ {
+		for i := range firstApplied {
 			markBindingAvailable(bindings[i], false)
 		}
 		// simulate another scheduling decision, pick some cluster to unselect from the bottom of the list
@@ -468,7 +467,7 @@ var _ = Describe("Test the rollout Controller", func() {
 			By(fmt.Sprintf("resource binding `%s` is marked as not scheduled", binding.Name))
 			deletedBindings = append(deletedBindings, binding)
 		}
-		for i := 0; i < stillScheduledClusterNum; i++ {
+		for i := range stillScheduledClusterNum {
 			secondRoundBindings = append(secondRoundBindings, bindings[i])
 		}
 		// simulate that some of the bindings are available and not trackable
@@ -476,7 +475,7 @@ var _ = Describe("Test the rollout Controller", func() {
 			markBindingAvailable(bindings[i], false)
 		}
 		newlyScheduledClusterNum := int(newTargetClusterNum) - stillScheduledClusterNum
-		for i := 0; i < newlyScheduledClusterNum; i++ {
+		for i := range newlyScheduledClusterNum {
 			binding := generateClusterResourceBinding(placementv1beta1.BindingStateScheduled, masterSnapshot.Name, "cluster-"+strconv.Itoa(int(initTargetClusterNum)+i))
 			Expect(k8sClient.Create(ctx, binding)).Should(Succeed())
 			By(fmt.Sprintf("resource binding %s created", binding.Name))
@@ -536,7 +535,7 @@ var _ = Describe("Test the rollout Controller", func() {
 
 		// simulate that some of the bindings are available
 		firstApplied := 3
-		for i := 0; i < firstApplied; i++ {
+		for i := range firstApplied {
 			markBindingAvailable(bindings[i], true)
 		}
 		// simulate another scheduling decision, pick some cluster to unselect from the bottom of the list
@@ -559,7 +558,7 @@ var _ = Describe("Test the rollout Controller", func() {
 			deletedBindings = append(deletedBindings, binding)
 		}
 		// save the bindings that are still scheduled
-		for i := 0; i < stillScheduled; i++ {
+		for i := range stillScheduled {
 			secondRoundBindings = append(secondRoundBindings, bindings[i])
 		}
 		// simulate that some of the bindings are available
@@ -568,7 +567,7 @@ var _ = Describe("Test the rollout Controller", func() {
 		}
 		// create the newly scheduled bindings
 		newScheduled := int(newTarget) - stillScheduled
-		for i := 0; i < newScheduled; i++ {
+		for i := range newScheduled {
 			binding := generateClusterResourceBinding(placementv1beta1.BindingStateScheduled, masterSnapshot.Name, "cluster-"+strconv.Itoa(int(targetCluster)+i))
 			Expect(k8sClient.Create(ctx, binding)).Should(Succeed())
 			By(fmt.Sprintf("resource binding %s created", binding.Name))
@@ -726,7 +725,7 @@ var _ = Describe("Test the rollout Controller", func() {
 
 		// simulate that some of the bindings are available successfully
 		applySuccessfully := 3
-		for i := 0; i < applySuccessfully; i++ {
+		for i := range applySuccessfully {
 			markBindingAvailable(bindings[i], true)
 		}
 		// simulate that some of the bindings fail to apply
@@ -767,7 +766,7 @@ var _ = Describe("Test the rollout Controller", func() {
 			createPlacementPolicyForTest(placementv1beta1.PickNPlacementType, targetCluster),
 			createPlacementRolloutStrategyForTest(placementv1beta1.RollingUpdateRolloutStrategyType, generateDefaultRollingUpdateConfig(), nil))
 		// remove the strategy
-		rolloutCRP.Spec.Strategy = placementv1beta1.RolloutStrategy{RollingUpdate: &placementv1beta1.RollingUpdateConfig{UnavailablePeriodSeconds: ptr.To(60)}}
+		rolloutCRP.Spec.Strategy = placementv1beta1.RolloutStrategy{RollingUpdate: &placementv1beta1.RollingUpdateConfig{UnavailablePeriodSeconds: new(60)}}
 		Expect(k8sClient.Create(ctx, rolloutCRP)).Should(Succeed())
 		// create master resource snapshot that is latest
 		masterSnapshot := generateClusterResourceSnapshot(rolloutCRP.Name, 0, true)
@@ -787,7 +786,7 @@ var _ = Describe("Test the rollout Controller", func() {
 
 		// simulate that some of the bindings are available successfully
 		applySuccessfully := 3
-		for i := 0; i < applySuccessfully; i++ {
+		for i := range applySuccessfully {
 			markBindingAvailable(bindings[i], true)
 		}
 		// simulate that some of the bindings fail to apply
@@ -866,7 +865,7 @@ var _ = Describe("Test the rollout Controller", func() {
 
 		// mark one binding as ready i.e. applied and available.
 		availableBinding := 1
-		for i := 0; i < availableBinding; i++ {
+		for i := range availableBinding {
 			markBindingApplied(bindings[i], true)
 			markBindingAvailable(bindings[i], false)
 		}
@@ -899,7 +898,7 @@ var _ = Describe("Test the rollout Controller", func() {
 		// Current state: rollout is blocked by maxSurge being 0.
 		// mark first available bound binding as unscheduled and ensure it's not removed.
 		unscheduledBinding := 1
-		for i := 0; i < unscheduledBinding; i++ {
+		for i := range unscheduledBinding {
 			Eventually(func() error {
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: bindings[i].Name}, bindings[i])
 				if err != nil {
@@ -916,7 +915,7 @@ var _ = Describe("Test the rollout Controller", func() {
 		}
 
 		// simulate eviction by deleting unscheduled binding.
-		for i := 0; i < unscheduledBinding; i++ {
+		for i := range unscheduledBinding {
 			Expect(k8sClient.Delete(ctx, bindings[i])).Should(Succeed())
 		}
 
@@ -994,7 +993,7 @@ var _ = Describe("Test the rollout Controller", func() {
 
 		// simulate eviction by deleting first bound binding.
 		firstBoundBinding := 1
-		for i := 0; i < firstBoundBinding; i++ {
+		for i := range firstBoundBinding {
 			Expect(k8sClient.Delete(ctx, bindings[i])).Should(Succeed())
 		}
 
@@ -1363,7 +1362,7 @@ var _ = Describe("Test the rollout Controller for ResourcePlacement", func() {
 
 		// simulate that some of the bindings are available and not trackable.
 		firstApplied := 3
-		for i := 0; i < firstApplied; i++ {
+		for i := range firstApplied {
 			markBindingAvailable(bindings[i], false)
 		}
 		// simulate another scheduling decision, pick some cluster to unselect from the bottom of the list
@@ -1385,7 +1384,7 @@ var _ = Describe("Test the rollout Controller for ResourcePlacement", func() {
 			By(fmt.Sprintf("resource binding `%s` is marked as not scheduled", binding.Name))
 			deletedBindings = append(deletedBindings, binding)
 		}
-		for i := 0; i < stillScheduledClusterNum; i++ {
+		for i := range stillScheduledClusterNum {
 			secondRoundBindings = append(secondRoundBindings, bindings[i])
 		}
 		// simulate that some of the bindings are available and not trackable
@@ -1393,7 +1392,7 @@ var _ = Describe("Test the rollout Controller for ResourcePlacement", func() {
 			markBindingAvailable(bindings[i], false)
 		}
 		newlyScheduledClusterNum := int(newTargetClusterNum) - stillScheduledClusterNum
-		for i := 0; i < newlyScheduledClusterNum; i++ {
+		for i := range newlyScheduledClusterNum {
 			binding := generateResourceBinding(placementv1beta1.BindingStateScheduled, masterSnapshot.Name, "cluster-"+strconv.Itoa(int(initTargetClusterNum)+i), testNamespace)
 			Expect(k8sClient.Create(ctx, binding)).Should(Succeed())
 			By(fmt.Sprintf("resource binding %s created", binding.Name))
@@ -1517,7 +1516,7 @@ var _ = Describe("Test the rollout Controller for ResourcePlacement", func() {
 		verifyBindingsRolledOut(controller.ConvertRBArrayToBindingObjs(bindings), masterSnapshot, timeout)
 		// simulate that some of the bindings are available successfully
 		applySuccessfully := 3
-		for i := 0; i < applySuccessfully; i++ {
+		for i := range applySuccessfully {
 			markBindingAvailable(bindings[i], true)
 		}
 		// simulate that some of the bindings fail to apply

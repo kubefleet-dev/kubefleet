@@ -260,8 +260,8 @@ func (r *ResourceConfig) Parse(c string) error {
 		return nil
 	}
 
-	tokens := strings.Split(c, apiGroupSepToken)
-	for _, token := range tokens {
+	tokens := strings.SplitSeq(c, apiGroupSepToken)
+	for token := range tokens {
 		if err := r.parseSingle(token); err != nil {
 			return fmt.Errorf("failed to parse token: %w", err)
 		}
@@ -282,7 +282,7 @@ func (r *ResourceConfig) parseSingle(token string) error {
 		// for core group which don't have the group name, the case should be "v1/<kind>" or "v1/<kind>,<kind>..."
 		if strings.HasPrefix(token, "v1") {
 			var kinds []string
-			for _, k := range strings.Split(token, ",") {
+			for k := range strings.SplitSeq(token, ",") {
 				if strings.Contains(k, "/") { // "v1/<kind>"
 					s := strings.Split(k, "/")
 					kinds = append(kinds, s[1])
@@ -313,7 +313,7 @@ func (r *ResourceConfig) parseSingle(token string) error {
 		g := ""
 		v := ""
 		var kinds []string
-		for _, k := range strings.Split(token, ",") {
+		for k := range strings.SplitSeq(token, ",") {
 			if strings.Contains(k, "/") {
 				s := strings.Split(k, "/")
 				g = s[0]

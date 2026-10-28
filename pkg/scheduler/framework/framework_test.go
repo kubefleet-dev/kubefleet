@@ -95,7 +95,7 @@ var (
 	generateResourceBindings = func(count int, startIdx int) []*placementv1beta1.ClusterResourceBinding {
 		bindings := make([]*placementv1beta1.ClusterResourceBinding, 0, count)
 
-		for i := 0; i < count; i++ {
+		for i := range count {
 			bindings = append(bindings, &placementv1beta1.ClusterResourceBinding{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: fmt.Sprintf(bindingNameTemplate, i+startIdx),
@@ -114,7 +114,7 @@ var (
 	generateClusterDecisions = func(count int, startIdx int, selected bool) []placementv1beta1.ClusterDecision {
 		decisions := make([]placementv1beta1.ClusterDecision, 0, count)
 
-		for i := 0; i < count; i++ {
+		for i := range count {
 			newDecision := placementv1beta1.ClusterDecision{
 				ClusterName: fmt.Sprintf(clusterNameTemplate, i+startIdx),
 				Selected:    selected,
@@ -128,7 +128,7 @@ var (
 	generateNotPickedScoredClusters = func(count int, startIdx int) ScoredClusters {
 		notPicked := make(ScoredClusters, 0, count)
 
-		for i := 0; i < count; i++ {
+		for i := range count {
 			notPicked = append(notPicked, &ScoredCluster{
 				Cluster: &clusterv1beta1.MemberCluster{
 					ObjectMeta: metav1.ObjectMeta{
@@ -144,7 +144,7 @@ var (
 	generatedFilterdClusterWithStatus = func(count int, startIdx int) []*filteredClusterWithStatus {
 		filtered := make([]*filteredClusterWithStatus, 0, count)
 
-		for i := 0; i < count; i++ {
+		for i := range count {
 			filtered = append(filtered, &filteredClusterWithStatus{
 				cluster: &clusterv1beta1.MemberCluster{
 					ObjectMeta: metav1.ObjectMeta{
@@ -6698,7 +6698,7 @@ func TestRunSchedulingCycleForPickAllPlacementType_StableStatusOutputInLargeFlee
 	}
 
 	// Simulate 100 consecutive scheduling cycles.
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		_, err := f.runSchedulingCycleForPickAllPlacementType(ctx, state, placementKey, policy, clusters, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("runSchedulingCycleForPickAllPlacementType() = %v, want no error", err)

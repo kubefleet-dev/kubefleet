@@ -26,7 +26,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -55,7 +54,7 @@ func placementPolicyRegionSelector(region string, count int32) kfplacementv1alph
 		Terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{
 			{MatchLabels: map[string]string{regionLabelName: region}},
 		},
-		Count: ptr.To(intstr.FromInt32(count)),
+		Count: new(intstr.FromInt32(count)),
 	}
 }
 

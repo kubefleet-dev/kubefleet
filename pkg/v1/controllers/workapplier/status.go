@@ -24,7 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
@@ -216,7 +215,7 @@ func refreshOneManifestStatus(manifestProcessingState *manifestProcessingState,
 	// of the applied resource, not that of the Work object.
 	var inMemberClusterObjGeneration *int64
 	if manifestProcessingState.inMemberClusterObj != nil {
-		inMemberClusterObjGeneration = ptr.To(manifestProcessingState.inMemberClusterObj.GetGeneration())
+		inMemberClusterObjGeneration = new(manifestProcessingState.inMemberClusterObj.GetGeneration())
 	}
 	setManifestStatusAppliedCondition(manifestStatusToRefresh, manifestProcessingState.applyRes, manifestProcessingState.applyErr, inMemberClusterObjGeneration)
 	setManifestStatusAvailableCondition(manifestStatusToRefresh, manifestProcessingState.availabilityCheckRes, manifestProcessingState.availabilityCheckErr, inMemberClusterObjGeneration)

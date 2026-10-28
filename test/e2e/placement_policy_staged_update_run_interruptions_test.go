@@ -24,7 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -258,7 +257,7 @@ var _ = Describe("placement policy staged update run interruptions", Label("plac
 				Eventually(configMapDataOnClustersActual(cmKey, v1Data, allMemberClusters...), workloadEventuallyDuration, eventuallyInterval).
 					Should(Succeed(), "Failed to place the new version on every member cluster")
 				wantStatus := allSynchronizedPlacementPolicyStatus(int32(len(allMemberClusters)))
-				wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+				wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 				Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 					Should(Succeed(), "Failed to report the expected %s status", scopeDescription)
 			})
@@ -341,7 +340,7 @@ var _ = Describe("placement policy staged update run interruptions", Label("plac
 
 		It("should keep the clusters where the deleted run left them", func() {
 			wantStatus := someClustersOnOlderResourceRevisionPlacementPolicyStatus(int32(len(allMemberClusters)), 1)
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the canary cluster alone as on the latest resource revision")
 			Consistently(onlyCanaryUpdatedActual(policyKey, cmKey, initialSnapshotName, newSnapshotName, v0Data, v1Data), consistentlyDuration, consistentlyInterval).
@@ -369,7 +368,7 @@ var _ = Describe("placement policy staged update run interruptions", Label("plac
 			Eventually(configMapDataOnClustersActual(cmKey, v1Data, allMemberClusters...), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to place the new version on every member cluster")
 			wantStatus := allSynchronizedPlacementPolicyStatus(int32(len(allMemberClusters)))
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected placement policy status")
 		})
@@ -480,7 +479,7 @@ var _ = Describe("placement policy staged update run interruptions", Label("plac
 			Eventually(configMapDataOnClustersActual(cmKey, v1Data, allMemberClusters...), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to place the new version on every member cluster")
 			wantStatus := allSynchronizedPlacementPolicyStatus(int32(len(allMemberClusters)))
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected placement policy status")
 		})
@@ -600,7 +599,7 @@ var _ = Describe("placement policy staged update run interruptions", Label("plac
 			// The suspended binding names the latest revision but has processed none, so it counts as neither
 			// synchronized nor on an older revision.
 			wantStatus := someClustersNotSynchronizedPlacementPolicyStatus(clusterCount(), clusterCount()-1)
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			statusActual := placementPolicyStatusActual(policyKey, wantStatus)
 			Eventually(statusActual, workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected cluster placement policy status")
@@ -627,7 +626,7 @@ var _ = Describe("placement policy staged update run interruptions", Label("plac
 			Eventually(configMapDataOnClustersActual(cmKey, v1Data, allMemberClusters...), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to place the new version on every member cluster")
 			wantStatus := allSynchronizedPlacementPolicyStatus(clusterCount())
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected cluster placement policy status")
 		})

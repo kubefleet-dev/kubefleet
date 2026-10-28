@@ -28,7 +28,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -142,7 +141,7 @@ var _ = Describe("placement policy resource selection", Label("placementpolicy")
 
 		It("should report the policy as synchronized on every member cluster", func() {
 			wantStatus := allSynchronizedPlacementPolicyStatus(int32(len(allMemberClusters)))
-			wantStatus.LatestResourceRevisionName = ptr.To(initialSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(initialSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected placement policy status")
 		})
@@ -156,7 +155,7 @@ var _ = Describe("placement policy resource selection", Label("placementpolicy")
 			// The clusters still hold, synchronized and available, the revision that remains the latest one; only the
 			// Synchronized condition tells that the hub has moved on since.
 			wantStatus := resourcesChangedPendingRolloutPlacementPolicyStatus(int32(len(allMemberClusters)))
-			wantStatus.LatestResourceRevisionName = ptr.To(initialSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(initialSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the resource changes as pending a rollout")
 		})
@@ -253,14 +252,14 @@ var _ = Describe("placement policy resource selection", Label("placementpolicy")
 
 		It("should report the change as pending a rollout", func() {
 			wantStatus := resourcesChangedPendingRolloutPlacementPolicyStatus(1)
-			wantStatus.LatestResourceRevisionName = ptr.To(initialSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(initialSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the change as pending a rollout")
 		})
 
 		It("can scale the selector up to 2 clusters", func() {
 			updatePlacementPolicy(policyKey, func(policy kfplacementv1alpha1.PlacementPolicyAccessor) {
-				policy.GetSpec().ClusterSelectors[0].Count = ptr.To(intstr.FromInt32(2))
+				policy.GetSpec().ClusterSelectors[0].Count = new(intstr.FromInt32(2))
 			})
 		})
 
@@ -280,7 +279,7 @@ var _ = Describe("placement policy resource selection", Label("placementpolicy")
 				Should(Succeed(), "Failed to place the initial version on both east clusters")
 
 			wantStatus := resourcesChangedPendingRolloutPlacementPolicyStatus(2)
-			wantStatus.LatestResourceRevisionName = ptr.To(initialSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(initialSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the change as still pending a rollout")
 		})
@@ -618,7 +617,7 @@ var _ = Describe("placement policy resource selection", Label("placementpolicy")
 				Should(Succeed(), "Failed to remove the deleted ConfigMap from the member clusters")
 
 			wantStatus := allSynchronizedPlacementPolicyStatus(int32(len(allMemberClusters)))
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected placement policy status")
 		})

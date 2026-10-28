@@ -218,7 +218,7 @@ func (r *Reconciler) partialDiffBetweenManifestAndInMemberClusterObjects(
 }
 
 // organizeJSONPatchIntoFleetPatchDetails organizes the JSON patch operations into Fleet patch details.
-func organizeJSONPatchIntoFleetPatchDetails(patch jsondiff.Patch, manifestObjMap map[string]interface{}) ([]fleetv1beta1.PatchDetail, error) {
+func organizeJSONPatchIntoFleetPatchDetails(patch jsondiff.Patch, manifestObjMap map[string]any) ([]fleetv1beta1.PatchDetail, error) {
 	// Pre-allocate the slice for the patch details. The organization procedure typically will yield
 	// the same number of PatchDetail items as the JSON patch operations.
 	details := make([]fleetv1beta1.PatchDetail, 0, len(patch))

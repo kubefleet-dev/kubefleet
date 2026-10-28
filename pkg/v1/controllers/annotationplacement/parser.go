@@ -117,7 +117,7 @@ func parseSelector(segment string) (kfplacementv1alpha1.ClusterSelector, error) 
 	matchLabels := make(map[string]string)
 	var count *intstr.IntOrString
 
-	for _, matcher := range strings.Split(segment, matcherSeparator) {
+	for matcher := range strings.SplitSeq(segment, matcherSeparator) {
 		matcher = strings.TrimSpace(matcher)
 		if matcher == "" {
 			return selector, fmt.Errorf("it has an empty label matcher")

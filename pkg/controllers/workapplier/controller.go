@@ -33,7 +33,6 @@ import (
 	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"k8s.io/utils/set"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -146,8 +145,8 @@ func NewReconciler(
 	if priorityLinearEquationCoeffA == nil || priorityLinearEquationCoeffB == nil {
 		// Use the default settings if either co-efficient is not set for correctness reasons.
 		klog.V(2).InfoS("priority linear equation coefficients are not set; using the default settings")
-		priorityLinearEquationCoeffA = ptr.To(-3)
-		priorityLinearEquationCoeffB = ptr.To(int(highestPriorityLevel))
+		priorityLinearEquationCoeffA = new(-3)
+		priorityLinearEquationCoeffB = new(int(highestPriorityLevel))
 	}
 
 	return &Reconciler{
@@ -349,7 +348,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		Kind:               fleetv1beta1.AppliedWorkKind,
 		Name:               appliedWork.GetName(),
 		UID:                appliedWork.GetUID(),
-		BlockOwnerDeletion: ptr.To(true),
+		BlockOwnerDeletion: new(true),
 	}
 
 	// Set the default values for the Work object to avoid additional validation logic in the
@@ -521,7 +520,7 @@ func (r *Reconciler) updateOwnerReference(ctx context.Context, work *fleetv1beta
 			updated := false
 			for idx := range ownerRefs {
 				if areOwnerRefsEqual(&ownerRefs[idx], appliedWorkOwnerRef) {
-					ownerRefs[idx].BlockOwnerDeletion = ptr.To(false)
+					ownerRefs[idx].BlockOwnerDeletion = new(false)
 					updated = true
 				}
 			}

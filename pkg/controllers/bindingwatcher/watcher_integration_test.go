@@ -23,7 +23,6 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
@@ -517,7 +516,7 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 						Namespace: "svc-namespace",
 					},
 					ObservationTime:                 startTime,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					FirstDiffedObservedTime:         startTime,
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
@@ -536,7 +535,7 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 						Namespace: "config-namespace",
 					},
 					ObservationTime:                 startTime,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					FirstDiffedObservedTime:         startTime,
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
@@ -567,7 +566,7 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 						Namespace: "config-namespace",
 					},
 					ObservationTime:                 startTime,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					FirstDiffedObservedTime:         startTime,
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
@@ -586,7 +585,7 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 						Namespace: "svc-namespace",
 					},
 					ObservationTime:                 startTime,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					FirstDiffedObservedTime:         startTime,
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
@@ -616,7 +615,7 @@ var _ = Describe("Test ClusterResourceBinding Watcher - update status", Serial, 
 						Namespace: "config-namespace",
 					},
 					ObservationTime:                 metav1.Now(),
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					FirstDiffedObservedTime:         metav1.Now(),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{

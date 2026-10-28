@@ -32,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -63,7 +62,7 @@ var _ = Describe("validating ChangeDetector detects resource changes", Label("re
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
+						UnavailablePeriodSeconds: new(2),
 					},
 				},
 			},
@@ -220,7 +219,7 @@ var _ = Describe("validating InformerPopulator discovers new CRDs", Label("resou
 		})
 		cr.SetName(crName)
 		cr.SetNamespace(appNamespace().Name)
-		cr.Object["spec"] = map[string]interface{}{
+		cr.Object["spec"] = map[string]any{
 			"field": "initial-value",
 		}
 		Expect(hubClient.Create(ctx, cr)).To(Succeed(), "Failed to create custom resource")
@@ -254,7 +253,7 @@ var _ = Describe("validating InformerPopulator discovers new CRDs", Label("resou
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
+						UnavailablePeriodSeconds: new(2),
 					},
 				},
 			},
@@ -321,7 +320,7 @@ var _ = Describe("validating InformerPopulator discovers new CRDs", Label("resou
 			Kind:    testCRD().Spec.Names.Kind,
 		})
 		Expect(hubClient.Get(ctx, types.NamespacedName{Name: crName, Namespace: appNamespace().Name}, cr)).To(Succeed())
-		cr.Object["spec"] = map[string]interface{}{
+		cr.Object["spec"] = map[string]any{
 			"field": "updated-value",
 		}
 		Expect(hubClient.Update(ctx, cr)).To(Succeed(), "Failed to update custom resource")

@@ -615,7 +615,7 @@ func TestScoredClustersString(t *testing.T) {
 func TestScoredClustersStringTruncation(t *testing.T) {
 	var scs ScoredClusters
 	var i int32
-	for i = 0; i < maxClusterInfoForDebugging+5; i++ {
+	for i = range maxClusterInfoForDebugging + 5 {
 		cluster := &clusterv1beta1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("cluster-%02d", i)}}
 		scs = append(scs, &ScoredCluster{
 			Cluster: cluster,

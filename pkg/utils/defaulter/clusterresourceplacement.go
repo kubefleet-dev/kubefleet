@@ -20,7 +20,6 @@ package defaulter
 import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -54,7 +53,7 @@ func SetPlacementDefaults(obj fleetv1beta1.PlacementObj) {
 	if spec.Policy.TopologySpreadConstraints != nil {
 		for i := range spec.Policy.TopologySpreadConstraints {
 			if spec.Policy.TopologySpreadConstraints[i].MaxSkew == nil {
-				spec.Policy.TopologySpreadConstraints[i].MaxSkew = ptr.To(int32(DefaultMaxSkewValue))
+				spec.Policy.TopologySpreadConstraints[i].MaxSkew = new(int32(DefaultMaxSkewValue))
 			}
 			if spec.Policy.TopologySpreadConstraints[i].WhenUnsatisfiable == "" {
 				spec.Policy.TopologySpreadConstraints[i].WhenUnsatisfiable = fleetv1beta1.DoNotSchedule
@@ -79,13 +78,13 @@ func SetPlacementDefaults(obj fleetv1beta1.PlacementObj) {
 			strategy.RollingUpdate = &fleetv1beta1.RollingUpdateConfig{}
 		}
 		if strategy.RollingUpdate.MaxUnavailable == nil {
-			strategy.RollingUpdate.MaxUnavailable = ptr.To(intstr.FromString(DefaultMaxUnavailableValue))
+			strategy.RollingUpdate.MaxUnavailable = new(intstr.FromString(DefaultMaxUnavailableValue))
 		}
 		if strategy.RollingUpdate.MaxSurge == nil {
-			strategy.RollingUpdate.MaxSurge = ptr.To(intstr.FromString(DefaultMaxSurgeValue))
+			strategy.RollingUpdate.MaxSurge = new(intstr.FromString(DefaultMaxSurgeValue))
 		}
 		if strategy.RollingUpdate.UnavailablePeriodSeconds == nil {
-			strategy.RollingUpdate.UnavailablePeriodSeconds = ptr.To(DefaultUnavailablePeriodSeconds)
+			strategy.RollingUpdate.UnavailablePeriodSeconds = new(DefaultUnavailablePeriodSeconds)
 		}
 	}
 
@@ -95,7 +94,7 @@ func SetPlacementDefaults(obj fleetv1beta1.PlacementObj) {
 	SetDefaultsApplyStrategy(spec.Strategy.ApplyStrategy)
 
 	if spec.RevisionHistoryLimit == nil {
-		spec.RevisionHistoryLimit = ptr.To(int32(DefaultRevisionHistoryLimitValue))
+		spec.RevisionHistoryLimit = new(int32(DefaultRevisionHistoryLimitValue))
 	}
 }
 

@@ -28,7 +28,6 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 
 	fleetnetworkingv1alpha1 "go.goms.io/fleet-networking/api/v1alpha1"
 
@@ -173,7 +172,7 @@ func appDeployment() appsv1.Deployment {
 			Namespace: fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess()),
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: ptr.To(int32(1)),
+			Replicas: new(int32(1)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"app": "pause",
@@ -192,7 +191,7 @@ func appDeployment() appsv1.Deployment {
 							Image: "k8s.gcr.io/pause:3.8",
 						},
 					},
-					TerminationGracePeriodSeconds: ptr.To(int64(60)),
+					TerminationGracePeriodSeconds: new(int64(60)),
 				},
 			},
 		},
@@ -259,9 +258,9 @@ func endpointSliceExport(name, namespace string) fleetnetworkingv1alpha1.Endpoin
 			},
 			Ports: []discoveryv1.EndpointPort{
 				{
-					Name:     ptr.To("http"),
+					Name:     new("http"),
 					Protocol: &protocol,
-					Port:     ptr.To(int32(80)),
+					Port:     new(int32(80)),
 				},
 			},
 			EndpointSliceReference: fleetnetworkingv1alpha1.ExportedObjectReference{

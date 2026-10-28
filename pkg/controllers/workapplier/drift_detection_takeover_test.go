@@ -32,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/utils/ptr"
 	ctrlfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -336,7 +335,7 @@ func TestPreparePatchDetails(t *testing.T) {
 	deploy1Manifest.Spec.Strategy.Type = appsv1.RecreateDeploymentStrategyType
 
 	deploy2Manifest := deploy.DeepCopy()
-	deploy2Manifest.Spec.RevisionHistoryLimit = ptr.To(int32(10))
+	deploy2Manifest.Spec.RevisionHistoryLimit = new(int32(10))
 
 	deploy3Manifest := deploy.DeepCopy()
 	deploy3Manifest.Spec.Paused = true
@@ -627,7 +626,7 @@ func TestOrganizeJSONPatchIntoFleetPatchDetails(t *testing.T) {
 	testCases := []struct {
 		name             string
 		patch            jsondiff.Patch
-		manifestObjMap   map[string]interface{}
+		manifestObjMap   map[string]any
 		wantPatchDetails []fleetv1beta1.PatchDetail
 	}{
 		{
@@ -654,7 +653,7 @@ func TestOrganizeJSONPatchIntoFleetPatchDetails(t *testing.T) {
 					Path: "/b",
 				},
 			},
-			manifestObjMap: map[string]interface{}{
+			manifestObjMap: map[string]any{
 				"b": "2",
 			},
 			wantPatchDetails: []fleetv1beta1.PatchDetail{
@@ -673,7 +672,7 @@ func TestOrganizeJSONPatchIntoFleetPatchDetails(t *testing.T) {
 					Value: "3",
 				},
 			},
-			manifestObjMap: map[string]interface{}{
+			manifestObjMap: map[string]any{
 				"c": "4",
 			},
 			wantPatchDetails: []fleetv1beta1.PatchDetail{
@@ -693,7 +692,7 @@ func TestOrganizeJSONPatchIntoFleetPatchDetails(t *testing.T) {
 					Path: "/e",
 				},
 			},
-			manifestObjMap: map[string]interface{}{
+			manifestObjMap: map[string]any{
 				"d": "6",
 			},
 			wantPatchDetails: []fleetv1beta1.PatchDetail{
@@ -716,7 +715,7 @@ func TestOrganizeJSONPatchIntoFleetPatchDetails(t *testing.T) {
 					Path: "/g",
 				},
 			},
-			manifestObjMap: map[string]interface{}{
+			manifestObjMap: map[string]any{
 				"f": "7",
 			},
 			wantPatchDetails: []fleetv1beta1.PatchDetail{
@@ -735,7 +734,7 @@ func TestOrganizeJSONPatchIntoFleetPatchDetails(t *testing.T) {
 					Value: "8",
 				},
 			},
-			manifestObjMap:   map[string]interface{}{},
+			manifestObjMap:   map[string]any{},
 			wantPatchDetails: []fleetv1beta1.PatchDetail{},
 		},
 		{
@@ -771,7 +770,7 @@ func TestOrganizeJSONPatchIntoFleetPatchDetails(t *testing.T) {
 					Value: "8",
 				},
 			},
-			manifestObjMap: map[string]interface{}{
+			manifestObjMap: map[string]any{
 				"b": "2",
 				"c": "4",
 				"d": "6",

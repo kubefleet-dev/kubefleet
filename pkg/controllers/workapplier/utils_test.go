@@ -26,7 +26,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -142,7 +141,7 @@ func TestDiscardFieldsIrrelevantInComparisonFrom(t *testing.T) {
 			},
 			CreationTimestamp:          now,
 			DeletionTimestamp:          &now,
-			DeletionGracePeriodSeconds: ptr.To(int64(30)),
+			DeletionGracePeriodSeconds: new(int64(30)),
 			Generation:                 dummyGeneration,
 			ResourceVersion:            dummyResourceVersion,
 			//lint:ignore SA1019 Verify sanitization of the legacy selfLink field.
@@ -150,7 +149,7 @@ func TestDiscardFieldsIrrelevantInComparisonFrom(t *testing.T) {
 			UID:      types.UID(dummyUID),
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: ptr.To(int32(1)),
+			Replicas: new(int32(1)),
 		},
 		Status: appsv1.DeploymentStatus{
 			Replicas: 1,
@@ -170,7 +169,7 @@ func TestDiscardFieldsIrrelevantInComparisonFrom(t *testing.T) {
 			},
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: ptr.To(int32(1)),
+			Replicas: new(int32(1)),
 		},
 		Status: appsv1.DeploymentStatus{},
 	}

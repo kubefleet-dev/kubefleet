@@ -36,7 +36,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -149,7 +148,7 @@ var (
 			Name: deployName,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: ptr.To(int32(1)),
+			Replicas: new(int32(1)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"app": nginxName,
@@ -543,8 +542,8 @@ func wantPlacementBindingStatusWaitingForSync(selectedResources int32, snapshotN
 				Reason: placementv1alpha1.PlacementBindingAvailableCondReasonWaitingForAvailabilityCheck,
 			},
 		},
-		SelectedResources:                 ptr.To(selectedResources),
-		LastProcessedResourceSnapshotName: ptr.To(snapshotName),
+		SelectedResources:                 new(selectedResources),
+		LastProcessedResourceSnapshotName: new(snapshotName),
 	}
 }
 
@@ -564,10 +563,10 @@ func wantPlacementBindingStatusSyncedAndAvailable(selectedResources int32, snaps
 				Reason: placementv1alpha1.PlacementBindingAvailableCondReasonAllResourcesAvailable,
 			},
 		},
-		SelectedResources:                 ptr.To(selectedResources),
-		SynchronizedResources:             ptr.To(selectedResources),
-		AvailableResources:                ptr.To(selectedResources),
-		LastProcessedResourceSnapshotName: ptr.To(snapshotName),
+		SelectedResources:                 new(selectedResources),
+		SynchronizedResources:             new(selectedResources),
+		AvailableResources:                new(selectedResources),
+		LastProcessedResourceSnapshotName: new(snapshotName),
 	}
 }
 
@@ -590,10 +589,10 @@ func wantPlacementBindingStatusInvalidSnapshots(placedResources int32, lastProce
 				Reason: placementv1alpha1.PlacementBindingAvailableCondReasonIncompleteSetOfResources,
 			},
 		},
-		SelectedResources:                 ptr.To(placedResources),
-		SynchronizedResources:             ptr.To(placedResources),
-		AvailableResources:                ptr.To(placedResources),
-		LastProcessedResourceSnapshotName: ptr.To(lastProcessedSnapshotName),
+		SelectedResources:                 new(placedResources),
+		SynchronizedResources:             new(placedResources),
+		AvailableResources:                new(placedResources),
+		LastProcessedResourceSnapshotName: new(lastProcessedSnapshotName),
 	}
 	if previousStatus != nil {
 		wantStatus.Conditions = wantStatus.Conditions[:1]
@@ -1323,7 +1322,7 @@ func (f *bindingFixture) newSnapshotSet(index, count int) *snapshotSet {
 		identifiers: make([][]placementv1alpha1.ManifestIdentifier, count),
 	}
 	suffix := utils.RandStr()
-	for subIdx := 0; subIdx < count; subIdx++ {
+	for subIdx := range count {
 		if subIdx == 0 {
 			set.names[subIdx] = fmt.Sprintf(placementResourceSnapshotNameTemplate, f.policyName, index)
 		} else {
@@ -1420,8 +1419,8 @@ func (f *bindingFixture) worksMatchActual(setIdx int, syncStrategy *placementv1a
 			Kind:               workKind,
 			Name:               primaryWork.Name,
 			UID:                primaryWork.UID,
-			Controller:         ptr.To(true),
-			BlockOwnerDeletion: ptr.To(true),
+			Controller:         new(true),
+			BlockOwnerDeletion: new(true),
 		}
 
 		wantWorks := make([]placementv1alpha1.Work, len(set.names))

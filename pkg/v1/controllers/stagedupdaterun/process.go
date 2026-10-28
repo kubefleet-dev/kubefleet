@@ -30,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	rolloutv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/rollout/v1alpha1"
@@ -319,13 +318,10 @@ func (r *Reconciler) processOneStage(
 	}
 	wg := &sync.WaitGroup{}
 	for workerIdx := 0; workerIdx < allowedClusterProcessingConcurrency; workerIdx++ {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			r.doClusterProcessingWork(childCtx, childCancel, workerIdx, stagedUpdateRun, stage, tracker,
 				clusterUpdateTotalFailures, maxAllowedClusterFailures, maxWaitTimePerCluster)
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -350,7 +346,7 @@ func (r *Reconciler) processOneStage(
 		})
 		// Mark all ongoing updates in the stage as canceled due to the stage-level failure.
 		markAllOngoingUpdatesInStageAsCanceled(stagedUpdateRun, stage)
-		stage.CompletedTimestamp = ptr.To(metav1.Now())
+		stage.CompletedTimestamp = new(metav1.Now())
 		return stageProcessingResultFailed, nil, nil
 	case tracker.succeededClusterCnt.Load() == int32(len(stage.Clusters)):
 		// All clusters in the stage have succeeded. Move on to the execution of the after stage tasks.
@@ -395,7 +391,7 @@ func (r *Reconciler) processOneStage(
 			ObservedGeneration: stagedUpdateRun.GetGeneration(),
 		})
 	}
-	stage.CompletedTimestamp = ptr.To(metav1.Now())
+	stage.CompletedTimestamp = new(metav1.Now())
 	return stageProcessingResultSucceeded, nil, nil
 }
 

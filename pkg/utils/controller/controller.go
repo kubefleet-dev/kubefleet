@@ -158,7 +158,7 @@ func NewDeleteIgnoreNotFoundError(err error) error {
 // after that the item will be discarded from the queue.
 type Controller interface {
 	// Enqueue generates the key of 'obj' according to a 'KeyFunc' then adds the 'item' to queue immediately.
-	Enqueue(obj interface{})
+	Enqueue(obj any)
 
 	// Run starts a certain number of concurrent workers to reconcile the items and will never stop until
 	// the context is closed or canceled
@@ -171,10 +171,10 @@ type Controller interface {
 // The most common full-qualified key is of type '<namespace>/<name>' which doesn't carry the `GVK`
 // info of the resource the key points to.
 // We need to support a key type that includes GVK(Group Version Kind) so that we can reconcile on any type of resources.
-type QueueKey interface{}
+type QueueKey any
 
 // KeyFunc knows how to make a key from an object. Implementations should be deterministic.
-type KeyFunc func(obj interface{}) (QueueKey, error)
+type KeyFunc func(obj any) (QueueKey, error)
 
 // ReconcileFunc knows how to consume items(key) from the queue.
 type ReconcileFunc func(ctx context.Context, key QueueKey) (reconcile.Result, error)
@@ -207,7 +207,7 @@ func NewController(Name string, KeyFunc KeyFunc, ReconcileFunc ReconcileFunc, ra
 	}
 }
 
-func (w *controller) Enqueue(obj interface{}) {
+func (w *controller) Enqueue(obj any) {
 	key, err := w.keyFunc(obj)
 	if err != nil {
 		klog.ErrorS(err, "failed to enqueue a resource", "controller", w.name)
@@ -236,7 +236,7 @@ func (w *controller) Run(ctx context.Context, workerNumber int) error {
 
 	wg := &sync.WaitGroup{}
 	wg.Add(workerNumber)
-	for i := 0; i < workerNumber; i++ {
+	for range workerNumber {
 		go func() {
 			defer wg.Done()
 			defer utilruntime.HandleCrash()
@@ -273,7 +273,7 @@ func (w *controller) processNextWorkItem(ctx context.Context) bool {
 	return true
 }
 
-func (w *controller) reconcileHandler(ctx context.Context, key interface{}) {
+func (w *controller) reconcileHandler(ctx context.Context, key any) {
 	// Update metrics after processing each item
 	reconcileStartTS := time.Now()
 	defer func() {
@@ -322,12 +322,12 @@ func (w *controller) initMetrics(workerNumber int) {
 }
 
 // NamespaceKeyFunc generates a namespaced key for any objects.
-func NamespaceKeyFunc(obj interface{}) (QueueKey, error) {
+func NamespaceKeyFunc(obj any) (QueueKey, error) {
 	return keys.GetNamespaceKeyForObject(obj)
 }
 
 // ClusterWideKeyFunc generates a ClusterWideKey for object.
-func ClusterWideKeyFunc(obj interface{}) (QueueKey, error) {
+func ClusterWideKeyFunc(obj any) (QueueKey, error) {
 	return keys.GetClusterWideKeyForObject(obj)
 }
 

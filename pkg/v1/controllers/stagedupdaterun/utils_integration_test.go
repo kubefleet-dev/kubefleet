@@ -31,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -354,7 +353,7 @@ func createPlacementBinding(bindingNS, bindingName, policyName, clusterName, sna
 func memberClusterAndBindingNames(randStr string, count int) (memberClusterNames, bindingNames []string) {
 	memberClusterNames = make([]string, 0, count)
 	bindingNames = make([]string, 0, count)
-	for idx := 0; idx < count; idx++ {
+	for idx := range count {
 		memberClusterName := fmt.Sprintf(memberClusterNameTemplate, randStr, idx)
 		memberClusterNames = append(memberClusterNames, memberClusterName)
 		bindingNames = append(bindingNames, fmt.Sprintf(placementBindingNameTemplate, memberClusterName))
@@ -1306,8 +1305,8 @@ func wantStagedUpdateRunOwnerRefs(runNSName, runName string, runUID types.UID) [
 			Kind:               stagedUpdateRunKind(runNSName),
 			Name:               runName,
 			UID:                runUID,
-			Controller:         ptr.To(true),
-			BlockOwnerDeletion: ptr.To(true),
+			Controller:         new(true),
+			BlockOwnerDeletion: new(true),
 		},
 	}
 }
@@ -1620,8 +1619,8 @@ func primaryPlacementResourceSnapshotCreatedActual(policy placementv1alpha1.Plac
 				Kind:               placementPolicyKind(policy.GetNamespace()),
 				Name:               policy.GetName(),
 				UID:                policy.GetUID(),
-				Controller:         ptr.To(true),
-				BlockOwnerDeletion: ptr.To(true),
+				Controller:         new(true),
+				BlockOwnerDeletion: new(true),
 			},
 		}
 		if diff := cmp.Diff(snapshot.GetOwnerReferences(), wantOwnerRefs); diff != "" {

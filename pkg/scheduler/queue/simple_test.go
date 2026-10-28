@@ -34,7 +34,7 @@ func TestSimplePlacementSchedulingQueue_BasicOps(t *testing.T) {
 	}
 
 	keysRecved := []PlacementKey{}
-	for i := 0; i < len(keysToAdd); i++ {
+	for range keysToAdd {
 		key, closed := sq.NextPlacementKey()
 		if closed {
 			t.Fatalf("Queue closed unexpected")

@@ -37,7 +37,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
@@ -2696,7 +2695,7 @@ var _ = Describe("Test Work Generator Controller for clusterResourcePlacement", 
 					DiffDetails: &placementv1beta1.DiffDetails{
 						ObservationTime:                   now,
 						FirstDiffedObservedTime:           now,
-						ObservedInMemberClusterGeneration: ptr.To(int64(1)),
+						ObservedInMemberClusterGeneration: new(int64(1)),
 						ObservedDiffs: []placementv1beta1.PatchDetail{
 							{
 								Path:          "/spec/replicas",
@@ -2833,7 +2832,7 @@ var _ = Describe("Test Work Generator Controller for clusterResourcePlacement", 
 						Namespace: "work",
 					},
 					ObservationTime:                 now,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					FirstDiffedObservedTime:         now,
 					ObservedDiffs: []placementv1beta1.PatchDetail{
 						{
@@ -3055,7 +3054,7 @@ var _ = Describe("Test Work Generator Controller for clusterResourcePlacement", 
 					DiffDetails: &placementv1beta1.DiffDetails{
 						ObservationTime:                   now,
 						FirstDiffedObservedTime:           now,
-						ObservedInMemberClusterGeneration: ptr.To(int64(1)),
+						ObservedInMemberClusterGeneration: new(int64(1)),
 						ObservedDiffs: []placementv1beta1.PatchDetail{
 							{
 								Path:       "/metadata/labels/foo",
@@ -3216,7 +3215,7 @@ var _ = Describe("Test Work Generator Controller for clusterResourcePlacement", 
 					},
 					ObservationTime:                 now,
 					FirstDiffedObservedTime:         now,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					ObservedDiffs: []placementv1beta1.PatchDetail{
 						{
 							Path:       "/metadata/labels/foo",
@@ -3349,7 +3348,7 @@ var _ = Describe("Test Work Generator Controller for clusterResourcePlacement", 
 					},
 					ObservationTime:                 now,
 					FirstDiffedObservedTime:         now,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					ObservedDiffs: []placementv1beta1.PatchDetail{
 						{
 							Path:       "/metadata/labels/foo",
@@ -4117,7 +4116,7 @@ func verifyBindStatusNotAppliedWithTwoPlacements(binding *placementv1beta1.Clust
 					},
 					ObservationTime:                 metav1.Time{Time: specificTime},
 					FirstDiffedObservedTime:         metav1.Time{Time: specificTime},
-					TargetClusterObservedGeneration: ptr.To(int64(2)),
+					TargetClusterObservedGeneration: new(int64(2)),
 					ObservedDiffs: []placementv1beta1.PatchDetail{
 						configmapPatchDetail,
 					},
@@ -4131,7 +4130,7 @@ func verifyBindStatusNotAppliedWithTwoPlacements(binding *placementv1beta1.Clust
 						Namespace: "svc-namespace",
 					},
 					ObservationTime:                 metav1.Time{Time: specificTime},
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					FirstDiffedObservedTime:         metav1.Time{Time: specificTime},
 					ObservedDiffs: []placementv1beta1.PatchDetail{
 						servicePatchDetail,
@@ -4684,24 +4683,24 @@ func clusterResourceEnvelopeRaw(name string, data map[string][]byte) []byte {
 }
 
 func deploymentManifestRaw(namespace, name string, labels map[string]string) []byte {
-	return mustMarshalJSON(map[string]interface{}{
+	return mustMarshalJSON(map[string]any{
 		"apiVersion": "apps/v1",
 		"kind":       "Deployment",
-		"metadata": map[string]interface{}{
+		"metadata": map[string]any{
 			"name":      name,
 			"namespace": namespace,
 			"labels":    labels,
 		},
-		"spec": map[string]interface{}{
+		"spec": map[string]any{
 			"replicas": int64(1),
-			"selector": map[string]interface{}{
+			"selector": map[string]any{
 				"matchLabels": map[string]string{"app": "demo"},
 			},
-			"template": map[string]interface{}{
-				"metadata": map[string]interface{}{
+			"template": map[string]any{
+				"metadata": map[string]any{
 					"labels": map[string]string{"app": "demo"},
 				},
-				"spec": map[string]interface{}{
+				"spec": map[string]any{
 					"containers": []map[string]string{
 						{
 							"name":  "nginx",
@@ -4715,10 +4714,10 @@ func deploymentManifestRaw(namespace, name string, labels map[string]string) []b
 }
 
 func configMapManifestRaw(namespace, name string) []byte {
-	return mustMarshalJSON(map[string]interface{}{
+	return mustMarshalJSON(map[string]any{
 		"apiVersion": "v1",
 		"kind":       "ConfigMap",
-		"metadata": map[string]interface{}{
+		"metadata": map[string]any{
 			"name":      name,
 			"namespace": namespace,
 		},
@@ -4729,17 +4728,17 @@ func configMapManifestRaw(namespace, name string) []byte {
 }
 
 func clusterRoleManifestRaw(name string, labels map[string]string) []byte {
-	metadata := map[string]interface{}{
+	metadata := map[string]any{
 		"name": name,
 	}
 	if labels != nil {
 		metadata["labels"] = labels
 	}
-	return mustMarshalJSON(map[string]interface{}{
+	return mustMarshalJSON(map[string]any{
 		"apiVersion": "rbac.authorization.k8s.io/v1",
 		"kind":       "ClusterRole",
 		"metadata":   metadata,
-		"rules": []map[string]interface{}{
+		"rules": []map[string]any{
 			{
 				"apiGroups": []string{""},
 				"resources": []string{"pods"},
@@ -4767,7 +4766,7 @@ func manifestObject(raw []byte) unstructured.Unstructured {
 	return obj
 }
 
-func mustMarshalJSON(obj interface{}) []byte {
+func mustMarshalJSON(obj any) []byte {
 	raw, err := json.Marshal(obj)
 	Expect(err).Should(Succeed())
 	return raw
@@ -5075,7 +5074,7 @@ func markWorkWithFailedToApplyAndNotAvailable(work *placementv1beta1.Work, hasDi
 		work.Status.ManifestConditions[0].DiffDetails = &placementv1beta1.DiffDetails{
 			ObservationTime:                   metav1.Time{Time: specificTime},
 			FirstDiffedObservedTime:           metav1.Time{Time: specificTime},
-			ObservedInMemberClusterGeneration: ptr.To(int64(2)),
+			ObservedInMemberClusterGeneration: new(int64(2)),
 			ObservedDiffs: []placementv1beta1.PatchDetail{
 				configmapPatchDetail,
 			},
@@ -5083,7 +5082,7 @@ func markWorkWithFailedToApplyAndNotAvailable(work *placementv1beta1.Work, hasDi
 		work.Status.ManifestConditions[1].DiffDetails = &placementv1beta1.DiffDetails{
 			ObservationTime:                   metav1.Time{Time: specificTime},
 			FirstDiffedObservedTime:           metav1.Time{Time: specificTime},
-			ObservedInMemberClusterGeneration: ptr.To(int64(1)),
+			ObservedInMemberClusterGeneration: new(int64(1)),
 			ObservedDiffs: []placementv1beta1.PatchDetail{
 				servicePatchDetail,
 			},

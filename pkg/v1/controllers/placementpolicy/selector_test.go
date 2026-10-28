@@ -25,7 +25,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -71,37 +70,37 @@ func TestResolveCounts(t *testing.T) {
 		{
 			name: "integer count",
 			selector: &kfplacementv1alpha1.ClusterSelector{
-				Count: ptr.To(intstr.FromInt32(3)),
+				Count: new(intstr.FromInt32(3)),
 			},
 			want: resolvedCounts{desired: 3, minimum: 3},
 		},
 		{
 			name: "integer count with explicit minCount",
 			selector: &kfplacementv1alpha1.ClusterSelector{
-				Count:    ptr.To(intstr.FromInt32(3)),
-				MinCount: ptr.To(int32(2)),
+				Count:    new(intstr.FromInt32(3)),
+				MinCount: new(int32(2)),
 			},
 			want: resolvedCounts{desired: 3, minimum: 2},
 		},
 		{
 			name: "count All defaults minCount to one",
 			selector: &kfplacementv1alpha1.ClusterSelector{
-				Count: ptr.To(intstr.FromString("All")),
+				Count: new(intstr.FromString("All")),
 			},
 			want: resolvedCounts{selectAll: true, minimum: 1},
 		},
 		{
 			name: "count All with explicit minCount",
 			selector: &kfplacementv1alpha1.ClusterSelector{
-				Count:    ptr.To(intstr.FromString("All")),
-				MinCount: ptr.To(int32(5)),
+				Count:    new(intstr.FromString("All")),
+				MinCount: new(int32(5)),
 			},
 			want: resolvedCounts{selectAll: true, minimum: 5},
 		},
 		{
 			name: "invalid string count",
 			selector: &kfplacementv1alpha1.ClusterSelector{
-				Count: ptr.To(intstr.FromString("Some")),
+				Count: new(intstr.FromString("Some")),
 			},
 			wantError: true,
 		},
@@ -110,22 +109,22 @@ func TestResolveCounts(t *testing.T) {
 			// and must resolve the same as the integer form rather than being rejected.
 			name: "digit string count is parsed like an integer",
 			selector: &kfplacementv1alpha1.ClusterSelector{
-				Count: ptr.To(intstr.FromString("3")),
+				Count: new(intstr.FromString("3")),
 			},
 			want: resolvedCounts{desired: 3, minimum: 3},
 		},
 		{
 			name: "digit string count with explicit minCount",
 			selector: &kfplacementv1alpha1.ClusterSelector{
-				Count:    ptr.To(intstr.FromString("3")),
-				MinCount: ptr.To(int32(2)),
+				Count:    new(intstr.FromString("3")),
+				MinCount: new(int32(2)),
 			},
 			want: resolvedCounts{desired: 3, minimum: 2},
 		},
 		{
 			name: "string count at the upper bound",
 			selector: &kfplacementv1alpha1.ClusterSelector{
-				Count: ptr.To(intstr.FromString("999")),
+				Count: new(intstr.FromString("999")),
 			},
 			want: resolvedCounts{desired: 999, minimum: 999},
 		},
@@ -134,14 +133,14 @@ func TestResolveCounts(t *testing.T) {
 			// the integer branch rejects a non-positive count.
 			name: "non-positive digit string count",
 			selector: &kfplacementv1alpha1.ClusterSelector{
-				Count: ptr.To(intstr.FromString("0")),
+				Count: new(intstr.FromString("0")),
 			},
 			wantError: true,
 		},
 		{
 			name: "non-positive integer count",
 			selector: &kfplacementv1alpha1.ClusterSelector{
-				Count: ptr.To(intstr.FromInt32(0)),
+				Count: new(intstr.FromInt32(0)),
 			},
 			wantError: true,
 		},
@@ -150,21 +149,21 @@ func TestResolveCounts(t *testing.T) {
 			// admission, and unchecked it would overflow the aggregated desired total.
 			name: "integer count above the upper bound",
 			selector: &kfplacementv1alpha1.ClusterSelector{
-				Count: ptr.To(intstr.FromInt32(1000)),
+				Count: new(intstr.FromInt32(1000)),
 			},
 			wantError: true,
 		},
 		{
 			name: "maximum int32 integer count",
 			selector: &kfplacementv1alpha1.ClusterSelector{
-				Count: ptr.To(intstr.FromInt32(math.MaxInt32)),
+				Count: new(intstr.FromInt32(math.MaxInt32)),
 			},
 			wantError: true,
 		},
 		{
 			name: "integer count at the upper bound",
 			selector: &kfplacementv1alpha1.ClusterSelector{
-				Count: ptr.To(intstr.FromInt32(999)),
+				Count: new(intstr.FromInt32(999)),
 			},
 			want: resolvedCounts{desired: 999, minimum: 999},
 		},
@@ -172,7 +171,7 @@ func TestResolveCounts(t *testing.T) {
 			// A digit string past the bound (only reachable by bypassing admission) is rejected.
 			name: "digit string count above the upper bound",
 			selector: &kfplacementv1alpha1.ClusterSelector{
-				Count: ptr.To(intstr.FromString("1000")),
+				Count: new(intstr.FromString("1000")),
 			},
 			wantError: true,
 		},
@@ -756,7 +755,7 @@ func TestValidateTermsDeterministicError(t *testing.T) {
 	}
 	// Many iterations so a randomized order would almost certainly have produced a different
 	// message at least once.
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		got := validateTerms(terms)
 		if got == nil || got.Error() != first.Error() {
 			t.Fatalf("validateTerms(%v) error = %v, want stable %v", terms, got, first)

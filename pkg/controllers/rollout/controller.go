@@ -235,7 +235,7 @@ func (r *Reconciler) checkAndUpdateStaleBindingsStatus(ctx context.Context, bind
 	}
 	// issue all the update requests in parallel
 	errs, cctx := errgroup.WithContext(ctx)
-	for i := 0; i < len(bindings); i++ {
+	for i := range bindings {
 		binding := bindings[i]
 		bindingSpec := binding.GetBindingSpec()
 		if bindingSpec.State != placementv1beta1.BindingStateScheduled && bindingSpec.State != placementv1beta1.BindingStateBound {
@@ -649,7 +649,7 @@ func (r *Reconciler) updateBindings(ctx context.Context, bindings []toBeUpdatedB
 	// issue all the update requests in parallel
 	errs, cctx := errgroup.WithContext(ctx)
 	// handle the bindings depends on its state
-	for i := 0; i < len(bindings); i++ {
+	for i := range bindings {
 		binding := bindings[i]
 		bindObj := klog.KObj(binding.currentBinding)
 		switch binding.currentBinding.GetBindingSpec().State {
@@ -1041,7 +1041,7 @@ func (r *Reconciler) updateStaleBindingsStatus(ctx context.Context, staleBinding
 	}
 	// issue all the update requests in parallel
 	errs, cctx := errgroup.WithContext(ctx)
-	for i := 0; i < len(staleBindings); i++ {
+	for i := range staleBindings {
 		binding := staleBindings[i]
 		currentBindingSpec := binding.currentBinding.GetBindingSpec()
 		if currentBindingSpec.State != placementv1beta1.BindingStateScheduled && currentBindingSpec.State != placementv1beta1.BindingStateBound {
@@ -1063,7 +1063,7 @@ func (r *Reconciler) refreshUpToDateBindingStatus(ctx context.Context, upToDateB
 	}
 	// Issue all the requests in parallel.
 	errs, cctx := errgroup.WithContext(ctx)
-	for i := 0; i < len(upToDateBindings); i++ {
+	for i := range upToDateBindings {
 		binding := upToDateBindings[i]
 		errs.Go(func() error {
 			return r.updateBindingStatus(cctx, binding.currentBinding, true)

@@ -67,7 +67,7 @@ func comparePlacementPolicyStatusActual(key types.NamespacedName, wantStatus kfp
 			if err != nil {
 				return err
 			}
-			want.LatestResourceRevisionName = ptr.To(latest.GetName())
+			want.LatestResourceRevisionName = new(latest.GetName())
 		}
 		for i := range want.Conditions {
 			if want.Conditions[i].ObservedGeneration == 0 {
@@ -156,7 +156,7 @@ func comparePlacementPolicyBindingsActual(key types.NamespacedName, wantBindings
 				snapshotName = latest.GetName()
 			}
 			wantStatus := wantBinding.status.DeepCopy()
-			wantStatus.LastProcessedResourceSnapshotName = ptr.To(snapshotName)
+			wantStatus.LastProcessedResourceSnapshotName = new(snapshotName)
 			for i := range wantStatus.Conditions {
 				wantStatus.Conditions[i].ObservedGeneration = generations[clusterName]
 			}

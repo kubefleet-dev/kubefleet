@@ -1724,7 +1724,7 @@ func buildWantPlacementStatus(
 			Conditions:            perClusterRolloutCompletedConditions(placementGeneration, resourceIsTrackable, false),
 		})
 	}
-	for i := 0; i < len(wantUnselectedClusters); i++ {
+	for range wantUnselectedClusters {
 		wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.PerClusterPlacementStatus{
 			Conditions: perClusterScheduleFailedConditions(placementGeneration),
 		})

@@ -29,7 +29,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	rolloutv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/rollout/v1alpha1"
@@ -108,16 +107,16 @@ var _ = Describe("Test rollout v1alpha1 API validation", func() {
 				}, wantMessage)
 			},
 			Entry("an integer maxConcurrency of 1000 is accepted", rolloutv1alpha1.Stage{
-				MaxConcurrency: ptr.To(intstr.FromInt32(1000)),
+				MaxConcurrency: new(intstr.FromInt32(1000)),
 			}, ""),
 			Entry("a percentage maxConcurrency of 100% is accepted", rolloutv1alpha1.Stage{
-				MaxConcurrency: ptr.To(intstr.FromString("100%")),
+				MaxConcurrency: new(intstr.FromString("100%")),
 			}, ""),
 			Entry("an integer maxConcurrency of 0 is rejected", rolloutv1alpha1.Stage{
-				MaxConcurrency: ptr.To(intstr.FromInt32(0)),
+				MaxConcurrency: new(intstr.FromInt32(0)),
 			}, maxConcurrencyTooLowMsg),
 			Entry("an integer maxConcurrency of 1001 is rejected", rolloutv1alpha1.Stage{
-				MaxConcurrency: ptr.To(intstr.FromInt32(1001)),
+				MaxConcurrency: new(intstr.FromInt32(1001)),
 			}, maxConcurrencyTooHighMsg),
 			Entry("a wait time of 720h is accepted", rolloutv1alpha1.Stage{
 				AfterStageTasks: timedWaitAfterStageTasks(720 * time.Hour),
@@ -137,13 +136,13 @@ var _ = Describe("Test rollout v1alpha1 API validation", func() {
 				name := fmt.Sprintf(updateStrategyNameTemplate, GinkgoParallelProcess())
 				for _, kind := range []string{rolloutv1alpha1.StagedUpdateStrategyKind, rolloutv1alpha1.ClusterStagedUpdateStrategyKind} {
 					obj := &unstructured.Unstructured{
-						Object: map[string]interface{}{
-							"spec": map[string]interface{}{
-								"stages": []interface{}{
-									map[string]interface{}{
+						Object: map[string]any{
+							"spec": map[string]any{
+								"stages": []any{
+									map[string]any{
 										"name": stageName,
-										"afterStageTasks": []interface{}{
-											map[string]interface{}{
+										"afterStageTasks": []any{
+											map[string]any{
 												"type":     string(rolloutv1alpha1.StageTaskTypeTimedWait),
 												"waitTime": waitTime,
 											},
@@ -200,16 +199,16 @@ var _ = Describe("Test rollout v1alpha1 API validation", func() {
 			},
 			Entry("the default failure policy is accepted", rolloutv1alpha1.StagedUpdateRunFailurePolicy{}, ""),
 			Entry("maxAllowedClusterFailures of 0 is accepted", rolloutv1alpha1.StagedUpdateRunFailurePolicy{
-				MaxAllowedClusterFailures: ptr.To(int32(0)),
+				MaxAllowedClusterFailures: new(int32(0)),
 			}, ""),
 			Entry("maxAllowedClusterFailures of 1000 is accepted", rolloutv1alpha1.StagedUpdateRunFailurePolicy{
-				MaxAllowedClusterFailures: ptr.To(int32(1000)),
+				MaxAllowedClusterFailures: new(int32(1000)),
 			}, ""),
 			Entry("maxAllowedClusterFailures of -1 is rejected", rolloutv1alpha1.StagedUpdateRunFailurePolicy{
-				MaxAllowedClusterFailures: ptr.To(int32(-1)),
+				MaxAllowedClusterFailures: new(int32(-1)),
 			}, maxClusterFailuresTooLowMsg),
 			Entry("maxAllowedClusterFailures of 1001 is rejected", rolloutv1alpha1.StagedUpdateRunFailurePolicy{
-				MaxAllowedClusterFailures: ptr.To(int32(1001)),
+				MaxAllowedClusterFailures: new(int32(1001)),
 			}, maxClusterFailuresTooHighMsg),
 			Entry("maxWaitTimePerClusterMinutes of 10080 is accepted", rolloutv1alpha1.StagedUpdateRunFailurePolicy{
 				MaxWaitTimePerClusterMinutes: 10080,
