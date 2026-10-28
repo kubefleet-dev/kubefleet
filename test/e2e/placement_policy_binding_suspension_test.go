@@ -22,7 +22,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
@@ -100,14 +99,14 @@ var _ = Describe("placement policy binding suspension", Label("placementpolicy")
 			// The suspended binding has no resource snapshot processed, so it counts as neither synchronized nor on an
 			// older resource revision.
 			wantStatus := someClustersNotSynchronizedPlacementPolicyStatus(clusterCount(), clusterCount()-1)
-			wantStatus.LatestResourceRevisionName = ptr.To(snapshotName)
+			wantStatus.LatestResourceRevisionName = new(snapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected placement policy status")
 		})
 
 		It("should keep the binding suspended, with no replacement, and leave the other member clusters as they were", func() {
 			wantStatus := someClustersNotSynchronizedPlacementPolicyStatus(clusterCount(), clusterCount()-1)
-			wantStatus.LatestResourceRevisionName = ptr.To(snapshotName)
+			wantStatus.LatestResourceRevisionName = new(snapshotName)
 			statusActual := placementPolicyStatusActual(policyKey, wantStatus)
 			suspendedActual := suspendedPlacementPolicyBindingActual(policyKey, suspendedClusterName, bindingUIDsByCluster[suspendedClusterName], snapshotName)
 			// Every binding is kept, and the policy has no other.
@@ -139,7 +138,7 @@ var _ = Describe("placement policy binding suspension", Label("placementpolicy")
 				Should(Succeed(), "Failed to place the ConfigMap on every member cluster")
 
 			wantStatus := allSynchronizedPlacementPolicyStatus(clusterCount())
-			wantStatus.LatestResourceRevisionName = ptr.To(snapshotName)
+			wantStatus.LatestResourceRevisionName = new(snapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected placement policy status")
 		})
@@ -216,7 +215,7 @@ var _ = Describe("placement policy binding suspension", Label("placementpolicy")
 
 		It("should report the policy as synchronized on the other member clusters only", func() {
 			wantStatus := someClustersNotSynchronizedPlacementPolicyStatus(clusterCount(), clusterCount()-1)
-			wantStatus.LatestResourceRevisionName = ptr.To(snapshotName)
+			wantStatus.LatestResourceRevisionName = new(snapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected cluster placement policy status")
 		})
@@ -246,7 +245,7 @@ var _ = Describe("placement policy binding suspension", Label("placementpolicy")
 			Expect(placementPolicyBindingsKeptActual(policyKey, bindingUIDsByCluster)()).To(Succeed(), "A binding was replaced")
 
 			wantStatus := someClustersNotSynchronizedPlacementPolicyStatus(clusterCount(), clusterCount()-1)
-			wantStatus.LatestResourceRevisionName = ptr.To(snapshotName)
+			wantStatus.LatestResourceRevisionName = new(snapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected cluster placement policy status")
 			Consistently(configMapOrphanedOnClustersActual(cmKey, appConfigMap().Data, memberCluster1EastProd), consistentlyDuration, consistentlyInterval).
@@ -278,7 +277,7 @@ var _ = Describe("placement policy binding suspension", Label("placementpolicy")
 				Should(Succeed(), "Failed to take the ConfigMap over on member cluster 1")
 
 			wantStatus := allSynchronizedPlacementPolicyStatus(clusterCount())
-			wantStatus.LatestResourceRevisionName = ptr.To(snapshotName)
+			wantStatus.LatestResourceRevisionName = new(snapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected cluster placement policy status")
 		})
@@ -359,7 +358,7 @@ var _ = Describe("placement policy binding suspension", Label("placementpolicy")
 			// The suspended binding names the latest revision but has processed none, so it counts as neither
 			// synchronized nor on an older revision.
 			wantStatus := someClustersNotSynchronizedPlacementPolicyStatus(clusterCount(), clusterCount()-1)
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			statusActual := placementPolicyStatusActual(policyKey, wantStatus)
 			Eventually(statusActual, workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected placement policy status")
@@ -388,7 +387,7 @@ var _ = Describe("placement policy binding suspension", Label("placementpolicy")
 				Should(Succeed(), "Failed to place the latest version on every member cluster")
 
 			wantStatus := allSynchronizedPlacementPolicyStatus(clusterCount())
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected placement policy status")
 		})

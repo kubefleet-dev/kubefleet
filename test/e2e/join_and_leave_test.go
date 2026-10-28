@@ -26,7 +26,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	clusterinventory "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -505,7 +504,7 @@ func updateMemberAgentDeploymentReplicas(clusterClient client.Client, replicas i
 		if err != nil {
 			return err
 		}
-		d.Spec.Replicas = ptr.To(replicas)
+		d.Spec.Replicas = new(replicas)
 		return clusterClient.Update(ctx, &d)
 	}, eventuallyDuration, eventuallyInterval).Should(Succeed())
 

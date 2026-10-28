@@ -63,7 +63,7 @@ var _ = Context("creating clusterResourceOverride (selecting all clusters) to ov
 								{
 									Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 									Path:     "/metadata/annotations",
-									Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "%s"}`, croTestAnnotationKey, croTestAnnotationValue))},
+									Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"%s": "%s"}`, croTestAnnotationKey, croTestAnnotationValue)},
 								},
 							},
 						},
@@ -127,7 +127,7 @@ var _ = Context("creating clusterResourceOverride (selecting all clusters) to ov
 									Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 									Path:     "/metadata/annotations",
 									// changed the annotation value to croTestAnnotationValue1
-									Value: apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "%s"}`, croTestAnnotationKey, croTestAnnotationValue1))},
+									Value: apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"%s": "%s"}`, croTestAnnotationKey, croTestAnnotationValue1)},
 								},
 							},
 						},
@@ -233,12 +233,12 @@ var _ = Context("creating clusterResourceOverride with multiple jsonPatchOverrid
 								{
 									Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 									Path:     "/metadata/annotations",
-									Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "%s"}`, croTestAnnotationKey, croTestAnnotationValue))},
+									Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"%s": "%s"}`, croTestAnnotationKey, croTestAnnotationValue)},
 								},
 								{
 									Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 									Path:     fmt.Sprintf("/metadata/annotations/%s", croTestAnnotationKey1),
-									Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`"%s"`, croTestAnnotationValue1))},
+									Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `"%s"`, croTestAnnotationValue1)},
 								},
 							},
 						},
@@ -314,7 +314,7 @@ var _ = Context("creating clusterResourceOverride with different rules for each 
 								{
 									Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 									Path:     "/metadata/annotations",
-									Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "%s-0"}`, croTestAnnotationKey, croTestAnnotationValue))},
+									Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"%s": "%s-0"}`, croTestAnnotationKey, croTestAnnotationValue)},
 								},
 							},
 						},
@@ -332,7 +332,7 @@ var _ = Context("creating clusterResourceOverride with different rules for each 
 								{
 									Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 									Path:     "/metadata/annotations",
-									Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "%s-1"}`, croTestAnnotationKey, croTestAnnotationValue))},
+									Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"%s": "%s-1"}`, croTestAnnotationKey, croTestAnnotationValue)},
 								},
 							},
 						},
@@ -350,7 +350,7 @@ var _ = Context("creating clusterResourceOverride with different rules for each 
 								{
 									Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 									Path:     "/metadata/annotations",
-									Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "%s-2"}`, croTestAnnotationKey, croTestAnnotationValue))},
+									Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"%s": "%s-2"}`, croTestAnnotationKey, croTestAnnotationValue)},
 								},
 							},
 						},
@@ -435,7 +435,7 @@ var _ = Context("creating clusterResourceOverride with different rules for each 
 								{
 									Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 									Path:     "/metadata/annotations",
-									Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "test-%s"}`, croTestAnnotationKey, placementv1beta1.OverrideClusterNameVariable))},
+									Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"%s": "test-%s"}`, croTestAnnotationKey, placementv1beta1.OverrideClusterNameVariable)},
 								},
 							},
 						},
@@ -498,7 +498,7 @@ var _ = Context("creating clusterResourceOverride with incorrect path", Ordered,
 								{
 									Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 									Path:     fmt.Sprintf("/metadata/annotations/%s", croTestAnnotationKey),
-									Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`"%s"`, croTestAnnotationValue))},
+									Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `"%s"`, croTestAnnotationValue)},
 								},
 							},
 						},
@@ -563,7 +563,7 @@ var _ = Context("creating clusterResourceOverride with and resource becomes inva
 								{
 									Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 									Path:     "/metadata/annotations",
-									Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`"%s"`, croTestAnnotationValue))},
+									Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `"%s"`, croTestAnnotationValue)},
 								},
 							},
 						},
@@ -637,7 +637,7 @@ var _ = Context("creating clusterResourceOverride with delete rules for one clus
 								{
 									Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 									Path:     "/metadata/annotations",
-									Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "%s"}`, croTestAnnotationKey1, croTestAnnotationValue1))},
+									Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"%s": "%s"}`, croTestAnnotationKey1, croTestAnnotationValue1)},
 								},
 							},
 						},
@@ -687,7 +687,7 @@ var _ = Context("creating clusterResourceOverride with delete rules for one clus
 
 	// This check will ignore the annotation of resources.
 	It("should place the selected resources on the member clusters that are patched", func() {
-		for idx := 0; idx < 2; idx++ {
+		for idx := range 2 {
 			memberCluster := allMemberClusters[idx]
 			workResourcesPlacedActual := workNamespaceAndConfigMapPlacedOnClusterActual(memberCluster)
 			Eventually(workResourcesPlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster.ClusterName)
@@ -695,7 +695,7 @@ var _ = Context("creating clusterResourceOverride with delete rules for one clus
 	})
 
 	It("should have override annotations on the member clusters that are patched", func() {
-		for idx := 0; idx < 2; idx++ {
+		for idx := range 2 {
 			cluster := allMemberClusters[idx]
 			wantAnnotations := map[string]string{croTestAnnotationKey1: croTestAnnotationValue1}
 			Expect(validateAnnotationOfWorkNamespaceOnCluster(cluster, wantAnnotations)).Should(Succeed(), "Failed to override the annotation of work namespace on %s", cluster.ClusterName)
@@ -741,7 +741,7 @@ var _ = Context("creating clusterResourceOverride with cluster-scoped placementR
 								{
 									Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 									Path:     "/metadata/annotations",
-									Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "%s"}`, croTestAnnotationKey, croTestAnnotationValue))},
+									Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"%s": "%s"}`, croTestAnnotationKey, croTestAnnotationValue)},
 								},
 							},
 						},
@@ -815,7 +815,7 @@ var _ = Context("creating clusterResourceOverride with cluster-scoped placementR
 								{
 									Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 									Path:     "/metadata/annotations",
-									Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "%s"}`, croTestAnnotationKey1, croTestAnnotationValue1))},
+									Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"%s": "%s"}`, croTestAnnotationKey1, croTestAnnotationValue1)},
 								},
 							},
 						},
@@ -891,7 +891,7 @@ var _ = Context("creating clusterResourceOverride for a namespace-only CRP", Ord
 								{
 									Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 									Path:     "/metadata/annotations",
-									Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "%s"}`, croTestAnnotationKey, croTestAnnotationValue))},
+									Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"%s": "%s"}`, croTestAnnotationKey, croTestAnnotationValue)},
 								},
 							},
 						},
@@ -995,7 +995,7 @@ var _ = Context("creating clusterResourceOverride selecting a single cluster by 
 								{
 									Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 									Path:     "/metadata/annotations",
-									Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "%s"}`, croTestAnnotationKey, croTestAnnotationValue))},
+									Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"%s": "%s"}`, croTestAnnotationKey, croTestAnnotationValue)},
 								},
 							},
 						},

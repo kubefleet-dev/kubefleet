@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,7 +40,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
@@ -389,11 +389,11 @@ func generateStageClusterUpdatingMetric(
 ) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
 		Label: []*prometheusclientmodel.LabelPair{
-			{Name: ptr.To("namespace"), Value: &updateRun.Namespace},
-			{Name: ptr.To("name"), Value: &updateRun.Name},
+			{Name: new("namespace"), Value: &updateRun.Namespace},
+			{Name: new("name"), Value: &updateRun.Name},
 		},
 		Histogram: &prometheusclientmodel.Histogram{
-			SampleCount: ptr.To(uint64(len(updateRun.Status.StagesStatus))),
+			SampleCount: new(uint64(len(updateRun.Status.StagesStatus))),
 		},
 	}
 }
@@ -405,12 +405,12 @@ func generateApprovalStageTaskMetric(
 ) *prometheusclientmodel.Metric {
 	return &prometheusclientmodel.Metric{
 		Label: []*prometheusclientmodel.LabelPair{
-			{Name: ptr.To("namespace"), Value: &updateRun.Namespace},
-			{Name: ptr.To("name"), Value: &updateRun.Name},
-			{Name: ptr.To("taskType"), Value: ptr.To(stageTask)},
+			{Name: new("namespace"), Value: &updateRun.Namespace},
+			{Name: new("name"), Value: &updateRun.Name},
+			{Name: new("taskType"), Value: new(stageTask)},
 		},
 		Histogram: &prometheusclientmodel.Histogram{
-			SampleCount: ptr.To(stageTaskCount),
+			SampleCount: new(stageTaskCount),
 		},
 	}
 }
@@ -424,13 +424,13 @@ func generateMetricsLabels(
 	state, condition, status, reason, failureType string,
 ) []*prometheusclientmodel.LabelPair {
 	return []*prometheusclientmodel.LabelPair{
-		{Name: ptr.To("namespace"), Value: &updateRun.Namespace},
-		{Name: ptr.To("name"), Value: &updateRun.Name},
-		{Name: ptr.To("state"), Value: ptr.To(state)},
-		{Name: ptr.To("condition"), Value: ptr.To(condition)},
-		{Name: ptr.To("status"), Value: ptr.To(status)},
-		{Name: ptr.To("reason"), Value: ptr.To(reason)},
-		{Name: ptr.To("failureType"), Value: ptr.To(failureType)},
+		{Name: new("namespace"), Value: &updateRun.Namespace},
+		{Name: new("name"), Value: &updateRun.Name},
+		{Name: new("state"), Value: new(state)},
+		{Name: new("condition"), Value: new(condition)},
+		{Name: new("status"), Value: new(status)},
+		{Name: new("reason"), Value: new(reason)},
+		{Name: new("failureType"), Value: new(failureType)},
 	}
 }
 
@@ -626,7 +626,7 @@ func generateTestClusterResourcePlacement() *placementv1beta1.ClusterResourcePla
 			},
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(2)),
+				NumberOfClusters: new(int32(2)),
 			},
 			Strategy: placementv1beta1.RolloutStrategy{
 				Type: placementv1beta1.ExternalRolloutStrategyType,
@@ -656,7 +656,7 @@ func generateTestClusterSchedulingPolicySnapshot(idx, numberOfClusters int) *pla
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickNPlacementType,
 				//nolint:gosec // safe: numberOfClusters is small in test context
-				NumberOfClusters: ptr.To(int32(numberOfClusters)),
+				NumberOfClusters: new(int32(numberOfClusters)),
 			},
 			PolicyHash: []byte("hash"),
 		},
@@ -741,9 +741,7 @@ func generateTestClusterResourceBinding(policySnapshotName, targetCluster string
 
 func generateTestMemberCluster(idx int, clusterName string, labels map[string]string) *clusterv1beta1.MemberCluster {
 	clusterLabels := make(map[string]string)
-	for k, v := range labels {
-		clusterLabels[k] = v
-	}
+	maps.Copy(clusterLabels, labels)
 	clusterLabels["index"] = strconv.Itoa(idx)
 	return &clusterv1beta1.MemberCluster{
 		ObjectMeta: metav1.ObjectMeta{

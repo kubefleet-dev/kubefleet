@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -290,10 +291,8 @@ func (o *drainOptions) cordon(ctx context.Context) error {
 		}
 
 		// search to see cordonTaint already exists on the cluster.
-		for i := range mc.Spec.Taints {
-			if mc.Spec.Taints[i] == toolsutils.CordonTaint {
-				return nil
-			}
+		if slices.Contains(mc.Spec.Taints, toolsutils.CordonTaint) {
+			return nil
 		}
 
 		// add taint to member cluster to cordon.

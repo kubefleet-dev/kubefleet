@@ -481,7 +481,7 @@ func FetchAllResourceSnapshotsAlongWithMaster(ctx context.Context, k8Client clie
 		//insert all the resource snapshot into the map
 		items := resourceSnapshotList.GetResourceSnapshotObjs()
 
-		for i := 0; i < len(items); i++ {
+		for i := range items {
 			resourceSnapshots[items[i].GetName()] = items[i]
 		}
 	}

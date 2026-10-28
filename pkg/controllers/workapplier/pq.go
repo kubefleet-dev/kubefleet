@@ -27,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/priorityqueue"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -114,7 +113,7 @@ func (h *priorityBasedWorkObjEventHandler) Create(_ context.Context, createEvent
 
 	// Enqueue the request with the highest priority.
 	opts := priorityqueue.AddOpts{
-		Priority: ptr.To(highestPriorityLevel),
+		Priority: new(highestPriorityLevel),
 	}
 	workObjName := createEvent.Object.GetName()
 	workObjNS := createEvent.Object.GetNamespace()
@@ -139,7 +138,7 @@ func (h *priorityBasedWorkObjEventHandler) Delete(_ context.Context, deleteEvent
 
 	// Enqueue the request with the highest priority.
 	opts := priorityqueue.AddOpts{
-		Priority: ptr.To(highestPriorityLevel),
+		Priority: new(highestPriorityLevel),
 	}
 	workObjName := deleteEvent.Object.GetName()
 	workObjNS := deleteEvent.Object.GetNamespace()
@@ -179,7 +178,7 @@ func (h *priorityBasedWorkObjEventHandler) Update(_ context.Context, updateEvent
 
 	pri := h.determineUpdateEventPriority(oldWorkObj)
 	opts := priorityqueue.AddOpts{
-		Priority: ptr.To(pri),
+		Priority: new(pri),
 	}
 	workObjName := oldWorkObj.GetName()
 	workObjNS := oldWorkObj.GetNamespace()
@@ -204,7 +203,7 @@ func (h *priorityBasedWorkObjEventHandler) Generic(_ context.Context, genericEve
 
 	// Enqueue the request with low priority.
 	opts := priorityqueue.AddOpts{
-		Priority: ptr.To(lowPriorityLevel),
+		Priority: new(lowPriorityLevel),
 	}
 	workObjName := genericEvent.Object.GetName()
 	workObjNS := genericEvent.Object.GetNamespace()
@@ -273,7 +272,7 @@ func (h *priorityBasedWorkObjEventHandler) Requeue(work *fleetv1beta1.Work, dela
 
 	opts := priorityqueue.AddOpts{
 		// All requeued requests have the low priority level.
-		Priority: ptr.To(int(lowPriorityLevel)),
+		Priority: new(int(lowPriorityLevel)),
 	}
 	// Set the RateLimited flag in consistency with the controller runtime requeueing behavior.
 	if delay == 0 {

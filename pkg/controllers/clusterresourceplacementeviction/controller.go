@@ -27,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	runtime "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/controller"
@@ -177,7 +176,7 @@ func (r *Reconciler) deleteClusterResourceBinding(ctx context.Context, binding *
 	bindingRef := klog.KObj(binding)
 	deleteOptions := &client.DeleteOptions{
 		Preconditions: &metav1.Preconditions{
-			ResourceVersion: ptr.To(binding.ResourceVersion),
+			ResourceVersion: new(binding.ResourceVersion),
 		},
 	}
 	if err := r.Client.Delete(ctx, binding, deleteOptions); err != nil {

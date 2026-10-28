@@ -21,6 +21,7 @@ package tests
 
 import (
 	"fmt"
+	"maps"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -87,9 +88,7 @@ var _ = Describe("scheduling CRPs with no scheduling policy specified", func() {
 
 		// Copy the map to avoid interrupting other concurrently running test cases.
 		updatedZeroScoreByCluster := make(map[string]*placementv1beta1.ClusterScore)
-		for k, v := range zeroScoreByCluster {
-			updatedZeroScoreByCluster[k] = v
-		}
+		maps.Copy(updatedZeroScoreByCluster, zeroScoreByCluster)
 		updatedZeroScoreByCluster[newUnhealthyMemberClusterName] = &zeroScore
 
 		BeforeAll(func() {
@@ -135,9 +134,7 @@ var _ = Describe("scheduling CRPs with no scheduling policy specified", func() {
 
 		// Copy the map to avoid interrupting other concurrently running test cases.
 		updatedZeroScoreByCluster := make(map[string]*placementv1beta1.ClusterScore)
-		for k, v := range zeroScoreByCluster {
-			updatedZeroScoreByCluster[k] = v
-		}
+		maps.Copy(updatedZeroScoreByCluster, zeroScoreByCluster)
 		updatedZeroScoreByCluster[newUnhealthyMemberClusterName] = &zeroScore
 
 		BeforeAll(func() {

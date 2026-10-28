@@ -70,8 +70,7 @@ func (config *PolicyGeneratorConfigs) Validate() error {
 	}
 
 	v := reflect.ValueOf(config).Elem()
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Field(i)
+	for _, field := range v.Fields() {
 		if field.IsNil() {
 			continue
 		}
@@ -94,8 +93,7 @@ func (config *PolicyGeneratorConfigs) EnabledGenerators() sets.Set[string] {
 	}
 
 	v := reflect.ValueOf(config).Elem()
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Field(i)
+	for _, field := range v.Fields() {
 		if field.IsNil() {
 			continue
 		}

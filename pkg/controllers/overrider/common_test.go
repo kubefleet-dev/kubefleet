@@ -57,7 +57,7 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 		// we cannot apply the CRO to the cluster as it will trigger the real reconcile loop.
 		cro = getClusterResourceOverride(testCROName)
 		By("Creating five clusterResourceOverrideSnapshot")
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			snapshot := getClusterResourceOverrideSnapshot(testCROName, i)
 			Expect(k8sClient.Create(ctx, snapshot)).Should(Succeed())
 		}
@@ -65,7 +65,7 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 
 	AfterEach(func() {
 		By("Deleting five clusterResourceOverrideSnapshot")
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			snapshot := getClusterResourceOverrideSnapshot(testCROName, i)
 			Expect(k8sClient.Delete(ctx, snapshot)).Should(SatisfyAny(Succeed(), &utils.NotFoundMatcher{}))
 		}
@@ -85,7 +85,7 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			// we cannot apply the CRO to the cluster as it will trigger the real reconcile loop so the update can only return APIServerError
 			Expect(errors.Is(commonReconciler.handleOverrideDeleting(context.Background(), getClusterResourceOverrideSnapshot(testCROName, 0), cro), controller.ErrAPIServerError)).Should(BeTrue())
 			// make sure that we don't delete the original CRO's snapshot
-			for i := 0; i < 5; i++ {
+			for i := range 5 {
 				snapshot := getClusterResourceOverrideSnapshot(testCROName, i)
 				Consistently(func() error {
 					return k8sClient.Get(ctx, types.NamespacedName{Name: snapshot.Name}, snapshot)
@@ -99,7 +99,7 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			By("verifying that all snapshots are deleted")
 			// we cannot apply the CRO to the cluster as it will trigger the real reconcile loop so the update can only return APIServerError
 			Expect(errors.Is(commonReconciler.handleOverrideDeleting(context.Background(), getClusterResourceOverrideSnapshot(testCROName, 0), cro), controller.ErrAPIServerError)).Should(BeTrue())
-			for i := 0; i < 5; i++ {
+			for i := range 5 {
 				snapshot := getClusterResourceOverrideSnapshot(testCROName, i)
 				Eventually(func() bool {
 					return apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot.Name}, snapshot))
@@ -115,7 +115,7 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			By("verifying that all snapshots are listed and sorted")
 			Expect(snapshotList.Items).Should(HaveLen(5))
 			index := -1
-			for i := 0; i < 5; i++ {
+			for i := range 5 {
 				snapshot := snapshotList.Items[i]
 				newIndex, err := labels.ExtractIndex(&snapshot, placementv1beta1.OverrideIndexLabel)
 				Expect(err).Should(Succeed())
@@ -142,7 +142,7 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			err = commonReconciler.removeExtraSnapshot(ctx, snapshotList, 6)
 			Expect(err).Should(Succeed())
 			By("verifying that all the snapshots remain")
-			for i := 0; i < 5; i++ {
+			for i := range 5 {
 				snapshot := getClusterResourceOverrideSnapshot(testCROName, i)
 				Eventually(func() error {
 					return k8sClient.Get(ctx, types.NamespacedName{Name: snapshot.Name}, snapshot)
@@ -177,7 +177,7 @@ var _ = Describe("Test ClusterResourceOverride common logic", func() {
 			err = commonReconciler.removeExtraSnapshot(ctx, snapshotList, 2)
 			Expect(err).Should(Succeed())
 			By("verifying that the older snapshots are removed")
-			for i := 0; i < 4; i++ {
+			for range 4 {
 				snapshot := getClusterResourceOverrideSnapshot(testCROName, 0)
 				Eventually(func() bool {
 					return apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot.Name}, snapshot))
@@ -244,7 +244,7 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 		// we cannot apply the RO to the cluster as it will trigger the real reconcile loop.
 		ro = getResourceOverride(testROName, namespaceName)
 		By("Creating resourceOverrideSnapshot")
-		for i := 0; i < totalSnapshots; i++ {
+		for i := range totalSnapshots {
 			snapshot := getResourceOverrideSnapshot(testROName, namespaceName, i)
 			Expect(k8sClient.Create(ctx, snapshot)).Should(Succeed())
 		}
@@ -252,7 +252,7 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 
 	AfterEach(func() {
 		By("Deleting seven resourceOverrideSnapshots")
-		for i := 0; i < totalSnapshots; i++ {
+		for i := range totalSnapshots {
 			snapshot := getResourceOverrideSnapshot(testROName, namespaceName, i)
 			Expect(k8sClient.Delete(ctx, snapshot)).Should(SatisfyAny(Succeed(), &utils.NotFoundMatcher{}))
 		}
@@ -279,7 +279,7 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 			// we cannot apply the RO to the cluster as it will trigger the real reconcile loop so the update can only return APIServerError
 			Expect(errors.Is(commonReconciler.handleOverrideDeleting(context.Background(), getResourceOverrideSnapshot(testROName, namespaceName, 0), ro), controller.ErrAPIServerError)).Should(BeTrue())
 			// make sure that we don't delete the original RO's snapshot
-			for i := 0; i < totalSnapshots; i++ {
+			for i := range totalSnapshots {
 				snapshot := getResourceOverrideSnapshot(testROName, namespaceName, i)
 				Consistently(func() error {
 					return k8sClient.Get(ctx, types.NamespacedName{Name: snapshot.Name, Namespace: namespaceName}, snapshot)
@@ -293,7 +293,7 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 			By("verifying that all snapshots are deleted")
 			// we cannot apply the RO to the cluster as it will trigger the real reconcile loop so the update can only return APIServerError
 			Expect(errors.Is(commonReconciler.handleOverrideDeleting(context.Background(), getResourceOverrideSnapshot(testROName, namespaceName, 0), ro), controller.ErrAPIServerError)).Should(BeTrue())
-			for i := 0; i < totalSnapshots; i++ {
+			for i := range totalSnapshots {
 				snapshot := getResourceOverrideSnapshot(testROName, namespaceName, i)
 				Eventually(func() bool {
 					return apierrors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot.Name, Namespace: namespaceName}, snapshot))
@@ -309,7 +309,7 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 			By("verifying that all snapshots are listed and sorted")
 			Expect(snapshotList.Items).Should(HaveLen(totalSnapshots))
 			index := -1
-			for i := 0; i < totalSnapshots; i++ {
+			for i := range totalSnapshots {
 				snapshot := snapshotList.Items[i]
 				newIndex, err := labels.ExtractIndex(&snapshot, placementv1beta1.OverrideIndexLabel)
 				Expect(err).Should(Succeed())
@@ -336,7 +336,7 @@ var _ = Describe("Test ResourceOverride common logic", func() {
 			err = commonReconciler.removeExtraSnapshot(ctx, snapshotList, totalSnapshots+1)
 			Expect(err).Should(Succeed())
 			By("verifying that all the snapshots remain")
-			for i := 0; i < totalSnapshots; i++ {
+			for i := range totalSnapshots {
 				snapshot := getResourceOverrideSnapshot(ro.Name, ro.Namespace, i)
 				Eventually(func() error {
 					return k8sClient.Get(ctx, types.NamespacedName{Name: snapshot.Name, Namespace: snapshot.Namespace}, snapshot)

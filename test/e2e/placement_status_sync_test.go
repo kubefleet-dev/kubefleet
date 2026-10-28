@@ -26,7 +26,6 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	statussyncutils "github.com/kubefleet-dev/kubefleet/test/utils/crpstatussync"
@@ -52,7 +51,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(2)),
+						NumberOfClusters: new(int32(2)),
 					},
 					StatusReportingScope: placementv1beta1.NamespaceAccessible,
 				},
@@ -83,7 +82,7 @@ var _ = Describe("ClusterResourcePlacementStatus E2E Tests", Ordered, func() {
 				if err := hubClient.Get(ctx, types.NamespacedName{Name: crpName}, crp); err != nil {
 					return err
 				}
-				crp.Spec.Policy.NumberOfClusters = ptr.To(int32(3))
+				crp.Spec.Policy.NumberOfClusters = new(int32(3))
 				return hubClient.Update(ctx, crp)
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP to select 3 clusters")
 		})

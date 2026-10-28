@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -928,7 +927,7 @@ func TestIsDiffedResourcePlacementEqual(t *testing.T) {
 					},
 					ObservationTime:                 now,
 					FirstDiffedObservedTime:         now,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/spec/replicas",
@@ -949,7 +948,7 @@ func TestIsDiffedResourcePlacementEqual(t *testing.T) {
 					},
 					ObservationTime:                 now,
 					FirstDiffedObservedTime:         now,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/spec/replicas",
@@ -967,7 +966,7 @@ func TestIsDiffedResourcePlacementEqual(t *testing.T) {
 					},
 					ObservationTime:                 now,
 					FirstDiffedObservedTime:         now,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/metadata/labels/custom",
@@ -990,7 +989,7 @@ func TestIsDiffedResourcePlacementEqual(t *testing.T) {
 					},
 					ObservationTime:                 now,
 					FirstDiffedObservedTime:         now,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/spec/replicas",
@@ -1008,7 +1007,7 @@ func TestIsDiffedResourcePlacementEqual(t *testing.T) {
 					},
 					ObservationTime:                 now,
 					FirstDiffedObservedTime:         now,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/metadata/labels/custom",
@@ -1027,7 +1026,7 @@ func TestIsDiffedResourcePlacementEqual(t *testing.T) {
 					},
 					ObservationTime:                 now,
 					FirstDiffedObservedTime:         now,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/metadata/labels/custom",
@@ -1045,7 +1044,7 @@ func TestIsDiffedResourcePlacementEqual(t *testing.T) {
 					},
 					ObservationTime:                 now,
 					FirstDiffedObservedTime:         now,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/spec/replicas",
@@ -1069,7 +1068,7 @@ func TestIsDiffedResourcePlacementEqual(t *testing.T) {
 					},
 					ObservationTime:                 now,
 					FirstDiffedObservedTime:         now,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/metadata/labels/custom",
@@ -1087,7 +1086,7 @@ func TestIsDiffedResourcePlacementEqual(t *testing.T) {
 					},
 					ObservationTime:                 now,
 					FirstDiffedObservedTime:         now,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/spec/replicas",
@@ -1107,7 +1106,7 @@ func TestIsDiffedResourcePlacementEqual(t *testing.T) {
 					},
 					ObservationTime:                 now,
 					FirstDiffedObservedTime:         now,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/metadata/labels/custom",
@@ -1125,7 +1124,7 @@ func TestIsDiffedResourcePlacementEqual(t *testing.T) {
 					},
 					ObservationTime:                 now,
 					FirstDiffedObservedTime:         now,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/spec/replicas",
@@ -1149,7 +1148,7 @@ func TestIsDiffedResourcePlacementEqual(t *testing.T) {
 					},
 					ObservationTime:                 now,
 					FirstDiffedObservedTime:         now,
-					TargetClusterObservedGeneration: ptr.To(int64(1)),
+					TargetClusterObservedGeneration: new(int64(1)),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/metadata/labels/custom",
@@ -1168,7 +1167,7 @@ func TestIsDiffedResourcePlacementEqual(t *testing.T) {
 					},
 					ObservationTime:                 metav1.Now(),
 					FirstDiffedObservedTime:         now,
-					TargetClusterObservedGeneration: ptr.To(int64(2)),
+					TargetClusterObservedGeneration: new(int64(2)),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
 							Path:          "/metadata/labels/custom",

@@ -41,7 +41,7 @@ var hashSuffixRegexp = regexp.MustCompile(`-[0-9a-f]{8}$`)
 // from the given offset (1-9), except for the last character, e.g., dottedName(23, 9) = "abcdefghi.klmnopqrs.uvw".
 func dottedName(length, dotOffset int) string {
 	var sb strings.Builder
-	for idx := 0; idx < length; idx++ {
+	for idx := range length {
 		if idx%10 == dotOffset && idx != length-1 {
 			sb.WriteByte('.')
 			continue

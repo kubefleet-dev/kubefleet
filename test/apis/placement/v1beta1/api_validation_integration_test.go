@@ -30,7 +30,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -606,40 +605,40 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				Expect(statusErr.Status().Message).Should(ContainSubstring(wantMessage))
 			},
 			Entry("maxUnavailable 0 as an integer is accepted", func(c *placementv1beta1.RollingUpdateConfig) {
-				c.MaxUnavailable = ptr.To(intstr.FromInt32(0))
+				c.MaxUnavailable = new(intstr.FromInt32(0))
 			}, ""),
 			Entry("maxUnavailable 5 as an integer is accepted", func(c *placementv1beta1.RollingUpdateConfig) {
-				c.MaxUnavailable = ptr.To(intstr.FromInt32(5))
+				c.MaxUnavailable = new(intstr.FromInt32(5))
 			}, ""),
 			Entry("maxSurge 0 as an integer is accepted", func(c *placementv1beta1.RollingUpdateConfig) {
-				c.MaxSurge = ptr.To(intstr.FromInt32(0))
+				c.MaxSurge = new(intstr.FromInt32(0))
 			}, ""),
 			Entry("maxUnavailable 25% is accepted", func(c *placementv1beta1.RollingUpdateConfig) {
-				c.MaxUnavailable = ptr.To(intstr.FromString("25%"))
+				c.MaxUnavailable = new(intstr.FromString("25%"))
 			}, ""),
 			Entry("maxUnavailable 100% is accepted", func(c *placementv1beta1.RollingUpdateConfig) {
-				c.MaxUnavailable = ptr.To(intstr.FromString("100%"))
+				c.MaxUnavailable = new(intstr.FromString("100%"))
 			}, ""),
 			Entry("maxUnavailable -1 as an integer is rejected", func(c *placementv1beta1.RollingUpdateConfig) {
-				c.MaxUnavailable = ptr.To(intstr.FromInt32(-1))
+				c.MaxUnavailable = new(intstr.FromInt32(-1))
 			}, "maxUnavailable must be a non-negative integer or a percentage"),
 			Entry("maxSurge -1 as an integer is rejected", func(c *placementv1beta1.RollingUpdateConfig) {
-				c.MaxSurge = ptr.To(intstr.FromInt32(-1))
+				c.MaxSurge = new(intstr.FromInt32(-1))
 			}, "maxSurge must be a non-negative integer or a percentage"),
 			Entry("maxUnavailable -1 as a string is rejected by the pattern", func(c *placementv1beta1.RollingUpdateConfig) {
-				c.MaxUnavailable = ptr.To(intstr.FromString("-1"))
+				c.MaxUnavailable = new(intstr.FromString("-1"))
 			}, "spec.strategy.rollingUpdate.maxUnavailable in body should match"),
 			Entry("maxUnavailable 101% is rejected by the pattern", func(c *placementv1beta1.RollingUpdateConfig) {
-				c.MaxUnavailable = ptr.To(intstr.FromString("101%"))
+				c.MaxUnavailable = new(intstr.FromString("101%"))
 			}, "spec.strategy.rollingUpdate.maxUnavailable in body should match"),
 			// The digit branch of the pattern is bounded to nine digits, all of which fit an int32
 			// comfortably; an unbounded digit string used to pass validation only to fail in
 			// whatever later consumed it.
 			Entry("maxUnavailable with nine digits is accepted", func(c *placementv1beta1.RollingUpdateConfig) {
-				c.MaxUnavailable = ptr.To(intstr.FromString("999999999"))
+				c.MaxUnavailable = new(intstr.FromString("999999999"))
 			}, ""),
 			Entry("maxUnavailable with ten digits is rejected by the pattern", func(c *placementv1beta1.RollingUpdateConfig) {
-				c.MaxUnavailable = ptr.To(intstr.FromString("9999999999"))
+				c.MaxUnavailable = new(intstr.FromString("9999999999"))
 			}, "spec.strategy.rollingUpdate.maxUnavailable in body should match"),
 		)
 
@@ -661,14 +660,14 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							MaxUnavailable: ptr.To(intstr.FromString("25%")),
+							MaxUnavailable: new(intstr.FromString("25%")),
 						},
 					},
 				},
 			}
 			Expect(hubClient.Create(ctx, crp)).To(Succeed())
 
-			crp.Spec.RevisionHistoryLimit = ptr.To(int32(5))
+			crp.Spec.RevisionHistoryLimit = new(int32(5))
 			Expect(hubClient.Update(ctx, crp)).To(Succeed(), "Expected an update leaving the bounds untouched to pass their validation")
 		})
 	})
@@ -711,7 +710,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			crp.Spec.Policy = nil
 			err := hubClient.Update(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("policy cannot be removed once set"))
 		})
 
@@ -719,7 +718,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			crp.Spec.Policy.PlacementType = placementv1beta1.PickAllPlacementType
 			err := hubClient.Update(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("placement type is immutable"))
 		})
 
@@ -727,7 +726,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			crp.Spec.Strategy.Type = placementv1beta1.RollingUpdateRolloutStrategyType
 			err := hubClient.Update(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("cannot change rollout strategy type from 'External' to other types"))
 		})
 	})
@@ -930,7 +929,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("supported values: \"ClusterScopeOnly\", \"NamespaceAccessible\""))
 		})
 
@@ -959,7 +958,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("when statusReportingScope is NamespaceAccessible, exactly one resourceSelector with kind 'Namespace' is required"))
 		})
 
@@ -988,7 +987,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("when statusReportingScope is NamespaceAccessible, exactly one resourceSelector with kind 'Namespace' is required"))
 		})
 	})
@@ -1057,7 +1056,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			crp.Spec.StatusReportingScope = placementv1beta1.NamespaceAccessible
 			err := hubClient.Update(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("statusReportingScope is immutable"))
 		})
 
@@ -1065,7 +1064,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			crp.Spec.StatusReportingScope = unknownScope // Invalid scope
 			err := hubClient.Update(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("supported values: \"ClusterScopeOnly\", \"NamespaceAccessible\""))
 		})
 	})
@@ -1127,7 +1126,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}...)
 			err := hubClient.Update(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("when statusReportingScope is NamespaceAccessible, exactly one resourceSelector with kind 'Namespace' is required"))
 		})
 
@@ -1148,7 +1147,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Update(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("when statusReportingScope is NamespaceAccessible, exactly one resourceSelector with kind 'Namespace' is required"))
 		})
 
@@ -1156,7 +1155,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			crp.Spec.StatusReportingScope = placementv1beta1.ClusterScopeOnly
 			err := hubClient.Update(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("statusReportingScope is immutable"))
 		})
 
@@ -1164,7 +1163,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			crp.Spec.StatusReportingScope = ""
 			err := hubClient.Update(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("statusReportingScope is immutable"))
 		})
 
@@ -1172,7 +1171,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			crp.Spec.StatusReportingScope = unknownScope // Invalid scope
 			err := hubClient.Update(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("supported values: \"ClusterScopeOnly\", \"NamespaceAccessible\""))
 		})
 	})
@@ -1346,7 +1345,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("supported values: \"NamespaceOnly\", \"NamespaceWithResources\", \"NamespaceWithResourceSelectors\""))
 		})
 
@@ -1373,7 +1372,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			crp.Spec.ResourceSelectors[0].SelectionScope = "InvalidScope"
 			err := hubClient.Update(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("supported values: \"NamespaceOnly\", \"NamespaceWithResources\", \"NamespaceWithResourceSelectors\""))
 
 			// Cleanup
@@ -1406,7 +1405,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("only one namespace selector with NamespaceWithResourceSelectors mode is allowed"))
 		})
 
@@ -1431,7 +1430,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("namespace selector with NamespaceWithResourceSelectors mode must select by name"))
 		})
 
@@ -1454,7 +1453,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("namespace selector with NamespaceWithResourceSelectors mode must select by name"))
 		})
 
@@ -1484,7 +1483,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("when using NamespaceWithResourceSelectors mode, only one namespace selector is allowed"))
 		})
 	})
@@ -1995,13 +1994,13 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				Expect(statusErr.Status().Message).Should(ContainSubstring(wantMessage))
 			},
 			Entry("maxUnavailable 0 as an integer is accepted", func(c *placementv1beta1.RollingUpdateConfig) {
-				c.MaxUnavailable = ptr.To(intstr.FromInt32(0))
+				c.MaxUnavailable = new(intstr.FromInt32(0))
 			}, ""),
 			Entry("maxUnavailable -1 as an integer is rejected", func(c *placementv1beta1.RollingUpdateConfig) {
-				c.MaxUnavailable = ptr.To(intstr.FromInt32(-1))
+				c.MaxUnavailable = new(intstr.FromInt32(-1))
 			}, "maxUnavailable must be a non-negative integer or a percentage"),
 			Entry("maxSurge -1 as an integer is rejected", func(c *placementv1beta1.RollingUpdateConfig) {
-				c.MaxSurge = ptr.To(intstr.FromInt32(-1))
+				c.MaxSurge = new(intstr.FromInt32(-1))
 			}, "maxSurge must be a non-negative integer or a percentage"),
 		)
 	})
@@ -2042,7 +2041,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			rp.Spec.Policy = nil
 			err := hubClient.Update(ctx, &rp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update RP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update RP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("policy cannot be removed once set"))
 		})
 
@@ -2050,7 +2049,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			rp.Spec.Policy.PlacementType = placementv1beta1.PickAllPlacementType
 			err := hubClient.Update(ctx, &rp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update RP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update RP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("placement type is immutable"))
 		})
 	})
@@ -2206,7 +2205,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &rp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create RP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create RP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("supported values: \"ClusterScopeOnly\", \"NamespaceAccessible\""))
 		})
 
@@ -2232,7 +2231,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			rp.Spec.StatusReportingScope = unknownScope // Invalid scope - should fail due to enum validation
 			err := hubClient.Update(ctx, &rp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update RP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update RP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("supported values: \"ClusterScopeOnly\", \"NamespaceAccessible\""))
 
 			// Cleanup after the test.
@@ -2384,7 +2383,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crpdb)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("Both MaxUnavailable and MinAvailable cannot be specified"))
 		})
 
@@ -2399,7 +2398,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crpdb)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("invalid: spec.maxUnavailable"))
 		})
 
@@ -2414,7 +2413,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crpdb)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("invalid: spec.maxUnavailable"))
 		})
 
@@ -2429,7 +2428,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crpdb)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("invalid: spec.maxUnavailable"))
 		})
 
@@ -2444,7 +2443,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crpdb)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("invalid: spec.maxUnavailable"))
 		})
 
@@ -2459,7 +2458,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crpdb)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("invalid: spec.minAvailable"))
 		})
 
@@ -2474,7 +2473,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crpdb)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("invalid: spec.minAvailable"))
 		})
 
@@ -2489,7 +2488,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crpdb)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("invalid: spec.minAvailable"))
 		})
 
@@ -2504,7 +2503,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &crpdb)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRPDB call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("invalid: spec.minAvailable"))
 		})
 	})
@@ -2530,7 +2529,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &updateRun)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("metadata.name max length is 63"))
 		})
 
@@ -2550,7 +2549,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			updateRun.Spec.PlacementName = "test-placement-2"
 			err := hubClient.Update(ctx, &updateRun)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update updateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update updateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("placementName is immutable"))
 			Expect(hubClient.Delete(ctx, &updateRun)).Should(Succeed())
 		})
@@ -2571,7 +2570,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			updateRun.Spec.ResourceSnapshotIndex = "2"
 			err := hubClient.Update(ctx, &updateRun)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update updateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update updateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("resourceSnapshotIndex is immutable"))
 			Expect(hubClient.Delete(ctx, &updateRun)).Should(Succeed())
 		})
@@ -2592,7 +2591,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			updateRun.Spec.StagedUpdateStrategyName = "test-strategy-2"
 			err := hubClient.Update(ctx, &updateRun)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update updateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update updateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("stagedRolloutStrategyName is immutable"))
 			Expect(hubClient.Delete(ctx, &updateRun)).Should(Succeed())
 		})
@@ -2758,18 +2757,18 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 
 		It("Should allow creation of ClusterStagedUpdateStrategy with waitTime set to '0s'", func() {
 			obj := &unstructured.Unstructured{
-				Object: map[string]interface{}{
+				Object: map[string]any{
 					"apiVersion": "placement.kubernetes-fleet.io/v1beta1",
 					"kind":       "ClusterStagedUpdateStrategy",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name": fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
 					},
-					"spec": map[string]interface{}{
-						"stages": []interface{}{
-							map[string]interface{}{
+					"spec": map[string]any{
+						"stages": []any{
+							map[string]any{
 								"name": fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
-								"afterStageTasks": []interface{}{
-									map[string]interface{}{
+								"afterStageTasks": []any{
+									map[string]any{
 										"type":     "TimedWait",
 										"waitTime": "0s",
 									},
@@ -2785,18 +2784,18 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 
 		It("Should allow creation of ClusterStagedUpdateStrategy with waitTime as a compound duration '1h30m'", func() {
 			obj := &unstructured.Unstructured{
-				Object: map[string]interface{}{
+				Object: map[string]any{
 					"apiVersion": "placement.kubernetes-fleet.io/v1beta1",
 					"kind":       "ClusterStagedUpdateStrategy",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name": fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
 					},
-					"spec": map[string]interface{}{
-						"stages": []interface{}{
-							map[string]interface{}{
+					"spec": map[string]any{
+						"stages": []any{
+							map[string]any{
 								"name": fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
-								"afterStageTasks": []interface{}{
-									map[string]interface{}{
+								"afterStageTasks": []any{
+									map[string]any{
 										"type":     "TimedWait",
 										"waitTime": "1h30m",
 									},
@@ -2818,14 +2817,14 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 					Name: fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
 				},
 			}
-			for i := 0; i < 32; i++ {
+			for i := range 32 {
 				strategy.Spec.Stages = append(strategy.Spec.Stages, placementv1beta1.StageConfig{
 					Name: fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), i),
 				})
 			}
 			err := hubClient.Create(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("spec.stages: Too many: 32: must have at most 31 items"))
 		})
 
@@ -2844,7 +2843,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			// The error message might vary depending on the Kubernetes version (`Too long: may not be more than 63 bytes` or
 			// `Too long: may not be longer than 63`); for simplicity reasons, the check only verifies the `Too long` part
 			// of the message.
@@ -2866,7 +2865,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("in body should match.*a-z0-9"))
 		})
 
@@ -2897,7 +2896,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("Too many: 3: must have at most 2 items"))
 		})
 
@@ -2922,7 +2921,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("BeforeStageTaskType is Approval, waitTime is not allowed"))
 		})
 
@@ -2951,7 +2950,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("AfterStageTaskType is Approval, waitTime is not allowed"))
 		})
 
@@ -2978,7 +2977,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			strategy.Spec.Stages[0].AfterStageTasks[0].WaitTime = &metav1.Duration{Duration: time.Minute * 10}
 			err := hubClient.Update(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterStagedUpdateStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterStagedUpdateStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("AfterStageTaskType is Approval, waitTime is not allowed"))
 
 			Expect(hubClient.Delete(ctx, &strategy)).Should(Succeed())
@@ -3004,7 +3003,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("AfterStageTaskType is TimedWait, waitTime is required"))
 		})
 
@@ -3035,7 +3034,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			strategy.Spec.Stages[0].AfterStageTasks[0].WaitTime = nil
 			err := hubClient.Update(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterStagedUpdateStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterStagedUpdateStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("AfterStageTaskType is TimedWait, waitTime is required"))
 
 			Expect(hubClient.Delete(ctx, &strategy)).Should(Succeed())
@@ -3062,7 +3061,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("BeforeStageTaskType cannot be TimedWait"))
 		})
 
@@ -3090,7 +3089,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			strategy.Spec.Stages[0].BeforeStageTasks[0].WaitTime = &metav1.Duration{Duration: time.Minute * 10}
 			err := hubClient.Update(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterStagedUpdateStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterStagedUpdateStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("BeforeStageTaskType cannot be TimedWait"))
 
 			Expect(hubClient.Delete(ctx, &strategy)).Should(Succeed())
@@ -3119,7 +3118,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("Too many: 2: must have at most 1 items"))
 		})
 
@@ -3140,7 +3139,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("maxConcurrency must be at least 1"))
 		})
 
@@ -3161,7 +3160,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("maxConcurrency must be at least 1"))
 		})
 
@@ -3182,7 +3181,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("spec.stages\\[0\\].maxConcurrency in body should match"))
 		})
 
@@ -3203,7 +3202,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("spec.stages\\[0\\].maxConcurrency in body should match"))
 		})
 
@@ -3224,7 +3223,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("spec.stages\\[0\\].maxConcurrency in body should match"))
 		})
 
@@ -3245,24 +3244,24 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, &strategy)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("spec.stages\\[0\\].maxConcurrency in body should match"))
 		})
 
 		It("Should deny creation of ClusterStagedUpdateStrategy with invalid waitTime '0abc'", func() {
 			obj := &unstructured.Unstructured{
-				Object: map[string]interface{}{
+				Object: map[string]any{
 					"apiVersion": "placement.kubernetes-fleet.io/v1beta1",
 					"kind":       "ClusterStagedUpdateStrategy",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name": fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
 					},
-					"spec": map[string]interface{}{
-						"stages": []interface{}{
-							map[string]interface{}{
+					"spec": map[string]any{
+						"stages": []any{
+							map[string]any{
 								"name": fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
-								"afterStageTasks": []interface{}{
-									map[string]interface{}{
+								"afterStageTasks": []any{
+									map[string]any{
 										"type":     "TimedWait",
 										"waitTime": "0abc",
 									},
@@ -3274,24 +3273,24 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, obj)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("spec.stages\\[0\\].afterStageTasks\\[0\\].waitTime in body should match"))
 		})
 
 		It("Should deny creation of ClusterStagedUpdateStrategy with invalid waitTime '1' (number without unit)", func() {
 			obj := &unstructured.Unstructured{
-				Object: map[string]interface{}{
+				Object: map[string]any{
 					"apiVersion": "placement.kubernetes-fleet.io/v1beta1",
 					"kind":       "ClusterStagedUpdateStrategy",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name": fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
 					},
-					"spec": map[string]interface{}{
-						"stages": []interface{}{
-							map[string]interface{}{
+					"spec": map[string]any{
+						"stages": []any{
+							map[string]any{
 								"name": fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
-								"afterStageTasks": []interface{}{
-									map[string]interface{}{
+								"afterStageTasks": []any{
+									map[string]any{
 										"type":     "TimedWait",
 										"waitTime": "1",
 									},
@@ -3303,24 +3302,24 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, obj)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("spec.stages\\[0\\].afterStageTasks\\[0\\].waitTime in body should match"))
 		})
 
 		It("Should deny creation of ClusterStagedUpdateStrategy with invalid waitTime '1d' (unsupported unit)", func() {
 			obj := &unstructured.Unstructured{
-				Object: map[string]interface{}{
+				Object: map[string]any{
 					"apiVersion": "placement.kubernetes-fleet.io/v1beta1",
 					"kind":       "ClusterStagedUpdateStrategy",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name": fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
 					},
-					"spec": map[string]interface{}{
-						"stages": []interface{}{
-							map[string]interface{}{
+					"spec": map[string]any{
+						"stages": []any{
+							map[string]any{
 								"name": fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
-								"afterStageTasks": []interface{}{
-									map[string]interface{}{
+								"afterStageTasks": []any{
+									map[string]any{
 										"type":     "TimedWait",
 										"waitTime": "1d",
 									},
@@ -3332,24 +3331,24 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, obj)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("spec.stages\\[0\\].afterStageTasks\\[0\\].waitTime in body should match"))
 		})
 
 		It("Should deny creation of ClusterStagedUpdateStrategy with invalid waitTime '01h' (leading zero)", func() {
 			obj := &unstructured.Unstructured{
-				Object: map[string]interface{}{
+				Object: map[string]any{
 					"apiVersion": "placement.kubernetes-fleet.io/v1beta1",
 					"kind":       "ClusterStagedUpdateStrategy",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name": fmt.Sprintf(updateRunStrategyNameTemplate, GinkgoParallelProcess()),
 					},
-					"spec": map[string]interface{}{
-						"stages": []interface{}{
-							map[string]interface{}{
+					"spec": map[string]any{
+						"stages": []any{
+							map[string]any{
 								"name": fmt.Sprintf(updateRunStageNameTemplate, GinkgoParallelProcess(), 1),
-								"afterStageTasks": []interface{}{
-									map[string]interface{}{
+								"afterStageTasks": []any{
+									map[string]any{
 										"type":     "TimedWait",
 										"waitTime": "01h",
 									},
@@ -3361,7 +3360,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, obj)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("spec.stages\\[0\\].afterStageTasks\\[0\\].waitTime in body should match"))
 		})
 
@@ -3399,7 +3398,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			appReq.Spec.TargetUpdateRun += "1"
 			err := hubClient.Update(ctx, &appReq)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update clusterApprovalRequest call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update clusterApprovalRequest call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("The spec field is immutable"))
 			Expect(hubClient.Delete(ctx, &appReq)).Should(Succeed())
 		})
@@ -3465,7 +3464,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 					return
 				}
 				var statusErr *k8sErrors.StatusError
-				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create updateRunStrategy call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				Expect(statusErr.ErrStatus.Message).Should(ContainSubstring(wantMessage))
 			},
 			deleteStageEntries(false),
@@ -3603,7 +3602,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			updateRun.Spec.State = placementv1beta1.StateStop
 			err := hubClient.Update(ctx, updateRun)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterStagedUpdateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterStagedUpdateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("invalid state transition: cannot transition from Initialize to Stop"))
 		})
 
@@ -3621,7 +3620,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			updateRun.Spec.State = placementv1beta1.StateInitialize
 			err := hubClient.Update(ctx, updateRun)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterStagedUpdateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterStagedUpdateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("invalid state transition: cannot transition from Run to Initialize"))
 		})
 
@@ -3640,7 +3639,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			updateRun.Spec.State = placementv1beta1.StateInitialize
 			err := hubClient.Update(ctx, updateRun)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterStagedUpdateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterStagedUpdateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("invalid state transition: cannot transition from Stop to Initialize"))
 		})
 	})
@@ -3660,7 +3659,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			}
 			err := hubClient.Create(ctx, updateRun)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create ClusterStagedUpdateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create ClusterStagedUpdateRun call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("supported values: \"Initialize\", \"Run\", \"Stop\""))
 		})
 	})
@@ -3710,7 +3709,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 			)
 			err := hubClient.Create(ctx, &cro)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create ClusterResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create ClusterResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("clusterResourceOverride placement reference cannot be Namespaced scope"))
 		})
 
@@ -3737,7 +3736,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				cro.Spec.Placement.Name = "different-placement"
 				err := hubClient.Update(ctx, &cro)
 				var statusErr *k8sErrors.StatusError
-				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("The placement field is immutable"))
 			})
 
@@ -3745,7 +3744,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				cro.Spec.Placement.Scope = placementv1beta1.NamespaceScoped
 				err := hubClient.Update(ctx, &cro)
 				var statusErr *k8sErrors.StatusError
-				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				Expect(statusErr.ErrStatus.Message).Should(ContainSubstring("placement reference cannot be Namespaced scope"))
 			})
 
@@ -3762,7 +3761,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				}
 				err := hubClient.Update(ctx, &croWithoutPlacement)
 				var statusErr *k8sErrors.StatusError
-				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("The placement field is immutable"))
 
 				Expect(hubClient.Delete(ctx, &croWithoutPlacement)).Should(Succeed())
@@ -3772,7 +3771,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				cro.Spec.Placement = nil
 				err := hubClient.Update(ctx, &cro)
 				var statusErr *k8sErrors.StatusError
-				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ClusterResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("The placement field is immutable"))
 			})
 		})
@@ -3854,7 +3853,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				ro.Spec.Placement.Name = "different-placement"
 				err := hubClient.Update(ctx, &ro)
 				var statusErr *k8sErrors.StatusError
-				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("The placement field is immutable"))
 			})
 
@@ -3872,7 +3871,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				}
 				err := hubClient.Update(ctx, &roWithoutPlacement)
 				var statusErr *k8sErrors.StatusError
-				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("The placement field is immutable"))
 
 				Expect(hubClient.Delete(ctx, &roWithoutPlacement)).Should(Succeed())
@@ -3882,7 +3881,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				ro.Spec.Placement = nil
 				err := hubClient.Update(ctx, &ro)
 				var statusErr *k8sErrors.StatusError
-				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("The placement field is immutable"))
 			})
 
@@ -3890,7 +3889,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				ro.Spec.Placement.Scope = placementv1beta1.NamespaceScoped
 				err := hubClient.Update(ctx, &ro)
 				var statusErr *k8sErrors.StatusError
-				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("The placement field is immutable"))
 			})
 
@@ -3908,7 +3907,7 @@ var _ = Describe("Test placement v1beta1 API validation", func() {
 				roWithNamespaceScope.Spec.Placement.Scope = placementv1beta1.ClusterScoped
 				err := hubClient.Update(ctx, &roWithNamespaceScope)
 				var statusErr *k8sErrors.StatusError
-				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update ResourceOverride call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("The placement field is immutable"))
 
 				Expect(hubClient.Delete(ctx, &roWithNamespaceScope)).Should(Succeed())

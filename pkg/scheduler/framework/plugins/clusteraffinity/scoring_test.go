@@ -24,7 +24,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -164,8 +163,8 @@ func TestPreScore(t *testing.T) {
 			wantPS: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("10")),
-						max: ptr.To(resource.MustParse("10")),
+						min: new(resource.MustParse("10")),
+						max: new(resource.MustParse("10")),
 					},
 				},
 			},
@@ -259,12 +258,12 @@ func TestPreScore(t *testing.T) {
 			wantPS: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("10")),
-						max: ptr.To(resource.MustParse("20")),
+						min: new(resource.MustParse("10")),
+						max: new(resource.MustParse("20")),
 					},
 					propertyprovider.AvailableCPUCapacityProperty: {
-						min: ptr.To(resource.MustParse("7")),
-						max: ptr.To(resource.MustParse("12")),
+						min: new(resource.MustParse("7")),
+						max: new(resource.MustParse("12")),
 					},
 				},
 			},
@@ -395,8 +394,8 @@ func TestPluginScore(t *testing.T) {
 			ps: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("10")),
-						max: ptr.To(resource.MustParse("20")),
+						min: new(resource.MustParse("10")),
+						max: new(resource.MustParse("20")),
 					},
 				},
 			},
@@ -443,8 +442,8 @@ func TestPluginScore(t *testing.T) {
 			ps: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("10")),
-						max: ptr.To(resource.MustParse("20")),
+						min: new(resource.MustParse("10")),
+						max: new(resource.MustParse("20")),
 					},
 				},
 			},
@@ -499,8 +498,8 @@ func TestPluginScore(t *testing.T) {
 			ps: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("10")),
-						max: ptr.To(resource.MustParse("20")),
+						min: new(resource.MustParse("10")),
+						max: new(resource.MustParse("20")),
 					},
 				},
 			},
@@ -551,12 +550,12 @@ func TestPluginScore(t *testing.T) {
 			ps: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("10")),
-						max: ptr.To(resource.MustParse("20")),
+						min: new(resource.MustParse("10")),
+						max: new(resource.MustParse("20")),
 					},
 					propertyprovider.AvailableCPUCapacityProperty: {
-						min: ptr.To(resource.MustParse("7")),
-						max: ptr.To(resource.MustParse("25")),
+						min: new(resource.MustParse("7")),
+						max: new(resource.MustParse("25")),
 					},
 				},
 			},

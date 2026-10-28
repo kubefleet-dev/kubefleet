@@ -39,7 +39,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -140,7 +139,7 @@ var (
 			Namespace: "ns-1",
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: ptr.To(int32(1)),
+			Replicas: new(int32(1)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"app": "nginx",
@@ -187,7 +186,7 @@ var (
 		Kind:               kfioplacementv1beta1.AppliedWorkKind,
 		Name:               "older-api-applied-work",
 		UID:                "older-api-applied-work-uid",
-		BlockOwnerDeletion: ptr.To(true),
+		BlockOwnerDeletion: new(true),
 	}
 )
 
@@ -262,8 +261,8 @@ func setPrimaryWorkAsOwner(secondaryWork *placementv1alpha1.Work, primaryWorkNam
 			Kind:               placementv1alpha1.WorkKind,
 			Name:               primaryWorkName,
 			UID:                dummyPrimaryWorkUID,
-			Controller:         ptr.To(true),
-			BlockOwnerDeletion: ptr.To(true),
+			Controller:         new(true),
+			BlockOwnerDeletion: new(true),
 		},
 	}
 }
@@ -329,7 +328,7 @@ func prepareAppliedWorkOwnerRef(memberClient client.Client, workName string) *me
 		Kind:               "AppliedWork",
 		Name:               appliedWork.Name,
 		UID:                appliedWork.GetUID(),
-		BlockOwnerDeletion: ptr.To(true),
+		BlockOwnerDeletion: new(true),
 	}
 }
 
@@ -686,7 +685,7 @@ func fieldManagersActual(memberClient client.Client, obj client.Object, fieldPat
 			if managedFieldsEntry.FieldsV1 == nil {
 				continue
 			}
-			fields := map[string]interface{}{}
+			fields := map[string]any{}
 			if err := json.Unmarshal(managedFieldsEntry.FieldsV1.Raw, &fields); err != nil {
 				return fmt.Errorf("failed to unmarshal the managed fields of manager %s: %w", managedFieldsEntry.Manager, err)
 			}
@@ -694,7 +693,7 @@ func fieldManagersActual(memberClient client.Client, obj client.Object, fieldPat
 			cur := fields
 			found := true
 			for _, segment := range fieldPath {
-				next, ok := cur[segment].(map[string]interface{})
+				next, ok := cur[segment].(map[string]any)
 				if !ok {
 					found = false
 					break
@@ -968,7 +967,7 @@ func appliedWorkOwnerRefUnblockedActual(memberClient client.Client, obj client.O
 		}
 
 		wantOwnerRef := appliedWorkOwnerRef.DeepCopy()
-		wantOwnerRef.BlockOwnerDeletion = ptr.To(false)
+		wantOwnerRef.BlockOwnerDeletion = new(false)
 		wantOwnerRefs := []metav1.OwnerReference{*wantOwnerRef}
 		if diff := cmp.Diff(obj.GetOwnerReferences(), wantOwnerRefs); diff != "" {
 			return fmt.Errorf("owner references diff (-got +want):\n%s", diff)

@@ -155,7 +155,7 @@ func buildCustomPredicate(isClusterScoped bool) predicate.Predicate {
 }
 
 func isBindingStatusUpdated(oldBinding, newBinding fleetv1beta1.BindingObj) bool {
-	for i := condition.RolloutStartedCondition; i < condition.TotalCondition; i++ {
+	for i := range condition.TotalCondition {
 		oldCond := oldBinding.GetCondition(string(i.ResourceBindingConditionType()))
 		newCond := newBinding.GetCondition(string(i.ResourceBindingConditionType()))
 		if !condition.EqualCondition(oldCond, newCond) {

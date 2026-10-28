@@ -28,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -896,25 +895,25 @@ var _ = Describe("scheduling CRPs of the PickN placement type using cluster prop
 
 		scoreByCluster := map[string]*placementv1beta1.ClusterScore{
 			memberCluster1EastProd: {
-				AffinityScore:       ptr.To(int32(86)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(86)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster2EastProd: {
-				AffinityScore:       ptr.To(int32(57)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(57)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster3EastCanary: {
-				AffinityScore:       ptr.To(int32(29)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(29)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster4CentralProd: {
-				AffinityScore:       ptr.To(int32(86)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(86)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster5CentralProd: &zeroScore,
 			memberCluster6WestProd: {
-				AffinityScore:       ptr.To(int32(86)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(86)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster7WestCanary:        &zeroScore,
 			memberCluster8UnhealthyEastProd: &zeroScore,
@@ -929,7 +928,7 @@ var _ = Describe("scheduling CRPs of the PickN placement type using cluster prop
 			// Create a CRP of the PickN placement type, along with its associated policy snapshot.
 			policy := &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(numberOfClusters)),
+				NumberOfClusters: new(int32(numberOfClusters)),
 				Affinity: &placementv1beta1.Affinity{
 					ClusterAffinity: &placementv1beta1.ClusterAffinity{
 						PreferredDuringSchedulingIgnoredDuringExecution: []placementv1beta1.PreferredClusterSelector{
@@ -1005,32 +1004,32 @@ var _ = Describe("scheduling CRPs of the PickN placement type using cluster prop
 
 		scoreByCluster := map[string]*placementv1beta1.ClusterScore{
 			memberCluster1EastProd: {
-				AffinityScore:       ptr.To(int32(14)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(14)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster2EastProd: {
-				AffinityScore:       ptr.To(int32(43)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(43)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster3EastCanary: {
-				AffinityScore:       ptr.To(int32(71)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(71)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster4CentralProd: {
-				AffinityScore:       ptr.To(int32(14)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(14)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(100)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(100)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster6WestProd: {
-				AffinityScore:       ptr.To(int32(14)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(14)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster7WestCanary: {
-				AffinityScore:       ptr.To(int32(100)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(100)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster8UnhealthyEastProd: &zeroScore,
 			memberCluster9LeftCentralProd:   &zeroScore,
@@ -1044,7 +1043,7 @@ var _ = Describe("scheduling CRPs of the PickN placement type using cluster prop
 			// Create a CRP of the PickAll placement type, along with its associated policy snapshot.
 			policy := &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(numberOfClusters)),
+				NumberOfClusters: new(int32(numberOfClusters)),
 				Affinity: &placementv1beta1.Affinity{
 					ClusterAffinity: &placementv1beta1.ClusterAffinity{
 						PreferredDuringSchedulingIgnoredDuringExecution: []placementv1beta1.PreferredClusterSelector{
@@ -1151,7 +1150,7 @@ var _ = Describe("scheduling CRPs of the PickN placement type using cluster prop
 			// Create a CRP of the PickN placement type, along with its associated policy snapshot.
 			policy := &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(numberOfClusters)),
+				NumberOfClusters: new(int32(numberOfClusters)),
 				Affinity: &placementv1beta1.Affinity{
 					ClusterAffinity: &placementv1beta1.ClusterAffinity{
 						PreferredDuringSchedulingIgnoredDuringExecution: []placementv1beta1.PreferredClusterSelector{
@@ -1241,7 +1240,7 @@ var _ = Describe("scheduling CRPs of the PickN placement type using cluster prop
 			// Create a CRP of the PickN placement type, along with its associated policy snapshot.
 			policy := &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(numberOfClusters)),
+				NumberOfClusters: new(int32(numberOfClusters)),
 				Affinity: &placementv1beta1.Affinity{
 					ClusterAffinity: &placementv1beta1.ClusterAffinity{
 						PreferredDuringSchedulingIgnoredDuringExecution: []placementv1beta1.PreferredClusterSelector{
@@ -1322,32 +1321,32 @@ var _ = Describe("scheduling CRPs of the PickN placement type using cluster prop
 
 		scoreByCluster := map[string]*placementv1beta1.ClusterScore{
 			memberCluster1EastProd: {
-				AffinityScore:       ptr.To(int32(168)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(168)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster2EastProd: {
-				AffinityScore:       ptr.To(int32(108)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(108)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster3EastCanary: {
-				AffinityScore:       ptr.To(int32(68)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(68)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster4CentralProd: {
-				AffinityScore:       ptr.To(int32(146)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(146)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(46)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(46)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster6WestProd: {
-				AffinityScore:       ptr.To(int32(135)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(135)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster7WestCanary: {
-				AffinityScore:       ptr.To(int32(60)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(60)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster8UnhealthyEastProd: &zeroScore,
 			memberCluster9LeftCentralProd:   &zeroScore,
@@ -1361,7 +1360,7 @@ var _ = Describe("scheduling CRPs of the PickN placement type using cluster prop
 			// Create a CRP of the PickN placement type, along with its associated policy snapshot.
 			policy := &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(numberOfClusters)),
+				NumberOfClusters: new(int32(numberOfClusters)),
 				Affinity: &placementv1beta1.Affinity{
 					ClusterAffinity: &placementv1beta1.ClusterAffinity{
 						PreferredDuringSchedulingIgnoredDuringExecution: []placementv1beta1.PreferredClusterSelector{
@@ -1457,15 +1456,15 @@ var _ = Describe("scheduling CRPs of the PickN placement type using cluster prop
 			memberCluster1EastProd: &zeroScore,
 			memberCluster2EastProd: &zeroScore,
 			memberCluster3EastCanary: {
-				AffinityScore:       ptr.To(int32(75)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(75)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster4CentralProd: &zeroScore,
 			memberCluster5CentralProd: &zeroScore,
 			memberCluster6WestProd:    &zeroScore,
 			memberCluster7WestCanary: {
-				AffinityScore:       ptr.To(int32(50)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(50)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster8UnhealthyEastProd: &zeroScore,
 			memberCluster9LeftCentralProd:   &zeroScore,
@@ -1479,7 +1478,7 @@ var _ = Describe("scheduling CRPs of the PickN placement type using cluster prop
 			// Create a CRP of the PickAll placement type, along with its associated policy snapshot.
 			policy := &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(numberOfClusters)),
+				NumberOfClusters: new(int32(numberOfClusters)),
 				Affinity: &placementv1beta1.Affinity{
 					ClusterAffinity: &placementv1beta1.ClusterAffinity{
 						PreferredDuringSchedulingIgnoredDuringExecution: []placementv1beta1.PreferredClusterSelector{
@@ -1560,23 +1559,23 @@ var _ = Describe("scheduling CRPs of the PickN placement type using cluster prop
 
 		scoreByCluster := map[string]*placementv1beta1.ClusterScore{
 			memberCluster1EastProd: {
-				AffinityScore:       ptr.To(int32(100)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(100)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster2EastProd: {
-				AffinityScore:       ptr.To(int32(50)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(50)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster3EastCanary: {
-				AffinityScore:       ptr.To(int32(100)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(100)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster4CentralProd: &zeroScore,
 			memberCluster5CentralProd: &zeroScore,
 			memberCluster6WestProd:    &zeroScore,
 			memberCluster7WestCanary: {
-				AffinityScore:       ptr.To(int32(50)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(50)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster8UnhealthyEastProd: &zeroScore,
 			memberCluster9LeftCentralProd:   &zeroScore,
@@ -1590,7 +1589,7 @@ var _ = Describe("scheduling CRPs of the PickN placement type using cluster prop
 			// Create a CRP of the PickAll placement type, along with its associated policy snapshot.
 			policy := &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(numberOfClusters)),
+				NumberOfClusters: new(int32(numberOfClusters)),
 				Affinity: &placementv1beta1.Affinity{
 					ClusterAffinity: &placementv1beta1.ClusterAffinity{
 						PreferredDuringSchedulingIgnoredDuringExecution: []placementv1beta1.PreferredClusterSelector{

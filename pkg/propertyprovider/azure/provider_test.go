@@ -1143,7 +1143,7 @@ func TestCollectK8sVersionConcurrency(t *testing.T) {
 	k8sVersionCacheTTL = 1 * time.Second // Reduce cache TTL to test cache expire
 	done := make(chan bool, numGoroutines)
 
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		go func() {
 			properties := make(map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue)
 			p.collectK8sVersion(ctx, properties)
@@ -1152,7 +1152,7 @@ func TestCollectK8sVersionConcurrency(t *testing.T) {
 	}
 
 	// Wait for all goroutines to complete
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		<-done
 	}
 

@@ -29,7 +29,7 @@ import (
 )
 
 // handleTombStoneObj handles the case that the delete object is a tombStone instead of the real object
-func handleTombStoneObj(obj interface{}) (client.Object, error) {
+func handleTombStoneObj(obj any) (client.Object, error) {
 	if clientObj, ok := obj.(client.Object); ok {
 		return clientObj, nil
 	}
@@ -48,7 +48,7 @@ func handleTombStoneObj(obj interface{}) (client.Object, error) {
 
 // The next three are for any dynamic resource informer
 // onResourceAdded handles object add event and push the new object to the resource queue.
-func (d *ChangeDetector) onResourceAdded(obj interface{}) {
+func (d *ChangeDetector) onResourceAdded(obj any) {
 	runtimeObject, ok := obj.(runtime.Object)
 	if !ok {
 		klog.ErrorS(fmt.Errorf("resource %+v is not a runtime object", obj), "skip process an unknown obj")
@@ -66,7 +66,7 @@ func (d *ChangeDetector) onResourceAdded(obj interface{}) {
 }
 
 // onResourceUpdated handles object update event and push the updated object to the resource queue.
-func (d *ChangeDetector) onResourceUpdated(oldObj, newObj interface{}) {
+func (d *ChangeDetector) onResourceUpdated(oldObj, newObj any) {
 	oldObjMeta, err := meta.Accessor(oldObj)
 	if err != nil {
 		klog.ErrorS(err, "failed to handle an object update event", "oldObj", oldObj)
@@ -95,7 +95,7 @@ func (d *ChangeDetector) onResourceUpdated(oldObj, newObj interface{}) {
 }
 
 // onResourceDeleted handles object delete event and push the deleted object to the resource queue.
-func (d *ChangeDetector) onResourceDeleted(obj interface{}) {
+func (d *ChangeDetector) onResourceDeleted(obj any) {
 	clientObj, err := handleTombStoneObj(obj)
 	if err != nil {
 		klog.ErrorS(err, "failed to handle an object delete event")
@@ -110,7 +110,7 @@ func (d *ChangeDetector) onResourceDeleted(obj interface{}) {
 
 // reportAnnotated hands a resource to annotation-based placement, if it is running and the
 // resource is one it cares about.
-func (d *ChangeDetector) reportAnnotated(obj interface{}, annotated bool) {
+func (d *ChangeDetector) reportAnnotated(obj any, annotated bool) {
 	if d.AnnotatedSources == nil || !annotated {
 		return
 	}

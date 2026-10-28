@@ -8,7 +8,6 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -62,8 +61,8 @@ func CRPSStatusMatchesCRPActual(ctx context.Context, client client.Client, crpNa
 						Kind:               "ClusterResourcePlacement",
 						Name:               crpName,
 						UID:                crp.UID,
-						Controller:         ptr.To(true),
-						BlockOwnerDeletion: ptr.To(true),
+						Controller:         new(true),
+						BlockOwnerDeletion: new(true),
 					},
 				},
 			},

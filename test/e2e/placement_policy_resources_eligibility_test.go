@@ -24,7 +24,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -224,7 +223,7 @@ var _ = Describe("placement policy resource eligibility", Label("placementpolicy
 					Labels:    selectedLabels,
 					// The owner must exist (with this UID); otherwise the garbage collector removes the ConfigMap.
 					OwnerReferences: []metav1.OwnerReference{
-						{APIVersion: "v1", Kind: "ConfigMap", Name: owner.Name, UID: owner.UID, Controller: ptr.To(true)},
+						{APIVersion: "v1", Kind: "ConfigMap", Name: owner.Name, UID: owner.UID, Controller: new(true)},
 					},
 				},
 				Data: cmData,

@@ -85,7 +85,7 @@ func NewResourceList() v1.ResourceList {
 func NewTestNodes(ns string) []v1.Node {
 	numOfNodes := RandSecureInt(10)
 	var nodes []v1.Node
-	for i := int64(0); i < numOfNodes; i++ {
+	for range numOfNodes {
 		node := v1.Node{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "rand-" + strings.ToLower(RandStr()) + "-node",

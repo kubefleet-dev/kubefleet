@@ -883,7 +883,7 @@ func verifyErrCategory(t *testing.T, funcName string, err error, wantErrCategory
 	if len(gotErrAttrs) < 2 {
 		t.Fatalf("%s error = %v, want a KubeFleet error", funcName, err)
 	}
-	wantErrCategoryAttrs := []interface{}{"errCategory", wantErrCategory}
+	wantErrCategoryAttrs := []any{"errCategory", wantErrCategory}
 	if diff := cmp.Diff(gotErrAttrs[:2], wantErrCategoryAttrs); diff != "" {
 		t.Errorf("%s error category attributes mismatch (-got +want):\n%s\nerror: %v", funcName, diff, err)
 	}

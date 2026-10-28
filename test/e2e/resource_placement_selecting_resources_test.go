@@ -28,7 +28,6 @@ import (
 	apiResource "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -212,7 +211,7 @@ var _ = Describe("testing RP selecting resources", Label("resourceplacement"), f
 					},
 					Strategy: placementv1beta1.RolloutStrategy{
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(5),
+							UnavailablePeriodSeconds: new(5),
 						},
 					},
 				},
@@ -308,7 +307,7 @@ var _ = Describe("testing RP selecting resources", Label("resourceplacement"), f
 					},
 					Strategy: placementv1beta1.RolloutStrategy{
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(5),
+							UnavailablePeriodSeconds: new(5),
 						},
 					},
 				},
@@ -391,7 +390,7 @@ var _ = Describe("testing RP selecting resources", Label("resourceplacement"), f
 					},
 					Strategy: placementv1beta1.RolloutStrategy{
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(5),
+							UnavailablePeriodSeconds: new(5),
 						},
 					},
 				},
@@ -680,10 +679,10 @@ var _ = Describe("testing RP selecting resources", Label("resourceplacement"), f
 					},
 					Strategy: placementv1beta1.RolloutStrategy{
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(5),
+							UnavailablePeriodSeconds: new(5),
 						},
 					},
-					RevisionHistoryLimit: ptr.To(int32(1)),
+					RevisionHistoryLimit: new(int32(1)),
 				},
 			}
 			By(fmt.Sprintf("creating placement %s/%s", rp.Namespace, rpName))
@@ -778,7 +777,7 @@ var _ = Describe("testing RP selecting resources", Label("resourceplacement"), f
 					},
 					Strategy: placementv1beta1.RolloutStrategy{
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(5),
+							UnavailablePeriodSeconds: new(5),
 						},
 					},
 				},
@@ -984,7 +983,7 @@ var _ = Describe("testing RP selecting resources", Label("resourceplacement"), f
 				},
 				Spec: corev1.PersistentVolumeClaimSpec{
 					AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-					StorageClassName: ptr.To("standard"),
+					StorageClassName: new("standard"),
 					Resources: corev1.VolumeResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceStorage: apiResource.MustParse("1Gi"),

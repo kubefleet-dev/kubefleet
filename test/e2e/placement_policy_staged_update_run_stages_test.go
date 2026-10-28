@@ -27,7 +27,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	kfrolloutv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/rollout/v1alpha1"
@@ -188,7 +187,7 @@ var _ = Describe("placement policy staged update run stages", Label("placementpo
 						Conditions:         succeededStagedUpdateRunStageConditions(),
 						StartedTimestamp:   &metav1.Time{},
 						CompletedTimestamp: &metav1.Time{},
-						MaxConcurrency:     ptr.To(int32(1)),
+						MaxConcurrency:     new(int32(1)),
 					},
 					{
 						StageName: placementPolicyProdStageName,
@@ -199,7 +198,7 @@ var _ = Describe("placement policy staged update run stages", Label("placementpo
 						Conditions:         succeededStagedUpdateRunStageConditions(),
 						StartedTimestamp:   &metav1.Time{},
 						CompletedTimestamp: &metav1.Time{},
-						MaxConcurrency:     ptr.To(int32(1)),
+						MaxConcurrency:     new(int32(1)),
 					},
 				},
 			}
@@ -405,7 +404,7 @@ var _ = Describe("placement policy staged update run stages", Label("placementpo
 
 		It("should report that cluster as on an older resource revision, with the binding manager role released", func() {
 			wantStatus := someClustersOnOlderResourceRevisionPlacementPolicyStatus(int32(len(allMemberClusters)), 2)
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected cluster placement policy status")
 		})
@@ -452,7 +451,7 @@ var _ = Describe("placement policy staged update run stages", Label("placementpo
 						{
 							Name:           placementPolicyAllClustersStageName,
 							LabelSelector:  &metav1.LabelSelector{},
-							MaxConcurrency: ptr.To(c.maxConcurrency),
+							MaxConcurrency: new(c.maxConcurrency),
 						},
 					},
 				})
@@ -507,7 +506,7 @@ var _ = Describe("placement policy staged update run stages", Label("placementpo
 							Conditions:         succeededStagedUpdateRunStageConditions(),
 							StartedTimestamp:   &metav1.Time{},
 							CompletedTimestamp: &metav1.Time{},
-							MaxConcurrency:     ptr.To(c.wantResolved),
+							MaxConcurrency:     new(c.wantResolved),
 						},
 					},
 				}

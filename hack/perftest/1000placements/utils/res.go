@@ -13,17 +13,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
-	"k8s.io/utils/ptr"
 )
 
 func (r *Runner) CreateResources(ctx context.Context) {
 	wg := sync.WaitGroup{}
 
 	// Run the producer.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		for i := 0; i < r.maxCRPToCreateCount; i++ {
 			select {
 			case r.toCreateResourcesChan <- i:
@@ -34,7 +30,7 @@ func (r *Runner) CreateResources(ctx context.Context) {
 		}
 
 		close(r.toCreateResourcesChan)
-	}()
+	})
 
 	// Run the workers to create namespaces and configMaps.
 	for i := 0; i < r.resourceSetupWorkerCount; i++ {
@@ -107,7 +103,7 @@ func (r *Runner) CreateResources(ctx context.Context) {
 						Namespace: fmt.Sprintf(nsNameFmt, resIdx),
 					},
 					Spec: appsv1.DeploymentSpec{
-						Replicas: ptr.To(int32(1)),
+						Replicas: new(int32(1)),
 						Selector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{
 								"app": "pause",
@@ -126,7 +122,7 @@ func (r *Runner) CreateResources(ctx context.Context) {
 										Image: "registry.k8s.io/pause:3.9",
 									},
 								},
-								TerminationGracePeriodSeconds: ptr.To(int64(60)),
+								TerminationGracePeriodSeconds: new(int64(60)),
 							},
 						},
 					},

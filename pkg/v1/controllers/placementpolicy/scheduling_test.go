@@ -23,7 +23,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -45,7 +44,7 @@ func TestEvaluateSelectorsSkipsClustersWithUnevaluableData(t *testing.T) {
 					{Key: propertyprovider.NodeCountProperty, Operator: kfplacementv1alpha1.LabelClusterPropertyExpressionOperatorGe, Values: []string{"2"}},
 				},
 			}},
-			Count: ptr.To(intstr.FromInt32(1)),
+			Count: new(intstr.FromInt32(1)),
 		}},
 	}
 	clusters := []clusterv1beta1.MemberCluster{
@@ -232,7 +231,7 @@ func TestEvaluateSelectorsKeepsClustersSelectedBefore(t *testing.T) {
 	eastTerms := []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{MatchLabels: map[string]string{regionLabel: "east"}}}
 	oldTerms := []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{MatchLabels: map[string]string{regionLabel: "central"}}}
 	spec := &kfplacementv1alpha1.PlacementPolicySpec{
-		ClusterSelectors: []kfplacementv1alpha1.ClusterSelector{{Terms: eastTerms, Count: ptr.To(intstr.FromInt32(3))}},
+		ClusterSelectors: []kfplacementv1alpha1.ClusterSelector{{Terms: eastTerms, Count: new(intstr.FromInt32(3))}},
 	}
 	west := map[string]string{regionLabel: "west"}
 	clusters := []clusterv1beta1.MemberCluster{
@@ -314,8 +313,8 @@ func TestEvaluateSelectorsKeepsClustersSelectedBeforeAcrossSelectors(t *testing.
 	westTerms := []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{{MatchLabels: map[string]string{regionLabel: "west"}}}
 	spec := &kfplacementv1alpha1.PlacementPolicySpec{
 		ClusterSelectors: []kfplacementv1alpha1.ClusterSelector{
-			{Terms: westTerms, Count: ptr.To(intstr.FromInt32(1))},
-			{Terms: eastTerms, Count: ptr.To(intstr.FromInt32(1))},
+			{Terms: westTerms, Count: new(intstr.FromInt32(1))},
+			{Terms: eastTerms, Count: new(intstr.FromInt32(1))},
 		},
 	}
 	clusters := []clusterv1beta1.MemberCluster{

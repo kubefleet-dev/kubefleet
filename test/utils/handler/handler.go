@@ -26,21 +26,21 @@ type TestHandler struct {
 }
 
 // OnAdd is called when an object is added.
-func (h *TestHandler) OnAdd(obj interface{}, isInInitialList bool) {
+func (h *TestHandler) OnAdd(obj any, isInInitialList bool) {
 	if h.OnAddFunc != nil {
 		h.OnAddFunc()
 	}
 }
 
 // OnUpdate is called when an object is updated.
-func (h *TestHandler) OnUpdate(oldObj, newObj interface{}) {
+func (h *TestHandler) OnUpdate(oldObj, newObj any) {
 	if h.OnUpdateFunc != nil {
 		h.OnUpdateFunc()
 	}
 }
 
 // OnDelete is called when an object is deleted.
-func (h *TestHandler) OnDelete(obj interface{}) {
+func (h *TestHandler) OnDelete(obj any) {
 	if h.OnDeleteFunc != nil {
 		h.OnDeleteFunc()
 	}
