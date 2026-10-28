@@ -998,7 +998,7 @@ func (f *framework) runSchedulingCycleForPickNPlacementType(
 	// Also note that if a requeue is needed, the scheduling decisions and condition are updated only
 	// when there are no more clusters to pick.
 	if shouldRequeue(state.desiredBatchSize, state.batchSizeLimit, len(toCreate)+len(toPatch)) {
-		return ctrl.Result{Requeue: true}, nil
+		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
 
 	// Extract the patched bindings.
