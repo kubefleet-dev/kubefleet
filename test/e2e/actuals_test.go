@@ -18,6 +18,7 @@ package e2e
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1911,9 +1912,14 @@ func safeRolloutWorkloadPlacementStatusUpdatedActual(
 		}
 		wantPlacementStatus = append(wantPlacementStatus, unavailableResourcePlacementStatus)
 
-		// For all the other connected member clusters rollout will be blocked.
+		// For all the other connected member clusters rollout will be blocked, so their bindings still use the
+		// previous resource snapshot.
+		latestIndex, err := strconv.Atoi(wantObservedResourceIndex)
+		if err != nil {
+			return fmt.Errorf("invalid resource snapshot index %q: %w", wantObservedResourceIndex, err)
+		}
 		rolloutBlockedPlacementStatus := placementv1beta1.PerClusterPlacementStatus{
-			ObservedResourceIndex: wantObservedResourceIndex,
+			ObservedResourceIndex: strconv.Itoa(latestIndex - 1),
 			Conditions: []metav1.Condition{
 				{
 					Type:               string(placementv1beta1.PerClusterScheduledConditionType),
