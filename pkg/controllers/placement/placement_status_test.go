@@ -7458,7 +7458,7 @@ func TestSetPlacementStatusPerCluster(t *testing.T) {
 			},
 			wantPerClusterPlacementStatus: fleetv1beta1.PerClusterPlacementStatus{
 				ClusterName:           cluster,
-				ObservedResourceIndex: "1",
+				ObservedResourceIndex: "0", // The binding still uses the older resource snapshot.
 				Conditions: []metav1.Condition{
 					{
 						Status:             metav1.ConditionFalse,
@@ -7495,7 +7495,7 @@ func TestSetPlacementStatusPerCluster(t *testing.T) {
 			},
 			wantPerClusterPlacementStatus: fleetv1beta1.PerClusterPlacementStatus{
 				ClusterName:           cluster,
-				ObservedResourceIndex: "1",
+				ObservedResourceIndex: "0", // The binding still uses the older resource snapshot.
 				Conditions: []metav1.Condition{
 					{
 						Status:             metav1.ConditionUnknown,
@@ -8950,7 +8950,7 @@ func TestSetPlacementStatusPerCluster(t *testing.T) {
 			},
 			wantPerClusterPlacementStatus: fleetv1beta1.PerClusterPlacementStatus{
 				ClusterName:                        cluster,
-				ObservedResourceIndex:              "0", // Depends on the resourceSnapshotIndexOnBinding passed in.
+				ObservedResourceIndex:              "1", // The binding uses the latest resource snapshot.
 				ApplicableClusterResourceOverrides: []string{"o-1", "o-2"},
 				ApplicableResourceOverrides: []fleetv1beta1.NamespacedName{
 					{
@@ -9047,7 +9047,7 @@ func TestSetPlacementStatusPerCluster(t *testing.T) {
 			},
 			wantPerClusterPlacementStatus: fleetv1beta1.PerClusterPlacementStatus{
 				ClusterName:           cluster,
-				ObservedResourceIndex: "1",
+				ObservedResourceIndex: "0", // The binding still uses the older resource snapshot.
 				Conditions: []metav1.Condition{
 					{
 						Status:             metav1.ConditionFalse,
@@ -9281,7 +9281,7 @@ func TestSetPlacementStatusPerCluster(t *testing.T) {
 			},
 			wantPerClusterPlacementStatus: fleetv1beta1.PerClusterPlacementStatus{
 				ClusterName:           cluster,
-				ObservedResourceIndex: "0", //it's the resourceSnapshot index we send in the test setup
+				ObservedResourceIndex: "1", // The binding uses the latest resource snapshot.
 				Conditions: []metav1.Condition{
 					{
 						Status:             metav1.ConditionFalse,
@@ -9458,7 +9458,12 @@ func TestSetPlacementStatusPerCluster(t *testing.T) {
 				Recorder: events.NewFakeRecorder(10),
 			}
 			status := fleetv1beta1.PerClusterPlacementStatus{ClusterName: cluster}
-			got := r.setPerClusterPlacementStatus(tc.placement, resourceSnapshot, "0", tc.binding, &status, tc.allConditionType)
+			// The latest resource snapshot has index 1; a binding that points to another snapshot is on index 0.
+			resourceSnapshotIndexOnBinding := "0"
+			if tc.binding != nil && tc.binding.GetBindingSpec().ResourceSnapshotName == resourceSnapshotName {
+				resourceSnapshotIndexOnBinding = "1"
+			}
+			got := r.setPerClusterPlacementStatus(tc.placement, resourceSnapshot, resourceSnapshotIndexOnBinding, tc.binding, &status, tc.allConditionType)
 			if diff := cmp.Diff(got, tc.wantConditionStatusMap); diff != "" {
 				t.Errorf("setResourcePlacementStatusPerCluster() conditionStatus mismatch (-got, +want):\n%s", diff)
 			}
@@ -10182,5 +10187,30 @@ func TestCalculateFailedToScheduleClusterCount(t *testing.T) {
 				t.Errorf("calculateFailedToScheduleClusterCount() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestSetPerClusterPlacementStatusObservedResourceIndexFallback(t *testing.T) {
+	latestResourceSnapshot := &fleetv1beta1.ClusterResourceSnapshot{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-snapshot-1",
+			Labels: map[string]string{
+				fleetv1beta1.ResourceIndexLabel: "1",
+			},
+		},
+	}
+	placementObj := &fleetv1beta1.ClusterResourcePlacement{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-crp"},
+	}
+	// The binding has no resource snapshot name yet, so its resource snapshot index cannot be resolved.
+	binding := &fleetv1beta1.ClusterResourceBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-binding"},
+	}
+
+	r := Reconciler{Recorder: events.NewFakeRecorder(10)}
+	status := fleetv1beta1.PerClusterPlacementStatus{ClusterName: "member-1"}
+	r.setPerClusterPlacementStatus(placementObj, latestResourceSnapshot, "", binding, &status, condition.CondTypesForApplyStrategies)
+	if got, want := status.ObservedResourceIndex, "1"; got != want {
+		t.Errorf("setPerClusterPlacementStatus() ObservedResourceIndex = %q, want %q", got, want)
 	}
 }
