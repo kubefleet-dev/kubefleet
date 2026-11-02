@@ -18,7 +18,6 @@ package e2e
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -1832,14 +1831,14 @@ func buildWantCRPStatusWithStatusSynced(
 	return wantStatus
 }
 
-func safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResourceIdentifiers []placementv1beta1.ResourceIdentifier, failedWorkloadResourceIdentifier placementv1beta1.ResourceIdentifier, wantSelectedClusters []string, wantObservedResourceIndex string, failedResourceObservedGeneration int64) func() error {
+func safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResourceIdentifiers []placementv1beta1.ResourceIdentifier, failedWorkloadResourceIdentifier placementv1beta1.ResourceIdentifier, wantSelectedClusters []string, wantObservedResourceIndex string, wantBlockedObservedResourceIndex string, failedResourceObservedGeneration int64) func() error {
 	crpKey := types.NamespacedName{Name: fmt.Sprintf(crpNameTemplate, GinkgoParallelProcess())}
-	return safeRolloutWorkloadPlacementStatusUpdatedActual(crpKey, wantSelectedResourceIdentifiers, failedWorkloadResourceIdentifier, wantSelectedClusters, wantObservedResourceIndex, failedResourceObservedGeneration)
+	return safeRolloutWorkloadPlacementStatusUpdatedActual(crpKey, wantSelectedResourceIdentifiers, failedWorkloadResourceIdentifier, wantSelectedClusters, wantObservedResourceIndex, wantBlockedObservedResourceIndex, failedResourceObservedGeneration)
 }
 
-func safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResourceIdentifiers []placementv1beta1.ResourceIdentifier, failedWorkloadResourceIdentifier placementv1beta1.ResourceIdentifier, wantSelectedClusters []string, wantObservedResourceIndex string, failedResourceObservedGeneration int64) func() error {
+func safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResourceIdentifiers []placementv1beta1.ResourceIdentifier, failedWorkloadResourceIdentifier placementv1beta1.ResourceIdentifier, wantSelectedClusters []string, wantObservedResourceIndex string, wantBlockedObservedResourceIndex string, failedResourceObservedGeneration int64) func() error {
 	rpKey := types.NamespacedName{Name: fmt.Sprintf(rpNameTemplate, GinkgoParallelProcess()), Namespace: appNamespace().Name}
-	return safeRolloutWorkloadPlacementStatusUpdatedActual(rpKey, wantSelectedResourceIdentifiers, failedWorkloadResourceIdentifier, wantSelectedClusters, wantObservedResourceIndex, failedResourceObservedGeneration)
+	return safeRolloutWorkloadPlacementStatusUpdatedActual(rpKey, wantSelectedResourceIdentifiers, failedWorkloadResourceIdentifier, wantSelectedClusters, wantObservedResourceIndex, wantBlockedObservedResourceIndex, failedResourceObservedGeneration)
 }
 
 func safeRolloutWorkloadPlacementStatusUpdatedActual(
@@ -1848,6 +1847,7 @@ func safeRolloutWorkloadPlacementStatusUpdatedActual(
 	failedWorkloadResourceIdentifier placementv1beta1.ResourceIdentifier,
 	wantSelectedClusters []string,
 	wantObservedResourceIndex string,
+	wantBlockedObservedResourceIndex string,
 	failedResourceObservedGeneration int64,
 ) func() error {
 	return func() error {
@@ -1913,13 +1913,10 @@ func safeRolloutWorkloadPlacementStatusUpdatedActual(
 		wantPlacementStatus = append(wantPlacementStatus, unavailableResourcePlacementStatus)
 
 		// For all the other connected member clusters rollout will be blocked, so their bindings still use the
-		// previous resource snapshot.
-		latestIndex, err := strconv.Atoi(wantObservedResourceIndex)
-		if err != nil {
-			return fmt.Errorf("invalid resource snapshot index %q: %w", wantObservedResourceIndex, err)
-		}
+		// previous resource snapshot. If that snapshot has been deleted already, e.g. by a revision history limit
+		// of 1, the latest index is reported instead.
 		rolloutBlockedPlacementStatus := placementv1beta1.PerClusterPlacementStatus{
-			ObservedResourceIndex: strconv.Itoa(latestIndex - 1),
+			ObservedResourceIndex: wantBlockedObservedResourceIndex,
 			Conditions: []metav1.Condition{
 				{
 					Type:               string(placementv1beta1.PerClusterScheduledConditionType),
