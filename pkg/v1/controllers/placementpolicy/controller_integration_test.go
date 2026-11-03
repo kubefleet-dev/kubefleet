@@ -27,7 +27,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
@@ -168,7 +167,7 @@ var _ = Describe("placement policy scheduling status", Ordered, func() {
 	})
 
 	It("reports unfulfilled scheduling when no clusters match", func() {
-		policy := newPolicy(nextName("pp"), regionSelector("eastus", ptr.To(intstr.FromInt32(2)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("eastus", new(intstr.FromInt32(2)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
 		Eventually(wantScheduledState(client.ObjectKeyFromObject(policy), metav1.ConditionFalse, kfplacementv1alpha1.PlacementPolicyScheduledCondReasonFailedToFindSomeClusters, 2, 0),
@@ -176,7 +175,7 @@ var _ = Describe("placement policy scheduling status", Ordered, func() {
 	})
 
 	It("fulfills scheduling once enough eligible clusters match", func() {
-		policy := newPolicy(nextName("pp"), regionSelector("eastus", ptr.To(intstr.FromInt32(2)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("eastus", new(intstr.FromInt32(2)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
 		for _, name := range []string{nextName("mc"), nextName("mc")} {
@@ -190,7 +189,7 @@ var _ = Describe("placement policy scheduling status", Ordered, func() {
 	})
 
 	It("does not count clusters that have not passed the eligibility gate", func() {
-		policy := newPolicy(nextName("pp"), regionSelector("westus", ptr.To(intstr.FromInt32(1)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("westus", new(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
 		By("a matching cluster registers but its member agent has not reported")
@@ -210,7 +209,7 @@ var _ = Describe("placement policy scheduling status", Ordered, func() {
 	})
 
 	It("distinguishes minimum fulfillment from full fulfillment", func() {
-		policy := newPolicy(nextName("pp"), regionSelector("centralus", ptr.To(intstr.FromInt32(3)), ptr.To(int32(1))))
+		policy := newPolicy(nextName("pp"), regionSelector("centralus", new(intstr.FromInt32(3)), new(int32(1))))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
 		mc := newMemberCluster(nextName("mc"), map[string]string{testRegionLabel: "centralus"})
@@ -228,7 +227,7 @@ var _ = Describe("placement policy scheduling status", Ordered, func() {
 		Expect(k8sClient.Create(ctx, mc)).Should(Succeed())
 		markJoined(mc)
 
-		policy := newPolicy(nextName("pp"), regionSelector("northeurope", ptr.To(intstr.FromInt32(1)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("northeurope", new(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
 		By("the tainted cluster does not count without a toleration")
@@ -283,7 +282,7 @@ var _ = Describe("placement policy scheduling status", Ordered, func() {
 	// The gap this used to pin is closed: #829 added the CEL rule bounding the integer form of
 	// count, so zero is now rejected at admission and never reaches the controller.
 	It("rejects an integer count of zero at admission", func() {
-		policy := newPolicy(nextName("pp"), regionSelector("eastus2", ptr.To(intstr.FromInt32(0)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("eastus2", new(intstr.FromInt32(0)), nil))
 		Expect(k8sClient.Create(ctx, policy)).ShouldNot(Succeed(), "count: 0 must be rejected by the CEL guard on the integer form")
 	})
 

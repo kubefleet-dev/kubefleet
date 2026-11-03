@@ -55,7 +55,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 			By(fmt.Sprintf("expecting denial of CREATE placement %s", crpName))
 			err := hubClient.Create(ctx, crp)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			// The API new features CEL-based validation, which is typically triggered before the webhook runs.
 			// As a result, we no longer check the error message here any more, as the message would be formatted
 			// based on the CEL validation rule, not the webhook logic.
@@ -80,7 +80,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				}
 				err := hubClient.Create(ctx, &crp)
 				var statusErr *k8sErrors.StatusError
-				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				// The API new features CEL-based validation, which is typically triggered before the webhook runs.
 				// As a result, we no longer check the error message here any more, as the message would be formatted
 				// based on the CEL validation rule, not the webhook logic.
@@ -100,7 +100,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						ResourceSelectors: workResourceSelector(),
 						Policy: &placementv1beta1.PlacementPolicy{
 							PlacementType:    placementv1beta1.PickNPlacementType,
-							NumberOfClusters: ptr.To(int32(1)),
+							NumberOfClusters: new(int32(1)),
 							Affinity: &placementv1beta1.Affinity{
 								ClusterAffinity: &placementv1beta1.ClusterAffinity{
 									PreferredDuringSchedulingIgnoredDuringExecution: []placementv1beta1.PreferredClusterSelector{
@@ -130,7 +130,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				}
 				err := hubClient.Create(ctx, &crp)
 				var statusErr *k8sErrors.StatusError
-				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta(fmt.Sprintf("the labelSelector in preferred cluster selector %+v is invalid:", crp.Spec.Policy.Affinity.ClusterAffinity.PreferredDuringSchedulingIgnoredDuringExecution[0].Preference.LabelSelector))))
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed())
@@ -160,7 +160,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				By(fmt.Sprintf("creating placement %s", crpName))
 				err := hubClient.Create(ctx, &crp)
 				var statusErr *k8sErrors.StatusError
-				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta("failed to get GVR of the selector")))
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed())
@@ -190,7 +190,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				By(fmt.Sprintf("creating placement %s", crpName))
 				err := hubClient.Create(ctx, &crp)
 				var statusErr *k8sErrors.StatusError
-				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta("the resource is not found in schema (please retry) or it is not a cluster scoped resource")))
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed())
@@ -214,9 +214,9 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						Strategy: placementv1beta1.RolloutStrategy{
 							Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 							RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-								MaxUnavailable:           ptr.To(intstr.FromString("30%")),
-								MaxSurge:                 ptr.To(intstr.FromString("10%")),
-								UnavailablePeriodSeconds: ptr.To(2),
+								MaxUnavailable:           new(intstr.FromString("30%")),
+								MaxSurge:                 new(intstr.FromString("10%")),
+								UnavailablePeriodSeconds: new(2),
 							},
 							ApplyStrategy: &placementv1beta1.ApplyStrategy{
 								Type:             placementv1beta1.ApplyStrategyTypeClientSideApply,
@@ -225,7 +225,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 								WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeAlways,
 							},
 						},
-						RevisionHistoryLimit: ptr.To(int32(15)),
+						RevisionHistoryLimit: new(int32(15)),
 					},
 				}
 				g.Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
@@ -247,7 +247,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						ResourceSelectors: workResourceSelector(),
 						Policy: &placementv1beta1.PlacementPolicy{
 							PlacementType:    placementv1beta1.PickNPlacementType,
-							NumberOfClusters: ptr.To(int32(2)),
+							NumberOfClusters: new(int32(2)),
 							TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 								{
 									TopologyKey: "kubernetes.io/hostname",
@@ -263,9 +263,9 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						Strategy: placementv1beta1.RolloutStrategy{
 							Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 							RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-								MaxUnavailable:           ptr.To(intstr.FromString("30%")),
-								MaxSurge:                 ptr.To(intstr.FromString("10%")),
-								UnavailablePeriodSeconds: ptr.To(2),
+								MaxUnavailable:           new(intstr.FromString("30%")),
+								MaxSurge:                 new(intstr.FromString("10%")),
+								UnavailablePeriodSeconds: new(2),
 							},
 							ApplyStrategy: &placementv1beta1.ApplyStrategy{
 								Type:             placementv1beta1.ApplyStrategyTypeClientSideApply,
@@ -309,7 +309,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						Policy: &placementv1beta1.PlacementPolicy{
 							PlacementType: placementv1beta1.PickAllPlacementType,
 						},
-						RevisionHistoryLimit: ptr.To(int32(15)),
+						RevisionHistoryLimit: new(int32(15)),
 					},
 				}
 				g.Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
@@ -319,8 +319,8 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				g.Expect(createdCRP.Spec.Strategy).To(Equal(placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						MaxUnavailable:           ptr.To(intstr.FromString(defaulter.DefaultMaxUnavailableValue)),
-						MaxSurge:                 ptr.To(intstr.FromString(defaulter.DefaultMaxSurgeValue)),
+						MaxUnavailable:           new(intstr.FromString(defaulter.DefaultMaxUnavailableValue)),
+						MaxSurge:                 new(intstr.FromString(defaulter.DefaultMaxSurgeValue)),
 						UnavailablePeriodSeconds: ptr.To(defaulter.DefaultUnavailablePeriodSeconds),
 					},
 					ApplyStrategy: &placementv1beta1.ApplyStrategy{
@@ -345,9 +345,9 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						Strategy: placementv1beta1.RolloutStrategy{
 							Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 							RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-								MaxUnavailable:           ptr.To(intstr.FromString("30%")),
-								MaxSurge:                 ptr.To(intstr.FromString("10%")),
-								UnavailablePeriodSeconds: ptr.To(2),
+								MaxUnavailable:           new(intstr.FromString("30%")),
+								MaxSurge:                 new(intstr.FromString("10%")),
+								UnavailablePeriodSeconds: new(2),
 							},
 							ApplyStrategy: &placementv1beta1.ApplyStrategy{
 								Type:             placementv1beta1.ApplyStrategyTypeClientSideApply,
@@ -378,9 +378,9 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 						Strategy: placementv1beta1.RolloutStrategy{
 							Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 							RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-								MaxUnavailable:           ptr.To(intstr.FromString("30%")),
-								MaxSurge:                 ptr.To(intstr.FromString("10%")),
-								UnavailablePeriodSeconds: ptr.To(2),
+								MaxUnavailable:           new(intstr.FromString("30%")),
+								MaxSurge:                 new(intstr.FromString("10%")),
+								UnavailablePeriodSeconds: new(2),
 							},
 							ApplyStrategy: &placementv1beta1.ApplyStrategy{
 								Type:             placementv1beta1.ApplyStrategyTypeServerSideApply,
@@ -389,7 +389,7 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 								WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeAlways,
 							},
 						},
-						RevisionHistoryLimit: ptr.To(int32(15)),
+						RevisionHistoryLimit: new(int32(15)),
 					},
 				}
 				g.Expect(hubClient.Create(ctx, &crp)).To(BeNil(), "Create CRP call should not produce error")
@@ -444,7 +444,7 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 					return err
 				}
 				var statusErr *k8sErrors.StatusError
-				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				// The API new features CEL-based validation, which is typically triggered before the webhook runs.
 				// As a result, we no longer check the error message here any more, as the message would be formatted
 				// based on the CEL validation rule, not the webhook logic.
@@ -484,7 +484,7 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 					return err
 				}
 				var statusErr *k8sErrors.StatusError
-				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta(fmt.Sprintf("the labelSelector in cluster selector %+v is invalid:", crp.Spec.Policy.Affinity.ClusterAffinity.RequiredDuringSchedulingIgnoredDuringExecution.ClusterSelectorTerms[0].LabelSelector))))
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed())
@@ -504,7 +504,7 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 					return err
 				}
 				var statusErr *k8sErrors.StatusError
-				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("placement type is immutable"))
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed())
@@ -560,8 +560,8 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 				g.Expect(updatedCRP.Spec.Strategy).To(Equal(placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						MaxUnavailable:           ptr.To(intstr.FromString(defaulter.DefaultMaxUnavailableValue)),
-						MaxSurge:                 ptr.To(intstr.FromString(defaulter.DefaultMaxSurgeValue)),
+						MaxUnavailable:           new(intstr.FromString(defaulter.DefaultMaxUnavailableValue)),
+						MaxSurge:                 new(intstr.FromString(defaulter.DefaultMaxSurgeValue)),
 						UnavailablePeriodSeconds: ptr.To(defaulter.DefaultUnavailablePeriodSeconds),
 					},
 					ApplyStrategy: &placementv1beta1.ApplyStrategy{
@@ -621,7 +621,7 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(2)),
+						NumberOfClusters: new(int32(2)),
 					},
 				},
 			}
@@ -640,7 +640,7 @@ var _ = Describe("webhook tests for CRP UPDATE operations", Ordered, func() {
 				g.Expect(hubClient.Get(ctx, types.NamespacedName{Name: crpName}, &createdCRP)).Should(Succeed(), "Failed to get CRP %s", crpName)
 				createdCRP.Spec.Policy = &placementv1beta1.PlacementPolicy{
 					PlacementType:    placementv1beta1.PickNPlacementType,
-					NumberOfClusters: ptr.To(int32(2)),
+					NumberOfClusters: new(int32(2)),
 					TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 						{
 							TopologyKey: "kubernetes.io/hostname",
@@ -732,7 +732,7 @@ var _ = Describe("webhook tests for CRP tolerations", Ordered, func() {
 				return err
 			}
 			var statusErr *k8sErrors.StatusError
-			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			// The API new features CEL-based validation, which is typically triggered before the webhook runs.
 			// As a result, we no longer check the error message here any more, as the message would be formatted
 			// based on the CEL validation rule, not the webhook logic.
@@ -765,7 +765,7 @@ var _ = Describe("webhook tests for CRP tolerations", Ordered, func() {
 				return err
 			}
 			var statusErr *k8sErrors.StatusError
-			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("tolerations have been updated/deleted, only additions to tolerations are allowed"))
 			return nil
 		}, eventuallyDuration, eventuallyInterval).Should(Succeed())
@@ -813,7 +813,7 @@ var _ = Describe("webhook tests for MC taints", Ordered, func() {
 				return err
 			}
 			var statusErr *k8sErrors.StatusError
-			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update MC call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update MC call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("name part must consist of alphanumeric characters, '-', '_' or '.', and must start and end with an alphanumeric character"))
 			return nil
 		}, eventuallyDuration, eventuallyInterval).Should(Succeed())
@@ -892,7 +892,7 @@ var _ = Describe("webhook tests for ClusterResourceOverride CREATE operations", 
 			By(fmt.Sprintf("expecting denial of CREATE override %s", croName))
 			err := hubClient.Create(ctx, cro)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.Status().Message).Should(MatchRegexp(regexp.QuoteMeta(fmt.Sprintf("label selector is not supported for resource selection %+v", invalidSelector))))
 			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("resource selector %+v already exists, and must be unique", selector)))
 			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("resource name is required for resource selection %+v", invalidSelector1)))
@@ -909,7 +909,7 @@ var _ = Describe("webhook tests for ClusterResourceOverride CREATE operation lim
 
 	AfterAll(func() {
 		By("deleting ClusterResourceOverrides")
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			cleanupClusterResourceOverride(fmt.Sprintf(croNameTemplate, i))
 		}
 	})
@@ -964,7 +964,7 @@ var _ = Describe("webhook tests for ClusterResourceOverride CREATE operation lim
 			By(fmt.Sprintf("expecting denial of CREATE 101st override %s", cro101.Name))
 			err := hubClient.Create(ctx, cro101)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("clusterResourceOverride limit has been reached: at most 100 cluster resources can be created"))
 			return nil
 		}, consistentlyDuration, consistentlyInterval).Should(Succeed())
@@ -1087,7 +1087,7 @@ var _ = Describe("webhook tests for ClusterResourceOverride CREATE operations re
 			By(fmt.Sprintf("expecting denial of CREATE override %s with the same resource selected", cro1.Name))
 			err := hubClient.Create(ctx, cro1)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("invalid resource selector %+v: the resource has been selected by both %v and %v, which is not supported", selector, cro1.Name, croName)))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("only labelSelector is supported"))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("remove operation cannot have value"))
@@ -1172,7 +1172,7 @@ var _ = Describe("webhook tests for CRO UPDATE operations", Ordered, func() {
 				return err
 			}
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.Status().Message).Should(MatchRegexp(regexp.QuoteMeta(fmt.Sprintf("label selector is not supported for resource selection %+v", invalidSelector))))
 			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("resource selector %+v already exists, and must be unique", cro.Spec.ClusterResourceSelectors[0])))
 			Expect(statusErr.Status().Message).Should(MatchRegexp(regexp.QuoteMeta(fmt.Sprintf("resource name is required for resource selection %+v", invalidSelector1))))
@@ -1250,7 +1250,7 @@ var _ = Describe("webhook tests for CRO UPDATE operations", Ordered, func() {
 				return err
 			}
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update CRO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("invalid resource selector %+v: the resource has been selected by both %v and %v, which is not supported", selector, cro.Name, cro1.Name)))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("only labelSelector is supported"))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("cannot override typeMeta fields"))
@@ -1327,7 +1327,7 @@ var _ = Describe("webhook tests for ResourceOverride CREATE operations", func() 
 			By(fmt.Sprintf("expecting denial of CREATE override %s", roName))
 			err := hubClient.Create(ctx, ro)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("resource selector %+v already exists, and must be unique", selector)))
 			return nil
 		}, consistentlyDuration, consistentlyInterval).Should(Succeed())
@@ -1346,7 +1346,7 @@ var _ = Describe("webhook tests for ResourceOverride CREATE operation limitation
 
 	AfterAll(func() {
 		By("deleting resourceOverrides")
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			cleanupResourceOverride(fmt.Sprintf(roNameTemplate, i), roNamespace)
 		}
 
@@ -1405,7 +1405,7 @@ var _ = Describe("webhook tests for ResourceOverride CREATE operation limitation
 			}
 			err := hubClient.Create(ctx, ro101)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.ErrStatus.Message).Should(MatchRegexp("resourceOverride limit has been reached: at most 100 resources can be created"))
 			return nil
 		}, consistentlyDuration, consistentlyInterval).Should(Succeed())
@@ -1520,7 +1520,7 @@ var _ = Describe("webhook tests for ResourceOverride CREATE operations resource 
 			}
 			err := hubClient.Create(ctx, ro1)
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("invalid resource selector %+v: the resource has been selected by both %v and %v, which is not supported", selector, ro1.Name, roName)))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("remove operation cannot have value"))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("cannot override typeMeta fields"))
@@ -1596,7 +1596,7 @@ var _ = Describe("webhook tests for ResourceOverride UPDATE operations", Ordered
 				return err
 			}
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("resource selector %+v already exists, and must be unique", selector)))
 			return nil
 		}, eventuallyDuration, eventuallyInterval).Should(Succeed())
@@ -1675,7 +1675,7 @@ var _ = Describe("webhook tests for ResourceOverride UPDATE operations", Ordered
 				return err
 			}
 			var statusErr *k8sErrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Update RO call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8sErrors.StatusError]()))
 			Expect(statusErr.Status().Message).Should(MatchRegexp(fmt.Sprintf("invalid resource selector %+v: the resource has been selected by both %v and %v, which is not supported", newSelector, roName, ro1.Name)))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("only labelSelector is supported"))
 			Expect(statusErr.Status().Message).Should(MatchRegexp("remove operation cannot have value"))
@@ -1698,7 +1698,7 @@ var _ = Describe("webhook tests for PodDisruptionBudget CREATE operations", func
 					Namespace: "default",
 				},
 				Spec: policyv1.PodDisruptionBudgetSpec{
-					MinAvailable: ptr.To(intstr.FromInt32(1)),
+					MinAvailable: new(intstr.FromInt32(1)),
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": "test"},
 					},
@@ -1724,7 +1724,7 @@ var _ = Describe("webhook tests for PodDisruptionBudget CREATE operations", func
 					Namespace: "kube-system",
 				},
 				Spec: policyv1.PodDisruptionBudgetSpec{
-					MinAvailable: ptr.To(intstr.FromInt32(1)),
+					MinAvailable: new(intstr.FromInt32(1)),
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": "test"},
 					},

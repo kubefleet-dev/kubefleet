@@ -53,9 +53,9 @@ func TestMutatingHandle(t *testing.T) {
 			Strategy: placementv1beta1.RolloutStrategy{
 				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 				RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-					MaxUnavailable:           ptr.To(intstr.FromInt(1)),
-					MaxSurge:                 ptr.To(intstr.FromInt(2)),
-					UnavailablePeriodSeconds: ptr.To(60),
+					MaxUnavailable:           new(intstr.FromInt(1)),
+					MaxSurge:                 new(intstr.FromInt(2)),
+					UnavailablePeriodSeconds: new(60),
 				},
 				ApplyStrategy: &placementv1beta1.ApplyStrategy{
 					Type:             placementv1beta1.ApplyStrategyTypeClientSideApply,
@@ -78,9 +78,9 @@ func TestMutatingHandle(t *testing.T) {
 			Strategy: placementv1beta1.RolloutStrategy{
 				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 				RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-					MaxUnavailable:           ptr.To(intstr.FromInt(1)),
-					MaxSurge:                 ptr.To(intstr.FromInt(2)),
-					UnavailablePeriodSeconds: ptr.To(60),
+					MaxUnavailable:           new(intstr.FromInt(1)),
+					MaxSurge:                 new(intstr.FromInt(2)),
+					UnavailablePeriodSeconds: new(60),
 				},
 				ApplyStrategy: &placementv1beta1.ApplyStrategy{
 					Type:             placementv1beta1.ApplyStrategyTypeClientSideApply,
@@ -89,7 +89,7 @@ func TestMutatingHandle(t *testing.T) {
 					WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeAlways,
 				},
 			},
-			RevisionHistoryLimit: ptr.To(int32(15)),
+			RevisionHistoryLimit: new(int32(15)),
 		},
 	}
 
@@ -103,7 +103,7 @@ func TestMutatingHandle(t *testing.T) {
 				PlacementType: placementv1beta1.PickAllPlacementType,
 			},
 			// Strategy omitted
-			RevisionHistoryLimit: ptr.To(int32(15)),
+			RevisionHistoryLimit: new(int32(15)),
 		},
 	}
 
@@ -119,13 +119,13 @@ func TestMutatingHandle(t *testing.T) {
 			Strategy: placementv1beta1.RolloutStrategy{
 				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 				RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-					MaxUnavailable:           ptr.To(intstr.FromInt(1)),
-					MaxSurge:                 ptr.To(intstr.FromInt(3)),
-					UnavailablePeriodSeconds: ptr.To(60),
+					MaxUnavailable:           new(intstr.FromInt(1)),
+					MaxSurge:                 new(intstr.FromInt(3)),
+					UnavailablePeriodSeconds: new(60),
 				},
 				// ApplyStrategy omitted
 			},
-			RevisionHistoryLimit: ptr.To(int32(1)),
+			RevisionHistoryLimit: new(int32(1)),
 		},
 	}
 
@@ -141,9 +141,9 @@ func TestMutatingHandle(t *testing.T) {
 			Strategy: placementv1beta1.RolloutStrategy{
 				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 				RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-					MaxUnavailable:           ptr.To(intstr.FromString("30%")),
-					MaxSurge:                 ptr.To(intstr.FromString("50%")),
-					UnavailablePeriodSeconds: ptr.To(int(15)),
+					MaxUnavailable:           new(intstr.FromString("30%")),
+					MaxSurge:                 new(intstr.FromString("50%")),
+					UnavailablePeriodSeconds: new(int(15)),
 				},
 				ApplyStrategy: &placementv1beta1.ApplyStrategy{
 					Type:             placementv1beta1.ApplyStrategyTypeServerSideApply,
@@ -153,7 +153,7 @@ func TestMutatingHandle(t *testing.T) {
 					// ServerSideApplyConfig omitted
 				},
 			},
-			RevisionHistoryLimit: ptr.To(int32(2)),
+			RevisionHistoryLimit: new(int32(2)),
 		},
 	}
 
@@ -177,7 +177,7 @@ func TestMutatingHandle(t *testing.T) {
 					WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeAlways,
 				},
 			},
-			RevisionHistoryLimit: ptr.To(int32(15)),
+			RevisionHistoryLimit: new(int32(15)),
 		},
 	}
 
@@ -206,7 +206,7 @@ func TestMutatingHandle(t *testing.T) {
 					WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeNever,
 				},
 			},
-			RevisionHistoryLimit: ptr.To(int32(15)),
+			RevisionHistoryLimit: new(int32(15)),
 		},
 	}
 
@@ -220,7 +220,7 @@ func TestMutatingHandle(t *testing.T) {
 				PlacementType: placementv1beta1.PickAllPlacementType,
 				TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 					{
-						MaxSkew:     ptr.To(int32(1)),
+						MaxSkew:     new(int32(1)),
 						TopologyKey: "topology.kubernetes.io/zone",
 					},
 				},
@@ -234,7 +234,7 @@ func TestMutatingHandle(t *testing.T) {
 					WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeNever,
 				},
 			},
-			RevisionHistoryLimit: ptr.To(int32(15)),
+			RevisionHistoryLimit: new(int32(15)),
 		},
 	}
 
@@ -246,11 +246,11 @@ func TestMutatingHandle(t *testing.T) {
 			ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{resourceSelector},
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(3)),
+				NumberOfClusters: new(int32(3)),
 				TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 					{
 						TopologyKey:       "kubernetes.io/hostname",
-						MaxSkew:           ptr.To(int32(1)),
+						MaxSkew:           new(int32(1)),
 						WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
 					},
 				},
@@ -265,9 +265,9 @@ func TestMutatingHandle(t *testing.T) {
 			Strategy: placementv1beta1.RolloutStrategy{
 				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 				RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-					MaxUnavailable:           ptr.To(intstr.FromInt(1)),
-					MaxSurge:                 ptr.To(intstr.FromInt(2)),
-					UnavailablePeriodSeconds: ptr.To(60),
+					MaxUnavailable:           new(intstr.FromInt(1)),
+					MaxSurge:                 new(intstr.FromInt(2)),
+					UnavailablePeriodSeconds: new(60),
 				},
 				ApplyStrategy: &placementv1beta1.ApplyStrategy{
 					Type:             placementv1beta1.ApplyStrategyTypeClientSideApply,
@@ -276,7 +276,7 @@ func TestMutatingHandle(t *testing.T) {
 					WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeAlways,
 				},
 			},
-			RevisionHistoryLimit: ptr.To(int32(10)),
+			RevisionHistoryLimit: new(int32(10)),
 		},
 	}
 
@@ -301,7 +301,7 @@ func TestMutatingHandle(t *testing.T) {
 			ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{resourceSelector},
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType, // Policy change is immutable
-				NumberOfClusters: ptr.To(int32(3)),
+				NumberOfClusters: new(int32(3)),
 			},
 		},
 	}
@@ -316,15 +316,15 @@ func TestMutatingHandle(t *testing.T) {
 			ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{resourceSelector},
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(5)), // Changed from 3 to 5
+				NumberOfClusters: new(int32(5)), // Changed from 3 to 5
 				Tolerations:      []placementv1beta1.Toleration{{Key: "foo", Value: "bar"}},
 			},
 			Strategy: placementv1beta1.RolloutStrategy{
 				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 				RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-					MaxUnavailable:           ptr.To(intstr.FromInt(1)),
-					MaxSurge:                 ptr.To(intstr.FromInt(2)),
-					UnavailablePeriodSeconds: ptr.To(60),
+					MaxUnavailable:           new(intstr.FromInt(1)),
+					MaxSurge:                 new(intstr.FromInt(2)),
+					UnavailablePeriodSeconds: new(60),
 				},
 				ApplyStrategy: &placementv1beta1.ApplyStrategy{
 					Type:             placementv1beta1.ApplyStrategyTypeServerSideApply, // Changed from ClientSideApply to ServerSideApply
@@ -333,7 +333,7 @@ func TestMutatingHandle(t *testing.T) {
 					WhenToTakeOver:   placementv1beta1.WhenToTakeOverTypeAlways,
 				},
 			},
-			RevisionHistoryLimit: ptr.To(int32(10)),
+			RevisionHistoryLimit: new(int32(10)),
 		},
 	}
 

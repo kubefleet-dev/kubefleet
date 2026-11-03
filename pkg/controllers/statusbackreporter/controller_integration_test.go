@@ -89,7 +89,7 @@ func prepareStatusWrapperData(obj runtime.Object) ([]byte, error) {
 		return nil, fmt.Errorf("failed to convert to unstructured object: %w", err)
 	}
 	unstructuredObj := &unstructured.Unstructured{Object: unstructuredObjMap}
-	statusBackReportingWrapper := make(map[string]interface{})
+	statusBackReportingWrapper := make(map[string]any)
 	statusBackReportingWrapper["apiVersion"] = unstructuredObj.GetAPIVersion()
 	statusBackReportingWrapper["kind"] = unstructuredObj.GetKind()
 	statusBackReportingWrapper["status"] = unstructuredObj.Object["status"]
@@ -146,7 +146,7 @@ var _ = Describe("back-reporting status", func() {
 					Namespace: nsName,
 				},
 				Spec: appsv1.DeploymentSpec{
-					Replicas: ptr.To(int32(1)),
+					Replicas: new(int32(1)),
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"app": "nginx",

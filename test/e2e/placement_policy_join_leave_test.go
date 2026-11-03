@@ -30,7 +30,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
@@ -178,7 +177,7 @@ func setMemberAgentReplicas(cluster *framework.Cluster, replicas int32) {
 		if err := cluster.KubeClient.Get(ctx, types.NamespacedName{Namespace: fleetSystemNS, Name: memberAgentDeploymentName}, deploy); err != nil {
 			return err
 		}
-		deploy.Spec.Replicas = ptr.To(replicas)
+		deploy.Spec.Replicas = new(replicas)
 		return cluster.KubeClient.Update(ctx, deploy)
 	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to scale the member agent on cluster %s to %d replicas", cluster.ClusterName, replicas)
 }
@@ -379,8 +378,8 @@ var _ = Describe("placement policy with member clusters joining and leaving the 
 				workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place the ConfigMap on both prod clusters")
 
 			wantStatus := allSynchronizedPlacementPolicyStatus(2)
-			wantStatus.DesiredClusters = ptr.To(int32(1))
-			wantStatus.ScheduledClusters = ptr.To(int32(1))
+			wantStatus.DesiredClusters = new(int32(1))
+			wantStatus.ScheduledClusters = new(int32(1))
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected cluster placement policy status")
 		})

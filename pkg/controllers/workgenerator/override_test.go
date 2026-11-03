@@ -2119,12 +2119,12 @@ func TestApplyOverrides_namespaceScopedResource(t *testing.T) {
 												{
 													Operator: placementv1beta1.JSONPatchOverrideOpReplace,
 													Path:     "/metadata/labels/app",
-													Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`"%s"`, placementv1beta1.OverrideClusterNameVariable))},
+													Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `"%s"`, placementv1beta1.OverrideClusterNameVariable)},
 												},
 												{
 													Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 													Path:     "/metadata/annotations",
-													Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf("{\"app\": \"%s\", \"test\": \"nginx\"}", placementv1beta1.OverrideClusterNameVariable))},
+													Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, "{\"app\": \"%s\", \"test\": \"nginx\"}", placementv1beta1.OverrideClusterNameVariable)},
 												},
 											},
 										},
@@ -2188,12 +2188,12 @@ func TestApplyOverrides_namespaceScopedResource(t *testing.T) {
 												{
 													Operator: placementv1beta1.JSONPatchOverrideOpReplace,
 													Path:     "/metadata/labels/app",
-													Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`"%s"`, placementv1beta1.OverrideClusterNameVariable))},
+													Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `"%s"`, placementv1beta1.OverrideClusterNameVariable)},
 												},
 												{
 													Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 													Path:     "/metadata/annotations",
-													Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf("{\"app\": \"workload-%s\", \"test\": \"nginx\"}", placementv1beta1.OverrideClusterNameVariable))},
+													Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, "{\"app\": \"workload-%s\", \"test\": \"nginx\"}", placementv1beta1.OverrideClusterNameVariable)},
 												},
 											},
 										},
@@ -2261,14 +2261,14 @@ func TestApplyOverrides_namespaceScopedResource(t *testing.T) {
 												{
 													Operator: placementv1beta1.JSONPatchOverrideOpReplace,
 													Path:     "/metadata/labels/app",
-													Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`"%s-region"`, placementv1beta1.OverrideClusterLabelKeyVariablePrefix+"region}"))},
+													Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `"%s-region"`, placementv1beta1.OverrideClusterLabelKeyVariablePrefix+"region}")},
 												},
 												{
 													Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 													Path:     "/metadata/annotations",
-													Value: apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"environment": "%s", "zone": "%s"}`,
+													Value: apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"environment": "%s", "zone": "%s"}`,
 														placementv1beta1.OverrideClusterLabelKeyVariablePrefix+"env}",
-														placementv1beta1.OverrideClusterLabelKeyVariablePrefix+"zone}"))},
+														placementv1beta1.OverrideClusterLabelKeyVariablePrefix+"zone}")},
 												},
 											},
 										},
@@ -2338,7 +2338,7 @@ func TestApplyOverrides_namespaceScopedResource(t *testing.T) {
 												{
 													Operator: placementv1beta1.JSONPatchOverrideOpReplace,
 													Path:     "/metadata/labels/app",
-													Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`"%s-app"`, placementv1beta1.OverrideClusterLabelKeyVariablePrefix+"non-existent}"))},
+													Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `"%s-app"`, placementv1beta1.OverrideClusterLabelKeyVariablePrefix+"non-existent}")},
 												},
 											},
 										},
@@ -2753,12 +2753,12 @@ func TestApplyJSONPatchOverride(t *testing.T) {
 				{
 					Operator: placementv1beta1.JSONPatchOverrideOpReplace,
 					Path:     "/metadata/labels/app",
-					Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`"%s"`, placementv1beta1.OverrideClusterNameVariable))},
+					Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `"%s"`, placementv1beta1.OverrideClusterNameVariable)},
 				},
 				{
 					Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 					Path:     "/metadata/annotations",
-					Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf("{\"app\": \"workload-%s\", \"test\": \"nginx\"}", placementv1beta1.OverrideClusterNameVariable))},
+					Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, "{\"app\": \"workload-%s\", \"test\": \"nginx\"}", placementv1beta1.OverrideClusterNameVariable)},
 				},
 			},
 			cluster: &clusterv1beta1.MemberCluster{
@@ -2797,14 +2797,14 @@ func TestApplyJSONPatchOverride(t *testing.T) {
 				{
 					Operator: placementv1beta1.JSONPatchOverrideOpReplace,
 					Path:     "/metadata/labels/app",
-					Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`"%s-app"`, placementv1beta1.OverrideClusterLabelKeyVariablePrefix+"region}"))},
+					Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `"%s-app"`, placementv1beta1.OverrideClusterLabelKeyVariablePrefix+"region}")},
 				},
 				{
 					Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 					Path:     "/metadata/annotations",
-					Value: apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"environment": "%s", "zone": "%s"}`,
+					Value: apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"environment": "%s", "zone": "%s"}`,
 						placementv1beta1.OverrideClusterLabelKeyVariablePrefix+"fleet-kubernetes.io/env}",
-						placementv1beta1.OverrideClusterLabelKeyVariablePrefix+"zone}"))},
+						placementv1beta1.OverrideClusterLabelKeyVariablePrefix+"zone}")},
 				},
 			},
 			cluster: &clusterv1beta1.MemberCluster{
@@ -2848,7 +2848,7 @@ func TestApplyJSONPatchOverride(t *testing.T) {
 				{
 					Operator: placementv1beta1.JSONPatchOverrideOpReplace,
 					Path:     "/metadata/labels/app",
-					Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`"%s-app"`, placementv1beta1.OverrideClusterLabelKeyVariablePrefix+"non-existent}"))},
+					Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `"%s-app"`, placementv1beta1.OverrideClusterLabelKeyVariablePrefix+"non-existent}")},
 				},
 			},
 			wantErr: true,

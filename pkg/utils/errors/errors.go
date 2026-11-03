@@ -67,7 +67,7 @@ type Error struct {
 	desc string
 
 	// attrs are the additional attributes associated with the wrapped error.
-	attrs []interface{}
+	attrs []any
 }
 
 func (e *Error) categoryWithDefault() ErrCategory {
@@ -107,11 +107,11 @@ func (e *Error) Unwrap() error {
 // Wraps wraps an existing error with a higher-level description and optional key-value attributes,
 // and returns a new *Error. If the existing error (or its children) is already an *Error,
 // Wraps will surface the category and the attributes to the top-level.
-func Wraps(err error, desc string, kvs ...interface{}) *Error {
+func Wraps(err error, desc string, kvs ...any) *Error {
 	// Find if any of error down in the chain is already an *Error; if so, use its category and surface its
 	// attributes to the current level.
 	var category ErrCategory
-	var mergedKVs []interface{}
+	var mergedKVs []any
 	var childError *Error
 	if errors.As(err, &childError) {
 		category = childError.category
@@ -140,8 +140,8 @@ func Wraps(err error, desc string, kvs ...interface{}) *Error {
 // already captured from the error chain, append them to Args as follows:
 //
 // klog.ErrorS(err, "additional top-level error description", append(Args(err), "k", "v")...).
-func Args(err error, kvs ...interface{}) []interface{} {
-	var compositeKVs []interface{}
+func Args(err error, kvs ...any) []any {
+	var compositeKVs []any
 	var childError *Error
 	if errors.As(err, &childError) {
 		// Make sure that the error category is always included as the first kv pair.
@@ -200,7 +200,7 @@ func captureCallers() []CallerFrameOverview {
 // NewUnexpectedError creates a new Error categorized as ErrCategoryUnexpected. It is supposed to be called
 // at the lowest level possible, where the error category can be determined. The error can then be returned
 // and wrapped (w/ additional attributes if applicable).
-func NewUnexpectedError(err error, desc string, kvs ...interface{}) *Error {
+func NewUnexpectedError(err error, desc string, kvs ...any) *Error {
 	// For unexpected errors, collect the caller frames.
 	//
 	// Note (chenyu1): previously for unexpected errors, we use the debug.Stack() to print out a full stack
@@ -221,7 +221,7 @@ func NewUnexpectedError(err error, desc string, kvs ...interface{}) *Error {
 // NewTransientError creates a new Error categorized as ErrCategoryTransient. It is supposed to be called
 // at the lowest level possible, where the error category can be determined. The error can then be returned
 // and wrapped (w/ additional attributes if applicable).
-func NewTransientError(err error, desc string, kvs ...interface{}) *Error {
+func NewTransientError(err error, desc string, kvs ...any) *Error {
 	newErr := Wraps(err, desc, kvs...)
 	newErr.category = ErrCategoryTransient
 	return newErr
@@ -230,7 +230,7 @@ func NewTransientError(err error, desc string, kvs ...interface{}) *Error {
 // NewUserError creates a new Error categorized as ErrCategoryUser. It is supposed to be called
 // at the lowest level possible, where the error category can be determined. The error can then be returned
 // and wrapped (w/ additional attributes if applicable).
-func NewUserError(err error, desc string, kvs ...interface{}) *Error {
+func NewUserError(err error, desc string, kvs ...any) *Error {
 	newErr := Wraps(err, desc, kvs...)
 	newErr.category = ErrCategoryUser
 	return newErr
@@ -239,7 +239,7 @@ func NewUserError(err error, desc string, kvs ...interface{}) *Error {
 // NewAPIServerError creates a new Error categorized as ErrCategoryAPIServer. It is supposed to be called
 // at the lowest level possible, where the error category can be determined. The error can then be returned
 // and wrapped (w/ additional attributes if applicable).
-func NewAPIServerError(err error, desc string, cached bool, kvs ...interface{}) *Error {
+func NewAPIServerError(err error, desc string, cached bool, kvs ...any) *Error {
 	// For API server errors, collect caching and HTTP response related information.
 	kvs = append(kvs, "cached", cached)
 	kvs = append(kvs, "APIServerErrReason", apierrors.ReasonForError(err))

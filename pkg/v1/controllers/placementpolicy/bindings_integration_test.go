@@ -28,7 +28,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
@@ -70,7 +69,7 @@ func setRegion(name, region string) {
 func setSelectorCount(key types.NamespacedName, count int32) {
 	policy := &kfplacementv1alpha1.PlacementPolicy{}
 	Expect(k8sClient.Get(ctx, key, policy)).Should(Succeed())
-	policy.Spec.ClusterSelectors[0].Count = ptr.To(intstr.FromInt32(count))
+	policy.Spec.ClusterSelectors[0].Count = new(intstr.FromInt32(count))
 	Expect(k8sClient.Update(ctx, policy)).Should(Succeed())
 }
 
@@ -138,7 +137,7 @@ var _ = Describe("placement binding lifecycle", Ordered, func() {
 			markJoined(&clusterv1beta1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: name}})
 			setNodeCount(name, nodes)
 		}
-		Expect(k8sClient.Create(ctx, newPolicy(policyName, regionSelector(region, ptr.To(intstr.FromInt32(2)), nil)))).Should(Succeed())
+		Expect(k8sClient.Create(ctx, newPolicy(policyName, regionSelector(region, new(intstr.FromInt32(2)), nil)))).Should(Succeed())
 	})
 
 	AfterAll(func() {
@@ -311,7 +310,7 @@ var _ = Describe("cluster placement binding lifecycle", Ordered, func() {
 		policy := &kfplacementv1alpha1.ClusterPlacementPolicy{
 			ObjectMeta: metav1.ObjectMeta{Name: policyName},
 			Spec: kfplacementv1alpha1.PlacementPolicySpec{
-				ClusterSelectors: []kfplacementv1alpha1.ClusterSelector{regionSelector(region, ptr.To(intstr.FromInt32(1)), nil)},
+				ClusterSelectors: []kfplacementv1alpha1.ClusterSelector{regionSelector(region, new(intstr.FromInt32(1)), nil)},
 				ResourceSelectors: []kfplacementv1alpha1.ResourceSelector{
 					{APIVersion: "v1", Kind: "Namespace", Name: "demo"},
 				},

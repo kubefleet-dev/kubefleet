@@ -19,6 +19,7 @@ package placementpolicy
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
@@ -347,9 +348,7 @@ func (r *Reconciler) reconcileClaimLabels(ctx context.Context, claim *kfplacemen
 	if claim.Labels == nil {
 		claim.Labels = make(map[string]string, len(want))
 	}
-	for k, v := range want {
-		claim.Labels[k] = v
-	}
+	maps.Copy(claim.Labels, want)
 	klog.V(2).InfoS("Restoring ownership labels on a cluster claim", "clusterClaim", claim.Name, "placementPolicy", klog.KObj(policy))
 	// A conflict means another writer touched the claim; the claim watch re-queues the policy and
 	// the repair retries then. A NotFound means the claim was withdrawn out from under us, which a

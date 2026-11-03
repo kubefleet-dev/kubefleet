@@ -41,7 +41,7 @@ func (f *FakeController) ResetQueue() {
 }
 
 // Enqueue enqueues a string type key.
-func (f *FakeController) Enqueue(obj interface{}) {
+func (f *FakeController) Enqueue(obj any) {
 	key, ok := obj.(string)
 	if !ok {
 		return

@@ -31,7 +31,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -155,9 +154,9 @@ var _ = Describe("placement policy sync strategy failures", Label("placementpoli
 								placementPolicyCondition(kfplacementv1alpha1.PlacementBindingCondTypeAvailable, metav1.ConditionFalse,
 									kfplacementv1alpha1.PlacementBindingAvailableCondReasonSomeResourcesUnavailable),
 							},
-							SelectedResources:     ptr.To(int32(2)),
-							SynchronizedResources: ptr.To(int32(2)),
-							AvailableResources:    ptr.To(int32(1)),
+							SelectedResources:     new(int32(2)),
+							SynchronizedResources: new(int32(2)),
+							AvailableResources:    new(int32(1)),
 							FailedResources: []kfplacementv1alpha1.FailedResource{
 								{
 									ObjectRef: kfplacementv1alpha1.ObjectReference{
@@ -181,7 +180,7 @@ var _ = Describe("placement policy sync strategy failures", Label("placementpoli
 			wantStatus := allSynchronizedPlacementPolicyStatus(1)
 			meta.SetStatusCondition(&wantStatus.Conditions, placementPolicyCondition(kfplacementv1alpha1.PlacementPolicyCondTypeAvailable,
 				metav1.ConditionFalse, kfplacementv1alpha1.PlacementPolicyAvailableCondReasonSomeClustersUnavailable))
-			wantStatus.ResourcesAvailableClusters = ptr.To(int32(0))
+			wantStatus.ResourcesAvailableClusters = new(int32(0))
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected placement policy status")
 		})

@@ -28,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/utils/ptr"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -977,7 +976,7 @@ func TestAllowsObject(t *testing.T) {
 						Kind:       "Deployment",
 						Name:       "app",
 						UID:        "1",
-						Controller: ptr.To(true),
+						Controller: new(true),
 					},
 				})
 				return obj
@@ -1002,7 +1001,7 @@ func TestAllowsObject(t *testing.T) {
 						Kind:       "Deployment",
 						Name:       "another-app",
 						UID:        "2",
-						Controller: ptr.To(false),
+						Controller: new(false),
 					},
 				})
 				return obj
@@ -1094,7 +1093,7 @@ func TestAllowsObject(t *testing.T) {
 			checker: DefaultForV1APIs(nil),
 			obj: func() *unstructured.Unstructured {
 				obj := &unstructured.Unstructured{
-					Object: map[string]interface{}{
+					Object: map[string]any{
 						"type": string(corev1.SecretTypeServiceAccountToken),
 					},
 				}
@@ -1111,7 +1110,7 @@ func TestAllowsObject(t *testing.T) {
 			checker: DefaultForV1APIs(nil),
 			obj: func() *unstructured.Unstructured {
 				obj := &unstructured.Unstructured{
-					Object: map[string]interface{}{
+					Object: map[string]any{
 						"type": string(corev1.SecretTypeOpaque),
 					},
 				}
@@ -1127,7 +1126,7 @@ func TestAllowsObject(t *testing.T) {
 			checker: DefaultForV1APIs(nil),
 			obj: func() *unstructured.Unstructured {
 				obj := &unstructured.Unstructured{
-					Object: map[string]interface{}{
+					Object: map[string]any{
 						"type": int64(1),
 					},
 				}

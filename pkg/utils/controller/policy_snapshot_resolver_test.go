@@ -27,7 +27,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -415,7 +414,7 @@ func TestBuildPolicySnapshot(t *testing.T) {
 				Spec: fleetv1beta1.PlacementSpec{
 					Policy: &fleetv1beta1.PlacementPolicy{
 						PlacementType:    fleetv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(3)),
+						NumberOfClusters: new(int32(3)),
 					},
 				},
 			},
@@ -437,7 +436,7 @@ func TestBuildPolicySnapshot(t *testing.T) {
 				Spec: fleetv1beta1.SchedulingPolicySnapshotSpec{
 					Policy: &fleetv1beta1.PlacementPolicy{
 						PlacementType:    fleetv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(3)),
+						NumberOfClusters: new(int32(3)),
 					},
 					PolicyHash: []byte(policyHash),
 				},

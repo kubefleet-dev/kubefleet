@@ -16,10 +16,7 @@ func (r *Runner) CreateStagedUpdateRuns(ctx context.Context) {
 	wg := sync.WaitGroup{}
 
 	// Run the producer.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		for i := 0; i < r.maxCRPToUpdateCount; i++ {
 			select {
 			case r.toCreateStagedUpdateRunsChan <- i:
@@ -30,7 +27,7 @@ func (r *Runner) CreateStagedUpdateRuns(ctx context.Context) {
 		}
 
 		close(r.toCreateStagedUpdateRunsChan)
-	}()
+	})
 
 	// Run the workers to create staged update runs.
 	for i := 0; i < r.resourceSetupWorkerCount; i++ {

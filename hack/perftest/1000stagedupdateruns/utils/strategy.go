@@ -8,7 +8,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
-	"k8s.io/utils/ptr"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -27,7 +26,7 @@ func (r *Runner) CreateStagedUpdateRunStrategy(ctx context.Context) {
 							envLabelKey: stagingEnvLabelValue,
 						},
 					},
-					MaxConcurrency: ptr.To(intstr.FromString(r.maxConcurrencyPerStage)),
+					MaxConcurrency: new(intstr.FromString(r.maxConcurrencyPerStage)),
 				},
 				{
 					Name: "canary",
@@ -36,7 +35,7 @@ func (r *Runner) CreateStagedUpdateRunStrategy(ctx context.Context) {
 							envLabelKey: canaryEnvLabelValue,
 						},
 					},
-					MaxConcurrency: ptr.To(intstr.FromString(r.maxConcurrencyPerStage)),
+					MaxConcurrency: new(intstr.FromString(r.maxConcurrencyPerStage)),
 				},
 				{
 					Name: "prod",
@@ -45,7 +44,7 @@ func (r *Runner) CreateStagedUpdateRunStrategy(ctx context.Context) {
 							envLabelKey: prodEnvLabelValue,
 						},
 					},
-					MaxConcurrency: ptr.To(intstr.FromString(r.maxConcurrencyPerStage)),
+					MaxConcurrency: new(intstr.FromString(r.maxConcurrencyPerStage)),
 				},
 			},
 		},

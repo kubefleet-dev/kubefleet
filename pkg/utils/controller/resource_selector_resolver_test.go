@@ -35,7 +35,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/kubectl/pkg/util/deployment"
-	"k8s.io/utils/ptr"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
@@ -43,17 +42,10 @@ import (
 	testinformer "github.com/kubefleet-dev/kubefleet/test/utils/informer"
 )
 
-func makeIPFamilyPolicyTypePointer(policyType corev1.IPFamilyPolicy) *corev1.IPFamilyPolicy {
-	return &policyType
-}
-func makeServiceInternalTrafficPolicyPointer(policyType corev1.ServiceInternalTrafficPolicy) *corev1.ServiceInternalTrafficPolicy {
-	return &policyType
-}
-
 func TestGenerateResourceContent(t *testing.T) {
 	tests := map[string]struct {
-		resource     interface{}
-		wantResource interface{}
+		resource     any
+		wantResource any
 	}{
 		"should generate sanitized resource content for Kind: CustomResourceDefinition": {
 			resource: apiextensionsv1.CustomResourceDefinition{
@@ -72,7 +64,7 @@ func TestGenerateResourceContent(t *testing.T) {
 					Generation:                 int64(utilrand.Int()),
 					CreationTimestamp:          metav1.Time{Time: time.Date(utilrand.IntnRange(0, 999), time.January, 1, 1, 1, 1, 1, time.UTC)},
 					DeletionTimestamp:          &metav1.Time{Time: time.Date(utilrand.IntnRange(1000, 1999), time.January, 1, 1, 1, 1, 1, time.UTC)},
-					DeletionGracePeriodSeconds: ptr.To(int64(9999)),
+					DeletionGracePeriodSeconds: new(int64(9999)),
 					Labels: map[string]string{
 						"label-key": "label-value",
 					},
@@ -108,7 +100,7 @@ func TestGenerateResourceContent(t *testing.T) {
 					Name:                       "object-name",
 					GenerateName:               "object-generateName",
 					Namespace:                  "object-namespace",
-					DeletionGracePeriodSeconds: ptr.To(int64(9999)),
+					DeletionGracePeriodSeconds: new(int64(9999)),
 					Labels: map[string]string{
 						"label-key": "label-value",
 					},
@@ -164,7 +156,7 @@ func TestGenerateResourceContent(t *testing.T) {
 						{
 							Name:        "svc-port",
 							Protocol:    corev1.ProtocolTCP,
-							AppProtocol: ptr.To("svc.com/my-custom-protocol"),
+							AppProtocol: new("svc.com/my-custom-protocol"),
 							Port:        9001,
 							NodePort:    rand.Int31(),
 						},
@@ -177,15 +169,15 @@ func TestGenerateResourceContent(t *testing.T) {
 					ExternalName:             "svc-spec-externalName",
 					ExternalTrafficPolicy:    corev1.ServiceExternalTrafficPolicy("svc-spec-externalTrafficPolicy"),
 					PublishNotReadyAddresses: false,
-					SessionAffinityConfig:    &corev1.SessionAffinityConfig{ClientIP: &corev1.ClientIPConfig{TimeoutSeconds: ptr.To(int32(60))}},
+					SessionAffinityConfig:    &corev1.SessionAffinityConfig{ClientIP: &corev1.ClientIPConfig{TimeoutSeconds: new(int32(60))}},
 					IPFamilies: []corev1.IPFamily{
 						corev1.IPv4Protocol,
 						corev1.IPv6Protocol,
 					},
-					IPFamilyPolicy:                makeIPFamilyPolicyTypePointer(corev1.IPFamilyPolicySingleStack),
-					AllocateLoadBalancerNodePorts: ptr.To(false),
-					LoadBalancerClass:             ptr.To("svc-spec-loadBalancerClass"),
-					InternalTrafficPolicy:         makeServiceInternalTrafficPolicyPointer(corev1.ServiceInternalTrafficPolicyCluster),
+					IPFamilyPolicy:                new(corev1.IPFamilyPolicySingleStack),
+					AllocateLoadBalancerNodePorts: new(false),
+					LoadBalancerClass:             new("svc-spec-loadBalancerClass"),
+					InternalTrafficPolicy:         new(corev1.ServiceInternalTrafficPolicyCluster),
 				},
 				Status: corev1.ServiceStatus{
 					LoadBalancer: corev1.LoadBalancerStatus{
@@ -222,7 +214,7 @@ func TestGenerateResourceContent(t *testing.T) {
 						{
 							Name:        "svc-port",
 							Protocol:    corev1.ProtocolTCP,
-							AppProtocol: ptr.To("svc.com/my-custom-protocol"),
+							AppProtocol: new("svc.com/my-custom-protocol"),
 							Port:        9001,
 						},
 					},
@@ -234,15 +226,15 @@ func TestGenerateResourceContent(t *testing.T) {
 					ExternalName:             "svc-spec-externalName",
 					ExternalTrafficPolicy:    corev1.ServiceExternalTrafficPolicy("svc-spec-externalTrafficPolicy"),
 					PublishNotReadyAddresses: false,
-					SessionAffinityConfig:    &corev1.SessionAffinityConfig{ClientIP: &corev1.ClientIPConfig{TimeoutSeconds: ptr.To(int32(60))}},
+					SessionAffinityConfig:    &corev1.SessionAffinityConfig{ClientIP: &corev1.ClientIPConfig{TimeoutSeconds: new(int32(60))}},
 					IPFamilies: []corev1.IPFamily{
 						corev1.IPv4Protocol,
 						corev1.IPv6Protocol,
 					},
-					IPFamilyPolicy:                makeIPFamilyPolicyTypePointer(corev1.IPFamilyPolicySingleStack),
-					AllocateLoadBalancerNodePorts: ptr.To(false),
-					LoadBalancerClass:             ptr.To("svc-spec-loadBalancerClass"),
-					InternalTrafficPolicy:         makeServiceInternalTrafficPolicyPointer(corev1.ServiceInternalTrafficPolicyCluster),
+					IPFamilyPolicy:                new(corev1.IPFamilyPolicySingleStack),
+					AllocateLoadBalancerNodePorts: new(false),
+					LoadBalancerClass:             new("svc-spec-loadBalancerClass"),
+					InternalTrafficPolicy:         new(corev1.ServiceInternalTrafficPolicyCluster),
 				},
 			},
 		},
@@ -266,12 +258,12 @@ func TestGenerateResourceContent(t *testing.T) {
 	}
 }
 
-func createResourceContentForTest(t *testing.T, obj interface{}) *fleetv1beta1.ResourceContent {
+func createResourceContentForTest(t *testing.T, obj any) *fleetv1beta1.ResourceContent {
 	want, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&obj)
 	if err != nil {
 		t.Fatalf("ToUnstructured failed: %v", err)
 	}
-	delete(want["metadata"].(map[string]interface{}), "creationTimestamp")
+	delete(want["metadata"].(map[string]any), "creationTimestamp")
 	delete(want, "status")
 
 	uWant := unstructured.Unstructured{Object: want}
@@ -289,10 +281,10 @@ func createResourceContentForTest(t *testing.T, obj interface{}) *fleetv1beta1.R
 func TestGatherSelectedResource(t *testing.T) {
 	// Common test deployment object used across multiple test cases.
 	testDeployment := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "apps/v1",
 			"kind":       "Deployment",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-deployment",
 				"namespace": "test-ns",
 			},
@@ -302,10 +294,10 @@ func TestGatherSelectedResource(t *testing.T) {
 
 	// Common test configmap object used across multiple test cases.
 	testConfigMap := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "ConfigMap",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-configmap",
 				"namespace": "test-ns",
 			},
@@ -315,10 +307,10 @@ func TestGatherSelectedResource(t *testing.T) {
 
 	// Common test endpoints object used across multiple test cases.
 	testEndpoints := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Endpoints",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-endpoints",
 				"namespace": "test-ns",
 			},
@@ -331,10 +323,10 @@ func TestGatherSelectedResource(t *testing.T) {
 	})
 
 	kubeRootCAConfigMap := &unstructured.Unstructured{ // reserved configmap object
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "ConfigMap",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "kube-root-ca.crt",
 				"namespace": "test-ns",
 			},
@@ -344,14 +336,14 @@ func TestGatherSelectedResource(t *testing.T) {
 
 	// Common test deployment object in deleting state.
 	testDeletingDeployment := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "apps/v1",
 			"kind":       "Deployment",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":              "test-deleting-deployment",
 				"namespace":         "test-ns",
 				"deletionTimestamp": "2025-01-01T00:00:00Z",
-				"labels": map[string]interface{}{
+				"labels": map[string]any{
 					"tier": "api",
 					"app":  "frontend",
 				},
@@ -362,13 +354,13 @@ func TestGatherSelectedResource(t *testing.T) {
 
 	// Common test deployment with app=frontend label.
 	testFrontendDeployment := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "apps/v1",
 			"kind":       "Deployment",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "frontend-deployment",
 				"namespace": "test-ns",
-				"labels": map[string]interface{}{
+				"labels": map[string]any{
 					"app":  "frontend",
 					"tier": "web",
 				},
@@ -379,13 +371,13 @@ func TestGatherSelectedResource(t *testing.T) {
 
 	// Common test deployment with app=backend label.
 	testBackendDeployment := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "apps/v1",
 			"kind":       "Deployment",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "backend-deployment",
 				"namespace": "test-ns",
-				"labels": map[string]interface{}{
+				"labels": map[string]any{
 					"app":  "backend",
 					"tier": "api",
 				},
@@ -396,12 +388,12 @@ func TestGatherSelectedResource(t *testing.T) {
 
 	// Common test namespace object (cluster-scoped).
 	testNamespace := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test-ns",
-				"labels": map[string]interface{}{
+				"labels": map[string]any{
 					"environment": "test",
 				},
 			},
@@ -410,12 +402,12 @@ func TestGatherSelectedResource(t *testing.T) {
 	testNamespace.SetGroupVersionKind(utils.NamespaceGVK)
 
 	testDeletingNamespace := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "deleting-ns",
-				"labels": map[string]interface{}{
+				"labels": map[string]any{
 					"environment": "test",
 				},
 				"deletionTimestamp": "2025-01-01T00:00:00Z",
@@ -425,12 +417,12 @@ func TestGatherSelectedResource(t *testing.T) {
 	testDeletingNamespace.SetGroupVersionKind(utils.NamespaceGVK)
 
 	prodNamespace := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "prod-ns",
-				"labels": map[string]interface{}{
+				"labels": map[string]any{
 					"environment": "production",
 				},
 			},
@@ -440,10 +432,10 @@ func TestGatherSelectedResource(t *testing.T) {
 
 	// Common test cluster role object (cluster-scoped).
 	testClusterRole := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "rbac.authorization.k8s.io/v1",
 			"kind":       "ClusterRole",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test-cluster-role",
 			},
 		},
@@ -452,10 +444,10 @@ func TestGatherSelectedResource(t *testing.T) {
 
 	// Common test cluster role object #2 (cluster-scoped).
 	testClusterRole2 := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "rbac.authorization.k8s.io/v1",
 			"kind":       "ClusterRole",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test-cluster-role-2",
 			},
 		},
@@ -463,12 +455,12 @@ func TestGatherSelectedResource(t *testing.T) {
 	testClusterRole2.SetGroupVersionKind(utils.ClusterRoleGVK)
 
 	kubeSystemNamespace := &unstructured.Unstructured{ // reserved namespace object
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "kube-system",
-				"labels": map[string]interface{}{
+				"labels": map[string]any{
 					"environment": "test",
 				},
 			},
@@ -477,10 +469,10 @@ func TestGatherSelectedResource(t *testing.T) {
 	kubeSystemNamespace.SetGroupVersionKind(utils.NamespaceGVK)
 
 	defaultNamespace := &unstructured.Unstructured{ // the default namespace object, which itself cannot be placed
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "default",
 			},
 		},
@@ -1348,7 +1340,7 @@ func TestGatherSelectedResource(t *testing.T) {
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
 						utils.DeploymentGVR: {Objects: []runtime.Object{testDeployment}},
 					},
-					InformerSynced: ptr.To(false),
+					InformerSynced: new(false),
 				}
 			}(),
 			wantError: ErrExpectedBehavior,
@@ -1371,7 +1363,7 @@ func TestGatherSelectedResource(t *testing.T) {
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
 						utils.ClusterRoleGVR: {Objects: []runtime.Object{testClusterRole}},
 					},
-					InformerSynced: ptr.To(false),
+					InformerSynced: new(false),
 				}
 			}(),
 			wantError: ErrExpectedBehavior,
@@ -1400,7 +1392,7 @@ func TestGatherSelectedResource(t *testing.T) {
 						utils.DeploymentGVR: {Objects: []runtime.Object{testDeployment}},
 					},
 					NamespaceScopedResources: []schema.GroupVersionResource{utils.DeploymentGVR},
-					InformerSynced:           ptr.To(false),
+					InformerSynced:           new(false),
 				}
 			}(),
 			wantError: ErrExpectedBehavior,
@@ -1821,10 +1813,10 @@ func (f *fakeRESTMapper) ResourceSingularizer(resource string) (singular string,
 func TestSortResources(t *testing.T) {
 	// Create the ingressClass object
 	ingressClass := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "networking/v1",
 			"kind":       "IngressClass",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test",
 			},
 		},
@@ -1832,10 +1824,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the Ingress object
 	ingress := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "networking/v1",
 			"kind":       "Ingress",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-ingress",
 				"namespace": "test",
 			},
@@ -1844,10 +1836,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the NetworkPolicy object
 	networkPolicy := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "networking/v1",
 			"kind":       "NetworkPolicy",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-networkpolicy",
 				"namespace": "test",
 			},
@@ -1856,10 +1848,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the first Namespace object
 	namespace1 := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test1",
 			},
 		},
@@ -1867,10 +1859,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the second Namespace object
 	namespace2 := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test2",
 			},
 		},
@@ -1878,10 +1870,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the LimitRange object
 	limitRange := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "LimitRange",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-limitrange",
 				"namespace": "test",
 			},
@@ -1890,10 +1882,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the pod object.
 	pod := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Pod",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-pod",
 				"namespace": "test",
 			},
@@ -1902,10 +1894,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the ReplicationController object.
 	replicationController := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "ReplicationController",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-replicationcontroller",
 				"namespace": "test",
 			},
@@ -1914,10 +1906,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the ResourceQuota object.
 	resourceQuota := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "ResourceQuota",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-resourcequota",
 				"namespace": "test",
 			},
@@ -1926,10 +1918,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the Service object.
 	service := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Service",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-service",
 				"namespace": "test",
 			},
@@ -1938,10 +1930,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the ServiceAccount object.
 	serviceAccount := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "ServiceAccount",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-serviceaccount",
 				"namespace": "test",
 			},
@@ -1950,10 +1942,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the PodDisruptionBudget object.
 	pdb := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "policy/v1",
 			"kind":       "PodDisruptionBudget",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-pdb",
 				"namespace": "test",
 			},
@@ -1962,10 +1954,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the Deployment object.
 	deployment := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "apps/v1",
 			"kind":       "Deployment",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-nginx",
 				"namespace": "test",
 			},
@@ -1974,10 +1966,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the v1beta1 Deployment object.
 	v1beta1Deployment := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "apps/v1beta1",
 			"kind":       "Deployment",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-nginx1",
 				"namespace": "test",
 			},
@@ -1986,10 +1978,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the DaemonSet object.
 	daemonSet := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "apps/v1",
 			"kind":       "DaemonSet",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-daemonset",
 				"namespace": "test",
 			},
@@ -1998,10 +1990,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the ReplicaSet object.
 	replicaSet := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "apps/v1",
 			"kind":       "ReplicaSet",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-replicaset",
 				"namespace": "test",
 			},
@@ -2010,10 +2002,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the StatefulSet object.
 	statefulSet := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "apps/v1",
 			"kind":       "StatefulSet",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-statefulset",
 				"namespace": "test",
 			},
@@ -2022,10 +2014,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the StorageClass object.
 	storageClass := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "storage.k8s.io/v1",
 			"kind":       "StorageClass",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test-storageclass",
 			},
 		},
@@ -2033,10 +2025,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the APIService object.
 	apiService := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "apiregistration.k8s.io/v1",
 			"kind":       "APIService",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test-apiservice",
 			},
 		},
@@ -2044,10 +2036,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the HorizontalPodAutoscaler object.
 	hpa := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "autoscaling/v1",
 			"kind":       "HorizontalPodAutoscaler",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-hpa",
 				"namespace": "test",
 			},
@@ -2056,10 +2048,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the PriorityClass object.
 	priorityClass := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "scheduling.k8s.io/v1",
 			"kind":       "PriorityClass",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test-priorityclass",
 			},
 		},
@@ -2067,10 +2059,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the ValidatingWebhookConfiguration object.
 	validatingWebhookConfiguration := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "admissionregistration.k8s.io/v1",
 			"kind":       "ValidatingWebhookConfiguration",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test-validatingwebhookconfiguration",
 			},
 		},
@@ -2078,10 +2070,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the MutatingWebhookConfiguration object.
 	mutatingWebhookConfiguration := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "admissionregistration.k8s.io/v1",
 			"kind":       "MutatingWebhookConfiguration",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test-mutatingwebhookconfiguration",
 			},
 		},
@@ -2089,10 +2081,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the first CustomResourceDefinition object.
 	crd1 := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "apiextensions.k8s.io/v1",
 			"kind":       "CustomResourceDefinition",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test-crd1",
 			},
 		},
@@ -2100,10 +2092,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the second CustomResourceDefinition object.
 	crd2 := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "apiextensions.k8s.io/v1",
 			"kind":       "CustomResourceDefinition",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test-crd2",
 			},
 		},
@@ -2111,10 +2103,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the ClusterRole object.
 	clusterRole := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "rbac.authorization.k8s.io/v1",
 			"kind":       "ClusterRole",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test-clusterrole",
 			},
 		},
@@ -2122,10 +2114,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the ClusterRoleBinding object.
 	clusterRoleBinindg := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "rbac.authorization.k8s.io/v1",
 			"kind":       "ClusterRoleBinding",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test-clusterrolebinding",
 			},
 		},
@@ -2133,10 +2125,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the Role object.
 	role := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "rbac.authorization.k8s.io/v1",
 			"kind":       "Role",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-role",
 				"namespace": "test",
 			},
@@ -2145,10 +2137,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the RoleBinding object.
 	roleBinding := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "rbac.authorization.k8s.io/v1",
 			"kind":       "RoleBinding",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-rolebinding",
 				"namespace": "test",
 			},
@@ -2157,10 +2149,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the Secret object.
 	secret1 := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Secret",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-secret1",
 				"namespace": "test",
 			},
@@ -2169,10 +2161,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the Secret object.
 	secret2 := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Secret",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-secret2",
 				"namespace": "test",
 			},
@@ -2181,10 +2173,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the ConfigMap object.
 	configMap := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "ConfigMap",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-configmap",
 				"namespace": "test",
 			},
@@ -2193,10 +2185,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the CronJob object.
 	cronJob := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "batch/v1",
 			"kind":       "CronJob",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-cronjob",
 				"namespace": "test",
 			},
@@ -2205,10 +2197,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the Job object.
 	job := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "batch/v1",
 			"kind":       "Job",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-job",
 				"namespace": "test",
 			},
@@ -2217,10 +2209,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the PersistentVolume object.
 	pv := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "PersistentVolume",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test-pv",
 			},
 		},
@@ -2228,10 +2220,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the PersistentVolumeClaim object.
 	pvc := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "PersistentVolumeClaim",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-pvc",
 				"namespace": "test",
 			},
@@ -2240,10 +2232,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the test resource.
 	testResource1 := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "test.kubernetes-fleet.io/v1alpha1",
 			"kind":       "TestResource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-resource1",
 				"namespace": "test",
 			},
@@ -2252,10 +2244,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create the test resource.
 	testResource2 := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "test.kubernetes-fleet.io/v1alpha1",
 			"kind":       "TestResource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-resource2",
 				"namespace": "test",
 			},
@@ -2264,10 +2256,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create another test resource.
 	anotherTestResource := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "test.kubernetes-fleet.io/v1alpha1",
 			"kind":       "AnotherTestResource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "another-test-resource",
 				"namespace": "test",
 			},
@@ -2276,10 +2268,10 @@ func TestSortResources(t *testing.T) {
 
 	// Create v1beta1 another test resource.
 	v1beta1AnotherTestResource := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "test.kubernetes-fleet.io/v1beta1",
 			"kind":       "AnotherTestResource",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "another-test-resource",
 				"namespace": "test",
 			},
@@ -2327,7 +2319,7 @@ func TestSortResources(t *testing.T) {
 	for testName, tt := range tests {
 		t.Run(testName, func(t *testing.T) {
 			// run many times to make sure it's stable
-			for i := 0; i < 10; i++ {
+			for range 10 {
 				sortResources(tt.resources)
 				// Check that the returned resources match the expected resources
 				diff := cmp.Diff(tt.want, tt.resources)
@@ -2341,12 +2333,12 @@ func TestSortResources(t *testing.T) {
 
 func TestFetchSelectedNamespace(t *testing.T) {
 	testNs1 := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test-ns-1",
-				"labels": map[string]interface{}{
+				"labels": map[string]any{
 					"env": "prod",
 				},
 			},
@@ -2355,12 +2347,12 @@ func TestFetchSelectedNamespace(t *testing.T) {
 	testNs1.SetGroupVersionKind(utils.NamespaceGVK)
 
 	testNs2 := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test-ns-2",
-				"labels": map[string]interface{}{
+				"labels": map[string]any{
 					"env": "dev",
 				},
 			},
@@ -2369,10 +2361,10 @@ func TestFetchSelectedNamespace(t *testing.T) {
 	testNs2.SetGroupVersionKind(utils.NamespaceGVK)
 
 	skippedNs := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "kube-system",
 			},
 		},
@@ -2380,10 +2372,10 @@ func TestFetchSelectedNamespace(t *testing.T) {
 	skippedNs.SetGroupVersionKind(utils.NamespaceGVK)
 
 	defaultNs := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "default",
 			},
 		},
@@ -2490,10 +2482,10 @@ func TestFetchSelectedNamespace(t *testing.T) {
 
 func TestGatherSelectedResource_ErrorCases(t *testing.T) {
 	testNamespace := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "test-ns",
 			},
 		},
@@ -2501,10 +2493,10 @@ func TestGatherSelectedResource_ErrorCases(t *testing.T) {
 	testNamespace.SetGroupVersionKind(utils.NamespaceGVK)
 
 	testDeployment := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "apps/v1",
 			"kind":       "Deployment",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-deployment",
 				"namespace": "test-ns",
 			},
@@ -2513,10 +2505,10 @@ func TestGatherSelectedResource_ErrorCases(t *testing.T) {
 	testDeployment.SetGroupVersionKind(utils.DeploymentGVK)
 
 	defaultNamespace := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "default",
 			},
 		},
@@ -2710,17 +2702,17 @@ func TestGatherSelectedResource_ErrorCases(t *testing.T) {
 func TestShouldPropagateObj(t *testing.T) {
 	tests := []struct {
 		name            string
-		obj             map[string]interface{}
+		obj             map[string]any
 		ownerReferences []metav1.OwnerReference
 		enableWorkload  bool
 		want            bool
 	}{
 		{
 			name: "standalone replicaset without ownerReferences should propagate",
-			obj: map[string]interface{}{
+			obj: map[string]any{
 				"apiVersion": "apps/v1",
 				"kind":       "ReplicaSet",
-				"metadata": map[string]interface{}{
+				"metadata": map[string]any{
 					"name":      "standalone-rs",
 					"namespace": "default",
 				},
@@ -2731,10 +2723,10 @@ func TestShouldPropagateObj(t *testing.T) {
 		},
 		{
 			name: "standalone replicaset without ownerReferences should propagate if workload is disabled",
-			obj: map[string]interface{}{
+			obj: map[string]any{
 				"apiVersion": "apps/v1",
 				"kind":       "ReplicaSet",
-				"metadata": map[string]interface{}{
+				"metadata": map[string]any{
 					"name":      "standalone-rs",
 					"namespace": "default",
 				},
@@ -2745,10 +2737,10 @@ func TestShouldPropagateObj(t *testing.T) {
 		},
 		{
 			name: "standalone pod without ownerReferences should propagate",
-			obj: map[string]interface{}{
+			obj: map[string]any{
 				"apiVersion": "v1",
 				"kind":       "Pod",
-				"metadata": map[string]interface{}{
+				"metadata": map[string]any{
 					"name":      "standalone-pod",
 					"namespace": "default",
 				},
@@ -2759,10 +2751,10 @@ func TestShouldPropagateObj(t *testing.T) {
 		},
 		{
 			name: "replicaset with deployment owner should NOT propagate",
-			obj: map[string]interface{}{
+			obj: map[string]any{
 				"apiVersion": "apps/v1",
 				"kind":       "ReplicaSet",
-				"metadata": map[string]interface{}{
+				"metadata": map[string]any{
 					"name":      "test-deploy-abc123",
 					"namespace": "default",
 				},
@@ -2780,10 +2772,10 @@ func TestShouldPropagateObj(t *testing.T) {
 		},
 		{
 			name: "pod owned by replicaset - passes ShouldPropagateObj but filtered by resource config",
-			obj: map[string]interface{}{
+			obj: map[string]any{
 				"apiVersion": "v1",
 				"kind":       "Pod",
-				"metadata": map[string]interface{}{
+				"metadata": map[string]any{
 					"name":      "test-deploy-abc123-xyz",
 					"namespace": "default",
 				},
@@ -2801,10 +2793,10 @@ func TestShouldPropagateObj(t *testing.T) {
 		},
 		{
 			name: "controllerrevision owned by daemonset should NOT propagate",
-			obj: map[string]interface{}{
+			obj: map[string]any{
 				"apiVersion": "apps/v1",
 				"kind":       "ControllerRevision",
-				"metadata": map[string]interface{}{
+				"metadata": map[string]any{
 					"name":      "test-ds-7b9848797f",
 					"namespace": "default",
 				},
@@ -2822,10 +2814,10 @@ func TestShouldPropagateObj(t *testing.T) {
 		},
 		{
 			name: "controllerrevision owned by statefulset should NOT propagate",
-			obj: map[string]interface{}{
+			obj: map[string]any{
 				"apiVersion": "apps/v1",
 				"kind":       "ControllerRevision",
-				"metadata": map[string]interface{}{
+				"metadata": map[string]any{
 					"name":      "test-ss-7878b4b446",
 					"namespace": "default",
 				},
@@ -2843,10 +2835,10 @@ func TestShouldPropagateObj(t *testing.T) {
 		},
 		{
 			name: "standalone controllerrevision without owner should propagate",
-			obj: map[string]interface{}{
+			obj: map[string]any{
 				"apiVersion": "apps/v1",
 				"kind":       "ControllerRevision",
-				"metadata": map[string]interface{}{
+				"metadata": map[string]any{
 					"name":      "custom-revision",
 					"namespace": "default",
 				},
@@ -2857,10 +2849,10 @@ func TestShouldPropagateObj(t *testing.T) {
 		},
 		{
 			name: "PVC should propagate when workload is disabled",
-			obj: map[string]interface{}{
+			obj: map[string]any{
 				"apiVersion": "v1",
 				"kind":       "PersistentVolumeClaim",
-				"metadata": map[string]interface{}{
+				"metadata": map[string]any{
 					"name":      "test-pvc",
 					"namespace": "default",
 				},
@@ -2871,10 +2863,10 @@ func TestShouldPropagateObj(t *testing.T) {
 		},
 		{
 			name: "PVC should NOT propagate when workload is enabled",
-			obj: map[string]interface{}{
+			obj: map[string]any{
 				"apiVersion": "v1",
 				"kind":       "PersistentVolumeClaim",
-				"metadata": map[string]interface{}{
+				"metadata": map[string]any{
 					"name":      "test-pvc",
 					"namespace": "default",
 				},
@@ -2885,10 +2877,10 @@ func TestShouldPropagateObj(t *testing.T) {
 		},
 		{
 			name: "PVC with ownerReferences should NOT propagate when workload is enabled",
-			obj: map[string]interface{}{
+			obj: map[string]any{
 				"apiVersion": "v1",
 				"kind":       "PersistentVolumeClaim",
-				"metadata": map[string]interface{}{
+				"metadata": map[string]any{
 					"name":      "data-statefulset-0",
 					"namespace": "default",
 				},
@@ -2906,10 +2898,10 @@ func TestShouldPropagateObj(t *testing.T) {
 		},
 		{
 			name: "Default ServiceAccount in namespace should NOT propagate",
-			obj: map[string]interface{}{
+			obj: map[string]any{
 				"apiVersion": "v1",
 				"kind":       "ServiceAccount",
-				"metadata": map[string]interface{}{
+				"metadata": map[string]any{
 					"name":      "default",
 					"namespace": "test-ns",
 				},
@@ -2918,10 +2910,10 @@ func TestShouldPropagateObj(t *testing.T) {
 		},
 		{
 			name: "service-account-token secret should NOT propagate",
-			obj: map[string]interface{}{
+			obj: map[string]any{
 				"apiVersion": "v1",
 				"kind":       "Secret",
-				"metadata": map[string]interface{}{
+				"metadata": map[string]any{
 					"name":      "sa-token",
 					"namespace": "test",
 				},
@@ -2931,12 +2923,12 @@ func TestShouldPropagateObj(t *testing.T) {
 		},
 		{
 			name: "endpointslice with managed-by label should NOT propagate",
-			obj: map[string]interface{}{
+			obj: map[string]any{
 				"apiVersion": "discovery.k8s.io/v1",
 				"kind":       "EndpointSlice",
-				"metadata": map[string]interface{}{
+				"metadata": map[string]any{
 					"name": "test-endpointslice",
-					"labels": map[string]interface{}{
+					"labels": map[string]any{
 						"endpointslice.kubernetes.io/managed-by": "endpointslice-controller",
 					},
 				},
