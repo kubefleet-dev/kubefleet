@@ -56,7 +56,9 @@ spec:
             - --pprof-port={{ .Values.pprofPort }}
             - --max-concurrent-cluster-placement={{ .Values.MaxConcurrentClusterPlacement }}
             - --concurrent-resource-change-syncs={{ .Values.ConcurrentResourceChangeSyncs }}
+            {{- if .Values.logFileMaxSize }}
             - --log_file_max_size={{ .Values.logFileMaxSize }}
+            {{- end }}
             - --max-fleet-size={{ .Values.MaxFleetSizeSupported }}
             - --hub-api-qps={{ .Values.hubAPIQPS }}
             - --hub-api-burst={{ .Values.hubAPIBurst }}
