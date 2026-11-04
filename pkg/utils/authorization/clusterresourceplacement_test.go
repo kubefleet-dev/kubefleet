@@ -166,11 +166,13 @@ func TestClusterResourcePlacementAuthorizeSelections(t *testing.T) {
 		{name: "labeled namespace expansion includes deleting", selectors: []placementv1beta1.ResourceSelectorTerm{labeledNamespaces}, want: []authorizationv1.ResourceAttributes{listNS, listCMA, listSecretA, listCMDeleting, listSecretDeleting}},
 		{name: "all namespaces expand separately including deleting", selectors: []placementv1beta1.ResourceSelectorTerm{allNamespaces}, want: []authorizationv1.ResourceAttributes{listNS, listCMA, listSecretA, listCMB, listSecretB, listCMDeleting, listSecretDeleting}},
 		{name: "selective named resource", selectors: []placementv1beta1.ResourceSelectorTerm{selective, configMap}, want: []authorizationv1.ResourceAttributes{getNS, getCM}},
+		{name: "selective namespace without additional resources", selectors: []placementv1beta1.ResourceSelectorTerm{selective}, want: []authorizationv1.ResourceAttributes{getNS}},
 		{name: "selective labeled resources", selectors: []placementv1beta1.ResourceSelectorTerm{selective, labeledConfigMaps}, want: []authorizationv1.ResourceAttributes{getNS, listCMA}},
 		{name: "selective all resources of kind", selectors: []placementv1beta1.ResourceSelectorTerm{selective, allConfigMaps}, want: []authorizationv1.ResourceAttributes{getNS, listCMA}},
 		{name: "namespace selector after mixed resources", selectors: []placementv1beta1.ResourceSelectorTerm{role, configMap, selective}, want: []authorizationv1.ResourceAttributes{getRole, getCM, getNS}},
 		{name: "namespace expansion and cluster resource", selectors: []placementv1beta1.ResourceSelectorTerm{role, withResources}, want: []authorizationv1.ResourceAttributes{getRole, getNS, listCMA, listSecretA}},
 		{name: "overlapping namespace selectors", selectors: []placementv1beta1.ResourceSelectorTerm{nsOnly, labeledNSOnly, nsOnly}, want: []authorizationv1.ResourceAttributes{getNS, listNS}},
+		{name: "overlapping namespace expansion selectors", selectors: []placementv1beta1.ResourceSelectorTerm{withResources, withResources}, want: []authorizationv1.ResourceAttributes{getNS, listCMA, listSecretA}},
 		{name: "overlapping cluster selectors", selectors: []placementv1beta1.ResourceSelectorTerm{role, allRoles, role}, want: []authorizationv1.ResourceAttributes{getRole, listRoles}},
 		{name: "deleting namespace expansion", selectors: []placementv1beta1.ResourceSelectorTerm{deletingNamespace}, want: []authorizationv1.ResourceAttributes{getDeletingNS, listCMDeleting, listSecretDeleting}},
 		{name: "missing namespace expansion", selectors: []placementv1beta1.ResourceSelectorTerm{missingNamespace}, want: []authorizationv1.ResourceAttributes{getMissingNS, listCMMissing, listSecretMissing}},
@@ -219,14 +221,7 @@ func TestClusterResourcePlacementAuthorizeSelections(t *testing.T) {
 			if diff := cmp.Diff(Result{Decision: DecisionAllowed}, result); diff != "" {
 				t.Fatalf("Authorize() mismatch (-want +got):\n%s", diff)
 			}
-			want := append([]authorizationv1.ResourceAttributes(nil), tt.want...)
-			// Namespace checks run in both the preflight and the full batch.
-			for _, check := range tt.want {
-				if check.Group == utils.NamespaceGVR.Group && check.Resource == utils.NamespaceGVR.Resource && check.Namespace == "" {
-					want = append(want, check)
-				}
-			}
-			if diff := cmp.Diff(want, got, cmpopts.SortSlices(func(a, b authorizationv1.ResourceAttributes) bool { return fmt.Sprint(a) < fmt.Sprint(b) })); diff != "" {
+			if diff := cmp.Diff(tt.want, got, cmpopts.SortSlices(func(a, b authorizationv1.ResourceAttributes) bool { return fmt.Sprint(a) < fmt.Sprint(b) })); diff != "" {
 				t.Errorf("Authorize() checks mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -285,7 +280,7 @@ func TestClusterResourcePlacementNamespaceOnlyDoesNotReadNamespaces(t *testing.T
 			if diff := cmp.Diff(Result{Decision: DecisionAllowed}, result); diff != "" {
 				t.Errorf("Authorize() mismatch (-want +got):\n%s", diff)
 			}
-			if diff := cmp.Diff([]authorizationv1.ResourceAttributes{tt.want, tt.want}, got); diff != "" {
+			if diff := cmp.Diff([]authorizationv1.ResourceAttributes{tt.want}, got); diff != "" {
 				t.Errorf("Authorize() checks mismatch (-want +got):\n%s", diff)
 			}
 			if readerCalls != 0 {
@@ -461,6 +456,9 @@ func TestClusterResourcePlacementAuthorizeFailures(t *testing.T) {
 			a.resourceEligibilityChecker.SetNamespaceCheckList(resourceeligibility.NamespaceEligibilityModeDenyList, []string{crpNamespaceA}, nil)
 		}, wantErr: "not eligible for placement", invalid: true},
 		{name: "selective namespace eligibility denied", selectors: []placementv1beta1.ResourceSelectorTerm{selective, configMap}, modify: func(a *PlacementAuthorizer, _ *placementv1beta1.ClusterResourcePlacement) {
+			a.resourceEligibilityChecker.SetNamespaceCheckList(resourceeligibility.NamespaceEligibilityModeDenyList, []string{crpNamespaceA}, nil)
+		}, wantErr: "not eligible for placement", invalid: true},
+		{name: "selective namespace eligibility denied without additional resources", selectors: []placementv1beta1.ResourceSelectorTerm{selective}, modify: func(a *PlacementAuthorizer, _ *placementv1beta1.ClusterResourcePlacement) {
 			a.resourceEligibilityChecker.SetNamespaceCheckList(resourceeligibility.NamespaceEligibilityModeDenyList, []string{crpNamespaceA}, nil)
 		}, wantErr: "not eligible for placement", invalid: true},
 		{name: "namespace list API failure", selectors: []placementv1beta1.ResourceSelectorTerm{{Version: "v1", Kind: utils.NamespaceGVK.Kind, SelectionScope: placementv1beta1.NamespaceWithResources}}, modify: func(a *PlacementAuthorizer, _ *placementv1beta1.ClusterResourcePlacement) {
