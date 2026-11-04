@@ -196,9 +196,6 @@ func (a *PlacementAuthorizer) resolveNamespaceSelector(ctx context.Context, sele
 		if err != nil {
 			return nil, err
 		}
-		if len(namespaces) != 1 {
-			return nil, errors.New("NamespaceWithResourceSelectors requires exactly one namespace")
-		}
 		if !a.resourceEligibilityChecker.AllowsNamespace(namespaces[0].Name) {
 			return nil, invalidPlacementError(fmt.Sprintf("namespace %q is not eligible for placement", namespaces[0].Name))
 		}
