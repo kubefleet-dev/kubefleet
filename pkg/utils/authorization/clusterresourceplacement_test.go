@@ -29,6 +29,7 @@ import (
 	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -435,10 +436,11 @@ func TestClusterResourcePlacementAuthorizeFailures(t *testing.T) {
 		denyVerb  string
 		sarError  bool
 		wantErr   string
+		invalid   bool
 	}{
 		{name: "CRP has namespace", selectors: []placementv1beta1.ResourceSelectorTerm{role}, modify: func(_ *PlacementAuthorizer, p *placementv1beta1.ClusterResourcePlacement) {
 			p.Namespace = crpNamespaceA
-		}, wantErr: "must not specify a namespace"},
+		}, wantErr: "must not specify a namespace", invalid: true},
 		{name: "missing reader", selectors: []placementv1beta1.ResourceSelectorTerm{ns}, modify: func(a *PlacementAuthorizer, _ *placementv1beta1.ClusterResourcePlacement) { a.namespaceReader = nil }, wantErr: "dependencies are incomplete"},
 		{name: "missing inventory", selectors: []placementv1beta1.ResourceSelectorTerm{ns}, modify: func(a *PlacementAuthorizer, _ *placementv1beta1.ClusterResourcePlacement) {
 			a.namespacedResources = nil
@@ -447,25 +449,30 @@ func TestClusterResourcePlacementAuthorizeFailures(t *testing.T) {
 			a.restMapper = meta.NewDefaultRESTMapper(nil)
 		}, wantErr: "failed to resolve Namespace mapping"},
 		{name: "unknown resource kind", selectors: []placementv1beta1.ResourceSelectorTerm{{Version: "v1", Kind: crpUnknown}}, wantErr: "failed to resolve selector"},
-		{name: "namespaced resource without selective namespace", selectors: []placementv1beta1.ResourceSelectorTerm{configMap}, wantErr: "requires NamespaceWithResourceSelectors"},
-		{name: "namespace expansion cannot scope explicit resources", selectors: []placementv1beta1.ResourceSelectorTerm{ns, configMap}, wantErr: "requires NamespaceWithResourceSelectors"},
-		{name: "selective namespace without name", selectors: []placementv1beta1.ResourceSelectorTerm{{Version: "v1", Kind: utils.NamespaceGVK.Kind, SelectionScope: placementv1beta1.NamespaceWithResourceSelectors}}, wantErr: "selected by name"},
-		{name: "selective namespace with label", selectors: []placementv1beta1.ResourceSelectorTerm{{Version: "v1", Kind: utils.NamespaceGVK.Kind, Name: crpNamespaceA, SelectionScope: placementv1beta1.NamespaceWithResourceSelectors, LabelSelector: &metav1.LabelSelector{}}}, wantErr: "selected by name"},
-		{name: "multiple selective namespace selectors", selectors: []placementv1beta1.ResourceSelectorTerm{selective, selective}, wantErr: "exactly one namespace selector"},
-		{name: "mixing namespace modes with selective namespace", selectors: []placementv1beta1.ResourceSelectorTerm{ns, selective}, wantErr: "exactly one namespace selector"},
-		{name: "unsupported namespace scope", selectors: []placementv1beta1.ResourceSelectorTerm{{Version: "v1", Kind: utils.NamespaceGVK.Kind, Name: crpNamespaceA, SelectionScope: crpUnknown}}, wantErr: "unsupported namespace selection scope"},
-		{name: "invalid namespace label", selectors: []placementv1beta1.ResourceSelectorTerm{{Version: "v1", Kind: utils.NamespaceGVK.Kind, SelectionScope: placementv1beta1.NamespaceOnly, LabelSelector: &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{Key: crpLabel, Operator: "invalid"}}}}}, wantErr: "invalid resource label selector"},
+		{name: "namespaced resource without selective namespace", selectors: []placementv1beta1.ResourceSelectorTerm{configMap}, wantErr: "requires NamespaceWithResourceSelectors", invalid: true},
+		{name: "namespace expansion cannot scope explicit resources", selectors: []placementv1beta1.ResourceSelectorTerm{ns, configMap}, wantErr: "requires NamespaceWithResourceSelectors", invalid: true},
+		{name: "selective namespace without name", selectors: []placementv1beta1.ResourceSelectorTerm{{Version: "v1", Kind: utils.NamespaceGVK.Kind, SelectionScope: placementv1beta1.NamespaceWithResourceSelectors}}, wantErr: "selected by name", invalid: true},
+		{name: "selective namespace with label", selectors: []placementv1beta1.ResourceSelectorTerm{{Version: "v1", Kind: utils.NamespaceGVK.Kind, Name: crpNamespaceA, SelectionScope: placementv1beta1.NamespaceWithResourceSelectors, LabelSelector: &metav1.LabelSelector{}}}, wantErr: "selected by name", invalid: true},
+		{name: "multiple selective namespace selectors", selectors: []placementv1beta1.ResourceSelectorTerm{selective, selective}, wantErr: "exactly one namespace selector", invalid: true},
+		{name: "mixing namespace modes with selective namespace", selectors: []placementv1beta1.ResourceSelectorTerm{ns, selective}, wantErr: "exactly one namespace selector", invalid: true},
+		{name: "unsupported namespace scope", selectors: []placementv1beta1.ResourceSelectorTerm{{Version: "v1", Kind: utils.NamespaceGVK.Kind, Name: crpNamespaceA, SelectionScope: crpUnknown}}, wantErr: "unsupported namespace selection scope", invalid: true},
+		{name: "invalid namespace label", selectors: []placementv1beta1.ResourceSelectorTerm{{Version: "v1", Kind: utils.NamespaceGVK.Kind, SelectionScope: placementv1beta1.NamespaceOnly, LabelSelector: &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{Key: crpLabel, Operator: "invalid"}}}}}, wantErr: "invalid resource label selector", invalid: true},
 		{name: "namespace eligibility denied", selectors: []placementv1beta1.ResourceSelectorTerm{ns}, modify: func(a *PlacementAuthorizer, _ *placementv1beta1.ClusterResourcePlacement) {
 			a.resourceEligibilityChecker.SetNamespaceCheckList(resourceeligibility.NamespaceEligibilityModeDenyList, []string{crpNamespaceA}, nil)
-		}, wantErr: "not eligible for placement"},
+		}, wantErr: "not eligible for placement", invalid: true},
 		{name: "selective namespace eligibility denied", selectors: []placementv1beta1.ResourceSelectorTerm{selective, configMap}, modify: func(a *PlacementAuthorizer, _ *placementv1beta1.ClusterResourcePlacement) {
 			a.resourceEligibilityChecker.SetNamespaceCheckList(resourceeligibility.NamespaceEligibilityModeDenyList, []string{crpNamespaceA}, nil)
-		}, wantErr: "not eligible for placement"},
+		}, wantErr: "not eligible for placement", invalid: true},
 		{name: "namespace list API failure", selectors: []placementv1beta1.ResourceSelectorTerm{{Version: "v1", Kind: utils.NamespaceGVK.Kind, SelectionScope: placementv1beta1.NamespaceWithResources}}, modify: func(a *PlacementAuthorizer, _ *placementv1beta1.ClusterResourcePlacement) {
 			a.namespaceReader = fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{List: func(context.Context, client.WithWatch, client.ObjectList, ...client.ListOption) error {
 				return errors.New("list unavailable")
 			}}).Build()
 		}, wantErr: "list unavailable"},
+		{name: "namespace list bad request remains operational", selectors: []placementv1beta1.ResourceSelectorTerm{{Version: "v1", Kind: utils.NamespaceGVK.Kind, SelectionScope: placementv1beta1.NamespaceWithResources}}, modify: func(a *PlacementAuthorizer, _ *placementv1beta1.ClusterResourcePlacement) {
+			a.namespaceReader = fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{List: func(context.Context, client.WithWatch, client.ObjectList, ...client.ListOption) error {
+				return apierrors.NewBadRequest("namespace list rejected")
+			}}).Build()
+		}, wantErr: "namespace list rejected"},
 		{name: "inventory mapper failure", selectors: []placementv1beta1.ResourceSelectorTerm{ns}, modify: func(a *PlacementAuthorizer, _ *placementv1beta1.ClusterResourcePlacement) {
 			mapper := crpErrorRESTMapper{RESTMapper: a.restMapper, err: errors.New("inventory mapping unavailable")}
 			a.resourceEligibilityChecker = resourceeligibility.AllowAll(mapper)
@@ -491,12 +498,16 @@ func TestClusterResourcePlacementAuthorizeFailures(t *testing.T) {
 				tt.modify(a, p)
 			}
 			result := a.Authorize(context.Background(), authenticationv1.UserInfo{Username: rpRequester}, p)
+			wantDecision := DecisionIndeterminate
+			if tt.invalid {
+				wantDecision = DecisionInvalid
+			}
 			if tt.denyVerb != "" {
 				if result.Decision != DecisionDenied || result.DenialReason == "" || result.Err != nil {
 					t.Errorf("Authorize() = %+v, want denied", result)
 				}
-			} else if result.Decision != DecisionIndeterminate || result.Err == nil || !strings.Contains(result.Err.Error(), tt.wantErr) {
-				t.Errorf("Authorize() = %+v, want indeterminate with error containing %q", result, tt.wantErr)
+			} else if result.Decision != wantDecision || result.Err == nil || !strings.Contains(result.Err.Error(), tt.wantErr) {
+				t.Errorf("Authorize() = %+v, want %s with error containing %q", result, wantDecision, tt.wantErr)
 			}
 		})
 	}

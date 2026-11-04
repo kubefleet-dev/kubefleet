@@ -76,7 +76,7 @@ func (a *PlacementAuthorizer) Authorize(ctx context.Context, user authentication
 	// Check Namespace access before resolution can reveal names or existence.
 	namespaceChecks, err := a.namespaceChecksForPlacement(placement)
 	if err != nil {
-		return Result{Decision: DecisionIndeterminate, Err: err}
+		return placementErrorResult(err)
 	}
 	if len(namespaceChecks) != 0 {
 		result := a.reviewer.Authorize(ctx, user, namespaceChecks...)
@@ -86,9 +86,24 @@ func (a *PlacementAuthorizer) Authorize(ctx context.Context, user authentication
 	}
 	attributes, err := a.resolve(ctx, placement)
 	if err != nil {
-		return Result{Decision: DecisionIndeterminate, Err: err}
+		return placementErrorResult(err)
 	}
 	return a.reviewer.Authorize(ctx, user, attributes...)
+}
+
+type invalidPlacementError string
+
+func (e invalidPlacementError) Error() string {
+	return string(e)
+}
+
+func placementErrorResult(err error) Result {
+	decision := DecisionIndeterminate
+	var invalidErr invalidPlacementError
+	if errors.As(err, &invalidErr) {
+		decision = DecisionInvalid
+	}
+	return Result{Decision: decision, Err: err}
 }
 
 func (a *PlacementAuthorizer) resolve(ctx context.Context, placement placementv1beta1.PlacementObj) ([]authorizationv1.ResourceAttributes, error) {
@@ -107,7 +122,7 @@ func (a *PlacementAuthorizer) resolveResourcePlacement(rp *placementv1beta1.Reso
 		return nil, fmt.Errorf("resource placement must not be nil")
 	}
 	if rp.Namespace == "" {
-		return nil, fmt.Errorf("resource placement must specify a namespace")
+		return nil, invalidPlacementError("resource placement must specify a namespace")
 	}
 	var attributes []authorizationv1.ResourceAttributes
 	for _, selector := range rp.Spec.ResourceSelectors {
@@ -117,7 +132,7 @@ func (a *PlacementAuthorizer) resolveResourcePlacement(rp *placementv1beta1.Reso
 			return nil, fmt.Errorf("failed to resolve selector %s: %w", gvk, err)
 		}
 		if mapping.Scope.Name() != meta.RESTScopeNameNamespace {
-			return nil, fmt.Errorf("resource placement cannot select cluster-scoped resource %s", gvk)
+			return nil, invalidPlacementError(fmt.Sprintf("resource placement cannot select cluster-scoped resource %s", gvk))
 		}
 		if !a.resourceEligibilityChecker.AllowsGVK(gvk) {
 			continue
@@ -137,17 +152,17 @@ func selectorGVK(selector placementv1beta1.ResourceSelectorTerm) schema.GroupVer
 
 func (a *PlacementAuthorizer) selectorAttributes(gvr schema.GroupVersionResource, namespace string, selector placementv1beta1.ResourceSelectorTerm) (authorizationv1.ResourceAttributes, error) {
 	if namespace != "" && !a.resourceEligibilityChecker.AllowsNamespace(namespace) {
-		return authorizationv1.ResourceAttributes{}, fmt.Errorf("namespace %q is not eligible for placement", namespace)
+		return authorizationv1.ResourceAttributes{}, invalidPlacementError(fmt.Sprintf("namespace %q is not eligible for placement", namespace))
 	}
 	if selector.Name != "" {
 		if selector.LabelSelector != nil {
-			return authorizationv1.ResourceAttributes{}, fmt.Errorf("name and labelSelector are mutually exclusive")
+			return authorizationv1.ResourceAttributes{}, invalidPlacementError("name and labelSelector are mutually exclusive")
 		}
 		return resourceAttributes(gvr, "get", namespace, selector.Name), nil
 	}
 	if selector.LabelSelector != nil {
 		if _, err := metav1.LabelSelectorAsSelector(selector.LabelSelector); err != nil {
-			return authorizationv1.ResourceAttributes{}, fmt.Errorf("invalid resource label selector: %w", err)
+			return authorizationv1.ResourceAttributes{}, invalidPlacementError(fmt.Sprintf("invalid resource label selector: %v", err))
 		}
 	}
 	return resourceAttributes(gvr, "list", namespace, ""), nil

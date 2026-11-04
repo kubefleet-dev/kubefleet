@@ -19,6 +19,7 @@ package authorization
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -174,29 +175,50 @@ func TestPlacementAuthorizeRejectsInvalidInputs(t *testing.T) {
 	}
 }
 
+func TestPlacementErrorResult(t *testing.T) {
+	tests := []struct {
+		name         string
+		err          error
+		wantDecision Decision
+	}{
+		{name: "invalid input", err: invalidPlacementError("invalid selector"), wantDecision: DecisionInvalid},
+		{name: "wrapped invalid input", err: fmt.Errorf("resolve placement: %w", invalidPlacementError("invalid selector")), wantDecision: DecisionInvalid},
+		{name: "operational error", err: errors.New("API unavailable"), wantDecision: DecisionIndeterminate},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := placementErrorResult(tt.err)
+			if result.Decision != tt.wantDecision || result.Err != tt.err {
+				t.Errorf("placementErrorResult(%v) = %+v, want %s with original error", tt.err, result, tt.wantDecision)
+			}
+		})
+	}
+}
+
 func TestResourcePlacementAuthorizeFailures(t *testing.T) {
 	tests := []struct {
-		name   string
-		modify func(*PlacementAuthorizer, *placementv1beta1.ResourcePlacement)
-		denied bool
+		name    string
+		modify  func(*PlacementAuthorizer, *placementv1beta1.ResourcePlacement)
+		denied  bool
+		invalid bool
 	}{
 		{name: "unknown kind", modify: func(_ *PlacementAuthorizer, p *placementv1beta1.ResourcePlacement) {
 			p.Spec.ResourceSelectors[0].Kind = "Unknown"
 		}},
-		{name: "missing namespace", modify: func(_ *PlacementAuthorizer, p *placementv1beta1.ResourcePlacement) { p.Namespace = "" }},
+		{name: "missing namespace", invalid: true, modify: func(_ *PlacementAuthorizer, p *placementv1beta1.ResourcePlacement) { p.Namespace = "" }},
 		{name: "cluster-scoped selector", modify: func(_ *PlacementAuthorizer, p *placementv1beta1.ResourcePlacement) {
 			p.Spec.ResourceSelectors[0].Kind = utils.NamespaceGVK.Kind
-		}},
+		}, invalid: true},
 		{name: "name and label selector", modify: func(_ *PlacementAuthorizer, p *placementv1beta1.ResourcePlacement) {
 			p.Spec.ResourceSelectors[0].LabelSelector = &metav1.LabelSelector{}
-		}},
+		}, invalid: true},
 		{name: "invalid label selector", modify: func(_ *PlacementAuthorizer, p *placementv1beta1.ResourcePlacement) {
 			p.Spec.ResourceSelectors[0].Name = ""
 			p.Spec.ResourceSelectors[0].LabelSelector = &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{Key: "app", Operator: "invalid"}}}
-		}},
+		}, invalid: true},
 		{name: "namespace excluded", modify: func(a *PlacementAuthorizer, _ *placementv1beta1.ResourcePlacement) {
 			a.resourceEligibilityChecker.SetNamespaceCheckList(resourceeligibility.NamespaceEligibilityModeDenyList, []string{rpNamespace}, nil)
-		}},
+		}, invalid: true},
 		{name: "SAR error", modify: func(a *PlacementAuthorizer, _ *placementv1beta1.ResourcePlacement) {
 			a.reviewer.client = &fakeSubjectAccessReviewClient{create: func(context.Context, *authorizationv1.SubjectAccessReview) error {
 				return errors.New("SAR unavailable")
@@ -234,6 +256,9 @@ func TestResourcePlacementAuthorizeFailures(t *testing.T) {
 			tt.modify(a, p)
 			result := a.Authorize(context.Background(), authenticationv1.UserInfo{}, p)
 			wantDecision := DecisionIndeterminate
+			if tt.invalid {
+				wantDecision = DecisionInvalid
+			}
 			if tt.denied {
 				wantDecision = DecisionDenied
 			}
