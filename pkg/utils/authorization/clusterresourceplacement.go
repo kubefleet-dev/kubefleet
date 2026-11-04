@@ -27,7 +27,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -198,7 +197,7 @@ func (a *PlacementAuthorizer) resolveNamespaceSelector(ctx context.Context, sele
 			return nil, err
 		}
 		if len(namespaces) != 1 {
-			return nil, errors.New("NamespaceWithResourceSelectors requires exactly one active namespace")
+			return nil, errors.New("NamespaceWithResourceSelectors requires exactly one namespace")
 		}
 		if !a.resourceEligibilityChecker.AllowsNamespace(namespaces[0].Name) {
 			return nil, fmt.Errorf("namespace %q is not eligible for placement", namespaces[0].Name)
@@ -210,35 +209,22 @@ func (a *PlacementAuthorizer) resolveNamespaceSelector(ctx context.Context, sele
 }
 
 func (a *PlacementAuthorizer) selectNamespaces(ctx context.Context, selector placementv1beta1.ResourceSelectorTerm) ([]corev1.Namespace, error) {
-	var namespaces []corev1.Namespace
 	if selector.Name != "" {
-		var namespace corev1.Namespace
-		if err := a.namespaceReader.Get(ctx, types.NamespacedName{Name: selector.Name}, &namespace); err != nil {
-			return nil, fmt.Errorf("failed to get selected namespace %q: %w", selector.Name, err)
-		}
-		namespaces = append(namespaces, namespace)
-	} else {
-		labelSelector := labels.Everything()
-		if selector.LabelSelector != nil {
-			var err error
-			labelSelector, err = metav1.LabelSelectorAsSelector(selector.LabelSelector)
-			if err != nil {
-				return nil, fmt.Errorf("invalid namespace label selector: %w", err)
-			}
-		}
-		var list corev1.NamespaceList
-		if err := a.namespaceReader.List(ctx, &list, client.MatchingLabelsSelector{Selector: labelSelector}); err != nil {
-			return nil, fmt.Errorf("failed to list selected namespaces: %w", err)
-		}
-		namespaces = list.Items
+		return []corev1.Namespace{{ObjectMeta: metav1.ObjectMeta{Name: selector.Name}}}, nil
 	}
-	active := make([]corev1.Namespace, 0, len(namespaces))
-	for i := range namespaces {
-		if namespaces[i].DeletionTimestamp == nil {
-			active = append(active, namespaces[i])
+	labelSelector := labels.Everything()
+	if selector.LabelSelector != nil {
+		var err error
+		labelSelector, err = metav1.LabelSelectorAsSelector(selector.LabelSelector)
+		if err != nil {
+			return nil, fmt.Errorf("invalid namespace label selector: %w", err)
 		}
 	}
-	return active, nil
+	var list corev1.NamespaceList
+	if err := a.namespaceReader.List(ctx, &list, client.MatchingLabelsSelector{Selector: labelSelector}); err != nil {
+		return nil, fmt.Errorf("failed to list selected namespaces: %w", err)
+	}
+	return list.Items, nil
 }
 
 func (a *PlacementAuthorizer) expandNamespace(namespace string) ([]authorizationv1.ResourceAttributes, error) {
