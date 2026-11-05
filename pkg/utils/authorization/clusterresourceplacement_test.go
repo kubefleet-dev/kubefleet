@@ -65,6 +65,26 @@ func (i crpResourceInventory) GetNameSpaceScopedResources() []schema.GroupVersio
 	return i
 }
 
+type crpCountingResourceInventory struct {
+	NamespacedResourceInventory
+	calls int
+}
+
+func (i *crpCountingResourceInventory) GetNameSpaceScopedResources() []schema.GroupVersionResource {
+	i.calls++
+	return i.NamespacedResourceInventory.GetNameSpaceScopedResources()
+}
+
+type crpCountingEligibilityChecker struct {
+	resourceeligibility.Checker
+	calls []schema.GroupVersionResource
+}
+
+func (c *crpCountingEligibilityChecker) AllowsGVR(gvr schema.GroupVersionResource) (bool, error) {
+	c.calls = append(c.calls, gvr)
+	return c.Checker.AllowsGVR(gvr)
+}
+
 type crpErrorRESTMapper struct {
 	meta.RESTMapper
 	err error
@@ -223,6 +243,72 @@ func TestClusterResourcePlacementAuthorizeSelections(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.want, got, cmpopts.SortSlices(func(a, b authorizationv1.ResourceAttributes) bool { return fmt.Sprint(a) < fmt.Sprint(b) })); diff != "" {
 				t.Errorf("Authorize() checks mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestClusterResourcePlacementResolvesInventoryOncePerRequest(t *testing.T) {
+	all := placementv1beta1.ResourceSelectorTerm{Version: "v1", Kind: utils.NamespaceGVK.Kind, SelectionScope: placementv1beta1.NamespaceWithResources}
+	named := all
+	named.Name = crpNamespaceA
+	otherNamed := all
+	otherNamed.Name = crpNamespaceB
+	labeled := all
+	labeled.LabelSelector = &metav1.LabelSelector{MatchLabels: map[string]string{crpLabel: crpLabelValue}}
+	unmatched := all
+	unmatched.LabelSelector = &metav1.LabelSelector{MatchLabels: map[string]string{crpLabel: "absent"}}
+	namespaceOnly := named
+	namespaceOnly.SelectionScope = placementv1beta1.NamespaceOnly
+	selective := named
+	selective.SelectionScope = placementv1beta1.NamespaceWithResourceSelectors
+	tests := []struct {
+		name      string
+		selectors []placementv1beta1.ResourceSelectorTerm
+		expand    bool
+	}{
+		{name: "all namespaces", selectors: []placementv1beta1.ResourceSelectorTerm{all}, expand: true},
+		{name: "labeled namespaces", selectors: []placementv1beta1.ResourceSelectorTerm{labeled}, expand: true},
+		{name: "multiple named selectors", selectors: []placementv1beta1.ResourceSelectorTerm{named, otherNamed}, expand: true},
+		{name: "overlapping selectors", selectors: []placementv1beta1.ResourceSelectorTerm{all, named}, expand: true},
+		{name: "no matches before named selector", selectors: []placementv1beta1.ResourceSelectorTerm{unmatched, named}, expand: true},
+		{name: "no matches", selectors: []placementv1beta1.ResourceSelectorTerm{unmatched}},
+		{name: "namespace only", selectors: []placementv1beta1.ResourceSelectorTerm{namespaceOnly}},
+		{name: "selective resources", selectors: []placementv1beta1.ResourceSelectorTerm{selective, {Version: "v1", Kind: utils.ConfigMapKind, Name: crpSource}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a, _ := newClusterPlacementTestAuthorizer(t, &fakeSubjectAccessReviewClient{create: func(_ context.Context, review *authorizationv1.SubjectAccessReview) error {
+				review.Status.Allowed = true
+				return nil
+			}})
+			inventory := &crpCountingResourceInventory{NamespacedResourceInventory: a.namespacedResources}
+			checker := &crpCountingEligibilityChecker{Checker: a.resourceEligibilityChecker}
+			a.namespacedResources = inventory
+			a.resourceEligibilityChecker = checker
+			p := &placementv1beta1.ClusterResourcePlacement{Spec: placementv1beta1.PlacementSpec{ResourceSelectors: tt.selectors}}
+			for request := 0; request < 2; request++ {
+				inventory.calls = 0
+				checker.calls = nil
+				result := a.Authorize(context.Background(), authenticationv1.UserInfo{Username: rpRequester}, p)
+				if diff := cmp.Diff(Result{Decision: DecisionAllowed}, result); diff != "" {
+					t.Fatalf("Authorize() request %d mismatch (-want +got):\n%s", request, diff)
+				}
+				wantInventoryCalls := 0
+				var wantEligibilityCalls []schema.GroupVersionResource
+				if tt.expand {
+					wantInventoryCalls = 1
+					wantEligibilityCalls = []schema.GroupVersionResource{
+						corev1.SchemeGroupVersion.WithResource(crpConfigMaps),
+						corev1.SchemeGroupVersion.WithResource(crpSecrets),
+					}
+				}
+				if inventory.calls != wantInventoryCalls {
+					t.Errorf("Authorize() request %d inventory calls = %d, want %d", request, inventory.calls, wantInventoryCalls)
+				}
+				if diff := cmp.Diff(wantEligibilityCalls, checker.calls); diff != "" {
+					t.Errorf("Authorize() request %d eligibility calls mismatch (-want +got):\n%s", request, diff)
+				}
 			}
 		})
 	}

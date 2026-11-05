@@ -63,7 +63,7 @@ func (a *PlacementAuthorizer) resolveClusterResourcePlacement(ctx context.Contex
 }
 
 func (a *PlacementAuthorizer) resolveNamespaceSelectors(ctx context.Context, selectors []placementv1beta1.ResourceSelectorTerm) ([]authorizationv1.ResourceAttributes, namespaceScope, error) {
-	var attributes []authorizationv1.ResourceAttributes
+	var namespaces []corev1.Namespace
 	var scope namespaceScope
 	namespaceSelectorCount := 0
 	for _, selector := range selectors {
@@ -90,17 +90,21 @@ func (a *PlacementAuthorizer) resolveNamespaceSelectors(ctx context.Context, sel
 			}
 			continue
 		case "", placementv1beta1.NamespaceWithResources:
-			checks, err := a.resolveNamespaceSelector(ctx, selector)
+			selected, err := a.selectNamespaces(ctx, selector)
 			if err != nil {
 				return nil, namespaceScope{}, err
 			}
-			attributes = append(attributes, checks...)
+			namespaces = append(namespaces, selected...)
 		default:
 			return nil, namespaceScope{}, invalidPlacementError(fmt.Sprintf("unsupported namespace selection scope %q", selector.SelectionScope))
 		}
 	}
 	if scope.hasSelectiveNamespace && namespaceSelectorCount != 1 {
 		return nil, namespaceScope{}, invalidPlacementError("NamespaceWithResourceSelectors requires exactly one namespace selector")
+	}
+	attributes, err := a.expandNamespaces(namespaces)
+	if err != nil {
+		return nil, namespaceScope{}, err
 	}
 	return attributes, scope, nil
 }
@@ -178,26 +182,6 @@ func (a *PlacementAuthorizer) namespaceSelectorAttributes(selector placementv1be
 	return []authorizationv1.ResourceAttributes{check}, nil
 }
 
-func (a *PlacementAuthorizer) resolveNamespaceSelector(ctx context.Context, selector placementv1beta1.ResourceSelectorTerm) ([]authorizationv1.ResourceAttributes, error) {
-	namespaces, err := a.selectNamespaces(ctx, selector)
-	if err != nil {
-		return nil, err
-	}
-	var attributes []authorizationv1.ResourceAttributes
-	for i := range namespaces {
-		namespace := namespaces[i].Name
-		if !a.resourceEligibilityChecker.AllowsNamespace(namespace) {
-			return nil, invalidPlacementError(fmt.Sprintf("namespace %q is not eligible for placement", namespace))
-		}
-		checks, err := a.expandNamespace(namespace)
-		if err != nil {
-			return nil, err
-		}
-		attributes = append(attributes, checks...)
-	}
-	return attributes, nil
-}
-
 func (a *PlacementAuthorizer) selectNamespaces(ctx context.Context, selector placementv1beta1.ResourceSelectorTerm) ([]corev1.Namespace, error) {
 	if selector.Name != "" {
 		return []corev1.Namespace{{ObjectMeta: metav1.ObjectMeta{Name: selector.Name}}}, nil
@@ -217,7 +201,16 @@ func (a *PlacementAuthorizer) selectNamespaces(ctx context.Context, selector pla
 	return list.Items, nil
 }
 
-func (a *PlacementAuthorizer) expandNamespace(namespace string) ([]authorizationv1.ResourceAttributes, error) {
+func (a *PlacementAuthorizer) expandNamespaces(namespaces []corev1.Namespace) ([]authorizationv1.ResourceAttributes, error) {
+	if len(namespaces) == 0 {
+		return nil, nil
+	}
+	for i := range namespaces {
+		namespace := namespaces[i].Name
+		if !a.resourceEligibilityChecker.AllowsNamespace(namespace) {
+			return nil, invalidPlacementError(fmt.Sprintf("namespace %q is not eligible for placement", namespace))
+		}
+	}
 	var attributes []authorizationv1.ResourceAttributes
 	for _, gvr := range a.namespacedResources.GetNameSpaceScopedResources() {
 		eligible, err := a.resourceEligibilityChecker.AllowsGVR(gvr)
@@ -230,7 +223,9 @@ func (a *PlacementAuthorizer) expandNamespace(namespace string) ([]authorization
 		case !eligible:
 			continue
 		}
-		attributes = append(attributes, resourceAttributes(gvr, "list", namespace, ""))
+		for i := range namespaces {
+			attributes = append(attributes, resourceAttributes(gvr, "list", namespaces[i].Name, ""))
+		}
 	}
 	return attributes, nil
 }
