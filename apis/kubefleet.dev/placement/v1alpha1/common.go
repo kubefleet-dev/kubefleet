@@ -19,6 +19,7 @@ package v1alpha1
 const (
 	// The Kinds of API resource types in this package.
 	ClusterClaimKind                     = "ClusterClaim"
+	ClusterProviderClassKind             = "ClusterProviderClass"
 	PlacementPolicyKind                  = "PlacementPolicy"
 	ClusterPlacementPolicyKind           = "ClusterPlacementPolicy"
 	PlacementBindingKind                 = "PlacementBinding"
@@ -55,6 +56,19 @@ const (
 	// topology.kubernetes.io/region label key, and `alias` in place of the cluster alias label
 	// (placement/v1beta1's ClusterAliasLabel).
 	ClusterSelectorsAnnotation = KubeFleetPrefix + "cluster-selectors"
+
+	// FulfillerFinalizer is the finalizer a provider places on a cluster claim when it accepts it,
+	// so that a withdrawn claim is not removed before the provider has cancelled or cleaned up the
+	// provisioning it started. KubeFleet never removes it.
+	FulfillerFinalizer = KubeFleetPrefix + "fulfiller"
+
+	// FulfilledClaimNameLabel and FulfilledClaimUIDLabel are set by a provider on the member cluster it
+	// provisions for a cluster claim, so that the provider can find the clusters it owns for a claim
+	// (by name, which KubeFleet keeps stable across re-issues of the same claim) and tell apart the
+	// one it provisioned for this very claim (by UID). The name label is shortened when the claim
+	// name does not fit in a label value; the UID always fits.
+	FulfilledClaimNameLabel = KubeFleetPrefix + "fulfilled-claim-name"
+	FulfilledClaimUIDLabel  = KubeFleetPrefix + "fulfilled-claim-uid"
 )
 
 // The labels that record, on a placement policy KubeFleet generated from an annotation, the
@@ -81,6 +95,17 @@ const (
 	// ParentNameLabel holds the name of the resource a policy was generated from, shortened if it
 	// does not fit in a label value.
 	ParentNameLabel = "placement.kubefleet.dev/parent-name"
+
+	// IsDefaultClusterProviderClassAnnotation marks the ClusterProviderClass that placement policies
+	// use when they name none, in the way the storage.kubernetes.io/is-default-class annotation marks
+	// a StorageClass. Its value must be "true". When more than one class carries it, no class is the
+	// default and a policy that names none issues no cluster claims.
+	IsDefaultClusterProviderClassAnnotation = "placement.kubefleet.dev/is-default-class"
+
+	// ProvisionedClusterNameAnnotation records on a cluster claim, before the provider creates anything,
+	// the name of the cluster it will provision for the claim, so that a provider restarted mid-flight
+	// resumes with the same cluster instead of creating a second one.
+	ProvisionedClusterNameAnnotation = "placement.kubefleet.dev/provisioned-cluster-name"
 )
 
 type ObjectReference struct {

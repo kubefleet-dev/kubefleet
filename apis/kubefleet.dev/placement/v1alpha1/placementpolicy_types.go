@@ -141,6 +141,25 @@ type PlacementPolicySpec struct {
 	// +kubebuilder:validation:Optional
 	SyncStrategy *SyncStrategy `json:"syncStrategy,omitempty"`
 
+	// The name of the ClusterProviderClass whose provider fulfills the cluster claims this placement
+	// policy issues. When unset, the fleet's default class (the one annotated
+	// placement.kubefleet.dev/is-default-class) is used; when there is none, the policy issues no
+	// cluster claims.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	ClusterProviderClassName *string `json:"clusterProviderClassName,omitempty"`
+
+	// The number of cluster claims this placement policy may have outstanding at once, capped by
+	// the fleet-wide limit. A claim serves one cluster selector, so this only matters to a policy
+	// with several selectors. Defaults to 1.
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=10
+	MaxConcurrentClusterClaims *int32 `json:"maxConcurrentClusterClaims,omitempty"`
+
 	// The tolerations which allows KubeFleet to synchronize selected resources to tainted target
 	// clusters.
 	//
