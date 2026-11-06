@@ -12,6 +12,10 @@ image:
 
 logVerbosity: 5
 
+# Optional. When set, passed as --log_file_max_size to the hub-agent binary.
+# Leave empty/unset to omit the flag (klog default).
+logFileMaxSize: ""
+
 enableWebhook: true
 webhookServiceName: fleetwebhook
 enableGuardRail: true
