@@ -33,8 +33,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          ClusterResourcePlacementStatus is a namespaced resource that mirrors the PlacementStatus of a corresponding
-          ClusterResourcePlacement object. This allows namespace-scoped access to cluster-scoped placement status.
+          ClusterResourcePlacementStatus is a namespaced resource that projects the PlacementStatus of a corresponding
+          ClusterResourcePlacement object. The projection includes only the target Namespace and resources and references
+          within it, allowing namespace-scoped access without exposing other cluster-scoped or namespaced resources.
           The LastUpdatedTime field is updated whenever the object is updated.
 
           This object will be created within the target namespace that contains resources being managed by the CRP.
@@ -68,7 +69,8 @@ spec:
           metadata:
             type: object
           sourceStatus:
-            description: Source status copied from the corresponding ClusterResourcePlacement.
+            description: Source status projected from the corresponding ClusterResourcePlacement
+              for the target namespace.
             properties:
               conditions:
                 description: |-
@@ -680,8 +682,9 @@ spec:
     schema:
       openAPIV3Schema:
         description: |-
-          ClusterResourcePlacementStatus is a namespaced resource that mirrors the PlacementStatus of a corresponding
-          ClusterResourcePlacement object. This allows namespace-scoped access to cluster-scoped placement status.
+          ClusterResourcePlacementStatus is a namespaced resource that projects the PlacementStatus of a corresponding
+          ClusterResourcePlacement object. The projection includes only the target Namespace and resources and references
+          within it, allowing namespace-scoped access without exposing other cluster-scoped or namespaced resources.
           The LastUpdatedTime field is updated whenever the CRPS object is updated.
 
           This object will be created within the target namespace that contains resources being managed by the CRP.
@@ -715,7 +718,8 @@ spec:
           metadata:
             type: object
           sourceStatus:
-            description: Source status copied from the corresponding ClusterResourcePlacement.
+            description: Source status projected from the corresponding ClusterResourcePlacement
+              for the target namespace.
             properties:
               conditions:
                 description: |-

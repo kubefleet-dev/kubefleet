@@ -79,13 +79,38 @@ func isNamespaceAccessibleCRP(placementObj placementv1beta1.PlacementObj) bool {
 	return true
 }
 
-// filterStatusSyncedCondition creates a copy of the placement status with the
-// ClusterResourcePlacementStatusSynced condition removed. This is used when
-// creating ClusterResourcePlacementStatus objects because the StatusSynced
-// condition is only relevant for the main CRP object, not the CRPS object.
-// Returns a filtered copy of the status with all conditions except StatusSynced.
-func filterStatusSyncedCondition(status *placementv1beta1.PlacementStatus) *placementv1beta1.PlacementStatus {
+// buildNamespaceAccessiblePlacementStatus creates a namespace-scoped copy of the placement status.
+// It excludes resources and references outside the target namespace.
+func buildNamespaceAccessiblePlacementStatus(status *placementv1beta1.PlacementStatus, targetNamespace string) *placementv1beta1.PlacementStatus {
 	filteredStatus := status.DeepCopy()
+
+	filteredStatus.SelectedResources = filterResourceIdentifiersByNamespace(filteredStatus.SelectedResources, targetNamespace)
+	for idx := range filteredStatus.PerClusterPlacementStatuses {
+		clusterStatus := &filteredStatus.PerClusterPlacementStatuses[idx]
+		clusterStatus.ApplicableResourceOverrides = filterNamespacedNamesByNamespace(clusterStatus.ApplicableResourceOverrides, targetNamespace)
+		clusterStatus.ApplicableClusterResourceOverrides = nil
+		clusterStatus.FailedPlacements = filterPlacementsByNamespace(
+			clusterStatus.FailedPlacements,
+			targetNamespace,
+			func(placement *placementv1beta1.FailedResourcePlacement) *placementv1beta1.ResourceIdentifier {
+				return &placement.ResourceIdentifier
+			},
+		)
+		clusterStatus.DriftedPlacements = filterPlacementsByNamespace(
+			clusterStatus.DriftedPlacements,
+			targetNamespace,
+			func(placement *placementv1beta1.DriftedResourcePlacement) *placementv1beta1.ResourceIdentifier {
+				return &placement.ResourceIdentifier
+			},
+		)
+		clusterStatus.DiffedPlacements = filterPlacementsByNamespace(
+			clusterStatus.DiffedPlacements,
+			targetNamespace,
+			func(placement *placementv1beta1.DiffedResourcePlacement) *placementv1beta1.ResourceIdentifier {
+				return &placement.ResourceIdentifier
+			},
+		)
+	}
 
 	// Filter out the ClusterResourcePlacementStatusSynced condition.
 	filteredConditions := make([]metav1.Condition, 0, len(filteredStatus.Conditions))
@@ -97,6 +122,78 @@ func filterStatusSyncedCondition(status *placementv1beta1.PlacementStatus) *plac
 	filteredStatus.Conditions = filteredConditions
 
 	return filteredStatus
+}
+
+// isResourceInNamespaceScope reports whether a resource can be included in status published to
+// targetNamespace. The namespace itself is included together with resources contained within it.
+func isResourceInNamespaceScope(identifier placementv1beta1.ResourceIdentifier, targetNamespace string) bool {
+	if identifier.Namespace == targetNamespace {
+		return true
+	}
+
+	return identifier.Namespace == "" &&
+		identifier.Group == utils.NamespaceGVK.Group &&
+		identifier.Version == utils.NamespaceGVK.Version &&
+		identifier.Kind == utils.NamespaceGVK.Kind &&
+		identifier.Name == targetNamespace
+}
+
+// sanitizeResourceIdentifier removes references to cluster-scoped envelope objects from an
+// otherwise namespace-scoped resource identifier.
+func sanitizeResourceIdentifier(identifier placementv1beta1.ResourceIdentifier, targetNamespace string) placementv1beta1.ResourceIdentifier {
+	if identifier.Envelope != nil &&
+		(identifier.Envelope.Type == placementv1beta1.ClusterResourceEnvelopeType || identifier.Envelope.Namespace != targetNamespace) {
+		identifier.Envelope = nil
+	}
+	return identifier
+}
+
+func filterResourceIdentifiersByNamespace(identifiers []placementv1beta1.ResourceIdentifier, targetNamespace string) []placementv1beta1.ResourceIdentifier {
+	if identifiers == nil {
+		return nil
+	}
+
+	filtered := make([]placementv1beta1.ResourceIdentifier, 0, len(identifiers))
+	for _, identifier := range identifiers {
+		if isResourceInNamespaceScope(identifier, targetNamespace) {
+			filtered = append(filtered, sanitizeResourceIdentifier(identifier, targetNamespace))
+		}
+	}
+	return filtered
+}
+
+func filterNamespacedNamesByNamespace(names []placementv1beta1.NamespacedName, targetNamespace string) []placementv1beta1.NamespacedName {
+	if names == nil {
+		return nil
+	}
+
+	filtered := make([]placementv1beta1.NamespacedName, 0, len(names))
+	for _, name := range names {
+		if name.Namespace == targetNamespace {
+			filtered = append(filtered, name)
+		}
+	}
+	return filtered
+}
+
+func filterPlacementsByNamespace[T any](
+	placements []T,
+	targetNamespace string,
+	resourceIdentifier func(*T) *placementv1beta1.ResourceIdentifier,
+) []T {
+	if placements == nil {
+		return nil
+	}
+
+	filtered := make([]T, 0, len(placements))
+	for _, placement := range placements {
+		identifier := resourceIdentifier(&placement)
+		if isResourceInNamespaceScope(*identifier, targetNamespace) {
+			*identifier = sanitizeResourceIdentifier(*identifier, targetNamespace)
+			filtered = append(filtered, placement)
+		}
+	}
+	return filtered
 }
 
 // buildStatusSyncedCondition creates a StatusSynced condition based on the sync result.
@@ -169,8 +266,8 @@ func (r *Reconciler) syncClusterResourcePlacementStatus(ctx context.Context, crp
 	}
 	// Use CreateOrUpdate to handle both creation and update cases.
 	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, crpStatus, func() error {
-		// Set the placement status (excluding StatusSynced condition) and update time.
-		crpStatus.PlacementStatus = *filterStatusSyncedCondition(&crp.Status)
+		// Set the namespace-safe placement status and update time.
+		crpStatus.PlacementStatus = *buildNamespaceAccessiblePlacementStatus(&crp.Status, targetNamespace)
 		crpStatus.LastUpdatedTime = metav1.Now()
 
 		// Set CRP as owner - this ensures automatic cleanup when CRP is deleted.
