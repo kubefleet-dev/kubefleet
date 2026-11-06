@@ -359,8 +359,13 @@ func (r *Reconciler) setPerClusterPlacementStatus(
 		return res
 	}
 
-	// TODO (wantjian): we only change the per-cluster status for External rollout strategy for now, so set the ObservedResourceIndex as the latest.
-	status.ObservedResourceIndex = latestResourceSnapshot.GetLabels()[fleetv1beta1.ResourceIndexLabel]
+	// Report the resource snapshot that the binding points to, so that during a rollout the clusters that have not
+	// been updated yet show the older index. Fall back to the latest index if the binding's snapshot cannot be
+	// resolved, e.g. because it has no snapshot name yet or the snapshot has been deleted by the revision history limit.
+	status.ObservedResourceIndex = resourceSnapshotIndexOnBinding
+	if status.ObservedResourceIndex == "" {
+		status.ObservedResourceIndex = latestResourceSnapshot.GetLabels()[fleetv1beta1.ResourceIndexLabel]
+	}
 	rolloutStartedCond := binding.GetCondition(string(condition.RolloutStartedCondition.ResourceBindingConditionType()))
 	switch {
 	case binding.GetBindingSpec().ResourceSnapshotName != latestResourceSnapshot.GetName() && condition.IsConditionStatusFalse(rolloutStartedCond, binding.GetGeneration()):

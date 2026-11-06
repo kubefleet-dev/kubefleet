@@ -1109,7 +1109,7 @@ var _ = Describe("validating resource placement using different apply strategies
 							},
 							{
 								ClusterName:           memberCluster2EastCanaryName,
-								ObservedResourceIndex: "1",
+								ObservedResourceIndex: "0", // The rollout is blocked, so the binding still uses the previous resource snapshot.
 								Conditions:            perClusterSyncPendingConditions(rpGeneration),
 							},
 						},
