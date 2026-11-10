@@ -56,6 +56,10 @@ enablePlacementPolicyAPIs: false
 # setting enableWorkload to false does not disable these controllers.
 enableAnnotationBasedPlacement: false
 enableEvictionAPIs: true
+# The fleet-wide number of cluster claims that may be outstanding at once under the placement
+# policy APIs, counting claims that are approved or belong to a class that approves
+# automatically; see --max-concurrent-cluster-claims.
+maxConcurrentClusterClaims: 1
 
 enablePprof: false
 pprofPort: 6065
