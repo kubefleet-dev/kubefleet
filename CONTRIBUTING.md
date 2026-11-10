@@ -14,7 +14,7 @@ By contributing to this project, you agree to the Developer Certificate of Origi
 
 You must sign off your commit to state that you certify the [DCO](DCO). To certify your commit for DCO, add a line like the following at the end of your commit message:
 
-```
+```text
 Signed-off-by: John Smith <john@example.com>
 ```
 
@@ -26,9 +26,36 @@ The KubeFleet project has adopted the CNCF Code of Conduct. Refer to our [Commun
 
 ## Contributing a patch
 
-1. Submit an issue describing your proposed change to the repository in question. The repository owners will respond to your issue promptly.
-2. Fork the desired repository, then develop and test your code changes.
+1. Submit an issue describing your proposed change. The maintainers will respond to your issue promptly.
+2. Fork the repository, then develop and test your change. The commands, generated files, and test conventions are in [AGENTS.md](AGENTS.md); it is written for assistants but is the shortest start-here for people too.
 3. Submit a pull request.
+
+## Working with AI coding tools
+
+AI-assisted contributions are welcome under the same rules as any other. You, the human author, are responsible for every line you submit.
+
+- **Disclose it.** If an AI tool helped write the change, say so in the pull request description (the template has a field for it). Disclosure goes in the PR, not in commit trailers; never list an AI tool as `Co-authored-by`.
+- **Understand it.** You must be able to explain every change in your PR. Reviewers may ask, and a PR whose author cannot explain it may be closed.
+- **Reply as yourself.** Do not use AI tools to answer review comments. Review threads are conversations between humans.
+- **Sign it yourself.** The DCO can only be certified by a human. Never let a tool add a `Signed-off-by` trailer; use `git commit -s`.
+
+Point your tool at [`AGENTS.md`](AGENTS.md); it carries the commands, conventions, and rules an assistant needs. Most tools read it automatically. The exceptions:
+
+| Tool | What to do |
+| --- | --- |
+| Copilot, Codex, and every other tool that reads `AGENTS.md`, and Claude Code through the one-line `CLAUDE.md` import | Nothing. Open the repository. |
+| A tool that does not read `AGENTS.md` | Point its own context setting at `AGENTS.md` once, in your user-level config (for example Gemini CLI's `context.fileName`, or Aider's `--read`). The repository ships no per-tool shims beyond `CLAUDE.md` and `.github/copilot-instructions.md`. |
+| Visual Studio (not VS Code) | It reads `.github/copilot-instructions.md`, which points at `AGENTS.md`, rather than `AGENTS.md` itself. Enable custom instructions in Copilot's options; nothing else is needed. |
+| Tools that read `.mcp.json` | You may be asked to approve the `squad_state` server that the Squad framework installs. Declining is fine; nothing in `AGENTS.md` needs it. |
+| Squad (an optional Copilot multi-agent framework installed under `.squad/`) | Nothing unless you want it. Invoke the `Squad` custom agent in Copilot; its members take project conventions from `AGENTS.md`, which override the trailer and PR-opening steps in Squad's bundled templates. |
+
+Tool behaviour above was checked against each vendor's documentation in 2026-09; open an issue if a row is out of date.
+
+Example prompts that work with any tool once `AGENTS.md` is loaded:
+
+- "Add a field to `ClusterResourcePlacement` and regenerate everything that depends on it."
+- "Why did the e2e job on my PR fail? Here is the run URL."
+- "Review my diff against this repository's conventions before I push."
 
 ## Issue and pull request management
 
@@ -38,13 +65,13 @@ Anyone can comment on issues and submit reviews for pull requests. In order to b
 
 PR titles must begin with one of the following prefixes (enforced by [`pr-title-lint.yml`](.github/workflows/pr-title-lint.yml)):
 
-`feat:`, `fix:`, `docs:`, `test:`, `style:`, `interface:`, `util:`, `chore:`, `ci:`, `perf:`, `refactor:`, `revert:`
+`feat:`, `fix:`, `docs:`, `test:`, `style:`, `interface:`, `util:`, `chore:`, `ci:`, `perf:`, `refactor:`, `revert:` (a `[WIP] ` prefix is also accepted)
 
 Add `make reviewable` to your workflow before opening a PR — the PR template will remind you, but running it locally first saves a round trip.
 
 ## Release note labels
 
-Each PR should carry one base `release-note/*` label matching its title prefix; additive labels (below) may be stacked on top.
+Each PR should carry one base `release-note/*` label matching its title prefix; additive labels (below) may be stacked on top. If you cannot apply labels, name the intended one in the PR description and a maintainer adds it.
 
 | PR title prefix | Label |
 | --- | --- |
