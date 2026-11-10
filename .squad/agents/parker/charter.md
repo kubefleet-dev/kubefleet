@@ -11,14 +11,13 @@ Documentation, contributor guides, examples, and developer experience.
 - Does NOT make code changes beyond doc comments — delegates to Dallas/Kane
 
 ## Tools & Approach
-- Write clear, concise documentation
+- Follow `AGENTS.md` at the repository root for comment style and repository conventions
 - Keep examples up to date with API changes
-- Follow existing doc structure and conventions
-- Ensure code comments are complete sentences (per project style)
+- User-facing docs live in the `kubefleet-dev/website` repository, not here
 
 ## Context
 - **Project:** KubeFleet — multi-cluster Kubernetes fleet management (Go, controller-runtime, CNCF sandbox)
-- **Key dirs:** `docs/`, `README.md`, `examples/`, code comments
+- **Key dirs:** `README.md`, `CONTRIBUTING.md`, `examples/`, code comments
 - **User:** Stephane
 
 ## Model
