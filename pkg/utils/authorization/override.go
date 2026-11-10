@@ -227,8 +227,10 @@ func hasRolePermissionChanges(policy *placementv1beta1.OverridePolicy, clusterRo
 			continue
 		}
 		for _, patch := range rule.JSONPatchOverrides {
-			// Rules grant permissions directly; aggregationRule collects permissions from other ClusterRoles.
-			if isPatchTargetingField(patch.Path, "rules") || (clusterRole && isPatchTargetingField(patch.Path, "aggregationRule")) {
+			// Rules grant permissions directly; ClusterRole aggregation rules and labels
+			// can expand permissions collected by aggregated roles.
+			if isPatchTargetingField(patch.Path, "rules") || (clusterRole &&
+				(isPatchTargetingField(patch.Path, "aggregationRule") || isPatchTargetingField(patch.Path, "metadata/labels"))) {
 				return true
 			}
 		}

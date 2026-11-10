@@ -182,6 +182,12 @@ func TestHasRolePermissionChanges(t *testing.T) {
 	deleteRule.OverrideType = placementv1beta1.DeleteOverrideType
 	aggregationRule := *activeRule.DeepCopy()
 	aggregationRule.JSONPatchOverrides = []placementv1beta1.JSONPatchOverride{{Path: "/aggregationRule"}}
+	labelsRule := *activeRule.DeepCopy()
+	labelsRule.JSONPatchOverrides = []placementv1beta1.JSONPatchOverride{{Path: "/metadata/labels"}}
+	aggregationLabelRule := *activeRule.DeepCopy()
+	aggregationLabelRule.JSONPatchOverrides = []placementv1beta1.JSONPatchOverride{{
+		Path: "/metadata/labels/rbac.authorization.k8s.io~1aggregate-to-admin",
+	}}
 	tests := []struct {
 		name        string
 		rules       []placementv1beta1.OverrideRule
@@ -192,6 +198,9 @@ func TestHasRolePermissionChanges(t *testing.T) {
 		{name: "delete rule ignored", rules: []placementv1beta1.OverrideRule{deleteRule}, clusterRole: true, want: false},
 		{name: "Role rules changed", rules: []placementv1beta1.OverrideRule{activeRule}, clusterRole: false, want: true},
 		{name: "aggregation applies to ClusterRole", rules: []placementv1beta1.OverrideRule{aggregationRule}, clusterRole: true, want: true},
+		{name: "ClusterRole labels replacement requires escalation", rules: []placementv1beta1.OverrideRule{labelsRule}, clusterRole: true, want: true},
+		{name: "ClusterRole aggregation label requires escalation", rules: []placementv1beta1.OverrideRule{aggregationLabelRule}, clusterRole: true, want: true},
+		{name: "Role aggregation label does not require escalation", rules: []placementv1beta1.OverrideRule{aggregationLabelRule}, clusterRole: false, want: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
