@@ -147,6 +147,8 @@ func evaluateSelectors(spec *kfplacementv1alpha1.PlacementPolicySpec, clusters [
 		// The synthesized selector mirrors what CRD defaulting would have produced had the
 		// user written it out — including the AddClusterClaim default, so that a bare policy
 		// in a fleet with no schedulable clusters can still signal that a cluster is needed.
+		// Having no terms, it is within any class's vocabulary, so the claim goes to whichever
+		// class the policy resolves to -- the one it names, else the fleet's default.
 		selectors = []kfplacementv1alpha1.ClusterSelector{
 			{
 				Count:           ptr.To(intstr.FromString(countAllClusters)),
@@ -256,8 +258,15 @@ func aggregateCounts(outcomes []selectorOutcome) (desired, scheduled int32) {
 // desired clusters. Whether the minCount floor has at least been reached everywhere is surfaced
 // through the message, not a separate reason or status, as are the member clusters whose reported
 // data cannot be evaluated against the selectors.
-func scheduledCondition(generation int64, outcomes []selectorOutcome) metav1.Condition {
+//
+// The note, when non-empty, says why an unfulfilled selector gets no cluster claim (no class, or a
+// term outside the class's vocabulary); it is appended to the message of a False condition so that
+// the condition keeps its binary reason contract while still telling the user what to fix.
+func scheduledCondition(generation int64, outcomes []selectorOutcome, note string) metav1.Condition {
 	cond := scheduledConditionByCounts(generation, outcomes)
+	if note != "" && cond.Status == metav1.ConditionFalse {
+		cond.Message += "; " + note
+	}
 	var unevaluable []string
 	for i := range outcomes {
 		unevaluable = append(unevaluable, outcomes[i].unevaluable...)

@@ -38,6 +38,7 @@ import (
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	kfrolloutv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/rollout/v1alpha1"
+	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
 )
@@ -47,6 +48,41 @@ import (
 
 // clusterSelectorCountAll is the cluster selector count that selects every matching cluster.
 const clusterSelectorCountAll = "All"
+
+// defaultClusterProviderClassName names the fleet's default cluster provider class in the e2e. No provider
+// answers its claims, so a policy whose selector cannot be fulfilled issues a claim that stays pending, which
+// is what the specs expect; without any class in the fleet, no claim would be issued at all. Its approval
+// mode is left at the default, Manual, so its claims never count toward the hub agent's fleet-wide limit.
+const defaultClusterProviderClassName = "e2e-default"
+
+// createDefaultClusterProviderClass creates the default cluster provider class, whose vocabulary admits the
+// cluster selector terms the specs use. A key missing here makes a policy issue no claim for a selector that
+// uses it, which the policy's Scheduled condition then says.
+func createDefaultClusterProviderClass() {
+	class := &kfplacementv1alpha1.ClusterProviderClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        defaultClusterProviderClassName,
+			Annotations: map[string]string{kfplacementv1alpha1.IsDefaultClusterProviderClassAnnotation: "true"},
+		},
+		Spec: kfplacementv1alpha1.ClusterProviderClassSpec{
+			ProvisionerName: "e2e.kubefleet.dev",
+			SelectorVocabulary: &kfplacementv1alpha1.SelectorVocabulary{
+				LabelKeys: []kfplacementv1alpha1.LabelKeyRule{
+					{Key: regionLabelName}, {Key: envLabelName},
+					{Key: neverSetLabelName}, {Key: neverJoinedLabelName}, {Key: newClusterLabelName},
+				},
+				PropertyKeys: []kfplacementv1alpha1.PropertyKeyRule{{Key: propertyprovider.NodeCountProperty}},
+			},
+		},
+	}
+	Expect(client.IgnoreAlreadyExists(hubClient.Create(ctx, class))).To(Succeed(), "Failed to create the default cluster provider class")
+}
+
+// deleteDefaultClusterProviderClass deletes the default cluster provider class.
+func deleteDefaultClusterProviderClass() {
+	class := &kfplacementv1alpha1.ClusterProviderClass{ObjectMeta: metav1.ObjectMeta{Name: defaultClusterProviderClassName}}
+	Expect(client.IgnoreNotFound(hubClient.Delete(ctx, class))).To(Succeed(), "Failed to delete the default cluster provider class")
+}
 
 // placementPolicyCmpOptions compares placement policy and binding statuses, ignoring the condition fields
 // that carry no contract (transition times and messages).
