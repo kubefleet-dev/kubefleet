@@ -102,15 +102,16 @@ func memberClusterSchedulingRelevantChanges() predicate.Predicate {
 	}
 }
 
-// mapMemberClusterToPlacementPolicies enqueues every PlacementPolicy on a member cluster event.
-//
-// Cluster changes are not attributable to individual policies without evaluating every selector
-// anyway, so all policies are re-enqueued; the scheduling-relevant-changes predicate keeps the
-// event volume low.
-func (r *Reconciler) mapMemberClusterToPlacementPolicies(ctx context.Context, _ client.Object) []reconcile.Request {
+// mapToAllPlacementPolicies enqueues every PlacementPolicy. It serves the events that cannot be
+// attributed to individual policies without evaluating every one of them anyway: a member cluster
+// change (the scheduling-relevant-changes predicate keeps their volume low), a cluster provider
+// class change (its vocabulary, its approval mode, which class is the default), and a cluster
+// claim freeing a fleet-wide slot that any waiting policy can take. Classes change, and claims
+// leave the active set, rarely.
+func (r *Reconciler) mapToAllPlacementPolicies(ctx context.Context, _ client.Object) []reconcile.Request {
 	policies := &kfplacementv1alpha1.PlacementPolicyList{}
 	if err := r.List(ctx, policies); err != nil {
-		klog.ErrorS(err, "Failed to list placement policies for member cluster mapping")
+		klog.ErrorS(err, "Failed to list placement policies to enqueue")
 		return nil
 	}
 	requests := make([]reconcile.Request, 0, len(policies.Items))
@@ -155,24 +156,33 @@ func policyRefOf(obj client.Object) *kfplacementv1alpha1.ObjectReference {
 	return claim.Spec.PlacementPolicyRef
 }
 
-// mapClassToPlacementPolicies enqueues every PlacementPolicy on a cluster provider class event.
-// A class change (its vocabulary, its approval mode, which class is the default) can affect any
-// policy that names it or names none, and classes change rarely.
-func (r *Reconciler) mapClassToPlacementPolicies(ctx context.Context, obj client.Object) []reconcile.Request {
-	return r.mapMemberClusterToPlacementPolicies(ctx, obj)
+// claimFreesFleetSlot admits the claim events after which a policy waiting on the fleet-wide
+// limit may issue: a claim gone, or one that left the active set by being withdrawn or becoming
+// terminal. The claim's own policy is enqueued by the owner mapper for every event regardless.
+func claimFreesFleetSlot() predicate.Funcs {
+	leftActiveSet := func(claim *kfplacementv1alpha1.ClusterClaim) bool {
+		return !claim.DeletionTimestamp.IsZero() || terminalCondition(claim) != nil
+	}
+	return predicate.Funcs{
+		CreateFunc: func(event.CreateEvent) bool { return false },
+		DeleteFunc: func(event.DeleteEvent) bool { return true },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldClaim, oldOK := e.ObjectOld.(*kfplacementv1alpha1.ClusterClaim)
+			newClaim, newOK := e.ObjectNew.(*kfplacementv1alpha1.ClusterClaim)
+			if !oldOK || !newOK {
+				return true
+			}
+			return !leftActiveSet(oldClaim) && leftActiveSet(newClaim)
+		},
+		GenericFunc: func(event.GenericEvent) bool { return false },
+	}
 }
 
-// mapClassToClusterPlacementPolicies is mapClassToPlacementPolicies for ClusterPlacementPolicy.
-func (r *Reconciler) mapClassToClusterPlacementPolicies(ctx context.Context, obj client.Object) []reconcile.Request {
-	return r.mapMemberClusterToClusterPlacementPolicies(ctx, obj)
-}
-
-// mapMemberClusterToClusterPlacementPolicies enqueues every ClusterPlacementPolicy on a member
-// cluster event.
-func (r *Reconciler) mapMemberClusterToClusterPlacementPolicies(ctx context.Context, _ client.Object) []reconcile.Request {
+// mapToAllClusterPlacementPolicies is mapToAllPlacementPolicies for ClusterPlacementPolicy.
+func (r *Reconciler) mapToAllClusterPlacementPolicies(ctx context.Context, _ client.Object) []reconcile.Request {
 	policies := &kfplacementv1alpha1.ClusterPlacementPolicyList{}
 	if err := r.List(ctx, policies); err != nil {
-		klog.ErrorS(err, "Failed to list cluster placement policies for member cluster mapping")
+		klog.ErrorS(err, "Failed to list cluster placement policies to enqueue")
 		return nil
 	}
 	requests := make([]reconcile.Request, 0, len(policies.Items))
