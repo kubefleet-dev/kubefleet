@@ -1,0 +1,29 @@
+# The permissions the cluster claim fulfiller framework (pkg/v1/fulfiller) needs on the hub
+# cluster for any provider built on it. The claims' update verb is meant for metadata only, though
+# RBAC cannot narrow it: the provider's finalizer and the annotation that records the cluster name
+# it chose. The status update verb would also let the provider stamp Approved on its own claims;
+# the restrictClusterClaimApproval admission policy is what gates that on the approve verb, which
+# this role does not grant. The events rule is needed only when the provider runs with an event
+# recorder. A provider that runs its manager with leader election also needs a namespaced Role on
+# coordination.k8s.io leases (get, create, update) in its leader election namespace; that is the
+# provider's own concern.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubefleet-fulfiller-framework
+rules:
+- apiGroups: ["placement.kubefleet.dev"]
+  resources: ["clusterclaims"]
+  verbs: ["get", "list", "watch", "update"]
+- apiGroups: ["placement.kubefleet.dev"]
+  resources: ["clusterclaims/status"]
+  verbs: ["update"]
+- apiGroups: ["placement.kubefleet.dev"]
+  resources: ["clusterproviderclasses"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["cluster.kubernetes-fleet.io"]
+  resources: ["memberclusters"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]

@@ -1,0 +1,13 @@
+# The additional permissions a provider needs on top of the framework's: it registers the
+# clusters it provisions as MemberCluster objects and removes them again. This is the only role
+# that may create or delete member clusters; bind it to the provider's identity alone. A provider
+# whose Remediate edits the MemberCluster object itself needs update as well; one that remediates
+# through the platform's own APIs does not.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubefleet-fulfiller-provider
+rules:
+- apiGroups: ["cluster.kubernetes-fleet.io"]
+  resources: ["memberclusters"]
+  verbs: ["create", "delete"]
