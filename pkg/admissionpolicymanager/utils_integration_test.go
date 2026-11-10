@@ -38,6 +38,7 @@ const (
 	wantNamespacedObjDenialMsg               = "adding or changing the kubefleet.dev/cluster-selectors annotation on a namespaced object requires the permissions to create and update placementpolicies.placement.kubefleet.dev in the namespace of the object"
 	wantClusterScopedObjDenialMsg            = "adding or changing the kubefleet.dev/cluster-selectors annotation on a cluster-scoped object requires the permissions to create and update clusterplacementpolicies.placement.kubefleet.dev"
 	wantReservedNSAnnotationDenialMsg        = "adding or changing the kubefleet.dev/cluster-selectors annotation on reserved namespaces or objects in them is disallowed (reserved namespace prefixes: fleet-, kube-)"
+	wantClaimApprovalDenialMsg               = "setting or changing the Approved condition of a ClusterClaim requires the approve verb on it"
 	wantEndpointsAnnotationDenialMsg         = "adding or changing the kubefleet.dev/cluster-selectors annotation on Endpoints objects is disallowed; Endpoints cannot be placed, and the annotation would be copied onto the EndpointSlices mirrored from them"
 )
 

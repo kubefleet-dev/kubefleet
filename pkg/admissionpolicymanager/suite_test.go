@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 )
 
@@ -63,8 +64,8 @@ const (
 
 // suitePolicyGeneratorConfigs returns the configuration that the policy manager runs with in this suite: all the
 // generators in DefaultPolicyGeneratorConfigsForV1APIs, with a whitelisted username and user group added to the
-// service accounts and token requests generator, plus the placement annotation generator, which must be enabled
-// explicitly.
+// service accounts and token requests generator, plus the placement annotation and cluster claim approval
+// generators, which must be enabled explicitly.
 //
 // The shared default configuration is copied rather than modified.
 func suitePolicyGeneratorConfigs() *PolicyGeneratorConfigs {
@@ -76,6 +77,7 @@ func suitePolicyGeneratorConfigs() *PolicyGeneratorConfigs {
 	configs.AnnotatedForPlacementObjectsVAPGeneratorConfig = &AnnotatedForPlacementObjectsValidatingAdmissionPolicyGenerator{
 		ReservedNamespacePrefixes: []string{utils.FleetNSNamePrefix, utils.KubeNSNamePrefix},
 	}
+	configs.ClusterClaimApprovalVAPGeneratorConfig = &ClusterClaimApprovalValidatingAdmissionPolicyGenerator{}
 	return &configs
 }
 
@@ -99,13 +101,17 @@ var _ = BeforeSuite(func() {
 
 	By("Bootstrapping test environment")
 	testEnv = &envtest.Environment{
-		// The custom resource definition of the test resources, which some test cases use as
-		// namespaced custom resources.
+		// The custom resource definitions of the test resources, which some test cases use as namespaced custom
+		// resources, and of the KubeFleet APIs, for the cluster claim approval test cases.
 		CRDInstallOptions: envtest.CRDInstallOptions{
-			Paths: []string{filepath.Join("../../", "test", "manifests", "test_testresources_crd.yaml")},
+			Paths: []string{
+				filepath.Join("../../", "test", "manifests", "test_testresources_crd.yaml"),
+				filepath.Join("../../", "config", "crd", "bases"),
+			},
 		},
 		ErrorIfCRDPathMissing: true,
 	}
+	Expect(kfplacementv1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 
 	var err error
 	cfg, err = testEnv.Start()
