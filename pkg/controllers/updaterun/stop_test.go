@@ -909,3 +909,101 @@ func TestStopDeleteStage(t *testing.T) {
 		})
 	}
 }
+
+func TestStopUpdatingStage_StuckThreshold(t *testing.T) {
+	tests := []struct {
+		name                    string
+		updateRunStuckThreshold time.Duration
+		clusterStartedAgo       time.Duration
+		wantStuck               bool
+	}{
+		{
+			name:              "default threshold, cluster update has not been running long enough",
+			clusterStartedAgo: time.Minute,
+			wantStuck:         false,
+		},
+		{
+			name:              "default threshold, cluster update has been running longer than the threshold",
+			clusterStartedAgo: 10 * time.Minute,
+			wantStuck:         true,
+		},
+		{
+			name:                    "custom threshold longer than the elapsed time",
+			updateRunStuckThreshold: time.Hour,
+			clusterStartedAgo:       10 * time.Minute,
+			wantStuck:               false,
+		},
+		{
+			name:                    "custom threshold shorter than the elapsed time",
+			updateRunStuckThreshold: 30 * time.Second,
+			clusterStartedAgo:       time.Minute,
+			wantStuck:               true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			updateRun := &placementv1beta1.ClusterStagedUpdateRun{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-update-run",
+					Generation: 1,
+				},
+				Spec: placementv1beta1.UpdateRunSpec{
+					PlacementName:         "test-placement",
+					ResourceSnapshotIndex: "1",
+				},
+				Status: placementv1beta1.UpdateRunStatus{
+					ResourceSnapshotIndexUsed: "1",
+					StagesStatus: []placementv1beta1.StageUpdatingStatus{
+						{
+							StageName: "test-stage",
+							Clusters: []placementv1beta1.ClusterUpdatingStatus{
+								{
+									ClusterName: "cluster-1",
+									Conditions: []metav1.Condition{
+										{
+											Type:               string(placementv1beta1.ClusterUpdatingConditionStarted),
+											Status:             metav1.ConditionTrue,
+											ObservedGeneration: 1,
+											Reason:             condition.ClusterUpdatingStartedReason,
+											LastTransitionTime: metav1.NewTime(time.Now().Add(-tt.clusterStartedAgo)),
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			// The binding has neither become available nor failed, i.e., the cluster is still being updated.
+			bindings := []placementv1beta1.BindingObj{
+				&placementv1beta1.ClusterResourceBinding{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:       "binding-1",
+						Generation: 1,
+					},
+					Spec: placementv1beta1.ResourceBindingSpec{
+						TargetCluster:        "cluster-1",
+						ResourceSnapshotName: "test-placement-1-snapshot",
+						State:                placementv1beta1.BindingStateBound,
+					},
+				},
+			}
+			r := &Reconciler{UpdateRunStuckThreshold: tt.updateRunStuckThreshold}
+
+			finished, _, err := r.stopUpdatingStage(updateRun, &updateRun.Status.StagesStatus[0], bindings)
+			if err != nil {
+				t.Fatalf("stopUpdatingStage() got error: %v, want nil", err)
+			}
+			if finished {
+				t.Fatalf("stopUpdatingStage() got finished: true, want false")
+			}
+
+			progressingCond := meta.FindStatusCondition(updateRun.Status.Conditions, string(placementv1beta1.StagedUpdateRunConditionProgressing))
+			gotStuck := progressingCond != nil && progressingCond.Reason == condition.UpdateRunStuckReason
+			if gotStuck != tt.wantStuck {
+				t.Errorf("stopUpdatingStage() update run stuck = %v, want %v (progressing condition: %v)", gotStuck, tt.wantStuck, progressingCond)
+			}
+		})
+	}
+}
