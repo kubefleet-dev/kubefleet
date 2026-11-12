@@ -23,8 +23,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clientcmdv1 "k8s.io/client-go/tools/clientcmd/api/v1"
-	clusterinventory "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
+	clusterinventory "sigs.k8s.io/cluster-inventory-api/apis/v1alpha2"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
@@ -239,7 +238,7 @@ func TestFillInClusterStatus(t *testing.T) {
 					AccessProviders: []clusterinventory.AccessProvider{
 						{
 							Name: controller.ClusterManagerName,
-							Cluster: clientcmdv1.Cluster{
+							Cluster: clusterinventory.Cluster{
 								Server:                   "https://api.stale-cluster.example.com:6443",
 								CertificateAuthorityData: []byte("c3RhbGUtY2EtZGF0YQ=="),
 							},

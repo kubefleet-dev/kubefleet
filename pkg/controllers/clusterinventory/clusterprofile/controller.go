@@ -27,10 +27,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	clientcmdv1 "k8s.io/client-go/tools/clientcmd/api/v1"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	clusterinventory "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
+	clusterinventory "sigs.k8s.io/cluster-inventory-api/apis/v1alpha2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -206,7 +205,7 @@ func (r *Reconciler) fillInClusterStatus(mc *clusterv1beta1.MemberCluster, cp *c
 		cp.Status.AccessProviders = []clusterinventory.AccessProvider{
 			{
 				Name: controller.ClusterManagerName,
-				Cluster: clientcmdv1.Cluster{
+				Cluster: clusterinventory.Cluster{
 					Server:                   clusterEntrypoint.Value,
 					CertificateAuthorityData: []byte(caData.Value),
 				},

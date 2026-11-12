@@ -24,7 +24,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	clusterinventory "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
+	clusterinventoryv1alpha1 "sigs.k8s.io/cluster-inventory-api/apis/v1alpha1"
+	clusterinventory "sigs.k8s.io/cluster-inventory-api/apis/v1alpha2"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
@@ -50,6 +51,9 @@ var _ = Describe("Test ClusterProfile Controller", func() {
 	var testMCName string
 	BeforeEach(func() {
 		testMCName = testTargetCluster + utils.RandStr()
+		clusterProfile = clusterinventory.ClusterProfile{
+			ObjectMeta: metav1.ObjectMeta{Name: testMCName, Namespace: clusterProfileNS},
+		}
 		By("Creating a new MemberCluster")
 		mc = memberClusterForTest(testMCName)
 		Expect(k8sClient.Create(ctx, mc)).Should(Succeed(), "failed to create MemberCluster")
@@ -60,6 +64,71 @@ var _ = Describe("Test ClusterProfile Controller", func() {
 		Expect(k8sClient.Delete(ctx, mc)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}))
 		By("Deleting the ClusterProfile")
 		Expect(k8sClient.Delete(ctx, &clusterProfile)).Should(SatisfyAny(Succeed(), utils.NotFoundMatcher{}))
+	})
+
+	It("Should reconcile an existing v1alpha1 clusterProfile through v1alpha2", func() {
+		By("Creating a ClusterProfile through the previous API version")
+		legacyProfile := &clusterinventoryv1alpha1.ClusterProfile{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      testMCName,
+				Namespace: clusterProfileNS,
+			},
+			Spec: clusterinventoryv1alpha1.ClusterProfileSpec{
+				ClusterManager: clusterinventoryv1alpha1.ClusterManager{Name: controller.ClusterManagerName},
+				DisplayName:    testMCName,
+			},
+		}
+		Expect(k8sClient.Create(ctx, legacyProfile)).Should(Succeed())
+		legacyProfile.Status.Version.Kubernetes = "v1.31.0"
+		Expect(k8sClient.Status().Update(ctx, legacyProfile)).Should(Succeed())
+
+		By("Reporting member cluster properties for the v1alpha2 controller")
+		mc.Status.Conditions = []metav1.Condition{
+			{
+				Type:               string(clusterv1beta1.ConditionTypeMemberClusterJoined),
+				Status:             metav1.ConditionTrue,
+				Reason:             "Joined",
+				LastTransitionTime: metav1.Now(),
+				ObservedGeneration: mc.Generation,
+			},
+			{
+				Type:               string(clusterv1beta1.ConditionTypeClusterPropertyCollectionSucceeded),
+				Status:             metav1.ConditionTrue,
+				Reason:             "CollectionSucceeded",
+				LastTransitionTime: metav1.Now(),
+				ObservedGeneration: mc.Generation,
+			},
+		}
+		mc.Status.Properties = map[clusterv1beta1.PropertyName]clusterv1beta1.PropertyValue{
+			propertyprovider.K8sVersionProperty:                  {Value: "v1.33.0", ObservationTime: metav1.Now()},
+			propertyprovider.ClusterEntryPointProperty:           {Value: "https://api.example.com:6443", ObservationTime: metav1.Now()},
+			propertyprovider.ClusterCertificateAuthorityProperty: {Value: "test-ca-data", ObservationTime: metav1.Now()},
+		}
+		Expect(k8sClient.Status().Update(ctx, mc)).Should(Succeed())
+
+		By("Updating the existing object without replacing it")
+		Eventually(func(g Gomega) {
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: clusterProfileNS, Name: testMCName}, &clusterProfile)).Should(Succeed())
+			g.Expect(clusterProfile.UID).Should(Equal(legacyProfile.UID))
+			g.Expect(clusterProfile.Status.Version.Kubernetes).Should(Equal("v1.33.0"))
+			g.Expect(clusterProfile.Labels[clusterinventory.LabelClusterManagerKey]).Should(Equal(controller.ClusterManagerName))
+			g.Expect(clusterProfile.Status.AccessProviders).Should(Equal([]clusterinventory.AccessProvider{
+				{
+					Name: controller.ClusterManagerName,
+					Cluster: clusterinventory.Cluster{
+						Server:                   "https://api.example.com:6443",
+						CertificateAuthorityData: []byte("test-ca-data"),
+					},
+				},
+			}))
+		}, eventuallyTimeout, interval).Should(Succeed())
+
+		By("Reading the updated status through v1alpha1")
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: clusterProfileNS, Name: testMCName}, legacyProfile)).Should(Succeed())
+		Expect(legacyProfile.Status.Version.Kubernetes).Should(Equal(clusterProfile.Status.Version.Kubernetes))
+		Expect(legacyProfile.Status.AccessProviders).Should(HaveLen(1))
+		Expect(legacyProfile.Status.AccessProviders[0].Cluster.Server).Should(Equal(clusterProfile.Status.AccessProviders[0].Cluster.Server))
+		Expect(legacyProfile.Status.AccessProviders[0].Cluster.CertificateAuthorityData).Should(Equal(clusterProfile.Status.AccessProviders[0].Cluster.CertificateAuthorityData))
 	})
 
 	It("Should create a clusterProfile when a member cluster is created", func() {
