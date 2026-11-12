@@ -56,3 +56,6 @@ _crd-package/
 /hubagent
 /memberagent
 /crdinstaller
+
+# kubectl-fleet release archives
+_cli-package/
