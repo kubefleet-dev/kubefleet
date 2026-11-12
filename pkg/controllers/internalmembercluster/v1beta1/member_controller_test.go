@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1533,6 +1534,195 @@ func TestConnectToPropertyProvider(t *testing.T) {
 				sortByConditionType,
 			); diff != "" {
 				t.Fatalf("InternalMemberCluster status (-got, +want):\n%s", diff)
+			}
+		})
+	}
+}
+
+// controllableStartProvider is a property provider whose Start() method blocks until a result
+// is sent over the startResults channel; it also counts the calls to its Start() method.
+type controllableStartProvider struct {
+	dummyProvider
+	startResults chan error
+	startCalls   atomic.Int32
+}
+
+var _ propertyprovider.PropertyProvider = &controllableStartProvider{}
+
+func (p *controllableStartProvider) Start(_ context.Context, _ *rest.Config) error {
+	p.startCalls.Add(1)
+	return <-p.startResults
+}
+
+// TestStartPropertyProvider tests the startPropertyProvider method, specifically that a failed
+// or timed out startup attempt can be recovered from.
+func TestStartPropertyProvider(t *testing.T) {
+	startedConditions := []metav1.Condition{
+		{
+			Type:    string(clusterv1beta1.ConditionTypeClusterPropertyProviderStarted),
+			Status:  metav1.ConditionTrue,
+			Reason:  ClusterPropertyProviderStartedReason,
+			Message: ClusterPropertyProviderStartedMessage,
+		},
+	}
+
+	type startStep struct {
+		// sendStartResult controls whether startResult is sent to the property provider
+		// before startPropertyProvider is called.
+		sendStartResult bool
+		startResult     error
+		// timeout, if set, is the timeout of the context passed to startPropertyProvider;
+		// otherwise a timeout that never expires during the test is used.
+		timeout time.Duration
+		// isStartAttemptPastDeadline controls whether the on-going startup attempt is set to
+		// have run past the startup deadline before startPropertyProvider is called.
+		isStartAttemptPastDeadline bool
+		wantStarted                bool
+		wantConditions             []metav1.Condition
+	}
+
+	testCases := []struct {
+		name           string
+		steps          []startStep
+		wantStartCalls int32
+	}{
+		{
+			name: "start again after a failed attempt",
+			steps: []startStep{
+				{
+					sendStartResult: true,
+					startResult:     fmt.Errorf("expected to fail"),
+					wantStarted:     false,
+					wantConditions: []metav1.Condition{
+						{
+							Type:    string(clusterv1beta1.ConditionTypeClusterPropertyProviderStarted),
+							Status:  metav1.ConditionFalse,
+							Reason:  ClusterPropertyProviderStartedFailedReason,
+							Message: fmt.Sprintf(ClusterPropertyProviderStartedFailedMessage, "expected to fail"),
+						},
+					},
+				},
+				{
+					sendStartResult: true,
+					wantStarted:     true,
+					wantConditions:  startedConditions,
+				},
+				{
+					// The property provider has started; it should not be started again, and
+					// no condition is reported.
+					wantStarted: true,
+				},
+			},
+			wantStartCalls: 2,
+		},
+		{
+			name: "wait for a timed out attempt instead of starting again",
+			steps: []startStep{
+				{
+					timeout:     time.Millisecond * 100,
+					wantStarted: false,
+					wantConditions: []metav1.Condition{
+						{
+							Type:    string(clusterv1beta1.ConditionTypeClusterPropertyProviderStarted),
+							Status:  metav1.ConditionFalse,
+							Reason:  ClusterPropertyProviderStartedTimedOutReason,
+							Message: ClusterPropertyProviderStartedTimedOutMessage,
+						},
+					},
+				},
+				{
+					sendStartResult: true,
+					wantStarted:     true,
+					wantConditions:  startedConditions,
+				},
+			},
+			wantStartCalls: 1,
+		},
+		{
+			name: "do not wait again for an attempt that has run past the deadline",
+			steps: []startStep{
+				{
+					timeout:     time.Millisecond * 100,
+					wantStarted: false,
+					wantConditions: []metav1.Condition{
+						{
+							Type:    string(clusterv1beta1.ConditionTypeClusterPropertyProviderStarted),
+							Status:  metav1.ConditionFalse,
+							Reason:  ClusterPropertyProviderStartedTimedOutReason,
+							Message: ClusterPropertyProviderStartedTimedOutMessage,
+						},
+					},
+				},
+				{
+					// The controller should neither wait for the attempt again nor start the
+					// property provider for a second time.
+					isStartAttemptPastDeadline: true,
+					wantStarted:                false,
+					wantConditions: []metav1.Condition{
+						{
+							Type:    string(clusterv1beta1.ConditionTypeClusterPropertyProviderStarted),
+							Status:  metav1.ConditionFalse,
+							Reason:  ClusterPropertyProviderStartedTimedOutReason,
+							Message: ClusterPropertyProviderStartedTimedOutMessage,
+						},
+					},
+				},
+			},
+			wantStartCalls: 1,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &controllableStartProvider{
+				startResults: make(chan error, 1),
+			}
+			// Unblock any on-going call to the Start() method to avoid leaks.
+			defer close(p.startResults)
+			r := &Reconciler{
+				propertyProviderCfg: &propertyProviderConfig{
+					propertyProvider: p,
+				},
+				recorder: events.NewFakeRecorder(len(tc.steps)),
+			}
+
+			for idx, step := range tc.steps {
+				if step.sendStartResult {
+					p.startResults <- step.startResult
+				}
+
+				timeout := step.timeout
+				if timeout == 0 {
+					timeout = time.Minute
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), timeout)
+
+				imc := &clusterv1beta1.InternalMemberCluster{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: imcName,
+					},
+				}
+				if step.isStartAttemptPastDeadline {
+					r.propertyProviderCfg.propertyProviderStartAttemptTime = time.Now().Add(-propertyProviderStartupDeadline)
+				}
+
+				callStartTime := time.Now()
+				gotStarted := r.startPropertyProvider(ctx, imc)
+				callDuration := time.Since(callStartTime)
+				cancel()
+				if gotStarted != step.wantStarted {
+					t.Fatalf("step %d: startPropertyProvider() = %t, want %t", idx, gotStarted, step.wantStarted)
+				}
+				if step.isStartAttemptPastDeadline && callDuration >= propertyProviderStartupDeadline/2 {
+					t.Fatalf("step %d: startPropertyProvider() took %v, want no wait for an attempt that has run past the deadline", idx, callDuration)
+				}
+				if diff := cmp.Diff(imc.Status.Conditions, step.wantConditions, ignoreLTTConditionField); diff != "" {
+					t.Fatalf("step %d: InternalMemberCluster conditions (-got, +want):\n%s", idx, diff)
+				}
+			}
+
+			if gotStartCalls := p.startCalls.Load(); gotStartCalls != tc.wantStartCalls {
+				t.Errorf("number of calls to Start() = %d, want %d", gotStartCalls, tc.wantStartCalls)
 			}
 		})
 	}

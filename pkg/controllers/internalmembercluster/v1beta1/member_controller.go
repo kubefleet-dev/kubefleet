@@ -70,13 +70,22 @@ type propertyProviderConfig struct {
 	// This limit does not apply to the built-in default behavior when no property
 	// provider is set up.
 	queuedPropertyCollectionCalls atomic.Int32
+	// startPropertyProviderMu protects the fields below, which track the startup of the
+	// property provider.
+	startPropertyProviderMu sync.Mutex
 	// isPropertyProviderStarted is true if the property provider has been started.
 	//
-	// Note that this field is set exactly once under the protection of startPropertyProviderOnce
-	// before any reads; concurrent reads afterwards are safe.
+	// Once set, this field never flips back to false.
 	isPropertyProviderStarted bool
-	// startPropertyProviderOnce is used to start the property provider exactly once.
-	startPropertyProviderOnce sync.Once
+	// propertyProviderStartAttempt delivers the result of the on-going attempt to start the
+	// property provider; it is nil if no attempt is in progress.
+	//
+	// The channel is buffered so that the attempt can always complete, even if the controller
+	// has stopped waiting for its result.
+	propertyProviderStartAttempt <-chan error
+	// propertyProviderStartAttemptTime is the time when the on-going attempt to start the
+	// property provider began.
+	propertyProviderStartAttemptTime time.Time
 }
 
 // Reconciler reconciles a InternalMemberCluster object in the member cluster.
@@ -148,7 +157,8 @@ const (
 	//
 	// If the given property provider fails to start within the amount of time, the controller
 	// will fall back to the built-in default behavior, which retrieve a few limited properties
-	// themselves, in consistency with the earlier Fleet versions.
+	// themselves, in consistency with the earlier Fleet versions, until the property provider
+	// starts successfully.
 	propertyProviderStartupDeadline = time.Second * 10
 	// propertyProviderCollectionDeadline is the deadline for the property provider to return
 	// the latest cluster properties to the Fleet member agent.
@@ -306,49 +316,8 @@ func (r *Reconciler) updateHealth(ctx context.Context, imc *clusterv1beta1.Inter
 
 // connectToPropertyProvider connects to the property provider to collect the latest cluster properties.
 func (r *Reconciler) connectToPropertyProvider(ctx context.Context, imc *clusterv1beta1.InternalMemberCluster) error {
-	r.propertyProviderCfg.startPropertyProviderOnce.Do(func() {
-		if r.propertyProviderCfg.propertyProvider == nil {
-			// No property provider is set up; fall back to the built-in default behavior.
-			return
-		}
-
-		childCtx, childCancelFunc := context.WithDeadline(ctx, time.Now().Add(propertyProviderStartupDeadline))
-		// Cancel the context any way to avoid leaks.
-		defer childCancelFunc()
-		startedCh := make(chan error)
-
-		// Attempt to start the property provider.
-		go func() {
-			defer close(startedCh)
-			if err := r.propertyProviderCfg.propertyProvider.Start(r.globalCtx, r.propertyProviderCfg.memberConfig); err != nil {
-				klog.ErrorS(err, "Failed to start property provider", "internalMemberCluster", klog.KObj(imc))
-				startedCh <- err
-			}
-		}()
-
-		// Wait for the property provider to start; if it doesn't start within the deadline,
-		// fall back to the built-in default behavior.
-		select {
-		case <-childCtx.Done():
-			err := fmt.Errorf("property provider startup deadline exceeded")
-			klog.ErrorS(err, "Failed to start property provider within the startup deadline", "internalMemberCluster", klog.KObj(imc))
-			reportPropertyProviderStartedCondition(imc, metav1.ConditionFalse, ClusterPropertyProviderStartedTimedOutReason, ClusterPropertyProviderStartedTimedOutMessage)
-			r.recorder.Eventf(imc, nil, corev1.EventTypeWarning, ClusterPropertyProviderStartedTimedOutReason, "StartPropertyProvider", ClusterPropertyProviderStartedTimedOutMessage)
-		case err := <-startedCh:
-			if err != nil {
-				klog.ErrorS(err, "Failed to start property provider", "internalMemberCluster", klog.KObj(imc))
-				reportPropertyProviderStartedCondition(imc, metav1.ConditionFalse, ClusterPropertyProviderStartedFailedReason, fmt.Sprintf(ClusterPropertyProviderStartedFailedMessage, err))
-				r.recorder.Eventf(imc, nil, corev1.EventTypeWarning, ClusterPropertyProviderStartedFailedReason, "StartPropertyProvider", ClusterPropertyProviderStartedFailedMessage, err)
-			} else {
-				klog.V(2).InfoS("Property provider started", "internalMemberCluster", klog.KObj(imc))
-				reportPropertyProviderStartedCondition(imc, metav1.ConditionTrue, ClusterPropertyProviderStartedReason, ClusterPropertyProviderStartedMessage)
-				r.recorder.Eventf(imc, nil, corev1.EventTypeNormal, ClusterPropertyProviderStartedReason, "StartPropertyProvider", ClusterPropertyProviderStartedMessage)
-				r.propertyProviderCfg.isPropertyProviderStarted = true
-			}
-		}
-	})
-
-	if r.propertyProviderCfg.propertyProvider != nil && r.propertyProviderCfg.isPropertyProviderStarted {
+	isPropertyProviderStarted := r.startPropertyProvider(ctx, imc)
+	if isPropertyProviderStarted {
 		// Attempt to collect latest cluster properties via the property provider.
 		klog.V(2).InfoS("Calling property provider for latest cluster properties", "internalMemberCluster", klog.KObj(imc))
 		return r.reportClusterPropertiesWithPropertyProvider(ctx, imc)
@@ -358,13 +327,87 @@ func (r *Reconciler) connectToPropertyProvider(ctx context.Context, imc *cluster
 	klog.V(2).InfoS("Falling back to the built-in default behavior for cluster property collection",
 		"internalMemberCluster", klog.KObj(imc),
 		"isPropertyProviderInstalled", r.propertyProviderCfg.propertyProvider != nil,
-		"isPropertyProviderStarted", r.propertyProviderCfg.isPropertyProviderStarted,
+		"isPropertyProviderStarted", isPropertyProviderStarted,
 	)
 	if err := r.updateResourceStats(ctx, imc); err != nil {
 		klog.ErrorS(err, "Failed to report cluster properties using built-in mechanism", "internalMemberCluster", klog.KObj(imc))
 		return err
 	}
 	return nil
+}
+
+// startPropertyProvider starts the property provider (if one is set up and has not been started
+// yet) and returns whether the property provider has been started.
+//
+// Starting the property provider is retryable: if an attempt fails, the next call makes a new
+// attempt; if an attempt does not complete within the startup deadline, the next call checks on
+// the same attempt again instead of starting the property provider for a second time. Once the
+// property provider has been started, all subsequent calls are no-ops.
+func (r *Reconciler) startPropertyProvider(ctx context.Context, imc *clusterv1beta1.InternalMemberCluster) bool {
+	cfg := r.propertyProviderCfg
+	if cfg.propertyProvider == nil {
+		// No property provider is set up; fall back to the built-in default behavior.
+		return false
+	}
+
+	cfg.startPropertyProviderMu.Lock()
+	defer cfg.startPropertyProviderMu.Unlock()
+
+	if cfg.isPropertyProviderStarted {
+		return true
+	}
+
+	if cfg.propertyProviderStartAttempt == nil {
+		// No attempt is in progress; make a new one.
+		startedCh := make(chan error, 1)
+		go func() {
+			startedCh <- cfg.propertyProvider.Start(r.globalCtx, cfg.memberConfig)
+		}()
+		cfg.propertyProviderStartAttempt = startedCh
+		cfg.propertyProviderStartAttemptTime = time.Now()
+	}
+
+	// Wait for the property provider to start; if it doesn't start within the deadline,
+	// fall back to the built-in default behavior for now.
+	//
+	// Note that the deadline applies to the attempt as a whole, i.e., if the attempt has
+	// already run past the deadline in an earlier call, the controller will not wait again.
+	childCtx, childCancelFunc := context.WithDeadline(ctx, cfg.propertyProviderStartAttemptTime.Add(propertyProviderStartupDeadline))
+	// Cancel the context any way to avoid leaks.
+	defer childCancelFunc()
+
+	// Check for the result without waiting first, so that a completed attempt is always picked
+	// up, even if the deadline has passed.
+	var err error
+	select {
+	case err = <-cfg.propertyProviderStartAttempt:
+	default:
+		select {
+		case err = <-cfg.propertyProviderStartAttempt:
+		case <-childCtx.Done():
+			deadlineErr := fmt.Errorf("property provider startup deadline exceeded")
+			klog.ErrorS(deadlineErr, "Failed to start property provider within the startup deadline; will check again later",
+				"internalMemberCluster", klog.KObj(imc), "startAttemptTime", cfg.propertyProviderStartAttemptTime)
+			reportPropertyProviderStartedCondition(imc, metav1.ConditionFalse, ClusterPropertyProviderStartedTimedOutReason, ClusterPropertyProviderStartedTimedOutMessage)
+			r.recorder.Eventf(imc, nil, corev1.EventTypeWarning, ClusterPropertyProviderStartedTimedOutReason, "StartPropertyProvider", ClusterPropertyProviderStartedTimedOutMessage)
+			return false
+		}
+	}
+
+	// The attempt has completed.
+	cfg.propertyProviderStartAttempt = nil
+	if err != nil {
+		klog.ErrorS(err, "Failed to start property provider; will retry later", "internalMemberCluster", klog.KObj(imc))
+		reportPropertyProviderStartedCondition(imc, metav1.ConditionFalse, ClusterPropertyProviderStartedFailedReason, fmt.Sprintf(ClusterPropertyProviderStartedFailedMessage, err))
+		r.recorder.Eventf(imc, nil, corev1.EventTypeWarning, ClusterPropertyProviderStartedFailedReason, "StartPropertyProvider", ClusterPropertyProviderStartedFailedMessage, err)
+		return false
+	}
+
+	klog.V(2).InfoS("Property provider started", "internalMemberCluster", klog.KObj(imc))
+	reportPropertyProviderStartedCondition(imc, metav1.ConditionTrue, ClusterPropertyProviderStartedReason, ClusterPropertyProviderStartedMessage)
+	r.recorder.Eventf(imc, nil, corev1.EventTypeNormal, ClusterPropertyProviderStartedReason, "StartPropertyProvider", ClusterPropertyProviderStartedMessage)
+	cfg.isPropertyProviderStarted = true
+	return true
 }
 
 // reportPropertyProviderCollectionCondition reports the condition of whether a property
