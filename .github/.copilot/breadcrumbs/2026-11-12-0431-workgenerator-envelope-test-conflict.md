@@ -42,4 +42,5 @@ unchanged so non-conflict failures still fail the test.
 - Validation is focused, not the full repository suite.
 - Publish as a standalone test-only PR against main, without the unrelated
   Go-fix modernization commit from #1027.
-
+- After rebasing onto main, both focused specs passed again and `make reviewable`
+  passed. Unrelated generated import-alias normalization was excluded.
