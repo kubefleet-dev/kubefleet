@@ -22,7 +22,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
@@ -106,9 +105,9 @@ var _ = Describe("refreshing placement binding status", func() {
 							Reason: placementv1alpha1.PlacementBindingAvailableCondReasonSomeResourcesUnavailable,
 						},
 					},
-					SelectedResources:     ptr.To(set.resourceCount()),
-					SynchronizedResources: ptr.To(set.resourceCount()),
-					AvailableResources:    ptr.To(set.resourceCount() - 1),
+					SelectedResources:     new(set.resourceCount()),
+					SynchronizedResources: new(set.resourceCount()),
+					AvailableResources:    new(set.resourceCount() - 1),
 					FailedResources: []placementv1alpha1.FailedResource{
 						{
 							ObjectRef: objectRefFromManifestIdentifier(set.identifiers[0][1]),
@@ -122,7 +121,7 @@ var _ = Describe("refreshing placement binding status", func() {
 							},
 						},
 					},
-					LastProcessedResourceSnapshotName: ptr.To(set.primaryName()),
+					LastProcessedResourceSnapshotName: new(set.primaryName()),
 				}
 				Eventually(placementBindingStatusUpdatedActual(sc.bindingNS, f.bindingName, wantStatus), eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to refresh the placement binding status")
 			})
@@ -206,7 +205,7 @@ var _ = Describe("refreshing placement binding status", func() {
 			// The ConfigMaps are placed in descending order of their names, so that the failed resources reported
 			// (sorted, then truncated) differ from the first ones in the work object.
 			resources := make([]placementv1alpha1.SnapshottedResource, configMapCount)
-			for idx := 0; idx < configMapCount; idx++ {
+			for idx := range configMapCount {
 				configMapName := fmt.Sprintf(paddedConfigMapNameTemplate, configMapCount-1-idx)
 				resources[idx] = configMapSnapshottedResource(nsName, configMapName)
 				identifiers[idx] = configMapManifestIdentifier(idx, nsName, configMapName)
@@ -227,7 +226,7 @@ var _ = Describe("refreshing placement binding status", func() {
 
 		It("should report the failed resources in order, up to the limit", func() {
 			wantFailedResources := make([]placementv1alpha1.FailedResource, 0, maxFailedResourcesToReport)
-			for num := 0; num < maxFailedResourcesToReport; num++ {
+			for num := range maxFailedResourcesToReport {
 				configMapName := fmt.Sprintf(paddedConfigMapNameTemplate, num)
 				wantFailedResources = append(wantFailedResources, placementv1alpha1.FailedResource{
 					ObjectRef: objectRefFromManifestIdentifier(configMapManifestIdentifier(0, nsName, configMapName)),
@@ -254,11 +253,11 @@ var _ = Describe("refreshing placement binding status", func() {
 						Reason: placementv1alpha1.PlacementBindingAvailableCondReasonSomeResourcesUnavailable,
 					},
 				},
-				SelectedResources:                 ptr.To(int32(configMapCount)),
-				SynchronizedResources:             ptr.To(int32(0)),
-				AvailableResources:                ptr.To(int32(0)),
+				SelectedResources:                 new(int32(configMapCount)),
+				SynchronizedResources:             new(int32(0)),
+				AvailableResources:                new(int32(0)),
 				FailedResources:                   wantFailedResources,
-				LastProcessedResourceSnapshotName: ptr.To(f.sets[0].primaryName()),
+				LastProcessedResourceSnapshotName: new(f.sets[0].primaryName()),
 			}
 			Eventually(placementBindingStatusInOrderActual(sc.bindingNS, f.bindingName, wantStatus), eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to report the failed resources")
 		})

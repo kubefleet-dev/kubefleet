@@ -72,7 +72,7 @@ func (k *ClusterWideKey) GroupKind() schema.GroupKind {
 }
 
 // GetClusterWideKeyForObject generates a ClusterWideKey for object.
-func GetClusterWideKeyForObject(obj interface{}) (ClusterWideKey, error) {
+func GetClusterWideKeyForObject(obj any) (ClusterWideKey, error) {
 	key := ClusterWideKey{}
 
 	runtimeObject, ok := obj.(runtime.Object)
@@ -97,7 +97,7 @@ func GetClusterWideKeyForObject(obj interface{}) (ClusterWideKey, error) {
 }
 
 // GetNamespaceKeyForObject generates a namespace/name key for object.
-func GetNamespaceKeyForObject(obj interface{}) (string, error) {
+func GetNamespaceKeyForObject(obj any) (string, error) {
 	if key, ok := obj.(string); ok {
 		return key, nil
 	}

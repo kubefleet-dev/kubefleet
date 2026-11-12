@@ -27,7 +27,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -149,7 +148,7 @@ func evaluateSelectors(spec *kfplacementv1alpha1.PlacementPolicySpec, clusters [
 		// in a fleet with no schedulable clusters can still signal that a cluster is needed.
 		selectors = []kfplacementv1alpha1.ClusterSelector{
 			{
-				Count:           ptr.To(intstr.FromString(countAllClusters)),
+				Count:           new(intstr.FromString(countAllClusters)),
 				WhenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim,
 			},
 		}

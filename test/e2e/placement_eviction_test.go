@@ -24,7 +24,6 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
@@ -353,7 +352,7 @@ var _ = Describe("ClusterResourcePlacement eviction of bound binding - PickN CRP
 			Spec: placementv1beta1.PlacementSpec{
 				Policy: &placementv1beta1.PlacementPolicy{
 					PlacementType:    placementv1beta1.PickNPlacementType,
-					NumberOfClusters: ptr.To(int32(len(allMemberClusterNames))),
+					NumberOfClusters: new(int32(len(allMemberClusterNames))),
 				},
 				ResourceSelectors: workResourceSelector(),
 			},
@@ -445,7 +444,7 @@ var _ = Describe("ClusterResourcePlacement eviction of bound binding - PickN CRP
 			Spec: placementv1beta1.PlacementSpec{
 				Policy: &placementv1beta1.PlacementPolicy{
 					PlacementType:    placementv1beta1.PickNPlacementType,
-					NumberOfClusters: ptr.To(int32(len(allMemberClusterNames))),
+					NumberOfClusters: new(int32(len(allMemberClusterNames))),
 				},
 				ResourceSelectors: workResourceSelector(),
 			},
@@ -551,7 +550,7 @@ var _ = Describe("ClusterResourcePlacement eviction of bound binding - PickN CRP
 			Spec: placementv1beta1.PlacementSpec{
 				Policy: &placementv1beta1.PlacementPolicy{
 					PlacementType:    placementv1beta1.PickNPlacementType,
-					NumberOfClusters: ptr.To(int32(len(allMemberClusterNames))),
+					NumberOfClusters: new(int32(len(allMemberClusterNames))),
 				},
 				ResourceSelectors: workResourceSelector(),
 			},
@@ -649,7 +648,7 @@ var _ = Describe("ClusterResourcePlacement eviction of bound binding - PickN CRP
 			Spec: placementv1beta1.PlacementSpec{
 				Policy: &placementv1beta1.PlacementPolicy{
 					PlacementType:    placementv1beta1.PickNPlacementType,
-					NumberOfClusters: ptr.To(int32(len(allMemberClusterNames))),
+					NumberOfClusters: new(int32(len(allMemberClusterNames))),
 				},
 				ResourceSelectors: workResourceSelector(),
 			},
@@ -741,7 +740,7 @@ var _ = Describe("ClusterResourcePlacement eviction of bound binding - PickN CRP
 			Spec: placementv1beta1.PlacementSpec{
 				Policy: &placementv1beta1.PlacementPolicy{
 					PlacementType:    placementv1beta1.PickNPlacementType,
-					NumberOfClusters: ptr.To(int32(len(allMemberClusterNames))),
+					NumberOfClusters: new(int32(len(allMemberClusterNames))),
 				},
 				ResourceSelectors: workResourceSelector(),
 			},
@@ -833,7 +832,7 @@ var _ = Describe("ClusterResourcePlacement eviction of bound binding - PickN CRP
 			Spec: placementv1beta1.PlacementSpec{
 				Policy: &placementv1beta1.PlacementPolicy{
 					PlacementType:    placementv1beta1.PickNPlacementType,
-					NumberOfClusters: ptr.To(int32(len(allMemberClusterNames))),
+					NumberOfClusters: new(int32(len(allMemberClusterNames))),
 				},
 				ResourceSelectors: workResourceSelector(),
 			},
@@ -939,7 +938,7 @@ var _ = Describe("ClusterResourcePlacement eviction of bound binding - PickN CRP
 			Spec: placementv1beta1.PlacementSpec{
 				Policy: &placementv1beta1.PlacementPolicy{
 					PlacementType:    placementv1beta1.PickNPlacementType,
-					NumberOfClusters: ptr.To(int32(len(allMemberClusterNames))),
+					NumberOfClusters: new(int32(len(allMemberClusterNames))),
 				},
 				ResourceSelectors: workResourceSelector(),
 			},
@@ -1037,7 +1036,7 @@ var _ = Describe("ClusterResourcePlacement eviction of bound binding - PickN CRP
 			Spec: placementv1beta1.PlacementSpec{
 				Policy: &placementv1beta1.PlacementPolicy{
 					PlacementType:    placementv1beta1.PickNPlacementType,
-					NumberOfClusters: ptr.To(int32(len(allMemberClusterNames))),
+					NumberOfClusters: new(int32(len(allMemberClusterNames))),
 				},
 				ResourceSelectors: workResourceSelector(),
 			},

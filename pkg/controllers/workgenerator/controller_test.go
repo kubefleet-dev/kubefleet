@@ -32,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -209,7 +208,7 @@ func TestUpsertWork(t *testing.T) {
 			Name: "testDeployment",
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas:        ptr.To(int32(2)),
+			Replicas:        new(int32(2)),
 			MinReadySeconds: 5,
 		},
 	}
@@ -1475,7 +1474,7 @@ func TestSetBindingStatus(t *testing.T) {
 					},
 				},
 			},
-			maxFailedResourcePlacementLimit: ptr.To(1),
+			maxFailedResourcePlacementLimit: new(1),
 			wantFailedResourcePlacements: []fleetv1beta1.FailedResourcePlacement{
 				{
 					ResourceIdentifier: fleetv1beta1.ResourceIdentifier{
@@ -1740,7 +1739,7 @@ func TestSetBindingStatus(t *testing.T) {
 					},
 				},
 			},
-			maxDriftedResourcePlacementLimit: ptr.To(1),
+			maxDriftedResourcePlacementLimit: new(1),
 			wantDriftedResourcePlacements: []fleetv1beta1.DriftedResourcePlacement{
 				{
 					ResourceIdentifier: fleetv1beta1.ResourceIdentifier{
@@ -1785,7 +1784,7 @@ func TestSetBindingStatus(t *testing.T) {
 								},
 								DiffDetails: &fleetv1beta1.DiffDetails{
 									ObservationTime:                   metav1.NewTime(timeNow),
-									ObservedInMemberClusterGeneration: ptr.To(int64(2)),
+									ObservedInMemberClusterGeneration: new(int64(2)),
 									FirstDiffedObservedTime:           metav1.NewTime(timeNow.Add(-time.Hour)),
 									ObservedDiffs: []fleetv1beta1.PatchDetail{
 										{
@@ -1825,7 +1824,7 @@ func TestSetBindingStatus(t *testing.T) {
 								},
 								DiffDetails: &fleetv1beta1.DiffDetails{
 									ObservationTime:                   metav1.NewTime(timeNow),
-									ObservedInMemberClusterGeneration: ptr.To(int64(2)),
+									ObservedInMemberClusterGeneration: new(int64(2)),
 									FirstDiffedObservedTime:           metav1.NewTime(timeNow.Add(-time.Second)),
 									ObservedDiffs: []fleetv1beta1.PatchDetail{
 										{
@@ -1892,7 +1891,7 @@ func TestSetBindingStatus(t *testing.T) {
 					},
 				},
 			},
-			maxDiffedResourcePlacementLimit: ptr.To(1),
+			maxDiffedResourcePlacementLimit: new(1),
 			wantDiffedResourcePlacements: []fleetv1beta1.DiffedResourcePlacement{
 				{
 					ResourceIdentifier: fleetv1beta1.ResourceIdentifier{
@@ -1903,7 +1902,7 @@ func TestSetBindingStatus(t *testing.T) {
 						Namespace: "config-namespace",
 					},
 					ObservationTime:                 metav1.NewTime(timeNow),
-					TargetClusterObservedGeneration: ptr.To(int64(2)),
+					TargetClusterObservedGeneration: new(int64(2)),
 					FirstDiffedObservedTime:         metav1.NewTime(timeNow.Add(-time.Second)),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
@@ -3160,7 +3159,7 @@ func TestExtractDiffedResourcePlacementsFromWork(t *testing.T) {
 							},
 							DiffDetails: &fleetv1beta1.DiffDetails{
 								ObservationTime:                   metav1.NewTime(timeNow),
-								ObservedInMemberClusterGeneration: ptr.To(int64(12)),
+								ObservedInMemberClusterGeneration: new(int64(12)),
 								FirstDiffedObservedTime:           metav1.NewTime(timeNow.Add(-time.Hour)),
 								ObservedDiffs: []fleetv1beta1.PatchDetail{
 									{
@@ -3196,7 +3195,7 @@ func TestExtractDiffedResourcePlacementsFromWork(t *testing.T) {
 						Namespace: "svc-namespace",
 					},
 					ObservationTime:                 metav1.NewTime(timeNow),
-					TargetClusterObservedGeneration: ptr.To(int64(12)),
+					TargetClusterObservedGeneration: new(int64(12)),
 					FirstDiffedObservedTime:         metav1.NewTime(timeNow.Add(-time.Hour)),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{
@@ -3277,7 +3276,7 @@ func TestExtractDiffedResourcePlacementsFromWork(t *testing.T) {
 							},
 							DiffDetails: &fleetv1beta1.DiffDetails{
 								ObservationTime:                   metav1.NewTime(timeNow),
-								ObservedInMemberClusterGeneration: ptr.To(int64(12)),
+								ObservedInMemberClusterGeneration: new(int64(12)),
 								FirstDiffedObservedTime:           metav1.NewTime(timeNow.Add(-time.Hour)),
 								ObservedDiffs: []fleetv1beta1.PatchDetail{
 									{
@@ -3328,7 +3327,7 @@ func TestExtractDiffedResourcePlacementsFromWork(t *testing.T) {
 						},
 					},
 					ObservationTime:                 metav1.NewTime(timeNow),
-					TargetClusterObservedGeneration: ptr.To(int64(12)),
+					TargetClusterObservedGeneration: new(int64(12)),
 					FirstDiffedObservedTime:         metav1.NewTime(timeNow.Add(-time.Hour)),
 					ObservedDiffs: []fleetv1beta1.PatchDetail{
 						{

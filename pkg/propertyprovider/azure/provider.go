@@ -145,7 +145,7 @@ func (p *PropertyProvider) Start(ctx context.Context, config *rest.Config) error
 					),
 					// Drop irrelevant fields from the pod object; this can significantly reduce the
 					// CPU and memory usage of the pod watcher, as less data is stored in cache.
-					Transform: func(obj interface{}) (interface{}, error) {
+					Transform: func(obj any) (any, error) {
 						pod, ok := obj.(*corev1.Pod)
 						if !ok {
 							return nil, fmt.Errorf("failed to cast object to a pod object")

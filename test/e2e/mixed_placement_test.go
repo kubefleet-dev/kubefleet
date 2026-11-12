@@ -24,7 +24,6 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -395,7 +394,7 @@ var _ = Describe("mixed ClusterResourcePlacement and ResourcePlacement positive 
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -445,7 +444,7 @@ var _ = Describe("mixed ClusterResourcePlacement and ResourcePlacement positive 
 					ResourceSelectors: configMapSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(3)),
+						NumberOfClusters: new(int32(3)),
 						Affinity: &placementv1beta1.Affinity{
 							ClusterAffinity: &placementv1beta1.ClusterAffinity{
 								RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
@@ -487,7 +486,7 @@ var _ = Describe("mixed ClusterResourcePlacement and ResourcePlacement positive 
 					return fmt.Errorf("failed to get RP %s: %w", rpName, err)
 				}
 
-				rp.Spec.Policy.NumberOfClusters = ptr.To(int32(1))
+				rp.Spec.Policy.NumberOfClusters = new(int32(1))
 				if err := hubClient.Update(ctx, rp); err != nil {
 					return fmt.Errorf("failed to update RP %s: %w", rpName, err)
 				}

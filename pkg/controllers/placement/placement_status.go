@@ -188,7 +188,7 @@ func (r *Reconciler) buildSelectedPerClusterPlacementStatuses(
 
 		// placement status will refresh even if the spec has not changed. To avoid confusion,
 		// Fleet will reset unused conditions.
-		for i := condition.RolloutStartedCondition; i < condition.TotalCondition; i++ {
+		for i := range condition.TotalCondition {
 			if _, ok := setStatusByCondType[i]; !ok {
 				meta.RemoveStatusCondition(&perCluserStatus.Conditions, string(i.PerClusterPlacementConditionType()))
 			}
@@ -210,7 +210,7 @@ func setPlacementConditions(
 	expectedCondTypes []condition.ResourceCondition,
 ) {
 	// Track all the condition types that have been set.
-	setCondTypes := make(map[condition.ResourceCondition]interface{})
+	setCondTypes := make(map[condition.ResourceCondition]any)
 
 	for _, i := range expectedCondTypes {
 		setCondTypes[i] = nil
@@ -252,7 +252,7 @@ func setPlacementConditions(
 
 	// As CRP status will refresh even if the spec has not changed, Fleet will reset any unused conditions
 	// to avoid confusion.
-	for i := condition.RolloutStartedCondition; i < condition.TotalCondition; i++ {
+	for i := range condition.TotalCondition {
 		if _, ok := setCondTypes[i]; !ok {
 			meta.RemoveStatusCondition(&placementObj.GetPlacementStatus().Conditions, getPlacementConditionType(placementObj, i))
 		}

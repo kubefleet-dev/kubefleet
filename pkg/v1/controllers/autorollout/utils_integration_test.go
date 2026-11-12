@@ -246,7 +246,7 @@ func createPlacementBindingsPointingTo(
 	snapshotName string,
 ) []string {
 	bindingNames := make([]string, 0, count)
-	for idx := 0; idx < count; idx++ {
+	for idx := range count {
 		bindingName := fmt.Sprintf(placementBindingNameTemplate, nameSeed, idx)
 		createPlacementBinding(newOwnedPlacementBinding(policy, bindingName, fmt.Sprintf(memberClusterNameTemplate, nameSeed, idx), snapshotName))
 		bindingNames = append(bindingNames, bindingName)
@@ -434,7 +434,7 @@ func bumpPlacementPolicyGeneration(policyNSName, policyName string) int64 {
 			return err
 		}
 		revisionHistoryLimit := ptr.Deref(policy.GetSpec().ResourceRevisionHistoryLimit, 0) + 5
-		policy.GetSpec().ResourceRevisionHistoryLimit = ptr.To(revisionHistoryLimit)
+		policy.GetSpec().ResourceRevisionHistoryLimit = new(revisionHistoryLimit)
 		if err := hubClient.Update(ctx, policy); err != nil {
 			return err
 		}
@@ -590,8 +590,8 @@ func primaryPlacementResourceSnapshotCreatedActual(policy placementv1alpha1.Plac
 				Kind:               placementPolicyKind(policy.GetNamespace()),
 				Name:               policy.GetName(),
 				UID:                policy.GetUID(),
-				Controller:         ptr.To(true),
-				BlockOwnerDeletion: ptr.To(true),
+				Controller:         new(true),
+				BlockOwnerDeletion: new(true),
 			},
 		}
 		if diff := cmp.Diff(snapshot.GetOwnerReferences(), wantOwnerRefs); diff != "" {

@@ -28,7 +28,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -417,7 +416,7 @@ var _ = Describe("CRP stuck in the rollout process (long wait time)", Ordered, f
 					RestartPolicy: corev1.RestartPolicyNever,
 				},
 			},
-			BackoffLimit: ptr.To(int32(6)),
+			BackoffLimit: new(int32(6)),
 		},
 	}
 

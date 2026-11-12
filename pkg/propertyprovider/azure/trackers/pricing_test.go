@@ -17,14 +17,12 @@ limitations under the License.
 package trackers
 
 import (
-	"context"
 	"testing"
 )
 
 // TestNewAKSKarpenterPricingClient tests the NewAKSKarpenterPricingClient function.
 func TestNewAKSKarpenterPricingClient(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	pricingClient, err := NewAKSKarpenterPricingClient(ctx, "eastus")
 	if err != nil {

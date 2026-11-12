@@ -29,7 +29,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -1445,7 +1444,7 @@ var _ = Describe("partial failures", func() {
 						Kind:       "Deployment",
 						Name:       deployName,
 					},
-					MinReplicas: ptr.To(int32(1)),
+					MinReplicas: new(int32(1)),
 					MaxReplicas: 3,
 				},
 			}
@@ -1469,7 +1468,7 @@ var _ = Describe("partial failures", func() {
 						Kind:       "Deployment",
 						Name:       deployName,
 					},
-					MinReplicas: ptr.To(int32(1)),
+					MinReplicas: new(int32(1)),
 					MaxReplicas: 5,
 				},
 			}
@@ -2667,7 +2666,7 @@ var _ = Describe("partial failures", func() {
 			}
 			secondaryWorkBStatusUnchangedActual := workStatusUpdated(memberReservedNSName1, secondaryWorkBName, secondaryWorkBConds, secondaryWorkBManifestStatuses)
 
-			for i := 0; i < nudgeCount; i++ {
+			for i := range nudgeCount {
 				nudgeWork(primaryWorkName, memberReservedNSName1)
 
 				primaryWorkProcessedActual := workProcessedAtLatestGenerationActual(memberReservedNSName1, primaryWorkName)

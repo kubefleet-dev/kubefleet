@@ -25,7 +25,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/priorityqueue"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -72,14 +71,14 @@ func TestCreateEventHandler(t *testing.T) {
 
 	// Add two keys with default and low priority levels respectively.
 	opts := priorityqueue.AddOpts{
-		Priority: ptr.To(defaultPriorityLevel),
+		Priority: new(defaultPriorityLevel),
 	}
 	workWithDefaultPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "default")
 	key := types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithDefaultPriName}
 	pq.AddWithOpts(opts, reconcile.Request{NamespacedName: key})
 
 	opts = priorityqueue.AddOpts{
-		Priority: ptr.To(lowPriorityLevel),
+		Priority: new(lowPriorityLevel),
 	}
 	workWithLowPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "low")
 	key = types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithLowPriName}
@@ -129,7 +128,7 @@ func TestUpdateEventHandler_NormalOps(t *testing.T) {
 
 	// Add a key with low priority level.
 	opts := priorityqueue.AddOpts{
-		Priority: ptr.To(lowPriorityLevel),
+		Priority: new(lowPriorityLevel),
 	}
 	workWithLowPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "low")
 	key := types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithLowPriName}
@@ -228,7 +227,7 @@ func TestUpdateEventHandler_NormalOps(t *testing.T) {
 		},
 	}
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		item, pri, _ := pq.GetWithPriority()
 		wantItemWithPri := wantDequeuedItemsWithPriorities[i]
 		if diff := cmp.Diff(item, wantItemWithPri.Key); diff != "" {
@@ -313,14 +312,14 @@ func TestDeleteEventHandler(t *testing.T) {
 
 	// Add two keys with default and low priority levels respectively.
 	opts := priorityqueue.AddOpts{
-		Priority: ptr.To(defaultPriorityLevel),
+		Priority: new(defaultPriorityLevel),
 	}
 	workWithDefaultPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "default")
 	key := types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithDefaultPriName}
 	pq.AddWithOpts(opts, reconcile.Request{NamespacedName: key})
 
 	opts = priorityqueue.AddOpts{
-		Priority: ptr.To(lowPriorityLevel),
+		Priority: new(lowPriorityLevel),
 	}
 	workWithLowPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "low")
 	key = types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithLowPriName}
@@ -371,14 +370,14 @@ func TestGenericEventHandler(t *testing.T) {
 
 	// Add two keys with highest and default priority levels respectively.
 	opts := priorityqueue.AddOpts{
-		Priority: ptr.To(highestPriorityLevel),
+		Priority: new(highestPriorityLevel),
 	}
 	workWithHighestPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "highest")
 	key := types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithHighestPriName}
 	pq.AddWithOpts(opts, reconcile.Request{NamespacedName: key})
 
 	opts = priorityqueue.AddOpts{
-		Priority: ptr.To(defaultPriorityLevel),
+		Priority: new(defaultPriorityLevel),
 	}
 	workWithDefaultPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "default")
 	key = types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithDefaultPriName}
@@ -430,7 +429,7 @@ func TestGenericEventHandler(t *testing.T) {
 		},
 	}
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		item, pri, _ := pq.GetWithPriority()
 		wantItemWithPri := wantDequeuedItemsWithPriorities[i]
 		if diff := cmp.Diff(item, wantItemWithPri.Key); diff != "" {
@@ -619,14 +618,14 @@ func TestRequeue(t *testing.T) {
 
 	// Add two keys with highest and default priority levels respectively.
 	opts := priorityqueue.AddOpts{
-		Priority: ptr.To(highestPriorityLevel),
+		Priority: new(highestPriorityLevel),
 	}
 	workWithHighestPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "highest")
 	key := types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithHighestPriName}
 	pq.AddWithOpts(opts, reconcile.Request{NamespacedName: key})
 
 	opts = priorityqueue.AddOpts{
-		Priority: ptr.To(defaultPriorityLevel),
+		Priority: new(defaultPriorityLevel),
 	}
 	workWithDefaultPriName := fmt.Sprintf(workNameForPriorityTestingTmpl, "default")
 	key = types.NamespacedName{Namespace: memberReservedNSName1, Name: workWithDefaultPriName}
@@ -708,7 +707,7 @@ func TestRequeue(t *testing.T) {
 		},
 	}
 
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		item, pri, _ := pq.GetWithPriority()
 		wantItemWithPri := wantDequeuedItemsWithPriorities[i]
 		if diff := cmp.Diff(item, wantItemWithPri.Key); diff != "" {

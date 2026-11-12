@@ -33,7 +33,6 @@ import (
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	clienttesting "k8s.io/client-go/testing"
-	"k8s.io/utils/ptr"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	kferrors "github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
@@ -56,20 +55,20 @@ func TestRetrieveResourceByName(t *testing.T) {
 
 	// The objects carry their source in their data (or labels), so that the tests can tell where they come from.
 	newConfigMap := func(source string) *unstructured.Unstructured {
-		return &unstructured.Unstructured{Object: map[string]interface{}{
+		return &unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "ConfigMap",
-			"metadata":   map[string]interface{}{"name": configMapName, "namespace": namespaceName},
-			"data":       map[string]interface{}{"source": source},
+			"metadata":   map[string]any{"name": configMapName, "namespace": namespaceName},
+			"data":       map[string]any{"source": source},
 		}}
 	}
 	newNamespace := func(source string) *unstructured.Unstructured {
-		return &unstructured.Unstructured{Object: map[string]interface{}{
+		return &unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": "v1",
 			"kind":       "Namespace",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":   selectedNamespaceName,
-				"labels": map[string]interface{}{"source": source},
+				"labels": map[string]any{"source": source},
 			},
 		}}
 	}
@@ -212,7 +211,7 @@ func TestRetrieveResourceByName(t *testing.T) {
 					Listers: map[schema.GroupVersionResource]*testinformer.FakeLister{
 						tc.gvr: {Objects: tc.cachedObjs, Err: tc.cacheErr},
 					},
-					InformerSynced: ptr.To(tc.informerSynced),
+					InformerSynced: new(tc.informerSynced),
 				},
 				restMapper: restMapper,
 			}

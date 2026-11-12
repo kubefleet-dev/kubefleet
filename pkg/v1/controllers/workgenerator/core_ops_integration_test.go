@@ -28,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -466,9 +465,9 @@ var _ = Describe("reconciling placement bindings (single placement resource snap
 						Reason: placementv1alpha1.PlacementBindingAvailableCondReasonSomeResourcesUnavailable,
 					},
 				},
-				SelectedResources:     ptr.To(int32(2)),
-				SynchronizedResources: ptr.To(int32(2)),
-				AvailableResources:    ptr.To(int32(1)),
+				SelectedResources:     new(int32(2)),
+				SynchronizedResources: new(int32(2)),
+				AvailableResources:    new(int32(1)),
 				FailedResources: []placementv1alpha1.FailedResource{
 					{
 						ObjectRef: deployIdentifier,
@@ -482,7 +481,7 @@ var _ = Describe("reconciling placement bindings (single placement resource snap
 						},
 					},
 				},
-				LastProcessedResourceSnapshotName: ptr.To(snapshotName),
+				LastProcessedResourceSnapshotName: new(snapshotName),
 			}
 
 			statusUpdatedActual := placementBindingStatusUpdatedActual(appNamespaceName, bindingName, wantStatus)
@@ -720,7 +719,7 @@ var _ = Describe("reconciling placement bindings (single placement resource snap
 		//
 		// Note that the timestamp is truncated to the second, as this is the precision kept by the API server.
 		diffDetails := &placementv1alpha1.DiffDetails{
-			ObservedInMemberClusterGeneration: ptr.To(int64(0)),
+			ObservedInMemberClusterGeneration: new(int64(0)),
 			FirstDiffedObservedTimestamp:      metav1.NewTime(time.Now().Truncate(time.Second)),
 			ObservedDiffs: []placementv1alpha1.PatchDetail{
 				{
@@ -815,9 +814,9 @@ var _ = Describe("reconciling placement bindings (single placement resource snap
 						Reason: placementv1alpha1.PlacementBindingAvailableCondReasonSomeResourcesUnavailable,
 					},
 				},
-				SelectedResources:     ptr.To(int32(3)),
-				SynchronizedResources: ptr.To(int32(2)),
-				AvailableResources:    ptr.To(int32(1)),
+				SelectedResources:     new(int32(3)),
+				SynchronizedResources: new(int32(2)),
+				AvailableResources:    new(int32(1)),
 				FailedResources: []placementv1alpha1.FailedResource{
 					{
 						ObjectRef: deployIdentifier,
@@ -843,7 +842,7 @@ var _ = Describe("reconciling placement bindings (single placement resource snap
 						DiffDetails: diffDetails,
 					},
 				},
-				LastProcessedResourceSnapshotName: ptr.To(snapshotName),
+				LastProcessedResourceSnapshotName: new(snapshotName),
 			}
 
 			statusUpdatedActual := placementBindingStatusUpdatedActual(appNamespaceName, bindingName, wantStatus)
@@ -1003,8 +1002,8 @@ var _ = Describe("reconciling placement bindings (multiple placement resource sn
 				Kind:               workKind,
 				Name:               primaryWork.Name,
 				UID:                primaryWork.UID,
-				Controller:         ptr.To(true),
-				BlockOwnerDeletion: ptr.To(true),
+				Controller:         new(true),
+				BlockOwnerDeletion: new(true),
 			}
 
 			wantWorks := make([]placementv1alpha1.Work, len(snapshotNames))
@@ -1204,8 +1203,8 @@ var _ = Describe("reconciling placement bindings (multiple placement resource sn
 				Kind:               workKind,
 				Name:               primaryWork.Name,
 				UID:                primaryWork.UID,
-				Controller:         ptr.To(true),
-				BlockOwnerDeletion: ptr.To(true),
+				Controller:         new(true),
+				BlockOwnerDeletion: new(true),
 			}
 
 			wantWorks := make([]placementv1alpha1.Work, len(oldSnapshotNames))
@@ -1635,8 +1634,8 @@ var _ = Describe("reconciling placement bindings (multiple placement resource sn
 				Kind:               workKind,
 				Name:               workNames[0],
 				UID:                primaryWorkUID,
-				Controller:         ptr.To(true),
-				BlockOwnerDeletion: ptr.To(true),
+				Controller:         new(true),
+				BlockOwnerDeletion: new(true),
 			}
 			wantWorks := make([]placementv1alpha1.Work, len(snapshotNamesIdx2))
 			for subIdx := range snapshotNamesIdx2 {
@@ -1792,8 +1791,8 @@ var _ = Describe("reconciling placement bindings (multiple placement resource sn
 				Kind:               workKind,
 				Name:               primaryWork.Name,
 				UID:                primaryWork.UID,
-				Controller:         ptr.To(true),
-				BlockOwnerDeletion: ptr.To(true),
+				Controller:         new(true),
+				BlockOwnerDeletion: new(true),
 			}
 
 			wantWorks := make([]placementv1alpha1.Work, len(oldSnapshotNames))
@@ -1952,7 +1951,7 @@ var _ = Describe("reconciling placement bindings (multiple placement resource sn
 		//
 		// Note that the timestamps are truncated to the second, as this is the precision kept by the API server.
 		configMapDiffDetails := &placementv1alpha1.DiffDetails{
-			ObservedInMemberClusterGeneration: ptr.To(int64(0)),
+			ObservedInMemberClusterGeneration: new(int64(0)),
 			FirstDiffedObservedTimestamp:      metav1.NewTime(time.Now().Truncate(time.Second)),
 			ObservedDiffs: []placementv1alpha1.PatchDetail{
 				{
@@ -1965,7 +1964,7 @@ var _ = Describe("reconciling placement bindings (multiple placement resource sn
 		// The diff details reported for the Deployment object in the secondary work object, as if the member agent
 		// has failed to take over an existing Deployment object with a different replica count in the member cluster.
 		deployDiffDetails := &placementv1alpha1.DiffDetails{
-			ObservedInMemberClusterGeneration: ptr.To(int64(2)),
+			ObservedInMemberClusterGeneration: new(int64(2)),
 			FirstDiffedObservedTimestamp:      metav1.NewTime(time.Now().Truncate(time.Second)),
 			ObservedDiffs: []placementv1alpha1.PatchDetail{
 				{
@@ -2012,8 +2011,8 @@ var _ = Describe("reconciling placement bindings (multiple placement resource sn
 				Kind:               workKind,
 				Name:               primaryWork.Name,
 				UID:                primaryWork.UID,
-				Controller:         ptr.To(true),
-				BlockOwnerDeletion: ptr.To(true),
+				Controller:         new(true),
+				BlockOwnerDeletion: new(true),
 			}
 
 			wantWorks := make([]placementv1alpha1.Work, len(snapshotNames))
@@ -2067,9 +2066,9 @@ var _ = Describe("reconciling placement bindings (multiple placement resource sn
 				},
 				// In each work object, the NS object is applied and available; the Deployment and ConfigMap objects
 				// have failed in different ways.
-				SelectedResources:     ptr.To(int32(6)),
-				SynchronizedResources: ptr.To(int32(4)),
-				AvailableResources:    ptr.To(int32(2)),
+				SelectedResources:     new(int32(6)),
+				SynchronizedResources: new(int32(4)),
+				AvailableResources:    new(int32(2)),
 				FailedResources: []placementv1alpha1.FailedResource{
 					{
 						ObjectRef: objectRefFromManifestIdentifier(manifestIdentifiersPerWork[0][1]),
@@ -2118,7 +2117,7 @@ var _ = Describe("reconciling placement bindings (multiple placement resource sn
 						},
 					},
 				},
-				LastProcessedResourceSnapshotName: ptr.To(snapshotNames[0]),
+				LastProcessedResourceSnapshotName: new(snapshotNames[0]),
 			}
 
 			statusUpdatedActual := placementBindingStatusUpdatedActual(appNamespaceName, bindingName, wantStatus)
@@ -2591,9 +2590,9 @@ var _ = Describe("reconciling cluster placement bindings (single placement resou
 						Reason: placementv1alpha1.PlacementBindingAvailableCondReasonSomeResourcesUnavailable,
 					},
 				},
-				SelectedResources:     ptr.To(int32(2)),
-				SynchronizedResources: ptr.To(int32(2)),
-				AvailableResources:    ptr.To(int32(1)),
+				SelectedResources:     new(int32(2)),
+				SynchronizedResources: new(int32(2)),
+				AvailableResources:    new(int32(1)),
 				FailedResources: []placementv1alpha1.FailedResource{
 					{
 						ObjectRef: deployIdentifier,
@@ -2607,7 +2606,7 @@ var _ = Describe("reconciling cluster placement bindings (single placement resou
 						},
 					},
 				},
-				LastProcessedResourceSnapshotName: ptr.To(snapshotName),
+				LastProcessedResourceSnapshotName: new(snapshotName),
 			}
 
 			statusUpdatedActual := placementBindingStatusUpdatedActual(clusterScopedNS, bindingName, wantStatus)
@@ -2845,7 +2844,7 @@ var _ = Describe("reconciling cluster placement bindings (single placement resou
 		//
 		// Note that the timestamp is truncated to the second, as this is the precision kept by the API server.
 		diffDetails := &placementv1alpha1.DiffDetails{
-			ObservedInMemberClusterGeneration: ptr.To(int64(0)),
+			ObservedInMemberClusterGeneration: new(int64(0)),
 			FirstDiffedObservedTimestamp:      metav1.NewTime(time.Now().Truncate(time.Second)),
 			ObservedDiffs: []placementv1alpha1.PatchDetail{
 				{
@@ -2940,9 +2939,9 @@ var _ = Describe("reconciling cluster placement bindings (single placement resou
 						Reason: placementv1alpha1.PlacementBindingAvailableCondReasonSomeResourcesUnavailable,
 					},
 				},
-				SelectedResources:     ptr.To(int32(3)),
-				SynchronizedResources: ptr.To(int32(2)),
-				AvailableResources:    ptr.To(int32(1)),
+				SelectedResources:     new(int32(3)),
+				SynchronizedResources: new(int32(2)),
+				AvailableResources:    new(int32(1)),
 				FailedResources: []placementv1alpha1.FailedResource{
 					{
 						ObjectRef: deployIdentifier,
@@ -2968,7 +2967,7 @@ var _ = Describe("reconciling cluster placement bindings (single placement resou
 						DiffDetails: diffDetails,
 					},
 				},
-				LastProcessedResourceSnapshotName: ptr.To(snapshotName),
+				LastProcessedResourceSnapshotName: new(snapshotName),
 			}
 
 			statusUpdatedActual := placementBindingStatusUpdatedActual(clusterScopedNS, bindingName, wantStatus)
@@ -3128,8 +3127,8 @@ var _ = Describe("reconciling cluster placement bindings (multiple placement res
 				Kind:               workKind,
 				Name:               primaryWork.Name,
 				UID:                primaryWork.UID,
-				Controller:         ptr.To(true),
-				BlockOwnerDeletion: ptr.To(true),
+				Controller:         new(true),
+				BlockOwnerDeletion: new(true),
 			}
 
 			wantWorks := make([]placementv1alpha1.Work, len(snapshotNames))
@@ -3329,8 +3328,8 @@ var _ = Describe("reconciling cluster placement bindings (multiple placement res
 				Kind:               workKind,
 				Name:               primaryWork.Name,
 				UID:                primaryWork.UID,
-				Controller:         ptr.To(true),
-				BlockOwnerDeletion: ptr.To(true),
+				Controller:         new(true),
+				BlockOwnerDeletion: new(true),
 			}
 
 			wantWorks := make([]placementv1alpha1.Work, len(oldSnapshotNames))
@@ -3760,8 +3759,8 @@ var _ = Describe("reconciling cluster placement bindings (multiple placement res
 				Kind:               workKind,
 				Name:               workNames[0],
 				UID:                primaryWorkUID,
-				Controller:         ptr.To(true),
-				BlockOwnerDeletion: ptr.To(true),
+				Controller:         new(true),
+				BlockOwnerDeletion: new(true),
 			}
 			wantWorks := make([]placementv1alpha1.Work, len(snapshotNamesIdx2))
 			for subIdx := range snapshotNamesIdx2 {
@@ -3917,8 +3916,8 @@ var _ = Describe("reconciling cluster placement bindings (multiple placement res
 				Kind:               workKind,
 				Name:               primaryWork.Name,
 				UID:                primaryWork.UID,
-				Controller:         ptr.To(true),
-				BlockOwnerDeletion: ptr.To(true),
+				Controller:         new(true),
+				BlockOwnerDeletion: new(true),
 			}
 
 			wantWorks := make([]placementv1alpha1.Work, len(oldSnapshotNames))
@@ -4078,7 +4077,7 @@ var _ = Describe("reconciling cluster placement bindings (multiple placement res
 		//
 		// Note that the timestamps are truncated to the second, as this is the precision kept by the API server.
 		configMapDiffDetails := &placementv1alpha1.DiffDetails{
-			ObservedInMemberClusterGeneration: ptr.To(int64(0)),
+			ObservedInMemberClusterGeneration: new(int64(0)),
 			FirstDiffedObservedTimestamp:      metav1.NewTime(time.Now().Truncate(time.Second)),
 			ObservedDiffs: []placementv1alpha1.PatchDetail{
 				{
@@ -4091,7 +4090,7 @@ var _ = Describe("reconciling cluster placement bindings (multiple placement res
 		// The diff details reported for the Deployment object in the secondary work object, as if the member agent
 		// has failed to take over an existing Deployment object with a different replica count in the member cluster.
 		deployDiffDetails := &placementv1alpha1.DiffDetails{
-			ObservedInMemberClusterGeneration: ptr.To(int64(2)),
+			ObservedInMemberClusterGeneration: new(int64(2)),
 			FirstDiffedObservedTimestamp:      metav1.NewTime(time.Now().Truncate(time.Second)),
 			ObservedDiffs: []placementv1alpha1.PatchDetail{
 				{
@@ -4138,8 +4137,8 @@ var _ = Describe("reconciling cluster placement bindings (multiple placement res
 				Kind:               workKind,
 				Name:               primaryWork.Name,
 				UID:                primaryWork.UID,
-				Controller:         ptr.To(true),
-				BlockOwnerDeletion: ptr.To(true),
+				Controller:         new(true),
+				BlockOwnerDeletion: new(true),
 			}
 
 			wantWorks := make([]placementv1alpha1.Work, len(snapshotNames))
@@ -4193,9 +4192,9 @@ var _ = Describe("reconciling cluster placement bindings (multiple placement res
 				},
 				// In each work object, the NS object is applied and available; the Deployment and ConfigMap objects
 				// have failed in different ways.
-				SelectedResources:     ptr.To(int32(6)),
-				SynchronizedResources: ptr.To(int32(4)),
-				AvailableResources:    ptr.To(int32(2)),
+				SelectedResources:     new(int32(6)),
+				SynchronizedResources: new(int32(4)),
+				AvailableResources:    new(int32(2)),
 				FailedResources: []placementv1alpha1.FailedResource{
 					{
 						ObjectRef: objectRefFromManifestIdentifier(manifestIdentifiersPerWork[0][1]),
@@ -4244,7 +4243,7 @@ var _ = Describe("reconciling cluster placement bindings (multiple placement res
 						},
 					},
 				},
-				LastProcessedResourceSnapshotName: ptr.To(snapshotNames[0]),
+				LastProcessedResourceSnapshotName: new(snapshotNames[0]),
 			}
 
 			statusUpdatedActual := placementBindingStatusUpdatedActual(clusterScopedNS, bindingName, wantStatus)

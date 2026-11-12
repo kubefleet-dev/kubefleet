@@ -18,6 +18,7 @@ package tests
 
 import (
 	"fmt"
+	"maps"
 	"strconv"
 
 	"github.com/google/go-cmp/cmp"
@@ -26,7 +27,6 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -527,9 +527,7 @@ var _ = Describe("scheduling CRPs on member clusters with taints & tolerations",
 		updatedHealthyClusters := healthyClusters
 		updatedHealthyClusters = append(updatedHealthyClusters, newUnhealthyMemberClusterName)
 		updatedZeroScoreByCluster := make(map[string]*placementv1beta1.ClusterScore)
-		for k, v := range zeroScoreByCluster {
-			updatedZeroScoreByCluster[k] = v
-		}
+		maps.Copy(updatedZeroScoreByCluster, zeroScoreByCluster)
 		updatedZeroScoreByCluster[newUnhealthyMemberClusterName] = &zeroScore
 
 		BeforeAll(func() {
@@ -587,8 +585,8 @@ var _ = Describe("scheduling CRPs on member clusters with taints & tolerations",
 			// not violate any topology spread constraints + does not increase the skew. It
 			// is assigned a topology spread score of 0 as the skew is unchanged.
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			// Cluster 6 is considered to be unschedulable in the second iteration as placing
 			// resources on it would violate the topology spread constraint (skew becomes 2,
@@ -599,8 +597,8 @@ var _ = Describe("scheduling CRPs on member clusters with taints & tolerations",
 			// clusters), and its name is the largest in alphanumeric order. It is assigned
 			// a topology spread score of -1 as placing resources on it increases the skew.
 			memberCluster7WestCanary: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 		}
 		scoreByClusterAfter := map[string]*placementv1beta1.ClusterScore{
@@ -610,18 +608,18 @@ var _ = Describe("scheduling CRPs on member clusters with taints & tolerations",
 			// not violate any topology spread constraints + does not increase the skew. It
 			// is assigned a topology spread score of 0 as the skew is unchanged.
 			memberCluster3EastCanary: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster4CentralProd: nil,
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster6WestProd: nil,
 			memberCluster7WestCanary: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 			newClusterName: nil,
 		}
@@ -637,7 +635,7 @@ var _ = Describe("scheduling CRPs on member clusters with taints & tolerations",
 				NumberOfClusters: &numOfClusters,
 				TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 					{
-						MaxSkew:           ptr.To(int32(1)),
+						MaxSkew:           new(int32(1)),
 						TopologyKey:       regionLabel,
 						WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
 					},
@@ -753,8 +751,8 @@ var _ = Describe("scheduling CRPs on member clusters with taints & tolerations",
 			// not violate any topology spread constraints + does not increase the skew. It
 			// is assigned a topology spread score of 0 as the skew is unchanged.
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			// Cluster 6 is considered to be unschedulable in the second iteration as placing
 			// resources on it would violate the topology spread constraint (skew becomes 2,
@@ -765,8 +763,8 @@ var _ = Describe("scheduling CRPs on member clusters with taints & tolerations",
 			// clusters), and its name is the largest in alphanumeric order. It is assigned
 			// a topology spread score of -1 as placing resources on it increases the skew.
 			memberCluster7WestCanary: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 		}
 		scoreByClusterAfter := map[string]*placementv1beta1.ClusterScore{
@@ -775,20 +773,20 @@ var _ = Describe("scheduling CRPs on member clusters with taints & tolerations",
 			memberCluster3EastCanary:  &zeroScore,
 			memberCluster4CentralProd: nil,
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster6WestProd: nil,
 			memberCluster7WestCanary: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 			// new cluster is picked in the third iteration, as placing resources on it does
 			// not violate any topology spread constraints + does not increase the skew. It
 			// is assigned a topology spread score of 0 as the skew is unchanged.
 			newClusterName: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(0)),
 			},
 		}
 
@@ -800,7 +798,7 @@ var _ = Describe("scheduling CRPs on member clusters with taints & tolerations",
 			// Create a CRP of the PickN placement type, along with its associated policy snapshot.
 			topologySpreadConstraints := []placementv1beta1.TopologySpreadConstraint{
 				{
-					MaxSkew:           ptr.To(int32(1)),
+					MaxSkew:           new(int32(1)),
 					TopologyKey:       regionLabel,
 					WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
 				},

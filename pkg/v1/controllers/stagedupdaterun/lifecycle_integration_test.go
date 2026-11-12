@@ -25,7 +25,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -80,7 +79,7 @@ func wantWaitingForBeforeStageApprovalStatus(
 					wantApprovalTaskStatus(approvalRequestName, perStageTaskApprovalRequestCreatedCond()),
 				},
 				Conditions:     []metav1.Condition{perStageStartedCond()},
-				MaxConcurrency: ptr.To(int32(1)),
+				MaxConcurrency: new(int32(1)),
 			},
 		},
 	}
@@ -201,7 +200,7 @@ var _ = Describe("managing the lifecycle of staged update runs", func() {
 						wantPerClusterStatus(memberClusterNames, bindingNames, 0, perClusterUpdateSucceededConds()...),
 					},
 					Conditions:     perStageSucceededConds(),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			},
 		}
@@ -427,7 +426,7 @@ var _ = Describe("managing the lifecycle of staged update runs", func() {
 							wantApprovalTaskStatus(approvalRequestName, perStageTaskApprovalRequestCreatedCond()),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -913,7 +912,7 @@ var _ = Describe("managing the lifecycle of staged update runs", func() {
 						wantApprovalTaskStatus(approvalRequestName, observedAt(1, perStageTaskApprovalRequestCreatedCond())),
 					},
 					Conditions:     []metav1.Condition{observedAt(1, perStageStartedCond())},
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			},
 		}
@@ -1036,7 +1035,7 @@ var _ = Describe("managing the lifecycle of staged update runs", func() {
 							observedAt(3, perStageStartedCond()),
 							observedAt(3, perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonSucceeded)),
 						},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -1089,7 +1088,7 @@ var _ = Describe("managing the lifecycle of staged update runs", func() {
 						wantPerClusterStatus(memberClusterNames, bindingNames, 1),
 					},
 					Conditions:     []metav1.Condition{observedAt(1, perStageStartedCond())},
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			},
 		}
@@ -1135,7 +1134,7 @@ var _ = Describe("managing the lifecycle of staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -1220,7 +1219,7 @@ var _ = Describe("managing the lifecycle of staged update runs", func() {
 							observedAt(3, perStageStartedCond()),
 							observedAt(3, perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonSucceeded)),
 						},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -1296,7 +1295,7 @@ var _ = Describe("managing the lifecycle of staged update runs", func() {
 							observedAt(1, perStageStartedCond()),
 							observedAt(1, perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonSucceeded)),
 						},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -1510,7 +1509,7 @@ var _ = Describe("managing the lifecycle of cluster staged update runs", func() 
 						wantPerClusterStatus(memberClusterNames, bindingNames, 0, perClusterUpdateSucceededConds()...),
 					},
 					Conditions:     perStageSucceededConds(),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			},
 		}
@@ -1736,7 +1735,7 @@ var _ = Describe("managing the lifecycle of cluster staged update runs", func() 
 							wantApprovalTaskStatus(approvalRequestName, perStageTaskApprovalRequestCreatedCond()),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -2222,7 +2221,7 @@ var _ = Describe("managing the lifecycle of cluster staged update runs", func() 
 						wantApprovalTaskStatus(approvalRequestName, observedAt(1, perStageTaskApprovalRequestCreatedCond())),
 					},
 					Conditions:     []metav1.Condition{observedAt(1, perStageStartedCond())},
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			},
 		}
@@ -2345,7 +2344,7 @@ var _ = Describe("managing the lifecycle of cluster staged update runs", func() 
 							observedAt(3, perStageStartedCond()),
 							observedAt(3, perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonSucceeded)),
 						},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -2398,7 +2397,7 @@ var _ = Describe("managing the lifecycle of cluster staged update runs", func() 
 						wantPerClusterStatus(memberClusterNames, bindingNames, 1),
 					},
 					Conditions:     []metav1.Condition{observedAt(1, perStageStartedCond())},
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			},
 		}
@@ -2444,7 +2443,7 @@ var _ = Describe("managing the lifecycle of cluster staged update runs", func() 
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -2529,7 +2528,7 @@ var _ = Describe("managing the lifecycle of cluster staged update runs", func() 
 							observedAt(3, perStageStartedCond()),
 							observedAt(3, perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonSucceeded)),
 						},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -2605,7 +2604,7 @@ var _ = Describe("managing the lifecycle of cluster staged update runs", func() 
 							observedAt(1, perStageStartedCond()),
 							observedAt(1, perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonSucceeded)),
 						},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}

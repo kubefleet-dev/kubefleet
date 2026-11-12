@@ -30,7 +30,7 @@ import (
 type StateKey string
 
 // StateValue is the value stored in a CycleState under a specific key.
-type StateValue interface{}
+type StateValue any
 
 // CycleStatePluginReadWriter is an interface through which plugins can store and retrieve data.
 //

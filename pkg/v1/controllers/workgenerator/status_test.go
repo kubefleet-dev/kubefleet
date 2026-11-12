@@ -28,7 +28,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -190,7 +189,7 @@ func getUnitTestBinding(t *testing.T, c client.Client) *placementv1alpha1.Placem
 // TestCountResourcesInWorksByProcessingResults tests the countResourcesInWorksByProcessingResults function.
 func TestCountResourcesInWorksByProcessingResults(t *testing.T) {
 	diffDetails := &placementv1alpha1.DiffDetails{
-		ObservedInMemberClusterGeneration: ptr.To(int64(2)),
+		ObservedInMemberClusterGeneration: new(int64(2)),
 		FirstDiffedObservedTimestamp:      unitTestLTT,
 		ObservedDiffs: []placementv1alpha1.PatchDetail{
 			{Path: "/data/foo", ValueInMember: "baz", ValueInHub: "bar"},
@@ -303,7 +302,7 @@ func TestCountResourcesInWorksByProcessingResults(t *testing.T) {
 // TestFailedResourceFromManifestStatus tests the failedResourceFromManifestStatus function.
 func TestFailedResourceFromManifestStatus(t *testing.T) {
 	diffDetails := &placementv1alpha1.DiffDetails{
-		ObservedInMemberClusterGeneration: ptr.To(int64(1)),
+		ObservedInMemberClusterGeneration: new(int64(1)),
 		FirstDiffedObservedTimestamp:      unitTestLTT,
 	}
 	manifestStatus := newManifestStatus(3, "configmap-a", manifestNotAppliedCond)
@@ -503,11 +502,11 @@ func TestRefreshPlacementBindingAvailableCond(t *testing.T) {
 func failedToApplyWorkWithManyManifests(linkedSnapshotName string) (placementv1alpha1.Work, []placementv1alpha1.FailedResource) {
 	manifestCount := maxFailedResourcesToReport + 1
 	manifestStatuses := make([]placementv1alpha1.PerManifestStatus, manifestCount)
-	for idx := 0; idx < manifestCount; idx++ {
+	for idx := range manifestCount {
 		manifestStatuses[idx] = newManifestStatus(idx, fmt.Sprintf(paddedConfigMapNameTemplate, manifestCount-1-idx), manifestNotAppliedCond)
 	}
 	wantFailed := make([]placementv1alpha1.FailedResource, maxFailedResourcesToReport)
-	for num := 0; num < maxFailedResourcesToReport; num++ {
+	for num := range maxFailedResourcesToReport {
 		wantFailed[num] = newFailedResource(newManifestStatus(0, fmt.Sprintf(paddedConfigMapNameTemplate, num)), manifestNotAppliedCond)
 	}
 	work := newWorkWithStatus("work-0", linkedSnapshotName, 1, workConds(1, metav1.ConditionFalse, metav1.ConditionFalse), manifestStatuses...)
@@ -525,8 +524,8 @@ func TestRefreshPlacementBindingStatus(t *testing.T) {
 			newCondition(placementv1alpha1.PlacementBindingCondTypeAvailable, metav1.ConditionUnknown, bindingGeneration,
 				placementv1alpha1.PlacementBindingAvailableCondReasonWaitingForAvailabilityCheck, "waiting"),
 		},
-		SelectedResources:                 ptr.To(int32(3)),
-		LastProcessedResourceSnapshotName: ptr.To(unitTestSnapshotName0),
+		SelectedResources:                 new(int32(3)),
+		LastProcessedResourceSnapshotName: new(unitTestSnapshotName0),
 	}
 	syncedStatus := placementv1alpha1.PlacementBindingStatus{
 		Conditions: []metav1.Condition{
@@ -537,10 +536,10 @@ func TestRefreshPlacementBindingStatus(t *testing.T) {
 				placementv1alpha1.PlacementBindingAvailableCondReasonAllResourcesAvailable,
 				"All resources are available in the target cluster"),
 		},
-		SelectedResources:                 ptr.To(int32(3)),
-		SynchronizedResources:             ptr.To(int32(3)),
-		AvailableResources:                ptr.To(int32(3)),
-		LastProcessedResourceSnapshotName: ptr.To(unitTestSnapshotName0),
+		SelectedResources:                 new(int32(3)),
+		SynchronizedResources:             new(int32(3)),
+		AvailableResources:                new(int32(3)),
+		LastProcessedResourceSnapshotName: new(unitTestSnapshotName0),
 	}
 	failedConds := []metav1.Condition{
 		newCondition(placementv1alpha1.PlacementBindingCondTypeSynchronized, metav1.ConditionFalse, bindingGeneration,
@@ -622,14 +621,14 @@ func TestRefreshPlacementBindingStatus(t *testing.T) {
 			works:          someFailedWorks,
 			wantStatus: placementv1alpha1.PlacementBindingStatus{
 				Conditions:            failedConds,
-				SelectedResources:     ptr.To(int32(3)),
-				SynchronizedResources: ptr.To(int32(2)),
-				AvailableResources:    ptr.To(int32(1)),
+				SelectedResources:     new(int32(3)),
+				SynchronizedResources: new(int32(2)),
+				AvailableResources:    new(int32(1)),
 				FailedResources: []placementv1alpha1.FailedResource{
 					newFailedResource(notAvailable, manifestNotAvailableCond),
 					newFailedResource(notApplied, manifestNotAppliedCond),
 				},
-				LastProcessedResourceSnapshotName: ptr.To(unitTestSnapshotName0),
+				LastProcessedResourceSnapshotName: new(unitTestSnapshotName0),
 			},
 			wantWrites: 1,
 		},
@@ -645,11 +644,11 @@ func TestRefreshPlacementBindingStatus(t *testing.T) {
 			works:          []placementv1alpha1.Work{manyFailedWork},
 			wantStatus: placementv1alpha1.PlacementBindingStatus{
 				Conditions:                        failedConds,
-				SelectedResources:                 ptr.To(int32(maxFailedResourcesToReport + 1)),
-				SynchronizedResources:             ptr.To(int32(0)),
-				AvailableResources:                ptr.To(int32(0)),
+				SelectedResources:                 new(int32(maxFailedResourcesToReport + 1)),
+				SynchronizedResources:             new(int32(0)),
+				AvailableResources:                new(int32(0)),
 				FailedResources:                   wantManyFailed,
-				LastProcessedResourceSnapshotName: ptr.To(unitTestSnapshotName0),
+				LastProcessedResourceSnapshotName: new(unitTestSnapshotName0),
 			},
 			wantWrites: 1,
 		},
@@ -715,10 +714,10 @@ func TestMarkPlacementBindingAsFailedToSynchronizeDueToInvalidSnapshots(t *testi
 			newCondition(placementv1alpha1.PlacementBindingCondTypeAvailable, metav1.ConditionTrue, 2,
 				placementv1alpha1.PlacementBindingAvailableCondReasonAllResourcesAvailable, "available"),
 		},
-		SelectedResources:                 ptr.To(int32(3)),
-		SynchronizedResources:             ptr.To(int32(3)),
-		AvailableResources:                ptr.To(int32(3)),
-		LastProcessedResourceSnapshotName: ptr.To(unitTestSnapshotName0),
+		SelectedResources:                 new(int32(3)),
+		SynchronizedResources:             new(int32(3)),
+		AvailableResources:                new(int32(3)),
+		LastProcessedResourceSnapshotName: new(unitTestSnapshotName0),
 	}
 
 	notAvailable := newManifestStatus(1, "configmap-b", manifestAppliedCond, manifestNotAvailableCond)
@@ -740,11 +739,11 @@ func TestMarkPlacementBindingAsFailedToSynchronizeDueToInvalidSnapshots(t *testi
 	rolledOutStatus := func(details string) placementv1alpha1.PlacementBindingStatus {
 		return placementv1alpha1.PlacementBindingStatus{
 			Conditions:                        []metav1.Condition{invalidSnapshotsCond(3, details), syncedStatus.Conditions[1]},
-			SelectedResources:                 ptr.To(int32(3)),
-			SynchronizedResources:             ptr.To(int32(3)),
-			AvailableResources:                ptr.To(int32(2)),
+			SelectedResources:                 new(int32(3)),
+			SynchronizedResources:             new(int32(3)),
+			AvailableResources:                new(int32(2)),
 			FailedResources:                   []placementv1alpha1.FailedResource{newFailedResource(notAvailable, manifestNotAvailableCond)},
-			LastProcessedResourceSnapshotName: ptr.To(unitTestSnapshotName0),
+			LastProcessedResourceSnapshotName: new(unitTestSnapshotName0),
 		}
 	}
 	statusWithoutAvailability := *syncedStatus.DeepCopy()
@@ -794,9 +793,9 @@ func TestMarkPlacementBindingAsFailedToSynchronizeDueToInvalidSnapshots(t *testi
 			errDetails: errDetails,
 			wantStatus: placementv1alpha1.PlacementBindingStatus{
 				Conditions:            []metav1.Condition{invalidSnapshotsCond(1, errDetails), incompleteSetOfResourcesCond(1)},
-				SelectedResources:     ptr.To(int32(0)),
-				SynchronizedResources: ptr.To(int32(0)),
-				AvailableResources:    ptr.To(int32(0)),
+				SelectedResources:     new(int32(0)),
+				SynchronizedResources: new(int32(0)),
+				AvailableResources:    new(int32(0)),
 			},
 			wantWrites: 1,
 		},
@@ -809,11 +808,11 @@ func TestMarkPlacementBindingAsFailedToSynchronizeDueToInvalidSnapshots(t *testi
 			errDetails:        errDetails,
 			wantStatus: placementv1alpha1.PlacementBindingStatus{
 				Conditions:                        []metav1.Condition{invalidSnapshotsCond(2, errDetails), incompleteSetOfResourcesCond(2)},
-				SelectedResources:                 ptr.To(int32(3)),
-				SynchronizedResources:             ptr.To(int32(3)),
-				AvailableResources:                ptr.To(int32(2)),
+				SelectedResources:                 new(int32(3)),
+				SynchronizedResources:             new(int32(3)),
+				AvailableResources:                new(int32(2)),
 				FailedResources:                   []placementv1alpha1.FailedResource{newFailedResource(notAvailable, manifestNotAvailableCond)},
-				LastProcessedResourceSnapshotName: ptr.To(unitTestSnapshotName0),
+				LastProcessedResourceSnapshotName: new(unitTestSnapshotName0),
 			},
 			wantWrites: 1,
 		},
@@ -826,11 +825,11 @@ func TestMarkPlacementBindingAsFailedToSynchronizeDueToInvalidSnapshots(t *testi
 			errDetails:        errDetails,
 			wantStatus: placementv1alpha1.PlacementBindingStatus{
 				Conditions:                        []metav1.Condition{invalidSnapshotsCond(3, errDetails), syncedStatus.Conditions[1]},
-				SelectedResources:                 ptr.To(int32(maxFailedResourcesToReport + 1)),
-				SynchronizedResources:             ptr.To(int32(0)),
-				AvailableResources:                ptr.To(int32(0)),
+				SelectedResources:                 new(int32(maxFailedResourcesToReport + 1)),
+				SynchronizedResources:             new(int32(0)),
+				AvailableResources:                new(int32(0)),
 				FailedResources:                   wantManyFailed,
-				LastProcessedResourceSnapshotName: ptr.To(unitTestSnapshotName0),
+				LastProcessedResourceSnapshotName: new(unitTestSnapshotName0),
 			},
 			wantWrites: 1,
 		},

@@ -391,7 +391,7 @@ var _ = Describe("rolling out placement policies", func() {
 			// A placement binding that the placement policy owns, but does not control.
 			nonControllerOwnerBinding := newOwnedPlacementBinding(policy, nonControllerOwnerBindingName, nonControllerOwnerClusterName, previousResourceSnapshotName)
 			nonControllerOwnerRef := controllerOwnerRefTo(policy)
-			nonControllerOwnerRef.Controller = ptr.To(false)
+			nonControllerOwnerRef.Controller = new(false)
 			nonControllerOwnerBinding.SetOwnerReferences([]metav1.OwnerReference{nonControllerOwnerRef})
 			createPlacementBinding(nonControllerOwnerBinding)
 
@@ -962,7 +962,7 @@ var _ = Describe("rolling out cluster placement policies", func() {
 			// A cluster placement binding that the cluster placement policy owns, but does not control.
 			nonControllerOwnerBinding := newOwnedPlacementBinding(policy, nonControllerOwnerBindingName, nonControllerOwnerClusterName, previousResourceSnapshotName)
 			nonControllerOwnerRef := controllerOwnerRefTo(policy)
-			nonControllerOwnerRef.Controller = ptr.To(false)
+			nonControllerOwnerRef.Controller = new(false)
 			nonControllerOwnerBinding.SetOwnerReferences([]metav1.OwnerReference{nonControllerOwnerRef})
 			createPlacementBinding(nonControllerOwnerBinding)
 
