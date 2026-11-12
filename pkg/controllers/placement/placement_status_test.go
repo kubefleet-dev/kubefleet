@@ -428,7 +428,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			},
 		},
 		{
-			name: "scheduler does not report the latest status for policy snapshot (annotation change)",
+			name: "placement generation changes without scheduling snapshot changes keeps the last scheduling result",
 			latestPolicySnapshot: &fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: fmt.Sprintf(fleetv1beta1.PolicySnapshotNameFmt, testCRPName, 0),
@@ -476,9 +476,10 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 				ObservedResourceIndex: "0",
 				Conditions: []metav1.Condition{
 					{
-						Status:             metav1.ConditionUnknown,
+						Status:             metav1.ConditionTrue,
 						Type:               string(fleetv1beta1.ClusterResourcePlacementScheduledConditionType),
-						Reason:             condition.SchedulingUnknownReason,
+						Reason:             "Scheduled",
+						Message:            "message",
 						ObservedGeneration: crpGeneration,
 						LastTransitionTime: metav1.NewTime(currentTime),
 					},
