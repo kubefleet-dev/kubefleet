@@ -25,6 +25,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/types"
+
+	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
 
 var _ = Describe("scheduling CRPs of the PickFixed placement type", func() {
@@ -243,6 +245,11 @@ var _ = Describe("scheduling CRPs of the PickFixed placement type", func() {
 			memberCluster2EastProd,
 			memberCluster4CentralProd,
 		}
+		previousStateByUnscheduledCluster := map[string]placementv1beta1.BindingState{
+			memberCluster1EastProd:    placementv1beta1.BindingStateBound,
+			memberCluster2EastProd:    placementv1beta1.BindingStateBound,
+			memberCluster4CentralProd: placementv1beta1.BindingStateScheduled,
+		}
 
 		policySnapshotName1 := fmt.Sprintf(policySnapshotNameTemplate, crpName, 1)
 		policySnapshotName2 := fmt.Sprintf(policySnapshotNameTemplate, crpName, 2)
@@ -274,7 +281,7 @@ var _ = Describe("scheduling CRPs of the PickFixed placement type", func() {
 		})
 
 		It("should mark bindings as unscheduled for removed target clusters", func() {
-			unscheduledBindingsCreatedActual := unscheduledBindingsCreatedOrUpdatedForClustersActual(unscheduledClusters, nilScoreByCluster, crpKey, policySnapshotName1)
+			unscheduledBindingsCreatedActual := unscheduledBindingsCreatedOrUpdatedForClustersActual(unscheduledClusters, previousStateByUnscheduledCluster, nilScoreByCluster, crpKey, policySnapshotName1)
 			Eventually(unscheduledBindingsCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to mark bindings as unscheduled")
 			Consistently(unscheduledBindingsCreatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to mark bindings as unscheduled")
 		})
@@ -510,6 +517,11 @@ var _ = Describe("scheduling RPs of the PickFixed placement type", func() {
 			memberCluster2EastProd,
 			memberCluster4CentralProd,
 		}
+		previousStateByUnscheduledCluster := map[string]placementv1beta1.BindingState{
+			memberCluster1EastProd:    placementv1beta1.BindingStateBound,
+			memberCluster2EastProd:    placementv1beta1.BindingStateBound,
+			memberCluster4CentralProd: placementv1beta1.BindingStateScheduled,
+		}
 
 		policySnapshotName1 := fmt.Sprintf(policySnapshotNameTemplate, rpName, 1)
 		policySnapshotName2 := fmt.Sprintf(policySnapshotNameTemplate, rpName, 2)
@@ -542,7 +554,7 @@ var _ = Describe("scheduling RPs of the PickFixed placement type", func() {
 		})
 
 		It("should mark bindings as unscheduled for removed target clusters", func() {
-			unscheduledBindingsCreatedActual := unscheduledBindingsCreatedOrUpdatedForClustersActual(unscheduledClusters, nilScoreByCluster, rpKey, policySnapshotName1)
+			unscheduledBindingsCreatedActual := unscheduledBindingsCreatedOrUpdatedForClustersActual(unscheduledClusters, previousStateByUnscheduledCluster, nilScoreByCluster, rpKey, policySnapshotName1)
 			Eventually(unscheduledBindingsCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to mark bindings as unscheduled")
 			Consistently(unscheduledBindingsCreatedActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to mark bindings as unscheduled")
 		})
