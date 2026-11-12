@@ -269,7 +269,10 @@ func boundBindingsCreatedOrUpdatedForClustersActual(clusters []string, scoreByCl
 	}
 }
 
-func unscheduledBindingsCreatedOrUpdatedForClustersActual(clusters []string, scoreByCluster map[string]*placementv1beta1.ClusterScore, placementKey types.NamespacedName, policySnapshotName string) func() error {
+// unscheduledBindingsCreatedOrUpdatedForClustersActual verifies that the bindings for the given clusters have been
+// marked as unscheduled, with each binding remembering the state it was in before being unscheduled, as specified
+// by previousStateByCluster, so that the scheduler can restore it if the cluster gets picked again.
+func unscheduledBindingsCreatedOrUpdatedForClustersActual(clusters []string, previousStateByCluster map[string]placementv1beta1.BindingState, scoreByCluster map[string]*placementv1beta1.ClusterScore, placementKey types.NamespacedName, policySnapshotName string) func() error {
 	return func() error {
 		bindingList, err := listBindings(placementKey)
 		if err != nil {
@@ -286,7 +289,6 @@ func unscheduledBindingsCreatedOrUpdatedForClustersActual(clusters []string, sco
 				unscheduled = append(unscheduled, binding)
 			}
 		}
-		// TODO (rzhang): fix me, compare the annotations when we know its previous state
 		wantUnscheduled := []placementv1beta1.BindingObj{}
 		if placementKey.Namespace == "" {
 			for _, name := range clusters {
@@ -296,6 +298,9 @@ func unscheduledBindingsCreatedOrUpdatedForClustersActual(clusters []string, sco
 						Name: bindingNamePlaceholder,
 						Labels: map[string]string{
 							placementv1beta1.PlacementTrackingLabel: placementKey.Name,
+						},
+						Annotations: map[string]string{
+							placementv1beta1.PreviousBindingStateAnnotation: string(previousStateByCluster[name]),
 						},
 						Finalizers: []string{placementv1beta1.SchedulerBindingCleanupFinalizer},
 					},
@@ -322,6 +327,9 @@ func unscheduledBindingsCreatedOrUpdatedForClustersActual(clusters []string, sco
 						Labels: map[string]string{
 							placementv1beta1.PlacementTrackingLabel: placementKey.Name,
 						},
+						Annotations: map[string]string{
+							placementv1beta1.PreviousBindingStateAnnotation: string(previousStateByCluster[name]),
+						},
 						Finalizers: []string{placementv1beta1.SchedulerBindingCleanupFinalizer},
 					},
 					Spec: placementv1beta1.ResourceBindingSpec{
@@ -339,7 +347,7 @@ func unscheduledBindingsCreatedOrUpdatedForClustersActual(clusters []string, sco
 			}
 		}
 
-		if diff := cmp.Diff(unscheduled, wantUnscheduled, ignoreResourceBindingFields...); diff != "" {
+		if diff := cmp.Diff(unscheduled, wantUnscheduled, ignoreResourceBindingFieldsExceptAnnotations...); diff != "" {
 			return fmt.Errorf("unscheduled bindings are not updated as expected; diff (-got, +want): %s", diff)
 		}
 
