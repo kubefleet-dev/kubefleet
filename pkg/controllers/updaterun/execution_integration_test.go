@@ -642,8 +642,8 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 		var oldUpdateRunStuckThreshold time.Duration
 		BeforeAll(func() {
 			// Set the updateRunStuckThreshold to 1 second for this test.
-			oldUpdateRunStuckThreshold = updateRunStuckThreshold
-			updateRunStuckThreshold = 1 * time.Second
+			oldUpdateRunStuckThreshold = updateRunReconciler.UpdateRunStuckThreshold
+			updateRunReconciler.UpdateRunStuckThreshold = 1 * time.Second
 
 			By("Creating a new clusterStagedUpdateRun")
 			Expect(k8sClient.Create(ctx, updateRun)).To(Succeed())
@@ -659,7 +659,7 @@ var _ = Describe("UpdateRun execution tests - double stages", func() {
 
 		AfterAll(func() {
 			// Restore the updateRunStuckThreshold to the original value.
-			updateRunStuckThreshold = oldUpdateRunStuckThreshold
+			updateRunReconciler.UpdateRunStuckThreshold = oldUpdateRunStuckThreshold
 		})
 
 		It("Should keep waiting for the 1st cluster while it's not available", func() {
@@ -1744,8 +1744,8 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 		var oldUpdateRunStuckThreshold time.Duration
 		BeforeAll(func() {
 			// Set the updateRunStuckThreshold to 1 second for this test.
-			oldUpdateRunStuckThreshold = updateRunStuckThreshold
-			updateRunStuckThreshold = 1 * time.Second
+			oldUpdateRunStuckThreshold = updateRunReconciler.UpdateRunStuckThreshold
+			updateRunReconciler.UpdateRunStuckThreshold = 1 * time.Second
 
 			By("Updating the crp to use report diff mode")
 			crp.Spec.Strategy.ApplyStrategy = &placementv1beta1.ApplyStrategy{Type: placementv1beta1.ApplyStrategyTypeReportDiff}
@@ -1765,7 +1765,7 @@ var _ = Describe("UpdateRun execution tests - single stage", func() {
 
 		AfterAll(func() {
 			// Restore the updateRunStuckThreshold to the original value.
-			updateRunStuckThreshold = oldUpdateRunStuckThreshold
+			updateRunReconciler.UpdateRunStuckThreshold = oldUpdateRunStuckThreshold
 		})
 
 		It("Should become stuck if the binding diff reporting fails", func() {

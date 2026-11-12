@@ -53,6 +53,7 @@ var (
 	mgr                      manager.Manager
 	testEnv                  *envtest.Environment
 	k8sClient                client.Client
+	updateRunReconciler      *Reconciler
 	ctx                      context.Context
 	cancel                   context.CancelFunc
 	resourceSelectorResolver controller.ResourceSelectorResolver
@@ -128,12 +129,13 @@ var _ = BeforeSuite(func() {
 		InformerManager:            dynamicInformerManager,
 		ResourceEligibilityChecker: resourceeligibility.DefaultForV0APIs(mgr.GetRESTMapper()),
 	}
-	err = (&Reconciler{
+	updateRunReconciler = &Reconciler{
 		Client:                   k8sClient,
 		InformerManager:          dynamicInformerManager,
 		ResourceSelectorResolver: resourceSelectorResolver,
 		ResourceSnapshotResolver: controller.NewResourceSnapshotResolver(mgr.GetClient(), mgr.GetScheme()),
-	}).SetupWithManagerForClusterStagedUpdateRun(mgr)
+	}
+	err = updateRunReconciler.SetupWithManagerForClusterStagedUpdateRun(mgr)
 	Expect(err).Should(Succeed())
 
 	// create the namespace for testing

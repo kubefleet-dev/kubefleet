@@ -2233,3 +2233,34 @@ func TestCheckAfterStageTasksStatus_ElapsedTimedWait(t *testing.T) {
 		t.Errorf("checkAfterStageTasksStatus() = (%v, %v), want (true, 0)", gotPassed, gotWaitTime)
 	}
 }
+
+func TestStuckThreshold(t *testing.T) {
+	tests := []struct {
+		name                    string
+		updateRunStuckThreshold time.Duration
+		want                    time.Duration
+	}{
+		{
+			name: "not set, falls back to the default",
+			want: defaultUpdateRunStuckThreshold,
+		},
+		{
+			name:                    "negative value, falls back to the default",
+			updateRunStuckThreshold: -time.Minute,
+			want:                    defaultUpdateRunStuckThreshold,
+		},
+		{
+			name:                    "configured value is used",
+			updateRunStuckThreshold: 30 * time.Minute,
+			want:                    30 * time.Minute,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &Reconciler{UpdateRunStuckThreshold: tt.updateRunStuckThreshold}
+			if got := r.stuckThreshold(); got != tt.want {
+				t.Errorf("stuckThreshold() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
