@@ -270,7 +270,7 @@ func (r *ResourceConfig) Parse(c string) error {
 	return nil
 }
 
-// TODO: reduce cyclo
+// parseSingle parses a single token, which is a group, a group version, or a list of kinds.
 func (r *ResourceConfig) parseSingle(token string) error {
 	switch strings.Count(token, "/") {
 	// Assume user don't want to skip the 'core'(no group name) group.
@@ -281,61 +281,74 @@ func (r *ResourceConfig) parseSingle(token string) error {
 	case 1:
 		// for core group which don't have the group name, the case should be "v1/<kind>" or "v1/<kind>,<kind>..."
 		if strings.HasPrefix(token, "v1") {
-			var kinds []string
-			for _, k := range strings.Split(token, ",") {
-				if strings.Contains(k, "/") { // "v1/<kind>"
-					s := strings.Split(k, "/")
-					kinds = append(kinds, s[1])
-				} else {
-					kinds = append(kinds, k)
-				}
-			}
-			for _, k := range kinds {
-				gvk := schema.GroupVersionKind{
-					Version: "v1",
-					Kind:    k,
-				}
-				r.groupVersionKinds[gvk] = struct{}{}
-			}
-		} else { // case "<group>/<version>"
-			parts := strings.Split(token, "/")
-			if len(parts) != 2 {
-				return fmt.Errorf("invalid token: %s", token)
-			}
-			gv := schema.GroupVersion{
-				Group:   parts[0],
-				Version: parts[1],
-			}
-			r.groupVersions[gv] = struct{}{}
+			r.addCoreGroupKinds(token)
+			return nil
 		}
+		return r.addGroupVersion(token)
 	// parameter format: "<group>/<version>/<kind>" or "<group>/<version>/<kind>,<kind>..."
 	case 2:
-		g := ""
-		v := ""
-		var kinds []string
-		for _, k := range strings.Split(token, ",") {
-			if strings.Contains(k, "/") {
-				s := strings.Split(k, "/")
-				g = s[0]
-				v = s[1]
-				kinds = append(kinds, s[2])
-			} else {
-				kinds = append(kinds, k)
-			}
-		}
-		for _, k := range kinds {
-			gvk := schema.GroupVersionKind{
-				Group:   g,
-				Version: v,
-				Kind:    k,
-			}
-			r.groupVersionKinds[gvk] = struct{}{}
-		}
+		r.addGroupVersionKinds(token)
 	default:
 		return fmt.Errorf("invalid parameter: %s", token)
 	}
 
 	return nil
+}
+
+// addCoreGroupKinds parses a token in the form of "v1/<kind>" or "v1/<kind>,<kind>...".
+func (r *ResourceConfig) addCoreGroupKinds(token string) {
+	var kinds []string
+	for _, k := range strings.Split(token, ",") {
+		if strings.Contains(k, "/") { // "v1/<kind>"
+			k = strings.Split(k, "/")[1]
+		}
+		kinds = append(kinds, k)
+	}
+	r.addKinds("", "v1", kinds)
+}
+
+// addGroupVersion parses a token in the form of "<group>/<version>".
+func (r *ResourceConfig) addGroupVersion(token string) error {
+	parts := strings.Split(token, "/")
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid token: %s", token)
+	}
+	gv := schema.GroupVersion{
+		Group:   parts[0],
+		Version: parts[1],
+	}
+	r.groupVersions[gv] = struct{}{}
+	return nil
+}
+
+// addGroupVersionKinds parses a token in the form of "<group>/<version>/<kind>" or
+// "<group>/<version>/<kind>,<kind>...".
+func (r *ResourceConfig) addGroupVersionKinds(token string) {
+	g := ""
+	v := ""
+	var kinds []string
+	for _, k := range strings.Split(token, ",") {
+		if strings.Contains(k, "/") {
+			s := strings.Split(k, "/")
+			g = s[0]
+			v = s[1]
+			k = s[2]
+		}
+		kinds = append(kinds, k)
+	}
+	r.addKinds(g, v, kinds)
+}
+
+// addKinds adds the given kinds under the given group and version.
+func (r *ResourceConfig) addKinds(group, version string, kinds []string) {
+	for _, k := range kinds {
+		gvk := schema.GroupVersionKind{
+			Group:   group,
+			Version: version,
+			Kind:    k,
+		}
+		r.groupVersionKinds[gvk] = struct{}{}
+	}
 }
 
 // IsResourceDisabled returns whether a given GroupVersionKind is disabled.
