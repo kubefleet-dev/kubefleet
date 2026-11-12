@@ -25,7 +25,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -105,7 +104,7 @@ var _ = Describe("placement policy sync strategy", Label("placementpolicy"), fun
 		It("should report the policy as not synchronized on member cluster 1", func() {
 			clusterCount := int32(len(allMemberClusters))
 			wantStatus := someClustersNotSynchronizedPlacementPolicyStatus(clusterCount, clusterCount-1)
-			wantStatus.LatestResourceRevisionName = ptr.To(initialSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(initialSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected cluster placement policy status")
 		})
@@ -145,7 +144,7 @@ var _ = Describe("placement policy sync strategy", Label("placementpolicy"), fun
 
 		It("should report the policy as synchronized on every member cluster, on the same resource revision", func() {
 			wantStatus := allSynchronizedPlacementPolicyStatus(int32(len(allMemberClusters)))
-			wantStatus.LatestResourceRevisionName = ptr.To(initialSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(initialSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected cluster placement policy status")
 		})
@@ -227,7 +226,7 @@ var _ = Describe("placement policy sync strategy", Label("placementpolicy"), fun
 		It("should report the drift on the binding and the policy", func() {
 			// A ConfigMap carries no generation, so the generation observed on the member cluster is 0.
 			wantDiffDetails := &kfplacementv1alpha1.DiffDetails{
-				ObservedInMemberClusterGeneration: ptr.To(int64(0)),
+				ObservedInMemberClusterGeneration: new(int64(0)),
 				ObservedDiffs: []kfplacementv1alpha1.PatchDetail{
 					{Path: "/data/data", ValueInMember: driftedData["data"], ValueInHub: hubData["data"]},
 				},

@@ -24,7 +24,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -52,7 +51,7 @@ var _ = Describe("placing resources using a CRP of PickFixed placement type", fu
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 					Policy: &placementv1beta1.PlacementPolicy{
@@ -101,7 +100,7 @@ var _ = Describe("placing resources using a CRP of PickFixed placement type", fu
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 					Policy: &placementv1beta1.PlacementPolicy{
@@ -167,7 +166,7 @@ var _ = Describe("placing resources using a CRP of PickFixed placement type", fu
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 					Policy: &placementv1beta1.PlacementPolicy{
@@ -216,7 +215,7 @@ var _ = Describe("placing resources using a CRP of PickFixed placement type", fu
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 					Policy: &placementv1beta1.PlacementPolicy{
@@ -356,7 +355,7 @@ var _ = Describe("placing resources using a CRP of PickFixed placement type", fu
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 					Policy: &placementv1beta1.PlacementPolicy{

@@ -57,14 +57,14 @@ func TestReconcilePreservesClaimCountOnFailedRound(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "pp", Namespace: "default", Generation: 1},
 		Spec: kfplacementv1alpha1.PlacementPolicySpec{
 			ClusterSelectors: []kfplacementv1alpha1.ClusterSelector{{
-				Count:           ptr.To(intstr.FromInt32(1)),
+				Count:           new(intstr.FromInt32(1)),
 				WhenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim,
 			}},
 			ResourceSelectors: []kfplacementv1alpha1.ResourceSelector{{APIVersion: "v1", Kind: "ConfigMap", Name: "app"}},
 		},
 		Status: kfplacementv1alpha1.PlacementPolicyStatus{
 			// The last completed round counted one active claim.
-			ActiveClusterClaims: ptr.To(int32(1)),
+			ActiveClusterClaims: new(int32(1)),
 		},
 	}
 
@@ -232,7 +232,7 @@ func TestReconcileSchedulesWithoutSnapshot(t *testing.T) {
 			}}
 			gone := &kfplacementv1alpha1.PlacementBinding{
 				ObjectMeta: metav1.ObjectMeta{Name: bindingName(policy, "gone"), Namespace: "default", OwnerReferences: []metav1.OwnerReference{
-					{APIVersion: kfplacementv1alpha1.GroupVersion.String(), Kind: kfplacementv1alpha1.PlacementPolicyKind, Name: "pp", UID: policy.UID, Controller: ptr.To(true)},
+					{APIVersion: kfplacementv1alpha1.GroupVersion.String(), Kind: kfplacementv1alpha1.PlacementPolicyKind, Name: "pp", UID: policy.UID, Controller: new(true)},
 				}},
 				Spec: kfplacementv1alpha1.PlacementBindingSpec{PlacementPolicyName: "pp", ClusterName: "gone", ResourceSnapshotName: "pp-snapshot-0"},
 			}

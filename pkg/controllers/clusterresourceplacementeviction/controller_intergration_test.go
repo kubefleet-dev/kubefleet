@@ -28,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 
@@ -707,7 +706,7 @@ func buildTestPickNCRP(crpName string, clusterCount int32) placementv1beta1.Clus
 		Spec: placementv1beta1.PlacementSpec{
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(clusterCount),
+				NumberOfClusters: new(clusterCount),
 			},
 			ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
 				{

@@ -35,7 +35,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
-	"k8s.io/utils/ptr"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -1007,7 +1006,7 @@ var _ = Describe("fleet guard rail for pods and replicasets in fleet/kube namesp
 					Namespace: imcNamespace,
 				},
 				Spec: appsv1.ReplicaSetSpec{
-					Replicas: ptr.To(int32(1)),
+					Replicas: new(int32(1)),
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": "test"},
 					},
@@ -1037,7 +1036,7 @@ var _ = Describe("fleet guard rail for pods and replicasets in fleet/kube namesp
 					Namespace: imcNamespace,
 				},
 				Spec: appsv1.ReplicaSetSpec{
-					Replicas: ptr.To(int32(1)),
+					Replicas: new(int32(1)),
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": "test"},
 					},
@@ -1137,7 +1136,7 @@ var _ = Describe("fleet guard rail for pods and replicasets in fleet/kube namesp
 					Namespace: "kube-system",
 				},
 				Spec: appsv1.ReplicaSetSpec{
-					Replicas: ptr.To(int32(1)),
+					Replicas: new(int32(1)),
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": "test"},
 					},
@@ -1178,7 +1177,7 @@ var _ = Describe("fleet guard rail webhook tests for PodDisruptionBudgets", Seri
 					Namespace: "fleet-system",
 				},
 				Spec: policyv1.PodDisruptionBudgetSpec{
-					MinAvailable: ptr.To(intstr.FromInt32(1)),
+					MinAvailable: new(intstr.FromInt32(1)),
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": "test"},
 					},
@@ -1216,7 +1215,7 @@ var _ = Describe("fleet guard rail webhook tests for PodDisruptionBudgets", Seri
 					Namespace: imcNamespace,
 				},
 				Spec: policyv1.PodDisruptionBudgetSpec{
-					MinAvailable: ptr.To(intstr.FromInt32(1)),
+					MinAvailable: new(intstr.FromInt32(1)),
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": "test"},
 					},
@@ -1235,7 +1234,7 @@ var _ = Describe("fleet guard rail webhook tests for PodDisruptionBudgets", Seri
 					Namespace: imcNamespace,
 				},
 				Spec: policyv1.PodDisruptionBudgetSpec{
-					MinAvailable: ptr.To(intstr.FromInt32(1)),
+					MinAvailable: new(intstr.FromInt32(1)),
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": "test"},
 					},
@@ -1273,7 +1272,7 @@ var _ = Describe("fleet guard rail webhook tests for PodDisruptionBudgets", Seri
 					Namespace: "kube-system",
 				},
 				Spec: policyv1.PodDisruptionBudgetSpec{
-					MinAvailable: ptr.To(intstr.FromInt32(1)),
+					MinAvailable: new(intstr.FromInt32(1)),
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": "test"},
 					},
@@ -1382,7 +1381,7 @@ var _ = Describe("fleet guard rail webhook tests for service accounts in restric
 			},
 			Spec: authenticationv1.TokenRequestSpec{
 				Audiences:         []string{"experimental"},
-				ExpirationSeconds: ptr.To(int64(3600)),
+				ExpirationSeconds: new(int64(3600)),
 			},
 		}
 		wantErrMsg := fmt.Sprintf(validation.ResourceDeniedFormat,

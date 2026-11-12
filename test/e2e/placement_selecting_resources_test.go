@@ -29,7 +29,6 @@ import (
 	apiResource "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -192,7 +191,7 @@ var _ = Describe("validating CRP when cluster-scoped resources become selected a
 				},
 				Strategy: placementv1beta1.RolloutStrategy{
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(5),
+						UnavailablePeriodSeconds: new(5),
 					},
 				},
 			},
@@ -278,7 +277,7 @@ var _ = Describe("validating CRP when cluster-scoped resources become unselected
 				},
 				Strategy: placementv1beta1.RolloutStrategy{
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(5),
+						UnavailablePeriodSeconds: new(5),
 					},
 				},
 			},
@@ -352,7 +351,7 @@ var _ = Describe("validating CRP when cluster-scoped and namespace-scoped resour
 				ResourceSelectors: workResourceSelector(),
 				Strategy: placementv1beta1.RolloutStrategy{
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(5),
+						UnavailablePeriodSeconds: new(5),
 					},
 				},
 			},
@@ -445,7 +444,7 @@ var _ = Describe("validating CRP when adding resources in a matching namespace",
 				ResourceSelectors: workResourceSelector(),
 				Strategy: placementv1beta1.RolloutStrategy{
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(5),
+						UnavailablePeriodSeconds: new(5),
 					},
 				},
 			},
@@ -532,7 +531,7 @@ var _ = Describe("validating CRP when deleting resources in a matching namespace
 				ResourceSelectors: workResourceSelector(),
 				Strategy: placementv1beta1.RolloutStrategy{
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(5),
+						UnavailablePeriodSeconds: new(5),
 					},
 				},
 			},
@@ -630,7 +629,7 @@ var _ = Describe("validating CRP when selecting a reserved resource", Ordered, f
 				},
 				Strategy: placementv1beta1.RolloutStrategy{
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(5),
+						UnavailablePeriodSeconds: new(5),
 					},
 				},
 			},
@@ -1051,10 +1050,10 @@ var _ = Describe("validating CRP revision history allowing single revision when 
 				},
 				Strategy: placementv1beta1.RolloutStrategy{
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(5),
+						UnavailablePeriodSeconds: new(5),
 					},
 				},
-				RevisionHistoryLimit: ptr.To(int32(1)),
+				RevisionHistoryLimit: new(int32(1)),
 			},
 		}
 		By(fmt.Sprintf("creating placement %s", crpName))
@@ -1145,7 +1144,7 @@ var _ = Describe("validating CRP revision history allowing multiple revisions wh
 				},
 				Strategy: placementv1beta1.RolloutStrategy{
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(5),
+						UnavailablePeriodSeconds: new(5),
 					},
 				},
 			},
@@ -1335,7 +1334,7 @@ var _ = Describe("creating CRP and checking selected resources order", Ordered, 
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
 				AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-				StorageClassName: ptr.To("standard"),
+				StorageClassName: new("standard"),
 				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{
 						corev1.ResourceStorage: apiResource.MustParse("1Gi"),
@@ -1415,7 +1414,7 @@ var _ = Describe("creating CRP and checking selected resources order", Ordered, 
 })
 
 func createResourcesForMultipleResourceSnapshots() {
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		var secret corev1.Secret
 		Expect(utils.GetObjectFromManifest("../integration/manifests/resources/test-large-secret.yaml", &secret)).Should(Succeed(), "Failed to read large secret from file")
 		secret.Namespace = appNamespace().Name
@@ -1525,7 +1524,7 @@ func checkIfPlacedLargeSecretResourcesOnTargetMemberClusters(targetMemberCluster
 func secretsPlacedOnClusterActual(cluster *framework.Cluster) func() error {
 	workNamespaceName := fmt.Sprintf(workNamespaceNameTemplate, GinkgoParallelProcess())
 	return func() error {
-		for i := 0; i < 3; i++ {
+		for i := range 3 {
 			if err := validateSecretOnCluster(cluster, types.NamespacedName{Name: fmt.Sprintf(appSecretNameTemplate, i), Namespace: workNamespaceName}); err != nil {
 				return err
 			}

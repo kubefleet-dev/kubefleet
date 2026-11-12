@@ -137,18 +137,13 @@ func (m *Manager) Start(ctx context.Context) error {
 	var wg sync.WaitGroup
 
 	// Start a goroutine to shutdown the GC workqueue when the main context is canceled.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		<-ctx.Done()
 		m.gcwq.ShutDown()
-	}()
+	})
 
 	// Start a goroutine to process garbage collection of stale resource snapshots.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		for {
 			snapshotGCRequest, shutdown := m.gcwq.Get()
 			if shutdown {
@@ -177,7 +172,7 @@ func (m *Manager) Start(ctx context.Context) error {
 			m.gcwq.Done(snapshotGCRequest)
 			m.gcwq.Forget(snapshotGCRequest)
 		}
-	}()
+	})
 
 	wg.Wait()
 	return nil

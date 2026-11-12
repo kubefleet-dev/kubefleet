@@ -34,7 +34,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -80,7 +79,7 @@ func serviceScheme(t *testing.T) *runtime.Scheme {
 func placementPolicyForTest() *fleetv1beta1.PlacementPolicy {
 	return &fleetv1beta1.PlacementPolicy{
 		PlacementType:    fleetv1beta1.PickNPlacementType,
-		NumberOfClusters: ptr.To(int32(3)),
+		NumberOfClusters: new(int32(3)),
 		Affinity: &fleetv1beta1.Affinity{
 			ClusterAffinity: &fleetv1beta1.ClusterAffinity{
 				RequiredDuringSchedulingIgnoredDuringExecution: &fleetv1beta1.ClusterSelector{
@@ -298,12 +297,12 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create the policy hash: %v", err)
 	}
-	policyHash := []byte(fmt.Sprintf("%x", sha256.Sum256(jsonBytes)))
+	policyHash := fmt.Appendf(nil, "%x", sha256.Sum256(jsonBytes))
 	jsonBytes, err = json.Marshal(nil)
 	if err != nil {
 		t.Fatalf("failed to create the policy hash: %v", err)
 	}
-	unspecifiedPolicyHash := []byte(fmt.Sprintf("%x", sha256.Sum256(jsonBytes)))
+	unspecifiedPolicyHash := fmt.Appendf(nil, "%x", sha256.Sum256(jsonBytes))
 	tests := []struct {
 		name                    string
 		policy                  *fleetv1beta1.PlacementPolicy
@@ -350,8 +349,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -412,8 +411,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -445,8 +444,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -474,8 +473,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -511,8 +510,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -534,8 +533,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -559,8 +558,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -582,8 +581,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -617,8 +616,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -642,8 +641,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -676,8 +675,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -701,8 +700,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -730,8 +729,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -756,8 +755,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -792,8 +791,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -818,8 +817,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -847,8 +846,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -873,8 +872,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -952,7 +951,7 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create the policy hash: %v", err)
 	}
-	policyHash := []byte(fmt.Sprintf("%x", sha256.Sum256(jsonBytes)))
+	policyHash := fmt.Appendf(nil, "%x", sha256.Sum256(jsonBytes))
 	tests := []struct {
 		name            string
 		policySnapshots []fleetv1beta1.ClusterSchedulingPolicySnapshot
@@ -971,8 +970,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 							},
 						},
 					},
@@ -994,8 +993,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 							},
 						},
 					},
@@ -1016,8 +1015,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 							},
 						},
 					},
@@ -1032,8 +1031,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 							},
 						},
 					},
@@ -1055,8 +1054,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 							},
 						},
 					},
@@ -1072,8 +1071,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 							},
 						},
 					},
@@ -1094,8 +1093,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 							},
 						},
 					},
@@ -1117,8 +1116,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -1148,8 +1147,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -1180,8 +1179,8 @@ func TestGetOrCreateClusterSchedulingPolicySnapshot_failure(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -1259,8 +1258,8 @@ func TestHandleDelete(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -1296,8 +1295,8 @@ func TestHandleDelete(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -1346,8 +1345,8 @@ func TestHandleDelete(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},
@@ -1369,8 +1368,8 @@ func TestHandleDelete(t *testing.T) {
 						OwnerReferences: []metav1.OwnerReference{
 							{
 								Name:               testCRPName,
-								BlockOwnerDeletion: ptr.To(true),
-								Controller:         ptr.To(true),
+								BlockOwnerDeletion: new(true),
+								Controller:         new(true),
 								APIVersion:         fleetAPIVersion,
 								Kind:               "ClusterResourcePlacement",
 							},

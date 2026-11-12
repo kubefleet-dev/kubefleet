@@ -22,7 +22,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/test/e2e/framework"
@@ -100,7 +99,7 @@ var _ = Describe("placing resources using a cluster resource placement with no p
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
+						UnavailablePeriodSeconds: new(2),
 					},
 				},
 			},
@@ -173,7 +172,7 @@ var _ = Describe("placing resources using a cluster resource placement with no p
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
+						UnavailablePeriodSeconds: new(2),
 					},
 				},
 			},
@@ -245,7 +244,7 @@ var _ = Describe("picking N clusters with affinities and topology spread constra
 				ResourceSelectors: workResourceSelector(),
 				Policy: &placementv1beta1.PlacementPolicy{
 					PlacementType:    placementv1beta1.PickNPlacementType,
-					NumberOfClusters: ptr.To(int32(2)),
+					NumberOfClusters: new(int32(2)),
 					// Note that due to limitations in the E2E environment, specifically the limited
 					// number of clusters available, the affinity and topology spread constraints
 					// specified here are validated only on a very superficial level, i.e., the flow
@@ -269,7 +268,7 @@ var _ = Describe("picking N clusters with affinities and topology spread constra
 					},
 					TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 						{
-							MaxSkew:           ptr.To(int32(1)),
+							MaxSkew:           new(int32(1)),
 							TopologyKey:       envLabelName,
 							WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
 						},
@@ -279,7 +278,7 @@ var _ = Describe("picking N clusters with affinities and topology spread constra
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
+						UnavailablePeriodSeconds: new(2),
 					},
 				},
 			},

@@ -131,20 +131,20 @@ var _ = Describe("Test PlacementPolicy API validation", func() {
 		// The typed client drops empty keys and values (omitempty), so these cases use unstructured
 		// objects to send them explicitly, as a manifest applied with kubectl might.
 		DescribeTable("the explicitly empty fields of a toleration",
-			func(toleration map[string]interface{}, wantMessage string) {
+			func(toleration map[string]any, wantMessage string) {
 				name := fmt.Sprintf(placementPolicyNameTemplate, GinkgoParallelProcess())
 				for _, kind := range []string{placementv1alpha1.PlacementPolicyKind, placementv1alpha1.ClusterPlacementPolicyKind} {
 					obj := &unstructured.Unstructured{
-						Object: map[string]interface{}{
-							"spec": map[string]interface{}{
-								"resourceSelectors": []interface{}{
-									map[string]interface{}{
+						Object: map[string]any{
+							"spec": map[string]any{
+								"resourceSelectors": []any{
+									map[string]any{
 										"apiVersion": testResourceSelectors[0].APIVersion,
 										"kind":       testResourceSelectors[0].Kind,
 										"name":       testResourceSelectors[0].Name,
 									},
 								},
-								"tolerations": []interface{}{toleration},
+								"tolerations": []any{toleration},
 							},
 						},
 					}
@@ -156,16 +156,16 @@ var _ = Describe("Test PlacementPolicy API validation", func() {
 					createAndCheckValidation(obj, wantMessage)
 				}
 			},
-			Entry("an Exists toleration with an empty key is accepted", map[string]interface{}{
+			Entry("an Exists toleration with an empty key is accepted", map[string]any{
 				"key":      "",
 				"operator": string(corev1.TolerationOpExists),
 			}, ""),
-			Entry("an Exists toleration with an empty value is accepted", map[string]interface{}{
+			Entry("an Exists toleration with an empty value is accepted", map[string]any{
 				"key":      tolerationKey,
 				"operator": string(corev1.TolerationOpExists),
 				"value":    "",
 			}, ""),
-			Entry("an Equal toleration with an empty key is rejected", map[string]interface{}{
+			Entry("an Equal toleration with an empty key is rejected", map[string]any{
 				"key":      "",
 				"operator": string(corev1.TolerationOpEqual),
 				"value":    tolerationValue,

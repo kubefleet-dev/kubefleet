@@ -27,7 +27,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -62,7 +61,7 @@ var _ = Describe("placement policy taking over existing resources", Label("place
 		memberOnlyDiff := kfplacementv1alpha1.PatchDetail{Path: "/data/member-only", ValueInMember: preExistingData["member-only"]}
 		notTakenOverActual := func(diffs ...kfplacementv1alpha1.PatchDetail) func() error {
 			// A ConfigMap carries no generation, so the generation observed on the member cluster is 0.
-			diffDetails := &kfplacementv1alpha1.DiffDetails{ObservedInMemberClusterGeneration: ptr.To(int64(0)), ObservedDiffs: diffs}
+			diffDetails := &kfplacementv1alpha1.DiffDetails{ObservedInMemberClusterGeneration: new(int64(0)), ObservedDiffs: diffs}
 			return placementPolicyBindingsActual(policyKey, map[string]wantPlacementBinding{
 				memberCluster1EastProdName: {
 					selectors: wantSelectorsByCluster()[memberCluster1EastProdName],

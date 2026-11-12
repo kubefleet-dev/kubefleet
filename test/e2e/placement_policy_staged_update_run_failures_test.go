@@ -28,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -141,7 +140,7 @@ var _ = Describe("placement policy staged update run failures", Label("placement
 				PlacementPolicyName:      c.policyKey.Name,
 				StagedUpdateStrategyName: c.strategyKey.Name,
 				FailurePolicy: &kfrolloutv1alpha1.StagedUpdateRunFailurePolicy{
-					MaxAllowedClusterFailures:    ptr.To(maxAllowedClusterFailures),
+					MaxAllowedClusterFailures:    new(maxAllowedClusterFailures),
 					MaxWaitTimePerClusterMinutes: 1,
 				},
 			})
@@ -333,7 +332,7 @@ var _ = Describe("placement policy staged update run failures", Label("placement
 					{
 						Name:            placementPolicyAllClustersStageName,
 						LabelSelector:   &metav1.LabelSelector{},
-						SortingLabelKey: ptr.To("placement-policy-e2e/no-such-label"),
+						SortingLabelKey: new("placement-policy-e2e/no-such-label"),
 					},
 				},
 			})
@@ -399,7 +398,7 @@ var _ = Describe("placement policy staged update run failures", Label("placement
 		It("should roll nothing out, with the binding manager role released", func() {
 			// None of the runs got as far as taking a new resource snapshot, so the change is still pending.
 			wantStatus := resourcesChangedPendingRolloutPlacementPolicyStatus(int32(len(allMemberClusters)))
-			wantStatus.LatestResourceRevisionName = ptr.To(initialSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(initialSnapshotName)
 			statusActual := placementPolicyStatusActual(policyKey, wantStatus)
 			snapshotsActual := placementPolicyBindingSnapshotsActual(policyKey, map[string]string{
 				memberCluster1EastProdName:   initialSnapshotName,

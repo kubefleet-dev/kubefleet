@@ -26,7 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
@@ -54,9 +53,9 @@ func (r *Reconciler) refreshPlacementBindingStatus(
 	}
 
 	total, synced, available, failed := countResourcesInWorksByProcessingResults(works)
-	placementBinding.GetStatus().SelectedResources = ptr.To(total)
-	placementBinding.GetStatus().SynchronizedResources = ptr.To(synced)
-	placementBinding.GetStatus().AvailableResources = ptr.To(available)
+	placementBinding.GetStatus().SelectedResources = new(total)
+	placementBinding.GetStatus().SynchronizedResources = new(synced)
+	placementBinding.GetStatus().AvailableResources = new(available)
 	if len(failed) > maxFailedResourcesToReport {
 		klog.V(2).InfoS("Too many failed resources to report in placement binding status; truncating the list",
 			"placementBinding", klog.KObj(placementBinding), "totalFailedResources", len(failed),
@@ -130,9 +129,9 @@ func (r *Reconciler) markPlacementBindingAsFailedToSynchronizeDueToInvalidSnapsh
 		}
 	}
 	total, synced, available, failed := countResourcesInWorksByProcessingResults(lastProcessedWorks)
-	placementBindingStatus.SelectedResources = ptr.To(total)
-	placementBindingStatus.SynchronizedResources = ptr.To(synced)
-	placementBindingStatus.AvailableResources = ptr.To(available)
+	placementBindingStatus.SelectedResources = new(total)
+	placementBindingStatus.SynchronizedResources = new(synced)
+	placementBindingStatus.AvailableResources = new(available)
 	if len(failed) > maxFailedResourcesToReport {
 		klog.V(2).InfoS("Too many failed resources to report in placement binding status; truncating the list",
 			"placementBinding", klog.KObj(placementBinding), "totalFailedResources", len(failed),
@@ -166,7 +165,7 @@ func (r *Reconciler) reportPlacementBindingProcessingProgress(
 ) error {
 	placementBindingStatus := placementBinding.GetStatus()
 	// Set the last processed placement resource snapshot name on the placement binding status.
-	placementBindingStatus.LastProcessedResourceSnapshotName = ptr.To(primaryPlacementResourceSnapshot.GetName())
+	placementBindingStatus.LastProcessedResourceSnapshotName = new(primaryPlacementResourceSnapshot.GetName())
 
 	// Set a false Synchronized condition with the WaitingForSynchronization reason on the placement binding.
 	meta.SetStatusCondition(&placementBindingStatus.Conditions, metav1.Condition{
@@ -190,7 +189,7 @@ func (r *Reconciler) reportPlacementBindingProcessingProgress(
 	for idx := range worksToCreateOrUpdate {
 		total += int32(len(worksToCreateOrUpdate[idx].Spec.Manifests)) //nolint:gosec // safe: there is no risk of overflowing due to API-level restrictions.
 	}
-	placementBindingStatus.SelectedResources = ptr.To(total)
+	placementBindingStatus.SelectedResources = new(total)
 
 	// Clear the other counters and failed resources as their previous values no longer apply.
 	placementBindingStatus.SynchronizedResources = nil

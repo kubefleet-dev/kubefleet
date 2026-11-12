@@ -935,7 +935,7 @@ var _ = Describe("parallel processing with waves", func() {
 						Name: "dummy",
 					},
 					MaxReplicas: 10,
-					MinReplicas: ptr.To(int32(1)),
+					MinReplicas: new(int32(1)),
 				},
 			},
 			&appsv1.StatefulSet{

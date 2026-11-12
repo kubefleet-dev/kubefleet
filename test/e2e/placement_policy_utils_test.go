@@ -32,7 +32,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
@@ -85,7 +84,7 @@ func clusterSelectorMatchingLabels(matchLabels map[string]string, count intstr.I
 		Terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{
 			{MatchLabels: matchLabels},
 		},
-		Count: ptr.To(count),
+		Count: new(count),
 	}
 }
 
@@ -113,7 +112,7 @@ func clusterSelectorTermsMatchingLabels(matchLabels map[string]string) kfplaceme
 func clusterSelectorWithTerms(terms []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm, count intstr.IntOrString) kfplacementv1alpha1.ClusterSelector {
 	return kfplacementv1alpha1.ClusterSelector{
 		Terms: terms,
-		Count: ptr.To(count),
+		Count: new(count),
 	}
 }
 
@@ -285,11 +284,11 @@ func resourcesNotCollectedPlacementPolicyStatus(clusterCount int32) kfplacementv
 			placementPolicyCondition(kfplacementv1alpha1.PlacementPolicyCondTypeAvailable, metav1.ConditionFalse,
 				kfplacementv1alpha1.PlacementPolicyAvailableCondReasonSomeClustersUnavailable),
 		},
-		DesiredClusters:            ptr.To(clusterCount),
-		ScheduledClusters:          ptr.To(clusterCount),
-		SynchronizedClusters:       ptr.To(int32(0)),
-		ResourcesAvailableClusters: ptr.To(int32(0)),
-		ActiveClusterClaims:        ptr.To(int32(0)),
+		DesiredClusters:            new(clusterCount),
+		ScheduledClusters:          new(clusterCount),
+		SynchronizedClusters:       new(int32(0)),
+		ResourcesAvailableClusters: new(int32(0)),
+		ActiveClusterClaims:        new(int32(0)),
 	}
 }
 
@@ -305,8 +304,8 @@ func someClustersNotSynchronizedPlacementPolicyStatus(clusterCount, synchronized
 	// Availability is judged only on clusters that have the latest revision synchronized.
 	meta.SetStatusCondition(&status.Conditions, placementPolicyCondition(kfplacementv1alpha1.PlacementPolicyCondTypeAvailable,
 		metav1.ConditionFalse, kfplacementv1alpha1.PlacementPolicyAvailableCondReasonSomeClustersUnavailable))
-	status.SynchronizedClusters = ptr.To(synchronizedCount)
-	status.ResourcesAvailableClusters = ptr.To(synchronizedCount)
+	status.SynchronizedClusters = new(synchronizedCount)
+	status.ResourcesAvailableClusters = new(synchronizedCount)
 	return status
 }
 
@@ -370,8 +369,8 @@ func unfulfilledPlacementPolicyStatus(desiredCount, scheduledCount, activeClaims
 	status := allSynchronizedPlacementPolicyStatus(scheduledCount)
 	meta.SetStatusCondition(&status.Conditions, placementPolicyCondition(kfplacementv1alpha1.PlacementPolicyCondTypeScheduled,
 		metav1.ConditionFalse, kfplacementv1alpha1.PlacementPolicyScheduledCondReasonFailedToFindSomeClusters))
-	status.DesiredClusters = ptr.To(desiredCount)
-	status.ActiveClusterClaims = ptr.To(activeClaims)
+	status.DesiredClusters = new(desiredCount)
+	status.ActiveClusterClaims = new(activeClaims)
 	return status
 }
 
@@ -738,11 +737,11 @@ func allSynchronizedPlacementPolicyStatus(clusterCount int32) kfplacementv1alpha
 				Reason: kfplacementv1alpha1.PlacementPolicyAvailableCondReasonAllClustersAvailable,
 			},
 		},
-		DesiredClusters:            ptr.To(clusterCount),
-		ScheduledClusters:          ptr.To(clusterCount),
-		SynchronizedClusters:       ptr.To(clusterCount),
-		ResourcesAvailableClusters: ptr.To(clusterCount),
-		ActiveClusterClaims:        ptr.To(int32(0)),
+		DesiredClusters:            new(clusterCount),
+		ScheduledClusters:          new(clusterCount),
+		SynchronizedClusters:       new(clusterCount),
+		ResourcesAvailableClusters: new(clusterCount),
+		ActiveClusterClaims:        new(int32(0)),
 	}
 }
 
@@ -800,9 +799,9 @@ func synchronizedPlacementBindingStatus(resourceCount int32) kfplacementv1alpha1
 			placementPolicyCondition(kfplacementv1alpha1.PlacementBindingCondTypeAvailable, metav1.ConditionTrue,
 				kfplacementv1alpha1.PlacementBindingAvailableCondReasonAllResourcesAvailable),
 		},
-		SelectedResources:     ptr.To(resourceCount),
-		SynchronizedResources: ptr.To(resourceCount),
-		AvailableResources:    ptr.To(resourceCount),
+		SelectedResources:     new(resourceCount),
+		SynchronizedResources: new(resourceCount),
+		AvailableResources:    new(resourceCount),
 	}
 }
 
@@ -828,9 +827,9 @@ func configMapNotAppliedPlacementBindingStatus(
 			placementPolicyCondition(kfplacementv1alpha1.PlacementBindingCondTypeAvailable, metav1.ConditionFalse,
 				kfplacementv1alpha1.PlacementBindingAvailableCondReasonSomeResourcesUnavailable),
 		},
-		SelectedResources:     ptr.To(int32(1)),
-		SynchronizedResources: ptr.To(int32(0)),
-		AvailableResources:    ptr.To(int32(0)),
+		SelectedResources:     new(int32(1)),
+		SynchronizedResources: new(int32(0)),
+		AvailableResources:    new(int32(0)),
 		FailedResources: []kfplacementv1alpha1.FailedResource{
 			{
 				ObjectRef: kfplacementv1alpha1.ObjectReference{

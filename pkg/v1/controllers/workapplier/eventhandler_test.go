@@ -24,7 +24,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -69,7 +68,7 @@ func eventHandlerTestOwnerRef(mutate func(*metav1.OwnerReference)) *metav1.Owner
 		Kind:       placementv1alpha1.WorkKind,
 		Name:       eventHandlerTestPrimaryWorkName,
 		UID:        "owner-uid",
-		Controller: ptr.To(true),
+		Controller: new(true),
 	}
 	if mutate != nil {
 		mutate(ownerRef)
@@ -140,7 +139,7 @@ func TestEnqueuePrimaryWork(t *testing.T) {
 		{
 			name: "work with a non-controller owner reference",
 			work: eventHandlerTestSecondaryWork(eventHandlerTestOwnerRef(func(o *metav1.OwnerReference) {
-				o.Controller = ptr.To(false)
+				o.Controller = new(false)
 			})),
 			wantReqs: []reconcile.Request{},
 		},

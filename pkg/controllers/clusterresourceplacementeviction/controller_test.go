@@ -70,8 +70,8 @@ func TestValidateEviction(t *testing.T) {
 			Strategy: placementv1beta1.RolloutStrategy{
 				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 				RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-					MaxUnavailable:           ptr.To(intstr.FromString(defaulter.DefaultMaxUnavailableValue)),
-					MaxSurge:                 ptr.To(intstr.FromString(defaulter.DefaultMaxSurgeValue)),
+					MaxUnavailable:           new(intstr.FromString(defaulter.DefaultMaxUnavailableValue)),
+					MaxSurge:                 new(intstr.FromString(defaulter.DefaultMaxSurgeValue)),
 					UnavailablePeriodSeconds: ptr.To(defaulter.DefaultUnavailablePeriodSeconds),
 				},
 				ApplyStrategy: &placementv1beta1.ApplyStrategy{
@@ -579,7 +579,7 @@ func TestExecuteEviction(t *testing.T) {
 			name: "PickAll CRP, Misconfigured PDB MaxUnavailable specified - eviction not executed",
 			validationResult: &evictionValidationResult{
 				crb: availableBinding,
-				crp: ptr.To(buildTestPickAllCRP(testCRPName)),
+				crp: new(buildTestPickAllCRP(testCRPName)),
 			},
 			eviction: buildTestEviction(testEvictionName, testCRPName, testClusterName),
 			pdb: &placementv1beta1.ClusterResourcePlacementDisruptionBudget{
@@ -606,7 +606,7 @@ func TestExecuteEviction(t *testing.T) {
 			name: "PickAll CRP, Misconfigured PDB MinAvailable specified as percentage - eviction not executed",
 			validationResult: &evictionValidationResult{
 				crb: availableBinding,
-				crp: ptr.To(buildTestPickAllCRP(testCRPName)),
+				crp: new(buildTestPickAllCRP(testCRPName)),
 			},
 			eviction: buildTestEviction(testEvictionName, testCRPName, testClusterName),
 			pdb: &placementv1beta1.ClusterResourcePlacementDisruptionBudget{

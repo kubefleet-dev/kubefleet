@@ -27,7 +27,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -72,7 +71,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 	})
 
 	It("adds a claim for an unfulfilled selector and cleans it up with the policy", func() {
-		policy := newPolicy(nextName("pp"), regionSelector("brazilsouth", ptr.To(intstr.FromInt32(1)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("brazilsouth", new(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
 		wantClaimName := claimName(policy, 0)
@@ -110,7 +109,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 	})
 
 	It("withdraws the claim only when an eligible cluster fulfills the selector", func() {
-		policy := newPolicy(nextName("pp"), regionSelector("koreacentral", ptr.To(intstr.FromInt32(1)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("koreacentral", new(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
 		wantClaimName := claimName(policy, 0)
@@ -139,7 +138,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 	})
 
 	It("still withdraws a claim whose ownership labels were stripped, tracked by the immutable reference", func() {
-		policy := newPolicy(nextName("pp"), regionSelector("chilecentral", ptr.To(intstr.FromInt32(1)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("chilecentral", new(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
 		wantClaimName := claimName(policy, 0)
@@ -167,7 +166,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 	})
 
 	It("restores the ownership labels on a still-wanted claim after they are stripped", func() {
-		policy := newPolicy(nextName("pp"), regionSelector("canadacentral", ptr.To(intstr.FromInt32(1)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("canadacentral", new(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
 		wantClaimName := claimName(policy, 0)
@@ -193,7 +192,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 	})
 
 	It("releases the cleanup finalizer once the policy's last claim is withdrawn", func() {
-		policy := newPolicy(nextName("pp"), regionSelector("mexicocentral", ptr.To(intstr.FromInt32(1)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("mexicocentral", new(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
 		By("the policy carries the cleanup finalizer while its claim is outstanding")
@@ -223,7 +222,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 	})
 
 	It("issues one claim at a time until a count>1 selector is fully provisioned", func() {
-		policy := newPolicy(nextName("pp"), regionSelector("australiaeast", ptr.To(intstr.FromInt32(3)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("australiaeast", new(intstr.FromInt32(3)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 		claimN := claimName(policy, 0)
 
@@ -251,7 +250,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 					return // the targeted claim is gone or already rotated: our completion took effect
 				}
 				g.Expect(err).ShouldNot(HaveOccurred()) // any other read error fails loudly rather than passing as a skip
-				claim.Status.ProvisionedClusterName = ptr.To(clusterName)
+				claim.Status.ProvisionedClusterName = new(clusterName)
 				meta.SetStatusCondition(&claim.Status.Conditions, metav1.Condition{
 					Type: kfplacementv1alpha1.ClusterClaimCondTypeCompleted, Status: metav1.ConditionTrue, Reason: "Fulfilled",
 				})
@@ -292,8 +291,8 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 
 	It("keeps at most one claim outstanding across multiple unfulfilled selectors", func() {
 		policy := newPolicy(nextName("pp"),
-			regionSelector("swedencentral", ptr.To(intstr.FromInt32(1)), nil),
-			regionSelector("norwayeast", ptr.To(intstr.FromInt32(1)), nil),
+			regionSelector("swedencentral", new(intstr.FromInt32(1)), nil),
+			regionSelector("norwayeast", new(intstr.FromInt32(1)), nil),
 		)
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
@@ -311,7 +310,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 	})
 
 	It("does not add claims for KeepSearching selectors", func() {
-		selector := regionSelector("qatarcentral", ptr.To(intstr.FromInt32(1)), nil)
+		selector := regionSelector("qatarcentral", new(intstr.FromInt32(1)), nil)
 		selector.WhenUnfulfilled = kfplacementv1alpha1.WhenUnfulfilledOptionKeepSearching
 		policy := newPolicy(nextName("pp"), selector)
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
@@ -327,7 +326,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 	})
 
 	It("refreshes the claim freshness marker when a non-matching cluster joins", func() {
-		policy := newPolicy(nextName("pp"), regionSelector("polandcentral", ptr.To(intstr.FromInt32(1)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("polandcentral", new(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
 		wantClaimName := claimName(policy, 0)
@@ -349,7 +348,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 	})
 
 	It("leaves a Terminating claim alone when its selector becomes unfulfilled again", func() {
-		policy := newPolicy(nextName("pp"), regionSelector("uaenorth", ptr.To(intstr.FromInt32(1)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("uaenorth", new(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
 		wantClaimName := claimName(policy, 0)
@@ -399,7 +398,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 	})
 
 	It("waits out a provisioner finalizer when replacing a claim after a selector change", func() {
-		policy := newPolicy(nextName("pp"), regionSelector("israelcentral", ptr.To(intstr.FromInt32(1)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("israelcentral", new(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
 		wantClaimName := claimName(policy, 0)
@@ -456,8 +455,8 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		// Terminating, and selector 1's claim, which has a different name, must wait for that
 		// slot rather than stand beside it.
 		policy := newPolicy(nextName("pp"),
-			regionSelector("swedencentral", ptr.To(intstr.FromInt32(1)), nil),
-			regionSelector("italynorth", ptr.To(intstr.FromInt32(1)), nil))
+			regionSelector("swedencentral", new(intstr.FromInt32(1)), nil),
+			regionSelector("italynorth", new(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
 		claim0Name := claimName(policy, 0)
@@ -502,7 +501,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 		// The ownership labels are mutable; the claim's back-reference is not. Cleanup must go
 		// by the reference, or a label-stripped claim would vanish from the cleanup list and be
 		// orphaned the moment the policy's finalizer is released.
-		policy := newPolicy(nextName("pp"), regionSelector("qatarcentral", ptr.To(intstr.FromInt32(1)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("qatarcentral", new(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
 		wantClaimName := claimName(policy, 0)
@@ -540,7 +539,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 	})
 
 	It("leaves a claim of another policy alone when it holds the claim's name", func() {
-		policy := newPolicy(nextName("pp"), regionSelector("norwayeast", ptr.To(intstr.FromInt32(1)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("norwayeast", new(intstr.FromInt32(1)), nil))
 		wantClaimName := claimName(policy, 0)
 
 		By("a claim of another policy already holds the deterministic name")
@@ -574,7 +573,7 @@ var _ = Describe("cluster claim lifecycle", Ordered, func() {
 	})
 
 	It("replaces the outstanding claim when the selector terms change", func() {
-		policy := newPolicy(nextName("pp"), regionSelector("spaincentral", ptr.To(intstr.FromInt32(1)), nil))
+		policy := newPolicy(nextName("pp"), regionSelector("spaincentral", new(intstr.FromInt32(1)), nil))
 		Expect(k8sClient.Create(ctx, policy)).Should(Succeed())
 
 		wantClaimName := claimName(policy, 0)

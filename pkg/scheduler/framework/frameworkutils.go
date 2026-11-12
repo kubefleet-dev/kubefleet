@@ -23,7 +23,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
@@ -375,8 +374,8 @@ func newSchedulingDecisionsFromBindings(
 			ClusterName: sc.Cluster.Name,
 			Selected:    false,
 			ClusterScore: &placementv1beta1.ClusterScore{
-				AffinityScore:       ptr.To(sc.Score.AffinityScore),
-				TopologySpreadScore: ptr.To(sc.Score.TopologySpreadScore),
+				AffinityScore:       new(sc.Score.AffinityScore),
+				TopologySpreadScore: new(sc.Score.TopologySpreadScore),
 			},
 			Reason: fmt.Sprintf(notPickedByScoreReasonTemplate, sc.Cluster.Name, sc.Score.AffinityScore, sc.Score.TopologySpreadScore),
 		})
@@ -575,13 +574,7 @@ func shouldSchedule(desiredCount, existingCount int) bool {
 // essentially returns the minimum among the desired number of clusters, the batch size limit,
 // and the number of scored clusters.
 func calcNumOfClustersToSelect(desired, limit, scored int) int {
-	num := desired
-	if limit < num {
-		num = limit
-	}
-	if scored < num {
-		num = scored
-	}
+	num := min(scored, min(limit, desired))
 	return num
 }
 

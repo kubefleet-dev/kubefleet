@@ -194,7 +194,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 
 	// Prepare a namespace deny list for namespaces.
 	var userDefinedSkippedNSNames []string
-	for _, ns := range strings.Split(opts.PlacementMgmtOpts.SkippedPropagatingNamespaces, ";") {
+	for ns := range strings.SplitSeq(opts.PlacementMgmtOpts.SkippedPropagatingNamespaces, ";") {
 		if ns != "" {
 			userDefinedSkippedNSNames = append(userDefinedSkippedNSNames, ns)
 		}
@@ -528,15 +528,12 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxFleetSize)/50)*math.Ceil(float64(opts.PlacementMgmtOpts.MaxConcurrentClusterPlacement)/10)))
 		klog.Info("Starting the scheduler")
 		// Scheduler must run in a separate goroutine as Run() is a blocking call.
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
+		wg.Go(func() {
 			// Run() blocks and is set to exit on context cancellation.
 			defaultScheduler.Run(ctx)
 
 			klog.InfoS("The scheduler has exited")
-		}()
+		})
 
 		// Set up the watchers for the controller
 		klog.Info("Setting up the clusterResourcePlacement watcher for scheduler")

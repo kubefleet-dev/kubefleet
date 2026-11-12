@@ -28,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -226,7 +225,7 @@ func TestClaimReadyToRotate(t *testing.T) {
 	}{
 		{
 			name:    "completed with an eligible cluster while a deficit remains rotates",
-			claim:   claim(completed(), ptr.To("c1")),
+			claim:   claim(completed(), new("c1")),
 			outcome: deficit,
 			want:    true,
 		},
@@ -240,7 +239,7 @@ func TestClaimReadyToRotate(t *testing.T) {
 			// The provisioner completed but its cluster has not joined/become eligible yet: waiting
 			// here is what keeps a second claim from being issued mid-join (no double-provisioning).
 			name:    "completed but the provisioned cluster is not eligible yet does not rotate",
-			claim:   claim(completed(), ptr.To("c2")),
+			claim:   claim(completed(), new("c2")),
 			outcome: deficit,
 			want:    false,
 		},
@@ -254,7 +253,7 @@ func TestClaimReadyToRotate(t *testing.T) {
 			// The selector is already at its desired count; the claim is withdrawn (not rotated) by
 			// the fulfilled path, so rotation must not fire.
 			name:    "satisfied in full does not rotate",
-			claim:   claim(completed(), ptr.To("c1")),
+			claim:   claim(completed(), new("c1")),
 			outcome: &selectorOutcome{counts: resolvedCounts{desired: 1, minimum: 1}, matched: []string{"c1"}},
 			want:    false,
 		},
@@ -262,13 +261,13 @@ func TestClaimReadyToRotate(t *testing.T) {
 			// count: All with a minCount floor is satisfied in full at the floor, so a completed
 			// claim below the floor still has a deficit and rotates, mirroring the integer case.
 			name:    "select-all below its minCount floor rotates",
-			claim:   claim(completed(), ptr.To("c1")),
+			claim:   claim(completed(), new("c1")),
 			outcome: &selectorOutcome{counts: resolvedCounts{selectAll: true, minimum: 2}, matched: []string{"c1"}},
 			want:    true,
 		},
 		{
 			name:    "a nil outcome does not rotate",
-			claim:   claim(completed(), ptr.To("c1")),
+			claim:   claim(completed(), new("c1")),
 			outcome: nil,
 			want:    false,
 		},

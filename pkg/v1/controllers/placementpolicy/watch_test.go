@@ -26,7 +26,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -155,7 +154,7 @@ func TestBindingRelevantChanges(t *testing.T) {
 		return &kfplacementv1alpha1.PlacementBinding{
 			ObjectMeta: metav1.ObjectMeta{Name: "b", Generation: 1},
 			Status: kfplacementv1alpha1.PlacementBindingStatus{
-				LastProcessedResourceSnapshotName: ptr.To("pp-snapshot-0"),
+				LastProcessedResourceSnapshotName: new("pp-snapshot-0"),
 				Conditions: []metav1.Condition{
 					{Type: kfplacementv1alpha1.PlacementBindingCondTypeSynchronized, Status: metav1.ConditionFalse, ObservedGeneration: 1, Reason: "Waiting", Message: "a"},
 				},
@@ -173,10 +172,10 @@ func TestBindingRelevantChanges(t *testing.T) {
 			b.Status.Conditions = append(b.Status.Conditions, metav1.Condition{Type: kfplacementv1alpha1.PlacementBindingCondTypeAvailable, Status: metav1.ConditionTrue, ObservedGeneration: 1})
 		}, want: true},
 		{name: "new revision processed", mutate: func(b *kfplacementv1alpha1.PlacementBinding) {
-			b.Status.LastProcessedResourceSnapshotName = ptr.To("pp-snapshot-1")
+			b.Status.LastProcessedResourceSnapshotName = new("pp-snapshot-1")
 		}, want: true},
 		{name: "message only", mutate: func(b *kfplacementv1alpha1.PlacementBinding) { b.Status.Conditions[0].Message = "b" }, want: false},
-		{name: "resource counts only", mutate: func(b *kfplacementv1alpha1.PlacementBinding) { b.Status.SelectedResources = ptr.To(int32(3)) }, want: false},
+		{name: "resource counts only", mutate: func(b *kfplacementv1alpha1.PlacementBinding) { b.Status.SelectedResources = new(int32(3)) }, want: false},
 	}
 	// Creates and deletes still wake the owner, so that a binding deleted out of band is recreated.
 	if !bindingRelevantChanges().Create(event.CreateEvent{Object: base()}) || !bindingRelevantChanges().Delete(event.DeleteEvent{Object: base()}) {

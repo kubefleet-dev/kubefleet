@@ -28,7 +28,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
@@ -82,7 +81,7 @@ func setClusterSelectorsAnnotation(object client.Object, value string) {
 // the annotation, with the fields the API defaults filled in as the API server stores them.
 func annotationClusterSelector(matchLabels map[string]string, count intstr.IntOrString) kfplacementv1alpha1.ClusterSelector {
 	selector := kfplacementv1alpha1.ClusterSelector{
-		Count:           ptr.To(count),
+		Count:           new(count),
 		WhenUnfulfilled: kfplacementv1alpha1.WhenUnfulfilledOptionAddClusterClaim,
 	}
 	if len(matchLabels) > 0 {
@@ -186,7 +185,7 @@ var _ = Describe("annotation based placement", Label("placementpolicy"), Ordered
 				Kind:       "ConfigMap",
 				Name:       configMap.Name,
 			}},
-			ResourceRevisionHistoryLimit: ptr.To(int32(3)),
+			ResourceRevisionHistoryLimit: new(int32(3)),
 		}
 		return func() error {
 			policy, err := generatedPolicy()
@@ -346,7 +345,7 @@ var _ = Describe("annotation based placement", Label("placementpolicy"), Ordered
 				Kind:       "Deployment",
 				Name:       deployment.Name,
 			}},
-			ResourceRevisionHistoryLimit: ptr.To(int32(3)),
+			ResourceRevisionHistoryLimit: new(int32(3)),
 		}
 		Eventually(func() error {
 			policies := &kfplacementv1alpha1.PlacementPolicyList{}
@@ -376,7 +375,7 @@ var _ = Describe("annotation based placement", Label("placementpolicy"), Ordered
 				Kind:       "Namespace",
 				Name:       namespace.Name,
 			}},
-			ResourceRevisionHistoryLimit: ptr.To(int32(3)),
+			ResourceRevisionHistoryLimit: new(int32(3)),
 		}
 		Eventually(func() error {
 			policies := &kfplacementv1alpha1.ClusterPlacementPolicyList{}

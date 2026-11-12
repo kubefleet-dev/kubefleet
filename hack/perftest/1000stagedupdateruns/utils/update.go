@@ -16,10 +16,7 @@ func (r *Runner) UpdateResources(ctx context.Context) {
 	wg := sync.WaitGroup{}
 
 	// Run the producer.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		for i := 0; i < r.maxCRPToUpdateCount; i++ {
 			select {
 			case r.toPatchResourcesChan <- i:
@@ -30,7 +27,7 @@ func (r *Runner) UpdateResources(ctx context.Context) {
 		}
 
 		close(r.toPatchResourcesChan)
-	}()
+	})
 
 	// Run the workers to add a label to each existing resource.
 	for i := 0; i < r.resourceSetupWorkerCount; i++ {

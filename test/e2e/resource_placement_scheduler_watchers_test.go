@@ -29,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
@@ -76,7 +75,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
+						UnavailablePeriodSeconds: new(2),
 					},
 				},
 			},
@@ -115,7 +114,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -197,7 +196,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -287,7 +286,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -377,7 +376,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -459,7 +458,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -531,7 +530,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -594,7 +593,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -683,7 +682,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -768,7 +767,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -833,7 +832,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -895,7 +894,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -958,7 +957,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -1010,12 +1009,12 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					ResourceSelectors: configMapSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(4)),
+						NumberOfClusters: new(int32(4)),
 					},
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -1078,7 +1077,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					ResourceSelectors: configMapSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(1)),
+						NumberOfClusters: new(int32(1)),
 						Affinity: &placementv1beta1.Affinity{
 							ClusterAffinity: &placementv1beta1.ClusterAffinity{
 								RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
@@ -1098,7 +1097,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -1165,7 +1164,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					ResourceSelectors: configMapSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(1)),
+						NumberOfClusters: new(int32(1)),
 						Affinity: &placementv1beta1.Affinity{
 							ClusterAffinity: &placementv1beta1.ClusterAffinity{
 								RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
@@ -1185,7 +1184,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -1237,10 +1236,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					ResourceSelectors: configMapSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(5)),
+						NumberOfClusters: new(int32(5)),
 						TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 							{
-								MaxSkew:           ptr.To(int32(1)),
+								MaxSkew:           new(int32(1)),
 								TopologyKey:       regionLabelName,
 								WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
 							},
@@ -1249,7 +1248,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -1324,7 +1323,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					ResourceSelectors: configMapSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(1)),
+						NumberOfClusters: new(int32(1)),
 						Affinity: &placementv1beta1.Affinity{
 							ClusterAffinity: &placementv1beta1.ClusterAffinity{
 								RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
@@ -1350,7 +1349,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -1445,10 +1444,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					ResourceSelectors: configMapSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(4)),
+						NumberOfClusters: new(int32(4)),
 						TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 							{
-								MaxSkew:           ptr.To(int32(1)),
+								MaxSkew:           new(int32(1)),
 								TopologyKey:       regionLabelName,
 								WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
 							},
@@ -1457,7 +1456,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -1511,12 +1510,12 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					ResourceSelectors: configMapSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(4)),
+						NumberOfClusters: new(int32(4)),
 					},
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -1585,7 +1584,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					ResourceSelectors: configMapSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(1)),
+						NumberOfClusters: new(int32(1)),
 						Affinity: &placementv1beta1.Affinity{
 							ClusterAffinity: &placementv1beta1.ClusterAffinity{
 								RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
@@ -1605,7 +1604,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -1670,7 +1669,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					ResourceSelectors: configMapSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(1)),
+						NumberOfClusters: new(int32(1)),
 						Affinity: &placementv1beta1.Affinity{
 							ClusterAffinity: &placementv1beta1.ClusterAffinity{
 								RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
@@ -1690,7 +1689,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -1749,10 +1748,10 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					ResourceSelectors: configMapSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(5)),
+						NumberOfClusters: new(int32(5)),
 						TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 							{
-								MaxSkew:           ptr.To(int32(1)),
+								MaxSkew:           new(int32(1)),
 								TopologyKey:       regionLabelName,
 								WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
 							},
@@ -1761,7 +1760,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -1834,7 +1833,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					ResourceSelectors: configMapSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(1)),
+						NumberOfClusters: new(int32(1)),
 						Affinity: &placementv1beta1.Affinity{
 							ClusterAffinity: &placementv1beta1.ClusterAffinity{
 								RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
@@ -1860,7 +1859,7 @@ var _ = Describe("responding to specific member cluster changes using RP", Label
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},

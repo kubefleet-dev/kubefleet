@@ -25,7 +25,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -68,7 +67,7 @@ var _ = Describe("validating CRP when using customized resourceSnapshotCreationM
 				},
 				Strategy: placementv1beta1.RolloutStrategy{
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(5),
+						UnavailablePeriodSeconds: new(5),
 					},
 				},
 			},
@@ -179,7 +178,7 @@ var _ = Describe("validating that CRP status can be updated after updating the r
 				},
 				Strategy: placementv1beta1.RolloutStrategy{
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(5),
+						UnavailablePeriodSeconds: new(5),
 					},
 				},
 			},

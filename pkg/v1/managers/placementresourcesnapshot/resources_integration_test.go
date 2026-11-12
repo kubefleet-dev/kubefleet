@@ -36,7 +36,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	deploymentutil "k8s.io/kubectl/pkg/util/deployment"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -177,7 +176,7 @@ var _ = Describe("resource selection (placement policies)", func() {
 				),
 				wantErrCategory:         kferrors.ErrCategoryUser,
 				wantErrMsgSubstrs:       []string{ineligibleGVKErrMsg},
-				wantResourceSelectorIdx: ptr.To(1),
+				wantResourceSelectorIdx: new(1),
 			},
 			{
 				// The CRD only enforces that the two fields are mutually exclusive.
@@ -545,7 +544,7 @@ var _ = Describe("resource selection (placement policies)", func() {
 							Kind:       "ConfigMap",
 							Name:       ownerConfigMapName,
 							UID:        ownerConfigMap.UID,
-							Controller: ptr.To(true),
+							Controller: new(true),
 						},
 					},
 				},
@@ -722,7 +721,7 @@ var _ = Describe("resource selection (placement policies)", func() {
 								Kind:       "ConfigMap",
 								Name:       ownerConfigMapName,
 								UID:        ownerConfigMap.UID,
-								Controller: ptr.To(true),
+								Controller: new(true),
 							},
 						},
 					},
@@ -779,7 +778,7 @@ var _ = Describe("resource selection (placement policies)", func() {
 					Kind:       "ConfigMap",
 					Name:       ownerConfigMapName,
 					UID:        ownerConfigMap.UID,
-					Controller: ptr.To(true),
+					Controller: new(true),
 				},
 			}
 			Expect(hubClient.Update(ctx, configMap)).To(Succeed(), "Failed to update the config map")
@@ -883,7 +882,7 @@ var _ = Describe("resource selection (placement policies)", func() {
 						Name:            labeledConfigMapName,
 						Namespace:       appNamespaceName,
 						Labels:          groupLabels,
-						OwnerReferences: ownerRefs(ptr.To(false)),
+						OwnerReferences: ownerRefs(new(false)),
 					},
 					Data: map[string]string{"key": "value-labeled"},
 				},
@@ -906,25 +905,25 @@ var _ = Describe("resource selection (placement policies)", func() {
 			// The resources are sorted by their unique IDs, i.e., the labeled config map comes first.
 			//
 			// Compare the manifests as generic maps; this verifies that the owner references are absent.
-			wantManifests := []map[string]interface{}{
+			wantManifests := []map[string]any{
 				{
 					"apiVersion": "v1",
 					"kind":       "ConfigMap",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name":      labeledConfigMapName,
 						"namespace": appNamespaceName,
-						"labels":    map[string]interface{}{placementGroupLabelKey: groupLabels[placementGroupLabelKey]},
+						"labels":    map[string]any{placementGroupLabelKey: groupLabels[placementGroupLabelKey]},
 					},
-					"data": map[string]interface{}{"key": "value-labeled"},
+					"data": map[string]any{"key": "value-labeled"},
 				},
 				{
 					"apiVersion": "v1",
 					"kind":       "ConfigMap",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name":      namedConfigMapName,
 						"namespace": appNamespaceName,
 					},
-					"data": map[string]interface{}{"key": "value-named"},
+					"data": map[string]any{"key": "value-named"},
 				},
 			}
 			Expect(resources).To(HaveLen(len(wantManifests)), "Unexpected number of snapshotted resources")
@@ -1157,9 +1156,9 @@ var _ = Describe("resource selection (placement policies)", func() {
 						Kind:       "Deployment",
 						Name:       fmt.Sprintf(deploymentNameTemplate, utils.RandStr()),
 					},
-					MinReplicas:                    ptr.To(int32(1)),
+					MinReplicas:                    new(int32(1)),
 					MaxReplicas:                    3,
-					TargetCPUUtilizationPercentage: ptr.To(int32(50)),
+					TargetCPUUtilizationPercentage: new(int32(50)),
 				},
 			}
 			Expect(hubClient.Create(ctx, hpa)).To(Succeed(), "Failed to create the HPA")
@@ -1224,7 +1223,7 @@ var _ = Describe("resource selection (placement policies)", func() {
 						Name: corev1.ResourceCPU,
 						Target: autoscalingv2.MetricTarget{
 							Type:               autoscalingv2.UtilizationMetricType,
-							AverageUtilization: ptr.To(int32(50)),
+							AverageUtilization: new(int32(50)),
 						},
 					},
 				},
@@ -1386,36 +1385,36 @@ var _ = Describe("resource selection (placement policies)", func() {
 			Expect(resources).To(HaveLen(len(configMapNames)), "Unexpected number of snapshotted resources")
 
 			// Compare the manifests as generic maps; this verifies that the stripped fields are absent.
-			wantManifests := []map[string]interface{}{
+			wantManifests := []map[string]any{
 				{
 					"apiVersion": "v1",
 					"kind":       "ConfigMap",
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name":        configMapNames[0],
 						"namespace":   appNamespaceName,
-						"annotations": map[string]interface{}{customAnnotationKey: "keep"},
+						"annotations": map[string]any{customAnnotationKey: "keep"},
 					},
-					"data": map[string]interface{}{"key": "value-0"},
+					"data": map[string]any{"key": "value-0"},
 				},
 				{
 					"apiVersion": "v1",
 					"kind":       "ConfigMap",
 					// The annotations field should be removed altogether, as no annotation is left.
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name":      configMapNames[1],
 						"namespace": appNamespaceName,
 					},
-					"data": map[string]interface{}{"key": "value-1"},
+					"data": map[string]any{"key": "value-1"},
 				},
 				{
 					"apiVersion": "v1",
 					"kind":       "ConfigMap",
 					// The finalizers are stripped, even though the live object still carries one.
-					"metadata": map[string]interface{}{
+					"metadata": map[string]any{
 						"name":      configMapNames[2],
 						"namespace": appNamespaceName,
 					},
-					"data": map[string]interface{}{"key": "value-2"},
+					"data": map[string]any{"key": "value-2"},
 				},
 			}
 			for idx := range resources {
@@ -1461,10 +1460,10 @@ var _ = Describe("resource selection (placement policies)", func() {
 			resources := snapshot.GetSpec().Resources
 			Expect(resources).To(HaveLen(len(configMapNames)), "Unexpected number of snapshotted resources")
 			gotMetadata := manifestAsMap(resources[0].Manifest.Raw)["metadata"]
-			wantMetadata := map[string]interface{}{
+			wantMetadata := map[string]any{
 				"name":        configMapNames[0],
 				"namespace":   appNamespaceName,
-				"annotations": map[string]interface{}{customAnnotationKey: "changed"},
+				"annotations": map[string]any{customAnnotationKey: "changed"},
 			}
 			if diff := cmp.Diff(gotMetadata, wantMetadata); diff != "" {
 				Fail(fmt.Sprintf("Snapshotted config map metadata diff (-got +want):\n%s", diff))
@@ -1528,11 +1527,11 @@ var _ = Describe("resource selection (placement policies)", func() {
 			// carries its own metadata, which is not subject to sanitization.
 			gotManifest := manifestAsMap(resources[0].Manifest.Raw)
 			Expect(gotManifest).ToNot(HaveKey("status"), "The status of the Deployment has not been stripped")
-			wantMetadata := map[string]interface{}{
+			wantMetadata := map[string]any{
 				"name":        deploymentName,
 				"namespace":   appNamespaceName,
-				"labels":      map[string]interface{}{"app": "demo"},
-				"annotations": map[string]interface{}{customAnnotationKey: "keep"},
+				"labels":      map[string]any{"app": "demo"},
+				"annotations": map[string]any{customAnnotationKey: "keep"},
 			}
 			if diff := cmp.Diff(gotManifest["metadata"], wantMetadata); diff != "" {
 				Fail(fmt.Sprintf("Snapshotted Deployment metadata diff (-got +want):\n%s", diff))
@@ -1696,10 +1695,10 @@ var _ = Describe("resource selection (placement policies)", func() {
 			// Check the raw manifest, so that the absence of the keys is verified, not just their zero values.
 			gotManifest := manifestAsMap(resources[0].Manifest.Raw)
 			Expect(gotManifest).ToNot(HaveKey("status"), "The status of the Service has not been stripped")
-			wantMetadata := map[string]interface{}{
+			wantMetadata := map[string]any{
 				"name":      serviceName,
 				"namespace": appNamespaceName,
-				"labels":    map[string]interface{}{"app": "demo"},
+				"labels":    map[string]any{"app": "demo"},
 			}
 			if diff := cmp.Diff(gotManifest["metadata"], wantMetadata); diff != "" {
 				Fail(fmt.Sprintf("Snapshotted Service metadata diff (-got +want):\n%s", diff))
@@ -1798,10 +1797,10 @@ var _ = Describe("resource selection (placement policies)", func() {
 
 			gotManifest := manifestAsMap(resources[0].Manifest.Raw)
 			Expect(gotManifest).ToNot(HaveKey("status"), "The status of the Job has not been stripped")
-			wantMetadata := map[string]interface{}{
+			wantMetadata := map[string]any{
 				"name":      jobName,
 				"namespace": appNamespaceName,
-				"labels":    map[string]interface{}{"app": "demo"},
+				"labels":    map[string]any{"app": "demo"},
 			}
 			if diff := cmp.Diff(gotManifest["metadata"], wantMetadata); diff != "" {
 				Fail(fmt.Sprintf("Snapshotted Job metadata diff (-got +want):\n%s", diff))
