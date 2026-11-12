@@ -45,6 +45,7 @@ import (
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/overrider"
 )
 
 var (
@@ -126,6 +127,9 @@ var _ = BeforeSuite(func() {
 		GroupVersionResource: utils.NamespaceGVR,
 		IsClusterScoped:      true,
 	}, nil)
+
+	// set up the field indexes that the rollout controller relies on to look up the override snapshots
+	Expect(overrider.SetupOverrideSnapshotFieldIndexes(ctx, mgr.GetFieldIndexer())).Should(Succeed())
 
 	// setup our cluster scoped reconciler
 	err = (&Reconciler{

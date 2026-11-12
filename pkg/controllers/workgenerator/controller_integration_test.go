@@ -4540,10 +4540,37 @@ func fetchEnvelopedWork(workList *placementv1beta1.WorkList, binding *placementv
 }
 
 func matchingOverrideSnapshotRefs(masterSnapshot *placementv1beta1.ClusterResourceSnapshot) ([]string, []placementv1beta1.NamespacedName) {
+	// The override snapshots are looked up by a field index, which only the cache-backed client supports; wait for
+	// the cache to catch up with the snapshots that the spec has just created before looking them up.
+	Eventually(func() error {
+		for _, newList := range []func() client.ObjectList{
+			func() client.ObjectList { return &placementv1beta1.ClusterResourceOverrideSnapshotList{} },
+			func() client.ObjectList { return &placementv1beta1.ResourceOverrideSnapshotList{} },
+		} {
+			directList, cachedList := newList(), newList()
+			if err := mgr.GetAPIReader().List(ctx, directList); err != nil {
+				return err
+			}
+			if err := k8sClient.List(ctx, cachedList); err != nil {
+				return err
+			}
+			directVersions, err := objectResourceVersions(directList)
+			if err != nil {
+				return err
+			}
+			cachedVersions, err := objectResourceVersions(cachedList)
+			if err != nil {
+				return err
+			}
+			if diff := cmp.Diff(directVersions, cachedVersions); diff != "" {
+				return fmt.Errorf("cached %T mismatch (-direct, +cached):\n%s", cachedList, diff)
+			}
+		}
+		return nil
+	}, timeout, interval).Should(Succeed(), "Failed to wait for the cache to sync the override snapshots")
+
 	fakeInformer := envelopeOverrideInformerManager()
-	directClient, err := client.New(cfg, client.Options{Scheme: mgr.GetScheme()})
-	Expect(err).Should(Succeed())
-	croSnapshots, roSnapshots, err := overrider.FetchAllMatchingOverridesForResourceSnapshot(ctx, directClient, fakeInformer, testCRPName, masterSnapshot)
+	croSnapshots, roSnapshots, err := overrider.FetchAllMatchingOverridesForResourceSnapshot(ctx, k8sClient, fakeInformer, testCRPName, masterSnapshot)
 	Expect(err).Should(Succeed())
 
 	croNames := make([]string, 0, len(croSnapshots))
@@ -4558,6 +4585,23 @@ func matchingOverrideSnapshotRefs(masterSnapshot *placementv1beta1.ClusterResour
 		})
 	}
 	return croNames, roNames
+}
+
+// objectResourceVersions returns the resource versions of the objects in the list, keyed by their namespaced names.
+func objectResourceVersions(list client.ObjectList) (map[string]string, error) {
+	objs, err := meta.ExtractList(list)
+	if err != nil {
+		return nil, err
+	}
+	versions := make(map[string]string, len(objs))
+	for _, obj := range objs {
+		accessor, err := meta.Accessor(obj)
+		if err != nil {
+			return nil, err
+		}
+		versions[types.NamespacedName{Namespace: accessor.GetNamespace(), Name: accessor.GetName()}.String()] = accessor.GetResourceVersion()
+	}
+	return versions, nil
 }
 
 func envelopeOverrideInformerManager() *testutilsinformer.FakeManager {

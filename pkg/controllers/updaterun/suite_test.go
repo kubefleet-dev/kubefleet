@@ -45,6 +45,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	controller "github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/overrider"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/resourceeligibility"
 )
 
@@ -121,6 +122,9 @@ var _ = BeforeSuite(func() {
 		GroupVersionResource: utils.NamespaceGVR,
 		IsClusterScoped:      true,
 	}, nil)
+
+	// Set up the field indexes that the reconciler relies on to look up the override snapshots.
+	Expect(overrider.SetupOverrideSnapshotFieldIndexes(ctx, mgr.GetFieldIndexer())).Should(Succeed())
 
 	// Setup our main reconciler.
 	resourceSelectorResolver = controller.ResourceSelectorResolver{

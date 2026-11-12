@@ -61,6 +61,7 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
+	overrideutils "github.com/kubefleet-dev/kubefleet/pkg/utils/overrider"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/parallelizer"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/resourceeligibility"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
@@ -328,6 +329,14 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 				klog.ErrorS(err, "Unable to set up the schedulingPolicySnapshot watcher")
 				return err
 			}
+		}
+
+		// The rollout and staged update run controllers look up the override snapshots attached to a placement by
+		// a field index, which must be set up before the manager starts.
+		klog.Info("Setting up the override snapshot field indexes")
+		if err := overrideutils.SetupOverrideSnapshotFieldIndexes(ctx, mgr.GetFieldIndexer()); err != nil {
+			klog.ErrorS(err, "Unable to set up the override snapshot field indexes")
+			return err
 		}
 
 		// Set up a new controller to do rollout resources according to CRP/RP rollout strategy
