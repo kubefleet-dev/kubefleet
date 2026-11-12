@@ -1396,7 +1396,9 @@ func ensureCRPAndRelatedResourcesDeleted(crpName string, memberClusters []*frame
 		memberCluster := memberClusters[idx]
 
 		workResourcesRemovedActual := workNamespaceRemovedFromClusterActual(memberCluster)
-		Eventually(workResourcesRemovedActual, workloadEventuallyDuration, time.Second*5).Should(Succeed(), "Failed to remove work resources from member cluster %s", memberCluster.ClusterName)
+		// Use a longer eventually duration as namespace GC might take additional time, esp. in test environments
+		// with less capacity.
+		Eventually(workResourcesRemovedActual, workloadEventuallyDuration*2, time.Second*5).Should(Succeed(), "Failed to remove work resources from member cluster %s", memberCluster.ClusterName)
 	}
 
 	// Verify that related finalizers have been removed from the CRP.
