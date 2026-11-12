@@ -238,7 +238,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 				Name:      testDeployment.Name,
 				Namespace: testDeployment.Namespace,
 			}
-			crpStatusActual := safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResources, failedDeploymentResourceIdentifier, allMemberClusterNames, "1", 2)
+			crpStatusActual := safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResources, failedDeploymentResourceIdentifier, allMemberClusterNames, "1", "0", 2)
 			Eventually(crpStatusActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
@@ -322,7 +322,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 					Type:      placementv1beta1.ResourceEnvelopeType,
 				},
 			}
-			crpStatusActual := safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResources, failedDaemonSetResourceIdentifier, allMemberClusterNames, "1", 2)
+			crpStatusActual := safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResources, failedDaemonSetResourceIdentifier, allMemberClusterNames, "1", "0", 2)
 			Eventually(crpStatusActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
@@ -406,7 +406,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 					Type:      placementv1beta1.ResourceEnvelopeType,
 				},
 			}
-			crpStatusActual := safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResources, failedStatefulSetResourceIdentifier, allMemberClusterNames, "1", 2)
+			crpStatusActual := safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResources, failedStatefulSetResourceIdentifier, allMemberClusterNames, "1", "0", 2)
 			Eventually(crpStatusActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
@@ -485,7 +485,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 				Namespace: testService.Namespace,
 			}
 			// failedResourceObservedGeneration is set to 0 because generation is not populated for service.
-			crpStatusActual := safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResources, failedDeploymentResourceIdentifier, allMemberClusterNames, "1", 0)
+			crpStatusActual := safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResources, failedDeploymentResourceIdentifier, allMemberClusterNames, "1", "0", 0)
 			Eventually(crpStatusActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
@@ -566,7 +566,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 				Name:      testDeployment.Name,
 				Namespace: testDeployment.Namespace,
 			}
-			crpStatusActual := safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResources, failedDeploymentResourceIdentifier, allMemberClusterNames, "1", 2)
+			crpStatusActual := safeRolloutWorkloadCRPStatusUpdatedActual(wantSelectedResources, failedDeploymentResourceIdentifier, allMemberClusterNames, "1", "1", 2)
 			Eventually(crpStatusActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 		})
 
