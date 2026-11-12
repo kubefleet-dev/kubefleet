@@ -118,11 +118,10 @@ var _ = Describe("placing workloads using a CRP with PickAll policy", Label("res
 				Namespace: workNamespace.Name,
 			},
 		}
-		// Use customizedPlacementStatusUpdatedActual with resourceIsTrackable=false
-		// because Jobs don't have availability tracking like Deployments/DaemonSets/StatefulSets do
 		crpKey := types.NamespacedName{Name: crpName}
-		crpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(crpKey, wantSelectedResources, allMemberClusterNames, nil, "0", false)
-		Eventually(crpStatusUpdatedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
+		crpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(crpKey, wantSelectedResources, allMemberClusterNames, nil, "0", true)
+		// It takes a while for Fleet to find out that the job has completed, as it checks with a backoff.
+		Eventually(crpStatusUpdatedActual, 3*workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update CRP status as expected")
 	})
 
 	AfterAll(func() {
