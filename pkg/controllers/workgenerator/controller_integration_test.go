@@ -37,6 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -953,9 +954,13 @@ var _ = Describe("Test Work Generator Controller for clusterResourcePlacement", 
 				Expect(k8sClient.Create(ctx, masterSnapshot)).Should(Succeed())
 				By(fmt.Sprintf("another master resource snapshot %s created", masterSnapshot.Name))
 				// update binding
-				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding)).Should(Succeed())
-				binding.Spec.ResourceSnapshotName = masterSnapshot.Name
-				Expect(k8sClient.Update(ctx, binding)).Should(Succeed())
+				Expect(retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+					if err := k8sClient.Get(ctx, types.NamespacedName{Name: binding.Name}, binding); err != nil {
+						return err
+					}
+					binding.Spec.ResourceSnapshotName = masterSnapshot.Name
+					return k8sClient.Update(ctx, binding)
+				})).Should(Succeed())
 				By(fmt.Sprintf("resource binding %s updated", binding.Name))
 				updateRolloutStartedGeneration(&binding)
 				// check the binding status till the bound condition is true for the second binding generation
