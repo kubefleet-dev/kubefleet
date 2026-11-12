@@ -45,6 +45,7 @@ import (
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/overrider"
 	"github.com/kubefleet-dev/kubefleet/test/utils/informer"
 )
 
@@ -114,6 +115,9 @@ var _ = BeforeSuite(func() {
 	// make sure the k8s client is same as the controller client or we can have cache delay
 	By("set k8s client same as the controller manager")
 	k8sClient = mgr.GetClient()
+	// set up the field indexes that the tests rely on to look up the override snapshots
+	Expect(overrider.SetupOverrideSnapshotFieldIndexes(ctx, mgr.GetFieldIndexer())).Should(Succeed())
+
 	// setup our main reconciler
 	fakeInformer := informer.FakeManager{
 		APIResources: map[schema.GroupVersionKind]bool{

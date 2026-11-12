@@ -34,6 +34,7 @@ import (
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/overrider"
 	testinformer "github.com/kubefleet-dev/kubefleet/test/utils/informer"
 	"github.com/kubefleet-dev/kubefleet/test/utils/resource"
 )
@@ -306,7 +307,12 @@ func TestRecordOverrideSnapshots(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cluster := &clusterv1beta1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: clusterName}}
 			r := &Reconciler{
-				Client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(tc.snapshot, tc.ro, cluster).Build(),
+				Client: fake.NewClientBuilder().
+					WithScheme(scheme).
+					WithObjects(tc.snapshot, tc.ro, cluster).
+					WithIndex(&placementv1beta1.ClusterResourceOverrideSnapshot{}, overrider.OverrideSnapshotPlacementKeyIndexField, overrider.ClusterResourceOverrideSnapshotPlacementKeyIndexer).
+					WithIndex(&placementv1beta1.ResourceOverrideSnapshot{}, overrider.OverrideSnapshotPlacementKeyIndexField, overrider.ResourceOverrideSnapshotPlacementKeyIndexer).
+					Build(),
 				InformerManager: &testinformer.FakeManager{
 					APIResources: map[schema.GroupVersionKind]bool{{Group: "apps", Version: "v1", Kind: "Deployment"}: true},
 				},
