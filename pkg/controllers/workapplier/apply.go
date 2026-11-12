@@ -70,6 +70,7 @@ func (r *Reconciler) apply(
 	manifestObj, inMemberClusterObj *unstructured.Unstructured,
 	applyStrategy *fleetv1beta1.ApplyStrategy,
 	expectedAppliedWorkOwnerRef *metav1.OwnerReference,
+	placementName string,
 ) (*unstructured.Unstructured, error) {
 	// Create a sanitized copy of the manifest object.
 	//
@@ -83,6 +84,17 @@ func (r *Reconciler) apply(
 	// pre-processed by the Fleet hub agent as well, provided that there are no further
 	// backwards compatibility concerns.
 	manifestObjCopy := sanitizeManifestObject(manifestObj)
+
+	// Add an annotation that identifies which placement placed this object, so that
+	// it is visible on the member cluster.
+	if placementName != "" {
+		annotations := manifestObjCopy.GetAnnotations()
+		if annotations == nil {
+			annotations = map[string]string{}
+		}
+		annotations[fleetv1beta1.PlacementTrackingLabel] = placementName
+		manifestObjCopy.SetAnnotations(annotations)
+	}
 
 	// Compute the hash of the manifest object.
 	//
