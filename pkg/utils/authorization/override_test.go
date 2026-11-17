@@ -19,6 +19,7 @@ package authorization
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -28,31 +29,46 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
+
+func overrideEnvelopeClientBuilder(t *testing.T) *fake.ClientBuilder {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	if err := placementv1beta1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	return fake.NewClientBuilder().WithScheme(scheme)
+}
 
 func TestNewOverrideAuthorizer(t *testing.T) {
 	mapper := meta.NewDefaultRESTMapper(nil)
 	reviewer := &Reviewer{}
 	inventory := crpResourceInventory{}
+	reader := overrideEnvelopeClientBuilder(t).Build()
 	tests := []struct {
 		name      string
 		mapper    meta.RESTMapper
 		reviewer  *Reviewer
 		inventory NamespacedResourceInventory
+		reader    client.Reader
 		wantErr   bool
 	}{
-		{name: "valid dependencies", mapper: mapper, reviewer: reviewer, inventory: inventory, wantErr: false},
-		{name: "missing mapper", mapper: nil, reviewer: reviewer, inventory: inventory, wantErr: true},
-		{name: "missing reviewer", mapper: mapper, reviewer: nil, inventory: inventory, wantErr: true},
-		{name: "nil inventory dependency", mapper: mapper, reviewer: reviewer, inventory: nil, wantErr: true},
+		{name: "valid dependencies", mapper: mapper, reviewer: reviewer, inventory: inventory, reader: reader, wantErr: false},
+		{name: "missing mapper", mapper: nil, reviewer: reviewer, inventory: inventory, reader: reader, wantErr: true},
+		{name: "missing reviewer", mapper: mapper, reviewer: nil, inventory: inventory, reader: reader, wantErr: true},
+		{name: "nil inventory dependency", mapper: mapper, reviewer: reviewer, inventory: nil, reader: reader, wantErr: true},
+		{name: "nil envelope reader", mapper: mapper, reviewer: reviewer, inventory: inventory, reader: nil, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewOverrideAuthorizer(tt.mapper, tt.reviewer, tt.inventory)
+			got, err := NewOverrideAuthorizer(tt.mapper, tt.reviewer, tt.inventory, tt.reader)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("NewOverrideAuthorizer() error = %v, want error %t", err, tt.wantErr)
 			}
@@ -62,7 +78,7 @@ func TestNewOverrideAuthorizer(t *testing.T) {
 				}
 				return
 			}
-			if got == nil || got.restMapper != mapper || got.reviewer != reviewer {
+			if got == nil || got.restMapper != mapper || got.reviewer != reviewer || got.envelopeReader != reader {
 				t.Fatalf("NewOverrideAuthorizer() = %v, want authorizer with supplied mapper and reviewer", got)
 			}
 			if diff := cmp.Diff(inventory, got.inventory); diff != "" {
@@ -309,12 +325,13 @@ func TestExpandOverrideNamespace(t *testing.T) {
 			mapper.AddSpecific(firstGVK, firstGVR, firstGVR, meta.RESTScopeNamespace)
 			mapper.AddSpecific(secondGVK, secondGVR, secondGVR, meta.RESTScopeNamespace)
 			a := &OverrideAuthorizer{
-				inventory: crpResourceInventory(tt.resources),
+				envelopeReader: overrideEnvelopeClientBuilder(t).Build(),
+				inventory:      crpResourceInventory(tt.resources),
 				restMapper: namespaceExpansionTestMapper{
 					RESTMapper: mapper, errorResource: secondGVR, err: tt.mapErr,
 				},
 			}
-			got, err := a.expandOverrideNamespace(rpNamespace)
+			got, err := a.expandOverrideNamespace(context.Background(), rpNamespace)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("expandOverrideNamespace(%q) error = %v, want error %t", rpNamespace, err, tt.wantErr)
 			}
@@ -407,8 +424,8 @@ func TestOverrideResolve(t *testing.T) {
 			if tt.mappingErr != nil {
 				restMapper = bindingChecksErrorMapper{RESTMapper: mapper, err: tt.mappingErr}
 			}
-			a := &OverrideAuthorizer{restMapper: restMapper, inventory: crpResourceInventory{configGVR}}
-			got, gotPolicy, err := a.resolve(tt.override)
+			a := &OverrideAuthorizer{restMapper: restMapper, inventory: crpResourceInventory{configGVR}, envelopeReader: overrideEnvelopeClientBuilder(t).Build()}
+			got, gotPolicy, err := a.resolve(context.Background(), tt.override)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("resolve(%v) error = %v, want error %t", tt.override, err, tt.wantErr)
 			}
@@ -428,6 +445,71 @@ func TestOverrideResolve(t *testing.T) {
 			}
 			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(overrideTarget{})); diff != "" {
 				t.Errorf("resolve() targets mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestResolveEnvelopeTargets(t *testing.T) {
+	listErr := errors.New("envelope list unavailable")
+	tests := []struct {
+		name    string
+		gvk     schema.GroupVersionKind
+		raw     string
+		listErr error
+		want    []overrideTarget
+		wantErr bool
+	}{
+		{name: "no envelopes in namespace"},
+		{
+			name: "unwatched Pod", gvk: corev1.SchemeGroupVersion.WithKind("Pod"),
+			want: []overrideTarget{{gvk: corev1.SchemeGroupVersion.WithKind("Pod"), gvr: corev1.SchemeGroupVersion.WithResource("pods"), namespace: rpNamespace, name: "inner"}},
+		},
+		{name: "list failure", listErr: listErr, wantErr: true},
+		{name: "malformed manifest", raw: `{"kind":`, wantErr: true},
+		{name: "missing identity", raw: `{}`, wantErr: true},
+		{name: "incompatible namespace", raw: `{"apiVersion":"v1","kind":"Pod","metadata":{"name":"inner","namespace":"other"}}`, wantErr: true},
+		{name: "unresolved manifest kind", gvk: corev1.SchemeGroupVersion.WithKind("Unknown"), wantErr: true},
+		{name: "cluster scoped manifest", gvk: corev1.SchemeGroupVersion.WithKind("Namespace"), wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mapper := meta.NewDefaultRESTMapper([]schema.GroupVersion{corev1.SchemeGroupVersion})
+			mapper.Add(corev1.SchemeGroupVersion.WithKind("Namespace"), meta.RESTScopeRoot)
+			mapper.Add(corev1.SchemeGroupVersion.WithKind("Pod"), meta.RESTScopeNamespace)
+			raw := tt.raw
+			if raw == "" && !tt.gvk.Empty() {
+				raw = fmt.Sprintf(`{"apiVersion":%q,"kind":%q,"metadata":{"name":"inner","namespace":%q}}`, tt.gvk.GroupVersion().String(), tt.gvk.Kind, rpNamespace)
+			}
+			otherEnvelope := &placementv1beta1.ResourceEnvelope{
+				ObjectMeta: metav1.ObjectMeta{Name: "unrelated", Namespace: "other"},
+				Data:       map[string]runtime.RawExtension{"invalid": {Raw: []byte(`{}`)}},
+			}
+			builder := overrideEnvelopeClientBuilder(t).WithObjects(otherEnvelope)
+			if raw != "" {
+				builder.WithObjects(&placementv1beta1.ResourceEnvelope{
+					ObjectMeta: metav1.ObjectMeta{Name: "source", Namespace: rpNamespace},
+					Data:       map[string]runtime.RawExtension{"inner": {Raw: []byte(raw)}},
+				})
+			}
+			reader := builder.WithInterceptorFuncs(interceptor.Funcs{
+				List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+					if tt.listErr != nil {
+						return tt.listErr
+					}
+					return c.List(ctx, list, opts...)
+				},
+			}).Build()
+			a := &OverrideAuthorizer{restMapper: mapper, envelopeReader: reader}
+			got, err := a.resolveEnvelopeTargets(context.Background(), rpNamespace)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("resolveEnvelopeTargets(%q) error = %v, want error %t", rpNamespace, err, tt.wantErr)
+			}
+			if tt.listErr != nil && !errors.Is(err, tt.listErr) {
+				t.Errorf("resolveEnvelopeTargets(%q) error = %v, want %v", rpNamespace, err, tt.listErr)
+			}
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(overrideTarget{})); diff != "" {
+				t.Errorf("resolveEnvelopeTargets(%q) mismatch (-want +got):\n%s", rpNamespace, diff)
 			}
 		})
 	}

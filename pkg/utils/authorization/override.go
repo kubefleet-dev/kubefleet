@@ -26,6 +26,7 @@ import (
 	authorizationv1 "k8s.io/api/authorization/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -44,14 +45,17 @@ const (
 
 // OverrideAuthorizer reviews mutations of resources selected by RO and CRO.
 type OverrideAuthorizer struct {
-	restMapper meta.RESTMapper
-	reviewer   *Reviewer
-	inventory  NamespacedResourceInventory
+	restMapper     meta.RESTMapper
+	reviewer       *Reviewer
+	inventory      NamespacedResourceInventory
+	envelopeReader client.Reader
 }
 
-// NewOverrideAuthorizer creates an authorizer that inspects policies without reading source objects.
+// NewOverrideAuthorizer creates an authorizer that inspects override policies and targets.
 // inventory supplies the namespaced resource types also affected by Namespace CROs.
-func NewOverrideAuthorizer(mapper meta.RESTMapper, reviewer *Reviewer, inventory NamespacedResourceInventory) (*OverrideAuthorizer, error) {
+// envelopeReader supplies current ResourceEnvelope contents when expanding Namespace CROs;
+// subsequent envelope changes are not authorized by this admission-time check.
+func NewOverrideAuthorizer(mapper meta.RESTMapper, reviewer *Reviewer, inventory NamespacedResourceInventory, envelopeReader client.Reader) (*OverrideAuthorizer, error) {
 	switch {
 	case mapper == nil:
 		return nil, errors.New("REST mapper must not be nil")
@@ -59,8 +63,10 @@ func NewOverrideAuthorizer(mapper meta.RESTMapper, reviewer *Reviewer, inventory
 		return nil, errors.New("authorization reviewer must not be nil")
 	case inventory == nil:
 		return nil, errors.New("namespaced resource inventory must not be nil")
+	case envelopeReader == nil:
+		return nil, errors.New("envelope reader must not be nil")
 	}
-	return &OverrideAuthorizer{restMapper: mapper, reviewer: reviewer, inventory: inventory}, nil
+	return &OverrideAuthorizer{restMapper: mapper, reviewer: reviewer, inventory: inventory, envelopeReader: envelopeReader}, nil
 }
 
 type overrideTarget struct {
@@ -86,7 +92,7 @@ func overrideErrorResult(err error) Result {
 // Authorize requires mutation access and applicable RBAC privilege-protection permissions.
 // The override must have passed CRD and override webhook validation.
 func (a *OverrideAuthorizer) Authorize(ctx context.Context, user authenticationv1.UserInfo, override client.Object) Result {
-	targets, policy, err := a.resolve(override)
+	targets, policy, err := a.resolve(ctx, override)
 	if err != nil {
 		return overrideErrorResult(err)
 	}
@@ -138,7 +144,7 @@ func (a *OverrideAuthorizer) rbacChecks(targets []overrideTarget, policy *placem
 
 // resolve converts RO/CRO selectors into resource targets with API mappings and namespaces,
 // expands selected Namespaces, and returns the targets alongside the override policy.
-func (a *OverrideAuthorizer) resolve(override client.Object) ([]overrideTarget, *placementv1beta1.OverridePolicy, error) {
+func (a *OverrideAuthorizer) resolve(ctx context.Context, override client.Object) ([]overrideTarget, *placementv1beta1.OverridePolicy, error) {
 	var selectors []placementv1beta1.ResourceSelectorTerm
 	var namespace string
 	var policy *placementv1beta1.OverridePolicy
@@ -168,7 +174,7 @@ func (a *OverrideAuthorizer) resolve(override client.Object) ([]overrideTarget, 
 		}
 		targets = append(targets, overrideTarget{gvk: gvk, gvr: mapping.Resource, namespace: namespace, name: selector.Name})
 		if gvk == utils.NamespaceGVK {
-			expanded, err := a.expandOverrideNamespace(selector.Name)
+			expanded, err := a.expandOverrideNamespace(ctx, selector.Name)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -178,7 +184,7 @@ func (a *OverrideAuthorizer) resolve(override client.Object) ([]overrideTarget, 
 	return targets, policy, nil
 }
 
-func (a *OverrideAuthorizer) expandOverrideNamespace(namespace string) ([]overrideTarget, error) {
+func (a *OverrideAuthorizer) expandOverrideNamespace(ctx context.Context, namespace string) ([]overrideTarget, error) {
 	var targets []overrideTarget
 	for _, gvr := range a.inventory.GetNameSpaceScopedResources() {
 		gvk, err := a.restMapper.KindFor(gvr)
@@ -192,6 +198,40 @@ func (a *OverrideAuthorizer) expandOverrideNamespace(namespace string) ([]overri
 			return nil, fmt.Errorf("failed to resolve override resource %s: %w", gvr, err)
 		}
 		targets = append(targets, overrideTarget{gvk: gvk, gvr: gvr, namespace: namespace})
+	}
+	envelopeTargets, err := a.resolveEnvelopeTargets(ctx, namespace)
+	if err != nil {
+		return nil, err
+	}
+	return append(targets, envelopeTargets...), nil
+}
+
+func (a *OverrideAuthorizer) resolveEnvelopeTargets(ctx context.Context, namespace string) ([]overrideTarget, error) {
+	// Envelopes can contain types excluded from the watched resource inventory.
+	var envelopes placementv1beta1.ResourceEnvelopeList
+	if err := a.envelopeReader.List(ctx, &envelopes, client.InNamespace(namespace)); err != nil {
+		return nil, fmt.Errorf("failed to list resource envelopes in namespace %q: %w", namespace, err)
+	}
+	var targets []overrideTarget
+	for _, envelope := range envelopes.Items {
+		for key, manifest := range envelope.Data {
+			var target unstructured.Unstructured
+			if err := target.UnmarshalJSON(manifest.Raw); err != nil {
+				return nil, fmt.Errorf("failed to parse manifest %q in envelope %s/%s: %w", key, namespace, envelope.Name, err)
+			}
+			gvk := target.GroupVersionKind()
+			if gvk.Version == "" || gvk.Kind == "" || target.GetName() == "" || target.GetNamespace() != namespace {
+				return nil, fmt.Errorf("manifest %q in envelope %s/%s has missing identity or incompatible namespace", key, namespace, envelope.Name)
+			}
+			mapping, err := a.restMapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+			if err != nil {
+				return nil, fmt.Errorf("failed to resolve manifest %q in envelope %s/%s: %w", key, namespace, envelope.Name, err)
+			}
+			if mapping.Scope.Name() != meta.RESTScopeNameNamespace {
+				return nil, fmt.Errorf("manifest %q in envelope %s/%s is not namespace-scoped", key, namespace, envelope.Name)
+			}
+			targets = append(targets, overrideTarget{gvk: gvk, gvr: mapping.Resource, namespace: namespace, name: target.GetName()})
+		}
 	}
 	return targets, nil
 }
