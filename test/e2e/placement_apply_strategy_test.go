@@ -1079,7 +1079,7 @@ var _ = Describe("switching apply strategies", func() {
 						},
 						{
 							ClusterName:           memberCluster2EastCanaryName,
-							ObservedResourceIndex: "1",
+							ObservedResourceIndex: "0", // The rollout is blocked, so the binding still uses the previous resource snapshot.
 							Conditions:            perClusterSyncPendingConditions(crpGeneration),
 						},
 					},

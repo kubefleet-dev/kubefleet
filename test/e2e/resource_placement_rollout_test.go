@@ -307,7 +307,7 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 				Name:      testDeployment.Name,
 				Namespace: testDeployment.Namespace,
 			}
-			rpStatusActual := safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResources, failedDeploymentResourceIdentifier, allMemberClusterNames, "1", 2)
+			rpStatusActual := safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResources, failedDeploymentResourceIdentifier, allMemberClusterNames, "1", "0", 2)
 			Eventually(rpStatusActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 	})
@@ -395,7 +395,7 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 					Type:      placementv1beta1.ResourceEnvelopeType,
 				},
 			}
-			rpStatusActual := safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResources, failedDaemonSetResourceIdentifier, allMemberClusterNames, "1", 2)
+			rpStatusActual := safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResources, failedDaemonSetResourceIdentifier, allMemberClusterNames, "1", "0", 2)
 			Eventually(rpStatusActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 	})
@@ -483,7 +483,7 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 					Type:      placementv1beta1.ResourceEnvelopeType,
 				},
 			}
-			rpStatusActual := safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResources, failedStatefulSetResourceIdentifier, allMemberClusterNames, "1", 2)
+			rpStatusActual := safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResources, failedStatefulSetResourceIdentifier, allMemberClusterNames, "1", "0", 2)
 			Eventually(rpStatusActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 	})
@@ -565,7 +565,7 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 				Namespace: testService.Namespace,
 			}
 			// failedResourceObservedGeneration is set to 0 because generation is not populated for service.
-			rpStatusActual := safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResources, failedServiceResourceIdentifier, allMemberClusterNames, "1", 0)
+			rpStatusActual := safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResources, failedServiceResourceIdentifier, allMemberClusterNames, "1", "0", 0)
 			Eventually(rpStatusActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 	})
@@ -650,7 +650,7 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 				Name:      testDeployment.Name,
 				Namespace: testDeployment.Namespace,
 			}
-			rpStatusActual := safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResources, failedDeploymentResourceIdentifier, allMemberClusterNames, "1", 2)
+			rpStatusActual := safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResources, failedDeploymentResourceIdentifier, allMemberClusterNames, "1", "1", 2)
 			Eventually(rpStatusActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
