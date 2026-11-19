@@ -123,6 +123,7 @@ _See [helm install](https://helm.sh/docs/helm/helm_install/) for command documen
 | `clusterUnhealthyThreshold` | Threshold duration for marking a cluster unhealthy | `3m0s` |
 | `resourceSnapshotCreationMinimumInterval` | The minimum interval at which resource snapshots could be created | `30s` |
 | `resourceChangesCollectionDuration` | The duration for collecting resource changes into one snapshot | `15s` |
+| `updateRunStuckThreshold` | The time a staged update run waits on the update of a single cluster before it is marked as stuck. Must be in the range `[1m, 24h]` | `5m` |
 | `enableWorkload` | Enable kubernetes builtin workload to run in hub cluster | `false` |
 | `additionalConfigData` | Additional key-value data to include in the hub agent config map | `{}` |
 | `additionalConfigDataMountPath` | Mount path for the additional config data volume | `/etc/kubefleet/additional-config` |
