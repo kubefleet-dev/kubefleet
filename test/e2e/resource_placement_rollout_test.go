@@ -64,15 +64,10 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 	rpKey := types.NamespacedName{Name: rpName, Namespace: appNamespace().Name}
 
 	BeforeEach(OncePerOrdered, func() {
-		testDeployment = appv1.Deployment{}
 		readDeploymentTestManifest(&testDeployment)
-		testDaemonSet = appv1.DaemonSet{}
 		readDaemonSetTestManifest(&testDaemonSet)
-		testStatefulSet = appv1.StatefulSet{}
 		readStatefulSetTestManifest(&testStatefulSet, StatefulSetBasic)
-		testService = corev1.Service{}
 		readServiceTestManifest(&testService)
-		testJob = batchv1.Job{}
 		readJobTestManifest(&testJob)
 
 		crp := &placementv1beta1.ClusterResourcePlacement{

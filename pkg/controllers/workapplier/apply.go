@@ -101,9 +101,13 @@ func (r *Reconciler) apply(
 	//
 	// As previously mentioned, with the new capabilities, at this point of the workflow,
 	// Fleet has been added as an owner for the object. Still, to guard against cases where
-	// the allow co-ownership switch is turned on then off or the addition of new owner references
-	// in the manifest, Fleet will still perform a validation round.
-	if err := validateOwnerReferences(manifestObj, inMemberClusterObj, applyStrategy, expectedAppliedWorkOwnerRef); err != nil {
+	// the allow co-ownership switch is turned on then off, Fleet will still perform a validation round.
+	//
+	// Note that the validation runs on the sanitized copy, i.e., the object that is actually applied.
+	// Owner references in the original manifest (e.g., ones left in an object wrapped in an envelope,
+	// which the hub agent does not sanitize) are always dropped and never reach the member cluster,
+	// so they should not block the apply op.
+	if err := validateOwnerReferences(manifestObjCopy, inMemberClusterObj, applyStrategy, expectedAppliedWorkOwnerRef); err != nil {
 		return nil, fmt.Errorf("failed to validate owner references: %w", err)
 	}
 
