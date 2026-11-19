@@ -1287,8 +1287,7 @@ var _ = Describe("validating resource placement using different apply strategies
 										TargetClusterObservedGeneration: ptr.To(int64(0)),
 										ObservedDiffs: []placementv1beta1.PatchDetail{
 											{
-												Path:          fmt.Sprintf("/metadata/labels/%s", unmanagedLabelKey),
-												ValueInMember: unmanagedLabelVal1,
+												Path: fmt.Sprintf("/metadata/labels/%s", unmanagedLabelKey),
 											},
 										},
 									},
@@ -1308,8 +1307,7 @@ var _ = Describe("validating resource placement using different apply strategies
 										},
 										ObservedDiffs: []placementv1beta1.PatchDetail{
 											{
-												Path:       "/",
-												ValueInHub: "(the whole object)",
+												Path: "/",
 											},
 										},
 									},
