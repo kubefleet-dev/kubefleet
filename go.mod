@@ -1,6 +1,6 @@
 module github.com/kubefleet-dev/kubefleet
 
-go 1.26.6
+go 1.26.10
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.1
@@ -19,7 +19,7 @@ require (
 	github.com/spf13/pflag v1.1.0
 	github.com/stretchr/testify v1.12.1
 	github.com/wI2L/jsondiff v0.7.1
-	go.goms.io/fleet-networking v0.3.44
+	go.goms.io/fleet-networking v0.3.46
 	go.uber.org/atomic v1.12.0
 	go.uber.org/zap v1.28.0
 	golang.org/x/sync v0.25.0
