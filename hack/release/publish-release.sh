@@ -19,6 +19,7 @@ set -euo pipefail
 
 bundle="kubefleet-crds-${TAG}.tgz"
 checksum="${bundle}.sha256"
+signature="${checksum}.bundle"
 
 # Only assets GitHub finished receiving count. An upload interrupted mid-stream
 # leaves an asset row with the right name in a non-"uploaded" state, which a
@@ -26,7 +27,7 @@ checksum="${bundle}.sha256"
 assets="$(gh release view "${TAG}" --json assets \
   --jq '.assets[] | select(.state == "uploaded" and .size > 0) | .name')"
 
-for want in "${bundle}" "${checksum}"; do
+for want in "${bundle}" "${checksum}" "${signature}"; do
   if ! grep -qxF -- "${want}" <<<"${assets}"; then
     echo "::error::Release ${TAG} is missing fully-uploaded asset ${want}; leaving it as a draft."
     exit 1
