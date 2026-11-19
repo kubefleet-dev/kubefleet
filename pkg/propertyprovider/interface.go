@@ -58,6 +58,10 @@ type PropertyProvider interface {
 	// Start is called when the Fleet member agent starts up to initialize the property provider.
 	// This call should not block.
 	//
+	// If this call returns an error, Fleet member agent will call it again later, so that the
+	// property provider can recover from transient startup failures; calls never overlap, and
+	// no more calls are made once a call has returned successfully.
+	//
 	// Note that Fleet member agent will cancel the context when it exits.
 	Start(ctx context.Context, config *rest.Config) error
 }
