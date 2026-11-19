@@ -50,11 +50,13 @@ func retrieveResourceUsageFrom(cluster *clusterv1beta1.MemberCluster, name strin
 	// `[PREFIX]/[CAPACITY_TYPE]-[RESOURCE_NAME]`; for example, the allocatable CPU capacity of a
 	// a cluster has the label name, `resources.kubernetes-fleet.io/allocatable-cpu`. Note that at
 	// this point of process, the prefix has been removed.
-	segs := strings.Split(name, "-")
-	if len(segs) != 2 || len(segs[0]) == 0 || len(segs[1]) == 0 {
+	//
+	// Only the first dash separates the capacity type; the resource name may itself contain
+	// dashes (e.g., `allocatable-ephemeral-storage`).
+	cn, tn, ok := strings.Cut(name, "-")
+	if !ok || len(cn) == 0 || len(tn) == 0 {
 		return nil, fmt.Errorf("invalid resource property name: %s", name)
 	}
-	cn, tn := segs[0], segs[1]
 
 	// Query the resource usage data.
 	var q resource.Quantity
