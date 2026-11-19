@@ -18,6 +18,8 @@ package workapplier
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -43,6 +45,13 @@ import (
 )
 
 var (
+	// cronJobGVR is the GVR of a resource that Fleet cannot track the availability of.
+	cronJobGVR = schema.GroupVersionResource{
+		Group:    "batch",
+		Version:  "v1",
+		Resource: "cronjobs",
+	}
+
 	statefulSetTemplate = &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "apps/v1",
@@ -466,6 +475,284 @@ func TestTrackDaemonSetAvailability(t *testing.T) {
 	}
 }
 
+// TestTrackJobAvailability tests the trackJobAvailability function.
+func TestTrackJobAvailability(t *testing.T) {
+	trueCondition := func(condType batchv1.JobConditionType) batchv1.JobCondition {
+		return batchv1.JobCondition{Type: condType, Status: corev1.ConditionTrue}
+	}
+
+	testCases := []struct {
+		name                       string
+		job                        *batchv1.Job
+		wantAvailabilityResultType ManifestProcessingAvailabilityResultType
+	}{
+		{
+			name: "completed job",
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Succeeded: 1,
+					Conditions: []batchv1.JobCondition{
+						trueCondition(batchv1.JobSuccessCriteriaMet),
+						trueCondition(batchv1.JobComplete),
+					},
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeAvailable,
+		},
+		{
+			name: "completed job that is suspended afterwards",
+			job: &batchv1.Job{
+				Spec: batchv1.JobSpec{
+					Suspend: ptr.To(true),
+				},
+				Status: batchv1.JobStatus{
+					Succeeded:  1,
+					Conditions: []batchv1.JobCondition{trueCondition(batchv1.JobComplete)},
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeAvailable,
+		},
+		{
+			name:                       "job with no status yet",
+			job:                        &batchv1.Job{},
+			wantAvailabilityResultType: AvailabilityResultTypeNotYetAvailable,
+		},
+		{
+			name: "running job",
+			job: &batchv1.Job{
+				Spec: batchv1.JobSpec{
+					Suspend: ptr.To(false),
+				},
+				Status: batchv1.JobStatus{
+					Active: 1,
+					Ready:  ptr.To(int32(1)),
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeNotYetAvailable,
+		},
+		{
+			name: "running job with some succeeded pods",
+			job: &batchv1.Job{
+				Spec: batchv1.JobSpec{
+					Completions: ptr.To(int32(2)),
+				},
+				Status: batchv1.JobStatus{
+					Active:    1,
+					Succeeded: 1,
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeNotYetAvailable,
+		},
+		{
+			name: "job with complete condition set to false",
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Conditions: []batchv1.JobCondition{
+						{Type: batchv1.JobComplete, Status: corev1.ConditionFalse},
+					},
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeNotYetAvailable,
+		},
+		{
+			name: "job with complete condition of unknown status",
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Conditions: []batchv1.JobCondition{
+						{Type: batchv1.JobComplete, Status: corev1.ConditionUnknown},
+					},
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeNotYetAvailable,
+		},
+		{
+			// The Job controller sets the Suspended condition to false when a suspended job resumes;
+			// the condition is listed before the terminal conditions added later.
+			name: "resumed job that has completed",
+			job: &batchv1.Job{
+				Spec: batchv1.JobSpec{
+					Suspend: ptr.To(false),
+				},
+				Status: batchv1.JobStatus{
+					Succeeded: 1,
+					Conditions: []batchv1.JobCondition{
+						{Type: batchv1.JobSuspended, Status: corev1.ConditionFalse},
+						trueCondition(batchv1.JobSuccessCriteriaMet),
+						trueCondition(batchv1.JobComplete),
+					},
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeAvailable,
+		},
+		{
+			name: "resumed job that has failed and is suspended afterwards",
+			job: &batchv1.Job{
+				Spec: batchv1.JobSpec{
+					Suspend: ptr.To(true),
+				},
+				Status: batchv1.JobStatus{
+					Failed: 1,
+					Conditions: []batchv1.JobCondition{
+						{Type: batchv1.JobSuspended, Status: corev1.ConditionFalse},
+						trueCondition(batchv1.JobFailed),
+					},
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeNotYetAvailable,
+		},
+		{
+			name: "job that is about to fail",
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Failed:     1,
+					Conditions: []batchv1.JobCondition{trueCondition(batchv1.JobFailureTarget)},
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeNotYetAvailable,
+		},
+		{
+			name: "job that is about to fail and is suspended afterwards",
+			job: &batchv1.Job{
+				Spec: batchv1.JobSpec{
+					Suspend: ptr.To(true),
+				},
+				Status: batchv1.JobStatus{
+					Failed:     1,
+					Conditions: []batchv1.JobCondition{trueCondition(batchv1.JobFailureTarget)},
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeNotYetAvailable,
+		},
+		{
+			name: "failed job",
+			job: &batchv1.Job{
+				Status: batchv1.JobStatus{
+					Failed: 1,
+					Conditions: []batchv1.JobCondition{
+						trueCondition(batchv1.JobFailureTarget),
+						trueCondition(batchv1.JobFailed),
+					},
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeNotYetAvailable,
+		},
+		{
+			name: "failed job that is suspended afterwards",
+			job: &batchv1.Job{
+				Spec: batchv1.JobSpec{
+					Suspend: ptr.To(true),
+				},
+				Status: batchv1.JobStatus{
+					Failed:     1,
+					Conditions: []batchv1.JobCondition{trueCondition(batchv1.JobFailed)},
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeNotYetAvailable,
+		},
+		{
+			name: "suspended job that has never run",
+			job: &batchv1.Job{
+				Spec: batchv1.JobSpec{
+					Suspend: ptr.To(true),
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeAvailable,
+		},
+		{
+			name: "suspended job that has run before",
+			job: &batchv1.Job{
+				Spec: batchv1.JobSpec{
+					Suspend: ptr.To(true),
+				},
+				Status: batchv1.JobStatus{
+					Conditions: []batchv1.JobCondition{trueCondition(batchv1.JobSuspended)},
+				},
+			},
+			wantAvailabilityResultType: AvailabilityResultTypeAvailable,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotResTyp, err := trackJobAvailability(toUnstructured(t, tc.job))
+			if err != nil {
+				t.Fatalf("trackJobAvailability() = %v, want no error", err)
+			}
+			if gotResTyp != tc.wantAvailabilityResultType {
+				t.Errorf("manifestProcessingAvailabilityResultType = %v, want %v", gotResTyp, tc.wantAvailabilityResultType)
+			}
+		})
+	}
+}
+
+// TestTrackAvailabilityWithMalformedObject tests that the availability trackers report an object that cannot be
+// converted to its typed form.
+func TestTrackAvailabilityWithMalformedObject(t *testing.T) {
+	testCases := []struct {
+		name               string
+		gvr                schema.GroupVersionResource
+		wantErrMsgContains string
+	}{
+		{
+			name:               "deployment",
+			gvr:                utils.DeploymentGVR,
+			wantErrMsgContains: "failed to convert the unstructured object to a deployment",
+		},
+		{
+			name:               "stateful set",
+			gvr:                utils.StatefulSetGVR,
+			wantErrMsgContains: "failed to convert the unstructured object to a stateful set",
+		},
+		{
+			name:               "daemon set",
+			gvr:                utils.DaemonSetGVR,
+			wantErrMsgContains: "failed to convert the unstructured object to a daemon set",
+		},
+		{
+			name:               "job",
+			gvr:                utils.JobGVR,
+			wantErrMsgContains: "failed to convert the unstructured object to a job",
+		},
+		{
+			name:               "service",
+			gvr:                utils.ServiceGVR,
+			wantErrMsgContains: "failed to convert the unstructured object to a service",
+		},
+		{
+			name:               "custom resource definition",
+			gvr:                utils.CustomResourceDefinitionGVR,
+			wantErrMsgContains: "failed to convert the unstructured object to a custom resource definition",
+		},
+		{
+			name:               "pod disruption budget",
+			gvr:                utils.PodDisruptionBudgetGVR,
+			wantErrMsgContains: "failed to convert the unstructured object to a pod disruption budget",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// The spec of any of the tracked objects is an object rather than a string.
+			malformedObj := &unstructured.Unstructured{
+				Object: map[string]interface{}{
+					"spec": "malformed",
+				},
+			}
+
+			gotResTyp, err := trackInMemberClusterObjAvailabilityByGVR(&tc.gvr, malformedObj)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErrMsgContains) {
+				t.Fatalf("trackInMemberClusterObjAvailabilityByGVR() = %v, want error with message %q", err, tc.wantErrMsgContains)
+			}
+			if errors.Unwrap(err) == nil {
+				t.Errorf("trackInMemberClusterObjAvailabilityByGVR() = %v, want an error that wraps the conversion error", err)
+			}
+			if gotResTyp != AvailabilityResultTypeFailed {
+				t.Errorf("manifestProcessingAvailabilityResultType = %v, want %v", gotResTyp, AvailabilityResultTypeFailed)
+			}
+		})
+	}
+}
+
 // TestTrackServiceAvailability tests the trackServiceAvailability function.
 func TestTrackServiceAvailability(t *testing.T) {
 	testCases := []struct {
@@ -868,10 +1155,25 @@ func TestTrackInMemberClusterObjAvailabilityByGVR(t *testing.T) {
 		},
 	}
 
-	untrackableJob := &batchv1.Job{
+	availableJob := &batchv1.Job{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "batch/v1",
 			Kind:       "Job",
+		},
+		Status: batchv1.JobStatus{
+			Conditions: []batchv1.JobCondition{
+				{
+					Type:   batchv1.JobComplete,
+					Status: corev1.ConditionTrue,
+				},
+			},
+		},
+	}
+
+	untrackableCronJob := &batchv1.CronJob{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "batch/v1",
+			Kind:       "CronJob",
 		},
 	}
 
@@ -924,9 +1226,15 @@ func TestTrackInMemberClusterObjAvailabilityByGVR(t *testing.T) {
 			wantAvailabilityResultType: AvailabilityResultTypeAvailable,
 		},
 		{
-			name:                       "untrackable object (job)",
+			name:                       "available job",
 			gvr:                        utils.JobGVR,
-			inMemberClusterObj:         toUnstructured(t, untrackableJob),
+			inMemberClusterObj:         toUnstructured(t, availableJob),
+			wantAvailabilityResultType: AvailabilityResultTypeAvailable,
+		},
+		{
+			name:                       "untrackable object (cron job)",
+			gvr:                        cronJobGVR,
+			inMemberClusterObj:         toUnstructured(t, untrackableCronJob),
 			wantAvailabilityResultType: AvailabilityResultTypeNotTrackable,
 		},
 		{
@@ -1030,7 +1338,9 @@ func TestTrackInMemberClusterObjAvailability(t *testing.T) {
 		UpdatedNumberScheduled: 2,
 	}
 
-	untrackableJob := &batchv1.Job{}
+	unavailableJob := &batchv1.Job{}
+
+	untrackableCronJob := &batchv1.CronJob{}
 
 	testCases := []struct {
 		name        string
@@ -1069,13 +1379,22 @@ func TestTrackInMemberClusterObjAvailability(t *testing.T) {
 					inMemberClusterObj:      toUnstructured(t, unavailableDaemonSet),
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 				},
-				// An untrackable job.
+				// An unavailable job.
 				{
 					id: &fleetv1beta1.WorkResourceIdentifier{
 						Ordinal: 3,
 					},
 					gvr:                     &utils.JobGVR,
-					inMemberClusterObj:      toUnstructured(t, untrackableJob),
+					inMemberClusterObj:      toUnstructured(t, unavailableJob),
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
+				},
+				// An untrackable cron job.
+				{
+					id: &fleetv1beta1.WorkResourceIdentifier{
+						Ordinal: 4,
+					},
+					gvr:                     &cronJobGVR,
+					inMemberClusterObj:      toUnstructured(t, untrackableCronJob),
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 				},
 			},
@@ -1112,7 +1431,16 @@ func TestTrackInMemberClusterObjAvailability(t *testing.T) {
 						Ordinal: 3,
 					},
 					gvr:                     &utils.JobGVR,
-					inMemberClusterObj:      toUnstructured(t, untrackableJob),
+					inMemberClusterObj:      toUnstructured(t, unavailableJob),
+					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
+					availabilityResTyp:      AvailabilityResultTypeNotYetAvailable,
+				},
+				{
+					id: &fleetv1beta1.WorkResourceIdentifier{
+						Ordinal: 4,
+					},
+					gvr:                     &cronJobGVR,
+					inMemberClusterObj:      toUnstructured(t, untrackableCronJob),
 					applyOrReportDiffResTyp: ApplyOrReportDiffResTypeApplied,
 					availabilityResTyp:      AvailabilityResultTypeNotTrackable,
 				},

@@ -19,6 +19,7 @@ package e2e
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
@@ -738,10 +739,12 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 		})
 	})
 
-	Context("Test an RP place workload objects successfully, don't block rollout based on job availability", Ordered, func() {
+	Context("Test an RP place workload objects successfully, block rollout based on job availability", Ordered, func() {
 		workNamespace := appNamespace()
-		var wantSelectedResources []placementv1beta1.ResourceIdentifier
-		unAvailablePeriodSeconds := 15
+		var wantSelectedResources, wantSelectedResourcesWithLongRunningJob []placementv1beta1.ResourceIdentifier
+		var longRunningJob batchv1.Job
+		// It takes a while for Fleet to find out that a job has completed, as it checks with a backoff.
+		jobEventuallyDuration := 3 * workloadEventuallyDuration
 
 		BeforeAll(func() {
 			// Create the test resources.
@@ -754,6 +757,9 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 					Namespace: workNamespace.Name,
 				},
 			}
+			longRunningJob = buildLongRunningJob(&testJob)
+			wantSelectedResourcesWithLongRunningJob = slices.Clone(wantSelectedResources)
+			wantSelectedResourcesWithLongRunningJob[0].Name = longRunningJob.Name
 		})
 
 		It("create the job resource in the namespace", func() {
@@ -773,10 +779,6 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 
 		It("create the RP that select the job", func() {
 			rp := buildRPForSafeRollout(workNamespace.Name)
-			// the job we are trying to propagate takes 10s to complete. MaxUnavailable is set to 1. So setting UnavailablePeriodSeconds to 15s
-			// so that after each rollout phase we only wait for 15s before proceeding to the next since Job is not trackable,
-			// we want rollout to finish in a reasonable time.
-			rp.Spec.Strategy.RollingUpdate.UnavailablePeriodSeconds = ptr.To(unAvailablePeriodSeconds)
 			rp.Spec.ResourceSelectors = []placementv1beta1.ResourceSelectorTerm{
 				{
 					Group:   batchv1.SchemeGroupVersion.Group,
@@ -788,35 +790,37 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 			Expect(hubClient.Create(ctx, rp)).To(Succeed(), "Failed to create RP")
 		})
 
+		// The job is available once it completes.
 		It("should update RP status as expected", func() {
-			rpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(rpKey, wantSelectedResources, allMemberClusterNames, nil, "0", false)
-			Eventually(rpStatusUpdatedActual, 2*time.Duration(unAvailablePeriodSeconds)*time.Second, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
+			rpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(rpKey, wantSelectedResources, allMemberClusterNames, nil, "0", true)
+			Eventually(rpStatusUpdatedActual, jobEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
 		})
 
 		It("should place the resources on all member clusters", func() {
 			for idx := range allMemberClusters {
 				memberCluster := allMemberClusters[idx]
 				workResourcesPlacedActual := waitForJobToBePlaced(memberCluster, &testJob)
-				Eventually(workResourcesPlacedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster.ClusterName)
+				Eventually(workResourcesPlacedActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place work resources on member cluster %s", memberCluster.ClusterName)
 			}
 		})
 
-		It("suspend job", func() {
-			Eventually(func() error {
-				var job batchv1.Job
-				err := hubClient.Get(ctx, types.NamespacedName{Name: testJob.Name, Namespace: testJob.Namespace}, &job)
-				if err != nil {
-					return err
-				}
-				job.Spec.Suspend = ptr.To(true)
-				return hubClient.Update(ctx, &job)
-			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to suspend job")
+		It("create a long-running job", func() {
+			longRunningJob.Namespace = workNamespace.Name
+			Expect(hubClient.Create(ctx, &longRunningJob)).To(Succeed(), "Failed to create long-running job %s", longRunningJob.Name)
 		})
 
-		// job is not trackable, so we need to wait for a bit longer for each roll out
+		It("update the RP to select the long-running job", func() {
+			var rp placementv1beta1.ResourcePlacement
+			Expect(hubClient.Get(ctx, rpKey, &rp)).To(Succeed(), "Failed to get RP")
+			rp.Spec.ResourceSelectors[0].Name = longRunningJob.Name
+			Expect(hubClient.Update(ctx, &rp)).To(Succeed(), "Failed to update RP")
+		})
+
+		// The long-running job is not available, so the rollout is blocked on the first cluster.
 		It("should update RP status as expected", func() {
-			rpStatusUpdatedActual := customizedPlacementStatusUpdatedActual(rpKey, wantSelectedResources, allMemberClusterNames, nil, "1", false)
-			Eventually(rpStatusUpdatedActual, 5*time.Duration(unAvailablePeriodSeconds)*time.Second, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
+			rpStatusActual := safeRolloutWorkloadRPStatusUpdatedActual(wantSelectedResourcesWithLongRunningJob, wantSelectedResourcesWithLongRunningJob[0], allMemberClusterNames, "1", 1)
+			Eventually(rpStatusActual, jobEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update RP status as expected")
+			Consistently(rpStatusActual, consistentlyDuration, consistentlyInterval).Should(Succeed(), "Failed to keep the rollout blocked")
 		})
 	})
 })
