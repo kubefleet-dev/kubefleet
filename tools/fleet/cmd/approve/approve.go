@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -30,57 +31,60 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
-	fleetcmd "github.com/kubefleet-dev/kubefleet/tools/fleet/cmd"
 	toolsutils "github.com/kubefleet-dev/kubefleet/tools/utils"
 )
 
-// approveKindConfig extends fleetcmd.KindConfig with approve-specific validation and handler.
-type approveKindConfig struct {
-	fleetcmd.KindConfig
-	validate func(o *approveOptions) error
-	handler  func(o *approveOptions, ctx context.Context) error
+// Kind names (and short aliases) accepted as the positional argument.
+const (
+	kindClusterApprovalRequest  = "clusterapprovalrequest"
+	kindApprovalRequest         = "approvalrequest"
+	aliasClusterApprovalRequest = "careq"
+	aliasApprovalRequest        = "areq"
+)
+
+// approveKind describes one approvable resource kind.
+type approveKind struct {
+	// kind is the API kind, e.g. "ClusterApprovalRequest"; used in reasons, messages and logs.
+	kind       string
+	namespaced bool
+	// newObj returns an empty object of this kind and a pointer to its status conditions.
+	newObj func() (client.Object, *[]metav1.Condition)
 }
 
-var approveKindConfigs = []approveKindConfig{
-	{
-		KindConfig: fleetcmd.KindConfig{
-			Canonical: fleetcmd.KindClusterApprovalRequest,
-			Aliases:   []string{fleetcmd.AliasClusterApprovalRequest},
+var (
+	clusterApprovalRequestKind = &approveKind{
+		kind: "ClusterApprovalRequest",
+		newObj: func() (client.Object, *[]metav1.Condition) {
+			obj := &placementv1beta1.ClusterApprovalRequest{}
+			return obj, &obj.Status.Conditions
 		},
-		validate: func(o *approveOptions) error {
-			if o.namespace != "" {
-				return fmt.Errorf("%s is cluster-scoped and does not accept a namespace", fleetcmd.KindClusterApprovalRequest)
-			}
-			return nil
-		},
-		handler: (*approveOptions).approveClusterApprovalRequest,
-	},
-	{
-		KindConfig: fleetcmd.KindConfig{
-			Canonical: fleetcmd.KindApprovalRequest,
-			Aliases:   []string{fleetcmd.AliasApprovalRequest},
-		},
-		validate: func(o *approveOptions) error {
-			if o.namespace == "" {
-				return fmt.Errorf("namespace is required for %s (use --namespace or -n flag)", fleetcmd.KindApprovalRequest)
-			}
-			return nil
-		},
-		handler: (*approveOptions).approveApprovalRequest,
-	},
-}
-
-// approveKinds maps canonical kind names and aliases to their approveKindConfig.
-var approveKinds = map[string]*approveKindConfig{}
-
-func init() {
-	for i := range approveKindConfigs {
-		cfg := &approveKindConfigs[i]
-		approveKinds[cfg.Canonical] = cfg
-		for _, a := range cfg.Aliases {
-			approveKinds[a] = cfg
-		}
 	}
+	approvalRequestKind = &approveKind{
+		kind:       "ApprovalRequest",
+		namespaced: true,
+		newObj: func() (client.Object, *[]metav1.Condition) {
+			obj := &placementv1beta1.ApprovalRequest{}
+			return obj, &obj.Status.Conditions
+		},
+	}
+	kinds = map[string]*approveKind{
+		kindClusterApprovalRequest:  clusterApprovalRequestKind,
+		aliasClusterApprovalRequest: clusterApprovalRequestKind,
+		kindApprovalRequest:         approvalRequestKind,
+		aliasApprovalRequest:        approvalRequestKind,
+	}
+)
+
+// resolveKind maps a kind name or alias (case-insensitive) to its approveKind.
+func resolveKind(kind string) (*approveKind, error) {
+	if kind == "" {
+		return nil, fmt.Errorf("resource kind is required")
+	}
+	k, ok := kinds[strings.ToLower(kind)]
+	if !ok {
+		return nil, fmt.Errorf("unsupported resource kind %q", kind)
+	}
+	return k, nil
 }
 
 type approveOptions struct {
@@ -110,19 +114,19 @@ Supported kinds:
 For namespace-scoped resources (approvalrequest), you must also specify the --namespace flag.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := fleetcmd.ResolveKind(args[0], approveKinds)
+			k, err := resolveKind(args[0])
 			if err != nil {
 				return err
 			}
-			if err := o.validate(cfg); err != nil {
+			if err := o.validate(k); err != nil {
 				return err
 			}
-			if err := o.setupClient(); err != nil {
+			if o.hubClient, err = toolsutils.NewHubClient(o.hubClusterContext); err != nil {
 				return err
 			}
 			ctx, cancel := context.WithTimeout(cmd.Context(), o.timeout)
 			defer cancel()
-			return o.run(ctx, cfg)
+			return o.run(ctx, k)
 		},
 	}
 
@@ -131,97 +135,49 @@ For namespace-scoped resources (approvalrequest), you must also specify the --na
 	cmd.Flags().StringVarP(&o.namespace, "namespace", "n", "", "The namespace of the resource to approve (required for namespace-scoped resources)")
 	cmd.Flags().DurationVar(&o.timeout, "timeout", 5*time.Minute, "Maximum time to wait for the operation to complete")
 
-	// Mark required flags.
 	_ = cmd.MarkFlagRequired("hub-cluster-context")
 	_ = cmd.MarkFlagRequired("name")
 
 	return cmd
 }
 
-// validate checks that the options are valid.
-func (o *approveOptions) validate(cfg *approveKindConfig) error {
-	if o.name == "" {
+// validate checks that the options are valid for the resolved kind.
+func (o *approveOptions) validate(k *approveKind) error {
+	switch {
+	case o.name == "":
 		return fmt.Errorf("resource name is required")
+	case k.namespaced && o.namespace == "":
+		return fmt.Errorf("namespace is required for %s (use --namespace or -n flag)", strings.ToLower(k.kind))
+	case !k.namespaced && o.namespace != "":
+		return fmt.Errorf("%s is cluster-scoped and does not accept a namespace", strings.ToLower(k.kind))
 	}
-	return cfg.validate(o)
-}
-
-func (o *approveOptions) run(ctx context.Context, cfg *approveKindConfig) error {
-	return cfg.handler(o, ctx)
-}
-
-// approveClusterApprovalRequest approves a ClusterApprovalRequest (cluster-scoped).
-func (o *approveOptions) approveClusterApprovalRequest(ctx context.Context) error {
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		var car placementv1beta1.ClusterApprovalRequest
-		if err := o.hubClient.Get(ctx, types.NamespacedName{Name: o.name}, &car); err != nil {
-			return fmt.Errorf("failed to get ClusterApprovalRequest %q: %w", o.name, err)
-		}
-
-		// Add the Approved condition.
-		approvedCondition := metav1.Condition{
-			Type:               string(placementv1beta1.ApprovalRequestConditionApproved),
-			Status:             metav1.ConditionTrue,
-			Reason:             "ClusterApprovalRequestApproved",
-			Message:            "ClusterApprovalRequest has been approved",
-			ObservedGeneration: car.Generation,
-		}
-
-		// Update or add the condition.
-		meta.SetStatusCondition(&car.Status.Conditions, approvedCondition)
-
-		return o.hubClient.Status().Update(ctx, &car)
-	})
-	if err != nil {
-		return fmt.Errorf("failed to approve ClusterApprovalRequest %q: %w", o.name, err)
-	}
-
-	log.Printf("ClusterApprovalRequest %q approved successfully\n", o.name)
 	return nil
 }
 
-// approveApprovalRequest approves an ApprovalRequest (namespace-scoped).
-func (o *approveOptions) approveApprovalRequest(ctx context.Context) error {
+// run patches the "Approved" condition onto the resource's status.
+func (o *approveOptions) run(ctx context.Context, k *approveKind) error {
+	target := fmt.Sprintf("%q", o.name)
+	if k.namespaced {
+		target += fmt.Sprintf(" in namespace %q", o.namespace)
+	}
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		var ar placementv1beta1.ApprovalRequest
-		if err := o.hubClient.Get(ctx, types.NamespacedName{Name: o.name, Namespace: o.namespace}, &ar); err != nil {
-			return fmt.Errorf("failed to get ApprovalRequest %q in namespace %q: %w", o.name, o.namespace, err)
+		obj, conditions := k.newObj()
+		if err := o.hubClient.Get(ctx, types.NamespacedName{Name: o.name, Namespace: o.namespace}, obj); err != nil {
+			return fmt.Errorf("failed to get %s %s: %w", k.kind, target, err)
 		}
-
-		// Add the Approved condition.
-		approvedCondition := metav1.Condition{
+		meta.SetStatusCondition(conditions, metav1.Condition{
 			Type:               string(placementv1beta1.ApprovalRequestConditionApproved),
 			Status:             metav1.ConditionTrue,
-			Reason:             "ApprovalRequestApproved",
-			Message:            "ApprovalRequest has been approved",
-			ObservedGeneration: ar.Generation,
-		}
-
-		// Update or add the condition.
-		meta.SetStatusCondition(&ar.Status.Conditions, approvedCondition)
-
-		return o.hubClient.Status().Update(ctx, &ar)
+			Reason:             k.kind + "Approved",
+			Message:            k.kind + " has been approved",
+			ObservedGeneration: obj.GetGeneration(),
+		})
+		return o.hubClient.Status().Update(ctx, obj)
 	})
 	if err != nil {
-		return fmt.Errorf("failed to approve ApprovalRequest %q in namespace %q: %w", o.name, o.namespace, err)
+		return fmt.Errorf("failed to approve %s %s: %w", k.kind, target, err)
 	}
 
-	log.Printf("ApprovalRequest %q in namespace %q approved successfully\n", o.name, o.namespace)
-	return nil
-}
-
-// setupClient creates and configures the Kubernetes client
-func (o *approveOptions) setupClient() error {
-	scheme, err := toolsutils.NewFleetScheme()
-	if err != nil {
-		return fmt.Errorf("failed to create runtime scheme: %w", err)
-	}
-
-	hubClient, err := toolsutils.GetClusterClientFromClusterContext(o.hubClusterContext, scheme)
-	if err != nil {
-		return fmt.Errorf("failed to create hub cluster client: %w", err)
-	}
-
-	o.hubClient = hubClient
+	log.Printf("%s %s approved successfully", k.kind, target)
 	return nil
 }
