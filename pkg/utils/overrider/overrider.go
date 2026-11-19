@@ -41,8 +41,75 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
 )
 
+const (
+	// OverrideSnapshotPlacementKeyIndexField is the name of the field index that maps each cluster resource override
+	// snapshot and resource override snapshot to the key of the placement its override is attached to, i.e., the
+	// placement name for a cluster-scoped placement and "<namespace>/<name>" for a namespace-scoped one.
+	//
+	// The snapshots of the overrides that are not attached to any placement are indexed with
+	// unattachedOverridePlacementKey, as they apply to every placement that selects the overridden resources.
+	//
+	// Important: FetchAllMatchingOverridesForResourceSnapshot lists the override snapshots by this index, so
+	// SetupOverrideSnapshotFieldIndexes must be called before the cache backing the client starts.
+	OverrideSnapshotPlacementKeyIndexField = "overrideSnapshotPlacementKey"
+
+	// unattachedOverridePlacementKey is the OverrideSnapshotPlacementKeyIndexField value of the snapshots of the
+	// overrides that are not attached to any placement.
+	unattachedOverridePlacementKey = ""
+)
+
+// SetupOverrideSnapshotFieldIndexes sets up the field indexes on the cluster resource override snapshots and
+// resource override snapshots that FetchAllMatchingOverridesForResourceSnapshot relies on.
+//
+// It must be called before the cache (e.g., the one of the controller manager) behind the indexer starts.
+func SetupOverrideSnapshotFieldIndexes(ctx context.Context, fieldIndexer client.FieldIndexer) error {
+	if err := fieldIndexer.IndexField(ctx, &placementv1beta1.ClusterResourceOverrideSnapshot{}, OverrideSnapshotPlacementKeyIndexField, ClusterResourceOverrideSnapshotPlacementKeyIndexer); err != nil {
+		klog.ErrorS(err, "Failed to set up the placement key field index for clusterResourceOverrideSnapshots")
+		return err
+	}
+	if err := fieldIndexer.IndexField(ctx, &placementv1beta1.ResourceOverrideSnapshot{}, OverrideSnapshotPlacementKeyIndexField, ResourceOverrideSnapshotPlacementKeyIndexer); err != nil {
+		klog.ErrorS(err, "Failed to set up the placement key field index for resourceOverrideSnapshots")
+		return err
+	}
+	return nil
+}
+
+// ClusterResourceOverrideSnapshotPlacementKeyIndexer extracts the OverrideSnapshotPlacementKeyIndexField value of
+// a cluster resource override snapshot, i.e., the name of the placement that its override is attached to.
+func ClusterResourceOverrideSnapshotPlacementKeyIndexer(obj client.Object) []string {
+	snapshot, ok := obj.(*placementv1beta1.ClusterResourceOverrideSnapshot)
+	if !ok {
+		return nil
+	}
+	placement := snapshot.Spec.OverrideSpec.Placement
+	if placement == nil {
+		return []string{unattachedOverridePlacementKey}
+	}
+	return []string{placement.Name}
+}
+
+// ResourceOverrideSnapshotPlacementKeyIndexer extracts the OverrideSnapshotPlacementKeyIndexField value of a
+// resource override snapshot, i.e., the key of the placement that its override is attached to.
+func ResourceOverrideSnapshotPlacementKeyIndexer(obj client.Object) []string {
+	snapshot, ok := obj.(*placementv1beta1.ResourceOverrideSnapshot)
+	if !ok {
+		return nil
+	}
+	placement := snapshot.Spec.OverrideSpec.Placement
+	if placement == nil {
+		return []string{unattachedOverridePlacementKey}
+	}
+	if placement.Scope == placementv1beta1.NamespaceScoped {
+		return []string{controller.GetObjectKeyFromNamespaceName(snapshot.Namespace, placement.Name)}
+	}
+	return []string{placement.Name}
+}
+
 // FetchAllMatchingOverridesForResourceSnapshot fetches all the matching overrides which are attached to the selected resources.
-// TODO: to improve the performance, we can add the index on the placement field of the override snapshots.
+//
+// Only the latest snapshots of the overrides attached to the given placement and of those not attached to any
+// placement are considered; they are looked up by the OverrideSnapshotPlacementKeyIndexField index, which must
+// have been set up with SetupOverrideSnapshotFieldIndexes on the cache that the client reads from.
 func FetchAllMatchingOverridesForResourceSnapshot(
 	ctx context.Context,
 	c client.Client,
@@ -50,22 +117,33 @@ func FetchAllMatchingOverridesForResourceSnapshot(
 	placementKey string,
 	masterResourceSnapshot placementv1beta1.ResourceSnapshotObj,
 ) ([]*placementv1beta1.ClusterResourceOverrideSnapshot, []*placementv1beta1.ResourceOverrideSnapshot, error) {
-	// fetch the cro and ro snapshot list first before finding the matched ones.
+	// fetch the latest cro and ro snapshots that can apply to the placement first before finding the matched ones.
 	latestSnapshotLabelMatcher := client.MatchingLabels{
 		placementv1beta1.IsLatestSnapshotLabel: strconv.FormatBool(true),
 	}
-	croList := &placementv1beta1.ClusterResourceOverrideSnapshotList{}
-	if err := c.List(ctx, croList, latestSnapshotLabelMatcher); err != nil {
-		klog.ErrorS(err, "Failed to list all the clusterResourceOverrideSnapshots")
-		return nil, nil, err
+	overridePlacementKeys := []string{unattachedOverridePlacementKey}
+	if placementKey != unattachedOverridePlacementKey {
+		overridePlacementKeys = append(overridePlacementKeys, placementKey)
 	}
-	roList := &placementv1beta1.ResourceOverrideSnapshotList{}
-	if err := c.List(ctx, roList, latestSnapshotLabelMatcher); err != nil {
-		klog.ErrorS(err, "Failed to list all the resourceOverrideSnapshots")
-		return nil, nil, err
+	var croSnapshots []placementv1beta1.ClusterResourceOverrideSnapshot
+	var roSnapshots []placementv1beta1.ResourceOverrideSnapshot
+	for _, overridePlacementKey := range overridePlacementKeys {
+		placementKeyMatcher := client.MatchingFields{OverrideSnapshotPlacementKeyIndexField: overridePlacementKey}
+		croList := &placementv1beta1.ClusterResourceOverrideSnapshotList{}
+		if err := c.List(ctx, croList, latestSnapshotLabelMatcher, placementKeyMatcher); err != nil {
+			klog.ErrorS(err, "Failed to list the clusterResourceOverrideSnapshots", "placement", placementKey, "overridePlacementKey", overridePlacementKey)
+			return nil, nil, err
+		}
+		croSnapshots = append(croSnapshots, croList.Items...)
+		roList := &placementv1beta1.ResourceOverrideSnapshotList{}
+		if err := c.List(ctx, roList, latestSnapshotLabelMatcher, placementKeyMatcher); err != nil {
+			klog.ErrorS(err, "Failed to list the resourceOverrideSnapshots", "placement", placementKey, "overridePlacementKey", overridePlacementKey)
+			return nil, nil, err
+		}
+		roSnapshots = append(roSnapshots, roList.Items...)
 	}
 
-	if len(croList.Items) == 0 && len(roList.Items) == 0 {
+	if len(croSnapshots) == 0 && len(roSnapshots) == 0 {
 		return nil, nil, nil // no overrides and nothing to do
 	}
 
@@ -93,17 +171,11 @@ func FetchAllMatchingOverridesForResourceSnapshot(
 		}
 	}
 
-	filteredCRO := make([]*placementv1beta1.ClusterResourceOverrideSnapshot, 0, len(croList.Items))
-	filteredRO := make([]*placementv1beta1.ResourceOverrideSnapshot, 0, len(roList.Items))
-	for i := range croList.Items {
-		placementInOverride := croList.Items[i].Spec.OverrideSpec.Placement
-		if placementInOverride != nil && placementInOverride.Name != placementKey {
-			klog.V(2).InfoS("Skipping this override which was created for another placement", "clusterResourceOverride", klog.KObj(&croList.Items[i]), "placementInOverride", placementInOverride.Name, "placement", placementKey)
-			continue
-		}
-
+	filteredCRO := make([]*placementv1beta1.ClusterResourceOverrideSnapshot, 0, len(croSnapshots))
+	filteredRO := make([]*placementv1beta1.ResourceOverrideSnapshot, 0, len(roSnapshots))
+	for i := range croSnapshots {
 		matched := false
-		for _, selector := range croList.Items[i].Spec.OverrideSpec.ClusterResourceSelectors {
+		for _, selector := range croSnapshots[i].Spec.OverrideSpec.ClusterResourceSelectors {
 			croKey := placementv1beta1.ResourceIdentifier{
 				Group:   selector.Group,
 				Version: selector.Version,
@@ -111,45 +183,33 @@ func FetchAllMatchingOverridesForResourceSnapshot(
 				Name:    selector.Name,
 			}
 			if possibleCROs[croKey] {
-				filteredCRO = append(filteredCRO, &croList.Items[i])
+				filteredCRO = append(filteredCRO, &croSnapshots[i])
 				matched = true
 				break
 			}
 		}
 		if !matched {
-			klog.V(2).InfoS("ClusterResourceOverrideSnapshot has no selector that matches a selected resource or inner envelope resource in this placement", "clusterResourceOverride", klog.KObj(&croList.Items[i]), "placement", placementKey, "selectors", croList.Items[i].Spec.OverrideSpec.ClusterResourceSelectors)
+			klog.V(2).InfoS("ClusterResourceOverrideSnapshot has no selector that matches a selected resource or inner envelope resource in this placement", "clusterResourceOverride", klog.KObj(&croSnapshots[i]), "placement", placementKey, "selectors", croSnapshots[i].Spec.OverrideSpec.ClusterResourceSelectors)
 		}
 	}
-	for i := range roList.Items {
-		placementInOverride := roList.Items[i].Spec.OverrideSpec.Placement
-		if placementInOverride != nil {
-			placementKeyInOverride := placementInOverride.Name
-			if placementInOverride.Scope == placementv1beta1.NamespaceScoped {
-				placementKeyInOverride = controller.GetObjectKeyFromNamespaceName(roList.Items[i].Namespace, placementInOverride.Name)
-			}
-			if placementKeyInOverride != placementKey {
-				klog.V(2).InfoS("Skipping this override which was created for another placement", "resourceOverride", klog.KObj(&roList.Items[i]), "placementInOverride", placementKeyInOverride, "placement", placementKey)
-				continue
-			}
-		}
-
+	for i := range roSnapshots {
 		matched := false
-		for _, selector := range roList.Items[i].Spec.OverrideSpec.ResourceSelectors {
+		for _, selector := range roSnapshots[i].Spec.OverrideSpec.ResourceSelectors {
 			roKey := placementv1beta1.ResourceIdentifier{
 				Group:     selector.Group,
 				Version:   selector.Version,
 				Kind:      selector.Kind,
-				Namespace: roList.Items[i].Namespace,
+				Namespace: roSnapshots[i].Namespace,
 				Name:      selector.Name,
 			}
 			if possibleROs[roKey] {
-				filteredRO = append(filteredRO, &roList.Items[i])
+				filteredRO = append(filteredRO, &roSnapshots[i])
 				matched = true
 				break
 			}
 		}
 		if !matched {
-			klog.V(2).InfoS("ResourceOverrideSnapshot has no selector that matches a selected resource or inner envelope resource in this placement", "resourceOverride", klog.KObj(&roList.Items[i]), "placement", placementKey, "selectors", roList.Items[i].Spec.OverrideSpec.ResourceSelectors)
+			klog.V(2).InfoS("ResourceOverrideSnapshot has no selector that matches a selected resource or inner envelope resource in this placement", "resourceOverride", klog.KObj(&roSnapshots[i]), "placement", placementKey, "selectors", roSnapshots[i].Spec.OverrideSpec.ResourceSelectors)
 		}
 	}
 	return filteredCRO, filteredRO, nil

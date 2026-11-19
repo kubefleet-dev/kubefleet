@@ -39,8 +39,11 @@ import (
 )
 
 var (
-	crpName = "my-test-crp"
-	rpName  = "my-test-rp"
+	crpName     = "my-test-crp"
+	rpName      = "my-test-rp"
+	rpNamespace = "my-test-rp-namespace"
+	croName     = "my-test-cro"
+	roName      = "my-test-ro"
 )
 
 func serviceScheme(t *testing.T) *runtime.Scheme {
@@ -156,6 +159,138 @@ func clusterResourceOverrideSnapshotPtrForTest(snapshot placementv1beta1.Cluster
 
 func resourceOverrideSnapshotPtrForTest(snapshot placementv1beta1.ResourceOverrideSnapshot) *placementv1beta1.ResourceOverrideSnapshot {
 	return &snapshot
+}
+
+func TestClusterResourceOverrideSnapshotPlacementKeyIndexer(t *testing.T) {
+	tests := []struct {
+		name string
+		obj  client.Object
+		want []string
+	}{
+		{
+			name: "override attached to a placement",
+			obj: &placementv1beta1.ClusterResourceOverrideSnapshot{
+				ObjectMeta: metav1.ObjectMeta{Name: croName},
+				Spec: placementv1beta1.ClusterResourceOverrideSnapshotSpec{
+					OverrideSpec: placementv1beta1.ClusterResourceOverrideSpec{
+						Placement: &placementv1beta1.PlacementRef{Name: crpName},
+					},
+				},
+			},
+			want: []string{crpName},
+		},
+		{
+			name: "override attached to a placement with the cluster scope",
+			obj: &placementv1beta1.ClusterResourceOverrideSnapshot{
+				ObjectMeta: metav1.ObjectMeta{Name: croName},
+				Spec: placementv1beta1.ClusterResourceOverrideSnapshotSpec{
+					OverrideSpec: placementv1beta1.ClusterResourceOverrideSpec{
+						Placement: &placementv1beta1.PlacementRef{Name: crpName, Scope: placementv1beta1.ClusterScoped},
+					},
+				},
+			},
+			want: []string{crpName},
+		},
+		{
+			name: "override not attached to any placement",
+			obj: &placementv1beta1.ClusterResourceOverrideSnapshot{
+				ObjectMeta: metav1.ObjectMeta{Name: croName},
+			},
+			want: []string{""},
+		},
+		{
+			name: "not a cluster resource override snapshot",
+			obj: &placementv1beta1.ResourceOverrideSnapshot{
+				ObjectMeta: metav1.ObjectMeta{Name: roName, Namespace: rpNamespace},
+				Spec: placementv1beta1.ResourceOverrideSnapshotSpec{
+					OverrideSpec: placementv1beta1.ResourceOverrideSpec{
+						Placement: &placementv1beta1.PlacementRef{Name: crpName},
+					},
+				},
+			},
+			want: nil,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ClusterResourceOverrideSnapshotPlacementKeyIndexer(tc.obj)
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("ClusterResourceOverrideSnapshotPlacementKeyIndexer() mismatch (-want, +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestResourceOverrideSnapshotPlacementKeyIndexer(t *testing.T) {
+	tests := []struct {
+		name string
+		obj  client.Object
+		want []string
+	}{
+		{
+			name: "override attached to a placement without a scope",
+			obj: &placementv1beta1.ResourceOverrideSnapshot{
+				ObjectMeta: metav1.ObjectMeta{Name: roName, Namespace: rpNamespace},
+				Spec: placementv1beta1.ResourceOverrideSnapshotSpec{
+					OverrideSpec: placementv1beta1.ResourceOverrideSpec{
+						Placement: &placementv1beta1.PlacementRef{Name: crpName},
+					},
+				},
+			},
+			want: []string{crpName},
+		},
+		{
+			name: "override attached to a placement with the cluster scope",
+			obj: &placementv1beta1.ResourceOverrideSnapshot{
+				ObjectMeta: metav1.ObjectMeta{Name: roName, Namespace: rpNamespace},
+				Spec: placementv1beta1.ResourceOverrideSnapshotSpec{
+					OverrideSpec: placementv1beta1.ResourceOverrideSpec{
+						Placement: &placementv1beta1.PlacementRef{Name: crpName, Scope: placementv1beta1.ClusterScoped},
+					},
+				},
+			},
+			want: []string{crpName},
+		},
+		{
+			name: "override attached to a placement with the namespace scope",
+			obj: &placementv1beta1.ResourceOverrideSnapshot{
+				ObjectMeta: metav1.ObjectMeta{Name: roName, Namespace: rpNamespace},
+				Spec: placementv1beta1.ResourceOverrideSnapshotSpec{
+					OverrideSpec: placementv1beta1.ResourceOverrideSpec{
+						Placement: &placementv1beta1.PlacementRef{Name: rpName, Scope: placementv1beta1.NamespaceScoped},
+					},
+				},
+			},
+			want: []string{rpNamespace + "/" + rpName},
+		},
+		{
+			name: "override not attached to any placement",
+			obj: &placementv1beta1.ResourceOverrideSnapshot{
+				ObjectMeta: metav1.ObjectMeta{Name: roName, Namespace: rpNamespace},
+			},
+			want: []string{""},
+		},
+		{
+			name: "not a resource override snapshot",
+			obj: &placementv1beta1.ClusterResourceOverrideSnapshot{
+				ObjectMeta: metav1.ObjectMeta{Name: croName},
+				Spec: placementv1beta1.ClusterResourceOverrideSnapshotSpec{
+					OverrideSpec: placementv1beta1.ClusterResourceOverrideSpec{
+						Placement: &placementv1beta1.PlacementRef{Name: crpName},
+					},
+				},
+			},
+			want: nil,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ResourceOverrideSnapshotPlacementKeyIndexer(tc.obj)
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("ResourceOverrideSnapshotPlacementKeyIndexer() mismatch (-want, +got):\n%s", diff)
+			}
+		})
+	}
 }
 
 func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
@@ -1985,6 +2120,8 @@ func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
 			fakeClient := fake.NewClientBuilder().
 				WithScheme(scheme).
 				WithObjects(objects...).
+				WithIndex(&placementv1beta1.ClusterResourceOverrideSnapshot{}, OverrideSnapshotPlacementKeyIndexField, ClusterResourceOverrideSnapshotPlacementKeyIndexer).
+				WithIndex(&placementv1beta1.ResourceOverrideSnapshot{}, OverrideSnapshotPlacementKeyIndexField, ResourceOverrideSnapshotPlacementKeyIndexer).
 				Build()
 			gotCRO, gotRO, err := FetchAllMatchingOverridesForResourceSnapshot(context.Background(), fakeClient, &fakeInformer, tc.placementKey, tc.master)
 			if gotErr, wantErr := err != nil, tc.wantErr != nil; gotErr != wantErr || (err != nil && !errors.Is(err, tc.wantErr)) {
