@@ -208,7 +208,7 @@ func TestDesiredClaims(t *testing.T) {
 
 func TestClaimReadyToRotate(t *testing.T) {
 	completed := func() []metav1.Condition {
-		return []metav1.Condition{{Type: kfplacementv1alpha1.ClusterClaimCondTypeCompleted, Status: metav1.ConditionTrue, Reason: "Fulfilled"}}
+		return []metav1.Condition{{Type: kfplacementv1alpha1.ClusterClaimCondTypeCompleted, Status: metav1.ConditionTrue, Reason: kfplacementv1alpha1.ClusterClaimCompletedCondReasonFulfilled}}
 	}
 	claim := func(conds []metav1.Condition, provisioned *string) *kfplacementv1alpha1.ClusterClaim {
 		return &kfplacementv1alpha1.ClusterClaim{
