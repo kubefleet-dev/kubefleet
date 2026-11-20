@@ -29,6 +29,7 @@ import (
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/resourceeligibility"
 	testinformer "github.com/kubefleet-dev/kubefleet/test/utils/informer"
 )
 
@@ -42,6 +43,30 @@ var (
 		Name:    "test-cluster-role",
 	}
 )
+
+// namespaceSelector returns a resource selector that selects a namespace by name.
+func namespaceSelector(name string) placementv1beta1.ResourceSelectorTerm {
+	return placementv1beta1.ResourceSelectorTerm{
+		Group:   utils.NamespaceGVK.Group,
+		Version: utils.NamespaceGVK.Version,
+		Kind:    utils.NamespaceGVK.Kind,
+		Name:    name,
+	}
+}
+
+// newTestResourceEligibilityChecker returns a resource eligibility checker that is built the same way as the one
+// used by the hub agent for the v1beta1 placement APIs, with the given namespaces skipped by the user.
+func newTestResourceEligibilityChecker(skippedNamespaces ...string) resourceeligibility.Checker {
+	checker := resourceeligibility.New(resourceeligibility.CheckerOptions{
+		RestMapper:      utils.TestMapper{},
+		SkipNSCheck:     len(skippedNamespaces) == 0,
+		SkipGVKRCheck:   true,
+		SkipObjectCheck: true,
+	})
+	checker.SetNamespaceCheckList(resourceeligibility.NamespaceEligibilityModeDenyList, skippedNamespaces, nil)
+	checker.Wraps(resourceeligibility.DefaultForV0APIs(utils.TestMapper{}))
+	return checker
+}
 
 func TestHasNamespaceWithResourceSelectorsMode(t *testing.T) {
 	tests := map[string]struct {
@@ -154,10 +179,11 @@ func TestHasNamespaceWithResourceSelectorsMode(t *testing.T) {
 
 func TestValidateClusterResourcePlacement(t *testing.T) {
 	tests := map[string]struct {
-		crp              *placementv1beta1.ClusterResourcePlacement
-		resourceInformer informer.Manager
-		wantErr          bool
-		wantErrMsg       string
+		crp                        *placementv1beta1.ClusterResourcePlacement
+		resourceInformer           informer.Manager
+		resourceEligibilityChecker resourceeligibility.Checker
+		wantErr                    bool
+		wantErrMsg                 string
 	}{
 		"valid CRP": {
 			crp: &placementv1beta1.ClusterResourcePlacement{
@@ -371,11 +397,192 @@ func TestValidateClusterResourcePlacement(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		"CRP selecting a reserved namespace by name": {
+			crp: &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp",
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{namespaceSelector("fleet-system")},
+				},
+			},
+			resourceInformer:           &testinformer.FakeManager{APIResources: map[schema.GroupVersionKind]bool{utils.NamespaceGVK: true}, IsClusterScopedResource: true},
+			resourceEligibilityChecker: newTestResourceEligibilityChecker(),
+			wantErr:                    true,
+			wantErrMsg:                 "namespace fleet-system and any resource within it are not allowed for placement",
+		},
+		"CRP selecting a reserved namespace by name with the NamespaceOnly selection scope": {
+			crp: &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp",
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:          "",
+							Version:        "v1",
+							Kind:           "Namespace",
+							Name:           "kube-system",
+							SelectionScope: placementv1beta1.NamespaceOnly,
+						},
+					},
+				},
+			},
+			resourceInformer:           &testinformer.FakeManager{APIResources: map[schema.GroupVersionKind]bool{utils.NamespaceGVK: true}, IsClusterScopedResource: true},
+			resourceEligibilityChecker: newTestResourceEligibilityChecker(),
+			wantErr:                    true,
+			wantErrMsg:                 "namespace kube-system and any resource within it are not allowed for placement",
+		},
+		"CRP selecting a reserved namespace by name with the NamespaceWithResourceSelectors selection scope": {
+			crp: &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp",
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:          "",
+							Version:        "v1",
+							Kind:           "Namespace",
+							Name:           "fleet-member-test",
+							SelectionScope: placementv1beta1.NamespaceWithResourceSelectors,
+						},
+						{
+							Group:   "",
+							Version: "v1",
+							Kind:    "ConfigMap",
+							Name:    "test-configmap",
+						},
+					},
+				},
+			},
+			resourceInformer: &testinformer.FakeManager{
+				APIResources: map[schema.GroupVersionKind]bool{
+					utils.NamespaceGVK: true,
+					utils.ConfigMapGVK: true,
+				},
+			},
+			resourceEligibilityChecker: newTestResourceEligibilityChecker(),
+			wantErr:                    true,
+			wantErrMsg:                 "namespace fleet-member-test and any resource within it are not allowed for placement",
+		},
+		"CRP selecting a user-skipped namespace by name": {
+			crp: &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp",
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{namespaceSelector("skipped-namespace")},
+				},
+			},
+			resourceInformer:           &testinformer.FakeManager{APIResources: map[schema.GroupVersionKind]bool{utils.NamespaceGVK: true}, IsClusterScopedResource: true},
+			resourceEligibilityChecker: newTestResourceEligibilityChecker("skipped-namespace"),
+			wantErr:                    true,
+			wantErrMsg:                 "namespace skipped-namespace and any resource within it are not allowed for placement",
+		},
+		"CRP selecting the default namespace by name": {
+			crp: &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp",
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{namespaceSelector(metav1.NamespaceDefault)},
+				},
+			},
+			resourceInformer:           &testinformer.FakeManager{APIResources: map[schema.GroupVersionKind]bool{utils.NamespaceGVK: true}, IsClusterScopedResource: true},
+			resourceEligibilityChecker: newTestResourceEligibilityChecker(),
+			wantErr:                    true,
+			wantErrMsg:                 "the default namespace cannot be selected for placement",
+		},
+		"CRP selecting the default namespace by name with no resource eligibility checker": {
+			crp: &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp",
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{namespaceSelector(metav1.NamespaceDefault)},
+				},
+			},
+			resourceInformer: &testinformer.FakeManager{APIResources: map[schema.GroupVersionKind]bool{utils.NamespaceGVK: true}, IsClusterScopedResource: true},
+			wantErr:          true,
+			wantErrMsg:       "the default namespace cannot be selected for placement",
+		},
+		"CRP selecting a reserved namespace by name with no resource eligibility checker": {
+			crp: &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp",
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{namespaceSelector("fleet-system")},
+				},
+			},
+			resourceInformer: &testinformer.FakeManager{APIResources: map[schema.GroupVersionKind]bool{utils.NamespaceGVK: true}, IsClusterScopedResource: true},
+			wantErr:          false,
+		},
+		"CRP selecting an eligible namespace by name": {
+			crp: &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp",
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{namespaceSelector("test-namespace")},
+				},
+			},
+			resourceInformer:           &testinformer.FakeManager{APIResources: map[schema.GroupVersionKind]bool{utils.NamespaceGVK: true}, IsClusterScopedResource: true},
+			resourceEligibilityChecker: newTestResourceEligibilityChecker("skipped-namespace"),
+			wantErr:                    false,
+		},
+		"CRP selecting namespaces by label": {
+			crp: &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp",
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:   "",
+							Version: "v1",
+							Kind:    "Namespace",
+							LabelSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"app": "test"},
+							},
+						},
+					},
+				},
+			},
+			resourceInformer:           &testinformer.FakeManager{APIResources: map[schema.GroupVersionKind]bool{utils.NamespaceGVK: true}, IsClusterScopedResource: true},
+			resourceEligibilityChecker: newTestResourceEligibilityChecker(),
+			wantErr:                    false,
+		},
+		"CRP selecting a cluster-scoped resource with a reserved name": {
+			crp: &placementv1beta1.ClusterResourcePlacement{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-crp",
+				},
+				Spec: placementv1beta1.PlacementSpec{
+					ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+						{
+							Group:   "rbac.authorization.k8s.io",
+							Version: "v1",
+							Kind:    "ClusterRole",
+							Name:    "kube-test-cluster-role",
+						},
+					},
+				},
+			},
+			resourceInformer:           &testinformer.FakeManager{APIResources: map[schema.GroupVersionKind]bool{utils.ClusterRoleGVK: true}, IsClusterScopedResource: true},
+			resourceEligibilityChecker: newTestResourceEligibilityChecker(),
+			wantErr:                    false,
+		},
 	}
+	t.Cleanup(func() {
+		ResourceEligibilityChecker = nil
+	})
 	for testName, testCase := range tests {
 		t.Run(testName, func(t *testing.T) {
 			RestMapper = utils.TestMapper{}
 			ResourceInformer = testCase.resourceInformer
+			ResourceEligibilityChecker = testCase.resourceEligibilityChecker
 			gotErr := ValidateClusterResourcePlacement(testCase.crp)
 			if (gotErr != nil) != testCase.wantErr {
 				t.Errorf("ValidateClusterResourcePlacement() error = %v, wantErr %v", gotErr, testCase.wantErr)
