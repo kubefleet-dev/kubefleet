@@ -153,7 +153,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 
 		// Set the back-reported status to the target resource.
-		statusWrapper := make(map[string]interface{})
+		statusWrapper := make(map[string]any)
 		if err := json.Unmarshal(manifestCond.BackReportedStatus.ObservedStatus.Raw, &statusWrapper); err != nil {
 			wrappedErr := fmt.Errorf("failed to unmarshal back-reported status: %w", err)
 			klog.ErrorS(err, "Failed to unmarshal back-reported status", "work", workRef, "resourceIdentifier", resIdentifier)

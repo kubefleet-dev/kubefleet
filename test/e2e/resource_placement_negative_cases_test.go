@@ -27,7 +27,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/workapplier"
@@ -141,7 +140,7 @@ var _ = Describe("handling errors and failures gracefully for resource placement
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -304,7 +303,7 @@ var _ = Describe("handling errors and failures gracefully for resource placement
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 						ApplyStrategy: &placementv1beta1.ApplyStrategy{
 							Type: placementv1beta1.ApplyStrategyTypeReportDiff,
@@ -441,7 +440,7 @@ var _ = Describe("handling errors and failures gracefully for resource placement
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},

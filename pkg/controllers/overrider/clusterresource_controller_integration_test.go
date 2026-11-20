@@ -229,7 +229,7 @@ var _ = Describe("Test ClusterResourceOverride controller logic", func() {
 			return errors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: cro.Name}, cro))
 		}, eventuallyTimeout, interval).Should(BeTrue(), "cro should be deleted")
 		By("Make sure all snapshots are deleted")
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			snapshot := getClusterResourceOverrideSnapshot(testCROName, i)
 			Consistently(func() bool {
 				return errors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: snapshot.Name}, snapshot))

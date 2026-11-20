@@ -432,7 +432,7 @@ func TestAuthorizeLimitsConcurrency(t *testing.T) {
 		result <- reviewer.Authorize(context.Background(), authenticationv1.UserInfo{Username: "requester"}, attributes...)
 	}()
 
-	for i := 0; i < maxConcurrentReview; i++ {
+	for i := range maxConcurrentReview {
 		select {
 		case <-started:
 		case <-time.After(time.Second):

@@ -165,7 +165,7 @@ func prepareAppliedWorkOwnerRef(memberClient client.Client, workNS, workName str
 		Kind:               "AppliedWork",
 		Name:               appliedWork.Name,
 		UID:                appliedWork.GetUID(),
-		BlockOwnerDeletion: ptr.To(true),
+		BlockOwnerDeletion: new(true),
 	}
 }
 
@@ -577,7 +577,7 @@ func checkNSOwnerReferences(memberClient client.Client, workName, nsName string)
 		Kind:               "AppliedWork",
 		Name:               appliedWork.Name,
 		UID:                appliedWork.GetUID(),
-		BlockOwnerDeletion: ptr.To(true),
+		BlockOwnerDeletion: new(true),
 	}), " AppliedWork OwnerReference not found in Namespace object")
 }
 
@@ -2841,7 +2841,7 @@ var _ = Describe("drift detection and takeover", func() {
 				dummyLabelKey: dummyLabelValue1,
 			}
 			// Replicas is a managed field; with partial comparison this variance will be noted.
-			regularDeploy.Spec.Replicas = ptr.To(int32(2))
+			regularDeploy.Spec.Replicas = new(int32(2))
 
 			// Create the resources on the member cluster side.
 			Expect(memberClient1.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
@@ -2912,7 +2912,7 @@ var _ = Describe("drift detection and takeover", func() {
 			wantDeploy.TypeMeta = metav1.TypeMeta{}
 			wantDeploy.Namespace = nsName
 			wantDeploy.Name = deployName
-			wantDeploy.Spec.Replicas = ptr.To(int32(2))
+			wantDeploy.Spec.Replicas = new(int32(2))
 
 			Consistently(func() error {
 				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy); err != nil {
@@ -3106,7 +3106,7 @@ var _ = Describe("drift detection and takeover", func() {
 				dummyLabelKey: dummyLabelValue1,
 			}
 			// Replicas is a managed field; with partial comparison this variance will be noted.
-			regularDeploy.Spec.Replicas = ptr.To(int32(2))
+			regularDeploy.Spec.Replicas = new(int32(2))
 
 			// Create the resources on the member cluster side.
 			Expect(memberClient1.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
@@ -3169,7 +3169,7 @@ var _ = Describe("drift detection and takeover", func() {
 			wantDeploy.TypeMeta = metav1.TypeMeta{}
 			wantDeploy.Namespace = nsName
 			wantDeploy.Name = deployName
-			wantDeploy.Spec.Replicas = ptr.To(int32(2))
+			wantDeploy.Spec.Replicas = new(int32(2))
 
 			Consistently(func() error {
 				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy); err != nil {
@@ -3527,7 +3527,7 @@ var _ = Describe("drift detection and takeover", func() {
 				}
 
 				// Make changes to the Deployment object.
-				updatedDeploy.Spec.Replicas = ptr.To(int32(2))
+				updatedDeploy.Spec.Replicas = new(int32(2))
 
 				// Update the Deployment object.
 				if err := memberClient1.Update(ctx, updatedDeploy); err != nil {
@@ -3603,7 +3603,7 @@ var _ = Describe("drift detection and takeover", func() {
 			wantDeploy.OwnerReferences = []metav1.OwnerReference{
 				*appliedWorkOwnerRef,
 			}
-			wantDeploy.Spec.Replicas = ptr.To(int32(2))
+			wantDeploy.Spec.Replicas = new(int32(2))
 
 			Consistently(func() error {
 				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy); err != nil {
@@ -3799,7 +3799,7 @@ var _ = Describe("drift detection and takeover", func() {
 			regularJob = job.DeepCopy()
 			regularJob.Namespace = nsName
 			regularJob.Name = jobName
-			regularJob.Spec.Suspend = ptr.To(true)
+			regularJob.Spec.Suspend = new(true)
 			regularJob.Spec.Template.Labels[dummyLabelKey] = dummyLabelValue1
 			regularJobJSON := marshalK8sObjJSON(regularJob)
 
@@ -3954,7 +3954,7 @@ var _ = Describe("drift detection and takeover", func() {
 
 			// Unsuspend the Job object. This would make the pod template immutable.
 			Eventually(func() error {
-				regularJob.Spec.Suspend = ptr.To(false)
+				regularJob.Spec.Suspend = new(false)
 				return memberClient1.Update(ctx, regularJob)
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to unsuspend the Job object")
 		})
@@ -4089,7 +4089,7 @@ var _ = Describe("drift detection and takeover", func() {
 					*appliedWorkOwnerRef,
 				}
 				wantJob.Spec.Template.Labels[dummyLabelKey] = dummyLabelValue2
-				wantJob.Spec.Suspend = ptr.To(false)
+				wantJob.Spec.Suspend = new(false)
 
 				rebuiltGotJob := &batchv1.Job{
 					ObjectMeta: metav1.ObjectMeta{
@@ -5501,7 +5501,7 @@ var _ = Describe("drift detection and takeover", func() {
 			Kind:               placementv1alpha1.AppliedWorkKind,
 			Name:               fmt.Sprintf(workNameTemplate, utils.RandStr()),
 			UID:                "uid-newer-api-applied-work",
-			BlockOwnerDeletion: ptr.To(true),
+			BlockOwnerDeletion: new(true),
 		}
 
 		var preExistingConfigMap *corev1.ConfigMap
@@ -6471,7 +6471,7 @@ var _ = Describe("report diff", func() {
 			Expect(memberClient1.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
 
 			// Create a diff in the replica count field.
-			regularDeploy.Spec.Replicas = ptr.To(int32(2))
+			regularDeploy.Spec.Replicas = new(int32(2))
 			Expect(memberClient1.Create(ctx, regularDeploy)).To(Succeed(), "Failed to create the Deployment object")
 
 			// Create a new Work object with all the manifest JSONs and proper apply strategy.
@@ -6504,7 +6504,7 @@ var _ = Describe("report diff", func() {
 			wantDeploy.OwnerReferences = []metav1.OwnerReference{
 				*appliedWorkOwnerRef,
 			}
-			wantDeploy.Spec.Replicas = ptr.To(int32(2))
+			wantDeploy.Spec.Replicas = new(int32(2))
 
 			deployOwnedButNotApplied := func() error {
 				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy); err != nil {
@@ -6673,7 +6673,7 @@ var _ = Describe("report diff", func() {
 				}
 
 				// Make changes to the Deployment object.
-				updatedDeploy.Spec.Replicas = ptr.To(int32(1))
+				updatedDeploy.Spec.Replicas = new(int32(1))
 
 				// Update the Deployment object.
 				if err := memberClient1.Update(ctx, updatedDeploy); err != nil {
@@ -6798,7 +6798,7 @@ var _ = Describe("report diff", func() {
 			Expect(memberClient1.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
 
 			// Create a diff in the replica count field.
-			regularDeploy.Spec.Replicas = ptr.To(int32(2))
+			regularDeploy.Spec.Replicas = new(int32(2))
 			Expect(memberClient1.Create(ctx, regularDeploy)).To(Succeed(), "Failed to create the Deployment object")
 
 			// Create a new Work object with all the manifest JSONs and proper apply strategy.
@@ -6888,7 +6888,7 @@ var _ = Describe("report diff", func() {
 				wantDeploy.TypeMeta = metav1.TypeMeta{}
 				wantDeploy.Namespace = nsName
 				wantDeploy.Name = deployName
-				wantDeploy.Spec.Replicas = ptr.To(int32(2))
+				wantDeploy.Spec.Replicas = new(int32(2))
 
 				if diff := cmp.Diff(rebuiltGotDeploy, wantDeploy); diff != "" {
 					return fmt.Errorf("deployment diff (-got +want):\n%s", diff)
@@ -6951,7 +6951,7 @@ var _ = Describe("report diff", func() {
 								ValueInMember: "2",
 							},
 						},
-						ObservedInMemberClusterGeneration: ptr.To(int64(1)),
+						ObservedInMemberClusterGeneration: new(int64(1)),
 					},
 				},
 			}
@@ -7158,7 +7158,7 @@ var _ = Describe("report diff", func() {
 			updatedJob.Namespace = nsName
 			updatedJob.Name = jobName
 			// `.spec.completions` is an immutable field in Job objects.
-			updatedJob.Spec.Completions = ptr.To(int32(3))
+			updatedJob.Spec.Completions = new(int32(3))
 			// `.spec.template` is an immutable field in Job objects.
 			updatedJob.Spec.Template.Spec.Containers[0].Image = "busybox:v0.0.1"
 			updatedJSONJSON := marshalK8sObjJSON(updatedJob)
@@ -7879,7 +7879,7 @@ var _ = Describe("handling different apply strategies", func() {
 			Expect(memberClient1.Create(ctx, regularNS)).To(Succeed(), "Failed to create the NS object")
 
 			// Create a diff in the replica count field.
-			regularDeploy.Spec.Replicas = ptr.To(int32(2))
+			regularDeploy.Spec.Replicas = new(int32(2))
 			Expect(memberClient1.Create(ctx, regularDeploy)).To(Succeed(), "Failed to create the Deployment object")
 
 			// Create a new Work object with all the manifest JSONs and proper apply strategy.
@@ -7912,7 +7912,7 @@ var _ = Describe("handling different apply strategies", func() {
 			wantDeploy.OwnerReferences = []metav1.OwnerReference{
 				*appliedWorkOwnerRef,
 			}
-			wantDeploy.Spec.Replicas = ptr.To(int32(2))
+			wantDeploy.Spec.Replicas = new(int32(2))
 
 			deployOwnedButNotApplied := func() error {
 				if err := memberClient1.Get(ctx, client.ObjectKey{Namespace: nsName, Name: deployName}, regularDeploy); err != nil {
@@ -8504,7 +8504,7 @@ var _ = Describe("handling different apply strategies", func() {
 			preExistingNS := regularNS.DeepCopy()
 			Expect(memberClient1.Create(ctx, preExistingNS)).To(Succeed(), "Failed to create the NS object")
 			preExistingDeploy := regularDeploy.DeepCopy()
-			preExistingDeploy.Spec.Replicas = ptr.To(int32(2))
+			preExistingDeploy.Spec.Replicas = new(int32(2))
 			Expect(memberClient1.Create(ctx, preExistingDeploy)).To(Succeed(), "Failed to create the Deployment object")
 
 			// Create a new Work object with all the manifest JSONs and proper apply strategy.
@@ -8558,7 +8558,7 @@ var _ = Describe("handling different apply strategies", func() {
 			wantDeploy.TypeMeta = metav1.TypeMeta{}
 			wantDeploy.Namespace = nsName
 			wantDeploy.Name = deployName
-			wantDeploy.Spec.Replicas = ptr.To(int32(2))
+			wantDeploy.Spec.Replicas = new(int32(2))
 
 			Consistently(func() error {
 				preExistingDeploy := &appsv1.Deployment{}
@@ -8697,7 +8697,7 @@ var _ = Describe("handling different apply strategies", func() {
 			wantDeploy.TypeMeta = metav1.TypeMeta{}
 			wantDeploy.Namespace = nsName
 			wantDeploy.Name = deployName
-			wantDeploy.Spec.Replicas = ptr.To(int32(2))
+			wantDeploy.Spec.Replicas = new(int32(2))
 
 			Consistently(func() error {
 				preExistingDeploy := &appsv1.Deployment{}
@@ -8803,7 +8803,7 @@ var _ = Describe("handling different apply strategies", func() {
 						},
 					},
 					DiffDetails: &fleetv1beta1.DiffDetails{
-						ObservedInMemberClusterGeneration: ptr.To(int64(1)),
+						ObservedInMemberClusterGeneration: new(int64(1)),
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
 								Path:          "/spec/replicas",
@@ -10115,7 +10115,7 @@ var _ = Describe("status back-reporting", func() {
 					return fmt.Errorf("failed to retrieve the Deployment object: %w", err)
 				}
 
-				deploy.Spec.Replicas = ptr.To(int32(10))
+				deploy.Spec.Replicas = new(int32(10))
 				if err := memberClient1.Update(ctx, deploy); err != nil {
 					return fmt.Errorf("failed to update the Deployment object: %w", err)
 				}

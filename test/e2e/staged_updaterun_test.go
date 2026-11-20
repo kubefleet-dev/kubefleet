@@ -28,7 +28,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -91,7 +90,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			// Create the stagedUpdateStrategy.
 			strategy = createStagedUpdateStrategySucceed(strategyName, testNamespace)
 
-			for i := 0; i < 2; i++ {
+			for i := range 2 {
 				updateRunNames = append(updateRunNames, fmt.Sprintf(stagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 			}
 
@@ -275,7 +274,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			// Create the stagedUpdateStrategy.
 			strategy = createStagedUpdateStrategySucceed(strategyName, testNamespace)
 
-			for i := 0; i < 3; i++ {
+			for i := range 3 {
 				updateRunNames = append(updateRunNames, fmt.Sprintf(stagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 			}
 
@@ -510,7 +509,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			// Create the stagedUpdateStrategy.
 			strategy = createStagedUpdateStrategySucceed(strategyName, testNamespace)
 
-			for i := 0; i < 3; i++ {
+			for i := range 3 {
 				updateRunNames = append(updateRunNames, fmt.Sprintf(stagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 			}
 		})
@@ -728,7 +727,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			}
 			Expect(hubClient.Create(ctx, strategy)).To(Succeed(), "Failed to create StagedUpdateStrategy")
 
-			for i := 0; i < 2; i++ {
+			for i := range 2 {
 				updateRunNames = append(updateRunNames, fmt.Sprintf(stagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 			}
 		})
@@ -831,7 +830,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 					ResourceSelectors: configMapSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(1)), // pick 1 cluster
+						NumberOfClusters: new(int32(1)), // pick 1 cluster
 					},
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.ExternalRolloutStrategyType,
@@ -843,7 +842,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			// Create the stagedUpdateStrategy.
 			strategy = createStagedUpdateStrategySucceed(strategyName, testNamespace)
 
-			for i := 0; i < 3; i++ {
+			for i := range 3 {
 				updateRunNames = append(updateRunNames, fmt.Sprintf(stagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 			}
 		})
@@ -919,7 +918,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 				if err := hubClient.Get(ctx, client.ObjectKey{Name: rpName, Namespace: testNamespace}, rp); err != nil {
 					return fmt.Errorf("Failed to get the rp: %w", err)
 				}
-				rp.Spec.Policy.NumberOfClusters = ptr.To(int32(3)) // pick 3 clusters
+				rp.Spec.Policy.NumberOfClusters = new(int32(3)) // pick 3 clusters
 				return hubClient.Update(ctx, rp)
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update the rp to pick all 3 member clusters")
 		})
@@ -973,7 +972,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 				if err := hubClient.Get(ctx, client.ObjectKey{Name: rpName, Namespace: testNamespace}, rp); err != nil {
 					return fmt.Errorf("failed to get the rp: %w", err)
 				}
-				rp.Spec.Policy.NumberOfClusters = ptr.To(int32(2)) // pick 2 clusters
+				rp.Spec.Policy.NumberOfClusters = new(int32(2)) // pick 2 clusters
 				return hubClient.Update(ctx, rp)
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update the rp to only keep member-cluster-3")
 		})
@@ -1066,7 +1065,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 									{
 										Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 										Path:     "/metadata/annotations",
-										Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "%s-1"}`, roTestAnnotationKey, roTestAnnotationValue))},
+										Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"%s": "%s-1"}`, roTestAnnotationKey, roTestAnnotationValue)},
 									},
 								},
 							},
@@ -1629,7 +1628,7 @@ var _ = Describe("test RP rollout with staged update run", Label("resourceplacem
 			// Create the stagedUpdateStrategy.
 			strategy = createStagedUpdateStrategySucceed(strategyName, testNamespace)
 
-			for i := 0; i < 3; i++ {
+			for i := range 3 {
 				updateRunNames = append(updateRunNames, fmt.Sprintf(stagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 			}
 		})

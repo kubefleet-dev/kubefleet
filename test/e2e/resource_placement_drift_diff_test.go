@@ -27,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -86,7 +85,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
+						UnavailablePeriodSeconds: new(2),
 					},
 				},
 			},
@@ -127,7 +126,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 						ApplyStrategy: &placementv1beta1.ApplyStrategy{
 							ComparisonOption: placementv1beta1.ComparisonOptionTypePartialComparison,
@@ -228,7 +227,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 						ApplyStrategy: &placementv1beta1.ApplyStrategy{
 							ComparisonOption: placementv1beta1.ComparisonOptionTypePartialComparison,
@@ -274,7 +273,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 										Name:      cm1Name,
 										Namespace: nsName,
 									},
-									TargetClusterObservedGeneration: ptr.To(int64(0)),
+									TargetClusterObservedGeneration: new(int64(0)),
 									ObservedDiffs: []placementv1beta1.PatchDetail{
 										{
 											Path:          "/data/data",
@@ -404,7 +403,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 						ApplyStrategy: &placementv1beta1.ApplyStrategy{
 							ComparisonOption: placementv1beta1.ComparisonOptionTypeFullComparison,
@@ -464,7 +463,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 										Name:      cm1Name,
 										Namespace: nsName,
 									},
-									TargetClusterObservedGeneration: ptr.To(int64(0)),
+									TargetClusterObservedGeneration: new(int64(0)),
 									ObservedDiffs: []placementv1beta1.PatchDetail{
 										{
 											Path:          "/data/data",
@@ -480,7 +479,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 										Name:      cm2Name,
 										Namespace: nsName,
 									},
-									TargetClusterObservedGeneration: ptr.To(int64(0)),
+									TargetClusterObservedGeneration: new(int64(0)),
 									ObservedDiffs: []placementv1beta1.PatchDetail{
 										{
 											Path:          fmt.Sprintf("/metadata/labels/%s", unmanagedLabelKey),
@@ -612,7 +611,7 @@ var _ = Describe("detect drifts on placed resources using RP", Ordered, Label("r
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
+						UnavailablePeriodSeconds: new(2),
 					},
 				},
 			},
@@ -656,7 +655,7 @@ var _ = Describe("detect drifts on placed resources using RP", Ordered, Label("r
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 						ApplyStrategy: &placementv1beta1.ApplyStrategy{
 							ComparisonOption: placementv1beta1.ComparisonOptionTypeFullComparison,
@@ -769,7 +768,7 @@ var _ = Describe("detect drifts on placed resources using RP", Ordered, Label("r
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 						ApplyStrategy: &placementv1beta1.ApplyStrategy{
 							ComparisonOption: placementv1beta1.ComparisonOptionTypePartialComparison,
@@ -972,7 +971,7 @@ var _ = Describe("detect drifts on placed resources using RP", Ordered, Label("r
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 						ApplyStrategy: &placementv1beta1.ApplyStrategy{
 							ComparisonOption: placementv1beta1.ComparisonOptionTypeFullComparison,
@@ -1239,7 +1238,7 @@ var _ = Describe("report diff mode using RP", Label("resourceplacement"), func()
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -1262,7 +1261,7 @@ var _ = Describe("report diff mode using RP", Label("resourceplacement"), func()
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 						ApplyStrategy: &placementv1beta1.ApplyStrategy{
 							ComparisonOption: placementv1beta1.ComparisonOptionTypeFullComparison,
@@ -1303,7 +1302,7 @@ var _ = Describe("report diff mode using RP", Label("resourceplacement"), func()
 										Name:      cm1Name,
 										Namespace: nsName,
 									},
-									TargetClusterObservedGeneration: ptr.To(int64(0)),
+									TargetClusterObservedGeneration: new(int64(0)),
 									ObservedDiffs: []placementv1beta1.PatchDetail{
 										{
 											Path:          "/data/data",
@@ -1319,7 +1318,7 @@ var _ = Describe("report diff mode using RP", Label("resourceplacement"), func()
 										Name:      cm2Name,
 										Namespace: nsName,
 									},
-									TargetClusterObservedGeneration: ptr.To(int64(0)),
+									TargetClusterObservedGeneration: new(int64(0)),
 									ObservedDiffs: []placementv1beta1.PatchDetail{
 										{
 											Path:          fmt.Sprintf("/metadata/labels/%s", unmanagedLabelKey),
@@ -1655,7 +1654,7 @@ var _ = Describe("mixed diff and drift reportings using RP", Ordered, Label("res
 
 		// Add pre-existing resources.
 		Expect(memberCluster1EastProdClient.Create(ctx, ns1)).To(Succeed())
-		deploy1.Spec.Replicas = ptr.To(int32(2))
+		deploy1.Spec.Replicas = new(int32(2))
 		Expect(memberCluster1EastProdClient.Create(ctx, deploy1)).To(Succeed())
 
 		// Create the CRP with Namespace-only selector
@@ -1674,7 +1673,7 @@ var _ = Describe("mixed diff and drift reportings using RP", Ordered, Label("res
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
+						UnavailablePeriodSeconds: new(2),
 					},
 				},
 			},
@@ -1704,7 +1703,7 @@ var _ = Describe("mixed diff and drift reportings using RP", Ordered, Label("res
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
+						UnavailablePeriodSeconds: new(2),
 					},
 					ApplyStrategy: &placementv1beta1.ApplyStrategy{
 						ComparisonOption: placementv1beta1.ComparisonOptionTypePartialComparison,
@@ -1737,7 +1736,7 @@ var _ = Describe("mixed diff and drift reportings using RP", Ordered, Label("res
 				return fmt.Errorf("failed to get deployment: %w", err)
 			}
 
-			deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = ptr.To(int64(30))
+			deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = new(int64(30))
 			if err := memberCluster2EastCanaryClient.Update(ctx, deploy); err != nil {
 				return fmt.Errorf("failed to update deployment: %w", err)
 			}
@@ -1750,7 +1749,7 @@ var _ = Describe("mixed diff and drift reportings using RP", Ordered, Label("res
 				return fmt.Errorf("failed to get deployment: %w", err)
 			}
 
-			deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = ptr.To(int64(10))
+			deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = new(int64(10))
 			if err := memberCluster3WestProdClient.Update(ctx, deploy); err != nil {
 				return fmt.Errorf("failed to update deployment: %w", err)
 			}
@@ -1802,7 +1801,7 @@ var _ = Describe("mixed diff and drift reportings using RP", Ordered, Label("res
 									Name:      deployName,
 									Namespace: nsName,
 								},
-								TargetClusterObservedGeneration: ptr.To(int64(1)),
+								TargetClusterObservedGeneration: new(int64(1)),
 								ObservedDiffs: []placementv1beta1.PatchDetail{
 									{
 										Path:          "/spec/replicas",
@@ -1945,7 +1944,7 @@ var _ = Describe("mixed diff and drift reportings using RP", Ordered, Label("res
 				return fmt.Errorf("failed to get deployment: %w", err)
 			}
 
-			deploy.Spec.Replicas = ptr.To(int32(3))
+			deploy.Spec.Replicas = new(int32(3))
 			if err := memberCluster1EastProdClient.Update(ctx, deploy); err != nil {
 				return fmt.Errorf("failed to update deployment: %w", err)
 			}
@@ -1958,7 +1957,7 @@ var _ = Describe("mixed diff and drift reportings using RP", Ordered, Label("res
 				return fmt.Errorf("failed to get deployment: %w", err)
 			}
 
-			deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = ptr.To(int64(20))
+			deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = new(int64(20))
 			if err := memberCluster2EastCanaryClient.Update(ctx, deploy); err != nil {
 				return fmt.Errorf("failed to update deployment: %w", err)
 			}
@@ -2015,7 +2014,7 @@ var _ = Describe("mixed diff and drift reportings using RP", Ordered, Label("res
 									Name:      deployName,
 									Namespace: nsName,
 								},
-								TargetClusterObservedGeneration: ptr.To(int64(2)),
+								TargetClusterObservedGeneration: new(int64(2)),
 								ObservedDiffs: []placementv1beta1.PatchDetail{
 									{
 										Path:          "/spec/replicas",
@@ -2153,7 +2152,7 @@ var _ = Describe("mixed diff and drift reportings using RP", Ordered, Label("res
 				return fmt.Errorf("failed to get deployment: %w", err)
 			}
 
-			deploy.Spec.Replicas = ptr.To(int32(1))
+			deploy.Spec.Replicas = new(int32(1))
 			if err := memberCluster1EastProdClient.Update(ctx, deploy); err != nil {
 				return fmt.Errorf("failed to update deployment: %w", err)
 			}
@@ -2166,7 +2165,7 @@ var _ = Describe("mixed diff and drift reportings using RP", Ordered, Label("res
 				return fmt.Errorf("failed to get deployment: %w", err)
 			}
 
-			deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = ptr.To(int64(60))
+			deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = new(int64(60))
 			if err := memberCluster2EastCanaryClient.Update(ctx, deploy); err != nil {
 				return fmt.Errorf("failed to update deployment: %w", err)
 			}
@@ -2272,7 +2271,7 @@ var _ = Describe("mixed diff and drift reportings using RP", Ordered, Label("res
 			if err := hubClient.Get(ctx, types.NamespacedName{Name: deployName, Namespace: nsName}, deploy); err != nil {
 				return fmt.Errorf("failed to get deployment: %w", err)
 			}
-			deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = ptr.To(int64(10))
+			deploy.Spec.Template.Spec.TerminationGracePeriodSeconds = new(int64(10))
 			if err := hubClient.Update(ctx, deploy); err != nil {
 				return fmt.Errorf("failed to update deployment: %w", err)
 			}

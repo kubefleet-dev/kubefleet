@@ -21,7 +21,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/utils/ptr"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	kfioplacementv1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1"
@@ -35,7 +34,7 @@ func TestIsOwnedByOlderKubeFleetAPIObjects(t *testing.T) {
 		Kind:               kfioplacementv1beta1.AppliedWorkKind,
 		Name:               "applied-work-old",
 		UID:                "uid-applied-work-old",
-		BlockOwnerDeletion: ptr.To(true),
+		BlockOwnerDeletion: new(true),
 	}
 	// The older KubeFleet API group serves AppliedWork objects in both v1 and v1beta1.
 	olderAPIV1AppliedWorkRef := metav1.OwnerReference{
@@ -43,7 +42,7 @@ func TestIsOwnedByOlderKubeFleetAPIObjects(t *testing.T) {
 		Kind:               kfioplacementv1beta1.AppliedWorkKind,
 		Name:               "applied-work-old-v1",
 		UID:                "uid-applied-work-old-v1",
-		BlockOwnerDeletion: ptr.To(true),
+		BlockOwnerDeletion: new(true),
 	}
 	olderAPIWorkRef := metav1.OwnerReference{
 		APIVersion: kfioplacementv1beta1.GroupVersion.String(),
@@ -56,7 +55,7 @@ func TestIsOwnedByOlderKubeFleetAPIObjects(t *testing.T) {
 		Kind:               placementv1alpha1.AppliedWorkKind,
 		Name:               "applied-work-new",
 		UID:                "uid-applied-work-new",
-		BlockOwnerDeletion: ptr.To(true),
+		BlockOwnerDeletion: new(true),
 	}
 	nonKubeFleetRef := metav1.OwnerReference{
 		APIVersion: "example.com/v1",

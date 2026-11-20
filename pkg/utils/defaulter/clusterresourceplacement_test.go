@@ -22,7 +22,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -44,9 +43,9 @@ func TestSetDefaultsClusterResourcePlacement(t *testing.T) {
 					Strategy: fleetv1beta1.RolloutStrategy{
 						Type: fleetv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &fleetv1beta1.RollingUpdateConfig{
-							MaxUnavailable:           ptr.To(intstr.FromString(DefaultMaxUnavailableValue)),
-							MaxSurge:                 ptr.To(intstr.FromString(DefaultMaxSurgeValue)),
-							UnavailablePeriodSeconds: ptr.To(DefaultUnavailablePeriodSeconds),
+							MaxUnavailable:           new(intstr.FromString(DefaultMaxUnavailableValue)),
+							MaxSurge:                 new(intstr.FromString(DefaultMaxSurgeValue)),
+							UnavailablePeriodSeconds: new(DefaultUnavailablePeriodSeconds),
 						},
 						ApplyStrategy: &fleetv1beta1.ApplyStrategy{
 							Type:             fleetv1beta1.ApplyStrategyTypeClientSideApply,
@@ -55,7 +54,7 @@ func TestSetDefaultsClusterResourcePlacement(t *testing.T) {
 							WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeAlways,
 						},
 					},
-					RevisionHistoryLimit: ptr.To(int32(DefaultRevisionHistoryLimitValue)),
+					RevisionHistoryLimit: new(int32(DefaultRevisionHistoryLimitValue)),
 				},
 			},
 		},
@@ -78,9 +77,9 @@ func TestSetDefaultsClusterResourcePlacement(t *testing.T) {
 					Strategy: fleetv1beta1.RolloutStrategy{
 						Type: fleetv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &fleetv1beta1.RollingUpdateConfig{
-							MaxUnavailable:           ptr.To(intstr.FromString("%15")),
-							MaxSurge:                 ptr.To(intstr.FromString("%15")),
-							UnavailablePeriodSeconds: ptr.To(15),
+							MaxUnavailable:           new(intstr.FromString("%15")),
+							MaxSurge:                 new(intstr.FromString("%15")),
+							UnavailablePeriodSeconds: new(15),
 						},
 						ApplyStrategy: &fleetv1beta1.ApplyStrategy{
 							Type:             fleetv1beta1.ApplyStrategyTypeClientSideApply,
@@ -89,7 +88,7 @@ func TestSetDefaultsClusterResourcePlacement(t *testing.T) {
 							WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeAlways,
 						},
 					},
-					RevisionHistoryLimit: ptr.To(int32(10)),
+					RevisionHistoryLimit: new(int32(10)),
 				},
 			},
 			wantObj: &fleetv1beta1.ClusterResourcePlacement{
@@ -98,7 +97,7 @@ func TestSetDefaultsClusterResourcePlacement(t *testing.T) {
 						TopologySpreadConstraints: []fleetv1beta1.TopologySpreadConstraint{
 							{
 								TopologyKey:       "kubernetes.io/hostname",
-								MaxSkew:           ptr.To(int32(DefaultMaxSkewValue)),
+								MaxSkew:           new(int32(DefaultMaxSkewValue)),
 								WhenUnsatisfiable: fleetv1beta1.DoNotSchedule,
 							},
 						},
@@ -113,9 +112,9 @@ func TestSetDefaultsClusterResourcePlacement(t *testing.T) {
 					Strategy: fleetv1beta1.RolloutStrategy{
 						Type: fleetv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &fleetv1beta1.RollingUpdateConfig{
-							MaxUnavailable:           ptr.To(intstr.FromString("%15")),
-							MaxSurge:                 ptr.To(intstr.FromString("%15")),
-							UnavailablePeriodSeconds: ptr.To(15),
+							MaxUnavailable:           new(intstr.FromString("%15")),
+							MaxSurge:                 new(intstr.FromString("%15")),
+							UnavailablePeriodSeconds: new(15),
 						},
 						ApplyStrategy: &fleetv1beta1.ApplyStrategy{
 							Type:             fleetv1beta1.ApplyStrategyTypeClientSideApply,
@@ -124,7 +123,7 @@ func TestSetDefaultsClusterResourcePlacement(t *testing.T) {
 							WhenToTakeOver:   fleetv1beta1.WhenToTakeOverTypeAlways,
 						},
 					},
-					RevisionHistoryLimit: ptr.To(int32(10)),
+					RevisionHistoryLimit: new(int32(10)),
 				},
 			},
 		},
@@ -146,9 +145,9 @@ func TestSetDefaultsClusterResourcePlacement(t *testing.T) {
 					Strategy: fleetv1beta1.RolloutStrategy{
 						Type: fleetv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &fleetv1beta1.RollingUpdateConfig{
-							MaxUnavailable:           ptr.To(intstr.FromString(DefaultMaxUnavailableValue)),
-							MaxSurge:                 ptr.To(intstr.FromString(DefaultMaxSurgeValue)),
-							UnavailablePeriodSeconds: ptr.To(DefaultUnavailablePeriodSeconds),
+							MaxUnavailable:           new(intstr.FromString(DefaultMaxUnavailableValue)),
+							MaxSurge:                 new(intstr.FromString(DefaultMaxSurgeValue)),
+							UnavailablePeriodSeconds: new(DefaultUnavailablePeriodSeconds),
 						},
 						ApplyStrategy: &fleetv1beta1.ApplyStrategy{
 							Type:             fleetv1beta1.ApplyStrategyTypeServerSideApply,
@@ -160,7 +159,7 @@ func TestSetDefaultsClusterResourcePlacement(t *testing.T) {
 							},
 						},
 					},
-					RevisionHistoryLimit: ptr.To(int32(DefaultRevisionHistoryLimitValue)),
+					RevisionHistoryLimit: new(int32(DefaultRevisionHistoryLimitValue)),
 				},
 			},
 		},

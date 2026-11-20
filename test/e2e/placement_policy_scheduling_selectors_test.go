@@ -24,7 +24,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/propertyprovider"
@@ -65,7 +64,7 @@ var _ = Describe("placement policy scheduling with cluster selector options", La
 
 			By("creating a cluster placement policy that wants 3 east clusters, and at least 2")
 			selector := clusterSelectorWithTerms(eastTerms, intstr.FromInt32(3))
-			selector.MinCount = ptr.To(int32(2))
+			selector.MinCount = new(int32(2))
 			policy := newPlacementPolicyObject(policyKey, kfplacementv1alpha1.PlacementPolicySpec{
 				ClusterSelectors:  []kfplacementv1alpha1.ClusterSelector{selector},
 				ResourceSelectors: placementPolicyResourceSelectors(),
@@ -356,9 +355,9 @@ var _ = Describe("placement policy scheduling with cluster selector options", La
 					lastValid(placementPolicyCondition(kfplacementv1alpha1.PlacementPolicyCondTypeAvailable, metav1.ConditionTrue,
 						kfplacementv1alpha1.PlacementPolicyAvailableCondReasonAllClustersAvailable)),
 				},
-				SynchronizedClusters:       ptr.To(int32(2)),
-				ResourcesAvailableClusters: ptr.To(int32(2)),
-				ActiveClusterClaims:        ptr.To(int32(0)),
+				SynchronizedClusters:       new(int32(2)),
+				ResourcesAvailableClusters: new(int32(2)),
+				ActiveClusterClaims:        new(int32(0)),
 			}
 		}
 

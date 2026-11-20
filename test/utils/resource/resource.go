@@ -28,7 +28,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/utils/ptr"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -56,7 +55,7 @@ func ServiceResourceContentForTest(t *testing.T) *fleetv1beta1.ResourceContent {
 				{
 					Name:        "svc-port",
 					Protocol:    corev1.ProtocolTCP,
-					AppProtocol: ptr.To("svc.com/my-custom-protocol"),
+					AppProtocol: new("svc.com/my-custom-protocol"),
 					Port:        9001,
 				},
 			},
@@ -224,14 +223,14 @@ func ResourceEnvelopeResourceContentForTest(t *testing.T) *fleetv1beta1.Resource
 }
 
 // CreateResourceContentForTest creates a ResourceContent for testing.
-func CreateResourceContentForTest(t *testing.T, obj interface{}) *fleetv1beta1.ResourceContent {
+func CreateResourceContentForTest(t *testing.T, obj any) *fleetv1beta1.ResourceContent {
 	t.Helper()
 
 	want, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&obj)
 	if err != nil {
 		t.Fatalf("ToUnstructured failed: %v", err)
 	}
-	delete(want["metadata"].(map[string]interface{}), "creationTimestamp")
+	delete(want["metadata"].(map[string]any), "creationTimestamp")
 	delete(want, "status")
 
 	uWant := unstructured.Unstructured{Object: want}

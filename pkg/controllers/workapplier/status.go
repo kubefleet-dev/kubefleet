@@ -27,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/condition"
@@ -161,7 +160,7 @@ func (r *Reconciler) refreshWorkStatus( //nolint:gocyclo
 			// Populate diff details if there are diffs found.
 			var observedInMemberClusterGen *int64
 			if bundle.inMemberClusterObj != nil {
-				observedInMemberClusterGen = ptr.To(bundle.inMemberClusterObj.GetGeneration())
+				observedInMemberClusterGen = new(bundle.inMemberClusterObj.GetGeneration())
 			}
 
 			manifestCond.DiffDetails = &fleetv1beta1.DiffDetails{
@@ -756,7 +755,7 @@ func backReportStatus(
 		return
 	}
 
-	statusBackReportingWrapper := make(map[string]interface{})
+	statusBackReportingWrapper := make(map[string]any)
 	// The TypeMeta fields must be added in the wrapper, otherwise the client libraries would
 	// have trouble serializing/deserializing the wrapper object when it's written/read to/from
 	// the API server.

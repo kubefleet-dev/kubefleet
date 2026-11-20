@@ -173,14 +173,14 @@ func TestWraps(t *testing.T) {
 	categorizedChildErr := &Error{
 		category: ErrCategoryUser,
 		desc:     "child desc",
-		attrs:    []interface{}{"ck1", "cv1"},
+		attrs:    []any{"ck1", "cv1"},
 	}
 
 	testCases := []struct {
 		name    string
 		err     error
 		desc    string
-		kvs     []interface{}
+		kvs     []any
 		wantErr *Error
 	}{
 		{
@@ -197,12 +197,12 @@ func TestWraps(t *testing.T) {
 			name: "wrapping a plain error, with kvs",
 			err:  plainErr,
 			desc: "high level desc",
-			kvs:  []interface{}{"k1", "v1"},
+			kvs:  []any{"k1", "v1"},
 			wantErr: &Error{
 				category: ErrCategoryUncategorized,
 				wrapped:  plainErr,
 				desc:     "high level desc",
-				attrs:    []interface{}{"k1", "v1"},
+				attrs:    []any{"k1", "v1"},
 			},
 		},
 		{
@@ -213,19 +213,19 @@ func TestWraps(t *testing.T) {
 				category: ErrCategoryUser,
 				wrapped:  categorizedChildErr,
 				desc:     "high level desc",
-				attrs:    []interface{}{"ck1", "cv1"},
+				attrs:    []any{"ck1", "cv1"},
 			},
 		},
 		{
 			name: "wrapping an *Error, with extra kvs",
 			err:  categorizedChildErr,
 			desc: "high level desc",
-			kvs:  []interface{}{"k2", "v2"},
+			kvs:  []any{"k2", "v2"},
 			wantErr: &Error{
 				category: ErrCategoryUser,
 				wrapped:  categorizedChildErr,
 				desc:     "high level desc",
-				attrs:    []interface{}{"ck1", "cv1", "k2", "v2"},
+				attrs:    []any{"ck1", "cv1", "k2", "v2"},
 			},
 		},
 	}
@@ -246,8 +246,8 @@ func TestArgs(t *testing.T) {
 	testCases := []struct {
 		name    string
 		err     error
-		kvs     []interface{}
-		wantKVs []interface{}
+		kvs     []any
+		wantKVs []any
 	}{
 		{
 			name:    "plain error (not an *Error)",
@@ -257,23 +257,23 @@ func TestArgs(t *testing.T) {
 		{
 			name:    "*Error with no category set, no attrs, no extra kvs",
 			err:     &Error{},
-			wantKVs: []interface{}{"errCategory", ErrCategoryUncategorized},
+			wantKVs: []any{"errCategory", ErrCategoryUncategorized},
 		},
 		{
 			name:    "*Error with explicit category, no attrs, no extra kvs",
 			err:     &Error{category: ErrCategoryUser},
-			wantKVs: []interface{}{"errCategory", ErrCategoryUser},
+			wantKVs: []any{"errCategory", ErrCategoryUser},
 		},
 		{
 			name:    "*Error with explicit category and attrs, no extra kvs",
-			err:     &Error{category: ErrCategoryAPIServer, attrs: []interface{}{"k1", "v1", "k2", "v2"}},
-			wantKVs: []interface{}{"errCategory", ErrCategoryAPIServer, "k1", "v1", "k2", "v2"},
+			err:     &Error{category: ErrCategoryAPIServer, attrs: []any{"k1", "v1", "k2", "v2"}},
+			wantKVs: []any{"errCategory", ErrCategoryAPIServer, "k1", "v1", "k2", "v2"},
 		},
 		{
 			name:    "*Error with explicit category and attrs, with extra kvs",
-			err:     &Error{category: ErrCategoryUnexpected, attrs: []interface{}{"k1", "v1"}},
-			kvs:     []interface{}{"k2", "v2"},
-			wantKVs: []interface{}{"errCategory", ErrCategoryUnexpected, "k1", "v1", "k2", "v2"},
+			err:     &Error{category: ErrCategoryUnexpected, attrs: []any{"k1", "v1"}},
+			kvs:     []any{"k2", "v2"},
+			wantKVs: []any{"errCategory", ErrCategoryUnexpected, "k1", "v1", "k2", "v2"},
 		},
 	}
 	for _, tc := range testCases {
@@ -422,14 +422,14 @@ func TestNewTransientError(t *testing.T) {
 	categorizedChildErr := &Error{
 		category: ErrCategoryUser,
 		desc:     "child desc",
-		attrs:    []interface{}{"ck1", "cv1"},
+		attrs:    []any{"ck1", "cv1"},
 	}
 
 	testCases := []struct {
 		name    string
 		err     error
 		desc    string
-		kvs     []interface{}
+		kvs     []any
 		wantErr *Error
 	}{
 		{
@@ -446,12 +446,12 @@ func TestNewTransientError(t *testing.T) {
 			name: "plain error, with kvs",
 			err:  plainErr,
 			desc: "transient condition",
-			kvs:  []interface{}{"k1", "v1"},
+			kvs:  []any{"k1", "v1"},
 			wantErr: &Error{
 				category: ErrCategoryTransient,
 				wrapped:  plainErr,
 				desc:     "transient condition",
-				attrs:    []interface{}{"k1", "v1"},
+				attrs:    []any{"k1", "v1"},
 			},
 		},
 		// This is technically speaking possible, but in practice users should not need to override categories.
@@ -459,12 +459,12 @@ func TestNewTransientError(t *testing.T) {
 			name: "wrapping an *Error, category overridden to transient",
 			err:  categorizedChildErr,
 			desc: "transient condition",
-			kvs:  []interface{}{"k2", "v2"},
+			kvs:  []any{"k2", "v2"},
 			wantErr: &Error{
 				category: ErrCategoryTransient,
 				wrapped:  categorizedChildErr,
 				desc:     "transient condition",
-				attrs:    []interface{}{"ck1", "cv1", "k2", "v2"},
+				attrs:    []any{"ck1", "cv1", "k2", "v2"},
 			},
 		},
 	}
@@ -486,14 +486,14 @@ func TestNewUserError(t *testing.T) {
 	categorizedChildErr := &Error{
 		category: ErrCategoryTransient,
 		desc:     "child desc",
-		attrs:    []interface{}{"ck1", "cv1"},
+		attrs:    []any{"ck1", "cv1"},
 	}
 
 	testCases := []struct {
 		name    string
 		err     error
 		desc    string
-		kvs     []interface{}
+		kvs     []any
 		wantErr *Error
 	}{
 		{
@@ -510,12 +510,12 @@ func TestNewUserError(t *testing.T) {
 			name: "plain error, with kvs",
 			err:  plainErr,
 			desc: "invalid input",
-			kvs:  []interface{}{"k1", "v1"},
+			kvs:  []any{"k1", "v1"},
 			wantErr: &Error{
 				category: ErrCategoryUser,
 				wrapped:  plainErr,
 				desc:     "invalid input",
-				attrs:    []interface{}{"k1", "v1"},
+				attrs:    []any{"k1", "v1"},
 			},
 		},
 		{
@@ -523,12 +523,12 @@ func TestNewUserError(t *testing.T) {
 			name: "wrapping an *Error, category overridden to user",
 			err:  categorizedChildErr,
 			desc: "invalid input",
-			kvs:  []interface{}{"k2", "v2"},
+			kvs:  []any{"k2", "v2"},
 			wantErr: &Error{
 				category: ErrCategoryUser,
 				wrapped:  categorizedChildErr,
 				desc:     "invalid input",
-				attrs:    []interface{}{"ck1", "cv1", "k2", "v2"},
+				attrs:    []any{"ck1", "cv1", "k2", "v2"},
 			},
 		},
 	}
@@ -554,7 +554,7 @@ func TestNewAPIServerError(t *testing.T) {
 		err     error
 		desc    string
 		cached  bool
-		kvs     []interface{}
+		kvs     []any
 		wantErr *Error
 	}{
 		{
@@ -566,7 +566,7 @@ func TestNewAPIServerError(t *testing.T) {
 				category: ErrCategoryAPIServer,
 				wrapped:  apiServerErr,
 				desc:     "failed to create namespace",
-				attrs: []interface{}{
+				attrs: []any{
 					"cached", false,
 					"APIServerErrReason", apierrors.ReasonForError(apiServerErr),
 					"APIServerResHTTPCode", apiServerErr.Status().Code,
@@ -578,12 +578,12 @@ func TestNewAPIServerError(t *testing.T) {
 			err:    apiServerErr,
 			desc:   "failed to create namespace",
 			cached: true,
-			kvs:    []interface{}{"k1", "v1"},
+			kvs:    []any{"k1", "v1"},
 			wantErr: &Error{
 				category: ErrCategoryAPIServer,
 				wrapped:  apiServerErr,
 				desc:     "failed to create namespace",
-				attrs: []interface{}{
+				attrs: []any{
 					"k1", "v1",
 					"cached", true,
 					"APIServerErrReason", apierrors.ReasonForError(apiServerErr),
@@ -600,7 +600,7 @@ func TestNewAPIServerError(t *testing.T) {
 				category: ErrCategoryAPIServer,
 				wrapped:  plainErr,
 				desc:     "unexpected failure",
-				attrs: []interface{}{
+				attrs: []any{
 					"cached", false,
 					"APIServerErrReason", apierrors.ReasonForError(plainErr),
 				},

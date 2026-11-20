@@ -84,8 +84,8 @@ var (
 		APIVersion:         fleetAPIVersion,
 		Kind:               "ClusterResourcePlacement",
 		Name:               testCRPName,
-		Controller:         ptr.To(true),
-		BlockOwnerDeletion: ptr.To(true),
+		Controller:         new(true),
+		BlockOwnerDeletion: new(true),
 	}
 )
 
@@ -401,7 +401,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							},
 						},
 					},
-					RevisionHistoryLimit: ptr.To(int32(1)),
+					RevisionHistoryLimit: new(int32(1)),
 				},
 			}
 			Expect(k8sClient.Create(ctx, crp)).Should(Succeed(), "Failed to create crp")
@@ -478,28 +478,28 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: new("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To("nil")},
-						{Name: ptr.To("reason"), Value: ptr.To("nil")},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
+						{Name: new("status"), Value: new("nil")},
+						{Name: new("reason"), Value: new("nil")},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			}
@@ -536,28 +536,28 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: new("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionFalse))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.ResourceScheduleFailedReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionFalse))},
+						{Name: new("reason"), Value: ptr.To(condition.ResourceScheduleFailedReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			}
@@ -646,28 +646,28 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: new("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.RolloutStartedUnknownReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: new("reason"), Value: ptr.To(condition.RolloutStartedUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			}
@@ -763,15 +763,15 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			By("Ensure placement status metric was emitted")
 			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
 				Label: []*prometheusclientmodel.LabelPair{
-					{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-					{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
-					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-					{Name: ptr.To("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
+					{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+					{Name: new("name"), Value: new(gotCRP.Name)},
+					{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+					{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
+					{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+					{Name: new("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
 				},
 				Gauge: &prometheusclientmodel.Gauge{
-					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+					Value: new(float64(time.Now().UnixNano()) / 1e9),
 				},
 			})
 			checkPlacementStatusMetric(wantMetrics)
@@ -857,28 +857,28 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: new("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.RolloutStartedUnknownReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: new("reason"), Value: ptr.To(condition.RolloutStartedUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			}
@@ -974,15 +974,15 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			By("Ensure placement status metric was emitted for 1st generation")
 			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
 				Label: []*prometheusclientmodel.LabelPair{
-					{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-					{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
-					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-					{Name: ptr.To("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
+					{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+					{Name: new("name"), Value: new(gotCRP.Name)},
+					{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+					{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
+					{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+					{Name: new("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
 				},
 				Gauge: &prometheusclientmodel.Gauge{
-					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+					Value: new(float64(time.Now().UnixNano()) / 1e9),
 				},
 			})
 			checkPlacementStatusMetric(wantMetrics)
@@ -1037,15 +1037,15 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			// In this case we have 2 metrics for Scheduled condition type as crp generation goes from 1 to 2.
 			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
 				Label: []*prometheusclientmodel.LabelPair{
-					{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-					{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
-					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-					{Name: ptr.To("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
+					{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+					{Name: new("name"), Value: new(gotCRP.Name)},
+					{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+					{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
+					{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+					{Name: new("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
 				},
 				Gauge: &prometheusclientmodel.Gauge{
-					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+					Value: new(float64(time.Now().UnixNano()) / 1e9),
 				},
 			})
 			checkPlacementStatusMetric(wantMetrics)
@@ -1159,15 +1159,15 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			// In this case we have 2 metrics for different condition types as crp updates and its generation goes from 1 to 2.
 			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
 				Label: []*prometheusclientmodel.LabelPair{
-					{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-					{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
-					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-					{Name: ptr.To("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
+					{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+					{Name: new("name"), Value: new(gotCRP.Name)},
+					{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+					{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
+					{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+					{Name: new("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
 				},
 				Gauge: &prometheusclientmodel.Gauge{
-					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+					Value: new(float64(time.Now().UnixNano()) / 1e9),
 				},
 			})
 			checkPlacementStatusMetric(wantMetrics)
@@ -1281,41 +1281,41 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: new("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.RolloutStartedUnknownReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: new("reason"), Value: ptr.To(condition.RolloutStartedUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: new("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			}
@@ -1351,15 +1351,15 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			By("Ensure placement status applied metric was emitted")
 			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
 				Label: []*prometheusclientmodel.LabelPair{
-					{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-					{Name: ptr.To("name"), Value: ptr.To(crp.Name)},
-					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementAppliedConditionType))},
-					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-					{Name: ptr.To("reason"), Value: ptr.To(condition.ApplyPendingReason)},
+					{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+					{Name: new("name"), Value: new(crp.Name)},
+					{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+					{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementAppliedConditionType))},
+					{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+					{Name: new("reason"), Value: ptr.To(condition.ApplyPendingReason)},
 				},
 				Gauge: &prometheusclientmodel.Gauge{
-					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+					Value: new(float64(time.Now().UnixNano()) / 1e9),
 				},
 			})
 
@@ -1394,15 +1394,15 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			By("Ensure placement status completed metric was emitted")
 			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
 				Label: []*prometheusclientmodel.LabelPair{
-					{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-					{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-					{Name: ptr.To("conditionType"), Value: ptr.To("Completed")},
-					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionTrue))},
-					{Name: ptr.To("reason"), Value: ptr.To("Completed")},
+					{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+					{Name: new("name"), Value: new(gotCRP.Name)},
+					{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+					{Name: new("conditionType"), Value: new("Completed")},
+					{Name: new("status"), Value: ptr.To(string(corev1.ConditionTrue))},
+					{Name: new("reason"), Value: new("Completed")},
 				},
 				Gauge: &prometheusclientmodel.Gauge{
-					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+					Value: new(float64(time.Now().UnixNano()) / 1e9),
 				},
 			})
 			checkPlacementStatusMetric(wantMetrics)
@@ -1430,7 +1430,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							},
 						},
 					},
-					RevisionHistoryLimit: ptr.To(int32(1)),
+					RevisionHistoryLimit: new(int32(1)),
 					Strategy: placementv1beta1.RolloutStrategy{
 						ApplyStrategy: &placementv1beta1.ApplyStrategy{
 							Type: placementv1beta1.ApplyStrategyTypeReportDiff,
@@ -1580,41 +1580,41 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: new("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.RolloutStartedUnknownReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: new("reason"), Value: ptr.To(condition.RolloutStartedUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: new("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			}
@@ -1650,15 +1650,15 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			By("Ensure placement status metric for reportDiff was emitted")
 			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
 				Label: []*prometheusclientmodel.LabelPair{
-					{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-					{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementDiffReportedConditionType))},
-					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-					{Name: ptr.To("reason"), Value: ptr.To(condition.DiffReportedStatusUnknownReason)},
+					{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+					{Name: new("name"), Value: new(gotCRP.Name)},
+					{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+					{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementDiffReportedConditionType))},
+					{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+					{Name: new("reason"), Value: ptr.To(condition.DiffReportedStatusUnknownReason)},
 				},
 				Gauge: &prometheusclientmodel.Gauge{
-					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+					Value: new(float64(time.Now().UnixNano()) / 1e9),
 				},
 			})
 			checkPlacementStatusMetric(wantMetrics)
@@ -1767,41 +1767,41 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: new("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.RolloutStartedUnknownReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: new("reason"), Value: ptr.To(condition.RolloutStartedUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementWorkSynchronizedConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: new("reason"), Value: ptr.To(condition.WorkSynchronizedUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			}
@@ -1911,15 +1911,15 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics = append(wantMetrics,
 				&prometheusclientmodel.Metric{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To("Completed")},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionTrue))},
-						{Name: ptr.To("reason"), Value: ptr.To("Completed")},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: new("Completed")},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionTrue))},
+						{Name: new("reason"), Value: new("Completed")},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			)
@@ -1954,7 +1954,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							Name:    "invalid-resource",
 						},
 					},
-					RevisionHistoryLimit: ptr.To(int32(1)),
+					RevisionHistoryLimit: new(int32(1)),
 				},
 			}
 			Expect(k8sClient.Create(ctx, crp)).Should(Succeed(), "Failed to create crp with user error")
@@ -1982,15 +1982,15 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionFalse))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.InvalidResourceSelectorsReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionFalse))},
+						{Name: new("reason"), Value: ptr.To(condition.InvalidResourceSelectorsReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			}
@@ -2019,7 +2019,7 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 							},
 						},
 					},
-					RevisionHistoryLimit: ptr.To(int32(1)),
+					RevisionHistoryLimit: new(int32(1)),
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.ExternalRolloutStrategyType,
 					},
@@ -2071,15 +2071,15 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			wantMetrics := []*prometheusclientmodel.Metric{
 				{
 					Label: []*prometheusclientmodel.LabelPair{
-						{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-						{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-						{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-						{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
-						{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-						{Name: ptr.To("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
+						{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+						{Name: new("name"), Value: new(gotCRP.Name)},
+						{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+						{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementScheduledConditionType))},
+						{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+						{Name: new("reason"), Value: ptr.To(condition.SchedulingUnknownReason)},
 					},
 					Gauge: &prometheusclientmodel.Gauge{
-						Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+						Value: new(float64(time.Now().UnixNano()) / 1e9),
 					},
 				},
 			}
@@ -2147,15 +2147,15 @@ var _ = Describe("Test ClusterResourcePlacement Controller", func() {
 			By("Ensure placement status metric for rollout external was emitted")
 			wantMetrics = append(wantMetrics, &prometheusclientmodel.Metric{
 				Label: []*prometheusclientmodel.LabelPair{
-					{Name: ptr.To("namespace"), Value: ptr.To(gotCRP.Namespace)},
-					{Name: ptr.To("name"), Value: ptr.To(gotCRP.Name)},
-					{Name: ptr.To("generation"), Value: ptr.To(strconv.FormatInt(gotCRP.Generation, 10))},
-					{Name: ptr.To("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
-					{Name: ptr.To("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
-					{Name: ptr.To("reason"), Value: ptr.To(condition.RolloutControlledByExternalControllerReason)},
+					{Name: new("namespace"), Value: new(gotCRP.Namespace)},
+					{Name: new("name"), Value: new(gotCRP.Name)},
+					{Name: new("generation"), Value: new(strconv.FormatInt(gotCRP.Generation, 10))},
+					{Name: new("conditionType"), Value: ptr.To(string(placementv1beta1.ClusterResourcePlacementRolloutStartedConditionType))},
+					{Name: new("status"), Value: ptr.To(string(corev1.ConditionUnknown))},
+					{Name: new("reason"), Value: ptr.To(condition.RolloutControlledByExternalControllerReason)},
 				},
 				Gauge: &prometheusclientmodel.Gauge{
-					Value: ptr.To(float64(time.Now().UnixNano()) / 1e9),
+					Value: new(float64(time.Now().UnixNano()) / 1e9),
 				},
 			})
 			checkPlacementStatusMetric(wantMetrics)

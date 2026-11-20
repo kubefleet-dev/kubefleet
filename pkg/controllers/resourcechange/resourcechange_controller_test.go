@@ -62,7 +62,7 @@ func (w *fakeController) Run(_ context.Context, _ int) error {
 	panic("implement me")
 }
 
-func (w *fakeController) Enqueue(obj interface{}) {
+func (w *fakeController) Enqueue(obj any) {
 	if w.QueueObj == nil {
 		w.QueueObj = []string{}
 	}
@@ -822,13 +822,13 @@ func TestCollectAllAffectedPlacementsV1Beta1_ClusterResourcePlacement(t *testing
 func TestCollectAllAffectedPlacementsV1Beta1_ResourcePlacement(t *testing.T) {
 	// the resource we use for all the tests - a deployment in a namespace
 	matchRes := &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "apps/v1",
 			"kind":       "Deployment",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name":      "test-deployment",
 				"namespace": "test-namespace",
-				"labels": map[string]interface{}{
+				"labels": map[string]any{
 					"app":     "test-app",
 					"version": "v1.0",
 				},

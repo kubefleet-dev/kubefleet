@@ -18,6 +18,7 @@ package e2e
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/google/go-cmp/cmp"
 	. "github.com/onsi/ginkgo/v2"
@@ -27,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -94,10 +94,8 @@ func namespaceTakenOverByOlderPlacementAPIsActual(cluster *framework.Cluster, na
 			return fmt.Errorf("cluster %s: namespace %s is owned by an AppliedWork of the placement policy APIs (owner references: %+v)",
 				cluster.ClusterName, name, ns.OwnerReferences)
 		}
-		for _, ownerRef := range ns.OwnerReferences {
-			if isOlderPlacementAPIsAppliedWorkOwnerRef(ownerRef) {
-				return nil
-			}
+		if slices.ContainsFunc(ns.OwnerReferences, isOlderPlacementAPIsAppliedWorkOwnerRef) {
+			return nil
 		}
 		return fmt.Errorf("cluster %s: namespace %s is not owned by an AppliedWork of the older placement APIs (owner references: %+v)",
 			cluster.ClusterName, name, ns.OwnerReferences)
@@ -204,7 +202,7 @@ var _ = Describe("placement policy interoperability", Label("placementpolicy"), 
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 					Policy: &placementv1beta1.PlacementPolicy{
@@ -394,7 +392,7 @@ var _ = Describe("placement policy interoperability", Label("placementpolicy"), 
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 					Policy: &placementv1beta1.PlacementPolicy{

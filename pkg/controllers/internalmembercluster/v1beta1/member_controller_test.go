@@ -525,7 +525,7 @@ func TestReportClusterPropertiesWithPropertyProviderTooManyCalls(t *testing.T) {
 				},
 				recorder: events.NewFakeRecorder(maxQueuedPropertyCollectionCalls + 1),
 			}
-			for i := 0; i < maxQueuedPropertyCollectionCalls; i++ {
+			for range maxQueuedPropertyCollectionCalls {
 				// Invoke the method with no expectations for returns.
 				go func() {
 					r.reportClusterPropertiesWithPropertyProvider(ctx, tc.imc.DeepCopy()) //nolint:all

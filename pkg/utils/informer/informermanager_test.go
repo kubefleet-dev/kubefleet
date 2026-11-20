@@ -393,7 +393,7 @@ func TestCreateInformerForResource_IsIdempotent(t *testing.T) {
 	}
 
 	// Create multiple times
-	for i := 0; i < createAttempts; i++ {
+	for range createAttempts {
 		mgr.CreateInformerForResource(resource)
 	}
 

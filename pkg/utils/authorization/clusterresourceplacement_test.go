@@ -287,7 +287,7 @@ func TestClusterResourcePlacementResolvesInventoryOncePerRequest(t *testing.T) {
 			a.namespacedResources = inventory
 			a.resourceEligibilityChecker = checker
 			p := &placementv1beta1.ClusterResourcePlacement{Spec: placementv1beta1.PlacementSpec{ResourceSelectors: tt.selectors}}
-			for request := 0; request < 2; request++ {
+			for request := range 2 {
 				inventory.calls = 0
 				checker.calls = nil
 				result := a.Authorize(context.Background(), authenticationv1.UserInfo{Username: rpRequester}, p)

@@ -25,7 +25,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -228,7 +227,7 @@ func desiredPolicy(source *unstructured.Unstructured, selectors []kfplacementv1a
 		// is tracked in #927, where the questions are which references count, whether following
 		// them should be opt-in, and how the closure stays fresh as the source changes.
 		ResourceSelectors:            []kfplacementv1alpha1.ResourceSelector{parentResourceSelector(source)},
-		ResourceRevisionHistoryLimit: ptr.To(defaultResourceRevisionHistoryLimit),
+		ResourceRevisionHistoryLimit: new(defaultResourceRevisionHistoryLimit),
 	}
 	return policy
 }

@@ -48,7 +48,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
@@ -135,8 +134,8 @@ var (
 	sideEffortsNone     = admv1.SideEffectClassNone
 	namespacedScope     = admv1.NamespacedScope
 	clusterScope        = admv1.ClusterScope
-	shortWebhookTimeout = ptr.To(int32(1))
-	longWebhookTimeout  = ptr.To(int32(5))
+	shortWebhookTimeout = new(int32(1))
+	longWebhookTimeout  = new(int32(5))
 )
 
 var AddToManagerFuncs []func(manager.Manager) error
@@ -814,10 +813,10 @@ func (w *Config) createClientConfig(validationPath string) admv1.WebhookClientCo
 	serviceRef := admv1.ServiceReference{
 		Namespace: w.serviceNamespace,
 		Name:      w.serviceName,
-		Port:      ptr.To(w.servicePort),
+		Port:      new(w.servicePort),
 	}
 	serviceEndpoint := w.serviceURL + validationPath
-	serviceRef.Path = ptr.To(validationPath)
+	serviceRef.Path = new(validationPath)
 	config := admv1.WebhookClientConfig{}
 
 	// When using cert-manager, leave CABundle empty so cert-manager's CA injector can populate it.
@@ -830,7 +829,7 @@ func (w *Config) createClientConfig(validationPath string) admv1.WebhookClientCo
 	case options.Service:
 		config.Service = &serviceRef
 	case options.URL:
-		config.URL = ptr.To(serviceEndpoint)
+		config.URL = new(serviceEndpoint)
 	}
 	return config
 }
@@ -1002,7 +1001,7 @@ func bindWebhookConfigToFleetSystem(ctx context.Context, k8Client client.Client,
 		Kind:               fleetNs.Kind,
 		Name:               fleetNs.GetName(),
 		UID:                fleetNs.GetUID(),
-		BlockOwnerDeletion: ptr.To(false),
+		BlockOwnerDeletion: new(false),
 	}
 
 	validatingWebhookConfig.OwnerReferences = []metav1.OwnerReference{ownerRef}

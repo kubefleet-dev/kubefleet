@@ -50,7 +50,7 @@ var _ = Describe("Test cluster v1beta1 API validation", func() {
 			By(fmt.Sprintf("expecting denial of CREATE API %s", name))
 			var err = hubClient.Create(ctx, memberClusterName)
 			var statusErr *k8serrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create API call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8serrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create API call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8serrors.StatusError]()))
 			Expect(statusErr.Status().Message).Should(ContainSubstring("metadata.name max length is 63"))
 		})
 
@@ -73,7 +73,7 @@ var _ = Describe("Test cluster v1beta1 API validation", func() {
 			By(fmt.Sprintf("expecting denial of CREATE API %s", name))
 			err := hubClient.Create(ctx, memberClusterName)
 			var statusErr *k8serrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create API call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8serrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create API call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8serrors.StatusError]()))
 			Expect(statusErr.Status().Message).Should(ContainSubstring("a lowercase RFC 1123 subdomain"))
 		})
 
@@ -96,7 +96,7 @@ var _ = Describe("Test cluster v1beta1 API validation", func() {
 			By(fmt.Sprintf("expecting denial of CREATE API %s", name))
 			err := hubClient.Create(ctx, memberClusterName)
 			var statusErr *k8serrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create API call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8serrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create API call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8serrors.StatusError]()))
 			Expect(statusErr.Status().Message).Should(ContainSubstring("a lowercase RFC 1123 subdomain"))
 		})
 
@@ -119,7 +119,7 @@ var _ = Describe("Test cluster v1beta1 API validation", func() {
 			By(fmt.Sprintf("expecting denial of CREATE API %s", name))
 			err := hubClient.Create(ctx, memberClusterName)
 			var statusErr *k8serrors.StatusError
-			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create API call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8serrors.StatusError{})))
+			Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create API call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeFor[*k8serrors.StatusError]()))
 			Expect(statusErr.Status().Message).Should(ContainSubstring("a lowercase RFC 1123 subdomain"))
 		})
 	})

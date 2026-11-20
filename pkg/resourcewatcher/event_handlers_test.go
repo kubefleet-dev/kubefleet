@@ -72,7 +72,7 @@ func TestHandleTombStoneObj(t *testing.T) {
 	)
 	tests := []struct {
 		name    string
-		object  interface{}
+		object  any
 		wantErr bool
 		want    client.Object
 	}{
@@ -134,7 +134,7 @@ type fakeController struct {
 	Enqueued bool
 }
 
-func (t *fakeController) Enqueue(_ interface{}) {
+func (t *fakeController) Enqueue(_ any) {
 	t.Enqueued = true
 }
 
@@ -145,7 +145,7 @@ func (t *fakeController) Run(_ context.Context, _ int) error {
 
 type noopController struct{}
 
-func (noopController) Enqueue(interface{})            {}
+func (noopController) Enqueue(any)                    {}
 func (noopController) Run(context.Context, int) error { return nil }
 
 // TestReportAnnotated pins which events reach annotation-based placement: an annotated add, an

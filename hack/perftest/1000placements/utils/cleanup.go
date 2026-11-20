@@ -19,10 +19,7 @@ func (r *Runner) CleanUp(ctx context.Context) {
 	wg := sync.WaitGroup{}
 
 	// Run the producer.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		for i := 0; i < r.maxCRPToCreateCount; i++ {
 			select {
 			case r.toDeleteChan <- i:
@@ -33,7 +30,7 @@ func (r *Runner) CleanUp(ctx context.Context) {
 		}
 
 		close(r.toDeleteChan)
-	}()
+	})
 
 	// Run the workers.
 	for i := 0; i < r.resourceSetupWorkerCount; i++ {

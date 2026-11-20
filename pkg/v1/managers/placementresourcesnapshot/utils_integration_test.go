@@ -36,7 +36,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -92,7 +91,7 @@ func newDeployment(name, namespace string) *appsv1.Deployment {
 			Labels:    map[string]string{"app": "demo"},
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: ptr.To(int32(2)),
+			Replicas: new(int32(2)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{"app": "demo"},
 			},
@@ -280,7 +279,7 @@ func placementResourceSnapshotObj(namespace, name string) placementv1alpha1.Plac
 // placement policy; it is used for clean-ups.
 func primarySnapshotObjs(placementPolicy placementv1alpha1.PlacementPolicyAccessor, cnt int) []client.Object {
 	objs := make([]client.Object, 0, cnt)
-	for idx := 0; idx < cnt; idx++ {
+	for idx := range cnt {
 		objs = append(objs, placementResourceSnapshotObj(placementPolicy.GetNamespace(),
 			uniquename.PrimaryPlacementResourceSnapshotName(placementPolicy.GetName(), placementPolicy.GetUID(), idx)))
 	}
@@ -363,7 +362,7 @@ func verifyErrCategoryAndMsg(err error, wantErrCategory kferrors.ErrCategory, wa
 	// The error category is the first key-value pair in the error attributes.
 	gotErrAttrs := kferrors.Args(err)
 	Expect(gotErrAttrs).ToNot(BeEmpty(), "The error is not a KubeFleet error: %v", err)
-	wantErrCategoryAttrs := []interface{}{"errCategory", wantErrCategory}
+	wantErrCategoryAttrs := []any{"errCategory", wantErrCategory}
 	if diff := cmp.Diff(gotErrAttrs[:2], wantErrCategoryAttrs); diff != "" {
 		Fail(fmt.Sprintf("Error category attributes diff (-got +want):\n%s\nerror: %v", diff, err))
 	}
@@ -373,7 +372,7 @@ func verifyErrCategoryAndMsg(err error, wantErrCategory kferrors.ErrCategory, wa
 }
 
 // errAttrValue returns the value of the given key in the attributes of the given (KubeFleet) error.
-func errAttrValue(err error, key string) (interface{}, bool) {
+func errAttrValue(err error, key string) (any, bool) {
 	attrs := kferrors.Args(err)
 	for idx := 0; idx+1 < len(attrs); idx += 2 {
 		if k, ok := attrs[idx].(string); ok && k == key {
@@ -486,8 +485,8 @@ func wantPlacementPolicyOwnerRefs(placementPolicy placementv1alpha1.PlacementPol
 			Kind:               kind,
 			Name:               placementPolicy.GetName(),
 			UID:                placementPolicy.GetUID(),
-			Controller:         ptr.To(true),
-			BlockOwnerDeletion: ptr.To(true),
+			Controller:         new(true),
+			BlockOwnerDeletion: new(true),
 		},
 	}
 }
@@ -542,10 +541,10 @@ func verifySnapshottedResourceIdentifiers(resources []placementv1alpha1.Snapshot
 //
 // Comparing generic maps (rather than typed objects) verifies the absence of fields, which zero values in typed
 // objects would otherwise hide.
-func manifestAsMap(raw []byte) map[string]interface{} {
+func manifestAsMap(raw []byte) map[string]any {
 	GinkgoHelper()
 
-	m := map[string]interface{}{}
+	m := map[string]any{}
 	Expect(json.Unmarshal(raw, &m)).To(Succeed(), "Failed to unmarshal the manifest")
 	return m
 }
@@ -774,7 +773,7 @@ func createLabeledConfigMaps(prefix string, cnt int, labels map[string]string) [
 	GinkgoHelper()
 
 	names := make([]string, 0, cnt)
-	for idx := 0; idx < cnt; idx++ {
+	for idx := range cnt {
 		name := fmt.Sprintf("%s-%d", prefix, idx)
 		configMap := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
@@ -865,7 +864,7 @@ func verifyOwnedByLabelVal(placementPolicy placementv1alpha1.PlacementPolicyAcce
 func snapshotConcurrently(n int, placementPolicy placementv1alpha1.PlacementPolicyAccessor) []snapshotCallResult {
 	results := make([]snapshotCallResult, n)
 	var wg sync.WaitGroup
-	for idx := 0; idx < n; idx++ {
+	for idx := range n {
 		wg.Add(1)
 		go func() {
 			defer GinkgoRecover()
@@ -1140,7 +1139,7 @@ func withInMemoryRevisionHistoryLimit(placementPolicy placementv1alpha1.Placemen
 func updateRevisionHistoryLimit(placementPolicy placementv1alpha1.PlacementPolicyAccessor, limit int32) {
 	GinkgoHelper()
 
-	placementPolicy.GetSpec().ResourceRevisionHistoryLimit = ptr.To(limit)
+	placementPolicy.GetSpec().ResourceRevisionHistoryLimit = new(limit)
 	Expect(hubClient.Update(ctx, placementPolicy)).To(Succeed(), "Failed to update the revision history limit of the placement policy")
 }
 

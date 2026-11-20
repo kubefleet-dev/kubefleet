@@ -26,7 +26,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -239,7 +238,7 @@ var _ = Describe("placement policy resource snapshots", Label("placementpolicy")
 			By("creating a cluster placement policy that keeps a single resource revision")
 			policy := newPlacementPolicyObject(policyKey, kfplacementv1alpha1.PlacementPolicySpec{
 				ResourceSelectors:            placementPolicyResourceSelectors(),
-				ResourceRevisionHistoryLimit: ptr.To(int32(1)),
+				ResourceRevisionHistoryLimit: new(int32(1)),
 			})
 			Expect(hubClient.Create(ctx, policy)).To(Succeed(), "Failed to create cluster placement policy %s", policyKey)
 

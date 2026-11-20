@@ -25,7 +25,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -97,19 +96,19 @@ func TestRetrieveResourceUsageFrom(t *testing.T) {
 			name:         "total capacity usage",
 			propertyName: "total-cpu",
 			cluster:      cluster,
-			wantQuantity: ptr.To(resource.MustParse("10")),
+			wantQuantity: new(resource.MustParse("10")),
 		},
 		{
 			name:         "allocatable capacity usage",
 			propertyName: "allocatable-memory",
 			cluster:      cluster,
-			wantQuantity: ptr.To(resource.MustParse("36Gi")),
+			wantQuantity: new(resource.MustParse("36Gi")),
 		},
 		{
 			name:         "available capacity usage",
 			propertyName: "available-cpu",
 			cluster:      cluster,
-			wantQuantity: ptr.To(resource.MustParse("2")),
+			wantQuantity: new(resource.MustParse("2")),
 		},
 	}
 
@@ -182,7 +181,7 @@ func TestRetrievePropertyValueFrom(t *testing.T) {
 			name:         "resource property retrieval",
 			propertyName: propertyprovider.AvailableMemoryCapacityProperty,
 			cluster:      cluster,
-			wantQuantity: ptr.To(resource.MustParse("4Gi")),
+			wantQuantity: new(resource.MustParse("4Gi")),
 		},
 		{
 			name:         "absent non-resource property",
@@ -198,7 +197,7 @@ func TestRetrievePropertyValueFrom(t *testing.T) {
 		{
 			name:         "non-resource property retrieval",
 			propertyName: propertyprovider.NodeCountProperty,
-			wantQuantity: ptr.To(resource.MustParse("4")),
+			wantQuantity: new(resource.MustParse("4")),
 			cluster:      cluster,
 		},
 	}
@@ -845,8 +844,8 @@ func TestClusterPreferenceScores(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("2")),
-						max: ptr.To(resource.MustParse("6")),
+						min: new(resource.MustParse("2")),
+						max: new(resource.MustParse("6")),
 					},
 				},
 			},
@@ -951,7 +950,7 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						max: ptr.To(resource.MustParse("4")),
+						max: new(resource.MustParse("4")),
 					},
 				},
 			},
@@ -964,7 +963,7 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("4")),
+						min: new(resource.MustParse("4")),
 					},
 				},
 			},
@@ -977,8 +976,8 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse(fmt.Sprintf("%f", math.MaxFloat64) + "0")),
-						max: ptr.To(resource.MustParse(fmt.Sprintf("%f", math.MaxFloat64) + "0")),
+						min: new(resource.MustParse(fmt.Sprintf("%f", math.MaxFloat64) + "0")),
+						max: new(resource.MustParse(fmt.Sprintf("%f", math.MaxFloat64) + "0")),
 					},
 				},
 			},
@@ -991,8 +990,8 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("0")),
-						max: ptr.To(resource.MustParse(fmt.Sprintf("%f", math.MaxFloat64) + "0")),
+						min: new(resource.MustParse("0")),
+						max: new(resource.MustParse(fmt.Sprintf("%f", math.MaxFloat64) + "0")),
 					},
 				},
 			},
@@ -1005,8 +1004,8 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("4")),
-						max: ptr.To(resource.MustParse("0")),
+						min: new(resource.MustParse("4")),
+						max: new(resource.MustParse("0")),
 					},
 				},
 			},
@@ -1019,8 +1018,8 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("4")),
-						max: ptr.To(resource.MustParse("4")),
+						min: new(resource.MustParse("4")),
+						max: new(resource.MustParse("4")),
 					},
 				},
 			},
@@ -1033,8 +1032,8 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("8")),
-						max: ptr.To(resource.MustParse("16")),
+						min: new(resource.MustParse("8")),
+						max: new(resource.MustParse("16")),
 					},
 				},
 			},
@@ -1047,8 +1046,8 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("1")),
-						max: ptr.To(resource.MustParse("2")),
+						min: new(resource.MustParse("1")),
+						max: new(resource.MustParse("2")),
 					},
 				},
 			},
@@ -1062,8 +1061,8 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("2")),
-						max: ptr.To(resource.MustParse("6")),
+						min: new(resource.MustParse("2")),
+						max: new(resource.MustParse("6")),
 					},
 				},
 			},
@@ -1078,8 +1077,8 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("4")),
-						max: ptr.To(resource.MustParse("8")),
+						min: new(resource.MustParse("4")),
+						max: new(resource.MustParse("8")),
 					},
 				},
 			},
@@ -1094,8 +1093,8 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("2")),
-						max: ptr.To(resource.MustParse("4")),
+						min: new(resource.MustParse("2")),
+						max: new(resource.MustParse("4")),
 					},
 				},
 			},
@@ -1110,8 +1109,8 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("2")),
-						max: ptr.To(resource.MustParse("7")),
+						min: new(resource.MustParse("2")),
+						max: new(resource.MustParse("7")),
 					},
 				},
 			},
@@ -1126,8 +1125,8 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("2")),
-						max: ptr.To(resource.MustParse("7")),
+						min: new(resource.MustParse("2")),
+						max: new(resource.MustParse("7")),
 					},
 				},
 			},
@@ -1142,8 +1141,8 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("4")),
-						max: ptr.To(resource.MustParse("8")),
+						min: new(resource.MustParse("4")),
+						max: new(resource.MustParse("8")),
 					},
 				},
 			},
@@ -1158,8 +1157,8 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("2")),
-						max: ptr.To(resource.MustParse("4")),
+						min: new(resource.MustParse("2")),
+						max: new(resource.MustParse("4")),
 					},
 				},
 			},
@@ -1174,8 +1173,8 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("2")),
-						max: ptr.To(resource.MustParse("7")),
+						min: new(resource.MustParse("2")),
+						max: new(resource.MustParse("7")),
 					},
 				},
 			},
@@ -1190,8 +1189,8 @@ func TestInterpolateWeightFor(t *testing.T) {
 			state: &pluginState{
 				minMaxValuesByProperty: map[string]observedMinMaxValues{
 					propertyprovider.NodeCountProperty: {
-						min: ptr.To(resource.MustParse("2")),
-						max: ptr.To(resource.MustParse("7")),
+						min: new(resource.MustParse("2")),
+						max: new(resource.MustParse("7")),
 					},
 				},
 			},

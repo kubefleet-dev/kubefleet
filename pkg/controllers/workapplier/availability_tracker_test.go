@@ -35,7 +35,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
@@ -53,7 +52,7 @@ var (
 			Namespace: nsName,
 		},
 		Spec: appsv1.StatefulSetSpec{
-			Replicas: ptr.To(int32(1)),
+			Replicas: new(int32(1)),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"app": "nginx",
@@ -197,7 +196,7 @@ func TestTrackDeploymentAvailability(t *testing.T) {
 	}
 
 	unavailableDeployWithNotEnoughAvailableReplicas := deploy.DeepCopy()
-	unavailableDeployWithNotEnoughAvailableReplicas.Spec.Replicas = ptr.To(int32(5))
+	unavailableDeployWithNotEnoughAvailableReplicas.Spec.Replicas = new(int32(5))
 	unavailableDeployWithNotEnoughAvailableReplicas.Status = appsv1.DeploymentStatus{
 		Replicas:          5,
 		AvailableReplicas: 2,
@@ -205,7 +204,7 @@ func TestTrackDeploymentAvailability(t *testing.T) {
 	}
 
 	unavailableDeployWithNotEnoughUpdatedReplicas := deploy.DeepCopy()
-	unavailableDeployWithNotEnoughUpdatedReplicas.Spec.Replicas = ptr.To(int32(5))
+	unavailableDeployWithNotEnoughUpdatedReplicas.Spec.Replicas = new(int32(5))
 	unavailableDeployWithNotEnoughUpdatedReplicas.Status = appsv1.DeploymentStatus{
 		Replicas:          5,
 		AvailableReplicas: 5,
@@ -214,7 +213,7 @@ func TestTrackDeploymentAvailability(t *testing.T) {
 
 	// new replicaset due to max surge, is not ready. old replicaset is still ready.
 	unavailableDeployWithMoreReplicasThanRequired := deploy.DeepCopy()
-	unavailableDeployWithMoreReplicasThanRequired.Spec.Replicas = ptr.To(int32(1))
+	unavailableDeployWithMoreReplicasThanRequired.Spec.Replicas = new(int32(1))
 	unavailableDeployWithMoreReplicasThanRequired.Status = appsv1.DeploymentStatus{
 		// we don't use this field in the availability check, adding for test case clarity.
 		Replicas:            2,
@@ -309,7 +308,7 @@ func TestTrackStatefulSetAvailability(t *testing.T) {
 	}
 
 	unavailableStatefulSetWithNotEnoughAvailableReplicas := statefulSetTemplate.DeepCopy()
-	unavailableStatefulSetWithNotEnoughAvailableReplicas.Spec.Replicas = ptr.To(int32(5))
+	unavailableStatefulSetWithNotEnoughAvailableReplicas.Spec.Replicas = new(int32(5))
 	unavailableStatefulSetWithNotEnoughAvailableReplicas.Status = appsv1.StatefulSetStatus{
 		Replicas:          5,
 		AvailableReplicas: 2,
@@ -320,7 +319,7 @@ func TestTrackStatefulSetAvailability(t *testing.T) {
 	}
 
 	unavailableStatefulSetWithNotEnoughCurrentReplicas := statefulSetTemplate.DeepCopy()
-	unavailableStatefulSetWithNotEnoughCurrentReplicas.Spec.Replicas = ptr.To(int32(5))
+	unavailableStatefulSetWithNotEnoughCurrentReplicas.Spec.Replicas = new(int32(5))
 	unavailableStatefulSetWithNotEnoughCurrentReplicas.Status = appsv1.StatefulSetStatus{
 		Replicas:          5,
 		AvailableReplicas: 5,

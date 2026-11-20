@@ -32,7 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -88,7 +87,7 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 					Labels:    map[string]string{"app": "demo"},
 				},
 				Spec: appsv1.DeploymentSpec{
-					Replicas: ptr.To(int32(2)),
+					Replicas: new(int32(2)),
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": "demo"},
 					},
@@ -180,8 +179,8 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 					Kind:               "PlacementPolicy",
 					Name:               placementPolicyName,
 					UID:                placementPolicy.UID,
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(true),
+					Controller:         new(true),
+					BlockOwnerDeletion: new(true),
 				},
 			}
 			if diff := cmp.Diff(gotSnapshot.OwnerReferences, wantOwnerRefs); diff != "" {
@@ -308,7 +307,7 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 			deployment := &appsv1.Deployment{}
 			Expect(hubUncachedReader.Get(ctx, types.NamespacedName{Namespace: appNamespaceName, Name: deploymentName}, deployment)).To(Succeed(),
 				"Failed to get the Deployment")
-			deployment.Spec.Replicas = ptr.To(int32(3))
+			deployment.Spec.Replicas = new(int32(3))
 			deployment.Spec.Template.Spec.Containers[0].Image = "nginx:1.28"
 			Expect(hubClient.Update(ctx, deployment)).To(Succeed(), "Failed to update the Deployment")
 			waitForDeploymentsInCache(deployment)
@@ -362,7 +361,7 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 			}
 			gotDeployment := &appsv1.Deployment{}
 			Expect(json.Unmarshal(gotSnapshot.Spec.Resources[1].Manifest.Raw, gotDeployment)).To(Succeed(), "Failed to unmarshal the Deployment manifest")
-			Expect(gotDeployment.Spec.Replicas).To(Equal(ptr.To(int32(3))), "Unexpected replica count in the snapshotted Deployment")
+			Expect(gotDeployment.Spec.Replicas).To(Equal(new(int32(3))), "Unexpected replica count in the snapshotted Deployment")
 			Expect(gotDeployment.Spec.Template.Spec.Containers[0].Image).To(Equal("nginx:1.28"), "Unexpected image in the snapshotted Deployment")
 
 			// The previous snapshot should be left intact.
@@ -499,8 +498,8 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 					Kind:               "PlacementPolicy",
 					Name:               placementPolicyName,
 					UID:                placementPolicy.UID,
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(true),
+					Controller:         new(true),
+					BlockOwnerDeletion: new(true),
 				},
 			}
 			wantAnnotations := map[string]string{
@@ -624,8 +623,8 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 					Kind:               "PlacementPolicy",
 					Name:               placementPolicyName,
 					UID:                placementPolicy.UID,
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(true),
+					Controller:         new(true),
+					BlockOwnerDeletion: new(true),
 				},
 			}
 			wantAnnotations := map[string]string{
@@ -697,7 +696,7 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 			deployment := &appsv1.Deployment{}
 			Expect(hubUncachedReader.Get(ctx, types.NamespacedName{Namespace: appNamespaceName, Name: lastDeploymentName}, deployment)).To(Succeed(),
 				"Failed to get the Deployment")
-			deployment.Spec.Replicas = ptr.To(int32(3))
+			deployment.Spec.Replicas = new(int32(3))
 			deployment.Spec.Template.Spec.Containers[0].Image = "nginx:1.28"
 			Expect(hubClient.Update(ctx, deployment)).To(Succeed(), "Failed to update the Deployment")
 			waitForDeploymentsInCache(deployment)
@@ -719,7 +718,7 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 			Expect(lastSnapshot.Spec.Resources).To(HaveLen(1), "Unexpected number of resources in the last secondary snapshot")
 			gotDeployment := &appsv1.Deployment{}
 			Expect(json.Unmarshal(lastSnapshot.Spec.Resources[0].Manifest.Raw, gotDeployment)).To(Succeed(), "Failed to unmarshal the Deployment manifest")
-			Expect(gotDeployment.Spec.Replicas).To(Equal(ptr.To(int32(3))), "Unexpected replica count in the snapshotted Deployment")
+			Expect(gotDeployment.Spec.Replicas).To(Equal(new(int32(3))), "Unexpected replica count in the snapshotted Deployment")
 			Expect(gotDeployment.Spec.Template.Spec.Containers[0].Image).To(Equal("nginx:1.28"), "Unexpected image in the snapshotted Deployment")
 		})
 
@@ -841,7 +840,7 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 			// The error category is the first key-value pair in the error attributes.
 			gotErrAttrs := kferrors.Args(err)
 			Expect(gotErrAttrs).ToNot(BeEmpty(), "The error is not a KubeFleet error: %v", err)
-			wantErrCategoryAttrs := []interface{}{"errCategory", kferrors.ErrCategoryUser}
+			wantErrCategoryAttrs := []any{"errCategory", kferrors.ErrCategoryUser}
 			if diff := cmp.Diff(gotErrAttrs[:2], wantErrCategoryAttrs); diff != "" {
 				Fail(fmt.Sprintf("Error category attributes diff (-got +want):\n%s\nerror: %v", diff, err))
 			}
@@ -905,8 +904,8 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 					Kind:               "PlacementPolicy",
 					Name:               placementPolicyName,
 					UID:                placementPolicy.UID,
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(true),
+					Controller:         new(true),
+					BlockOwnerDeletion: new(true),
 				},
 			}
 			wantAnnotations := map[string]string{
@@ -1035,8 +1034,8 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 					Kind:               "PlacementPolicy",
 					Name:               placementPolicyName,
 					UID:                placementPolicy.UID,
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(true),
+					Controller:         new(true),
+					BlockOwnerDeletion: new(true),
 				},
 			}
 			if diff := cmp.Diff(gotSnapshot.OwnerReferences, wantOwnerRefs); diff != "" {
@@ -1137,7 +1136,7 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 				if len(gotErrAttrs) < 2 {
 					return fmt.Errorf("the error is not a KubeFleet error: %w", err)
 				}
-				wantErrCategoryAttrs := []interface{}{"errCategory", kferrors.ErrCategoryTransient}
+				wantErrCategoryAttrs := []any{"errCategory", kferrors.ErrCategoryTransient}
 				if diff := cmp.Diff(gotErrAttrs[:2], wantErrCategoryAttrs); diff != "" {
 					return fmt.Errorf("error category attributes diff (-got +want):\n%s\nerror: %w", diff, err)
 				}
@@ -1233,8 +1232,8 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 					Kind:               "PlacementPolicy",
 					Name:               placementPolicyName,
 					UID:                placementPolicy.UID,
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(true),
+					Controller:         new(true),
+					BlockOwnerDeletion: new(true),
 				},
 			}
 			wantAnnotations := map[string]string{
@@ -1242,7 +1241,7 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 				placementv1alpha1.PlacementResourceSnapshotOwnedByAnnotationKey:      placementPolicyName,
 			}
 
-			for subIdx := 0; subIdx < 4; subIdx++ {
+			for subIdx := range 4 {
 				snapshotName := uniquename.PrimaryPlacementResourceSnapshotName(placementPolicyName, placementPolicy.UID, 0)
 				wantLabels := map[string]string{
 					placementv1alpha1.PlacementResourceSnapshotOwnedByLabelKey:  placementPolicyName,
@@ -1440,8 +1439,8 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 					Kind:               "PlacementPolicy",
 					Name:               placementPolicyName,
 					UID:                placementPolicy.UID,
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(true),
+					Controller:         new(true),
+					BlockOwnerDeletion: new(true),
 				},
 			}
 			wantAnnotations := map[string]string{
@@ -1449,7 +1448,7 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 				placementv1alpha1.PlacementResourceSnapshotOwnedByAnnotationKey:      placementPolicyName,
 			}
 
-			for subIdx := 0; subIdx < 4; subIdx++ {
+			for subIdx := range 4 {
 				snapshotName := uniquename.PrimaryPlacementResourceSnapshotName(placementPolicyName, placementPolicy.UID, 0)
 				wantLabels := map[string]string{
 					placementv1alpha1.PlacementResourceSnapshotOwnedByLabelKey:  placementPolicyName,
@@ -1606,7 +1605,7 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 		})
 
 		It("can create four primary placement resource snapshots", func() {
-			for idx := 0; idx < 4; idx++ {
+			for idx := range 4 {
 				gotSnapshots := updateConfigMapAndSnapshot(fmt.Sprintf("value-%d", idx))
 				wantName := uniquename.PrimaryPlacementResourceSnapshotName(placementPolicyName, placementPolicy.UID, idx)
 				Expect(gotSnapshots[0].GetName()).To(Equal(wantName), "Unexpected name of the placement resource snapshot at index %d", idx)
@@ -1620,13 +1619,13 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 					Kind:               "PlacementPolicy",
 					Name:               placementPolicyName,
 					UID:                placementPolicy.UID,
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(true),
+					Controller:         new(true),
+					BlockOwnerDeletion: new(true),
 				},
 			}
 
 			seenHashes := map[string]bool{}
-			for idx := 0; idx < 4; idx++ {
+			for idx := range 4 {
 				snapshotName := uniquename.PrimaryPlacementResourceSnapshotName(placementPolicyName, placementPolicy.UID, idx)
 				gotSnapshot := &placementv1alpha1.PlacementResourceSnapshot{}
 				Eventually(func() error {
@@ -1796,7 +1795,7 @@ var _ = Describe("core ops (placement resource snapshots)", func() {
 				&placementv1alpha1.PlacementBinding{ObjectMeta: metav1.ObjectMeta{Name: placementBindingName, Namespace: appNamespaceName}},
 				placementPolicy,
 			}
-			for idx := 0; idx < 9; idx++ {
+			for idx := range 9 {
 				objs = append(objs, &placementv1alpha1.PlacementResourceSnapshot{ObjectMeta: metav1.ObjectMeta{
 					Name:      uniquename.PrimaryPlacementResourceSnapshotName(placementPolicyName, placementPolicy.UID, idx),
 					Namespace: appNamespaceName,
@@ -1843,7 +1842,7 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 					Labels:    map[string]string{"app": "demo"},
 				},
 				Spec: appsv1.DeploymentSpec{
-					Replicas: ptr.To(int32(2)),
+					Replicas: new(int32(2)),
 					Selector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": "demo"},
 					},
@@ -1936,8 +1935,8 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 					Kind:               "ClusterPlacementPolicy",
 					Name:               placementPolicyName,
 					UID:                placementPolicy.UID,
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(true),
+					Controller:         new(true),
+					BlockOwnerDeletion: new(true),
 				},
 			}
 			if diff := cmp.Diff(gotSnapshot.OwnerReferences, wantOwnerRefs); diff != "" {
@@ -2064,7 +2063,7 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 			deployment := &appsv1.Deployment{}
 			Expect(hubUncachedReader.Get(ctx, types.NamespacedName{Namespace: appNamespaceName, Name: deploymentName}, deployment)).To(Succeed(),
 				"Failed to get the Deployment")
-			deployment.Spec.Replicas = ptr.To(int32(3))
+			deployment.Spec.Replicas = new(int32(3))
 			deployment.Spec.Template.Spec.Containers[0].Image = "nginx:1.28"
 			Expect(hubClient.Update(ctx, deployment)).To(Succeed(), "Failed to update the Deployment")
 			waitForDeploymentsInCache(deployment)
@@ -2118,7 +2117,7 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 			}
 			gotDeployment := &appsv1.Deployment{}
 			Expect(json.Unmarshal(gotSnapshot.Spec.Resources[1].Manifest.Raw, gotDeployment)).To(Succeed(), "Failed to unmarshal the Deployment manifest")
-			Expect(gotDeployment.Spec.Replicas).To(Equal(ptr.To(int32(3))), "Unexpected replica count in the snapshotted Deployment")
+			Expect(gotDeployment.Spec.Replicas).To(Equal(new(int32(3))), "Unexpected replica count in the snapshotted Deployment")
 			Expect(gotDeployment.Spec.Template.Spec.Containers[0].Image).To(Equal("nginx:1.28"), "Unexpected image in the snapshotted Deployment")
 
 			// The previous snapshot should be left intact.
@@ -2252,8 +2251,8 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 					Kind:               "ClusterPlacementPolicy",
 					Name:               placementPolicyName,
 					UID:                placementPolicy.UID,
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(true),
+					Controller:         new(true),
+					BlockOwnerDeletion: new(true),
 				},
 			}
 			wantAnnotations := map[string]string{
@@ -2377,8 +2376,8 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 					Kind:               "ClusterPlacementPolicy",
 					Name:               placementPolicyName,
 					UID:                placementPolicy.UID,
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(true),
+					Controller:         new(true),
+					BlockOwnerDeletion: new(true),
 				},
 			}
 			wantAnnotations := map[string]string{
@@ -2450,7 +2449,7 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 			deployment := &appsv1.Deployment{}
 			Expect(hubUncachedReader.Get(ctx, types.NamespacedName{Namespace: appNamespaceName, Name: lastDeploymentName}, deployment)).To(Succeed(),
 				"Failed to get the Deployment")
-			deployment.Spec.Replicas = ptr.To(int32(3))
+			deployment.Spec.Replicas = new(int32(3))
 			deployment.Spec.Template.Spec.Containers[0].Image = "nginx:1.28"
 			Expect(hubClient.Update(ctx, deployment)).To(Succeed(), "Failed to update the Deployment")
 			waitForDeploymentsInCache(deployment)
@@ -2472,7 +2471,7 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 			Expect(lastSnapshot.Spec.Resources).To(HaveLen(1), "Unexpected number of resources in the last secondary snapshot")
 			gotDeployment := &appsv1.Deployment{}
 			Expect(json.Unmarshal(lastSnapshot.Spec.Resources[0].Manifest.Raw, gotDeployment)).To(Succeed(), "Failed to unmarshal the Deployment manifest")
-			Expect(gotDeployment.Spec.Replicas).To(Equal(ptr.To(int32(3))), "Unexpected replica count in the snapshotted Deployment")
+			Expect(gotDeployment.Spec.Replicas).To(Equal(new(int32(3))), "Unexpected replica count in the snapshotted Deployment")
 			Expect(gotDeployment.Spec.Template.Spec.Containers[0].Image).To(Equal("nginx:1.28"), "Unexpected image in the snapshotted Deployment")
 		})
 
@@ -2592,7 +2591,7 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 			// The error category is the first key-value pair in the error attributes.
 			gotErrAttrs := kferrors.Args(err)
 			Expect(gotErrAttrs).ToNot(BeEmpty(), "The error is not a KubeFleet error: %v", err)
-			wantErrCategoryAttrs := []interface{}{"errCategory", kferrors.ErrCategoryUser}
+			wantErrCategoryAttrs := []any{"errCategory", kferrors.ErrCategoryUser}
 			if diff := cmp.Diff(gotErrAttrs[:2], wantErrCategoryAttrs); diff != "" {
 				Fail(fmt.Sprintf("Error category attributes diff (-got +want):\n%s\nerror: %v", diff, err))
 			}
@@ -2656,8 +2655,8 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 					Kind:               "ClusterPlacementPolicy",
 					Name:               placementPolicyName,
 					UID:                placementPolicy.UID,
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(true),
+					Controller:         new(true),
+					BlockOwnerDeletion: new(true),
 				},
 			}
 			wantAnnotations := map[string]string{
@@ -2786,8 +2785,8 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 					Kind:               "ClusterPlacementPolicy",
 					Name:               placementPolicyName,
 					UID:                placementPolicy.UID,
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(true),
+					Controller:         new(true),
+					BlockOwnerDeletion: new(true),
 				},
 			}
 			if diff := cmp.Diff(gotSnapshot.OwnerReferences, wantOwnerRefs); diff != "" {
@@ -2885,7 +2884,7 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 				if len(gotErrAttrs) < 2 {
 					return fmt.Errorf("the error is not a KubeFleet error: %w", err)
 				}
-				wantErrCategoryAttrs := []interface{}{"errCategory", kferrors.ErrCategoryTransient}
+				wantErrCategoryAttrs := []any{"errCategory", kferrors.ErrCategoryTransient}
 				if diff := cmp.Diff(gotErrAttrs[:2], wantErrCategoryAttrs); diff != "" {
 					return fmt.Errorf("error category attributes diff (-got +want):\n%s\nerror: %w", diff, err)
 				}
@@ -2981,8 +2980,8 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 					Kind:               "ClusterPlacementPolicy",
 					Name:               placementPolicyName,
 					UID:                placementPolicy.UID,
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(true),
+					Controller:         new(true),
+					BlockOwnerDeletion: new(true),
 				},
 			}
 			wantAnnotations := map[string]string{
@@ -2990,7 +2989,7 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 				placementv1alpha1.PlacementResourceSnapshotOwnedByAnnotationKey:      placementPolicyName,
 			}
 
-			for subIdx := 0; subIdx < 4; subIdx++ {
+			for subIdx := range 4 {
 				snapshotName := uniquename.PrimaryPlacementResourceSnapshotName(placementPolicyName, placementPolicy.UID, 0)
 				wantLabels := map[string]string{
 					placementv1alpha1.PlacementResourceSnapshotOwnedByLabelKey:  placementPolicyName,
@@ -3185,8 +3184,8 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 					Kind:               "ClusterPlacementPolicy",
 					Name:               placementPolicyName,
 					UID:                placementPolicy.UID,
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(true),
+					Controller:         new(true),
+					BlockOwnerDeletion: new(true),
 				},
 			}
 			wantAnnotations := map[string]string{
@@ -3194,7 +3193,7 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 				placementv1alpha1.PlacementResourceSnapshotOwnedByAnnotationKey:      placementPolicyName,
 			}
 
-			for subIdx := 0; subIdx < 4; subIdx++ {
+			for subIdx := range 4 {
 				snapshotName := uniquename.PrimaryPlacementResourceSnapshotName(placementPolicyName, placementPolicy.UID, 0)
 				wantLabels := map[string]string{
 					placementv1alpha1.PlacementResourceSnapshotOwnedByLabelKey:  placementPolicyName,
@@ -3349,7 +3348,7 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 		})
 
 		It("can create four primary placement resource snapshots", func() {
-			for idx := 0; idx < 4; idx++ {
+			for idx := range 4 {
 				gotSnapshots := updateConfigMapAndSnapshot(fmt.Sprintf("value-%d", idx))
 				wantName := uniquename.PrimaryPlacementResourceSnapshotName(placementPolicyName, placementPolicy.UID, idx)
 				Expect(gotSnapshots[0].GetName()).To(Equal(wantName), "Unexpected name of the placement resource snapshot at index %d", idx)
@@ -3363,13 +3362,13 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 					Kind:               "ClusterPlacementPolicy",
 					Name:               placementPolicyName,
 					UID:                placementPolicy.UID,
-					Controller:         ptr.To(true),
-					BlockOwnerDeletion: ptr.To(true),
+					Controller:         new(true),
+					BlockOwnerDeletion: new(true),
 				},
 			}
 
 			seenHashes := map[string]bool{}
-			for idx := 0; idx < 4; idx++ {
+			for idx := range 4 {
 				snapshotName := uniquename.PrimaryPlacementResourceSnapshotName(placementPolicyName, placementPolicy.UID, idx)
 				gotSnapshot := &placementv1alpha1.ClusterPlacementResourceSnapshot{}
 				Eventually(func() error {
@@ -3537,7 +3536,7 @@ var _ = Describe("core ops (cluster placement resource snapshots)", func() {
 				&placementv1alpha1.ClusterPlacementBinding{ObjectMeta: metav1.ObjectMeta{Name: placementBindingName}},
 				placementPolicy,
 			}
-			for idx := 0; idx < 9; idx++ {
+			for idx := range 9 {
 				objs = append(objs, &placementv1alpha1.ClusterPlacementResourceSnapshot{ObjectMeta: metav1.ObjectMeta{
 					Name: uniquename.PrimaryPlacementResourceSnapshotName(placementPolicyName, placementPolicy.UID, idx),
 				}})
@@ -3557,7 +3556,7 @@ var _ = Describe("GC variants", func() {
 	Context("revision history limit changes", Ordered, func() {
 		configMapName := fmt.Sprintf(configMapNameTemplate, utils.RandStr())
 		placementPolicy := newPlacementPolicy(appNamespaceName, configMapNameSelector(configMapName))
-		placementPolicy.Spec.ResourceRevisionHistoryLimit = ptr.To(int32(5))
+		placementPolicy.Spec.ResourceRevisionHistoryLimit = new(int32(5))
 
 		// primarySnapshotNames returns the names of the primary snapshots at indices [from, to].
 		primarySnapshotNames := func(from, to int) []string {
@@ -3586,7 +3585,7 @@ var _ = Describe("GC variants", func() {
 		})
 
 		It("can create six snapshots", func() {
-			for idx := 0; idx < 6; idx++ {
+			for idx := range 6 {
 				createSnapshot(idx)
 			}
 			// No GC request has been enqueued yet, as each call has seen at most five snapshots.
@@ -3646,7 +3645,7 @@ var _ = Describe("GC variants", func() {
 		resourceSelector := configMapLabelSelector(groupLabels)
 		resourceSelector.Namespace = appNamespaceName
 		placementPolicy := newClusterPlacementPolicy(resourceSelector)
-		placementPolicy.Spec.ResourceRevisionHistoryLimit = ptr.To(int32(1))
+		placementPolicy.Spec.ResourceRevisionHistoryLimit = new(int32(1))
 
 		// The snapshot name depends on the UID of the placement policy; it is set once the policy is created.
 		var extraSecondarySnapshotName string
@@ -3729,7 +3728,7 @@ var _ = Describe("GC variants", func() {
 
 		AfterAll(func() {
 			var objs []client.Object
-			for idx := 0; idx < 4; idx++ {
+			for idx := range 4 {
 				for _, name := range snapshotSetNames(placementPolicy, idx, 3) {
 					objs = append(objs, placementResourceSnapshotObj("", name))
 				}
@@ -3782,13 +3781,13 @@ var _ = Describe("GC variants", func() {
 		})
 
 		It("should default the revision history limit to 3", func() {
-			Expect(placementPolicy.Spec.ResourceRevisionHistoryLimit).To(Equal(ptr.To(int32(3))), "Unexpected default revision history limit")
+			Expect(placementPolicy.Spec.ResourceRevisionHistoryLimit).To(Equal(new(int32(3))), "Unexpected default revision history limit")
 		})
 
 		It("should reject revision history limits out of range", func() {
 			for _, limit := range []int32{0, -1, 21} {
 				placementPolicyCopy := placementPolicy.DeepCopy()
-				placementPolicyCopy.Spec.ResourceRevisionHistoryLimit = ptr.To(limit)
+				placementPolicyCopy.Spec.ResourceRevisionHistoryLimit = new(limit)
 				err := hubClient.Update(ctx, placementPolicyCopy)
 				Expect(errors.IsInvalid(err)).To(BeTrue(), "Update with revision history limit %d = %v, want an invalid error", limit, err)
 				Expect(err.Error()).To(ContainSubstring(revisionHistoryLimitFieldPath), "Unexpected error message")
@@ -3796,7 +3795,7 @@ var _ = Describe("GC variants", func() {
 		})
 
 		It("should not enqueue GC requests within the limit", func() {
-			for idx := 0; idx < 4; idx++ {
+			for idx := range 4 {
 				createSnapshot(idx)
 				verifyGCRequests(drainGCRequests(pausedMgr), nil)
 			}
@@ -3809,7 +3808,7 @@ var _ = Describe("GC variants", func() {
 		})
 
 		It("should not pile up duplicate GC requests", func() {
-			for idx := 0; idx < 3; idx++ {
+			for range 3 {
 				snapshotAndVerify(pausedMgr, placementPolicy, latestSnapshotNames)
 				Expect(pausedMgr.gcwq.Len()).To(Equal(2), "Unexpected number of GC requests in the workqueue")
 			}
@@ -3827,31 +3826,31 @@ var _ = Describe("GC variants", func() {
 			},
 			{
 				name:     "0 (treated as 1)",
-				limit:    ptr.To(int32(0)),
+				limit:    new(int32(0)),
 				wantIdxs: []int{0, 1, 2, 3},
 			},
 			{
 				name:     "-1 (treated as 1)",
-				limit:    ptr.To(int32(-1)),
+				limit:    new(int32(-1)),
 				wantIdxs: []int{0, 1, 2, 3},
 			},
 			{
 				name:     "1",
-				limit:    ptr.To(int32(1)),
+				limit:    new(int32(1)),
 				wantIdxs: []int{0, 1, 2, 3},
 			},
 			{
 				name:     "4",
-				limit:    ptr.To(int32(4)),
+				limit:    new(int32(4)),
 				wantIdxs: []int{0},
 			},
 			{
 				name:  "5",
-				limit: ptr.To(int32(5)),
+				limit: new(int32(5)),
 			},
 			{
 				name:  "20",
-				limit: ptr.To(int32(20)),
+				limit: new(int32(20)),
 			},
 		}
 		for _, tc := range inMemoryLimitTestCases {
@@ -3887,7 +3886,7 @@ var _ = Describe("GC variants", func() {
 		var configMapNames []string
 
 		placementPolicy := newPlacementPolicy(appNamespaceName, configMapLabelSelector(groupLabels))
-		placementPolicy.Spec.ResourceRevisionHistoryLimit = ptr.To(int32(1))
+		placementPolicy.Spec.ResourceRevisionHistoryLimit = new(int32(1))
 
 		var pausedMgr *Manager
 		var gcRequestForSnapshot0 snapshotGarbageCollectionRequest
@@ -4030,7 +4029,7 @@ var _ = Describe("GC variants", func() {
 		placementBindingName := fmt.Sprintf(placementBindingNameTemplate, utils.RandStr())
 		orphanedPlacementBindingName := fmt.Sprintf(placementBindingNameTemplate, utils.RandStr())
 		placementPolicy := newPlacementPolicy(appNamespaceName, configMapNameSelector(configMapName))
-		placementPolicy.Spec.ResourceRevisionHistoryLimit = ptr.To(int32(1))
+		placementPolicy.Spec.ResourceRevisionHistoryLimit = new(int32(1))
 
 		var pausedMgr *Manager
 
@@ -4075,7 +4074,7 @@ var _ = Describe("GC variants", func() {
 
 		It("can create a snapshot at index 0, and a placement binding that uses it", func() {
 			snapshotAndVerify(resourceSnapshotManager, placementPolicy, []string{primarySnapshotName(0)})
-			createPlacementBinding(placementPolicy, placementBindingName, primarySnapshotName(0), ptr.To(placementPolicy.UID))
+			createPlacementBinding(placementPolicy, placementBindingName, primarySnapshotName(0), new(placementPolicy.UID))
 			waitForPlacementBindingCntInCache(placementPolicy, primarySnapshotName(0), 1)
 		})
 
@@ -4156,17 +4155,17 @@ var _ = Describe("GC variants", func() {
 
 		appPlacementPolicy := newPlacementPolicy(appNamespaceName, configMapNameSelector(configMapName))
 		appPlacementPolicy.Name = placementPolicyName
-		appPlacementPolicy.Spec.ResourceRevisionHistoryLimit = ptr.To(int32(1))
+		appPlacementPolicy.Spec.ResourceRevisionHistoryLimit = new(int32(1))
 
 		otherPlacementPolicy := newPlacementPolicy(otherNamespaceName, configMapNameSelector(configMapName))
 		otherPlacementPolicy.Name = placementPolicyName
-		otherPlacementPolicy.Spec.ResourceRevisionHistoryLimit = ptr.To(int32(1))
+		otherPlacementPolicy.Spec.ResourceRevisionHistoryLimit = new(int32(1))
 
 		resourceSelector := configMapNameSelector(configMapName)
 		resourceSelector.Namespace = otherNamespaceName
 		clusterPlacementPolicy := newClusterPlacementPolicy(resourceSelector)
 		clusterPlacementPolicy.Name = placementPolicyName
-		clusterPlacementPolicy.Spec.ResourceRevisionHistoryLimit = ptr.To(int32(1))
+		clusterPlacementPolicy.Spec.ResourceRevisionHistoryLimit = new(int32(1))
 
 		placementPolicies := []placementv1alpha1.PlacementPolicyAccessor{appPlacementPolicy, otherPlacementPolicy, clusterPlacementPolicy}
 
@@ -4204,7 +4203,7 @@ var _ = Describe("GC variants", func() {
 			// The placement binding refers to the snapshot name of the placement policy in the app namespace, so
 			// that only the namespace sets it apart from a placement binding that uses that snapshot.
 			appSnapshotName := primarySnapshotNames(appPlacementPolicy, 0)[0]
-			createPlacementBinding(otherPlacementPolicy, placementBindingName, appSnapshotName, ptr.To(otherPlacementPolicy.UID))
+			createPlacementBinding(otherPlacementPolicy, placementBindingName, appSnapshotName, new(otherPlacementPolicy.UID))
 			waitForPlacementBindingCntInCache(otherPlacementPolicy, appSnapshotName, 1)
 			// The same lookup in the app namespace finds no placement binding.
 			waitForPlacementBindingCntInCache(appPlacementPolicy, appSnapshotName, 0)

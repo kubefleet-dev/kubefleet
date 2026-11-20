@@ -55,8 +55,8 @@ func init() {
 	// of one generator. The default configurations do not cover all generators, as some generators must be
 	// enabled explicitly.
 	t := reflect.TypeFor[PolicyGeneratorConfigs]()
-	for i := range t.NumField() {
-		fieldType := t.Field(i).Type
+	for field := range t.Fields() {
+		fieldType := field.Type
 		if fieldType.Kind() != reflect.Pointer {
 			continue
 		}
@@ -120,8 +120,7 @@ func preparePolicyGenerators(policyGeneratorConfigs *PolicyGeneratorConfigs) (ma
 	enabledPolicyGenerators := make(map[string]ValidatingAdmissionPolicyGenerator)
 
 	v := reflect.ValueOf(policyGeneratorConfigs).Elem()
-	for i := range v.NumField() {
-		field := v.Field(i)
+	for _, field := range v.Fields() {
 		if field.IsNil() {
 			continue
 		}

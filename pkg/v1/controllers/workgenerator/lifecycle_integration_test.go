@@ -543,7 +543,7 @@ var _ = Describe("binding a placement policy to multiple clusters", func() {
 
 			It("should generate the work objects of the other placement binding, with the same names", func() {
 				Eventually(other.worksMatchActual(0, nil), eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to generate the work objects of the other placement binding")
-				for subIdx := 0; subIdx < 2; subIdx++ {
+				for subIdx := range 2 {
 					Expect(other.workName(subIdx)).To(Equal(f.workName(subIdx)), "The work objects of the two placement bindings should have the same names")
 				}
 			})
