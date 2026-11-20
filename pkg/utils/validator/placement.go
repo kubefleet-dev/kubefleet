@@ -47,10 +47,16 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/authorization"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/resourceeligibility"
 )
 
 var ResourceInformer informer.Manager
 var RestMapper meta.RESTMapper
+
+// ResourceEligibilityChecker reports which namespaces are eligible for placement; the webhook uses it to deny
+// placements that select a namespace by name which can never be placed (e.g., a reserved namespace).
+// The namespace eligibility check is skipped if the checker is not set.
+var ResourceEligibilityChecker resourceeligibility.Checker
 
 var (
 	invalidTolerationErrFmt      = "invalid toleration %+v: %s"
@@ -121,13 +127,30 @@ var supportedPropertyOperators = map[placementv1beta1.PropertySelectorOperator]o
 // hasNamespaceWithResourceSelectorsMode checks if any namespace selector has NamespaceWithResourceSelectors mode.
 func hasNamespaceWithResourceSelectorsMode(resourceSelectors []placementv1beta1.ResourceSelectorTerm) bool {
 	for _, selector := range resourceSelectors {
-		if selector.Group == utils.NamespaceGVK.Group && selector.Version == utils.NamespaceGVK.Version && selector.Kind == utils.NamespaceGVK.Kind {
-			if selector.SelectionScope == placementv1beta1.NamespaceWithResourceSelectors {
-				return true
-			}
+		if isNamespaceSelector(selector) && selector.SelectionScope == placementv1beta1.NamespaceWithResourceSelectors {
+			return true
 		}
 	}
 	return false
+}
+
+// isNamespaceSelector checks if a resource selector selects namespaces.
+func isNamespaceSelector(selector placementv1beta1.ResourceSelectorTerm) bool {
+	return selector.Group == utils.NamespaceGVK.Group && selector.Version == utils.NamespaceGVK.Version && selector.Kind == utils.NamespaceGVK.Kind
+}
+
+// validateSelectedNamespaceName checks if a namespace selected by name in a ClusterResourcePlacement can be placed.
+//
+// The placement controller rejects such selectors as well when it resolves the selected resources; the check is
+// repeated here so that the placement is denied upfront instead of being accepted and then never scheduled.
+func validateSelectedNamespaceName(name string) error {
+	if ResourceEligibilityChecker != nil && !ResourceEligibilityChecker.AllowsNamespace(name) {
+		return fmt.Errorf("namespace %s and any resource within it are not allowed for placement", name)
+	}
+	if name == metav1.NamespaceDefault {
+		return fmt.Errorf("the default namespace cannot be selected for placement; to place resources within the default namespace, consider using the ResourcePlacement API")
+	}
+	return nil
 }
 
 // validatePlacement validates a placement object (either ClusterResourcePlacement or ResourcePlacement).
@@ -146,6 +169,12 @@ func validatePlacement(name string, resourceSelectors []placementv1beta1.Resourc
 				allErr = append(allErr, fmt.Errorf("the labelSelector and name fields are mutually exclusive in selector %+v", selector))
 			}
 			allErr = append(allErr, validateLabelSelector(selector.LabelSelector, "resource selector"))
+		}
+
+		if isClusterScoped && isNamespaceSelector(selector) && len(selector.Name) != 0 {
+			if err := validateSelectedNamespaceName(selector.Name); err != nil {
+				allErr = append(allErr, err)
+			}
 		}
 
 		gk := schema.GroupKind{
