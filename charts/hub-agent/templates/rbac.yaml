@@ -179,9 +179,10 @@ rules:
   - apiGroups: ["placement.kubefleet.dev"]
     resources: ["placementresourcesnapshots", "clusterplacementresourcesnapshots"]
     verbs: ["get", "list", "watch", "create", "delete"]
+  # patch: the work generator merge-patches the sync strategy of Works when only the strategy changes.
   - apiGroups: ["placement.kubefleet.dev"]
     resources: ["works"]
-    verbs: ["get", "list", "watch", "create", "update", "delete"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   # Secondary Works set blockOwnerDeletion on their primary Work.
   - apiGroups: ["placement.kubefleet.dev"]
     resources: ["works/finalizers"]

@@ -21,7 +21,9 @@ import (
 	"fmt"
 	"sort"
 
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -199,15 +201,26 @@ func (m *Manager) retrieveResourceByName(
 		} else {
 			obj, err = m.hubDynamicInformerManager.Lister(gvr).ByNamespace(namespace).Get(resourceSelector.Name)
 		}
-		if err != nil {
+		switch {
+		case apierrors.IsNotFound(err):
+			// The cache might be stale (e.g., the resource has just been created); confirm with a read from the
+			// API server directly before reporting the resource as absent.
+			klog.V(2).InfoS("The selected resource is not found in the cache; retrieving the resource directly from the API server",
+				"gvr", gvr, "namespace", namespace, "name", resourceSelector.Name)
+			resource, err = m.retrieveResourceByNameWithNoCache(ctx, gvr, namespace, resourceSelector.Name)
+			if err != nil {
+				return placementv1alpha1.SnapshottedResource{}, err
+			}
+		case err != nil:
 			return placementv1alpha1.SnapshottedResource{}, errors.NewAPIServerError(err, "failed to get selected resource", true,
 				"gvr", gvr, "namespace", namespace, "name", resourceSelector.Name)
-		}
-		var ok bool
-		resource, ok = obj.(*unstructured.Unstructured)
-		if !ok {
-			return placementv1alpha1.SnapshottedResource{}, errors.NewUnexpectedError(nil, "failed to convert the retrieved resource to unstructured",
-				"gvr", gvr, "namespace", namespace, "name", resourceSelector.Name)
+		default:
+			var ok bool
+			resource, ok = obj.(*unstructured.Unstructured)
+			if !ok {
+				return placementv1alpha1.SnapshottedResource{}, errors.NewUnexpectedError(nil, "failed to convert the retrieved resource to unstructured",
+					"gvr", gvr, "namespace", namespace, "name", resourceSelector.Name)
+			}
 		}
 	} else {
 		// No informer is set up for the selected resource, or the informer has not been synced yet.
@@ -215,14 +228,9 @@ func (m *Manager) retrieveResourceByName(
 		// As a fallback, retrieve the resource directly from the API server.
 		klog.V(2).InfoS("Informer for the selected resource is not set up or not synced; retrieving the resource directly from the API server",
 			"gvr", gvr)
-		if namespace == "" {
-			resource, err = m.hubDynamicClient.Resource(gvr).Get(ctx, resourceSelector.Name, metav1.GetOptions{})
-		} else {
-			resource, err = m.hubDynamicClient.Resource(gvr).Namespace(namespace).Get(ctx, resourceSelector.Name, metav1.GetOptions{})
-		}
+		resource, err = m.retrieveResourceByNameWithNoCache(ctx, gvr, namespace, resourceSelector.Name)
 		if err != nil {
-			return placementv1alpha1.SnapshottedResource{}, errors.NewAPIServerError(err, "failed to get selected resource directly from the API server", false,
-				"gvr", gvr, "namespace", namespace, "name", resourceSelector.Name)
+			return placementv1alpha1.SnapshottedResource{}, err
 		}
 	}
 
@@ -261,6 +269,31 @@ func (m *Manager) retrieveResourceByName(
 				"gvr", gvr, "namespace", namespace, "name", resourceSelector.Name)
 	}
 	return snapshottedResource, nil
+}
+
+// retrieveResourceByNameWithNoCache retrieves a resource selected by name directly from the API server, bypassing the
+// cache. As the read is authoritative, a not found error is reported as a user error (wrapping the original error).
+func (m *Manager) retrieveResourceByNameWithNoCache(
+	ctx context.Context,
+	gvr schema.GroupVersionResource,
+	namespace, name string,
+) (*unstructured.Unstructured, error) {
+	var resource *unstructured.Unstructured
+	var err error
+	if namespace == "" {
+		resource, err = m.hubDynamicClient.Resource(gvr).Get(ctx, name, metav1.GetOptions{})
+	} else {
+		resource, err = m.hubDynamicClient.Resource(gvr).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	}
+	switch {
+	case apierrors.IsNotFound(err):
+		return nil, errors.NewUserError(err, "selected resource does not exist",
+			"gvr", gvr, "namespace", namespace, "name", name)
+	case err != nil:
+		return nil, errors.NewAPIServerError(err, "failed to get selected resource directly from the API server", false,
+			"gvr", gvr, "namespace", namespace, "name", name)
+	}
+	return resource, nil
 }
 
 func (m *Manager) retrieveResourcesByLabelSelector(
@@ -458,6 +491,45 @@ func snapshotResource(resource *unstructured.Unstructured) (placementv1alpha1.Sn
 
 	// Remove the status field.
 	unstructured.RemoveNestedField(resourceCopy.Object, "status")
+
+	// Apply resource-specific transformations as needed.
+	switch resourceCopy.GroupVersionKind() {
+	case corev1.SchemeGroupVersion.WithKind(utils.ServiceKind):
+		// Remove the cluster IP(s) allocated by the hub cluster, unless the Service is headless.
+		if clusterIP, exist, _ := unstructured.NestedString(resourceCopy.Object, "spec", "clusterIP"); exist && clusterIP != corev1.ClusterIPNone {
+			unstructured.RemoveNestedField(resourceCopy.Object, "spec", "clusterIP")
+			unstructured.RemoveNestedField(resourceCopy.Object, "spec", "clusterIPs")
+		}
+		// Remove all the node ports allocated by the hub cluster, if any.
+		unstructured.RemoveNestedField(resourceCopy.Object, "spec", "healthCheckNodePort")
+
+		vals, found, err := unstructured.NestedFieldNoCopy(resourceCopy.Object, "spec", "ports")
+		if err != nil {
+			return placementv1alpha1.SnapshottedResource{}, errors.NewUnexpectedError(err, "failed to get the ports field in the Service object",
+				"resource", klog.KObj(resourceCopy))
+		}
+		if found {
+			if ports, ok := vals.([]any); ok {
+				for i := range ports {
+					if port, ok := ports[i].(map[string]any); ok {
+						delete(port, "nodePort")
+					}
+				}
+			}
+		}
+	case batchv1.SchemeGroupVersion.WithKind(utils.JobKind):
+		if manualSelector, exist, _ := unstructured.NestedBool(resourceCopy.Object, "spec", "manualSelector"); !exist || !manualSelector {
+			// Remove the selector field and labels added by the API server if the Job is not created with a manual selector,
+			// as their values would conflict with the ones generated by the member cluster API server.
+			// https://github.com/kubernetes/kubernetes/blob/d4fde1e92a83cb533ae63b3abe9d49f08efb7a2f/pkg/registry/batch/job/strategy.go#L219
+			// Kubernetes used to add a label called "controller-uid", but has switched to "batch.kubernetes.io/controller-uid" since 1.27.
+			unstructured.RemoveNestedField(resourceCopy.Object, "spec", "selector", "matchLabels", "controller-uid")
+			unstructured.RemoveNestedField(resourceCopy.Object, "spec", "selector", "matchLabels", "batch.kubernetes.io/controller-uid")
+			unstructured.RemoveNestedField(resourceCopy.Object, "spec", "template", "metadata", "creationTimestamp")
+			unstructured.RemoveNestedField(resourceCopy.Object, "spec", "template", "metadata", "labels", "controller-uid")
+			unstructured.RemoveNestedField(resourceCopy.Object, "spec", "template", "metadata", "labels", "batch.kubernetes.io/controller-uid")
+		}
+	}
 
 	resourceCopyRawData, err := resourceCopy.MarshalJSON()
 	if err != nil {

@@ -28,11 +28,13 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -40,6 +42,7 @@ import (
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	kferrors "github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/managers/placementresourcesnapshot/uniquename"
 	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/fieldindexers"
 )
 
@@ -151,6 +154,119 @@ func waitForDeploymentsRemovedFromCache(deployments ...*appsv1.Deployment) {
 	}
 }
 
+// newLoadBalancerService returns a LoadBalancer Service with two ports and the Local external traffic policy in
+// the given namespace. For such a Service, the API server fills in the cluster IP(s), a node port for each port,
+// and the health check node port.
+func newLoadBalancerService(name, namespace string) *corev1.Service {
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels:    map[string]string{"app": "demo"},
+		},
+		Spec: corev1.ServiceSpec{
+			Type:                  corev1.ServiceTypeLoadBalancer,
+			ExternalTrafficPolicy: corev1.ServiceExternalTrafficPolicyLocal,
+			Selector:              map[string]string{"app": "demo"},
+			Ports: []corev1.ServicePort{
+				{
+					Name:       "http",
+					Protocol:   corev1.ProtocolTCP,
+					Port:       80,
+					TargetPort: intstr.FromInt32(8080),
+				},
+				{
+					Name:       "https",
+					Protocol:   corev1.ProtocolTCP,
+					Port:       443,
+					TargetPort: intstr.FromInt32(8443),
+				},
+			},
+		},
+	}
+}
+
+// verifyServiceFieldsFilledIn verifies that the API server has filled in the cluster IP(s), the node ports, and
+// the health check node port of the given Service.
+func verifyServiceFieldsFilledIn(service *corev1.Service) {
+	GinkgoHelper()
+
+	Expect(service.Spec.ClusterIP).ToNot(BeElementOf("", corev1.ClusterIPNone), "The API server has not assigned a cluster IP")
+	Expect(service.Spec.ClusterIPs).ToNot(BeEmpty(), "The API server has not assigned any cluster IPs")
+	Expect(service.Spec.HealthCheckNodePort).ToNot(BeZero(), "The API server has not assigned a health check node port")
+	for _, port := range service.Spec.Ports {
+		Expect(port.NodePort).ToNot(BeZero(), "The API server has not assigned a node port to port %s", port.Name)
+	}
+}
+
+// serviceSpecWithoutFilledInFields returns a copy of the given Service spec without the fields that the API
+// server fills in and the snapshot strips: the cluster IP(s), the node ports, and the health check node port.
+func serviceSpecWithoutFilledInFields(spec *corev1.ServiceSpec) corev1.ServiceSpec {
+	specCopy := spec.DeepCopy()
+	specCopy.ClusterIP = ""
+	specCopy.ClusterIPs = nil
+	specCopy.HealthCheckNodePort = 0
+	for idx := range specCopy.Ports {
+		specCopy.Ports[idx].NodePort = 0
+	}
+	return *specCopy
+}
+
+// newJob returns a minimal Job, without a manual selector, with the given name in the given namespace.
+func newJob(name, namespace string) *batchv1.Job {
+	return &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels:    map[string]string{"app": "demo"},
+		},
+		Spec: batchv1.JobSpec{
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": "demo"},
+				},
+				Spec: corev1.PodSpec{
+					RestartPolicy: corev1.RestartPolicyNever,
+					Containers: []corev1.Container{
+						{
+							Name:  "busybox",
+							Image: "busybox:1.36",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// verifyJobControllerUIDLabelsAdded verifies that the API server has added the controller UID labels, set to the
+// UID of the given Job: the current label to both its selector and its pod template, and the legacy label to its
+// pod template.
+func verifyJobControllerUIDLabelsAdded(job *batchv1.Job) {
+	GinkgoHelper()
+
+	Expect(job.Spec.Selector).ToNot(BeNil(), "The API server has not generated a selector for the Job")
+	Expect(job.Spec.Selector.MatchLabels).To(HaveKeyWithValue(batchv1.ControllerUidLabel, string(job.UID)),
+		"The API server has not added the controller UID label to the selector of the Job")
+	Expect(job.Spec.Template.Labels).To(HaveKeyWithValue(batchv1.ControllerUidLabel, string(job.UID)),
+		"The API server has not added the controller UID label to the pod template of the Job")
+	Expect(job.Spec.Template.Labels).To(HaveKeyWithValue(legacyJobControllerUIDLabel, string(job.UID)),
+		"The API server has not added the legacy controller UID label to the pod template of the Job")
+}
+
+// jobSpecWithoutControllerUIDLabels returns a copy of the given Job spec without the controller UID labels (both
+// the current and the legacy ones) that the API server adds and the snapshot strips.
+func jobSpecWithoutControllerUIDLabels(spec *batchv1.JobSpec) batchv1.JobSpec {
+	specCopy := spec.DeepCopy()
+	for _, key := range []string{legacyJobControllerUIDLabel, batchv1.ControllerUidLabel} {
+		if specCopy.Selector != nil {
+			delete(specCopy.Selector.MatchLabels, key)
+		}
+		delete(specCopy.Template.Labels, key)
+	}
+	return *specCopy
+}
+
 // placementResourceSnapshotObj returns an (empty) placement resource snapshot object of the matching scope with
 // the given name; it is used for retrievals and clean-ups.
 func placementResourceSnapshotObj(namespace, name string) placementv1alpha1.PlacementResourceSnapshotAccessor {
@@ -166,7 +282,7 @@ func primarySnapshotObjs(placementPolicy placementv1alpha1.PlacementPolicyAccess
 	objs := make([]client.Object, 0, cnt)
 	for idx := 0; idx < cnt; idx++ {
 		objs = append(objs, placementResourceSnapshotObj(placementPolicy.GetNamespace(),
-			uniqueNameForPrimaryPlacementResourceSnapshot(placementPolicy.GetName(), idx)))
+			uniquename.PrimaryPlacementResourceSnapshotName(placementPolicy.GetName(), placementPolicy.GetUID(), idx)))
 	}
 	return objs
 }
@@ -210,14 +326,14 @@ func createDeletingConfigMap(name, namespace string, labels map[string]string) {
 	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to mark the config map for deletion")
 }
 
-// deleteObjectsAndWait deletes the given objects and waits until they are gone.
+// deleteObjectsAndWait deletes the given objects (with the given delete options, if any) and waits until they are gone.
 //
 // The envtest environment does not run the garbage collector; objects must be removed explicitly.
-func deleteObjectsAndWait(objs []client.Object) {
+func deleteObjectsAndWait(objs []client.Object, opts ...client.DeleteOption) {
 	GinkgoHelper()
 
 	for _, obj := range objs {
-		Expect(client.IgnoreNotFound(hubClient.Delete(ctx, obj))).To(Succeed(), "Failed to delete object %T %s", obj, client.ObjectKeyFromObject(obj))
+		Expect(client.IgnoreNotFound(hubClient.Delete(ctx, obj, opts...))).To(Succeed(), "Failed to delete object %T %s", obj, client.ObjectKeyFromObject(obj))
 		Eventually(func() bool {
 			return errors.IsNotFound(hubUncachedReader.Get(ctx, client.ObjectKeyFromObject(obj), obj))
 		}, eventuallyDuration, eventuallyInterval).Should(BeTrue(), "Failed to remove object %T %s", obj, client.ObjectKeyFromObject(obj))
@@ -324,7 +440,7 @@ func verifyReturnedPrimarySnapshot(
 	Expect(err).ToNot(HaveOccurred(), "Failed to snapshot resources")
 	Expect(isUpToDate).To(BeTrue(), "The placement resource snapshot is not up-to-date")
 	Expect(gotSnapshots).To(HaveLen(1), "Unexpected number of placement resource snapshots")
-	wantName := uniqueNameForPrimaryPlacementResourceSnapshot(placementPolicy.GetName(), wantIdx)
+	wantName := uniquename.PrimaryPlacementResourceSnapshotName(placementPolicy.GetName(), placementPolicy.GetUID(), wantIdx)
 	Expect(gotSnapshots[0].GetName()).To(Equal(wantName), "Unexpected name of the placement resource snapshot")
 }
 
@@ -345,14 +461,14 @@ func getSnapshotFromCache(namespace, name string) placementv1alpha1.PlacementRes
 func getPrimarySnapshotFromCache(placementPolicy placementv1alpha1.PlacementPolicyAccessor, idx int) placementv1alpha1.PlacementResourceSnapshotAccessor {
 	GinkgoHelper()
 
-	return getSnapshotFromCache(placementPolicy.GetNamespace(), uniqueNameForPrimaryPlacementResourceSnapshot(placementPolicy.GetName(), idx))
+	return getSnapshotFromCache(placementPolicy.GetNamespace(), uniquename.PrimaryPlacementResourceSnapshotName(placementPolicy.GetName(), placementPolicy.GetUID(), idx))
 }
 
 // verifyNoPrimarySnapshotAtIdx verifies that no primary placement resource snapshot exists at the given index.
 func verifyNoPrimarySnapshotAtIdx(placementPolicy placementv1alpha1.PlacementPolicyAccessor, idx int) {
 	GinkgoHelper()
 
-	name := uniqueNameForPrimaryPlacementResourceSnapshot(placementPolicy.GetName(), idx)
+	name := uniquename.PrimaryPlacementResourceSnapshotName(placementPolicy.GetName(), placementPolicy.GetUID(), idx)
 	err := hubUncachedReader.Get(ctx, types.NamespacedName{Namespace: placementPolicy.GetNamespace(), Name: name},
 		placementResourceSnapshotObj(placementPolicy.GetNamespace(), name))
 	Expect(errors.IsNotFound(err)).To(BeTrue(), "Placement resource snapshot %s was created unexpectedly: %v", name, err)
@@ -456,6 +572,32 @@ func createDecoySnapshot(namespace, name string, labels, annotations map[string]
 	decoy.SetFinalizers(finalizers)
 	Expect(hubClient.Create(ctx, decoy)).To(Succeed(), "Failed to create the decoy placement resource snapshot %s", name)
 	return decoy
+}
+
+// createOwnedDecoySnapshot creates a decoy (see createDecoySnapshot) in the namespace of the given placement policy,
+// with a controller owner reference to the placement policy, the same way as the snapshots that the manager creates.
+//
+// The manager treats an indexed primary snapshot without owner references as a leftover; decoys that mimic the
+// snapshots of a placement policy must be owned by the placement policy.
+func createOwnedDecoySnapshot(placementPolicy placementv1alpha1.PlacementPolicyAccessor, name string, labels, annotations map[string]string) placementv1alpha1.PlacementResourceSnapshotAccessor {
+	GinkgoHelper()
+
+	decoy := placementResourceSnapshotObj(placementPolicy.GetNamespace(), name)
+	decoy.SetLabels(labels)
+	decoy.SetAnnotations(annotations)
+	decoy.SetOwnerReferences(decoyOwnerRefs(placementPolicy))
+	Expect(hubClient.Create(ctx, decoy)).To(Succeed(), "Failed to create the decoy placement resource snapshot %s", name)
+	return decoy
+}
+
+// decoyOwnerRefs returns the owner references of a placement resource snapshot that the given placement policy
+// controls.
+func decoyOwnerRefs(placementPolicy placementv1alpha1.PlacementPolicyAccessor) []metav1.OwnerReference {
+	kind := placementv1alpha1.PlacementPolicyKind
+	if placementPolicy.GetNamespace() == "" {
+		kind = placementv1alpha1.ClusterPlacementPolicyKind
+	}
+	return []metav1.OwnerReference{*metav1.NewControllerRef(placementPolicy, placementv1alpha1.GroupVersion.WithKind(kind))}
 }
 
 // decoyPrimaryLabels returns the labels of a primary placement resource snapshot; the values are strings so that
@@ -685,20 +827,22 @@ func placementPolicyNameOfLen(l int) string {
 	return strings.Repeat(placementPolicyNameFillerLetter, l-len(suffix)-1) + "-" + suffix
 }
 
-// verifySnapshotName verifies that a generated placement resource snapshot name is valid, and that it is plain or
-// hashed as wanted.
-func verifySnapshotName(gotName, plainName, hashedNamePattern string, wantHashed bool) {
+// verifySnapshotName verifies that a generated placement resource snapshot name is valid and ends with a hash, and
+// that the placement policy name segment in it is sanitized (i.e., with dots dropped and/or truncated) only when
+// wanted. unsanitizedNamePrefix is the wanted snapshot name minus the hash suffix, should no sanitization occur.
+func verifySnapshotName(gotName, unsanitizedNamePrefix, hashedNamePattern string, wantSanitized bool) {
 	GinkgoHelper()
 
 	Expect(validation.IsDNS1123Subdomain(gotName)).To(BeEmpty(), "Snapshot name %s is not a valid DNS subdomain", gotName)
 	Expect(len(gotName)).To(BeNumerically("<=", wantMaxSnapshotNameLen), "Snapshot name %s is too long", gotName)
-	if !wantHashed {
-		Expect(gotName).To(Equal(plainName), "Snapshot name is hashed unexpectedly")
+	Expect(gotName).ToNot(ContainSubstring("."), "Snapshot name %s contains dots", gotName)
+	Expect(gotName).To(MatchRegexp(hashedNamePattern), "Snapshot name %s does not end with a hash", gotName)
+	if !wantSanitized {
+		Expect(gotName).To(HavePrefix(unsanitizedNamePrefix), "Snapshot name %s is sanitized unexpectedly", gotName)
+		Expect(gotName[len(unsanitizedNamePrefix):]).To(MatchRegexp(wantHashSuffixPattern), "Unexpected hash suffix of snapshot name %s", gotName)
 		return
 	}
-	Expect(gotName).ToNot(Equal(plainName), "Snapshot name is not hashed")
-	Expect(gotName).ToNot(ContainSubstring("."), "Hashed snapshot name %s contains dots", gotName)
-	Expect(gotName).To(MatchRegexp(hashedNamePattern), "Hashed snapshot name %s does not end with a hash", gotName)
+	Expect(gotName).ToNot(HavePrefix(unsanitizedNamePrefix), "Snapshot name %s is not sanitized", gotName)
 }
 
 // verifyOwnedByLabelVal verifies the value of the owned-by label for a placement policy.
@@ -824,9 +968,9 @@ func verifyGCRequests(gotReqs, wantReqs []snapshotGarbageCollectionRequest) {
 // snapshotSetNames returns the names of the primary placement resource snapshot at the given index and its
 // secondary snapshots, given the total number of snapshots at the index.
 func snapshotSetNames(placementPolicy placementv1alpha1.PlacementPolicyAccessor, idx, cnt int) []string {
-	names := []string{uniqueNameForPrimaryPlacementResourceSnapshot(placementPolicy.GetName(), idx)}
+	names := []string{uniquename.PrimaryPlacementResourceSnapshotName(placementPolicy.GetName(), placementPolicy.GetUID(), idx)}
 	for subIdx := 1; subIdx < cnt; subIdx++ {
-		names = append(names, uniqueNameForSecondaryPlacementResourceSnapshot(placementPolicy.GetName(), idx, subIdx))
+		names = append(names, uniquename.SecondaryPlacementResourceSnapshotName(placementPolicy.GetName(), placementPolicy.GetUID(), idx, subIdx))
 	}
 	return names
 }
@@ -998,4 +1142,68 @@ func updateRevisionHistoryLimit(placementPolicy placementv1alpha1.PlacementPolic
 
 	placementPolicy.GetSpec().ResourceRevisionHistoryLimit = ptr.To(limit)
 	Expect(hubClient.Update(ctx, placementPolicy)).To(Succeed(), "Failed to update the revision history limit of the placement policy")
+}
+
+// recreatePlacementPolicy deletes the given placement policy, and creates a new one with the same name and spec; it
+// returns the new placement policy, which has a different UID.
+//
+// The envtest environment does not run the Kubernetes GC; the placement resource snapshots of the deleted placement
+// policy stay, along with their owner references (if any).
+func recreatePlacementPolicy(placementPolicy placementv1alpha1.PlacementPolicyAccessor) placementv1alpha1.PlacementPolicyAccessor {
+	GinkgoHelper()
+
+	previousUID := placementPolicy.GetUID()
+	deleteObjectsAndWait([]client.Object{placementPolicy})
+
+	objectMeta := metav1.ObjectMeta{Name: placementPolicy.GetName(), Namespace: placementPolicy.GetNamespace()}
+	var recreatedPlacementPolicy placementv1alpha1.PlacementPolicyAccessor
+	if placementPolicy.GetNamespace() == "" {
+		recreatedPlacementPolicy = &placementv1alpha1.ClusterPlacementPolicy{ObjectMeta: objectMeta, Spec: *placementPolicy.GetSpec().DeepCopy()}
+	} else {
+		recreatedPlacementPolicy = &placementv1alpha1.PlacementPolicy{ObjectMeta: objectMeta, Spec: *placementPolicy.GetSpec().DeepCopy()}
+	}
+	Expect(hubClient.Create(ctx, recreatedPlacementPolicy)).To(Succeed(), "Failed to re-create the placement policy")
+	Expect(recreatedPlacementPolicy.GetUID()).ToNot(Equal(previousUID), "The re-created placement policy has the same UID")
+	return recreatedPlacementPolicy
+}
+
+// setSnapshotOwnerRefs sets the owner references of a placement resource snapshot (nil removes all of them), and
+// waits until the cache has observed the change, as the manager reads placement resource snapshots from the cache.
+func setSnapshotOwnerRefs(namespace, name string, ownerRefs []metav1.OwnerReference) {
+	GinkgoHelper()
+
+	key := types.NamespacedName{Namespace: namespace, Name: name}
+	Eventually(func() error {
+		snapshot := placementResourceSnapshotObj(namespace, name)
+		if err := hubUncachedReader.Get(ctx, key, snapshot); err != nil {
+			return err
+		}
+		snapshot.SetOwnerReferences(ownerRefs)
+		return hubClient.Update(ctx, snapshot)
+	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to set the owner references of placement resource snapshot %s", name)
+	Eventually(func() error {
+		snapshot := placementResourceSnapshotObj(namespace, name)
+		if err := hubClient.Get(ctx, key, snapshot); err != nil {
+			return err
+		}
+		if diff := cmp.Diff(snapshot.GetOwnerReferences(), ownerRefs, cmpopts.EquateEmpty()); diff != "" {
+			return fmt.Errorf("owner references in the cache diff (-got +want):\n%s", diff)
+		}
+		return nil
+	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "The cache has not observed the owner references of placement resource snapshot %s", name)
+}
+
+// updatePlacementBindingSnapshot points a placement binding (of the same scope as the placement policy) to the given
+// primary placement resource snapshot.
+func updatePlacementBindingSnapshot(placementPolicy placementv1alpha1.PlacementPolicyAccessor, name, snapshotName string) {
+	GinkgoHelper()
+
+	Eventually(func() error {
+		placementBinding := placementBindingObj(placementPolicy.GetNamespace(), name)
+		if err := hubUncachedReader.Get(ctx, client.ObjectKeyFromObject(placementBinding), placementBinding); err != nil {
+			return err
+		}
+		placementBinding.GetSpec().ResourceSnapshotName = snapshotName
+		return hubClient.Update(ctx, placementBinding)
+	}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update placement binding %s", name)
 }

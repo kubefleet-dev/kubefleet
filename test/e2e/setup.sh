@@ -154,6 +154,7 @@ helm install hub-agent ../../charts/hub-agent/ \
     --set admissionPolicyManagerConfigName=admissionPolicyManagerCfg \
     --set enableAdmissionPolicyManager=true \
     --set enablePlacementPolicyAPIs=true \
+    --set enableAnnotationBasedPlacement=true \
     --set resourceSnapshotCreationMinimumInterval=$RESOURCE_SNAPSHOT_CREATION_MINIMUM_INTERVAL \
     --set resourceChangesCollectionDuration=$RESOURCE_CHANGES_COLLECTION_DURATION \
     --wait \
