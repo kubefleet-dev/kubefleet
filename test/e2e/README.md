@@ -3,7 +3,14 @@
 This directory includes the E2E test suites for Fleet agents (v1beta1 API). To run the 
 test suites, follow the steps below:
 
-1. Install [Docker](https://www.docker.com) and [Kind](https://kind.sigs.k8s.io/).
+1. Install [Docker](https://www.docker.com) and [Kind](https://kind.sigs.k8s.io/) v0.33.0.
+
+    ```sh
+    go install sigs.k8s.io/kind@v0.33.0
+    ```
+
+    E2E and upgrade test clusters default to Kubernetes v1.34.11, using the node image
+    digest published for kind v0.33.0. Set `KIND_IMAGE` to override the default image.
 
 2. Change to the current directory, and run `setup.sh` to set up the test environment.
 
