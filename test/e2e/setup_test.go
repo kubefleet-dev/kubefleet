@@ -47,6 +47,8 @@ import (
 	fleetnetworkingv1alpha1 "go.goms.io/fleet-networking/api/v1alpha1"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	kfrolloutv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/rollout/v1alpha1"
 	placementv1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1"
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -88,11 +90,14 @@ const (
 )
 
 const (
-	// Do not bump this value unless you have a good reason. This is to safeguard any performance related regressions.
+	// The eventually check duration for most test cases that involve hub cluster only operations.
+	//
+	// Do not bump this value unless you have a good reason. This helps safeguard performance related regressions.
 	eventuallyDuration = time.Second * 10
-	// this is for workload related test cases
+	// The eventually check duration for test cases that involve operations on workloads applied on the member
+	// side.
 	workloadEventuallyDuration = time.Second * 45
-	// This is for cluster setup.
+	// A longer eventually check duration for cluster setup related tasks.
 	longEventuallyDuration = time.Minute * 2
 	eventuallyInterval     = time.Millisecond * 250
 	consistentlyDuration   = time.Second * 15
@@ -296,6 +301,12 @@ func TestMain(m *testing.M) {
 	}
 	if err := placementv1beta1.AddToScheme(scheme); err != nil {
 		log.Fatalf("failed to add custom APIs (placement) to the runtime scheme: %v", err)
+	}
+	if err := kfplacementv1alpha1.AddToScheme(scheme); err != nil {
+		log.Fatalf("failed to add custom APIs (kubefleet.dev placement v1alpha1) to the runtime scheme: %v", err)
+	}
+	if err := kfrolloutv1alpha1.AddToScheme(scheme); err != nil {
+		log.Fatalf("failed to add custom APIs (kubefleet.dev rollout v1alpha1) to the runtime scheme: %v", err)
 	}
 	if err := placementv1.AddToScheme(scheme); err != nil {
 		log.Fatalf("failed to add custom APIs (placement v1) to the runtime scheme: %v", err)

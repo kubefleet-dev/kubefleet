@@ -75,6 +75,8 @@ type Reconciler struct {
 	MaxConcurrentReconciles int
 	// the wait time in minutes before we force delete a member cluster.
 	ForceDeleteWaitTime time.Duration
+	// Grant the member agent access to the Works of the experimental placement policy APIs or not.
+	PlacementPolicyAPIsEnabled bool
 	// agents are used as hashset to query the expected agent type, so the value will be ignored.
 	agents map[clusterv1beta1.AgentType]bool
 }
@@ -174,7 +176,7 @@ func (r *Reconciler) handleDelete(ctx context.Context, mc *clusterv1beta1.Member
 		}
 		// this is possible since we garbage collect the internal member cluster first before deleting the MC
 		klog.V(2).Info("InternalMemberCluster not found, start garbage collecting", "memberCluster", mcObjRef)
-		return runtime.Result{Requeue: true}, r.garbageCollect(ctx, mc)
+		return runtime.Result{RequeueAfter: time.Second}, r.garbageCollect(ctx, mc)
 	}
 	// calculate the current status of the member cluster from imc status
 	r.syncInternalMemberClusterStatus(currentImc, mc)
@@ -185,12 +187,12 @@ func (r *Reconciler) handleDelete(ctx context.Context, mc *clusterv1beta1.Member
 		if gcErr := r.garbageCollect(ctx, mc); gcErr != nil {
 			return runtime.Result{}, gcErr
 		}
-		return runtime.Result{Requeue: true}, controller.NewUpdateIgnoreConflictError(r.updateMemberClusterStatus(ctx, mc))
+		return runtime.Result{RequeueAfter: time.Second}, controller.NewUpdateIgnoreConflictError(r.updateMemberClusterStatus(ctx, mc))
 	}
 	// check to see if we can force delete member cluster.
 	if currentImc.Spec.State == clusterv1beta1.ClusterStateLeave && time.Since(mc.DeletionTimestamp.Time) >= r.ForceDeleteWaitTime {
 		klog.V(2).InfoS("Force delete the member cluster, by garbage collecting owned resources", "memberCluster", mcObjRef)
-		return runtime.Result{Requeue: true}, r.garbageCollect(ctx, mc)
+		return runtime.Result{RequeueAfter: time.Second}, r.garbageCollect(ctx, mc)
 	}
 	klog.V(2).InfoS("Need to wait for the agent to leave", "memberCluster", mcObjRef, "joinedCondition", mcJoinedCondition)
 	// mark the imc as left to make sure the agent is leaving the fleet
@@ -413,6 +415,9 @@ func (r *Reconciler) syncRole(ctx context.Context, mc *clusterv1beta1.MemberClus
 			OwnerReferences: []metav1.OwnerReference{*toOwnerReference(mc)},
 		},
 		Rules: []rbacv1.PolicyRule{utils.FleetClusterRule, utils.FleetPlacementRule, utils.FleetNetworkRule, utils.EventRule, utils.EventsK8sIoRule},
+	}
+	if r.PlacementPolicyAPIsEnabled {
+		expectedRole.Rules = append(expectedRole.Rules, utils.FleetPlacementPolicyWorkRule)
 	}
 
 	// Creates role if not found.

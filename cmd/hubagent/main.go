@@ -44,6 +44,8 @@ import (
 	fleetnetworkingv1alpha1 "go.goms.io/fleet-networking/api/v1alpha1"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	kfrolloutv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/rollout/v1alpha1"
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
@@ -79,6 +81,8 @@ func init() {
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
 	utilruntime.Must(fleetnetworkingv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(placementv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kfplacementv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(kfrolloutv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(clusterinventory.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 	klog.InitFlags(nil)
@@ -155,7 +159,7 @@ func main() {
 		}),
 	}
 	if opts.CtrlMgrOpts.EnablePprof {
-		mgrOpts.PprofBindAddress = fmt.Sprintf(":%d", opts.CtrlMgrOpts.PprofPort)
+		mgrOpts.PprofBindAddress = fmt.Sprintf("127.0.0.1:%d", opts.CtrlMgrOpts.PprofPort)
 	}
 	mgr, err := ctrl.NewManager(defaultCfg, mgrOpts)
 	if err != nil {
@@ -167,10 +171,11 @@ func main() {
 	if opts.FeatureFlags.EnableV1Beta1APIs {
 		klog.Info("Setting up memberCluster v1beta1 controller")
 		if err = (&mcv1beta1.Reconciler{
-			Client:                  mgr.GetClient(),
-			NetworkingAgentsEnabled: opts.ClusterMgmtOpts.NetworkingAgentsEnabled,
-			MaxConcurrentReconciles: int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxFleetSize) / 100)), //one member cluster reconciler routine per 100 member clusters
-			ForceDeleteWaitTime:     opts.ClusterMgmtOpts.ForceDeleteWaitTime.Duration,
+			Client:                     mgr.GetClient(),
+			NetworkingAgentsEnabled:    opts.ClusterMgmtOpts.NetworkingAgentsEnabled,
+			MaxConcurrentReconciles:    int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxFleetSize) / 100)), //one member cluster reconciler routine per 100 member clusters
+			ForceDeleteWaitTime:        opts.ClusterMgmtOpts.ForceDeleteWaitTime.Duration,
+			PlacementPolicyAPIsEnabled: opts.FeatureFlags.EnablePlacementPolicyAPIs,
 		}).SetupWithManager(mgr, "membercluster-controller"); err != nil {
 			klog.ErrorS(err, "unable to create v1beta1 controller", "controller", "MemberCluster")
 			exitWithErrorFunc()
@@ -225,7 +230,10 @@ func main() {
 	ctx := ctrl.SetupSignalHandler()
 
 	if opts.WebhookAndAdmissionPolicyOpts.EnableAdmissionPolicyManager {
-		policyManagerCfgs := admissionpolicymanager.DefaultPolicyGeneratorConfigs
+		policyManagerCfgs := admissionpolicymanager.DefaultPolicyGeneratorConfigsForV0APIs
+		if opts.FeatureFlags.EnablePlacementPolicyAPIs {
+			policyManagerCfgs = admissionpolicymanager.DefaultPolicyGeneratorConfigsForV1APIs
+		}
 		if len(opts.WebhookAndAdmissionPolicyOpts.AdmissionPolicyManagerConfig) != 0 {
 			// Read user-provided admission policy manager config from given path.
 			cfgData, err := os.ReadFile(opts.WebhookAndAdmissionPolicyOpts.AdmissionPolicyManagerConfig)

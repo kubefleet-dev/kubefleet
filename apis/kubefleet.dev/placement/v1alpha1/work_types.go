@@ -71,12 +71,12 @@ const (
 )
 
 const (
-	WorkAppliedCondPreparingToProcessReason     = "PreparingToProcess"
 	WorkAppliedCondAllManifestsAppliedReason    = "AllManifestsApplied"
 	WorkAppliedCondNotAllManifestsAppliedReason = "SomeManifestsAreNotYetApplied"
 
 	WorkAvailableCondAllManifestsAvailableReason    = "AllManifestsAvailable"
 	WorkAvailableCondNotAllManifestsAvailableReason = "SomeManifestsAreNotYetAvailable"
+	WorkAvailableCondNotAllManifestsTrackableReason = "SomeManifestsAreNotTrackable"
 )
 
 // Work is the KubeFleet API used for synchronizing resources to place between
@@ -85,7 +85,7 @@ const (
 // +genclient
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,categories={kubefleet, kubefleet-placement}
+// +kubebuilder:resource:scope=Namespaced,categories={kubefleet, kubefleet-placement},shortName=kfwork
 // +kubebuilder:storageversion
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type Work struct {
@@ -216,21 +216,24 @@ type ManifestIdentifier struct {
 	Namespace string `json:"namespace,omitempty"`
 
 	// The name of the manifest.
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
+	// +kubebuilder:validation:Optional
+	Name string `json:"name,omitempty"`
 
 	// The API group, version, kind, and resource of the manifest.
+	//
+	// Note that runtime.RawExtension, which is used to store manifests, has additional validation on the manifest
+	// data (e.g., API Group/Version and Kind must be set; they are not guaranteed to be valid though).
 
 	// +kubebuilder:validation:Optional
 	APIGroup string `json:"apiGroup,omitempty"`
 
 	// +kubebuilder:validation:Required
-	APIVersion string `json:"apiVersion,omitempty"`
+	APIVersion string `json:"apiVersion"`
 
 	// +kubebuilder:validation:Required
-	Kind string `json:"kind,omitempty"`
+	Kind string `json:"kind"`
 
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	Resource string `json:"resource,omitempty"`
 }
 
@@ -252,7 +255,7 @@ type WorkList struct {
 // +genclient
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,categories={kubefleet, kubefleet-placement}
+// +kubebuilder:resource:scope=Cluster,categories={kubefleet, kubefleet-placement},shortName=kfappliedwork
 // +kubebuilder:storageversion
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type AppliedWork struct {
@@ -289,12 +292,42 @@ type AppliedWorkStatus struct {
 
 type AppliedResource struct {
 	// The ID of the applied manifest.
-	ManifestIdentifier `json:",inline"`
+	AppliedResourceIdentifier `json:",inline"`
 
 	// The UID of the applied manifest.
 	//
 	// +kubebuilder:validation:Required
 	UID types.UID `json:"uid,omitempty"`
+}
+
+type AppliedResourceIdentifier struct {
+	// The ordinal of the manifest.
+	//
+	// +kubebuilder:validation:Required
+	Ordinal int `json:"ordinal"`
+
+	// The namespace of the manifest.
+	//
+	// +kubebuilder:validation:Optional
+	Namespace string `json:"namespace,omitempty"`
+
+	// The name of the manifest.
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// The API group, version, kind, and resource of the manifest.
+
+	// +kubebuilder:validation:Optional
+	APIGroup string `json:"apiGroup,omitempty"`
+
+	// +kubebuilder:validation:Required
+	APIVersion string `json:"apiVersion"`
+
+	// +kubebuilder:validation:Required
+	Kind string `json:"kind"`
+
+	// +kubebuilder:validation:Required
+	Resource string `json:"resource"`
 }
 
 // AppliedWorkList contains a list of AppliedWork.

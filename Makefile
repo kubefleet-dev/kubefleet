@@ -60,7 +60,7 @@ CONTROLLER_GEN_VER := v0.20.0
 CONTROLLER_GEN_BIN := controller-gen
 CONTROLLER_GEN := $(abspath $(TOOLS_BIN_DIR)/$(CONTROLLER_GEN_BIN)-$(CONTROLLER_GEN_VER))
 
-STATICCHECK_VER := v0.6.1
+STATICCHECK_VER := v0.8.2
 STATICCHECK_BIN := staticcheck
 STATICCHECK := $(abspath $(TOOLS_BIN_DIR)/$(STATICCHECK_BIN)-$(STATICCHECK_VER))
 
@@ -323,9 +323,9 @@ crd-package: ## Package the raw CRDs into a release tarball with a SHA-256 check
 	@echo "Packaged CRDs into $(CRD_PACKAGE_DIR)/$(CRD_PACKAGE_NAME).tgz"
 
 .PHONY: crd-verify
-crd-verify: ## Verify the chart CRD directories cover every CRD in config/crd/bases; note (chenyu1): placement.kubefleet.dev and rollout.kubefleet.dev CRDs are ignored for now until the implementation is completed.
+crd-verify: ## Verify the chart CRD directories cover every CRD in config/crd/bases.
 	@bases="$$(mktemp)"; charts="$$(mktemp)"; \
-	ls config/crd/bases/ | grep -Ev '^(placement|rollout)\.kubefleet\.dev' | sort > "$$bases"; \
+	ls config/crd/bases/ | sort > "$$bases"; \
 	{ ls charts/hub-agent/templates/crds/; ls charts/member-agent/templates/crds/; } | sort > "$$charts"; \
 	missing="$$(comm -3 "$$bases" "$$charts")"; \
 	rm -f "$$bases" "$$charts"; \

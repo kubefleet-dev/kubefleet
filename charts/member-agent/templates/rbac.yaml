@@ -29,6 +29,18 @@ rules:
     resources:
       - appliedworks/status
     verbs: ["update"]
+  {{- if .Values.enablePlacementPolicyAPIs }}
+  # The same for the experimental placement policy APIs; their work applier also
+  # patches an annotation onto AppliedWorks stuck in deletion.
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources:
+      - appliedworks
+    verbs: ["get", "list", "watch", "create", "patch", "delete"]
+  - apiGroups: ["placement.kubefleet.dev"]
+    resources:
+      - appliedworks/status
+    verbs: ["update"]
+  {{- end }}
 
   # Node, pod, and namespace read access. Consumers:
   #   - internalmembercluster/v1beta1 lists Nodes and Pods for resource-capacity

@@ -21,6 +21,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
@@ -31,6 +32,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
+	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
+	kfrolloutv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/rollout/v1alpha1"
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 	"github.com/kubefleet-dev/kubefleet/cmd/hubagent/options"
 	"github.com/kubefleet-dev/kubefleet/pkg/controllers/bindingwatcher"
@@ -58,8 +61,16 @@ import (
 	"github.com/kubefleet-dev/kubefleet/pkg/utils"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/controller"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/informer"
+	"github.com/kubefleet-dev/kubefleet/pkg/utils/parallelizer"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/resourceeligibility"
 	"github.com/kubefleet-dev/kubefleet/pkg/utils/validator"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/annotationplacement"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/autorollout"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/placementpolicy"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/stagedupdaterun"
+	v1workgenerator "github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/workgenerator"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/managers/placementresourcesnapshot"
+	"github.com/kubefleet-dev/kubefleet/pkg/v1/utils/fieldindexers"
 )
 
 const (
@@ -71,6 +82,18 @@ const (
 	resourceChangeControllerName = "resource-change-controller"
 
 	schedulerQueueName = "scheduler-queue"
+)
+
+// placementResourceSnapshotSlots is the snapshot manager's lock striping; its minimum.
+const placementResourceSnapshotSlots int32 = 256
+
+// Fixed concurrency for the experimental placement policy controllers. These are deliberately not derived from
+// the placement management flags (--max-fleet-size, --max-concurrent-cluster-placement), which tune the
+// v1beta1 controllers only.
+const (
+	placementPolicyWorkGeneratorConcurrentReconciles   = 10
+	placementPolicyStagedUpdateRunConcurrentReconciles = 5
+	placementPolicyAutoRolloutConcurrentReconciles     = 5
 )
 
 var (
@@ -95,6 +118,25 @@ var (
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ResourceBindingKind),
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.ResourceSnapshotKind),
 		placementv1beta1.GroupVersion.WithKind(placementv1beta1.SchedulingPolicySnapshotKind),
+	}
+
+	placementPolicyGVKs = []schema.GroupVersionKind{
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.PlacementPolicyKind),
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.ClusterPlacementPolicyKind),
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.ClusterClaimKind),
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.PlacementBindingKind),
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.ClusterPlacementBindingKind),
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.PlacementResourceSnapshotKind),
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.ClusterPlacementResourceSnapshotKind),
+		// The hub field indexes and the work generator cover Works too, which starts an informer for them.
+		kfplacementv1alpha1.GroupVersion.WithKind(kfplacementv1alpha1.WorkKind),
+		// The staged update run controller.
+		kfrolloutv1alpha1.GroupVersion.WithKind(kfrolloutv1alpha1.StagedUpdateRunKind),
+		kfrolloutv1alpha1.GroupVersion.WithKind(kfrolloutv1alpha1.ClusterStagedUpdateRunKind),
+		kfrolloutv1alpha1.GroupVersion.WithKind(kfrolloutv1alpha1.StagedUpdateStrategyKind),
+		kfrolloutv1alpha1.GroupVersion.WithKind(kfrolloutv1alpha1.ClusterStagedUpdateStrategyKind),
+		kfrolloutv1alpha1.GroupVersion.WithKind(kfrolloutv1alpha1.ApprovalRequestKind),
+		kfrolloutv1alpha1.GroupVersion.WithKind(kfrolloutv1alpha1.ClusterApprovalRequestKind),
 	}
 
 	clusterStagedUpdateRunGVKs = []schema.GroupVersionKind{
@@ -130,36 +172,54 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 
 	discoverClient := discovery.NewDiscoveryClientForConfigOrDie(config)
 
-	customResourceEligibilityChecker := resourceeligibility.New(mgr.GetRESTMapper(), nil)
+	var gvkEligibilityMode resourceeligibility.GVKEligibilityMode
+	var parsedGVKs []schema.GroupVersionKind
 	if opts.PlacementMgmtOpts.AllowedPropagatingAPIs == "" {
-		// Set up a deny list for placement eligible GVKs.
-		gvks, err := resourceeligibility.ParseGVKs(opts.PlacementMgmtOpts.SkippedPropagatingAPIs)
+		// Prepare a deny list for placement eligible GVKs.
+		gvkEligibilityMode = resourceeligibility.GVKEligibilityModeDenyList
+		parsedGVKs, err = resourceeligibility.ParseGVKs(opts.PlacementMgmtOpts.SkippedPropagatingAPIs)
 		if err != nil {
 			// Normally this branch would never run as the input has been validated beforehand.
-			return err
-		}
-		if err := customResourceEligibilityChecker.SetGVKCheckList(resourceeligibility.GVKEligibilityModeDenyList, gvks); err != nil {
 			return err
 		}
 	} else {
-		// Set up an allow list for placement eligible GVKs.
-		gvks, err := resourceeligibility.ParseGVKs(opts.PlacementMgmtOpts.AllowedPropagatingAPIs)
+		// Prepare an allow list for placement eligible GVKs.
+		gvkEligibilityMode = resourceeligibility.GVKEligibilityModeAllowList
+		parsedGVKs, err = resourceeligibility.ParseGVKs(opts.PlacementMgmtOpts.AllowedPropagatingAPIs)
 		if err != nil {
 			// Normally this branch would never run as the input has been validated beforehand.
-			return err
-		}
-		if err := customResourceEligibilityChecker.SetGVKCheckList(resourceeligibility.GVKEligibilityModeAllowList, gvks); err != nil {
 			return err
 		}
 	}
 
-	// Set up a namespace deny list for namespaces.
-	userDefinedSkippedNSNames := strings.Split(opts.PlacementMgmtOpts.SkippedPropagatingNamespaces, ";")
+	// Prepare a namespace deny list for namespaces.
+	var userDefinedSkippedNSNames []string
+	for _, ns := range strings.Split(opts.PlacementMgmtOpts.SkippedPropagatingNamespaces, ";") {
+		if ns != "" {
+			userDefinedSkippedNSNames = append(userDefinedSkippedNSNames, ns)
+		}
+	}
+
+	// Set up the resource eligibility checker (V0 APIs only).
+	customResourceEligibilityChecker := resourceeligibility.New(resourceeligibility.CheckerOptions{
+		RestMapper:      mgr.GetRESTMapper(),
+		SkipNSCheck:     len(userDefinedSkippedNSNames) == 0,
+		SkipGVKRCheck:   len(parsedGVKs) == 0,
+		SkipObjectCheck: true,
+	})
 	customResourceEligibilityChecker.SetNamespaceCheckList(resourceeligibility.NamespaceEligibilityModeDenyList, userDefinedSkippedNSNames, nil)
+	if err := customResourceEligibilityChecker.SetGVKCheckList(gvkEligibilityMode, parsedGVKs); err != nil {
+		klog.ErrorS(err, "Failed to set GVK check list for the custom resource eligibility checker")
+		return err
+	}
 
 	// Build the composite resource eligibility checker for v0 APIs.
-	defaultResourceEligibilityCheckerForV0APIs := resourceeligibility.DefaultForV0APIs(mgr.GetRESTMapper())
-	customResourceEligibilityChecker.Wraps(defaultResourceEligibilityCheckerForV0APIs)
+	v0ResourceEligibilityChecker := customResourceEligibilityChecker.DeepCopy()
+	v0ResourceEligibilityChecker.Wraps(resourceeligibility.DefaultForV0APIs(mgr.GetRESTMapper()))
+
+	// The same user-supplied filters for the v1 APIs (placement policies); the v1 built-in ones deny a few more kinds than v0.
+	v1ResourceEligibilityChecker := customResourceEligibilityChecker.DeepCopy()
+	v1ResourceEligibilityChecker.Wraps(resourceeligibility.DefaultForV1APIs(mgr.GetRESTMapper()))
 
 	// the manager for all the dynamically created informers
 	dynamicInformerManager := informer.NewInformerManager(dynamicClient, opts.CtrlMgrOpts.ResyncPeriod.Duration, ctx.Done())
@@ -170,7 +230,7 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	resourceSelectorResolver := controller.ResourceSelectorResolver{
 		RestMapper:                 mgr.GetRESTMapper(),
 		InformerManager:            dynamicInformerManager,
-		ResourceEligibilityChecker: customResourceEligibilityChecker,
+		ResourceEligibilityChecker: v0ResourceEligibilityChecker,
 		EnableWorkload:             opts.WebhookAndAdmissionPolicyOpts.EnableWorkload,
 	}
 	resourceSnapshotResolver := controller.NewResourceSnapshotResolver(mgr.GetClient(), mgr.GetScheme())
@@ -187,6 +247,8 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	rateLimiter := options.DefaultControllerRateLimiter(opts.PlacementMgmtOpts.PlacementControllerWorkQueueRateLimiterOpts)
 	var clusterResourcePlacementControllerV1Beta1 controller.Controller
 	var resourcePlacementController controller.Controller
+	var placementPolicies *placementpolicy.Reconciler
+	var annotatedSources *annotationplacement.SourceQueue
 
 	if opts.FeatureFlags.EnableV1Beta1APIs {
 		for _, gvk := range v1Beta1RequiredGVKs {
@@ -289,6 +351,90 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 			}).SetupWithManagerForResourcePlacement(mgr); err != nil {
 				klog.ErrorS(err, "Unable to set up rollout controller for resourcePlacement")
 				return err
+			}
+		}
+
+		if opts.FeatureFlags.EnablePlacementPolicyAPIs {
+			for _, gvk := range placementPolicyGVKs {
+				if err = utils.CheckCRDInstalled(discoverClient, gvk); err != nil {
+					klog.ErrorS(err, "Unable to find the required CRD", "GVK", gvk)
+					return err
+				}
+			}
+			klog.Info("Setting up the placement policy controllers")
+			if err := fieldindexers.SetupWithHubAgentControllerManager(ctx, mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up the field indexes for the placement policy controllers")
+				return err
+			}
+			snapshots, snapshotErr := placementresourcesnapshot.New(mgr,
+				dynamicClient, dynamicInformerManager,
+				v1ResourceEligibilityChecker, mgr.GetRESTMapper(),
+				placementResourceSnapshotSlots,
+				placementresourcesnapshot.DefaultMaxPerSnapshotResourceDataSizeBytes,
+				placementresourcesnapshot.DefaultMaxPerSnapshotResourceCnt)
+			if snapshotErr != nil {
+				klog.ErrorS(snapshotErr, "Unable to set up the placement resource snapshot manager")
+				return snapshotErr
+			}
+			// Added to the manager so its snapshot GC runs (leader only).
+			if err := mgr.Add(snapshots); err != nil {
+				klog.ErrorS(err, "Unable to add the placement resource snapshot manager")
+				return err
+			}
+			placementPolicies = placementpolicy.NewReconciler(mgr.GetClient(), mgr.GetAPIReader(), snapshots)
+			if err := placementPolicies.SetupWithManagerForPlacementPolicy(mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up the placement policy controller")
+				return err
+			}
+			if err := placementPolicies.SetupWithManagerForClusterPlacementPolicy(mgr); err != nil {
+				klog.ErrorS(err, "Unable to set up the cluster placement policy controller")
+				return err
+			}
+			klog.Info("Setting up the placement policy work generator")
+			if err := v1workgenerator.New(mgr.GetClient(), parallelizer.DefaultNumOfWorkers, nil).
+				SetupWithManager(mgr, placementPolicyWorkGeneratorConcurrentReconciles); err != nil {
+				klog.ErrorS(err, "Unable to set up the placement policy work generator")
+				return err
+			}
+			klog.Info("Setting up the placement policy staged update run controller")
+			// Nil rate limiters pick the controller defaults; 30s is the shortest refresh period it accepts.
+			stagedUpdateRuns, surErr := stagedupdaterun.New(mgr.GetClient(), mgr.GetAPIReader(), snapshots,
+				parallelizer.NewParallelizer(parallelizer.DefaultNumOfWorkers), nil, nil, 30*time.Second)
+			if surErr != nil {
+				klog.ErrorS(surErr, "Unable to create the placement policy staged update run controller")
+				return surErr
+			}
+			if err := stagedUpdateRuns.SetupWithManager(mgr, placementPolicyStagedUpdateRunConcurrentReconciles); err != nil {
+				klog.ErrorS(err, "Unable to set up the placement policy staged update run controller")
+				return err
+			}
+			klog.Info("Setting up the placement policy auto-rollout controller")
+			// A nil parallelizer and rate limiter pick the controller defaults.
+			autoRollouts, arErr := autorollout.New(mgr.GetClient(), snapshots, nil, nil, mgr.GetEventRecorder("auto-rollout-controller"))
+			if arErr != nil {
+				klog.ErrorS(arErr, "Unable to create the placement policy auto-rollout controller")
+				return arErr
+			}
+			if err := autoRollouts.SetupWithManager(mgr, placementPolicyAutoRolloutConcurrentReconciles); err != nil {
+				klog.ErrorS(err, "Unable to set up the placement policy auto-rollout controller")
+				return err
+			}
+			// Annotation-based placement generates the policies above; the resource watcher feeds it. The source
+			// queue is created only along with the controller, as nothing would drain it otherwise; the resource
+			// watcher does not report annotated resources if the queue is nil.
+			if opts.FeatureFlags.EnableAnnotationBasedPlacement {
+				klog.Info("Setting up the annotation placement controller")
+				annotatedSources = &annotationplacement.SourceQueue{}
+				if err := (&annotationplacement.Reconciler{
+					Client:                     mgr.GetClient(),
+					APIReader:                  mgr.GetAPIReader(),
+					RESTMapper:                 mgr.GetRESTMapper(),
+					Recorder:                   mgr.GetEventRecorder("annotation-placement-controller"),
+					ResourceEligibilityChecker: v1ResourceEligibilityChecker,
+				}).SetupWithManager(mgr, annotatedSources); err != nil {
+					klog.ErrorS(err, "Unable to set up the annotation placement controller")
+					return err
+				}
 			}
 		}
 
@@ -511,16 +657,24 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 		PlacementControllerV1Beta1:  clusterResourcePlacementControllerV1Beta1,
 		ResourcePlacementController: resourcePlacementController,
 	}
+	if placementPolicies != nil {
+		rcr.EnqueuePlacementPolicies = placementPolicies.EnqueuePoliciesSelecting
+	}
 	resourceChangeController := controller.NewController(resourceChangeControllerName, controller.ClusterWideKeyFunc, rcr.Reconcile, rateLimiter)
 
 	// Set up the InformerPopulator that runs on ALL pods (leader and followers)
 	// This ensures all pods have synced informer caches for webhook validation
 	klog.Info("Setting up informer populator")
+	checkerForV1APIsInInformerPopulator := v1ResourceEligibilityChecker
+	if !opts.FeatureFlags.EnablePlacementPolicyAPIs {
+		checkerForV1APIsInInformerPopulator = nil
+	}
 	informerPopulator := &resourcewatcher.InformerPopulator{
-		DiscoveryClient:            discoverClient,
-		RESTMapper:                 mgr.GetRESTMapper(),
-		InformerManager:            dynamicInformerManager,
-		ResourceEligibilityChecker: customResourceEligibilityChecker,
+		DiscoveryClient:                     discoverClient,
+		RESTMapper:                          mgr.GetRESTMapper(),
+		InformerManager:                     dynamicInformerManager,
+		ResourceEligibilityCheckerForV0APIs: v0ResourceEligibilityChecker,
+		ResourceEligibilityCheckerForV1APIs: checkerForV1APIsInInformerPopulator,
 	}
 
 	if err := mgr.Add(informerPopulator); err != nil {
@@ -530,14 +684,20 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 
 	// Set up a runner that starts all the custom controllers we created above
 	// This runs ONLY on the leader and adds event handlers to the informers created by InformerPopulator
+	checkerForV1APIsInChangeDetector := v1ResourceEligibilityChecker
+	if !opts.FeatureFlags.EnablePlacementPolicyAPIs {
+		checkerForV1APIsInChangeDetector = nil
+	}
 	resourceChangeDetector := &resourcewatcher.ChangeDetector{
 		DiscoveryClient: discoverClient,
 		RESTMapper:      mgr.GetRESTMapper(),
 		ClusterResourcePlacementControllerV1Beta1: clusterResourcePlacementControllerV1Beta1,
 		ResourcePlacementController:               resourcePlacementController,
 		ResourceChangeController:                  resourceChangeController,
+		AnnotatedSources:                          annotatedSources,
 		InformerManager:                           dynamicInformerManager,
-		ResourceEligibilityChecker:                customResourceEligibilityChecker,
+		ResourceEligibilityCheckerForV0APIs:       v0ResourceEligibilityChecker,
+		ResourceEligibilityCheckerForV1APIs:       checkerForV1APIsInChangeDetector,
 		ConcurrentPlacementWorker:                 int(math.Ceil(float64(opts.PlacementMgmtOpts.MaxConcurrentClusterPlacement) / 10)),
 		ConcurrentResourceChangeWorker:            opts.PlacementMgmtOpts.ConcurrentResourceChangeSyncs,
 		EnableWorkload:                            opts.WebhookAndAdmissionPolicyOpts.EnableWorkload,

@@ -25,6 +25,7 @@ const (
 	StagedUpdateRunCondTypeInitialized = "Initialized"
 	StagedUpdateRunCondTypeStarted     = "Started"
 	StagedUpdateRunCondTypeCompleted   = "Completed"
+	StagedUpdateRunCondTypeSuspended   = "Suspended"
 
 	// The condition type of stages to run in StagedUpdateRun and ClusterStagedUpdateRun API objects.
 	StagedUpdateRunPerStageCondTypeStarted   = "Started"
@@ -43,10 +44,37 @@ const (
 
 // The reasons for the respective condition types.
 const (
+	// The reasons for the run-level condition types.
 	StagedUpdateRunInitializedCondReasonPreppedResourceSnapshotAndAllStages = "PreppedResourceSnapshotAndAllStages"
+	StagedUpdateRunInitializedCondReasonFailed                              = "Failed"
 
-	StagedUpdateRunTaskApprovalRequestCreatedCondReasonCreated   = "RequestCreated"
-	StagedUpdateRunTaskApprovalRequestApprovedCondReasonApproved = "RequestApproved"
+	StagedUpdateRunStartedCondReasonUpdateStarted = "UpdateStarted"
+
+	StagedUpdateRunCompletedCondReasonSucceeded          = "Succeeded"
+	StagedUpdateRunCompletedCondReasonPartiallySucceeded = "PartiallySucceeded"
+	StagedUpdateRunCompletedCondReasonFailed             = "Failed"
+
+	StagedUpdateRunSuspendedCondReasonSuspended = "Suspended"
+	StagedUpdateRunSuspendedCondReasonResumed   = "Resumed"
+
+	// The reasons for the per-stage condition types.
+	StagedUpdateRunPerStageStartedCondReasonUpdateStarted = "UpdateStarted"
+
+	StagedUpdateRunPerStageCompletedCondReasonSucceeded          = "Succeeded"
+	StagedUpdateRunPerStageCompletedCondReasonPartiallySucceeded = "PartiallySucceeded"
+	StagedUpdateRunPerStageCompletedCondReasonFailed             = "Failed"
+
+	// The reasons for the per-cluster condition types.
+	StagedUpdateRunPerClusterStartedCondReasonUpdateStarted = "UpdateStarted"
+
+	StagedUpdateRunPerClusterCompletedCondReasonSucceeded = "UpdateSucceeded"
+	StagedUpdateRunPerClusterCompletedCondReasonFailed    = "FailedToUpdate"
+	StagedUpdateRunPerClusterCompletedCondReasonCanceled  = "UpdateCanceled"
+
+	// The reasons for the per-task condition types.
+	StagedUpdateRunTaskApprovalRequestCreatedCondReasonCreated           = "RequestCreated"
+	StagedUpdateRunTaskApprovalRequestCreatedCondReasonOwnershipMismatch = "RequestOwnershipMismatch"
+	StagedUpdateRunTaskApprovalRequestApprovedCondReasonApproved         = "RequestApproved"
 
 	StagedUpdateRunTaskTimedWaitStartedCondReasonTimerStarted = "TimerStarted"
 	StagedUpdateRunTaskWaitTimeElapsedCondReasonTimerElapsed  = "TimerElapsed"
@@ -58,7 +86,7 @@ const (
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,categories={kubefleet,kubefleet-rollout}
+// +kubebuilder:resource:scope=Namespaced,categories={kubefleet,kubefleet-rollout},shortName=updaterun
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:storageversion
 type StagedUpdateRun struct {
@@ -82,7 +110,7 @@ type StagedUpdateRun struct {
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,categories={kubefleet,kubefleet-rollout}
+// +kubebuilder:resource:scope=Cluster,categories={kubefleet,kubefleet-rollout},shortName=clusterupdaterun
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:storageversion
 type ClusterStagedUpdateRun struct {
@@ -136,6 +164,13 @@ type StagedUpdateRunSpec struct {
 	// i.e., decide on the resource snapshot to roll out and determine the stages and the clusters in each stage,
 	// but will not start rolling out resource changes until the field is set back to false.
 	//
+	// When a staged update run is suspended after the rollout starts, KubeFleet will pause the rollout as soon as
+	// possible. If a cluster has started updating but has not yet completed, KubeFleet will not consider
+	// its update a failure even if the maximum wait time for the cluster has been exceeded during the suspension.
+	// The wait timer will be reset once the suspension is lifted. However, the time spent in suspension will
+	// still count towards any timed wait tasks you have configured; those tasks will proceed or even complete,
+	// accounting for the time spent in suspension, once the suspension is lifted.
+	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=false
 	Suspended bool `json:"suspended,omitempty"`
@@ -154,21 +189,23 @@ type StagedUpdateRunFailurePolicy struct {
 	// failed the rollout if the new (updated) placement does not become available within the maximum
 	// wait time.
 	//
-	// The default value is 1.
+	// The default value is 1; the value must be between 0 and 1000.
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=1
-	// +kubebuilder:validation:Minimum=1
-	MaxAllowedClusterFailures int32 `json:"maxAllowedClusterFailures,omitempty"`
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=1000
+	MaxAllowedClusterFailures *int32 `json:"maxAllowedClusterFailures,omitempty"`
 
 	// The maximum time to wait for a rollout to a cluster to complete before KubeFleet considers the rollout to have
 	// failed for the cluster.
 	//
-	// The default value is 5 minutes.
+	// The default value is 5 minutes; the value must be between 1 and 10080 (7 days).
 	//
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=5
 	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=10080
 	MaxWaitTimePerClusterMinutes int32 `json:"maxWaitTimePerClusterMinutes,omitempty"`
 }
 

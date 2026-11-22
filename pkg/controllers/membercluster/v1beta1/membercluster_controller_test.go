@@ -2014,7 +2014,7 @@ func TestHandleDelete(t *testing.T) {
 				recorder: events.NewFakeRecorder(1),
 			},
 			memberCluster: memberClusterWithFinalizer.DeepCopy(),
-			wantResult:    ctrl.Result{Requeue: true},
+			wantResult:    ctrl.Result{RequeueAfter: time.Second},
 			wantErr:       nil,
 		},
 	}
@@ -2027,6 +2027,46 @@ func TestHandleDelete(t *testing.T) {
 			}
 			if tt.wantResult != result {
 				t.Errorf("handleDelete() result = %v, wantResult %v", result, tt.wantResult)
+			}
+		})
+	}
+}
+
+func TestSyncRolePlacementPolicyWorkRule(t *testing.T) {
+	baseRules := []rbacv1.PolicyRule{utils.FleetClusterRule, utils.FleetPlacementRule, utils.FleetNetworkRule, utils.EventRule, utils.EventsK8sIoRule}
+	tests := map[string]struct {
+		enabled   bool
+		wantRules []rbacv1.PolicyRule
+	}{
+		"placement policy APIs disabled": {
+			wantRules: baseRules,
+		},
+		"placement policy APIs enabled": {
+			enabled:   true,
+			wantRules: append(append([]rbacv1.PolicyRule{}, baseRules...), utils.FleetPlacementPolicyWorkRule),
+		},
+	}
+	for testName, tt := range tests {
+		t.Run(testName, func(t *testing.T) {
+			var created *rbacv1.Role
+			r := &Reconciler{
+				Client: &test.MockClient{
+					MockGet: func(ctx context.Context, key client.ObjectKey, obj client.Object) error {
+						return apierrors.NewNotFound(schema.GroupResource{Resource: "roles"}, key.Name)
+					},
+					MockCreate: func(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+						created = obj.(*rbacv1.Role)
+						return nil
+					},
+				},
+				recorder:                   events.NewFakeRecorder(1),
+				PlacementPolicyAPIsEnabled: tt.enabled,
+			}
+			if _, err := r.syncRole(context.Background(), &clusterv1beta1.MemberCluster{ObjectMeta: metav1.ObjectMeta{Name: "mc1"}}, "fleet-member-mc1"); err != nil {
+				t.Fatalf("syncRole() = %v, want nil", err)
+			}
+			if diff := cmp.Diff(created.Rules, tt.wantRules); diff != "" {
+				t.Errorf("syncRole() created role rules diff (-got, +want):\n%s", diff)
 			}
 		})
 	}

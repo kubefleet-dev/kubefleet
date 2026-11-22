@@ -21,7 +21,13 @@ import (
 )
 
 const (
-	ApprovalRequestCondTypeApproved = "Approved"
+	ApprovalRequestCondTypeApproved         = "Approved"
+	ApprovalRequestCondTypeApprovalAccepted = "ApprovalAccepted"
+)
+
+// The reasons for the respective condition types.
+const (
+	ApprovalRequestApprovalAcceptedCondReasonAccepted = "ApprovalAccepted"
 )
 
 // ApprovalRequest is the KubeFleet API that enables users to approve a rollout to a stage of clusters
@@ -29,7 +35,7 @@ const (
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,categories={kubefleet,kubefleet-rollout}
+// +kubebuilder:resource:scope=Namespaced,categories={kubefleet,kubefleet-rollout},shortName=stageapproval
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:storageversion
 type ApprovalRequest struct {
@@ -52,7 +58,7 @@ type ApprovalRequest struct {
 //
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,categories={kubefleet,kubefleet-rollout}
+// +kubebuilder:resource:scope=Cluster,categories={kubefleet,kubefleet-rollout},shortName=clusterstageapproval
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:storageversion
 type ClusterApprovalRequest struct {

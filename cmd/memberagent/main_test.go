@@ -1,13 +1,90 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"os"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/client-go/rest"
+	"k8s.io/utils/ptr"
 
 	"github.com/kubefleet-dev/kubefleet/cmd/memberagent/options"
+	v1workapplier "github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/workapplier"
 )
+
+// TestPlacementPolicyWorkApplierRequeueRateLimiter tests that the placement policy work applier uses its default
+// requeue rate limiter unless the test-only environment variable caps the requeue delays.
+func TestPlacementPolicyWorkApplierRequeueRateLimiter(t *testing.T) {
+	wantCapped, err := v1workapplier.NewDefaultRequeueRateLimiterWithMaxDelay(5)
+	if err != nil {
+		t.Fatalf("NewDefaultRequeueRateLimiterWithMaxDelay(5) = %v, want no error", err)
+	}
+
+	testCases := []struct {
+		name      string
+		envVal    *string
+		want      *v1workapplier.MultiStageRequeueWithExponentialBackoffRateLimiter
+		wantErred bool
+	}{
+		{
+			name: "not set",
+		},
+		{
+			name:   "set to empty",
+			envVal: ptr.To(""),
+		},
+		{
+			name:   "set to a valid cap",
+			envVal: ptr.To("5"),
+			want:   wantCapped,
+		},
+		{
+			name:      "set to a non-integer",
+			envVal:    ptr.To("5s"),
+			wantErred: true,
+		},
+		{
+			name:      "set below the minimum",
+			envVal:    ptr.To("1"),
+			wantErred: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Setenv restores the original value after the test, even when the variable is then unset.
+			t.Setenv(testOnlyPlacementPolicyWorkApplierMaxRequeueDelayEnvVarName, "")
+			if tc.envVal == nil {
+				if err := os.Unsetenv(testOnlyPlacementPolicyWorkApplierMaxRequeueDelayEnvVarName); err != nil {
+					t.Fatalf("os.Unsetenv() = %v, want no error", err)
+				}
+			} else {
+				t.Setenv(testOnlyPlacementPolicyWorkApplierMaxRequeueDelayEnvVarName, *tc.envVal)
+			}
+
+			got, err := placementPolicyWorkApplierRequeueRateLimiter()
+			if tc.wantErred {
+				if err == nil {
+					t.Fatalf("placementPolicyWorkApplierRequeueRateLimiter() = %v, want an error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("placementPolicyWorkApplierRequeueRateLimiter() = %v, want no error", err)
+			}
+			if diff := cmp.Diff(got, tc.want,
+				cmp.AllowUnexported(v1workapplier.MultiStageRequeueWithExponentialBackoffRateLimiter{}),
+				cmpopts.IgnoreFields(v1workapplier.MultiStageRequeueWithExponentialBackoffRateLimiter{}, "mu"),
+			); diff != "" {
+				t.Errorf("placementPolicyWorkApplierRequeueRateLimiter() mismatches (-got, +want):\n%s", diff)
+			}
+		})
+	}
+}
 
 func Test_buildHubConfig(t *testing.T) {
 	t.Run("use CA auth, no key file - error", func(t *testing.T) {
@@ -306,4 +383,45 @@ func Test_buildHubConfig(t *testing.T) {
 		assert.Empty(t, config.TLSClientConfig.CertFile)
 		assert.Empty(t, config.TLSClientConfig.KeyFile)
 	})
+}
+
+// fakeMemberController records the calls it gets and fails with err.
+type fakeMemberController struct {
+	err           error
+	joins, leaves int
+}
+
+func (f *fakeMemberController) Join(_ context.Context) error {
+	f.joins++
+	return f.err
+}
+
+func (f *fakeMemberController) Leave(_ context.Context) error {
+	f.leaves++
+	return f.err
+}
+
+func TestMemberControllers(t *testing.T) {
+	errFirst := errors.New("first")
+	first := &fakeMemberController{err: errFirst}
+	second := &fakeMemberController{}
+	m := memberControllers{first, second}
+
+	// A failure in one controller must not stop the call from reaching the rest.
+	if err := m.Join(context.Background()); !errors.Is(err, errFirst) {
+		t.Errorf("Join() = %v, want %v", err, errFirst)
+	}
+	if err := m.Leave(context.Background()); !errors.Is(err, errFirst) {
+		t.Errorf("Leave() = %v, want %v", err, errFirst)
+	}
+	for name, c := range map[string]*fakeMemberController{"first": first, "second": second} {
+		if c.joins != 1 || c.leaves != 1 {
+			t.Errorf("%s controller got %d joins and %d leaves, want 1 and 1", name, c.joins, c.leaves)
+		}
+	}
+
+	second.err, first.err = nil, nil
+	if err := m.Join(context.Background()); err != nil {
+		t.Errorf("Join() = %v, want nil", err)
+	}
 }
