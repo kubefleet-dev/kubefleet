@@ -97,9 +97,13 @@ func (r *Reconciler) apply(
 	//
 	// As previously mentioned, with the new capabilities, at this point of the workflow,
 	// KubeFleet has been added as an owner for the object. Still, to guard against cases where
-	// co-ownership is turned on then off or the addition of new owner references
-	// in the manifest, KubeFleet will still perform a validation round.
-	if err := validateOwnerRefs(manifestProcessingState); err != nil {
+	// co-ownership is turned on then off, KubeFleet will still perform a validation round.
+	//
+	// Note that the validation runs on the sanitized copy, i.e., the object that is actually applied.
+	// Owner references in the original manifest (e.g., ones left in an object wrapped in an envelope,
+	// which the hub agent does not sanitize) are always dropped and never reach the member cluster,
+	// so they should not block the apply op.
+	if err := validateOwnerRefs(manifestObjCopy, manifestProcessingState); err != nil {
 		return nil, errors.Wraps(err, "failed to validate owner references")
 	}
 
@@ -277,7 +281,11 @@ func setLastAppliedManifestHashAnnotation(manifestObj *unstructured.Unstructured
 
 // validateOwnerRefs validates the owner references of an applied manifest, checking
 // if an apply op can be performed on the object.
+//
+// The manifest object passed in should be the sanitized copy that is to be applied, rather than
+// the original manifest object kept in the manifest processing state.
 func validateOwnerRefs(
+	manifestObj *unstructured.Unstructured,
 	manifestProcessingState *manifestProcessingState,
 ) error {
 	inMemberClusterObj := manifestProcessingState.inMemberClusterObj
@@ -285,7 +293,7 @@ func validateOwnerRefs(
 	expectedAppliedWorkOwnerRef := manifestProcessingState.ownedBy
 	isCoOwnershipAllowed := syncStrategy.WhenOwnedByOthers == placementv1alpha1.WhenOwnedByOthersOptionShareOwnership
 
-	manifestObjOwnerRefs := manifestProcessingState.manifestObj.GetOwnerReferences()
+	manifestObjOwnerRefs := manifestObj.GetOwnerReferences()
 
 	// If the manifest object already features some owner reference(s), but co-ownership is
 	// disallowed, the validation fails.
