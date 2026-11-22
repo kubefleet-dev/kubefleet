@@ -24,7 +24,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 )
@@ -164,8 +163,8 @@ var _ = Describe("placement policy scheduling as member clusters change", Label(
 				workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place the ConfigMap on both prod clusters")
 
 			wantStatus := allSynchronizedPlacementPolicyStatus(2)
-			wantStatus.DesiredClusters = ptr.To(int32(1))
-			wantStatus.ScheduledClusters = ptr.To(int32(1))
+			wantStatus.DesiredClusters = new(int32(1))
+			wantStatus.ScheduledClusters = new(int32(1))
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected placement policy status")
 		})

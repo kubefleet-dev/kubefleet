@@ -55,7 +55,7 @@ func TestSummarizeResourceStatus(t *testing.T) {
 	const latest, older = "pp-snapshot-1", "pp-snapshot-0"
 	targets := map[string][]int{"done": {0}, "rolling": {0}, "unprocessed": {0}, "stale-gen": {0}, "failing": {0}, "no-binding-yet": {0}, "terminating": {0}, "old-strategy": {0}}
 	terminating := progressedBinding("terminating", latest, ptr.To(latest), metav1.ConditionTrue, metav1.ConditionTrue, false)
-	terminating.SetDeletionTimestamp(ptr.To(metav1.Now()))
+	terminating.SetDeletionTimestamp(new(metav1.Now()))
 	oldStrategy := progressedBinding("old-strategy", latest, ptr.To(latest), metav1.ConditionTrue, metav1.ConditionTrue, false)
 	oldStrategy.GetSpec().SyncStrategy = &kfplacementv1alpha1.SyncStrategy{ApplyMethod: kfplacementv1alpha1.ApplyMethodServerSideApply}
 	bindings := []kfplacementv1alpha1.PlacementBindingAccessor{
@@ -88,7 +88,7 @@ func TestSummarizeAvailability(t *testing.T) {
 	const latest, older = "pp-snapshot-1", "pp-snapshot-0"
 	targets := map[string][]int{"done": {0}, "rolling": {0}, "stale-gen": {0}, "failing": {0}, "terminating": {0}, "old-strategy": {0}}
 	terminating := progressedBinding("terminating", latest, ptr.To(latest), metav1.ConditionTrue, metav1.ConditionTrue, false)
-	terminating.SetDeletionTimestamp(ptr.To(metav1.Now()))
+	terminating.SetDeletionTimestamp(new(metav1.Now()))
 	oldStrategy := progressedBinding("old-strategy", latest, ptr.To(latest), metav1.ConditionTrue, metav1.ConditionTrue, false)
 	oldStrategy.GetSpec().SyncStrategy = &kfplacementv1alpha1.SyncStrategy{ApplyMethod: kfplacementv1alpha1.ApplyMethodServerSideApply}
 	bindings := []kfplacementv1alpha1.PlacementBindingAccessor{

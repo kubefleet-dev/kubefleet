@@ -25,7 +25,6 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -91,7 +90,7 @@ var _ = Describe("processing staged update runs", func() {
 				wantPerClusterStatus(memberClusterNames, bindingNames, 0, perClusterUpdateSucceededConds()...),
 			},
 			Conditions:     perStageSucceededConds(),
-			MaxConcurrency: ptr.To(int32(1)),
+			MaxConcurrency: new(int32(1)),
 		}
 
 		BeforeAll(func() {
@@ -112,7 +111,7 @@ var _ = Describe("processing staged update runs", func() {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{envLabelKey: envLabelValueProd},
 					},
-					SortingLabelKey: ptr.To(orderLabelKey),
+					SortingLabelKey: new(orderLabelKey),
 				},
 			})
 			waitForObjectsToBeCached(append(fixtures, policy, strategy)...)
@@ -144,12 +143,12 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 0, perClusterStartedCond()),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 					{
 						StageName:      prodStageName,
 						Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 2, 3, 1),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -185,7 +184,7 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -221,7 +220,7 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -252,7 +251,7 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1, perClusterStartedCond()),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -282,7 +281,7 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -344,14 +343,14 @@ var _ = Describe("processing staged update runs", func() {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{envLabelKey: envLabelValueCanary},
 					},
-					MaxConcurrency: ptr.To(intstr.FromInt32(2)),
+					MaxConcurrency: new(intstr.FromInt32(2)),
 				},
 				{
 					Name: prodStageName,
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{envLabelKey: envLabelValueProd},
 					},
-					MaxConcurrency: ptr.To(intstr.FromString("100%")),
+					MaxConcurrency: new(intstr.FromString("100%")),
 				},
 			})
 			waitForObjectsToBeCached(append(fixtures, policy, strategy)...)
@@ -385,12 +384,12 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 2),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(2)),
+						MaxConcurrency: new(int32(2)),
 					},
 					{
 						StageName:      prodStageName,
 						Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 3, 4, 5),
-						MaxConcurrency: ptr.To(int32(3)),
+						MaxConcurrency: new(int32(3)),
 					},
 				},
 			}
@@ -435,7 +434,7 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 2, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(2)),
+						MaxConcurrency: new(int32(2)),
 					},
 					{
 						StageName: prodStageName,
@@ -445,7 +444,7 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 5, perClusterStartedCond()),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(3)),
+						MaxConcurrency: new(int32(3)),
 					},
 				},
 			}
@@ -476,7 +475,7 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 2, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(2)),
+						MaxConcurrency: new(int32(2)),
 					},
 					{
 						StageName: prodStageName,
@@ -486,7 +485,7 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 5, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(3)),
+						MaxConcurrency: new(int32(3)),
 					},
 				},
 			}
@@ -531,7 +530,7 @@ var _ = Describe("processing staged update runs", func() {
 						wantPerClusterStatus(memberClusterNames, bindingNames, 0, perClusterStartedCond()),
 					},
 					Conditions:     []metav1.Condition{perStageStartedCond()},
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			},
 		}
@@ -604,7 +603,7 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 0, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -680,7 +679,7 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1, perClusterStartedCond()),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -708,7 +707,7 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -796,7 +795,7 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -852,7 +851,7 @@ var _ = Describe("processing staged update runs", func() {
 				wantPerClusterStatus(memberClusterNames, bindingNames, 0, perClusterUpdateSucceededConds()...),
 			},
 			Conditions:     perStageSucceededConds(),
-			MaxConcurrency: ptr.To(int32(1)),
+			MaxConcurrency: new(int32(1)),
 		}
 
 		BeforeAll(func() {
@@ -919,12 +918,12 @@ var _ = Describe("processing staged update runs", func() {
 							},
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 					{
 						StageName:      prodStageName,
 						Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 1),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -961,7 +960,7 @@ var _ = Describe("processing staged update runs", func() {
 							},
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 					{
 						StageName: prodStageName,
@@ -969,7 +968,7 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -1051,7 +1050,7 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -1093,7 +1092,7 @@ var _ = Describe("processing staged update runs", func() {
 							perStageStartedCond(),
 							perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonPartiallySucceeded),
 						},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -1164,7 +1163,7 @@ var _ = Describe("processing staged update runs", func() {
 				{
 					StageName:      restStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0, 1),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			})
 			statusUpdatedActual := stagedUpdateRunStatusUpdatedActual(appNamespaceName, runName, wantStatus)
@@ -1211,7 +1210,7 @@ var _ = Describe("processing staged update runs", func() {
 							perStageStartedCond(),
 							perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonPartiallySucceeded),
 						},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -1271,7 +1270,7 @@ var _ = Describe("processing staged update runs", func() {
 				StagedUpdateStrategyName: strategyName,
 				Suspended:                true,
 				FailurePolicy: &rolloutv1alpha1.StagedUpdateRunFailurePolicy{
-					MaxAllowedClusterFailures: ptr.To(int32(2)),
+					MaxAllowedClusterFailures: new(int32(2)),
 				},
 			})
 		})
@@ -1281,7 +1280,7 @@ var _ = Describe("processing staged update runs", func() {
 				{
 					StageName:      restStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0, 1, 2),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			})
 			statusUpdatedActual := stagedUpdateRunStatusUpdatedActual(appNamespaceName, runName, wantStatus)
@@ -1335,7 +1334,7 @@ var _ = Describe("processing staged update runs", func() {
 							perStageStartedCond(),
 							perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonPartiallySucceeded),
 						},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -1402,7 +1401,7 @@ var _ = Describe("processing staged update runs", func() {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{envLabelKey: envLabelValueCanary},
 					},
-					MaxConcurrency: ptr.To(intstr.FromInt32(2)),
+					MaxConcurrency: new(intstr.FromInt32(2)),
 				},
 				{
 					Name: prodStageName,
@@ -1417,7 +1416,7 @@ var _ = Describe("processing staged update runs", func() {
 				PlacementPolicyName:      policyName,
 				StagedUpdateStrategyName: strategyName,
 				FailurePolicy: &rolloutv1alpha1.StagedUpdateRunFailurePolicy{
-					MaxAllowedClusterFailures: ptr.To(int32(0)),
+					MaxAllowedClusterFailures: new(int32(0)),
 				},
 			})
 		})
@@ -1441,12 +1440,12 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 2),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(2)),
+						MaxConcurrency: new(int32(2)),
 					},
 					{
 						StageName:      prodStageName,
 						Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 3),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -1483,12 +1482,12 @@ var _ = Describe("processing staged update runs", func() {
 							perStageStartedCond(),
 							perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonFailed),
 						},
-						MaxConcurrency: ptr.To(int32(2)),
+						MaxConcurrency: new(int32(2)),
 					},
 					{
 						StageName:      prodStageName,
 						Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 3),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -1562,7 +1561,7 @@ var _ = Describe("processing staged update runs", func() {
 				perStageStartedCond(),
 				perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonPartiallySucceeded),
 			},
-			MaxConcurrency: ptr.To(int32(1)),
+			MaxConcurrency: new(int32(1)),
 		}
 
 		BeforeAll(func() {
@@ -1612,12 +1611,12 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 					{
 						StageName:      prodStageName,
 						Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 2, 3),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -1661,7 +1660,7 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 3),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -1696,7 +1695,7 @@ var _ = Describe("processing staged update runs", func() {
 							perStageStartedCond(),
 							perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonFailed),
 						},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -1751,7 +1750,7 @@ var _ = Describe("processing staged update runs", func() {
 						wantPerClusterStatus(memberClusterNames, bindingNames, 0, perClusterStartedCond()),
 					},
 					Conditions:     []metav1.Condition{perStageStartedCond()},
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			},
 		}
@@ -1835,7 +1834,7 @@ var _ = Describe("processing staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 0, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -1890,7 +1889,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 				wantPerClusterStatus(memberClusterNames, bindingNames, 0, perClusterUpdateSucceededConds()...),
 			},
 			Conditions:     perStageSucceededConds(),
-			MaxConcurrency: ptr.To(int32(1)),
+			MaxConcurrency: new(int32(1)),
 		}
 
 		BeforeAll(func() {
@@ -1911,7 +1910,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{envLabelKey: envLabelValueProd},
 					},
-					SortingLabelKey: ptr.To(orderLabelKey),
+					SortingLabelKey: new(orderLabelKey),
 				},
 			})
 			waitForObjectsToBeCached(append(fixtures, policy, strategy)...)
@@ -1943,12 +1942,12 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 0, perClusterStartedCond()),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 					{
 						StageName:      prodStageName,
 						Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 2, 3, 1),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -1984,7 +1983,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -2020,7 +2019,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -2051,7 +2050,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1, perClusterStartedCond()),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -2081,7 +2080,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -2143,14 +2142,14 @@ var _ = Describe("processing cluster staged update runs", func() {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{envLabelKey: envLabelValueCanary},
 					},
-					MaxConcurrency: ptr.To(intstr.FromInt32(2)),
+					MaxConcurrency: new(intstr.FromInt32(2)),
 				},
 				{
 					Name: prodStageName,
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{envLabelKey: envLabelValueProd},
 					},
-					MaxConcurrency: ptr.To(intstr.FromString("100%")),
+					MaxConcurrency: new(intstr.FromString("100%")),
 				},
 			})
 			waitForObjectsToBeCached(append(fixtures, policy, strategy)...)
@@ -2184,12 +2183,12 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 2),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(2)),
+						MaxConcurrency: new(int32(2)),
 					},
 					{
 						StageName:      prodStageName,
 						Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 3, 4, 5),
-						MaxConcurrency: ptr.To(int32(3)),
+						MaxConcurrency: new(int32(3)),
 					},
 				},
 			}
@@ -2234,7 +2233,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 2, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(2)),
+						MaxConcurrency: new(int32(2)),
 					},
 					{
 						StageName: prodStageName,
@@ -2244,7 +2243,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 5, perClusterStartedCond()),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(3)),
+						MaxConcurrency: new(int32(3)),
 					},
 				},
 			}
@@ -2275,7 +2274,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 2, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(2)),
+						MaxConcurrency: new(int32(2)),
 					},
 					{
 						StageName: prodStageName,
@@ -2285,7 +2284,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 5, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(3)),
+						MaxConcurrency: new(int32(3)),
 					},
 				},
 			}
@@ -2330,7 +2329,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 						wantPerClusterStatus(memberClusterNames, bindingNames, 0, perClusterStartedCond()),
 					},
 					Conditions:     []metav1.Condition{perStageStartedCond()},
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			},
 		}
@@ -2403,7 +2402,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 0, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -2479,7 +2478,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1, perClusterStartedCond()),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -2507,7 +2506,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -2595,7 +2594,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -2651,7 +2650,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 				wantPerClusterStatus(memberClusterNames, bindingNames, 0, perClusterUpdateSucceededConds()...),
 			},
 			Conditions:     perStageSucceededConds(),
-			MaxConcurrency: ptr.To(int32(1)),
+			MaxConcurrency: new(int32(1)),
 		}
 
 		BeforeAll(func() {
@@ -2718,12 +2717,12 @@ var _ = Describe("processing cluster staged update runs", func() {
 							},
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 					{
 						StageName:      prodStageName,
 						Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 1),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -2760,7 +2759,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							},
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 					{
 						StageName: prodStageName,
@@ -2768,7 +2767,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -2850,7 +2849,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -2892,7 +2891,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							perStageStartedCond(),
 							perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonPartiallySucceeded),
 						},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -2963,7 +2962,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 				{
 					StageName:      restStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0, 1),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			})
 			statusUpdatedActual := stagedUpdateRunStatusUpdatedActual(clusterScopedNS, runName, wantStatus)
@@ -3010,7 +3009,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							perStageStartedCond(),
 							perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonPartiallySucceeded),
 						},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -3070,7 +3069,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 				StagedUpdateStrategyName: strategyName,
 				Suspended:                true,
 				FailurePolicy: &rolloutv1alpha1.StagedUpdateRunFailurePolicy{
-					MaxAllowedClusterFailures: ptr.To(int32(2)),
+					MaxAllowedClusterFailures: new(int32(2)),
 				},
 			})
 		})
@@ -3080,7 +3079,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 				{
 					StageName:      restStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0, 1, 2),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			})
 			statusUpdatedActual := stagedUpdateRunStatusUpdatedActual(clusterScopedNS, runName, wantStatus)
@@ -3134,7 +3133,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							perStageStartedCond(),
 							perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonPartiallySucceeded),
 						},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -3201,7 +3200,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{envLabelKey: envLabelValueCanary},
 					},
-					MaxConcurrency: ptr.To(intstr.FromInt32(2)),
+					MaxConcurrency: new(intstr.FromInt32(2)),
 				},
 				{
 					Name: prodStageName,
@@ -3216,7 +3215,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 				PlacementPolicyName:      policyName,
 				StagedUpdateStrategyName: strategyName,
 				FailurePolicy: &rolloutv1alpha1.StagedUpdateRunFailurePolicy{
-					MaxAllowedClusterFailures: ptr.To(int32(0)),
+					MaxAllowedClusterFailures: new(int32(0)),
 				},
 			})
 		})
@@ -3240,12 +3239,12 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 2),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(2)),
+						MaxConcurrency: new(int32(2)),
 					},
 					{
 						StageName:      prodStageName,
 						Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 3),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -3282,12 +3281,12 @@ var _ = Describe("processing cluster staged update runs", func() {
 							perStageStartedCond(),
 							perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonFailed),
 						},
-						MaxConcurrency: ptr.To(int32(2)),
+						MaxConcurrency: new(int32(2)),
 					},
 					{
 						StageName:      prodStageName,
 						Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 3),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -3361,7 +3360,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 				perStageStartedCond(),
 				perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonPartiallySucceeded),
 			},
-			MaxConcurrency: ptr.To(int32(1)),
+			MaxConcurrency: new(int32(1)),
 		}
 
 		BeforeAll(func() {
@@ -3411,12 +3410,12 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 1),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 					{
 						StageName:      prodStageName,
 						Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 2, 3),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -3460,7 +3459,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 3),
 						},
 						Conditions:     []metav1.Condition{perStageStartedCond()},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -3495,7 +3494,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							perStageStartedCond(),
 							perStageCompletedCond(rolloutv1alpha1.StagedUpdateRunPerStageCompletedCondReasonFailed),
 						},
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -3550,7 +3549,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 						wantPerClusterStatus(memberClusterNames, bindingNames, 0, perClusterStartedCond()),
 					},
 					Conditions:     []metav1.Condition{perStageStartedCond()},
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			},
 		}
@@ -3634,7 +3633,7 @@ var _ = Describe("processing cluster staged update runs", func() {
 							wantPerClusterStatus(memberClusterNames, bindingNames, 0, perClusterUpdateSucceededConds()...),
 						},
 						Conditions:     perStageSucceededConds(),
-						MaxConcurrency: ptr.To(int32(1)),
+						MaxConcurrency: new(int32(1)),
 					},
 				},
 			}
@@ -3724,7 +3723,7 @@ var _ = Describe("processing staged update runs and cluster staged update runs (
 					{
 						Name:           restStageName,
 						LabelSelector:  &metav1.LabelSelector{},
-						MaxConcurrency: ptr.To(intstr.FromString("100%")),
+						MaxConcurrency: new(intstr.FromString("100%")),
 					},
 				})
 				waitForObjectsToBeCached(append(fixtures, policy, strategy)...)
@@ -3733,7 +3732,7 @@ var _ = Describe("processing staged update runs and cluster staged update runs (
 					PlacementPolicyName:      tc.policyName,
 					StagedUpdateStrategyName: tc.strategyName,
 					FailurePolicy: &rolloutv1alpha1.StagedUpdateRunFailurePolicy{
-						MaxAllowedClusterFailures:    ptr.To(tc.maxAllowedClusterFailures),
+						MaxAllowedClusterFailures:    new(tc.maxAllowedClusterFailures),
 						MaxWaitTimePerClusterMinutes: 1,
 					},
 				})
@@ -3783,7 +3782,7 @@ var _ = Describe("processing staged update runs and cluster staged update runs (
 							StageName:      restStageName,
 							Clusters:       clusterStatuses,
 							Conditions:     []metav1.Condition{perStageStartedCond(), perStageCompletedCond(stageCompletedReason)},
-							MaxConcurrency: ptr.To(int32(len(clusterStatuses))),
+							MaxConcurrency: new(int32(len(clusterStatuses))),
 						},
 					},
 				}

@@ -99,12 +99,12 @@ func (r *Reconciler) cleanupWhenBindingDeleted(ctx context.Context,
 		}
 		klog.V(2).InfoS("The primary appliedWork object has been marked for deletion; wait for the deletion to complete",
 			"appliedWork", klog.KObj(appliedWork), "propagationPolicy", deletionPolicy)
-		return ptr.To(r.cleanupRequeueRateLimiter.When(primaryWorkNamespacedName)), nil
+		return new(r.cleanupRequeueRateLimiter.When(primaryWorkNamespacedName)), nil
 	default:
 		// The appliedWork object has been marked for deletion; wait for the deletion to complete.
 		if time.Since(appliedWork.DeletionTimestamp.Time) < r.cleanupWaitTime {
 			// Keep waiting.
-			return ptr.To(r.cleanupRequeueRateLimiter.When(primaryWorkNamespacedName)), nil
+			return new(r.cleanupRequeueRateLimiter.When(primaryWorkNamespacedName)), nil
 		}
 
 		if _, found := appliedWork.Annotations[appliedWorkForcedDeletedAnnotationKey]; !found {
@@ -133,7 +133,7 @@ func (r *Reconciler) cleanupWhenBindingDeleted(ctx context.Context,
 
 		if time.Since(appliedWork.DeletionTimestamp.Time) < 2*r.cleanupWaitTime {
 			// Keep waiting.
-			return ptr.To(r.cleanupRequeueRateLimiter.When(primaryWorkNamespacedName)), nil
+			return new(r.cleanupRequeueRateLimiter.When(primaryWorkNamespacedName)), nil
 		}
 
 		// If the appliedWork object is still stuck in the pending deletion state after us manually removing the
@@ -270,7 +270,7 @@ func (r *Reconciler) manuallyUpdateOwnerReferencesOnManifests(ctx context.Contex
 			if ownerreferences.AreEqual(&ownerRefs[ownerIdx], appliedWorkOwnerRef) && ptr.Deref(ownerRefs[ownerIdx].BlockOwnerDeletion, false) {
 				// Set BlockOwnerDeletion to false to allow the appliedWork object to be deleted without being blocked
 				// by this manifest.
-				ownerRefs[ownerIdx].BlockOwnerDeletion = ptr.To(false)
+				ownerRefs[ownerIdx].BlockOwnerDeletion = new(false)
 				updated = true
 			}
 		}

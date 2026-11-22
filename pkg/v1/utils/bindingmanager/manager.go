@@ -20,6 +20,7 @@ package bindingmanager
 import (
 	"context"
 	"reflect"
+	"slices"
 
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -79,13 +80,7 @@ func ClaimRoleAs(
 		return false, nil
 	}
 
-	found := false
-	for idx := range bindingManager.ObjectRefs {
-		if bindingManager.ObjectRefs[idx] == objectRef {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(bindingManager.ObjectRefs, objectRef)
 	if found {
 		// The given object reference is already present in the binding manager claim. Verify if the view is still up-to-date.
 		if err := dryRunPatch(ctx, hubClient, placementPolicy); err != nil {

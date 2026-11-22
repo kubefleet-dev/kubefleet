@@ -71,8 +71,8 @@ func newConfigMap(namespace, name string, annotations map[string]string) *corev1
 
 func newTestResource(namespace, name string, annotations map[string]string) *unstructured.Unstructured {
 	testResource := &unstructured.Unstructured{
-		Object: map[string]interface{}{
-			"spec": map[string]interface{}{
+		Object: map[string]any{
+			"spec": map[string]any{
 				testDataKey: testDataValue,
 			},
 		},

@@ -41,7 +41,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilrand "k8s.io/apimachinery/pkg/util/rand"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
@@ -1281,7 +1280,7 @@ func cleanupPlacement(placementKey types.NamespacedName) {
 
 // createResourceOverrides creates a number of resource overrides.
 func createResourceOverrides(namespace string, number int) {
-	for i := 0; i < number; i++ {
+	for i := range number {
 		ro := &placementv1beta1.ResourceOverride{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      fmt.Sprintf(roNameTemplate, i),
@@ -1334,7 +1333,7 @@ func createResourceOverrides(namespace string, number int) {
 
 // createClusterResourceOverrides creates a number of cluster resource overrides.
 func createClusterResourceOverrides(number int) {
-	for i := 0; i < number; i++ {
+	for i := range number {
 		cro := &placementv1beta1.ClusterResourceOverride{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: fmt.Sprintf(croNameTemplate, i),
@@ -1788,7 +1787,7 @@ func buildOwnerReference(cluster *framework.Cluster, placementName, placementNam
 		Kind:               "AppliedWork",
 		Name:               workName,
 		UID:                appliedWork.UID,
-		BlockOwnerDeletion: ptr.To(true),
+		BlockOwnerDeletion: new(true),
 	}
 }
 
@@ -1807,7 +1806,7 @@ func createRPWithApplyStrategy(rpNamespace, rpName string, applyStrategy *placem
 			Strategy: placementv1beta1.RolloutStrategy{
 				Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 				RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-					UnavailablePeriodSeconds: ptr.To(2),
+					UnavailablePeriodSeconds: new(2),
 				},
 			},
 		},
@@ -1828,7 +1827,7 @@ func createCRPWithApplyStrategy(crpName string, applyStrategy *placementv1beta1.
 	strategy := placementv1beta1.RolloutStrategy{
 		Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 		RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-			UnavailablePeriodSeconds: ptr.To(2),
+			UnavailablePeriodSeconds: new(2),
 		},
 	}
 	if applyStrategy != nil {
@@ -1888,7 +1887,7 @@ func createNamespaceOnlyCRPWithFixedClusters(crpName string, clusterNames []stri
 	strategy := placementv1beta1.RolloutStrategy{
 		Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 		RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-			UnavailablePeriodSeconds: ptr.To(2),
+			UnavailablePeriodSeconds: new(2),
 		},
 	}
 	createGenericCRP(crpName, namespaceOnlySelector(), policy, strategy)

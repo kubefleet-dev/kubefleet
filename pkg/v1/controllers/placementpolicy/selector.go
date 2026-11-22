@@ -438,10 +438,10 @@ func numericPropertyMatches(cluster *clusterv1beta1.MemberCluster, expr *kfplace
 
 // stringPropertyValueFrom returns the raw value of a non-resource cluster property.
 func stringPropertyValueFrom(cluster *clusterv1beta1.MemberCluster, name string) (string, bool) {
-	if strings.HasPrefix(name, propertyprovider.ResourcePropertyNamePrefix) {
+	if after, ok := strings.CutPrefix(name, propertyprovider.ResourcePropertyNamePrefix); ok {
 		// Resource properties are quantities; string-based operators still see them through
 		// their canonical string form so that Exists/DoesNotExist work uniformly.
-		q, err := resourceUsageValueFrom(cluster, strings.TrimPrefix(name, propertyprovider.ResourcePropertyNamePrefix))
+		q, err := resourceUsageValueFrom(cluster, after)
 		if err != nil || q == nil {
 			return "", false
 		}
@@ -458,8 +458,8 @@ func stringPropertyValueFrom(cluster *clusterv1beta1.MemberCluster, name string)
 // cluster as a quantity. It returns nil (and no error) when the cluster does not report the
 // property.
 func numericPropertyValueFrom(cluster *clusterv1beta1.MemberCluster, name string) (*resource.Quantity, error) {
-	if strings.HasPrefix(name, propertyprovider.ResourcePropertyNamePrefix) {
-		q, err := resourceUsageValueFrom(cluster, strings.TrimPrefix(name, propertyprovider.ResourcePropertyNamePrefix))
+	if after, ok := strings.CutPrefix(name, propertyprovider.ResourcePropertyNamePrefix); ok {
+		q, err := resourceUsageValueFrom(cluster, after)
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve resource property %s from cluster %s: %w", name, cluster.Name, err)
 		}

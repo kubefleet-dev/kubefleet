@@ -35,7 +35,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -95,7 +94,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -529,7 +528,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 
 		It("create the CRP that select the namespace", func() {
 			crp := buildCRPForSafeRollout()
-			crp.Spec.RevisionHistoryLimit = ptr.To(int32(1))
+			crp.Spec.RevisionHistoryLimit = new(int32(1))
 			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 		})
 
@@ -691,7 +690,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 			// the job we are trying to propagate takes 10s to complete. MaxUnavailable is set to 1. So setting UnavailablePeriodSeconds to 15s
 			// so that after each rollout phase we only wait for 15s before proceeding to the next since Job is not trackable,
 			// we want rollout to finish in a reasonable time.
-			crp.Spec.Strategy.RollingUpdate.UnavailablePeriodSeconds = ptr.To(unAvailablePeriodSeconds)
+			crp.Spec.Strategy.RollingUpdate.UnavailablePeriodSeconds = new(unAvailablePeriodSeconds)
 			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 		})
 
@@ -715,7 +714,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 				if err != nil {
 					return err
 				}
-				job.Spec.Suspend = ptr.To(true)
+				job.Spec.Suspend = new(true)
 				return hubClient.Update(ctx, &job)
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to suspend job")
 		})
@@ -787,7 +786,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 					memberCluster1EastProdName,
 				},
 			}
-			crp.Spec.Strategy.RollingUpdate.UnavailablePeriodSeconds = ptr.To(unAvailablePeriodSeconds)
+			crp.Spec.Strategy.RollingUpdate.UnavailablePeriodSeconds = new(unAvailablePeriodSeconds)
 			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 		})
 
@@ -927,7 +926,7 @@ var _ = Describe("placing wrapped resources using a CRP", Ordered, func() {
 			crp.Spec.Policy = &placementv1beta1.PlacementPolicy{
 				PlacementType: placementv1beta1.PickAllPlacementType,
 			}
-			crp.Spec.Strategy.RollingUpdate.UnavailablePeriodSeconds = ptr.To(unAvailablePeriodSeconds)
+			crp.Spec.Strategy.RollingUpdate.UnavailablePeriodSeconds = new(unAvailablePeriodSeconds)
 			Expect(hubClient.Create(ctx, crp)).To(Succeed(), "Failed to create CRP")
 		})
 

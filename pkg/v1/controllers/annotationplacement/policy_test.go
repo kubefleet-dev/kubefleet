@@ -28,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -277,7 +276,7 @@ func TestDesiredPolicy(t *testing.T) {
 	// generated policy carries the API's default explicitly so that it does not read as drift.
 	selectors := []kfplacementv1alpha1.ClusterSelector{
 		{
-			Count: ptr.To(intstr.FromInt32(1)),
+			Count: new(intstr.FromInt32(1)),
 			Terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{
 				{MatchLabels: map[string]string{"env": "prod"}},
 			},
@@ -285,7 +284,7 @@ func TestDesiredPolicy(t *testing.T) {
 	}
 	wantSelectors := []kfplacementv1alpha1.ClusterSelector{
 		{
-			Count: ptr.To(intstr.FromInt32(1)),
+			Count: new(intstr.FromInt32(1)),
 			Terms: []kfplacementv1alpha1.ClusterLabelAndPropertySelectorTerm{
 				{MatchLabels: map[string]string{"env": "prod"}},
 			},
@@ -325,7 +324,7 @@ func TestDesiredPolicy(t *testing.T) {
 						Kind:       "Deployment",
 						Name:       "app",
 					}},
-					ResourceRevisionHistoryLimit: ptr.To(defaultResourceRevisionHistoryLimit),
+					ResourceRevisionHistoryLimit: new(defaultResourceRevisionHistoryLimit),
 				},
 			},
 		},
@@ -356,7 +355,7 @@ func TestDesiredPolicy(t *testing.T) {
 						Kind:       "Namespace",
 						Name:       "work",
 					}},
-					ResourceRevisionHistoryLimit: ptr.To(defaultResourceRevisionHistoryLimit),
+					ResourceRevisionHistoryLimit: new(defaultResourceRevisionHistoryLimit),
 				},
 			},
 		},
@@ -447,7 +446,7 @@ func TestParentLabelsAreValid(t *testing.T) {
 // default and then reads as a difference on the next pass, which would have the reconciler issue
 // an update that changes nothing, forever.
 func TestDesiredPolicySetsDefaultedFields(t *testing.T) {
-	selectors := []kfplacementv1alpha1.ClusterSelector{{Count: ptr.To(intstr.FromInt32(1))}}
+	selectors := []kfplacementv1alpha1.ClusterSelector{{Count: new(intstr.FromInt32(1))}}
 	spec := desiredPolicy(sourceObject(deploymentGVK, "prod", "app"), selectors).GetSpec()
 
 	if got := spec.ResourceRevisionHistoryLimit; got == nil || *got != defaultResourceRevisionHistoryLimit {

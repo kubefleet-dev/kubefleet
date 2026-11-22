@@ -10,7 +10,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/retry"
-	"k8s.io/utils/ptr"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -19,10 +18,7 @@ func (r *Runner) CreatePlacements(ctx context.Context) {
 	wg := sync.WaitGroup{}
 
 	// Run the producer.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		for i := 0; i < r.maxCRPToCreateCount; i++ {
 			select {
 			case r.toCreatePlacementsChan <- i:
@@ -33,7 +29,7 @@ func (r *Runner) CreatePlacements(ctx context.Context) {
 		}
 
 		close(r.toCreatePlacementsChan)
-	}()
+	})
 
 	// Run the workers to create the placements.
 	for i := 0; i < r.resourceSetupWorkerCount; i++ {
@@ -91,8 +87,8 @@ func (r *Runner) CreatePlacements(ctx context.Context) {
 						Strategy: placementv1beta1.RolloutStrategy{
 							Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 							RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-								MaxUnavailable:           ptr.To(intstr.Parse("100%")),
-								UnavailablePeriodSeconds: ptr.To(1),
+								MaxUnavailable:           new(intstr.Parse("100%")),
+								UnavailablePeriodSeconds: new(1),
 							},
 						},
 					},

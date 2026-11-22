@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 	"sync"
 )
 
@@ -12,10 +12,7 @@ func (r *Runner) TrackLatency(ctx context.Context) {
 	wg := sync.WaitGroup{}
 
 	// Run the latency tracker.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		for {
 			var attempt latencyTrackAttempt
 			var readOK bool
@@ -30,7 +27,7 @@ func (r *Runner) TrackLatency(ctx context.Context) {
 				return
 			}
 		}
-	}()
+	})
 	wg.Wait()
 }
 
@@ -39,9 +36,7 @@ func (r *Runner) TallyLatencyQuantiles() {
 	for _, latency := range r.stagedUpdateRunCompletionLatencyByRunName {
 		latencies = append(latencies, latency.Seconds())
 	}
-	sort.Slice(latencies, func(i, j int) bool {
-		return latencies[i] < latencies[j]
-	})
+	slices.Sort(latencies)
 
 	q25 := int(math.Floor(float64(len(latencies)) * 0.25))
 	q50 := int(math.Floor(float64(len(latencies)) * 0.50))

@@ -518,7 +518,7 @@ var _ = Describe("Work Controller", func() {
 				"test-key-3": "test-value-3",
 			}
 
-			for i := 0; i < numWork; i++ {
+			for range numWork {
 				cmName := "testcm-" + utilrand.String(10)
 				cmNames = append(cmNames, cmName)
 				cm = &corev1.ConfigMap{
@@ -542,7 +542,7 @@ var _ = Describe("Work Controller", func() {
 			}
 
 			By("make sure the works are handled")
-			for i := 0; i < numWork; i++ {
+			for i := range numWork {
 				waitForWorkToBeHandled(works[i].GetName(), works[i].GetNamespace())
 			}
 
@@ -559,7 +559,7 @@ var _ = Describe("Work Controller", func() {
 				"new-test-key-1": "test-value-4",
 				"new-test-key-2": "test-value-5",
 			}
-			for i := 0; i < numWork; i++ {
+			for i := range numWork {
 				var resultWork fleetv1beta1.Work
 				Expect(hubClient.Get(ctx, types.NamespacedName{Name: works[i].GetName(), Namespace: memberReservedNSName1}, &resultWork)).Should(Succeed())
 				Expect(controllerutil.ContainsFinalizer(&resultWork, fleetv1beta1.WorkFinalizer)).Should(BeFalse())
@@ -588,7 +588,7 @@ var _ = Describe("Work Controller", func() {
 
 			By("make sure the update in the work is not picked up")
 			Consistently(func() bool {
-				for i := 0; i < numWork; i++ {
+				for i := range numWork {
 					By(fmt.Sprintf("updated the work = %s", works[i].GetName()))
 					var resultWork fleetv1beta1.Work
 					err := hubClient.Get(context.Background(), types.NamespacedName{Name: works[i].GetName(), Namespace: memberReservedNSName1}, &resultWork)
@@ -609,7 +609,7 @@ var _ = Describe("Work Controller", func() {
 			Expect(workApplier1.Join(ctx)).Should(Succeed())
 
 			By("make sure the work change get picked up")
-			for i := 0; i < numWork; i++ {
+			for i := range numWork {
 				resultWork := waitForWorkToApply(works[i].GetName())
 				Expect(len(resultWork.Status.ManifestConditions)).Should(Equal(1))
 				Expect(meta.IsStatusConditionTrue(resultWork.Status.ManifestConditions[0].Conditions, fleetv1beta1.WorkConditionTypeApplied)).Should(BeTrue())

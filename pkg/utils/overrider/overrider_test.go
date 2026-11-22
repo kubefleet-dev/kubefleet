@@ -93,7 +93,7 @@ func envelopeContentForTest(t *testing.T, kind, namespace, name string, data map
 	if namespace != "" {
 		metadata["namespace"] = namespace
 	}
-	raw, err := json.Marshal(map[string]interface{}{
+	raw, err := json.Marshal(map[string]any{
 		"apiVersion": placementv1beta1.GroupVersion.String(),
 		"kind":       kind,
 		"metadata":   metadata,
@@ -148,14 +148,6 @@ func latestROSnapshotForTest(namespace, name string, selectors ...placementv1bet
 			},
 		},
 	}
-}
-
-func clusterResourceOverrideSnapshotPtrForTest(snapshot placementv1beta1.ClusterResourceOverrideSnapshot) *placementv1beta1.ClusterResourceOverrideSnapshot {
-	return &snapshot
-}
-
-func resourceOverrideSnapshotPtrForTest(snapshot placementv1beta1.ResourceOverrideSnapshot) *placementv1beta1.ResourceOverrideSnapshot {
-	return &snapshot
 }
 
 func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
@@ -1603,7 +1595,7 @@ func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
 			},
 			wantCRO: []*placementv1beta1.ClusterResourceOverrideSnapshot{},
 			wantRO: []*placementv1beta1.ResourceOverrideSnapshot{
-				resourceOverrideSnapshotPtrForTest(latestROSnapshotForTest("ns", "ro-deployment", placementv1beta1.ResourceSelector{
+				new(latestROSnapshotForTest("ns", "ro-deployment", placementv1beta1.ResourceSelector{
 					Group:   "apps",
 					Version: "v1",
 					Kind:    "Deployment",
@@ -1625,7 +1617,7 @@ func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
 				}),
 			},
 			wantCRO: []*placementv1beta1.ClusterResourceOverrideSnapshot{
-				clusterResourceOverrideSnapshotPtrForTest(latestCROSnapshotForTest("cro-clusterrole", placementv1beta1.ResourceSelectorTerm{
+				new(latestCROSnapshotForTest("cro-clusterrole", placementv1beta1.ResourceSelectorTerm{
 					Group:   "rbac.authorization.k8s.io",
 					Version: "v1",
 					Kind:    "ClusterRole",
@@ -1677,7 +1669,7 @@ func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
 				}),
 			},
 			wantCRO: []*placementv1beta1.ClusterResourceOverrideSnapshot{
-				clusterResourceOverrideSnapshotPtrForTest(latestCROSnapshotForTest("cro-namespace", placementv1beta1.ResourceSelectorTerm{
+				new(latestCROSnapshotForTest("cro-namespace", placementv1beta1.ResourceSelectorTerm{
 					Group:   "",
 					Version: "v1",
 					Kind:    "Namespace",
@@ -1705,7 +1697,7 @@ func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
 			},
 			wantCRO: []*placementv1beta1.ClusterResourceOverrideSnapshot{},
 			wantRO: []*placementv1beta1.ResourceOverrideSnapshot{
-				resourceOverrideSnapshotPtrForTest(latestROSnapshotForTest("ns", "ro-deployment", placementv1beta1.ResourceSelector{
+				new(latestROSnapshotForTest("ns", "ro-deployment", placementv1beta1.ResourceSelector{
 					Group:   "apps",
 					Version: "v1",
 					Kind:    "Deployment",
@@ -1741,7 +1733,7 @@ func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
 			},
 			wantCRO: []*placementv1beta1.ClusterResourceOverrideSnapshot{},
 			wantRO: []*placementv1beta1.ResourceOverrideSnapshot{
-				resourceOverrideSnapshotPtrForTest(latestROSnapshotForTest("ns", "ro-deployment", placementv1beta1.ResourceSelector{
+				new(latestROSnapshotForTest("ns", "ro-deployment", placementv1beta1.ResourceSelector{
 					Group:   "apps",
 					Version: "v1",
 					Kind:    "Deployment",
@@ -1773,7 +1765,7 @@ func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
 				}),
 			},
 			wantCRO: []*placementv1beta1.ClusterResourceOverrideSnapshot{
-				clusterResourceOverrideSnapshotPtrForTest(latestCROSnapshotForTest("cro-clusterrole", placementv1beta1.ResourceSelectorTerm{
+				new(latestCROSnapshotForTest("cro-clusterrole", placementv1beta1.ResourceSelectorTerm{
 					Group:   "rbac.authorization.k8s.io",
 					Version: "v1",
 					Kind:    "ClusterRole",
@@ -1807,7 +1799,7 @@ func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
 			},
 			wantCRO: []*placementv1beta1.ClusterResourceOverrideSnapshot{},
 			wantRO: []*placementv1beta1.ResourceOverrideSnapshot{
-				resourceOverrideSnapshotPtrForTest(latestROSnapshotForTest("ns", "ro-deployment", placementv1beta1.ResourceSelector{
+				new(latestROSnapshotForTest("ns", "ro-deployment", placementv1beta1.ResourceSelector{
 					Group:   "apps",
 					Version: "v1",
 					Kind:    "Deployment",
@@ -1837,7 +1829,7 @@ func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
 			},
 			wantCRO: []*placementv1beta1.ClusterResourceOverrideSnapshot{},
 			wantRO: []*placementv1beta1.ResourceOverrideSnapshot{
-				resourceOverrideSnapshotPtrForTest(latestROSnapshotForTest("ns", "ro-deployment", placementv1beta1.ResourceSelector{
+				new(latestROSnapshotForTest("ns", "ro-deployment", placementv1beta1.ResourceSelector{
 					Group:   "apps",
 					Version: "v1",
 					Kind:    "Deployment",
@@ -1869,7 +1861,7 @@ func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
 			},
 			wantCRO: []*placementv1beta1.ClusterResourceOverrideSnapshot{},
 			wantRO: []*placementv1beta1.ResourceOverrideSnapshot{
-				resourceOverrideSnapshotPtrForTest(latestROSnapshotForTest("ns", "ro-multiple-selectors",
+				new(latestROSnapshotForTest("ns", "ro-multiple-selectors",
 					placementv1beta1.ResourceSelector{
 						Group:   "apps",
 						Version: "v1",
@@ -1910,7 +1902,7 @@ func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
 			},
 			wantCRO: []*placementv1beta1.ClusterResourceOverrideSnapshot{},
 			wantRO: []*placementv1beta1.ResourceOverrideSnapshot{
-				resourceOverrideSnapshotPtrForTest(latestROSnapshotForTest("ns", "ro-partial-match",
+				new(latestROSnapshotForTest("ns", "ro-partial-match",
 					placementv1beta1.ResourceSelector{
 						Group:   "",
 						Version: "v1",
@@ -1950,7 +1942,7 @@ func TestFetchAllMatchingOverridesForResourceSnapshot(t *testing.T) {
 				),
 			},
 			wantCRO: []*placementv1beta1.ClusterResourceOverrideSnapshot{
-				clusterResourceOverrideSnapshotPtrForTest(latestCROSnapshotForTest("cro-partial-match",
+				new(latestCROSnapshotForTest("cro-partial-match",
 					placementv1beta1.ResourceSelectorTerm{
 						Group:   "rbac.authorization.k8s.io",
 						Version: "v1",

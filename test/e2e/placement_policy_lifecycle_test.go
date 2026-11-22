@@ -24,7 +24,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -217,7 +216,7 @@ var _ = Describe("placement policy deletion", Label("placementpolicy"), func() {
 			Eventually(synchronizedActual, workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to synchronize the adopted bindings on the new resource snapshot")
 			wantStatus := allSynchronizedPlacementPolicyStatus(int32(len(allMemberClusters)))
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			statusActual := placementPolicyStatusActual(policyKey, wantStatus)
 			Eventually(statusActual, workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected placement policy status")
@@ -344,7 +343,7 @@ var _ = Describe("placement policy deletion", Label("placementpolicy"), func() {
 				workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to synchronize the adopted bindings on the new resource snapshot")
 			// cluster-3's orphan does not count toward the policy status.
 			wantStatus := allSynchronizedPlacementPolicyStatus(int32(len(eastClusterNames)))
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected placement policy status")
 		})
@@ -391,7 +390,7 @@ var _ = Describe("placement policy deletion", Label("placementpolicy"), func() {
 
 			// The policy never controlled the orphan, so it is left as it was.
 			wantStatus := allSynchronizedPlacementPolicyStatus(int32(len(eastClusterNames)))
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			statusActual := placementPolicyStatusActual(policyKey, wantStatus)
 			cmActual := configMapUnchangedOnClustersActual(cmKey, map[string]string{
 				memberCluster1EastProdName:   cmResourceVersionsByCluster[memberCluster1EastProdName],
@@ -479,7 +478,7 @@ var _ = Describe("placement policy deletion", Label("placementpolicy"), func() {
 			cmActual := appConfigMapPlacedOnClustersActual(allMemberClusters...)
 			Eventually(cmActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to place the ConfigMap on every member cluster")
 			wantStatus := allSynchronizedPlacementPolicyStatus(int32(len(allMemberClusters)))
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			statusActual := placementPolicyStatusActual(policyKey, wantStatus)
 			Eventually(statusActual, workloadEventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to report the expected cluster placement policy status")
 

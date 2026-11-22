@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -407,9 +408,7 @@ func applyDesiredPolicy(actual, desired kfplacementv1alpha1.PlacementPolicyAcces
 	if labels == nil {
 		labels = make(map[string]string, len(desired.GetLabels()))
 	}
-	for key, value := range desired.GetLabels() {
-		labels[key] = value
-	}
+	maps.Copy(labels, desired.GetLabels())
 	actual.SetLabels(labels)
 
 	// The owner reference is matched on the source's group, kind, and name and replaced in place,

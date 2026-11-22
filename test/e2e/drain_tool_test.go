@@ -19,6 +19,7 @@ package e2e
 import (
 	"fmt"
 	"os/exec"
+	"slices"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -398,10 +399,8 @@ func memberClusterCordonTaintAddedActual(mcName string) func() error {
 			return fmt.Errorf("failed to get member cluster %s: %w", mcName, err)
 		}
 
-		for _, taint := range mc.Spec.Taints {
-			if taint == toolsutils.CordonTaint {
-				return nil
-			}
+		if slices.Contains(mc.Spec.Taints, toolsutils.CordonTaint) {
+			return nil
 		}
 		return fmt.Errorf("cordon taint not found on member cluster %s", mcName)
 	}
@@ -414,10 +413,8 @@ func memberClusterCordonTaintRemovedActual(mcName string) func() error {
 			return fmt.Errorf("failed to get member cluster %s: %w", mcName, err)
 		}
 
-		for _, taint := range mc.Spec.Taints {
-			if taint == toolsutils.CordonTaint {
-				return fmt.Errorf("cordon taint found on member cluster %s", mcName)
-			}
+		if slices.Contains(mc.Spec.Taints, toolsutils.CordonTaint) {
+			return fmt.Errorf("cordon taint found on member cluster %s", mcName)
 		}
 		return nil
 	}

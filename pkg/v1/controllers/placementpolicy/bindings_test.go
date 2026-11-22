@@ -28,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/validation"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -464,13 +463,13 @@ func TestReconcileBindingsSettlesATakenName(t *testing.T) {
 		{name: "an orphan of the policy's name for another cluster", occupantCluster: "west-9", wantErrCategory: kferrors.ErrCategoryUser},
 		{
 			name:            "a binding of an earlier policy of the same name",
-			owner:           &metav1.OwnerReference{APIVersion: kfplacementv1alpha1.GroupVersion.String(), Kind: kfplacementv1alpha1.PlacementPolicyKind, Name: "pp", UID: "earlier-uid", Controller: ptr.To(true)},
+			owner:           &metav1.OwnerReference{APIVersion: kfplacementv1alpha1.GroupVersion.String(), Kind: kfplacementv1alpha1.PlacementPolicyKind, Name: "pp", UID: "earlier-uid", Controller: new(true)},
 			occupantCluster: "east-1",
 			wantErrCategory: kferrors.ErrCategoryTransient,
 		},
 		{
 			name:            "a binding another object controls",
-			owner:           &metav1.OwnerReference{APIVersion: "v1", Kind: "ConfigMap", Name: "squatter", UID: "squatter-uid", Controller: ptr.To(true)},
+			owner:           &metav1.OwnerReference{APIVersion: "v1", Kind: "ConfigMap", Name: "squatter", UID: "squatter-uid", Controller: new(true)},
 			occupantCluster: "east-1",
 			wantErrCategory: kferrors.ErrCategoryUser,
 		},

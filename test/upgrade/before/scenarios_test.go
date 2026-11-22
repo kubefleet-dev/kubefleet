@@ -30,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -57,7 +56,7 @@ var _ = Describe("CRP with trackable resources, all available (before upgrade)",
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
+						UnavailablePeriodSeconds: new(2),
 					},
 				},
 			},
@@ -120,7 +119,7 @@ var _ = Describe("CRP with non-trackable resources, all available (before upgrad
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
+						UnavailablePeriodSeconds: new(2),
 					},
 				},
 			},
@@ -215,7 +214,7 @@ var _ = Describe("CRP with availability failure (before upgrade)", Ordered, func
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
+						UnavailablePeriodSeconds: new(2),
 					},
 				},
 			},
@@ -303,7 +302,7 @@ var _ = Describe("CRP with apply op failure (before upgrade)", Ordered, func() {
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
+						UnavailablePeriodSeconds: new(2),
 					},
 					ApplyStrategy: &placementv1beta1.ApplyStrategy{
 						Type: placementv1beta1.ApplyStrategyTypeServerSideApply,
@@ -423,8 +422,8 @@ var _ = Describe("CRP stuck in the rollout process (blocked by availability fail
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
-						MaxUnavailable:           ptr.To(intstr.FromInt(1)),
+						UnavailablePeriodSeconds: new(2),
+						MaxUnavailable:           new(intstr.FromInt(1)),
 					},
 				},
 			},
@@ -592,8 +591,8 @@ var _ = Describe("CRP stuck in the rollout process (blocked by apply op failure)
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
-						MaxUnavailable:           ptr.To(intstr.FromInt(1)),
+						UnavailablePeriodSeconds: new(2),
+						MaxUnavailable:           new(intstr.FromInt(1)),
 					},
 					ApplyStrategy: &placementv1beta1.ApplyStrategy{
 						Type: placementv1beta1.ApplyStrategyTypeServerSideApply,
@@ -631,7 +630,7 @@ var _ = Describe("CRP stuck in the rollout process (blocked by apply op failure)
 			unstructuredMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(configMap)
 			Expect(err).To(BeNil(), "Failed to convert config map %s to unstructured", appConfigMapName)
 			applyConfig := client.ApplyConfigurationFromUnstructured(&unstructured.Unstructured{Object: unstructuredMap})
-			Expect(memberCluster.KubeClient.Apply(ctx, applyConfig, &client.ApplyOptions{FieldManager: "handover", Force: ptr.To(true)})).To(Succeed(), "Failed to update config map %s", appConfigMapName)
+			Expect(memberCluster.KubeClient.Apply(ctx, applyConfig, &client.ApplyOptions{FieldManager: "handover", Force: new(true)})).To(Succeed(), "Failed to update config map %s", appConfigMapName)
 		}
 	})
 
@@ -734,7 +733,7 @@ var _ = Describe("CRP stuck in the rollout process (long wait time)", Ordered, f
 						RestartPolicy: corev1.RestartPolicyNever,
 					},
 				},
-				BackoffLimit: ptr.To(int32(6)),
+				BackoffLimit: new(int32(6)),
 			},
 		}
 		Expect(hubClient.Create(ctx, originalJob.DeepCopy())).To(Succeed(), "Failed to create job")
@@ -750,7 +749,7 @@ var _ = Describe("CRP stuck in the rollout process (long wait time)", Ordered, f
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
 						// Block rollout for a long time if there are untrackable resources.
-						UnavailablePeriodSeconds: ptr.To(3600),
+						UnavailablePeriodSeconds: new(3600),
 					},
 				},
 			},
@@ -796,7 +795,7 @@ var _ = Describe("CRP stuck in the rollout process (long wait time)", Ordered, f
 		job := &batchv1.Job{}
 		Expect(hubClient.Get(ctx, types.NamespacedName{Name: jobName, Namespace: workNamespaceName}, job)).To(Succeed(), "Failed to get job %s", jobName)
 
-		job.Spec.BackoffLimit = ptr.To(int32(10))
+		job.Spec.BackoffLimit = new(int32(10))
 		Expect(hubClient.Update(ctx, job)).To(Succeed(), "Failed to update job %s", jobName)
 	})
 

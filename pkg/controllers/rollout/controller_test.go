@@ -30,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllertest"
@@ -1299,7 +1298,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 0,
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			// maxSurge bounds how far the can-be-ready set may exceed the target. Scheduled bindings
 			// are not counted as can-be-ready, so with nothing ready yet the budget is the full
@@ -1340,7 +1339,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 0,
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			// The two ready bound bindings already fill the target, so with maxSurge zero there is
 			// no room to bring the scheduled binding up and it stays unselected this round.
@@ -1390,7 +1389,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.String,
 						StrVal: "50%",
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			// 50% of the target of 3 rounds up to 2, so the can-be-ready ceiling is 5. The three
 			// ready bound bindings already count towards it, leaving room for exactly two of the
@@ -1929,7 +1928,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 3,
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			wantTobeUpdatedBindings:     []int{},
 			wantStaleUnselectedBindings: []int{0, 1, 2, 3, 4}, // since maxUnavailable is set to zero no ready binding is updated.
@@ -2021,7 +2020,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 3,
 					},
-					UnavailablePeriodSeconds: ptr.To(60),
+					UnavailablePeriodSeconds: new(60),
 				}, nil)),
 			wantTobeUpdatedBindings:     []int{1}, // scheduled binding is rolled out.
 			wantStaleUnselectedBindings: []int{0}, // bound canBeReady binding cannot be rolled out because number of ready bindings is less than required.
@@ -2121,7 +2120,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 3,
 					},
-					UnavailablePeriodSeconds: ptr.To(60),
+					UnavailablePeriodSeconds: new(60),
 				}, nil)), // UnavailablePeriodSeconds is 60s -> readyTimeCutOff = t - 60s
 			wantStaleUnselectedBindings: []int{0, 1},
 			wantUpToDateBoundBindings:   []int{2},
@@ -2161,7 +2160,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 3,
 					},
-					UnavailablePeriodSeconds: ptr.To(60),
+					UnavailablePeriodSeconds: new(60),
 				}, nil)), // UnavailablePeriodSeconds is 60s -> readyTimeCutOff = t - 60s
 			wantStaleUnselectedBindings: []int{},                                  // empty list as unscheduled bindings will be removed and are not tracked in the CRP today.
 			wantDesiredBindingsSpec:     []placementv1beta1.ResourceBindingSpec{}, // unscheduled binding does not have desired spec so that putting the empty here
@@ -2202,7 +2201,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 1,
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			wantDesiredBindingsSpec: []placementv1beta1.ResourceBindingSpec{
 				{},
@@ -2244,7 +2243,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 0,
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			wantDesiredBindingsSpec: []placementv1beta1.ResourceBindingSpec{
 				{},
@@ -2284,7 +2283,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 0,
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			wantDesiredBindingsSpec: []placementv1beta1.ResourceBindingSpec{
 				{},
@@ -2318,7 +2317,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 0,
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			wantDesiredBindingsSpec: []placementv1beta1.ResourceBindingSpec{
 				{},
@@ -2352,7 +2351,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 0,
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			wantDesiredBindingsSpec: []placementv1beta1.ResourceBindingSpec{
 				{},
@@ -2388,7 +2387,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 0,
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			wantDesiredBindingsSpec: []placementv1beta1.ResourceBindingSpec{
 				{},
@@ -2433,7 +2432,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 1,
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			wantDesiredBindingsSpec: []placementv1beta1.ResourceBindingSpec{
 				{},
@@ -2485,7 +2484,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 0,
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			wantDesiredBindingsSpec: []placementv1beta1.ResourceBindingSpec{
 				{},
@@ -2531,7 +2530,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 0,
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			wantDesiredBindingsSpec: []placementv1beta1.ResourceBindingSpec{
 				{},
@@ -2566,7 +2565,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 0,
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			wantDesiredBindingsSpec: []placementv1beta1.ResourceBindingSpec{
 				{},
@@ -2603,7 +2602,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 0,
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			wantDesiredBindingsSpec: []placementv1beta1.ResourceBindingSpec{
 				{},
@@ -2649,7 +2648,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 0,
 					},
-					UnavailablePeriodSeconds: ptr.To(int(defaultUnavailablePeriod)),
+					UnavailablePeriodSeconds: new(int(defaultUnavailablePeriod)),
 				}, nil)),
 			wantDesiredBindingsSpec: []placementv1beta1.ResourceBindingSpec{
 				{},
@@ -2693,7 +2692,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 0,
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			wantDesiredBindingsSpec: []placementv1beta1.ResourceBindingSpec{
 				{},
@@ -2739,7 +2738,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 						Type:   intstr.Int,
 						IntVal: 0,
 					},
-					UnavailablePeriodSeconds: ptr.To(1),
+					UnavailablePeriodSeconds: new(1),
 				}, nil)),
 			wantDesiredBindingsSpec: []placementv1beta1.ResourceBindingSpec{
 				{
@@ -2847,7 +2846,7 @@ func TestPickBindingsToRoll(t *testing.T) {
 func createPlacementPolicyForTest(placementType placementv1beta1.PlacementType, numberOfClusters int32) *placementv1beta1.PlacementPolicy {
 	return &placementv1beta1.PlacementPolicy{
 		PlacementType:    placementType,
-		NumberOfClusters: ptr.To(numberOfClusters),
+		NumberOfClusters: new(numberOfClusters),
 		Affinity: &placementv1beta1.Affinity{
 			ClusterAffinity: &placementv1beta1.ClusterAffinity{
 				RequiredDuringSchedulingIgnoredDuringExecution: &placementv1beta1.ClusterSelector{
@@ -2966,7 +2965,7 @@ func generateDefaultRollingUpdateConfig() *placementv1beta1.RollingUpdateConfig 
 			Type:   intstr.Int,
 			IntVal: 3,
 		},
-		UnavailablePeriodSeconds: ptr.To(int(defaultUnavailablePeriod)),
+		UnavailablePeriodSeconds: new(int(defaultUnavailablePeriod)),
 	}
 }
 

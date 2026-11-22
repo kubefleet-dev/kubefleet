@@ -29,7 +29,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -96,7 +95,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			// Create the clusterStagedUpdateStrategy.
 			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
 
-			for i := 0; i < 2; i++ {
+			for i := range 2 {
 				updateRunNames = append(updateRunNames, fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 			}
 
@@ -281,7 +280,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			// Create the clusterStagedUpdateStrategy.
 			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
 
-			for i := 0; i < 3; i++ {
+			for i := range 3 {
 				updateRunNames = append(updateRunNames, fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 			}
 
@@ -514,7 +513,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			// Create the clusterStagedUpdateStrategy.
 			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
 
-			for i := 0; i < 3; i++ {
+			for i := range 3 {
 				updateRunNames = append(updateRunNames, fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 			}
 		})
@@ -729,7 +728,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			}
 			Expect(hubClient.Create(ctx, strategy)).To(Succeed(), "Failed to create ClusterStagedUpdateStrategy")
 
-			for i := 0; i < 2; i++ {
+			for i := range 2 {
 				updateRunNames = append(updateRunNames, fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 			}
 		})
@@ -828,7 +827,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 					ResourceSelectors: workResourceSelector(),
 					Policy: &placementv1beta1.PlacementPolicy{
 						PlacementType:    placementv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(1)), // pick 1 cluster
+						NumberOfClusters: new(int32(1)), // pick 1 cluster
 					},
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.ExternalRolloutStrategyType,
@@ -840,7 +839,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			// Create the clusterStagedUpdateStrategy.
 			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
 
-			for i := 0; i < 3; i++ {
+			for i := range 3 {
 				updateRunNames = append(updateRunNames, fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 			}
 		})
@@ -916,7 +915,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 				if err := hubClient.Get(ctx, client.ObjectKey{Name: crpName}, crp); err != nil {
 					return fmt.Errorf("Failed to get the crp: %w", err)
 				}
-				crp.Spec.Policy.NumberOfClusters = ptr.To(int32(3)) // pick 3 clusters
+				crp.Spec.Policy.NumberOfClusters = new(int32(3)) // pick 3 clusters
 				return hubClient.Update(ctx, crp)
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update the crp to pick all 3 member clusters")
 		})
@@ -970,7 +969,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 				if err := hubClient.Get(ctx, client.ObjectKey{Name: crpName}, crp); err != nil {
 					return fmt.Errorf("failed to get the crp: %w", err)
 				}
-				crp.Spec.Policy.NumberOfClusters = ptr.To(int32(2)) // pick 2 clusters
+				crp.Spec.Policy.NumberOfClusters = new(int32(2)) // pick 2 clusters
 				return hubClient.Update(ctx, crp)
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update the crp to only keep member-cluster-3")
 		})
@@ -1054,7 +1053,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 									{
 										Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 										Path:     "/metadata/annotations",
-										Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "%s-0"}`, croTestAnnotationKey, croTestAnnotationValue))},
+										Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"%s": "%s-0"}`, croTestAnnotationKey, croTestAnnotationValue)},
 									},
 								},
 							},
@@ -1088,7 +1087,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 									{
 										Operator: placementv1beta1.JSONPatchOverrideOpAdd,
 										Path:     "/metadata/annotations",
-										Value:    apiextensionsv1.JSON{Raw: []byte(fmt.Sprintf(`{"%s": "%s-1"}`, roTestAnnotationKey, roTestAnnotationValue))},
+										Value:    apiextensionsv1.JSON{Raw: fmt.Appendf(nil, `{"%s": "%s-1"}`, roTestAnnotationKey, roTestAnnotationValue)},
 									},
 								},
 							},
@@ -1726,7 +1725,7 @@ var _ = Describe("test CRP rollout with staged update run", func() {
 			// Create the clusterStagedUpdateStrategy.
 			strategy = createClusterStagedUpdateStrategySucceed(strategyName)
 
-			for i := 0; i < 1; i++ {
+			for i := range 1 {
 				updateRunNames = append(updateRunNames, fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 			}
 		})
@@ -1898,7 +1897,7 @@ var _ = Describe("Test member cluster join and leave flow with updateRun", Label
 		}
 		Expect(hubClient.Create(ctx, strategy)).To(Succeed(), "Failed to create ClusterStagedUpdateStrategy")
 
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			updateRunNames = append(updateRunNames, fmt.Sprintf(clusterStagedUpdateRunNameWithSubIndexTemplate, GinkgoParallelProcess(), i))
 		}
 
@@ -2121,7 +2120,7 @@ func updateStrategySpecWithDeleteStageTasks() placementv1beta1.UpdateStrategySpe
 			{
 				Name:           "all",
 				LabelSelector:  &metav1.LabelSelector{},
-				MaxConcurrency: ptr.To(intstr.FromString("100%")),
+				MaxConcurrency: new(intstr.FromString("100%")),
 			},
 		},
 		DeleteStage: &placementv1beta1.DeleteStageConfig{

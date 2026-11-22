@@ -18,6 +18,7 @@ package workapplier
 
 import (
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 
@@ -418,27 +419,19 @@ func areAllProcessedManifestsAvailable(manifestProcessingStates []*manifestProce
 
 func (r *MultiStageRequeueWithExponentialBackoffRateLimiter) garbageCollect() {
 	rebuiltRequeueCounter := make(map[types.NamespacedName]int, len(r.requeueCounter))
-	for k, v := range r.requeueCounter {
-		rebuiltRequeueCounter[k] = v
-	}
+	maps.Copy(rebuiltRequeueCounter, r.requeueCounter)
 	r.requeueCounter = rebuiltRequeueCounter
 
 	rebuiltLastRequeueDelayTracker := make(map[types.NamespacedName]time.Duration, len(r.lastRequeueDelayTracker))
-	for k, v := range r.lastRequeueDelayTracker {
-		rebuiltLastRequeueDelayTracker[k] = v
-	}
+	maps.Copy(rebuiltLastRequeueDelayTracker, r.lastRequeueDelayTracker)
 	r.lastRequeueDelayTracker = rebuiltLastRequeueDelayTracker
 
 	rebuiltLastTrackedLinkedWorksGenHash := make(map[types.NamespacedName]string, len(r.lastTrackedLinkedWorksGenHash))
-	for k, v := range r.lastTrackedLinkedWorksGenHash {
-		rebuiltLastTrackedLinkedWorksGenHash[k] = v
-	}
+	maps.Copy(rebuiltLastTrackedLinkedWorksGenHash, r.lastTrackedLinkedWorksGenHash)
 	r.lastTrackedLinkedWorksGenHash = rebuiltLastTrackedLinkedWorksGenHash
 
 	rebuiltLastTrackedProcessingResultHash := make(map[types.NamespacedName]string, len(r.lastTrackedProcessingResultHash))
-	for k, v := range r.lastTrackedProcessingResultHash {
-		rebuiltLastTrackedProcessingResultHash[k] = v
-	}
+	maps.Copy(rebuiltLastTrackedProcessingResultHash, r.lastTrackedProcessingResultHash)
 	r.lastTrackedProcessingResultHash = rebuiltLastTrackedProcessingResultHash
 
 	r.forgets = 0
