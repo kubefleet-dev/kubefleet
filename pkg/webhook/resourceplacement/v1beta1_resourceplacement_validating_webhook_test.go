@@ -14,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -59,7 +58,7 @@ func TestHandle(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:              "test-rp",
 			Finalizers:        []string{},
-			DeletionTimestamp: ptr.To(metav1.NewTime(time.Now())),
+			DeletionTimestamp: new(metav1.NewTime(time.Now())),
 		},
 		Spec: placementv1beta1.PlacementSpec{
 			Policy: &placementv1beta1.PlacementPolicy{
@@ -138,7 +137,7 @@ func TestHandle(t *testing.T) {
 		Spec: placementv1beta1.PlacementSpec{
 			Policy: &placementv1beta1.PlacementPolicy{
 				PlacementType:    placementv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(2)),
+				NumberOfClusters: new(int32(2)),
 			},
 			ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{resourceSelector},
 			Strategy: placementv1beta1.RolloutStrategy{

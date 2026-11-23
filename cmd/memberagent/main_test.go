@@ -10,7 +10,6 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/client-go/rest"
-	"k8s.io/utils/ptr"
 
 	"github.com/kubefleet-dev/kubefleet/cmd/memberagent/options"
 	v1workapplier "github.com/kubefleet-dev/kubefleet/pkg/v1/controllers/workapplier"
@@ -35,21 +34,21 @@ func TestPlacementPolicyWorkApplierRequeueRateLimiter(t *testing.T) {
 		},
 		{
 			name:   "set to empty",
-			envVal: ptr.To(""),
+			envVal: new(""),
 		},
 		{
 			name:   "set to a valid cap",
-			envVal: ptr.To("5"),
+			envVal: new("5"),
 			want:   wantCapped,
 		},
 		{
 			name:      "set to a non-integer",
-			envVal:    ptr.To("5s"),
+			envVal:    new("5s"),
 			wantErred: true,
 		},
 		{
 			name:      "set below the minimum",
-			envVal:    ptr.To("1"),
+			envVal:    new("1"),
 			wantErred: true,
 		},
 	}

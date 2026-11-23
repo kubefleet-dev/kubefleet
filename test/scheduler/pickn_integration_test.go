@@ -29,7 +29,6 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
 )
@@ -439,12 +438,12 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			memberCluster2EastProd:   &zeroScore,
 			memberCluster3EastCanary: &zeroScore,
 			memberCluster4CentralProd: {
-				AffinityScore:       ptr.To(int32(10)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(10)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(10)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(10)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster6WestProd:   &zeroScore,
 			memberCluster7WestCanary: &zeroScore,
@@ -544,16 +543,16 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			memberCluster1EastProd: &zeroScore,
 			memberCluster2EastProd: &zeroScore,
 			memberCluster3EastCanary: {
-				AffinityScore:       ptr.To(int32(20)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(20)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster4CentralProd: {
-				AffinityScore:       ptr.To(int32(10)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(10)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(10)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(10)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster6WestProd:   &zeroScore,
 			memberCluster7WestCanary: &zeroScore,
@@ -677,8 +676,8 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			// not violate any topology spread constraints + does not increase the skew. It
 			// is assigned a topology spread score of 0 as the skew is unchanged.
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			// Cluster 6 is considered to be unschedulable in the second iteration as placing
 			// resources on it would violate the topology spread constraint (skew becomes 2,
@@ -689,8 +688,8 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			// clusters), and its name is the largest in alphanumeric order. It is assigned
 			// a topology spread score of -1 as placing resources on it increases the skew.
 			memberCluster7WestCanary: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 		}
 
@@ -705,7 +704,7 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 				NumberOfClusters: &numOfClusters,
 				TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 					{
-						MaxSkew:           ptr.To(int32(1)),
+						MaxSkew:           new(int32(1)),
 						TopologyKey:       regionLabel,
 						WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
 					},
@@ -772,16 +771,16 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			// and decrease the skew for the environment-based topology spread constraint by 1;
 			// consequently it receives a topology spread score of 1.
 			memberCluster1EastProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(1)),
 			},
 			// Cluster 2 is not picked in the second iteration, but placing resources on it
 			// would leave the skew for the region-based topology spread constraint unchanged,
 			// and decrease the skew for the environment-based topology spread constraint by 1;
 			// consequently it receives a topology spread score of 1.
 			memberCluster2EastProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(1)),
 			},
 			// Cluster 3 is considered to be unschedulable in the second iteration as placing
 			// resources on it would violate the environment-based topology spread constraint
@@ -792,16 +791,16 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			// and decrease the skew for the environment-based topology spread constraint by 1;
 			// consequently it receives a topology spread score of 1.
 			memberCluster4CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(1)),
 			},
 			// Cluster 5 is picked in the second iteration, as placing resources on it does
 			// not violate any topology spread constraints + does not increase the skew. It
 			// is assigned a topology spread score of 0 as the skew is unchanged for both
 			// topology spread constraints.
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(1)),
 			},
 			// Cluster 6 is considered to be unschedulable in the second iteration as placing
 			// resources on it would violate the region-based topology spread constraint
@@ -813,8 +812,8 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			// in alphanumeric order. It is assigned a topology spread score of -2 as placing
 			// resources on it increases the skew in both topology spread constraints..
 			memberCluster7WestCanary: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-2)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-2)),
 			},
 		}
 
@@ -829,12 +828,12 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 				NumberOfClusters: &numOfClusters,
 				TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 					{
-						MaxSkew:           ptr.To(int32(1)),
+						MaxSkew:           new(int32(1)),
 						TopologyKey:       regionLabel,
 						WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
 					},
 					{
-						MaxSkew:           ptr.To(int32(1)),
+						MaxSkew:           new(int32(1)),
 						TopologyKey:       envLabel,
 						WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
 					},
@@ -904,23 +903,23 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			// not violate any topology spread constraints + does not increase the skew. It
 			// is assigned a topology spread score of 0 as the skew is unchanged.
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			// Cluster 6 is not picked in the second iteration, and placing
 			// resources on it would violate the topology spread constraint (skew becomes 2,
 			// the limit is 1); the violation leads to a topology spread score of -1000.
 			memberCluster6WestProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1000)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1000)),
 			},
 			// Cluster 7 is picked in the first iteration, as placing resources on it does not
 			// violate any topology spread constraints + increases the skew only by one (so do other
 			// clusters), and its name is the largest in alphanumeric order. It is assigned
 			// a topology spread score of -1 as placing resources on it increases the skew.
 			memberCluster7WestCanary: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 		}
 
@@ -935,7 +934,7 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 				NumberOfClusters: &numOfClusters,
 				TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 					{
-						MaxSkew:           ptr.To(int32(1)),
+						MaxSkew:           new(int32(1)),
 						TopologyKey:       regionLabel,
 						WhenUnsatisfiable: placementv1beta1.ScheduleAnyway,
 					},
@@ -1002,40 +1001,40 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			// and decrease the skew for the environment-based topology spread constraint by 1;
 			// consequently it receives a topology spread score of 1.
 			memberCluster1EastProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(1)),
 			},
 			// Cluster 2 is not picked in the second iteration, but placing resources on it
 			// would leave the skew for the region-based topology spread constraint unchanged,
 			// and decrease the skew for the environment-based topology spread constraint by 1;
 			// consequently it receives a topology spread score of 1.
 			memberCluster2EastProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(1)),
 			},
 			// Cluster 3 is not picked in the second iteration as placing
 			// resources on it would violate the region-based topology spread constraint
 			// (skew becomes 2, the limit is 1); the violation leads to a topology spread score
 			// of -1000.
 			memberCluster3EastCanary: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1000)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1000)),
 			},
 			// Cluster 4 is not picked in the second iteration, but placing resources on it
 			// would leave the skew for the region-based topology spread constraint unchanged,
 			// and decrease the skew for the environment-based topology spread constraint by 1;
 			// consequently it receives a topology spread score of 1.
 			memberCluster4CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(1)),
 			},
 			// Cluster 5 is picked in the second iteration, as placing resources on it does
 			// not violate any topology spread constraints + does not increase the skew. It
 			// is assigned a topology spread score of 0 as the skew is unchanged for both
 			// topology spread constraints.
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(1)),
 			},
 			// Cluster 6 is not picked in the second iteration as placing
 			// resources on it would violate the region-based topology spread constraint
@@ -1043,8 +1042,8 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			// environment based topology spread constraint by 1, so it receives a topology
 			// spread score of -999 (-1000 for the violation, +1 for the skew decrease).
 			memberCluster6WestProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-999)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-999)),
 			},
 			// Cluster 7 is picked in the first iteration, as placing resources on it does not
 			// violate any topology spread constraints + increases the skew only by one in both
@@ -1052,8 +1051,8 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			// in alphanumeric order. It is assigned a topology spread score of -2 as placing
 			// resources on it increases the skew in both topology spread constraints..
 			memberCluster7WestCanary: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-2)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-2)),
 			},
 		}
 
@@ -1068,12 +1067,12 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 				NumberOfClusters: &numOfClusters,
 				TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 					{
-						MaxSkew:           ptr.To(int32(1)),
+						MaxSkew:           new(int32(1)),
 						TopologyKey:       regionLabel,
 						WhenUnsatisfiable: placementv1beta1.ScheduleAnyway,
 					},
 					{
-						MaxSkew:           ptr.To(int32(1)),
+						MaxSkew:           new(int32(1)),
 						TopologyKey:       envLabel,
 						WhenUnsatisfiable: placementv1beta1.ScheduleAnyway,
 					},
@@ -1152,8 +1151,8 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			// not violate any topology spread constraints; but it increases the skew by 1, hence
 			// the -1 topology spread score.
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 			// Cluster 6 is filtered out (does not match with required affinity term).
 			memberCluster6WestProd: nil,
@@ -1193,7 +1192,7 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 				},
 				TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 					{
-						MaxSkew:           ptr.To(int32(1)),
+						MaxSkew:           new(int32(1)),
 						TopologyKey:       regionLabel,
 						WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
 					},
@@ -1260,50 +1259,50 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			// configuration (with a weight of 30); but it increases the skew by 1, hence
 			// the -1 topology spread score.
 			memberCluster1EastProd: {
-				AffinityScore:       ptr.To(int32(30)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(30)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 			// Cluster 2 is picked in the second iteration, as placing resources on it reduces
 			// the skew by 1, hence the topology spread score of 1, and it is preferred
 			// per affinity configuration (with a weight of 30).
 			memberCluster2EastProd: {
-				AffinityScore:       ptr.To(int32(30)),
-				TopologySpreadScore: ptr.To(int32(1)),
+				AffinityScore:       new(int32(30)),
+				TopologySpreadScore: new(int32(1)),
 			},
 			// Cluster 3 is picked in the first iteration, as placing resources on it does
 			// not violate any topology spread constraints and it is preferred per affinity
 			// configuration (with a weight of 30); but it increases the skew by 1, hence
 			// the -1 topology spread score.
 			memberCluster3EastCanary: {
-				AffinityScore:       ptr.To(int32(30)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(30)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 			// Cluster 4 is not picked in the 6th iteration; placing resources on it violates
 			// the topology spread constraint, hence the topology spread score of -1000.
 			memberCluster4CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1000)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1000)),
 			},
 			// Cluster 5 is picked in the 6th iteration; placing resources on it violates the
 			// topology spread constraint, hence the topology spread score of -1000. It ranks
 			// higher by name in alphanumeric order than cluster 4.
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1000)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1000)),
 			},
 			// Cluster 6 is picked in the 5th iteration, as placing resources on it does
 			// not violate any topology spread constraints + the cluster is ranked higher by name
 			// in alphanumeric order; but it increases the skew by 1, hence
 			// the -1 topology spread score.
 			memberCluster6WestProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 			// Cluster 7 is picked in the 4th iteration, as placing resources on it reduces
 			// the skew by 1, hence the topology spread score of 1.
 			memberCluster7WestCanary: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(1)),
 			},
 		}
 
@@ -1334,7 +1333,7 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 				},
 				TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 					{
-						MaxSkew:           ptr.To(int32(1)),
+						MaxSkew:           new(int32(1)),
 						TopologyKey:       envLabel,
 						WhenUnsatisfiable: placementv1beta1.ScheduleAnyway,
 					},
@@ -1407,15 +1406,15 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			// * it is preferred per affinity configuration (with a weight of 40);
 			// * it is ranked higher by name in alphanumeric order.
 			memberCluster2EastProd: {
-				AffinityScore:       ptr.To(int32(40)),
-				TopologySpreadScore: ptr.To(int32(-2)),
+				AffinityScore:       new(int32(40)),
+				TopologySpreadScore: new(int32(-2)),
 			},
 			// Cluster 3 is filtered out as it does not meet the affinity requirements.
 			memberCluster3EastCanary: nil,
 			// Cluster 4 is not picked as it ranks lower by name in alphanumeric order.
 			memberCluster4CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-999)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-999)),
 			},
 			// Cluster 5 is picked in the 3rd iteration, as
 			// * placing resources on it does not violate the DoNotSchedule topology spread
@@ -1423,16 +1422,16 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			//   topology spread constraint (skew becomes 3, limit is 2); and
 			// * it is ranked higher by name in alphanumeric order.
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-999)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-999)),
 			},
 			// Cluster 6 is picked in the second iteration, as
 			// * placing resources on it does not violate any topology spread constraints (it
 			//   increase the skew by 1 for environment-based topology spread constraint); and
 			// * it is ranked higher by name in alphanumeric order.
 			memberCluster6WestProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 			// Cluster 7 is not picked as it does not meet the affinity requirements.
 			memberCluster7WestCanary: nil,
@@ -1476,12 +1475,12 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 				},
 				TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 					{
-						MaxSkew:           ptr.To(int32(2)),
+						MaxSkew:           new(int32(2)),
 						TopologyKey:       envLabel,
 						WhenUnsatisfiable: placementv1beta1.ScheduleAnyway,
 					},
 					{
-						MaxSkew:           ptr.To(int32(1)),
+						MaxSkew:           new(int32(1)),
 						TopologyKey:       regionLabel,
 						WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
 					},
@@ -1750,15 +1749,15 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			// * it is preferred per affinity configuration (with a weight of 40);
 			// * it is ranked higher by name in alphanumeric order.
 			memberCluster2EastProd: {
-				AffinityScore:       ptr.To(int32(40)),
-				TopologySpreadScore: ptr.To(int32(-2)),
+				AffinityScore:       new(int32(40)),
+				TopologySpreadScore: new(int32(-2)),
 			},
 			// Cluster 3 is filtered out as it does not meet the affinity requirements.
 			memberCluster3EastCanary: nil,
 			// Cluster 4 is not picked as it ranks lower by name in alphanumeric order.
 			memberCluster4CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-999)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-999)),
 			},
 			// Cluster 5 is picked in the 3rd iteration, as
 			// * placing resources on it does not violate the DoNotSchedule topology spread
@@ -1766,16 +1765,16 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			//   topology spread constraint (skew becomes 3, limit is 2); and
 			// * it is ranked higher by name in alphanumeric order.
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-999)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-999)),
 			},
 			// Cluster 6 is picked in the second iteration, as
 			// * placing resources on it does not violate any topology spread constraints (it
 			//   increase the skew by 1 for environment-based topology spread constraint); and
 			// * it is ranked higher by name in alphanumeric order.
 			memberCluster6WestProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 			// Cluster 7 is not picked as it does not meet the affinity requirements.
 			memberCluster7WestCanary: nil,
@@ -1784,46 +1783,46 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 		scoreByClusterAfter := map[string]*placementv1beta1.ClusterScore{
 			// Cluster 1 is not picked as it is not preferred per affinity configuration.
 			memberCluster1EastProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 			// Cluster 2 is not picked as it is not preferred per affinity configuration.
 			memberCluster2EastProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 			// Cluster 3 is not picked as it is not preferred per affinity configuration.
 			memberCluster3EastCanary: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 			// Cluster 4 is picked in the 3rd iteration, as
 			// * placing resources on it increases the skew by 1 (so does other clusters); and
 			// * it is preferred per affinity configuration (with a weight of 50);
 			// * it is ranked higher by name in alphanumeric order.
 			memberCluster4CentralProd: {
-				AffinityScore:       ptr.To(int32(50)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(50)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 			// Cluster 5 is picked in the first iteration, as
 			// * placing resources on it increases the skew by 1 (so does other clusters); and
 			// * it is preferred per affinity configuration (with a weight of 50);
 			// * it is ranked higher by name in alphanumeric order.
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(50)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(50)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 			// Cluster 6 is not picked as it is not preferred per affinity configuration.
 			memberCluster6WestProd: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(-1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(-1)),
 			},
 			// Cluster 7 is picked in the second iteration, as
 			// * placing resources on it decreases the skew by 1; and
 			// * it is ranked higher by name in alphanumeric order.
 			memberCluster7WestCanary: {
-				AffinityScore:       ptr.To(int32(0)),
-				TopologySpreadScore: ptr.To(int32(1)),
+				AffinityScore:       new(int32(0)),
+				TopologySpreadScore: new(int32(1)),
 			},
 		}
 
@@ -1865,12 +1864,12 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 				},
 				TopologySpreadConstraints: []placementv1beta1.TopologySpreadConstraint{
 					{
-						MaxSkew:           ptr.To(int32(2)),
+						MaxSkew:           new(int32(2)),
 						TopologyKey:       envLabel,
 						WhenUnsatisfiable: placementv1beta1.ScheduleAnyway,
 					},
 					{
-						MaxSkew:           ptr.To(int32(1)),
+						MaxSkew:           new(int32(1)),
 						TopologyKey:       regionLabel,
 						WhenUnsatisfiable: placementv1beta1.DoNotSchedule,
 					},
@@ -1906,7 +1905,7 @@ var _ = Describe("scheduling CRPs of the PickN placement type", func() {
 			}
 			topologySpreadConstraintsAfter := []placementv1beta1.TopologySpreadConstraint{
 				{
-					MaxSkew:           ptr.To(int32(2)),
+					MaxSkew:           new(int32(2)),
 					TopologyKey:       envLabel,
 					WhenUnsatisfiable: placementv1beta1.ScheduleAnyway,
 				},
@@ -2347,12 +2346,12 @@ var _ = Describe("scheduling RPs of the PickN placement type", func() {
 			memberCluster2EastProd:   &zeroScore,
 			memberCluster3EastCanary: &zeroScore,
 			memberCluster4CentralProd: {
-				AffinityScore:       ptr.To(int32(10)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(10)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster5CentralProd: {
-				AffinityScore:       ptr.To(int32(10)),
-				TopologySpreadScore: ptr.To(int32(0)),
+				AffinityScore:       new(int32(10)),
+				TopologySpreadScore: new(int32(0)),
 			},
 			memberCluster6WestProd:   &zeroScore,
 			memberCluster7WestCanary: &zeroScore,

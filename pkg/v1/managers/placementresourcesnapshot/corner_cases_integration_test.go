@@ -18,6 +18,7 @@ package placementresourcesnapshot
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -29,7 +30,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -604,16 +604,12 @@ var _ = Describe("corner cases (stale cache and inconsistent states)", func() {
 
 		primaryDecoy := func(placementPolicy placementv1alpha1.PlacementPolicyAccessor, name, idx, cnt string, extraAnnotations map[string]string) decoySnapshotSpec {
 			annotations := decoyOwnedByAnnotations(placementPolicy)
-			for k, v := range extraAnnotations {
-				annotations[k] = v
-			}
+			maps.Copy(annotations, extraAnnotations)
 			return decoySnapshotSpec{name: name, labels: decoyPrimaryLabels(placementPolicy, idx, cnt), annotations: annotations}
 		}
 		secondaryDecoy := func(placementPolicy placementv1alpha1.PlacementPolicyAccessor, name, idx, subIdx string, extraAnnotations map[string]string) decoySnapshotSpec {
 			annotations := decoyOwnedByAnnotations(placementPolicy)
-			for k, v := range extraAnnotations {
-				annotations[k] = v
-			}
+			maps.Copy(annotations, extraAnnotations)
 			return decoySnapshotSpec{name: name, labels: decoySecondaryLabels(placementPolicy, idx, subIdx), annotations: annotations}
 		}
 		primaryName := func(placementPolicy placementv1alpha1.PlacementPolicyAccessor) string {
@@ -970,7 +966,7 @@ var _ = Describe("corner cases (long and dotted names)", func() {
 		placementPolicy := newPlacementPolicy(appNamespaceName, configMapLabelSelector(groupLabels))
 		placementPolicy.Name = placementPolicyNameOfLen(240)
 		// Keep only the latest snapshots so that garbage collection kicks in as soon as possible.
-		placementPolicy.Spec.ResourceRevisionHistoryLimit = ptr.To(int32(1))
+		placementPolicy.Spec.ResourceRevisionHistoryLimit = new(int32(1))
 
 		placementBindingName := fmt.Sprintf(placementBindingNameTemplate, utils.RandStr())
 

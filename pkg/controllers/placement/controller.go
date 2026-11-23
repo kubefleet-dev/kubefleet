@@ -238,7 +238,7 @@ func (r *Reconciler) handleUpdate(ctx context.Context, placementObj fleetv1beta1
 	}
 
 	// We skip checking the last resource condition (available) because it will be covered by checking isRolloutCompleted func.
-	for i := condition.RolloutStartedCondition; i < condition.TotalCondition-1; i++ {
+	for i := range condition.TotalCondition - 1 {
 		var oldCond, newCond *metav1.Condition
 		conditionType := getPlacementConditionType(placementObj, i)
 		oldCond = oldPlacement.GetCondition(conditionType)

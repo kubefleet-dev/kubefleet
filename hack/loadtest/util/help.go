@@ -32,13 +32,14 @@ func (i *ClusterNames) Set(value string) error {
 }
 
 func printMetricFamily(mf *prometheusClient.MetricFamily) {
-	results := mf.GetName() + " (sec): "
+	var results strings.Builder
+	results.WriteString(mf.GetName() + " (sec): ")
 	for _, m := range mf.GetMetric() {
 		for _, q := range m.GetSummary().GetQuantile() {
-			results += fmt.Sprintf("[Quantile %v: %v] ", q.GetQuantile(), q.GetValue())
+			results.WriteString(fmt.Sprintf("[Quantile %v: %v] ", q.GetQuantile(), q.GetValue()))
 		}
 	}
-	klog.Info(results)
+	klog.Info(results.String())
 }
 
 // applyObjectFromManifest apply an object from manifest

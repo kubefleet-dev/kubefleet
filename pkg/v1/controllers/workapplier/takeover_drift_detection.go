@@ -450,7 +450,7 @@ func discardFieldsIrrelevantInComparisonFrom(obj *unstructured.Unstructured) *un
 }
 
 // organizeJSONPatchIntoPatchDetails organizes the JSON patch operations into KubeFleet patch details.
-func organizeJSONPatchIntoPatchDetails(patch jsondiff.Patch, manifestObjMap map[string]interface{}) ([]placementv1alpha1.PatchDetail, error) {
+func organizeJSONPatchIntoPatchDetails(patch jsondiff.Patch, manifestObjMap map[string]any) ([]placementv1alpha1.PatchDetail, error) {
 	// Pre-allocate the slice for the patch details. The organization procedure typically will yield
 	// the same number of PatchDetail items as the JSON patch operations.
 	details := make([]placementv1alpha1.PatchDetail, 0, len(patch))

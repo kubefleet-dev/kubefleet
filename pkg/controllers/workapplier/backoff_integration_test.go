@@ -26,7 +26,6 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	fleetv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -141,7 +140,7 @@ var _ = Describe("exponential backoff", func() {
 						},
 					},
 					DiffDetails: &fleetv1beta1.DiffDetails{
-						ObservedInMemberClusterGeneration: ptr.To(int64(0)),
+						ObservedInMemberClusterGeneration: new(int64(0)),
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
 								Path:          fmt.Sprintf("/metadata/labels/%s", dummyLabelKey),

@@ -28,7 +28,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -72,7 +71,7 @@ func TestValidateBeforeStageTask(t *testing.T) {
 			task: []placementv1beta1.StageTask{
 				{
 					Type:     placementv1beta1.StageTaskTypeTimedWait,
-					WaitTime: ptr.To(metav1.Duration{Duration: 5 * time.Minute}),
+					WaitTime: new(metav1.Duration{Duration: 5 * time.Minute}),
 				},
 			},
 			wantErr:    true,
@@ -83,7 +82,7 @@ func TestValidateBeforeStageTask(t *testing.T) {
 			task: []placementv1beta1.StageTask{
 				{
 					Type:     placementv1beta1.StageTaskTypeApproval,
-					WaitTime: ptr.To(metav1.Duration{Duration: 1 * time.Minute}),
+					WaitTime: new(metav1.Duration{Duration: 1 * time.Minute}),
 				},
 			},
 			wantErr:    true,
@@ -120,7 +119,7 @@ func TestValidateAfterStageTask(t *testing.T) {
 				},
 				{
 					Type:     placementv1beta1.StageTaskTypeTimedWait,
-					WaitTime: ptr.To(metav1.Duration{Duration: 5 * time.Minute}),
+					WaitTime: new(metav1.Duration{Duration: 5 * time.Minute}),
 				},
 			},
 			wantErr: false,
@@ -130,11 +129,11 @@ func TestValidateAfterStageTask(t *testing.T) {
 			task: []placementv1beta1.StageTask{
 				{
 					Type:     placementv1beta1.StageTaskTypeTimedWait,
-					WaitTime: ptr.To(metav1.Duration{Duration: 1 * time.Minute}),
+					WaitTime: new(metav1.Duration{Duration: 1 * time.Minute}),
 				},
 				{
 					Type:     placementv1beta1.StageTaskTypeTimedWait,
-					WaitTime: ptr.To(metav1.Duration{Duration: 5 * time.Minute}),
+					WaitTime: new(metav1.Duration{Duration: 5 * time.Minute}),
 				},
 			},
 			wantErr: true,
@@ -155,7 +154,7 @@ func TestValidateAfterStageTask(t *testing.T) {
 			task: []placementv1beta1.StageTask{
 				{
 					Type:     placementv1beta1.StageTaskTypeTimedWait,
-					WaitTime: ptr.To(metav1.Duration{Duration: 0 * time.Minute}),
+					WaitTime: new(metav1.Duration{Duration: 0 * time.Minute}),
 				},
 			},
 			wantErr: true,

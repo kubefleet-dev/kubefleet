@@ -485,7 +485,7 @@ func RandStr() string {
 	const length = 10 // specific size to avoid user passes in unreasonably large size, causing runtime error
 	const letters = "0123456789abcdefghijklmnopqrstuvwxyz"
 	ret := make([]byte, length)
-	for i := 0; i < length; i++ {
+	for i := range length {
 		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
 		if err != nil {
 			return ""

@@ -22,7 +22,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 )
@@ -82,7 +81,7 @@ var _ = Describe("handling invalid placement resource snapshots", func() {
 			It("should recount the resources from the placed work objects", func() {
 				set0 := f.sets[0]
 				wantStatus := wantPlacementBindingStatusInvalidSnapshots(set0.resourceCount(), set0.primaryName(), f.status)
-				wantStatus.AvailableResources = ptr.To(set0.resourceCount() - 1)
+				wantStatus.AvailableResources = new(set0.resourceCount() - 1)
 				wantStatus.FailedResources = []placementv1alpha1.FailedResource{
 					{
 						ObjectRef: objectRefFromManifestIdentifier(set0.identifiers[0][1]),
@@ -571,10 +570,10 @@ var _ = Describe("handling invalid placement resource snapshots", func() {
 							Reason: placementv1alpha1.PlacementBindingAvailableCondReasonIncompleteSetOfResources,
 						},
 					},
-					SelectedResources:                 ptr.To(placedResources),
-					SynchronizedResources:             ptr.To(placedResources),
-					AvailableResources:                ptr.To(placedResources),
-					LastProcessedResourceSnapshotName: ptr.To(set0.primaryName()),
+					SelectedResources:                 new(placedResources),
+					SynchronizedResources:             new(placedResources),
+					AvailableResources:                new(placedResources),
+					LastProcessedResourceSnapshotName: new(set0.primaryName()),
 				}
 				Eventually(f.invalidSnapshotsStatusActual(wantStatus, fmt.Sprintf(snapshotNotFoundErrMsgFmt, set0.primaryName())),
 					eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to mark the placement binding as failed to synchronize")

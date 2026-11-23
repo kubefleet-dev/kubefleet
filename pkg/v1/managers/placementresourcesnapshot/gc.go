@@ -26,7 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -292,14 +291,14 @@ func (m *Manager) garbageCollect(ctx context.Context, snapshotGCRequest snapshot
 			continue
 		}
 
-		if err := m.hubClient.Delete(ctx, snapshot, client.Preconditions{UID: ptr.To(snapshot.GetUID())}); err != nil && !apierrors.IsNotFound(err) {
+		if err := m.hubClient.Delete(ctx, snapshot, client.Preconditions{UID: new(snapshot.GetUID())}); err != nil && !apierrors.IsNotFound(err) {
 			return errors.NewAPIServerError(err, "failed to delete a secondary placement resource snapshot", false,
 				"secondaryPlacementResourceSnapshot", klog.KObj(snapshot))
 		}
 	}
 
 	// Delete the primary placement resource snapshot last.
-	if err := m.hubClient.Delete(ctx, primarySnapshot, client.Preconditions{UID: ptr.To(primarySnapshot.GetUID())}); err != nil && !apierrors.IsNotFound(err) {
+	if err := m.hubClient.Delete(ctx, primarySnapshot, client.Preconditions{UID: new(primarySnapshot.GetUID())}); err != nil && !apierrors.IsNotFound(err) {
 		return errors.NewAPIServerError(err, "failed to delete the primary placement resource snapshot", false,
 			"primaryPlacementResourceSnapshot", klog.KObj(primarySnapshot))
 	}

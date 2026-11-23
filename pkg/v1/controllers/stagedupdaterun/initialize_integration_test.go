@@ -25,7 +25,6 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clusterv1beta1 "github.com/kubefleet-dev/kubefleet/apis/cluster/v1beta1"
@@ -117,7 +116,7 @@ var _ = Describe("initializing staged update runs", func() {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{envLabelKey: envLabelValueProd},
 					},
-					MaxConcurrency: ptr.To(intstr.FromInt32(2)),
+					MaxConcurrency: new(intstr.FromInt32(2)),
 					AfterStageTasks: []rolloutv1alpha1.StageTask{
 						{
 							Type: rolloutv1alpha1.StageTaskTypeApproval,
@@ -155,7 +154,7 @@ var _ = Describe("initializing staged update runs", func() {
 						},
 					},
 					// The max concurrency defaults to 1.
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 				{
 					StageName: prodStageName,
@@ -169,7 +168,7 @@ var _ = Describe("initializing staged update runs", func() {
 							WaitTime: &metav1.Duration{Duration: prodStageAfterStageWaitTime},
 						},
 					},
-					MaxConcurrency: ptr.To(int32(2)),
+					MaxConcurrency: new(int32(2)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(snapshotName, wantStages)
@@ -259,22 +258,22 @@ var _ = Describe("initializing staged update runs", func() {
 				{
 					StageName:      eastStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0, 1),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 				{
 					// Member cluster 1 has been included in the east stage, which comes first.
 					StageName:      prodStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 2),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 				{
 					StageName:      emptyStageName,
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 				{
 					StageName:      restStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 3),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(snapshotName, wantStages)
@@ -348,12 +347,12 @@ var _ = Describe("initializing staged update runs", func() {
 				{
 					StageName:      canaryStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 				{
 					StageName:      prodStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 1, 3),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(snapshotName, wantStages)
@@ -406,7 +405,7 @@ var _ = Describe("initializing staged update runs", func() {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{envLabelKey: envLabelValueProd},
 					},
-					SortingLabelKey: ptr.To(orderLabelKey),
+					SortingLabelKey: new(orderLabelKey),
 				},
 			})
 			waitForObjectsToBeCached(append(fixtures, policy, strategy)...)
@@ -423,7 +422,7 @@ var _ = Describe("initializing staged update runs", func() {
 				{
 					StageName:      prodStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 2, 1, 3, 0),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(snapshotName, wantStages)
@@ -470,7 +469,7 @@ var _ = Describe("initializing staged update runs", func() {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{envLabelKey: envLabelValueProd},
 					},
-					SortingLabelKey: ptr.To(orderLabelKey),
+					SortingLabelKey: new(orderLabelKey),
 				},
 			})
 			waitForObjectsToBeCached(append(fixtures, policy, strategy)...)
@@ -523,7 +522,7 @@ var _ = Describe("initializing staged update runs", func() {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{envLabelKey: envLabelValueProd},
 					},
-					SortingLabelKey: ptr.To(orderLabelKey),
+					SortingLabelKey: new(orderLabelKey),
 				},
 			})
 			waitForObjectsToBeCached(append(fixtures, policy, strategy)...)
@@ -593,25 +592,25 @@ var _ = Describe("initializing staged update runs", func() {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{groupLabelKey: groupLabelValueB},
 					},
-					MaxConcurrency: ptr.To(intstr.FromInt32(3)),
+					MaxConcurrency: new(intstr.FromInt32(3)),
 				},
 				{
 					Name: halfConcurrencyStageName,
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{groupLabelKey: groupLabelValueC},
 					},
-					MaxConcurrency: ptr.To(intstr.FromString("50%")),
+					MaxConcurrency: new(intstr.FromString("50%")),
 				},
 				{
 					Name: tenthConcurrencyStageName,
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{groupLabelKey: groupLabelValueD},
 					},
-					MaxConcurrency: ptr.To(intstr.FromString("10%")),
+					MaxConcurrency: new(intstr.FromString("10%")),
 				},
 				{
 					Name:           emptyStageName,
-					MaxConcurrency: ptr.To(intstr.FromString("100%")),
+					MaxConcurrency: new(intstr.FromString("100%")),
 				},
 			})
 			waitForObjectsToBeCached(append(fixtures, policy, strategy)...)
@@ -628,30 +627,30 @@ var _ = Describe("initializing staged update runs", func() {
 				{
 					StageName:      defaultConcurrencyStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 				{
 					// An integer value is used as it is, even if it exceeds the number of clusters in the stage.
 					StageName:      fixedConcurrencyStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 1, 2),
-					MaxConcurrency: ptr.To(int32(3)),
+					MaxConcurrency: new(int32(3)),
 				},
 				{
 					// 50% of 5 clusters is 2.5, which is rounded down.
 					StageName:      halfConcurrencyStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 3, 4, 5, 6, 7),
-					MaxConcurrency: ptr.To(int32(2)),
+					MaxConcurrency: new(int32(2)),
 				},
 				{
 					// 10% of 3 clusters is 0.3, which is rounded down to 0 and then raised to the minimum of 1.
 					StageName:      tenthConcurrencyStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 8, 9, 10),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 				{
 					// 100% of no clusters is 0, which is raised to the minimum of 1.
 					StageName:      emptyStageName,
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(snapshotName, wantStages)
@@ -731,7 +730,7 @@ var _ = Describe("initializing staged update runs", func() {
 				{
 					StageName:      restStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0, 1),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(snapshotName, wantStages)
@@ -853,7 +852,7 @@ var _ = Describe("initializing staged update runs", func() {
 				{
 					StageName:      restStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(snapshotName, wantStages)
@@ -1020,7 +1019,7 @@ var _ = Describe("initializing staged update runs", func() {
 			{
 				StageName:      restStageName,
 				Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0),
-				MaxConcurrency: ptr.To(int32(1)),
+				MaxConcurrency: new(int32(1)),
 			},
 		}
 
@@ -1125,7 +1124,7 @@ var _ = Describe("initializing staged update runs", func() {
 		var missingSnapshotName string
 
 		runNames := make([]string, 0, 5)
-		for idx := 0; idx < 5; idx++ {
+		for idx := range 5 {
 			runNames = append(runNames, fmt.Sprintf(stagedUpdateRunNameTemplate, fmt.Sprintf("%s-%d", randStr, idx)))
 		}
 
@@ -1170,7 +1169,7 @@ var _ = Describe("initializing staged update runs", func() {
 				{
 					StageName:      restStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(primarySnapshotName, wantStages)
@@ -1358,12 +1357,12 @@ var _ = Describe("initializing staged update runs", func() {
 			{
 				StageName:      canaryStageName,
 				Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0),
-				MaxConcurrency: ptr.To(int32(1)),
+				MaxConcurrency: new(int32(1)),
 			},
 			{
 				StageName:      prodStageName,
 				Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 1, 2),
-				MaxConcurrency: ptr.To(int32(1)),
+				MaxConcurrency: new(int32(1)),
 			},
 		}
 
@@ -1537,7 +1536,7 @@ var _ = Describe("initializing staged update runs", func() {
 				{
 					StageName:      restStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0, 1),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(snapshotName, wantStages)
@@ -1629,7 +1628,7 @@ var _ = Describe("initializing cluster staged update runs", func() {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{envLabelKey: envLabelValueProd},
 					},
-					MaxConcurrency: ptr.To(intstr.FromInt32(2)),
+					MaxConcurrency: new(intstr.FromInt32(2)),
 					AfterStageTasks: []rolloutv1alpha1.StageTask{
 						{
 							Type: rolloutv1alpha1.StageTaskTypeApproval,
@@ -1667,7 +1666,7 @@ var _ = Describe("initializing cluster staged update runs", func() {
 						},
 					},
 					// The max concurrency defaults to 1.
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 				{
 					StageName: prodStageName,
@@ -1681,7 +1680,7 @@ var _ = Describe("initializing cluster staged update runs", func() {
 							WaitTime: &metav1.Duration{Duration: prodStageAfterStageWaitTime},
 						},
 					},
-					MaxConcurrency: ptr.To(int32(2)),
+					MaxConcurrency: new(int32(2)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(snapshotName, wantStages)
@@ -1771,22 +1770,22 @@ var _ = Describe("initializing cluster staged update runs", func() {
 				{
 					StageName:      eastStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0, 1),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 				{
 					// Member cluster 1 has been included in the east stage, which comes first.
 					StageName:      prodStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 2),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 				{
 					StageName:      emptyStageName,
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 				{
 					StageName:      restStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 3),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(snapshotName, wantStages)
@@ -1860,12 +1859,12 @@ var _ = Describe("initializing cluster staged update runs", func() {
 				{
 					StageName:      canaryStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 				{
 					StageName:      prodStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 1, 3),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(snapshotName, wantStages)
@@ -1918,7 +1917,7 @@ var _ = Describe("initializing cluster staged update runs", func() {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{envLabelKey: envLabelValueProd},
 					},
-					SortingLabelKey: ptr.To(orderLabelKey),
+					SortingLabelKey: new(orderLabelKey),
 				},
 			})
 			waitForObjectsToBeCached(append(fixtures, policy, strategy)...)
@@ -1935,7 +1934,7 @@ var _ = Describe("initializing cluster staged update runs", func() {
 				{
 					StageName:      prodStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 2, 1, 3, 0),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(snapshotName, wantStages)
@@ -1982,7 +1981,7 @@ var _ = Describe("initializing cluster staged update runs", func() {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{envLabelKey: envLabelValueProd},
 					},
-					SortingLabelKey: ptr.To(orderLabelKey),
+					SortingLabelKey: new(orderLabelKey),
 				},
 			})
 			waitForObjectsToBeCached(append(fixtures, policy, strategy)...)
@@ -2035,7 +2034,7 @@ var _ = Describe("initializing cluster staged update runs", func() {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{envLabelKey: envLabelValueProd},
 					},
-					SortingLabelKey: ptr.To(orderLabelKey),
+					SortingLabelKey: new(orderLabelKey),
 				},
 			})
 			waitForObjectsToBeCached(append(fixtures, policy, strategy)...)
@@ -2105,25 +2104,25 @@ var _ = Describe("initializing cluster staged update runs", func() {
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{groupLabelKey: groupLabelValueB},
 					},
-					MaxConcurrency: ptr.To(intstr.FromInt32(3)),
+					MaxConcurrency: new(intstr.FromInt32(3)),
 				},
 				{
 					Name: halfConcurrencyStageName,
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{groupLabelKey: groupLabelValueC},
 					},
-					MaxConcurrency: ptr.To(intstr.FromString("50%")),
+					MaxConcurrency: new(intstr.FromString("50%")),
 				},
 				{
 					Name: tenthConcurrencyStageName,
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{groupLabelKey: groupLabelValueD},
 					},
-					MaxConcurrency: ptr.To(intstr.FromString("10%")),
+					MaxConcurrency: new(intstr.FromString("10%")),
 				},
 				{
 					Name:           emptyStageName,
-					MaxConcurrency: ptr.To(intstr.FromString("100%")),
+					MaxConcurrency: new(intstr.FromString("100%")),
 				},
 			})
 			waitForObjectsToBeCached(append(fixtures, policy, strategy)...)
@@ -2140,30 +2139,30 @@ var _ = Describe("initializing cluster staged update runs", func() {
 				{
 					StageName:      defaultConcurrencyStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 				{
 					// An integer value is used as it is, even if it exceeds the number of clusters in the stage.
 					StageName:      fixedConcurrencyStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 1, 2),
-					MaxConcurrency: ptr.To(int32(3)),
+					MaxConcurrency: new(int32(3)),
 				},
 				{
 					// 50% of 5 clusters is 2.5, which is rounded down.
 					StageName:      halfConcurrencyStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 3, 4, 5, 6, 7),
-					MaxConcurrency: ptr.To(int32(2)),
+					MaxConcurrency: new(int32(2)),
 				},
 				{
 					// 10% of 3 clusters is 0.3, which is rounded down to 0 and then raised to the minimum of 1.
 					StageName:      tenthConcurrencyStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 8, 9, 10),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 				{
 					// 100% of no clusters is 0, which is raised to the minimum of 1.
 					StageName:      emptyStageName,
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(snapshotName, wantStages)
@@ -2243,7 +2242,7 @@ var _ = Describe("initializing cluster staged update runs", func() {
 				{
 					StageName:      restStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0, 1),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(snapshotName, wantStages)
@@ -2420,7 +2419,7 @@ var _ = Describe("initializing cluster staged update runs", func() {
 			{
 				StageName:      restStageName,
 				Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0),
-				MaxConcurrency: ptr.To(int32(1)),
+				MaxConcurrency: new(int32(1)),
 			},
 		}
 
@@ -2525,7 +2524,7 @@ var _ = Describe("initializing cluster staged update runs", func() {
 		var missingSnapshotName string
 
 		runNames := make([]string, 0, 5)
-		for idx := 0; idx < 5; idx++ {
+		for idx := range 5 {
 			runNames = append(runNames, fmt.Sprintf(stagedUpdateRunNameTemplate, fmt.Sprintf("%s-%d", randStr, idx)))
 		}
 
@@ -2570,7 +2569,7 @@ var _ = Describe("initializing cluster staged update runs", func() {
 				{
 					StageName:      restStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(primarySnapshotName, wantStages)
@@ -2758,12 +2757,12 @@ var _ = Describe("initializing cluster staged update runs", func() {
 			{
 				StageName:      canaryStageName,
 				Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0),
-				MaxConcurrency: ptr.To(int32(1)),
+				MaxConcurrency: new(int32(1)),
 			},
 			{
 				StageName:      prodStageName,
 				Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 1, 2),
-				MaxConcurrency: ptr.To(int32(1)),
+				MaxConcurrency: new(int32(1)),
 			},
 		}
 
@@ -2937,7 +2936,7 @@ var _ = Describe("initializing cluster staged update runs", func() {
 				{
 					StageName:      restStageName,
 					Clusters:       wantPerClusterStatuses(memberClusterNames, bindingNames, 0, 1),
-					MaxConcurrency: ptr.To(int32(1)),
+					MaxConcurrency: new(int32(1)),
 				},
 			}
 			wantStatus := wantStagedUpdateRunStatusInitializedAndSuspended(snapshotName, wantStages)

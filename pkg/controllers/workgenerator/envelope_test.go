@@ -494,9 +494,9 @@ func TestCreateOrUpdateEnvelopeCRWorkObj_EmptyManifestListRetained(t *testing.T)
 	}
 }
 
-func manifestObjectByResourceKey(t *testing.T, manifests []fleetv1beta1.Manifest) map[string]map[string]interface{} {
+func manifestObjectByResourceKey(t *testing.T, manifests []fleetv1beta1.Manifest) map[string]map[string]any {
 	t.Helper()
-	byKey := make(map[string]map[string]interface{}, len(manifests))
+	byKey := make(map[string]map[string]any, len(manifests))
 	for i := range manifests {
 		key, obj := manifestKeyAndObject(t, manifests[i].Raw)
 		byKey[key] = obj
@@ -504,9 +504,9 @@ func manifestObjectByResourceKey(t *testing.T, manifests []fleetv1beta1.Manifest
 	return byKey
 }
 
-func manifestObjectByResourceKeyFromRaw(t *testing.T, manifests map[string]string) map[string]map[string]interface{} {
+func manifestObjectByResourceKeyFromRaw(t *testing.T, manifests map[string]string) map[string]map[string]any {
 	t.Helper()
-	byKey := make(map[string]map[string]interface{}, len(manifests))
+	byKey := make(map[string]map[string]any, len(manifests))
 	for key, raw := range manifests {
 		gotKey, obj := manifestKeyAndObject(t, []byte(raw))
 		if gotKey != key {
@@ -527,7 +527,7 @@ func manifestRawByResourceKey(t *testing.T, manifests []fleetv1beta1.Manifest) m
 	return byKey
 }
 
-func manifestKeyAndObject(t *testing.T, raw []byte) (string, map[string]interface{}) {
+func manifestKeyAndObject(t *testing.T, raw []byte) (string, map[string]any) {
 	t.Helper()
 	var u unstructured.Unstructured
 	if err := u.UnmarshalJSON(raw); err != nil {
@@ -1198,22 +1198,22 @@ func TestProcessOneSelectedResource_OverrideBehavior(t *testing.T) {
 				if err != nil || !found || len(containers) != 1 {
 					t.Fatalf("containers lookup error = %v, found = %v, len = %d, want one container", err, found, len(containers))
 				}
-				container, ok := containers[0].(map[string]interface{})
+				container, ok := containers[0].(map[string]any)
 				if !ok {
 					t.Fatalf("container type = %T, want map[string]interface{}", containers[0])
 				}
-				env, ok := container["env"].([]interface{})
+				env, ok := container["env"].([]any)
 				if !ok {
 					t.Fatalf("env type = %T, want []interface{}", container["env"])
 				}
 				if len(env) != 1 {
 					t.Fatalf("env entries len = %d, want 1", len(env))
 				}
-				gotEnv, ok := env[0].(map[string]interface{})
+				gotEnv, ok := env[0].(map[string]any)
 				if !ok {
 					t.Fatalf("env entry type = %T, want map[string]interface{}", env[0])
 				}
-				wantEnv := map[string]interface{}{"name": "ADDED", "value": "true"}
+				wantEnv := map[string]any{"name": "ADDED", "value": "true"}
 				if diff := cmp.Diff(wantEnv, gotEnv); diff != "" {
 					t.Errorf("env entry mismatch (-want +got):\n%s", diff)
 				}

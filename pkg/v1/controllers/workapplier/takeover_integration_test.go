@@ -24,7 +24,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -666,7 +665,7 @@ var _ = Describe("takeover", func() {
 			Expect(memberClient1.Create(ctx, preExistingConfigMap)).To(Succeed(), "Failed to create the pre-existing config map")
 
 			preExistingDeploy = regularDeploy.DeepCopy()
-			preExistingDeploy.Spec.Replicas = ptr.To(int32(2))
+			preExistingDeploy.Spec.Replicas = new(int32(2))
 			Expect(memberClient1.Create(ctx, preExistingDeploy)).To(Succeed(), "Failed to create the pre-existing deployment")
 
 			// Create a new work object that takes over pre-existing objects only if they have no diff.
@@ -718,7 +717,7 @@ var _ = Describe("takeover", func() {
 						},
 					},
 					DiffDetails: &placementv1alpha1.DiffDetails{
-						ObservedInMemberClusterGeneration: ptr.To(int64(0)),
+						ObservedInMemberClusterGeneration: new(int64(0)),
 						ObservedDiffs: []placementv1alpha1.PatchDetail{
 							{
 								Path:          fmt.Sprintf("/data/%s", configMapDataKey),
@@ -747,7 +746,7 @@ var _ = Describe("takeover", func() {
 						},
 					},
 					DiffDetails: &placementv1alpha1.DiffDetails{
-						ObservedInMemberClusterGeneration: ptr.To(int64(1)),
+						ObservedInMemberClusterGeneration: new(int64(1)),
 						ObservedDiffs: []placementv1alpha1.PatchDetail{
 							{
 								Path:          "/spec/replicas",
@@ -854,7 +853,7 @@ var _ = Describe("takeover", func() {
 						},
 					},
 					DiffDetails: &placementv1alpha1.DiffDetails{
-						ObservedInMemberClusterGeneration: ptr.To(int64(1)),
+						ObservedInMemberClusterGeneration: new(int64(1)),
 						ObservedDiffs: []placementv1alpha1.PatchDetail{
 							{
 								Path:          "/spec/replicas",
@@ -1150,7 +1149,7 @@ var _ = Describe("takeover", func() {
 						},
 					},
 					DiffDetails: &placementv1alpha1.DiffDetails{
-						ObservedInMemberClusterGeneration: ptr.To(int64(0)),
+						ObservedInMemberClusterGeneration: new(int64(0)),
 						ObservedDiffs: []placementv1alpha1.PatchDetail{
 							{
 								Path:          fmt.Sprintf("/metadata/labels/%s", memberOnlyLabelKey),

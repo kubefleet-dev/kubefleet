@@ -29,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -259,8 +258,8 @@ func TestHandleNamespaceAccessibleCRP(t *testing.T) {
 									APIVersion:         "placement.kubernetes-fleet.io/v1beta1",
 									Kind:               "ClusterResourcePlacement",
 									Name:               tc.placementObjName,
-									Controller:         ptr.To(true),
-									BlockOwnerDeletion: ptr.To(true),
+									Controller:         new(true),
+									BlockOwnerDeletion: new(true),
 								},
 							},
 						},

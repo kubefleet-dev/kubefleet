@@ -29,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -148,7 +147,7 @@ var _ = Describe("the count bounds of a hand-authored policy", func() {
 	// first, and the rule's digit guard keeps int() out of reach regardless.
 	It("should report an over-long count with the count field's own message alone", func() {
 		policy := newPolicy(intstr.FromString("99999999999999999999"))
-		policy.GetSpec().ClusterSelectors[0].MinCount = ptr.To(int32(1))
+		policy.GetSpec().ClusterSelectors[0].MinCount = new(int32(1))
 
 		err := hubClient.Create(ctx, policy)
 		Expect(apierrors.IsInvalid(err)).Should(BeTrue(), "got %v, want an invalid error", err)

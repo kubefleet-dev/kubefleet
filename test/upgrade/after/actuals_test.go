@@ -352,7 +352,7 @@ func customizedCRPStatusUpdatedActual(crpName string,
 				Conditions:            resourcePlacementRolloutCompletedConditions(crp.Generation, resourceIsTrackable, false),
 			})
 		}
-		for i := 0; i < len(wantUnselectedClusters); i++ {
+		for range wantUnselectedClusters {
 			wantPlacementStatus = append(wantPlacementStatus, placementv1beta1.PerClusterPlacementStatus{
 				Conditions: resourcePlacementScheduleFailedConditions(crp.Generation),
 			})
@@ -779,7 +779,7 @@ func crpWithStuckRolloutDueToUntrackableResourcesStatusUpdatedActual(
 			},
 		}
 
-		for i := 0; i < len(wantSelectedClusters); i++ {
+		for range wantSelectedClusters {
 			wantPlacementStatus = append(wantPlacementStatus, rolloutBlockedPlacementStatus)
 		}
 

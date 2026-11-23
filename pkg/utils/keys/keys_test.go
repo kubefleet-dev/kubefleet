@@ -69,7 +69,7 @@ func TestClusterWideKeyFunc(t *testing.T) {
 	objMap, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(crp)
 	tests := []struct {
 		name         string
-		object       interface{}
+		object       any
 		expectErr    bool
 		expectKeyStr string
 	}{
@@ -133,7 +133,7 @@ func TestNamespaceKeyFunc(t *testing.T) {
 	objMap, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(crp)
 	tests := []struct {
 		name         string
-		object       interface{}
+		object       any
 		expectErr    bool
 		expectKeyStr string
 	}{

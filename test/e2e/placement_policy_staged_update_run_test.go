@@ -245,12 +245,12 @@ var _ = Describe("placement policy staged update runs", Label("placementpolicy")
 						placementPolicyCondition(kfplacementv1alpha1.PlacementPolicyCondTypeAvailable, metav1.ConditionFalse,
 							kfplacementv1alpha1.PlacementPolicyAvailableCondReasonSomeClustersUnavailable),
 					},
-					LatestResourceRevisionName: ptr.To(newSnapshotName),
-					DesiredClusters:            ptr.To(clusterCount),
-					ScheduledClusters:          ptr.To(clusterCount),
-					SynchronizedClusters:       ptr.To(int32(1)),
-					ResourcesAvailableClusters: ptr.To(int32(1)),
-					ActiveClusterClaims:        ptr.To(int32(0)),
+					LatestResourceRevisionName: new(newSnapshotName),
+					DesiredClusters:            new(clusterCount),
+					ScheduledClusters:          new(clusterCount),
+					SynchronizedClusters:       new(int32(1)),
+					ResourcesAvailableClusters: new(int32(1)),
+					ActiveClusterClaims:        new(int32(0)),
 					BindingManager: &kfplacementv1alpha1.BindingManager{
 						ControllerName: stagedUpdateRunBindingManagerName,
 						ObjectRefs:     []kfplacementv1alpha1.ObjectReference{stagedUpdateRunObjectReference(runKey)},
@@ -318,7 +318,7 @@ var _ = Describe("placement policy staged update runs", Label("placementpolicy")
 							Conditions:         succeededStagedUpdateRunStageConditions(),
 							StartedTimestamp:   &metav1.Time{},
 							CompletedTimestamp: &metav1.Time{},
-							MaxConcurrency:     ptr.To(int32(1)),
+							MaxConcurrency:     new(int32(1)),
 						},
 						{
 							StageName: placementPolicyProdStageName,
@@ -330,7 +330,7 @@ var _ = Describe("placement policy staged update runs", Label("placementpolicy")
 							Conditions:         succeededStagedUpdateRunStageConditions(),
 							StartedTimestamp:   &metav1.Time{},
 							CompletedTimestamp: &metav1.Time{},
-							MaxConcurrency:     ptr.To(int32(1)),
+							MaxConcurrency:     new(int32(1)),
 						},
 					},
 				}
@@ -340,7 +340,7 @@ var _ = Describe("placement policy staged update runs", Label("placementpolicy")
 
 			It("should report the policy as synchronized on every member cluster, with the binding manager role released", func() {
 				wantStatus := allSynchronizedPlacementPolicyStatus(int32(len(allMemberClusters)))
-				wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+				wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 				Eventually(placementPolicyStatusActual(policyKey, wantStatus), placementPolicyRolloutEventuallyDuration, eventuallyInterval).
 					Should(Succeed(), "Failed to report the expected %s status", scopeDescription)
 			})
@@ -469,12 +469,12 @@ var _ = Describe("placement policy staged update runs", Label("placementpolicy")
 					placementPolicyCondition(kfplacementv1alpha1.PlacementPolicyCondTypeAvailable, metav1.ConditionFalse,
 						kfplacementv1alpha1.PlacementPolicyAvailableCondReasonSomeClustersUnavailable),
 				},
-				LatestResourceRevisionName: ptr.To(newSnapshotName),
-				DesiredClusters:            ptr.To(clusterCount),
-				ScheduledClusters:          ptr.To(clusterCount),
-				SynchronizedClusters:       ptr.To(int32(0)),
-				ResourcesAvailableClusters: ptr.To(int32(0)),
-				ActiveClusterClaims:        ptr.To(int32(0)),
+				LatestResourceRevisionName: new(newSnapshotName),
+				DesiredClusters:            new(clusterCount),
+				ScheduledClusters:          new(clusterCount),
+				SynchronizedClusters:       new(int32(0)),
+				ResourcesAvailableClusters: new(int32(0)),
+				ActiveClusterClaims:        new(int32(0)),
 			}
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected placement policy status")
@@ -517,15 +517,15 @@ var _ = Describe("placement policy staged update runs", Label("placementpolicy")
 					placementPolicyCondition(kfplacementv1alpha1.PlacementPolicyCondTypeAvailable, metav1.ConditionFalse,
 						kfplacementv1alpha1.PlacementPolicyAvailableCondReasonSomeClustersUnavailable),
 				},
-				LatestResourceRevisionName: ptr.To(newSnapshotName),
+				LatestResourceRevisionName: new(newSnapshotName),
 				// The canary selector wants 1 cluster and the raised prod selector 2.
-				DesiredClusters:   ptr.To(int32(3)),
-				ScheduledClusters: ptr.To(int32(3)),
+				DesiredClusters:   new(int32(3)),
+				ScheduledClusters: new(int32(3)),
 				// Only the canary cluster has the latest revision; the first prod cluster is on an older one, and the
 				// second has no binding yet.
-				SynchronizedClusters:       ptr.To(int32(1)),
-				ResourcesAvailableClusters: ptr.To(int32(1)),
-				ActiveClusterClaims:        ptr.To(int32(0)),
+				SynchronizedClusters:       new(int32(1)),
+				ResourcesAvailableClusters: new(int32(1)),
+				ActiveClusterClaims:        new(int32(0)),
 				BindingManager: &kfplacementv1alpha1.BindingManager{
 					ControllerName: stagedUpdateRunBindingManagerName,
 					ObjectRefs:     []kfplacementv1alpha1.ObjectReference{stagedUpdateRunObjectReference(runKey)},
@@ -644,7 +644,7 @@ var _ = Describe("placement policy staged update runs", Label("placementpolicy")
 
 		It("can raise the prod selector's count to 2 while the run holds the binding manager role", func() {
 			updatePlacementPolicy(policyKey, func(policy kfplacementv1alpha1.PlacementPolicyAccessor) {
-				policy.GetSpec().ClusterSelectors[1].Count = ptr.To(intstr.FromInt32(2))
+				policy.GetSpec().ClusterSelectors[1].Count = new(intstr.FromInt32(2))
 			})
 		})
 
@@ -678,7 +678,7 @@ var _ = Describe("placement policy staged update runs", Label("placementpolicy")
 				Should(Succeed(), "Failed to place the new version on every member cluster")
 
 			wantStatus := allSynchronizedPlacementPolicyStatus(int32(len(allMemberClusters)))
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected cluster placement policy status")
 		})
@@ -785,7 +785,7 @@ var _ = Describe("placement policy staged update runs", Label("placementpolicy")
 			Eventually(configMapDataOnClustersActual(cmKey, v1Data, allMemberClusters...), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to place the new version on every member cluster")
 			wantStatus := allSynchronizedPlacementPolicyStatus(int32(len(allMemberClusters)))
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), workloadEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected placement policy status")
 		})

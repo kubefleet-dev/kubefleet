@@ -29,7 +29,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -479,7 +478,7 @@ var _ = Describe("validating resource placement using different apply strategies
 						Strategy: placementv1beta1.RolloutStrategy{
 							Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 							RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-								UnavailablePeriodSeconds: ptr.To(2),
+								UnavailablePeriodSeconds: new(2),
 							},
 							ApplyStrategy: &placementv1beta1.ApplyStrategy{
 								AllowCoOwnership: true,
@@ -518,7 +517,7 @@ var _ = Describe("validating resource placement using different apply strategies
 						Strategy: placementv1beta1.RolloutStrategy{
 							Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 							RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-								UnavailablePeriodSeconds: ptr.To(2),
+								UnavailablePeriodSeconds: new(2),
 							},
 							ApplyStrategy: &placementv1beta1.ApplyStrategy{
 								AllowCoOwnership: true,
@@ -657,9 +656,9 @@ var _ = Describe("validating resource placement using different apply strategies
 						Strategy: placementv1beta1.RolloutStrategy{
 							Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 							RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-								MaxUnavailable:           ptr.To(intstr.FromInt(1)),
-								MaxSurge:                 ptr.To(intstr.FromInt(1)),
-								UnavailablePeriodSeconds: ptr.To(2),
+								MaxUnavailable:           new(intstr.FromInt(1)),
+								MaxSurge:                 new(intstr.FromInt(1)),
+								UnavailablePeriodSeconds: new(2),
 							},
 							ApplyStrategy: &placementv1beta1.ApplyStrategy{
 								Type: placementv1beta1.ApplyStrategyTypeServerSideApply,
@@ -782,9 +781,9 @@ var _ = Describe("validating resource placement using different apply strategies
 						Strategy: placementv1beta1.RolloutStrategy{
 							Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 							RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-								MaxUnavailable:           ptr.To(intstr.FromInt(1)),
-								MaxSurge:                 ptr.To(intstr.FromInt(1)),
-								UnavailablePeriodSeconds: ptr.To(2),
+								MaxUnavailable:           new(intstr.FromInt(1)),
+								MaxSurge:                 new(intstr.FromInt(1)),
+								UnavailablePeriodSeconds: new(2),
 							},
 						},
 					},
@@ -996,9 +995,9 @@ var _ = Describe("validating resource placement using different apply strategies
 						Strategy: placementv1beta1.RolloutStrategy{
 							Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 							RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-								MaxUnavailable:           ptr.To(intstr.FromInt(1)),
-								MaxSurge:                 ptr.To(intstr.FromInt(1)),
-								UnavailablePeriodSeconds: ptr.To(2),
+								MaxUnavailable:           new(intstr.FromInt(1)),
+								MaxSurge:                 new(intstr.FromInt(1)),
+								UnavailablePeriodSeconds: new(2),
 							},
 							ApplyStrategy: &placementv1beta1.ApplyStrategy{
 								ComparisonOption: placementv1beta1.ComparisonOptionTypePartialComparison,
@@ -1176,7 +1175,7 @@ var _ = Describe("validating resource placement using different apply strategies
 											Name:      anotherConfigMapName.Name,
 											Namespace: workNamespaceName,
 										},
-										TargetClusterObservedGeneration: ptr.To(int64(0)),
+										TargetClusterObservedGeneration: new(int64(0)),
 										ObservedDiffs: []placementv1beta1.PatchDetail{
 											{
 												Path:          "/data/data",
@@ -1252,9 +1251,9 @@ var _ = Describe("validating resource placement using different apply strategies
 						Strategy: placementv1beta1.RolloutStrategy{
 							Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 							RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-								MaxUnavailable:           ptr.To(intstr.FromInt(1)),
-								MaxSurge:                 ptr.To(intstr.FromInt(1)),
-								UnavailablePeriodSeconds: ptr.To(2),
+								MaxUnavailable:           new(intstr.FromInt(1)),
+								MaxSurge:                 new(intstr.FromInt(1)),
+								UnavailablePeriodSeconds: new(2),
 							},
 							ApplyStrategy: &placementv1beta1.ApplyStrategy{
 								ComparisonOption: placementv1beta1.ComparisonOptionTypeFullComparison,
@@ -1284,7 +1283,7 @@ var _ = Describe("validating resource placement using different apply strategies
 											Name:      configMapName,
 											Namespace: workNamespaceName,
 										},
-										TargetClusterObservedGeneration: ptr.To(int64(0)),
+										TargetClusterObservedGeneration: new(int64(0)),
 										ObservedDiffs: []placementv1beta1.PatchDetail{
 											{
 												Path:          fmt.Sprintf("/metadata/labels/%s", unmanagedLabelKey),

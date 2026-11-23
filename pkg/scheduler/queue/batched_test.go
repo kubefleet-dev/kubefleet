@@ -35,7 +35,7 @@ func TestBatchedProcessingPlacementSchedulingQueue_BasicOps(t *testing.T) {
 	}
 
 	keysRecved := []PlacementKey{}
-	for i := 0; i < len(keysToAdd); i++ {
+	for range keysToAdd {
 		key, closed := bq.NextPlacementKey()
 		if closed {
 			t.Fatalf("Queue closed unexpected")
@@ -66,7 +66,7 @@ func TestBatchedProcessingPlacementSchedulingQueue_BatchedOps(t *testing.T) {
 	}
 
 	keysRecved := []PlacementKey{}
-	for i := 0; i < len(keysToAddBatched); i++ {
+	for range keysToAddBatched {
 		key, closed := bq.NextPlacementKey()
 		if closed {
 			t.Fatalf("Queue closed unexpected")
@@ -106,7 +106,7 @@ func TestBatchedProcessingPlacementSchedulingQueue_MoveNow(t *testing.T) {
 
 	moveNowTriggeredTimestamp := time.Now()
 	keysRecved := []PlacementKey{}
-	for i := 0; i < len(keysToAddBatched); i++ {
+	for range keysToAddBatched {
 		key, closed := bq.NextPlacementKey()
 		if closed {
 			t.Fatalf("Queue closed unexpected")

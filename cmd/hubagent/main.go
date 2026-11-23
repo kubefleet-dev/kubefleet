@@ -287,10 +287,7 @@ func main() {
 
 	// +kubebuilder:scaffold:builder
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		// Start() is a blocking call and it is set to exit on context cancellation.
 		if err := mgr.Start(ctx); err != nil {
 			klog.ErrorS(err, "problem starting manager")
@@ -298,7 +295,7 @@ func main() {
 		}
 
 		klog.InfoS("The controller manager has exited")
-	}()
+	})
 
 	// Wait for the controller manager and the scheduler to exit.
 	wg.Wait()

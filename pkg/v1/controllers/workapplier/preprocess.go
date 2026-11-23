@@ -29,7 +29,6 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	placementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
 	kferrors "github.com/kubefleet-dev/kubefleet/pkg/utils/errors"
@@ -48,7 +47,7 @@ func prepareWorkObjectAndManifestProcessingStates(works []*placementv1alpha1.Wor
 		Kind:               "AppliedWork",
 		Name:               appliedWorks[0].GetName(),
 		UID:                appliedWorks[0].GetUID(),
-		BlockOwnerDeletion: ptr.To(true),
+		BlockOwnerDeletion: new(true),
 	}
 
 	for i := range works {

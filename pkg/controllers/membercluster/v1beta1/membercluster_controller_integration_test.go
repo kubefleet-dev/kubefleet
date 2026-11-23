@@ -256,7 +256,7 @@ var _ = Describe("Test MemberCluster Controller", func() {
 			Expect(k8sClient.Get(ctx, memberClusterNamespacedName, &mc)).Should(Succeed())
 
 			By("Create works in the cluster namespace")
-			for i := 0; i < 10; i++ {
+			for i := range 10 {
 				work := placementv1beta1.Work{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf("work%d", i),
@@ -285,7 +285,7 @@ var _ = Describe("Test MemberCluster Controller", func() {
 			Expect(err).Should(Succeed())
 
 			By("check the workers objects don't have finalizer")
-			for i := 0; i < 10; i++ {
+			for i := range 10 {
 				work := placementv1beta1.Work{}
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: fmt.Sprintf("work%d", i), Namespace: namespaceName}, &work)).Should(Succeed())
 				Expect(work.Finalizers).Should(BeEmpty())

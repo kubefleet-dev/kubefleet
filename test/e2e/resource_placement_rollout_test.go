@@ -35,7 +35,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	placementv1beta1 "github.com/kubefleet-dev/kubefleet/apis/placement/v1beta1"
@@ -64,15 +63,10 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 	rpKey := types.NamespacedName{Name: rpName, Namespace: appNamespace().Name}
 
 	BeforeEach(OncePerOrdered, func() {
-		testDeployment = appv1.Deployment{}
 		readDeploymentTestManifest(&testDeployment)
-		testDaemonSet = appv1.DaemonSet{}
 		readDaemonSetTestManifest(&testDaemonSet)
-		testStatefulSet = appv1.StatefulSet{}
 		readStatefulSetTestManifest(&testStatefulSet, StatefulSetBasic)
-		testService = corev1.Service{}
 		readServiceTestManifest(&testService)
-		testJob = batchv1.Job{}
 		readJobTestManifest(&testJob)
 
 		crp := &placementv1beta1.ClusterResourcePlacement{
@@ -90,7 +84,7 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
+						UnavailablePeriodSeconds: new(2),
 					},
 				},
 			},
@@ -160,7 +154,7 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 					Strategy: placementv1beta1.RolloutStrategy{
 						Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 						RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-							UnavailablePeriodSeconds: ptr.To(2),
+							UnavailablePeriodSeconds: new(2),
 						},
 					},
 				},
@@ -605,7 +599,7 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 
 		It("create the RP that select the deployment", func() {
 			rp := buildRPForSafeRollout(workNamespace.Name)
-			rp.Spec.RevisionHistoryLimit = ptr.To(int32(1))
+			rp.Spec.RevisionHistoryLimit = new(int32(1))
 			rp.Spec.ResourceSelectors = []placementv1beta1.ResourceSelectorTerm{
 				{
 					Group:   appv1.SchemeGroupVersion.Group,
@@ -776,7 +770,7 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 			// the job we are trying to propagate takes 10s to complete. MaxUnavailable is set to 1. So setting UnavailablePeriodSeconds to 15s
 			// so that after each rollout phase we only wait for 15s before proceeding to the next since Job is not trackable,
 			// we want rollout to finish in a reasonable time.
-			rp.Spec.Strategy.RollingUpdate.UnavailablePeriodSeconds = ptr.To(unAvailablePeriodSeconds)
+			rp.Spec.Strategy.RollingUpdate.UnavailablePeriodSeconds = new(unAvailablePeriodSeconds)
 			rp.Spec.ResourceSelectors = []placementv1beta1.ResourceSelectorTerm{
 				{
 					Group:   batchv1.SchemeGroupVersion.Group,
@@ -808,7 +802,7 @@ var _ = Describe("placing namespaced scoped resources using a RP with rollout", 
 				if err != nil {
 					return err
 				}
-				job.Spec.Suspend = ptr.To(true)
+				job.Spec.Suspend = new(true)
 				return hubClient.Update(ctx, &job)
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to suspend job")
 		})
@@ -873,7 +867,7 @@ var _ = Describe("placing namespaced custom resources using a RP with rollout", 
 				Strategy: placementv1beta1.RolloutStrategy{
 					Type: placementv1beta1.RollingUpdateRolloutStrategyType,
 					RollingUpdate: &placementv1beta1.RollingUpdateConfig{
-						UnavailablePeriodSeconds: ptr.To(2),
+						UnavailablePeriodSeconds: new(2),
 					},
 				},
 			},
@@ -950,7 +944,7 @@ var _ = Describe("placing namespaced custom resources using a RP with rollout", 
 								Type:   intstr.Int,
 								IntVal: 1,
 							},
-							UnavailablePeriodSeconds: ptr.To(unAvailablePeriodSeconds),
+							UnavailablePeriodSeconds: new(unAvailablePeriodSeconds),
 						},
 					},
 				},
@@ -1087,7 +1081,7 @@ var _ = Describe("placing namespaced custom resources using a RP with rollout", 
 								Type:   intstr.Int,
 								IntVal: 1,
 							},
-							UnavailablePeriodSeconds: ptr.To(unAvailablePeriodSeconds),
+							UnavailablePeriodSeconds: new(unAvailablePeriodSeconds),
 						},
 					},
 				},

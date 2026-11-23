@@ -25,7 +25,6 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kfplacementv1alpha1 "github.com/kubefleet-dev/kubefleet/apis/kubefleet.dev/placement/v1alpha1"
@@ -194,7 +193,7 @@ var _ = Describe("placement policy auto-rollout", Label("placementpolicy"), func
 
 		It("should report the policy as synchronized on every member cluster, with the binding manager role released", func() {
 			wantStatus := allSynchronizedPlacementPolicyStatus(int32(len(allMemberClusters)))
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			Eventually(placementPolicyStatusActual(policyKey, wantStatus), placementPolicyRolloutEventuallyDuration, eventuallyInterval).
 				Should(Succeed(), "Failed to report the expected placement policy status")
 		})
@@ -206,7 +205,7 @@ var _ = Describe("placement policy auto-rollout", Label("placementpolicy"), func
 
 		It("should hold the second change back until the minimum wait period since the last attempt has passed", func() {
 			wantStatus := resourcesChangedPendingRolloutPlacementPolicyStatus(int32(len(allMemberClusters)))
-			wantStatus.LatestResourceRevisionName = ptr.To(newSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(newSnapshotName)
 			statusActual := placementPolicyStatusActual(policyKey, wantStatus)
 			dataActual := configMapDataOnClustersActual(cmKey, v1Data, allMemberClusters...)
 			heldActual := func() error {
@@ -254,7 +253,7 @@ var _ = Describe("placement policy auto-rollout", Label("placementpolicy"), func
 		// version, and no auto-rollout attempt recorded.
 		pendingActual := func() func() error {
 			wantStatus := resourcesChangedPendingRolloutPlacementPolicyStatus(int32(len(allMemberClusters)))
-			wantStatus.LatestResourceRevisionName = ptr.To(initialSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(initialSnapshotName)
 			statusActual := placementPolicyStatusActual(policyKey, wantStatus)
 			wantBindings := make(map[string]wantPlacementBinding, len(allMemberClusterNames))
 			for _, clusterName := range allMemberClusterNames {
@@ -410,7 +409,7 @@ var _ = Describe("placement policy auto-rollout", Label("placementpolicy"), func
 
 		It("should not auto-roll the change out while the run holds the binding manager role", func() {
 			wantStatus := resourcesChangedPendingRolloutPlacementPolicyStatus(int32(len(allMemberClusters)))
-			wantStatus.LatestResourceRevisionName = ptr.To(initialSnapshotName)
+			wantStatus.LatestResourceRevisionName = new(initialSnapshotName)
 			wantStatus.BindingManager = &kfplacementv1alpha1.BindingManager{
 				ControllerName: stagedUpdateRunBindingManagerName,
 				ObjectRefs:     []kfplacementv1alpha1.ObjectReference{stagedUpdateRunObjectReference(runKey)},

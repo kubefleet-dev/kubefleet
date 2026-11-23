@@ -154,14 +154,14 @@ func TestParseClusterSelectors(t *testing.T) {
 			name: "label matchers at the supported maximum",
 			value: func() string {
 				matchers := make([]string, 0, maxMatchLabels)
-				for i := 0; i < maxMatchLabels; i++ {
+				for i := range maxMatchLabels {
 					matchers = append(matchers, fmt.Sprintf("key%d=value", i))
 				}
 				return strings.Join(matchers, matcherSeparator)
 			}(),
 			want: func() []kfplacementv1alpha1.ClusterSelector {
 				matchLabels := make(map[string]string, maxMatchLabels)
-				for i := 0; i < maxMatchLabels; i++ {
+				for i := range maxMatchLabels {
 					matchLabels[fmt.Sprintf("key%d", i)] = "value"
 				}
 				return []kfplacementv1alpha1.ClusterSelector{selectorOf(one, matchLabels)}
@@ -180,7 +180,7 @@ func TestParseClusterSelectors(t *testing.T) {
 			value: strings.TrimSuffix(strings.Repeat("region=eastus;", maxSelectors), ";"),
 			want: func() []kfplacementv1alpha1.ClusterSelector {
 				selectors := make([]kfplacementv1alpha1.ClusterSelector, 0, maxSelectors)
-				for i := 0; i < maxSelectors; i++ {
+				for range maxSelectors {
 					selectors = append(selectors, selectorOf(one, map[string]string{regionLabel: "eastus"}))
 				}
 				return selectors

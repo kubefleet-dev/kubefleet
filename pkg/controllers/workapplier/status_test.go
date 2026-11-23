@@ -33,7 +33,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -432,7 +431,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 								},
 							},
 							DiffDetails: &fleetv1beta1.DiffDetails{
-								ObservedInMemberClusterGeneration: ptr.To(int64(0)),
+								ObservedInMemberClusterGeneration: new(int64(0)),
 								FirstDiffedObservedTime:           firstDiffedTime,
 							},
 						},
@@ -540,7 +539,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 						},
 						DiffDetails: &fleetv1beta1.DiffDetails{
 							FirstDiffedObservedTime:           firstDiffedTime,
-							ObservedInMemberClusterGeneration: ptr.To(int64(0)),
+							ObservedInMemberClusterGeneration: new(int64(0)),
 							ObservedDiffs: []fleetv1beta1.PatchDetail{
 								{
 									Path:          "/spec/replicas",
@@ -650,7 +649,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 							},
 						},
 						DiffDetails: &fleetv1beta1.DiffDetails{
-							ObservedInMemberClusterGeneration: ptr.To(int64(0)),
+							ObservedInMemberClusterGeneration: new(int64(0)),
 							ObservedDiffs: []fleetv1beta1.PatchDetail{
 								{
 									Path:          "/x",
@@ -894,7 +893,7 @@ func TestRefreshWorkStatus(t *testing.T) {
 							},
 						},
 						DiffDetails: &fleetv1beta1.DiffDetails{
-							ObservedInMemberClusterGeneration: ptr.To(int64(0)),
+							ObservedInMemberClusterGeneration: new(int64(0)),
 							ObservedDiffs: []fleetv1beta1.PatchDetail{
 								{
 									Path:          "/x",
@@ -2077,7 +2076,7 @@ func TestBackReportStatus(t *testing.T) {
 			},
 		},
 	}
-	deployStatusWrapperMap := map[string]interface{}{
+	deployStatusWrapperMap := map[string]any{
 		"apiVersion": "apps/v1",
 		"kind":       "Deployment",
 		"status":     deployWithStatus.Status,
@@ -2103,7 +2102,7 @@ func TestBackReportStatus(t *testing.T) {
 			},
 		},
 	}
-	deployStatusWrapperMapBfr := map[string]interface{}{
+	deployStatusWrapperMapBfr := map[string]any{
 		"apiVersion": "apps/v1",
 		"kind":       "Deployment",
 		"status":     deployWithStatusBfr.Status,
@@ -2522,7 +2521,7 @@ func TestTrimWorkStatusDataWhenOversized(t *testing.T) {
 							DiffDetails: &fleetv1beta1.DiffDetails{
 								ObservationTime:                   now,
 								FirstDiffedObservedTime:           now,
-								ObservedInMemberClusterGeneration: ptr.To(int64(1)),
+								ObservedInMemberClusterGeneration: new(int64(1)),
 								ObservedDiffs: []fleetv1beta1.PatchDetail{
 									{
 										Path:          fmt.Sprintf("/metadata/labels/%s", dummyLabelKey),
@@ -2562,7 +2561,7 @@ func TestTrimWorkStatusDataWhenOversized(t *testing.T) {
 						DiffDetails: &fleetv1beta1.DiffDetails{
 							ObservationTime:                   now,
 							FirstDiffedObservedTime:           now,
-							ObservedInMemberClusterGeneration: ptr.To(int64(1)),
+							ObservedInMemberClusterGeneration: new(int64(1)),
 							ObservedDiffs: []fleetv1beta1.PatchDetail{
 								{
 									Path:          fmt.Sprintf("/metadata/labels/%s", dummyLabelKey),
@@ -2609,7 +2608,7 @@ func TestTrimWorkStatusDataWhenOversized(t *testing.T) {
 							DiffDetails: &fleetv1beta1.DiffDetails{
 								ObservationTime:                   now,
 								FirstDiffedObservedTime:           now,
-								ObservedInMemberClusterGeneration: ptr.To(int64(1)),
+								ObservedInMemberClusterGeneration: new(int64(1)),
 								ObservedDiffs: []fleetv1beta1.PatchDetail{
 									{
 										Path:          fmt.Sprintf("/metadata/labels/%s-1", dummyLabelKey),
@@ -2654,7 +2653,7 @@ func TestTrimWorkStatusDataWhenOversized(t *testing.T) {
 						DiffDetails: &fleetv1beta1.DiffDetails{
 							ObservationTime:                   now,
 							FirstDiffedObservedTime:           now,
-							ObservedInMemberClusterGeneration: ptr.To(int64(1)),
+							ObservedInMemberClusterGeneration: new(int64(1)),
 							ObservedDiffs: []fleetv1beta1.PatchDetail{
 								{
 									Path:          fmt.Sprintf("/metadata/labels/%s-1 and %d more path(s)", dummyLabelKey, 1),

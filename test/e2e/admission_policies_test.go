@@ -28,7 +28,6 @@ import (
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 
 	"github.com/kubefleet-dev/kubefleet/pkg/admissionpolicymanager"
 )
@@ -99,7 +98,7 @@ var _ = Describe("deny service account writes and token requests in restricted n
 			},
 			Spec: authenticationv1.TokenRequestSpec{
 				Audiences:         []string{"experimental"},
-				ExpirationSeconds: ptr.To(int64(3600)),
+				ExpirationSeconds: new(int64(3600)),
 			},
 		}
 		wantErrMsg := "writing service accounts in reserved namespaces or requesting tokens from such service accounts is disallowed"

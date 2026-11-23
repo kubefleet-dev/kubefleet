@@ -17,10 +17,7 @@ func (r *Runner) LongPollPlacements(ctx context.Context) {
 	wg := sync.WaitGroup{}
 
 	// Start waiting for all placements to be available.
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	wg.Go(func() {
 		for {
 			select {
 			case <-ctx.Done():
@@ -39,7 +36,7 @@ func (r *Runner) LongPollPlacements(ctx context.Context) {
 			fmt.Printf("waiting for %d CRPs to be available, %d are available\n", c1, c2)
 			time.Sleep(time.Second * 5)
 		}
-	}()
+	})
 
 	// Run the long pollers.
 	for i := 0; i < r.longPollingWorkerCount; i++ {

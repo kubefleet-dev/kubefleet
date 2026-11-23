@@ -29,7 +29,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
@@ -966,7 +965,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "the placement scheduling succeeded when numberOfClusters is 0",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(0)),
+				NumberOfClusters: new(int32(0)),
 			},
 			latestPolicySnapshot: &fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				ObjectMeta: metav1.ObjectMeta{
@@ -979,8 +978,8 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 					OwnerReferences: []metav1.OwnerReference{
 						{
 							Name:               testCRPName,
-							BlockOwnerDeletion: ptr.To(true),
-							Controller:         ptr.To(true),
+							BlockOwnerDeletion: new(true),
+							Controller:         new(true),
 							APIVersion:         fleetAPIVersion,
 							Kind:               "ClusterResourcePlacement",
 						},
@@ -1026,8 +1025,8 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 					OwnerReferences: []metav1.OwnerReference{
 						{
 							Name:               testCRPName,
-							BlockOwnerDeletion: ptr.To(true),
-							Controller:         ptr.To(true),
+							BlockOwnerDeletion: new(true),
+							Controller:         new(true),
 							APIVersion:         fleetAPIVersion,
 							Kind:               "ClusterResourcePlacement",
 						},
@@ -1059,7 +1058,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "the placement scheduling succeeded when numberOfClusters is 0 but user actually wants to select some",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(3)),
+				NumberOfClusters: new(int32(3)),
 			},
 			latestPolicySnapshot: &fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1072,8 +1071,8 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 					OwnerReferences: []metav1.OwnerReference{
 						{
 							Name:               testCRPName,
-							BlockOwnerDeletion: ptr.To(true),
-							Controller:         ptr.To(true),
+							BlockOwnerDeletion: new(true),
+							Controller:         new(true),
 							APIVersion:         fleetAPIVersion,
 							Kind:               "ClusterResourcePlacement",
 						},
@@ -1119,8 +1118,8 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 					OwnerReferences: []metav1.OwnerReference{
 						{
 							Name:               testCRPName,
-							BlockOwnerDeletion: ptr.To(true),
-							Controller:         ptr.To(true),
+							BlockOwnerDeletion: new(true),
+							Controller:         new(true),
 							APIVersion:         fleetAPIVersion,
 							Kind:               "ClusterResourcePlacement",
 						},
@@ -1176,7 +1175,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "the placement is completed with clusterResourceBindings and works",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(1)),
+				NumberOfClusters: new(int32(1)),
 			},
 			latestPolicySnapshot: &fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1403,7 +1402,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "the placement is completed with clusterResourceBindings and works (no overrides)",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(2)),
+				NumberOfClusters: new(int32(2)),
 			},
 			latestPolicySnapshot: &fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1649,7 +1648,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "one of the placement condition is unknown with multiple bindings",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(7)),
+				NumberOfClusters: new(int32(7)),
 			},
 			latestPolicySnapshot: &fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				ObjectMeta: metav1.ObjectMeta{
@@ -2119,7 +2118,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "placement rollout started condition false",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(1)),
+				NumberOfClusters: new(int32(1)),
 			},
 			latestPolicySnapshot: &fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				ObjectMeta: metav1.ObjectMeta{
@@ -2242,7 +2241,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "placement apply condition false",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(2)),
+				NumberOfClusters: new(int32(2)),
 			},
 			latestPolicySnapshot: &fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				ObjectMeta: metav1.ObjectMeta{
@@ -2606,7 +2605,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "placement available condition false",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(1)),
+				NumberOfClusters: new(int32(1)),
 			},
 			latestPolicySnapshot: &fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				ObjectMeta: metav1.ObjectMeta{
@@ -2875,7 +2874,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "update the CRP and it rollout status becomes unknown (reset the existing conditions)",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(1)),
+				NumberOfClusters: new(int32(1)),
 			},
 			crpStatus: fleetv1beta1.PlacementStatus{
 				ObservedResourceIndex: "-1",
@@ -3195,7 +3194,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "the placement cannot be fulfilled for pickN",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(3)),
+				NumberOfClusters: new(int32(3)),
 			},
 			latestPolicySnapshot: &fleetv1beta1.ClusterSchedulingPolicySnapshot{
 				ObjectMeta: metav1.ObjectMeta{
@@ -3304,7 +3303,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "the placement cannot be fulfilled for pickN (reset existing status)",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(3)),
+				NumberOfClusters: new(int32(3)),
 			},
 			crpStatus: fleetv1beta1.PlacementStatus{
 				SelectedResources:     selectedResources,
@@ -3511,7 +3510,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "ReportDiff apply strategy, all diff reported",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(2)),
+				NumberOfClusters: new(int32(2)),
 			},
 			strategy: fleetv1beta1.RolloutStrategy{
 				ApplyStrategy: &fleetv1beta1.ApplyStrategy{
@@ -3863,7 +3862,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "ReportDiff apply strategy, one cluster has not reported diff yet",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(2)),
+				NumberOfClusters: new(int32(2)),
 			},
 			strategy: fleetv1beta1.RolloutStrategy{
 				ApplyStrategy: &fleetv1beta1.ApplyStrategy{
@@ -4165,7 +4164,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "ReportDiff apply strategy, one cluster has failed to report diff",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(2)),
+				NumberOfClusters: new(int32(2)),
 			},
 			strategy: fleetv1beta1.RolloutStrategy{
 				ApplyStrategy: &fleetv1beta1.ApplyStrategy{
@@ -4479,7 +4478,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "ReportDiff apply strategy, one cluster has failed to synchronized work",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(2)),
+				NumberOfClusters: new(int32(2)),
 			},
 			strategy: fleetv1beta1.RolloutStrategy{
 				ApplyStrategy: &fleetv1beta1.ApplyStrategy{
@@ -4767,7 +4766,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "Removing Applied/Available condition from status as apply strategy has changed",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(1)),
+				NumberOfClusters: new(int32(1)),
 			},
 			strategy: fleetv1beta1.RolloutStrategy{
 				ApplyStrategy: &fleetv1beta1.ApplyStrategy{
@@ -4975,7 +4974,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "Removing DiffReported condition from status as apply strategy has changed",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(1)),
+				NumberOfClusters: new(int32(1)),
 			},
 			strategy: fleetv1beta1.RolloutStrategy{
 				ApplyStrategy: &fleetv1beta1.ApplyStrategy{
@@ -5196,7 +5195,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "update the placement has External rollout strategy and all bindings are scheduled and pending rollout",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(1)),
+				NumberOfClusters: new(int32(1)),
 			},
 			strategy: fleetv1beta1.RolloutStrategy{
 				Type: fleetv1beta1.ExternalRolloutStrategyType,
@@ -5331,7 +5330,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "placement has External rollout strategy and rollout only reaches to some of the clusters",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(2)),
+				NumberOfClusters: new(int32(2)),
 			},
 			strategy: fleetv1beta1.RolloutStrategy{
 				Type: fleetv1beta1.ExternalRolloutStrategyType,
@@ -5483,7 +5482,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "placement has External rollout strategy and is still rolling out and cluster observe different resource indices",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(2)),
+				NumberOfClusters: new(int32(2)),
 			},
 			strategy: fleetv1beta1.RolloutStrategy{
 				Type: fleetv1beta1.ExternalRolloutStrategyType,
@@ -5654,7 +5653,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "placement has External rollout strategy and all clusters are rolled out to the latest resource snapshot",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(2)),
+				NumberOfClusters: new(int32(2)),
 			},
 			strategy: fleetv1beta1.RolloutStrategy{
 				Type: fleetv1beta1.ExternalRolloutStrategyType,
@@ -5794,7 +5793,7 @@ func TestSetPlacementStatusForClusterResourcePlacement(t *testing.T) {
 			name: "placement has External rollout strategy and all clusters are rolled out to a not-latest resource snapshot",
 			policy: &fleetv1beta1.PlacementPolicy{
 				PlacementType:    fleetv1beta1.PickNPlacementType,
-				NumberOfClusters: ptr.To(int32(2)),
+				NumberOfClusters: new(int32(2)),
 			},
 			strategy: fleetv1beta1.RolloutStrategy{
 				Type: fleetv1beta1.ExternalRolloutStrategyType,
@@ -8149,7 +8148,7 @@ func TestSetPlacementStatusPerCluster(t *testing.T) {
 								Namespace: "ns-1",
 							},
 							ObservationTime:                 metav1.Time{Time: time.Now()},
-							TargetClusterObservedGeneration: ptr.To(int64(2)),
+							TargetClusterObservedGeneration: new(int64(2)),
 							FirstDiffedObservedTime:         metav1.Time{Time: time.Now()},
 							ObservedDiffs: []fleetv1beta1.PatchDetail{
 								{
@@ -8252,7 +8251,7 @@ func TestSetPlacementStatusPerCluster(t *testing.T) {
 							Namespace: "ns-1",
 						},
 						ObservationTime:                 metav1.Time{Time: time.Now()},
-						TargetClusterObservedGeneration: ptr.To(int64(2)),
+						TargetClusterObservedGeneration: new(int64(2)),
 						FirstDiffedObservedTime:         metav1.Time{Time: time.Now()},
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
@@ -8459,7 +8458,7 @@ func TestSetPlacementStatusPerCluster(t *testing.T) {
 								Namespace: "ns-1",
 							},
 							ObservationTime:                 metav1.Time{Time: time.Now()},
-							TargetClusterObservedGeneration: ptr.To(int64(1)),
+							TargetClusterObservedGeneration: new(int64(1)),
 							FirstDiffedObservedTime:         metav1.Time{Time: time.Now()},
 							ObservedDiffs: []fleetv1beta1.PatchDetail{
 								{
@@ -8526,7 +8525,7 @@ func TestSetPlacementStatusPerCluster(t *testing.T) {
 							Namespace: "ns-1",
 						},
 						ObservationTime:                 metav1.Time{Time: time.Now()},
-						TargetClusterObservedGeneration: ptr.To(int64(1)),
+						TargetClusterObservedGeneration: new(int64(1)),
 						FirstDiffedObservedTime:         metav1.Time{Time: time.Now()},
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
@@ -8594,7 +8593,7 @@ func TestSetPlacementStatusPerCluster(t *testing.T) {
 								Namespace: "ns-1",
 							},
 							ObservationTime:                 metav1.Time{Time: time.Now()},
-							TargetClusterObservedGeneration: ptr.To(int64(1)),
+							TargetClusterObservedGeneration: new(int64(1)),
 							FirstDiffedObservedTime:         metav1.Time{Time: time.Now()},
 							ObservedDiffs: []fleetv1beta1.PatchDetail{
 								{
@@ -8702,7 +8701,7 @@ func TestSetPlacementStatusPerCluster(t *testing.T) {
 								Namespace: "ns-1",
 							},
 							ObservationTime:                 metav1.Time{Time: time.Now()},
-							TargetClusterObservedGeneration: ptr.To(int64(1)),
+							TargetClusterObservedGeneration: new(int64(1)),
 							FirstDiffedObservedTime:         metav1.Time{Time: time.Now()},
 							ObservedDiffs: []fleetv1beta1.PatchDetail{
 								{
@@ -10022,7 +10021,7 @@ func TestCalculateFailedToScheduleClusterCount(t *testing.T) {
 				Spec: fleetv1beta1.PlacementSpec{
 					Policy: &fleetv1beta1.PlacementPolicy{
 						PlacementType:    fleetv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(3)),
+						NumberOfClusters: new(int32(3)),
 					},
 				},
 			},
@@ -10037,7 +10036,7 @@ func TestCalculateFailedToScheduleClusterCount(t *testing.T) {
 				Spec: fleetv1beta1.PlacementSpec{
 					Policy: &fleetv1beta1.PlacementPolicy{
 						PlacementType:    fleetv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(2)),
+						NumberOfClusters: new(int32(2)),
 					},
 				},
 			},
@@ -10052,7 +10051,7 @@ func TestCalculateFailedToScheduleClusterCount(t *testing.T) {
 				Spec: fleetv1beta1.PlacementSpec{
 					Policy: &fleetv1beta1.PlacementPolicy{
 						PlacementType:    fleetv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(1)),
+						NumberOfClusters: new(int32(1)),
 					},
 				},
 			},
@@ -10097,7 +10096,7 @@ func TestCalculateFailedToScheduleClusterCount(t *testing.T) {
 				Spec: fleetv1beta1.PlacementSpec{
 					Policy: &fleetv1beta1.PlacementPolicy{
 						PlacementType:    fleetv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(5)), // want 5 clusters
+						NumberOfClusters: new(int32(5)), // want 5 clusters
 					},
 				},
 			},
@@ -10142,7 +10141,7 @@ func TestCalculateFailedToScheduleClusterCount(t *testing.T) {
 				Spec: fleetv1beta1.PlacementSpec{
 					Policy: &fleetv1beta1.PlacementPolicy{
 						PlacementType:    fleetv1beta1.PickNPlacementType,
-						NumberOfClusters: ptr.To(int32(4)),
+						NumberOfClusters: new(int32(4)),
 					},
 				},
 			},
