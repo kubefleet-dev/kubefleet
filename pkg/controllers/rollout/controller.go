@@ -539,11 +539,9 @@ func determineBindingsToUpdate(
 
 	// boundingCandidatesUnselectedIndex stores the last index of the boundingCandidates which are not selected to be updated.
 	// The rolloutStarted condition of these elements from this index should be updated.
-	boundingCandidatesUnselectedIndex := 0
-	// TODO re-slice the array
-	for ; boundingCandidatesUnselectedIndex < maxNumberToAdd && boundingCandidatesUnselectedIndex < len(boundingCandidates); boundingCandidatesUnselectedIndex++ {
-		toBeUpdatedBindingList = append(toBeUpdatedBindingList, boundingCandidates[boundingCandidatesUnselectedIndex])
-	}
+	// The budget is negative when more bindings can be ready than the target number plus maxSurge, in which case no binding is added.
+	boundingCandidatesUnselectedIndex := max(0, min(maxNumberToAdd, len(boundingCandidates)))
+	toBeUpdatedBindingList = append(toBeUpdatedBindingList, boundingCandidates[:boundingCandidatesUnselectedIndex]...)
 	// Those are the bindings that are not up to date but not selected to be updated in this round because of the rollout constraints.
 	staleUnselectedBinding := make([]toBeUpdatedBinding, 0)
 	if updateCandidateUnselectedIndex < len(updateCandidates) {
