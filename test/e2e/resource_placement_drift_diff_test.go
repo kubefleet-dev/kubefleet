@@ -276,9 +276,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 									TargetClusterObservedGeneration: new(int64(0)),
 									ObservedDiffs: []placementv1beta1.PatchDetail{
 										{
-											Path:          "/data/data",
-											ValueInMember: managedDataFieldVal1,
-											ValueInHub:    "test",
+											Path: "/data/data",
 										},
 									},
 								},
@@ -466,9 +464,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 									TargetClusterObservedGeneration: new(int64(0)),
 									ObservedDiffs: []placementv1beta1.PatchDetail{
 										{
-											Path:          "/data/data",
-											ValueInMember: managedDataFieldVal1,
-											ValueInHub:    "test",
+											Path: "/data/data",
 										},
 									},
 								},
@@ -482,8 +478,7 @@ var _ = Describe("take over existing resources using RP", Label("resourceplaceme
 									TargetClusterObservedGeneration: new(int64(0)),
 									ObservedDiffs: []placementv1beta1.PatchDetail{
 										{
-											Path:          fmt.Sprintf("/metadata/labels/%s", unmanagedLabelKey),
-											ValueInMember: unmanagedLabelVal1,
+											Path: fmt.Sprintf("/metadata/labels/%s", unmanagedLabelKey),
 										},
 									},
 								},
@@ -1305,9 +1300,7 @@ var _ = Describe("report diff mode using RP", Label("resourceplacement"), func()
 									TargetClusterObservedGeneration: new(int64(0)),
 									ObservedDiffs: []placementv1beta1.PatchDetail{
 										{
-											Path:          "/data/data",
-											ValueInMember: managedDataFieldVal1,
-											ValueInHub:    "test",
+											Path: "/data/data",
 										},
 									},
 								},
@@ -1321,8 +1314,7 @@ var _ = Describe("report diff mode using RP", Label("resourceplacement"), func()
 									TargetClusterObservedGeneration: new(int64(0)),
 									ObservedDiffs: []placementv1beta1.PatchDetail{
 										{
-											Path:          fmt.Sprintf("/metadata/labels/%s", unmanagedLabelKey),
-											ValueInMember: unmanagedLabelVal1,
+											Path: fmt.Sprintf("/metadata/labels/%s", unmanagedLabelKey),
 										},
 									},
 								},
@@ -1343,8 +1335,7 @@ var _ = Describe("report diff mode using RP", Label("resourceplacement"), func()
 									},
 									ObservedDiffs: []placementv1beta1.PatchDetail{
 										{
-											Path:       "/",
-											ValueInHub: "(the whole object)",
+											Path: "/",
 										},
 									},
 								},
@@ -1357,8 +1348,7 @@ var _ = Describe("report diff mode using RP", Label("resourceplacement"), func()
 									},
 									ObservedDiffs: []placementv1beta1.PatchDetail{
 										{
-											Path:       "/",
-											ValueInHub: "(the whole object)",
+											Path: "/",
 										},
 									},
 								},
@@ -1379,8 +1369,7 @@ var _ = Describe("report diff mode using RP", Label("resourceplacement"), func()
 									},
 									ObservedDiffs: []placementv1beta1.PatchDetail{
 										{
-											Path:       "/",
-											ValueInHub: "(the whole object)",
+											Path: "/",
 										},
 									},
 								},
@@ -1393,8 +1382,7 @@ var _ = Describe("report diff mode using RP", Label("resourceplacement"), func()
 									},
 									ObservedDiffs: []placementv1beta1.PatchDetail{
 										{
-											Path:       "/",
-											ValueInHub: "(the whole object)",
+											Path: "/",
 										},
 									},
 								},
@@ -1804,9 +1792,7 @@ var _ = Describe("mixed diff and drift reportings using RP", Ordered, Label("res
 								TargetClusterObservedGeneration: new(int64(1)),
 								ObservedDiffs: []placementv1beta1.PatchDetail{
 									{
-										Path:          "/spec/replicas",
-										ValueInMember: "2",
-										ValueInHub:    "1",
+										Path: "/spec/replicas",
 									},
 								},
 							},

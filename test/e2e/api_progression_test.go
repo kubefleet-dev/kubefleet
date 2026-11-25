@@ -417,9 +417,7 @@ var _ = Describe("takeover, drift detection, and reportDiff mode (v1beta1 to v1)
 									TargetClusterObservedGeneration: new(int64(0)),
 									ObservedDiffs: []placementv1.PatchDetail{
 										{
-											Path:          fmt.Sprintf("/metadata/labels/%s", managedDataFieldKey),
-											ValueInMember: managedDataFieldVal2,
-											ValueInHub:    managedDataFieldVal1,
+											Path: fmt.Sprintf("/metadata/labels/%s", managedDataFieldKey),
 										},
 									},
 								},
@@ -688,9 +686,7 @@ var _ = Describe("takeover, drift detection, and reportDiff mode (v1beta1 to v1)
 									TargetClusterObservedGeneration: new(int64(0)),
 									ObservedDiffs: []placementv1.PatchDetail{
 										{
-											Path:          fmt.Sprintf("/metadata/labels/%s", managedDataFieldKey),
-											ValueInMember: managedDataFieldVal2,
-											ValueInHub:    managedDataFieldVal1,
+											Path: fmt.Sprintf("/metadata/labels/%s", managedDataFieldKey),
 										},
 									},
 								},

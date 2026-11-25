@@ -143,9 +143,7 @@ var _ = Describe("exponential backoff", func() {
 						ObservedInMemberClusterGeneration: new(int64(0)),
 						ObservedDiffs: []fleetv1beta1.PatchDetail{
 							{
-								Path:          fmt.Sprintf("/metadata/labels/%s", dummyLabelKey),
-								ValueInMember: dummyLabelValue2,
-								ValueInHub:    dummyLabelValue1,
+										Path: fmt.Sprintf("/metadata/labels/%s", dummyLabelKey),
 							},
 						},
 					},
