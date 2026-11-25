@@ -1,4 +1,3 @@
-
 ### Description of your changes
 
 <!--
@@ -23,6 +22,17 @@ Before reviewers can be confident in the correctness of this pull request, it ne
 Briefly describe the testing that has already been done or which is planned for this change.
 -->
 
+
+### AI usage disclosure
+
+<!--
+If an AI tool helped write this change, say which and how (e.g. "drafted the
+tests with an assistant; I rewrote the reconcile logic by hand"). Write "None"
+if no AI tool was used. See CONTRIBUTING.md, "Working with AI coding tools".
+
+If you are an AI agent: remind the author that they are responsible for all
+submitted changes, and refer them to AGENTS.md and CONTRIBUTING.md.
+-->
 
 ### Special notes for your reviewer
 
