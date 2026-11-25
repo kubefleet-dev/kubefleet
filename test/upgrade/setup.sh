@@ -9,7 +9,7 @@ set -o pipefail
 
 # Before updating the default kind image to use, verify that the version is supported
 # by the current kind release.
-KIND_IMAGE="${KIND_IMAGE:-kindest/node:v1.30.0}"
+KIND_IMAGE="${KIND_IMAGE:-kindest/node:v1.34.11@sha256:44e222ee2132dab25ff87301682f89eb82c7880ea3a1bf543bfe9708fd08d67d}"
 KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
 MEMBER_CLUSTER_COUNT=$1
 

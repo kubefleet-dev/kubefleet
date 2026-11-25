@@ -53,6 +53,10 @@ jobs:
       - name: Set up Ginkgo CLI
         run: |
           go install github.com/onsi/ginkgo/v2/ginkgo@v2.23.4
+
+      - name: Install Kind
+        run: |
+          go install sigs.k8s.io/kind@v0.33.0
       
       - name: Travel back in time to the before upgrade version
         run: |
@@ -136,6 +140,10 @@ jobs:
       - name: Set up Ginkgo CLI
         run: |
           go install github.com/onsi/ginkgo/v2/ginkgo@v2.23.4
+
+      - name: Install Kind
+        run: |
+          go install sigs.k8s.io/kind@v0.33.0
       
       - name: Travel back in time to the before upgrade version
         run: |
@@ -219,6 +227,10 @@ jobs:
       - name: Set up Ginkgo CLI
         run: |
           go install github.com/onsi/ginkgo/v2/ginkgo@v2.23.4
+
+      - name: Install Kind
+        run: |
+          go install sigs.k8s.io/kind@v0.33.0
 
       - name: Travel back in time to the before upgrade version
         run: |
