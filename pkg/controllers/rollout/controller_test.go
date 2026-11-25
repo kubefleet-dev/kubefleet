@@ -19,6 +19,7 @@ package rollout
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -2841,6 +2842,175 @@ func TestPickBindingsToRoll(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDetermineBindingsToUpdate(t *testing.T) {
+	tests := map[string]struct {
+		maxUnavailable              int32
+		maxSurge                    int32
+		removeCandidates            []string
+		updateCandidates            []string
+		boundingCandidates          []string
+		applyFailedUpdateCandidates []string
+		targetNumber                int
+		readyBindings               int
+		canBeReadyBindings          int
+		canBeUnavailableBindings    int
+		wantToBeUpdated             []string
+		wantStaleUnselected         []string
+	}{
+		"no candidates": {
+			maxUnavailable:           1,
+			maxSurge:                 1,
+			targetNumber:             3,
+			readyBindings:            3,
+			canBeReadyBindings:       3,
+			canBeUnavailableBindings: 0,
+			wantToBeUpdated:          []string{},
+			wantStaleUnselected:      []string{},
+		},
+		"apply failed bindings are updated even with no unavailable budget": {
+			maxUnavailable:              0,
+			maxSurge:                    0,
+			updateCandidates:            []string{"update-1"},
+			boundingCandidates:          []string{"bounding-1"},
+			applyFailedUpdateCandidates: []string{"apply-failed-1"},
+			targetNumber:                3,
+			readyBindings:               3,
+			canBeReadyBindings:          3,
+			canBeUnavailableBindings:    0,
+			wantToBeUpdated:             []string{"apply-failed-1"},
+			wantStaleUnselected:         []string{"update-1", "bounding-1"},
+		},
+		"removals use the unavailable budget before updates": {
+			maxUnavailable:           2,
+			maxSurge:                 0,
+			removeCandidates:         []string{"remove-1", "remove-2", "remove-3"},
+			updateCandidates:         []string{"update-1", "update-2"},
+			targetNumber:             3,
+			readyBindings:            3,
+			canBeReadyBindings:       3,
+			canBeUnavailableBindings: 0,
+			wantToBeUpdated:          []string{"remove-1", "remove-2"},
+			wantStaleUnselected:      []string{"update-1", "update-2"},
+		},
+		"updates use the unavailable budget left over by removals": {
+			maxUnavailable:           2,
+			maxSurge:                 0,
+			removeCandidates:         []string{"remove-1"},
+			updateCandidates:         []string{"update-1", "update-2", "update-3"},
+			targetNumber:             3,
+			readyBindings:            3,
+			canBeReadyBindings:       3,
+			canBeUnavailableBindings: 0,
+			wantToBeUpdated:          []string{"remove-1", "update-1"},
+			wantStaleUnselected:      []string{"update-2", "update-3"},
+		},
+		"additions are capped by the surge budget": {
+			maxUnavailable:           0,
+			maxSurge:                 1,
+			boundingCandidates:       []string{"bounding-1", "bounding-2", "bounding-3"},
+			targetNumber:             3,
+			readyBindings:            3,
+			canBeReadyBindings:       2,
+			canBeUnavailableBindings: 0,
+			wantToBeUpdated:          []string{"bounding-1", "bounding-2"},
+			wantStaleUnselected:      []string{"bounding-3"},
+		},
+		"a zero surge budget adds nothing": {
+			maxUnavailable:           0,
+			maxSurge:                 0,
+			boundingCandidates:       []string{"bounding-1", "bounding-2"},
+			targetNumber:             3,
+			readyBindings:            3,
+			canBeReadyBindings:       3,
+			canBeUnavailableBindings: 0,
+			wantToBeUpdated:          []string{},
+			wantStaleUnselected:      []string{"bounding-1", "bounding-2"},
+		},
+		// The surge budget is target + maxSurge - canBeReadyBindings, so it goes negative when more
+		// bindings can be ready than the placement targets plus the surge.
+		"a negative surge budget adds nothing": {
+			maxUnavailable:           0,
+			maxSurge:                 0,
+			boundingCandidates:       []string{"bounding-1"},
+			targetNumber:             3,
+			readyBindings:            3,
+			canBeReadyBindings:       4,
+			canBeUnavailableBindings: 0,
+			wantToBeUpdated:          []string{},
+			wantStaleUnselected:      []string{"bounding-1"},
+		},
+		"candidates are ordered apply failed, removals, updates, then additions": {
+			maxUnavailable:              2,
+			maxSurge:                    1,
+			removeCandidates:            []string{"remove-1"},
+			updateCandidates:            []string{"update-1", "update-2"},
+			boundingCandidates:          []string{"bounding-1", "bounding-2", "bounding-3"},
+			applyFailedUpdateCandidates: []string{"apply-failed-1"},
+			targetNumber:                3,
+			readyBindings:               3,
+			canBeReadyBindings:          2,
+			canBeUnavailableBindings:    0,
+			wantToBeUpdated:             []string{"apply-failed-1", "remove-1", "update-1", "bounding-1", "bounding-2"},
+			wantStaleUnselected:         []string{"update-2", "bounding-3"},
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			gotToBeUpdated, gotStaleUnselected := determineBindingsToUpdate(placementWithBudgets(tt.maxUnavailable, tt.maxSurge),
+				candidatesFor(tt.removeCandidates), candidatesFor(tt.updateCandidates), candidatesFor(tt.boundingCandidates),
+				candidatesFor(tt.applyFailedUpdateCandidates), tt.targetNumber, bindingsFor("ready", tt.readyBindings),
+				bindingsFor("can-be-ready", tt.canBeReadyBindings), bindingsFor("can-be-unavailable", tt.canBeUnavailableBindings))
+
+			if diff := cmp.Diff(tt.wantToBeUpdated, targetClustersOf(gotToBeUpdated), cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("determineBindingsToUpdate() toBeUpdated mismatch (-want, +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantStaleUnselected, targetClustersOf(gotStaleUnselected), cmpopts.EquateEmpty()); diff != "" {
+				t.Errorf("determineBindingsToUpdate() staleUnselected mismatch (-want, +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// placementWithBudgets returns a placement whose rolling update config uses the given
+// maxUnavailable and maxSurge as absolute numbers.
+func placementWithBudgets(maxUnavailable, maxSurge int32) placementv1beta1.PlacementObj {
+	rollingUpdate := generateDefaultRollingUpdateConfig()
+	rollingUpdate.MaxUnavailable = &intstr.IntOrString{Type: intstr.Int, IntVal: maxUnavailable}
+	rollingUpdate.MaxSurge = &intstr.IntOrString{Type: intstr.Int, IntVal: maxSurge}
+	return clusterResourcePlacementForTest("test",
+		createPlacementPolicyForTest(placementv1beta1.PickAllPlacementType, 0),
+		createPlacementRolloutStrategyForTest(placementv1beta1.RollingUpdateRolloutStrategyType, rollingUpdate, nil))
+}
+
+// candidatesFor returns one to-be-updated binding per given target cluster.
+func candidatesFor(targetClusters []string) []toBeUpdatedBinding {
+	candidates := make([]toBeUpdatedBinding, 0, len(targetClusters))
+	for _, targetCluster := range targetClusters {
+		candidates = append(candidates, toBeUpdatedBinding{
+			currentBinding: generateClusterResourceBinding(placementv1beta1.BindingStateBound, "snapshot-1", targetCluster),
+		})
+	}
+	return candidates
+}
+
+// bindingsFor returns count bindings targeting clusters named with the given prefix.
+func bindingsFor(prefix string, count int) []placementv1beta1.BindingObj {
+	bindings := make([]placementv1beta1.BindingObj, 0, count)
+	for i := range count {
+		bindings = append(bindings, generateClusterResourceBinding(placementv1beta1.BindingStateBound, "snapshot-1", fmt.Sprintf("%s-%d", prefix, i)))
+	}
+	return bindings
+}
+
+// targetClustersOf lists the target clusters of the given bindings, in order.
+func targetClustersOf(bindings []toBeUpdatedBinding) []string {
+	targetClusters := make([]string, 0, len(bindings))
+	for _, binding := range bindings {
+		targetClusters = append(targetClusters, binding.currentBinding.GetBindingSpec().TargetCluster)
+	}
+	return targetClusters
 }
 
 func createPlacementPolicyForTest(placementType placementv1beta1.PlacementType, numberOfClusters int32) *placementv1beta1.PlacementPolicy {
