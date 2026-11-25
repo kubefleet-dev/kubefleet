@@ -195,6 +195,66 @@ var _ = Describe("webhook tests for CRP CREATE operations", func() {
 				return nil
 			}, eventuallyDuration, eventuallyInterval).Should(Succeed())
 		})
+
+		It("should deny create CRP selecting a reserved namespace", func() {
+			Eventually(func(g Gomega) error {
+				// Create the CRP.
+				crp := placementv1beta1.ClusterResourcePlacement{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: crpName,
+						// Add a custom finalizer; this would allow us to better observe
+						// the behavior of the controllers.
+						Finalizers: []string{customDeletionBlockerFinalizer},
+					},
+					Spec: placementv1beta1.PlacementSpec{
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+							{
+								Group:   "",
+								Kind:    "Namespace",
+								Version: "v1",
+								Name:    fleetSystemNS,
+							},
+						},
+					},
+				}
+				By(fmt.Sprintf("creating placement %s", crpName))
+				err := hubClient.Create(ctx, &crp)
+				var statusErr *k8sErrors.StatusError
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta(fmt.Sprintf("namespace %s and any resource within it are not allowed for placement", fleetSystemNS))))
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed())
+		})
+
+		It("should deny create CRP selecting the default namespace", func() {
+			Eventually(func(g Gomega) error {
+				// Create the CRP.
+				crp := placementv1beta1.ClusterResourcePlacement{
+					ObjectMeta: metav1.ObjectMeta{
+						Name: crpName,
+						// Add a custom finalizer; this would allow us to better observe
+						// the behavior of the controllers.
+						Finalizers: []string{customDeletionBlockerFinalizer},
+					},
+					Spec: placementv1beta1.PlacementSpec{
+						ResourceSelectors: []placementv1beta1.ResourceSelectorTerm{
+							{
+								Group:   "",
+								Kind:    "Namespace",
+								Version: "v1",
+								Name:    metav1.NamespaceDefault,
+							},
+						},
+					},
+				}
+				By(fmt.Sprintf("creating placement %s", crpName))
+				err := hubClient.Create(ctx, &crp)
+				var statusErr *k8sErrors.StatusError
+				g.Expect(errors.As(err, &statusErr)).To(BeTrue(), fmt.Sprintf("Create CRP call produced error %s. Error type wanted is %s.", reflect.TypeOf(err), reflect.TypeOf(&k8sErrors.StatusError{})))
+				g.Expect(statusErr.ErrStatus.Message).Should(MatchRegexp(regexp.QuoteMeta("the default namespace cannot be selected for placement")))
+				return nil
+			}, eventuallyDuration, eventuallyInterval).Should(Succeed())
+		})
 	})
 
 	Context("mutation webhooks tests", func() {

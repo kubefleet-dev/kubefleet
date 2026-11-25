@@ -225,6 +225,8 @@ func SetupControllers(ctx context.Context, wg *sync.WaitGroup, mgr ctrl.Manager,
 	dynamicInformerManager := informer.NewInformerManager(dynamicClient, opts.CtrlMgrOpts.ResyncPeriod.Duration, ctx.Done())
 	validator.ResourceInformer = dynamicInformerManager // webhook needs this to check resource scope
 	validator.RestMapper = mgr.GetRESTMapper()          // webhook needs this to validate GVK of resource selector
+	// webhook needs this to deny placements that select namespaces which cannot be placed
+	validator.ResourceEligibilityChecker = v0ResourceEligibilityChecker
 
 	// Set up  a custom controller to reconcile placement objects
 	resourceSelectorResolver := controller.ResourceSelectorResolver{
