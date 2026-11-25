@@ -719,4 +719,109 @@ var _ = Describe("apply ops", func() {
 			// namespace deletion.
 		})
 	})
+
+	Context("manifest with owner references (co-ownership disallowed)", Ordered, func() {
+		workName := fmt.Sprintf(workNameTemplate, utils.RandStr())
+		// The environment prepared by the envtest package does not support namespace
+		// deletion; each test case would use a new namespace.
+		nsName := fmt.Sprintf(nsNameTemplate, utils.RandStr())
+
+		var appliedWorkOwnerRef *metav1.OwnerReference
+
+		BeforeAll(func() {
+			// Create the namespace directly in the member cluster, as the work object does not feature the
+			// namespace manifest.
+			regularNS := ns.DeepCopy()
+			regularNS.Name = nsName
+			Expect(memberClient1.Create(ctx, regularNS)).To(Succeed(), "Failed to create the namespace")
+
+			// Prepare a manifest with owner references set, which can happen with objects wrapped in an envelope
+			// (the hub agent does not sanitize them). The work applier always drops such owner references before
+			// applying the manifest, so their presence should not fail the apply op.
+			regularConfigMap := configMap.DeepCopy()
+			regularConfigMap.Namespace = nsName
+			regularConfigMap.OwnerReferences = []metav1.OwnerReference{externalOwnerRef}
+			regularConfigMapJSON := marshalK8sObjJSON(regularConfigMap)
+
+			// Create a new work object with no sync strategy; by default, the work applier disallows
+			// co-ownership.
+			createWorkObject(workName, memberReservedNSName1, nil, regularConfigMapJSON)
+		})
+
+		It("should prepare an appliedWork object", func() {
+			appliedWorkCreatedActual := appliedWorkCreatedActual(memberClient1, memberReservedNSName1, workName)
+			Eventually(appliedWorkCreatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to prepare an appliedWork object")
+			appliedWorkOwnerRef = prepareAppliedWorkOwnerRef(memberClient1, workName)
+		})
+
+		It("should apply the manifest without the owner references in the manifest", func() {
+			// The config map should have the appliedWork object as its only owner.
+			regularConfigMapObjectAppliedActual := regularConfigMapObjectAppliedActual(memberClient1, nsName, configMapName, appliedWorkOwnerRef)
+			Eventually(regularConfigMapObjectAppliedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to apply the config map")
+		})
+
+		It("should update the work object status", func() {
+			workConds := []metav1.Condition{
+				{
+					Type:   placementv1alpha1.WorkCondTypeApplied,
+					Status: metav1.ConditionTrue,
+					Reason: placementv1alpha1.WorkAppliedCondAllManifestsAppliedReason,
+				},
+				{
+					Type:   placementv1alpha1.WorkCondTypeAvailable,
+					Status: metav1.ConditionTrue,
+					Reason: placementv1alpha1.WorkAvailableCondAllManifestsAvailableReason,
+				},
+			}
+			manifestStatuses := []placementv1alpha1.PerManifestStatus{
+				{
+					Identifier: placementv1alpha1.ManifestIdentifier{
+						Ordinal:    0,
+						APIGroup:   "",
+						APIVersion: "v1",
+						Kind:       "ConfigMap",
+						Resource:   "configmaps",
+						Name:       configMapName,
+						Namespace:  nsName,
+					},
+					Conditions: []metav1.Condition{
+						{
+							Type:               placementv1alpha1.ManifestCondTypeApplied,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(ApplyResTypeApplied),
+							ObservedGeneration: 0,
+						},
+						{
+							Type:               placementv1alpha1.ManifestCondTypeAvailable,
+							Status:             metav1.ConditionTrue,
+							Reason:             string(AvailabilityResultTypeAvailable),
+							ObservedGeneration: 0,
+						},
+					},
+				},
+			}
+
+			workStatusUpdatedActual := workStatusUpdated(memberReservedNSName1, workName, workConds, manifestStatuses)
+			Eventually(workStatusUpdatedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to update work status")
+		})
+
+		AfterAll(func() {
+			// Delete the work object and related resources.
+			deleteWorkObject(workName, memberReservedNSName1)
+
+			// Remove the config map manually, as there is no GC controller in the test environment.
+			regularConfigMapRemovedActual := regularConfigMapRemovedActual(memberClient1, nsName, configMapName)
+			Eventually(regularConfigMapRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the config map object")
+
+			// Simulate the GC controller by removing the foreground deletion finalizer from the appliedWork object.
+			appliedWorkRemovedActual := appliedWorkRemovedActual(memberClient1, workName)
+			Eventually(appliedWorkRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the appliedWork object")
+
+			workRemovedActual := workRemovedActual(memberReservedNSName1, workName)
+			Eventually(workRemovedActual, eventuallyDuration, eventuallyInterval).Should(Succeed(), "Failed to remove the work object")
+
+			// The namespace is left behind, as the environment prepared by the envtest package does not support
+			// namespace deletion.
+		})
+	})
 })
