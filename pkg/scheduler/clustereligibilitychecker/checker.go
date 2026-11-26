@@ -28,13 +28,16 @@ import (
 )
 
 const (
-	// defaultClusterHeartbeatTimeout is the default timeout value this checker uses for checking
+	// DefaultClusterHeartbeatCheckTimeout is the default timeout value this checker uses for checking
 	// if a cluster has been disconnected from the fleet for a prolonged period of time.
-	defaultClusterHeartbeatCheckTimeout = time.Minute * 5
+	DefaultClusterHeartbeatCheckTimeout = time.Minute * 5
 
-	// defaultClusterHealthCheckTimeout is the default timeout value this checker uses for checking
+	// DefaultClusterHealthCheckTimeout is the default timeout value this checker uses for checking
 	// if a cluster is still in a healthy state.
-	defaultClusterHealthCheckTimeout = time.Minute * 5
+	DefaultClusterHealthCheckTimeout = time.Minute * 5
+
+	defaultClusterHeartbeatCheckTimeout = DefaultClusterHeartbeatCheckTimeout
+	defaultClusterHealthCheckTimeout    = DefaultClusterHealthCheckTimeout
 )
 
 type ClusterEligibilityChecker struct {
@@ -94,6 +97,18 @@ func New(opts ...Option) *ClusterEligibilityChecker {
 		clusterHeartbeatCheckTimeout: options.clusterHeartbeatCheckTimeout,
 		clusterHealthCheckTimeout:    options.clusterHealthCheckTimeout,
 	}
+}
+
+// HeartbeatTimeout returns the timeout value this checker uses for checking if a cluster
+// has been disconnected from the fleet for a prolonged period of time.
+func (checker *ClusterEligibilityChecker) HeartbeatTimeout() time.Duration {
+	return checker.clusterHeartbeatCheckTimeout
+}
+
+// HealthCheckTimeout returns the timeout value this checker uses for checking if a cluster
+// is still in a healthy state.
+func (checker *ClusterEligibilityChecker) HealthCheckTimeout() time.Duration {
+	return checker.clusterHealthCheckTimeout
 }
 
 // IsEligible returns if a cluster is eligible for resource placement; if not, it will
