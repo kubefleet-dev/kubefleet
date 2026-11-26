@@ -4,9 +4,14 @@
 
 ```bash
 make build                # Build all binaries
+make run-hubagent         # Run hub agent binary directly
+make run-memberagent      # Run member agent binary directly
 make reviewable           # Run all quality checks (fmt, vet, lint, staticcheck, tidy) — required before PRs
 make lint                 # Fast linting
 make lint-full            # Thorough linting (--fast=false)
+make staticcheck          # Static analysis
+make fmt                  # Format code
+make vet                  # Run go vet
 make test                 # Unit + integration tests
 make local-unit-test      # Unit tests only
 make integration-test     # Integration tests only (Ginkgo, uses envtest)
@@ -30,14 +35,38 @@ cd test/scheduler && ginkgo -v --focus="should schedule"
 ### E2E tests
 
 ```bash
-make setup-clusters                 # Create 3 Kind clusters
-make e2e-tests                      # Run E2E suite (ginkgo, ~70min timeout)
-make clean-e2e-tests                # Tear down clusters
+make setup-clusters                         # Create 3 Kind clusters
+make setup-clusters MEMBER_CLUSTER_COUNT=5  # Custom cluster count
+make e2e-tests                              # Run E2E suite (ginkgo, ~70min timeout)
+make e2e-tests-custom                       # Run E2E tests with custom labels
+make collect-e2e-logs                       # Collect logs after E2E tests
+make clean-e2e-tests                        # Tear down clusters
+```
+
+### Docker and Images
+
+```bash
+make push                       # Build and push all images
+make docker-build-hub-agent     # Build hub agent image
+make docker-build-member-agent  # Build member agent image
+make docker-build-refresh-token # Build refresh token image
 ```
 
 ## Architecture
 
-KubeFleet is a multi-cluster Kubernetes management system (CNCF sandbox) using a hub-and-spoke model. The **hub agent** runs on a central cluster; **member agents** run on each managed cluster.
+KubeFleet is a CNCF sandbox project providing multi-cluster application management for Kubernetes. It uses a hub-and-spoke model. The **hub agent** runs on a central cluster; **member agents** run on each managed cluster.
+
+### Core API Types
+
+- **ClusterResourcePlacement (CRP)**: Main API for placing cluster-scoped resources across clusters with scheduling policies. If one namespace is selected, everything in that namespace is placed across clusters.
+- **ResourcePlacement (RP)**: Main API for placing namespaced resources across clusters with scheduling policies.
+- **MemberCluster**: Represents a member cluster with identity and heartbeat settings
+- **ClusterResourceBinding**: Represents scheduling decisions binding cluster-scoped resources to clusters
+- **ResourceBinding**: Represents scheduling decisions binding resources to clusters
+- **ClusterResourceSnapshot**: Immutable snapshot of cluster resource state for rollback and history
+- **ResourceSnapshot**: Immutable snapshot of namespaced resource state for rollback and history
+- **Work**: Contains manifests to be applied on member clusters
+- **ClusterSchedulingPolicySnapshot**: Immutable snapshots of scheduling policies
 
 ### Reconciliation Pipeline
 
@@ -59,6 +88,16 @@ ClusterResourcePlacement / ResourcePlacement  (user intent)
   Status flows back: AppliedWork → Work status → Binding status → Placement status
 ```
 
+### Key Controllers
+
+- **ClusterResourcePlacement Controller** (`pkg/controllers/clusterresourceplacement/`): Manages CRP lifecycle
+- **Scheduler** (`pkg/scheduler/`): Makes placement decisions using pluggable framework
+- **Rollout Controller** (`pkg/controllers/rollout/`): Manages rollout of changes to all clusters with a placement decision
+- **WorkGenerator** (`pkg/controllers/workgenerator/`): Generates Work objects from bindings
+- **WorkApplier** (`pkg/controllers/workapplier/`): Applies Work manifests on member clusters
+- **ClusterResourceBinding Watcher** (`pkg/controllers/clusterresourcebindingwatcher/`): Watches binding changes
+- **ClusterResourcePlacement Watcher** (`pkg/controllers/clusterresourceplacementwatcher/`): Watches placement changes
+
 ### API Naming Convention
 
 CRDs starting with `Cluster` are cluster-scoped; the name without the `Cluster` prefix is the namespace-scoped counterpart. For example: `ClusterResourcePlacement` (cluster-scoped) vs `ResourcePlacement` (namespace-scoped). This affects CRUD operations — namespace-scoped resources require a `Namespace` field in `types.NamespacedName`.
@@ -70,10 +109,28 @@ Pluggable architecture modeled after the Kubernetes scheduler:
 - Built-in plugins: `clusteraffinity`, `tainttoleration`, `clustereligibility`, `sameplacementaffinity`
 - Placement strategies: **PickAll** (all matching), **PickN** (top N scored), **PickFixed** (named clusters)
 - Plugins share state via `CycleStatePluginReadWriter`
+- **Property-based scheduling**: Uses cluster properties (CPU, memory, cost) for decisions
 
 ### Snapshot-Based Versioning
 
 All policy and resource changes create immutable snapshot CRDs (`ResourceSnapshot`, `SchedulingPolicySnapshot`, `OverrideSnapshot`). This enables rollback, change tracking, and consistent scheduling decisions.
+
+## Directory Structure
+
+```
+apis/                     # API definitions and CRDs
+├── cluster/v1beta1/      # MemberCluster APIs
+├── placement/v1beta1/    # Placement and work APIs
+pkg/controllers/          # All controllers organized by resource type
+pkg/scheduler/            # Scheduler framework and plugins
+pkg/propertyprovider/     # Cloud-specific property providers (Azure)
+pkg/utils/                # Shared utilities and helpers
+cmd/hubagent/             # Hub agent main and setup
+cmd/memberagent/          # Member agent main and setup
+test/e2e/                 # E2E tests (Ginkgo/Gomega against Kind clusters)
+test/integration/         # Integration tests with envtest
+test/scheduler/           # Scheduler integration tests
+```
 
 ## Terminology
 
@@ -99,6 +156,15 @@ All controllers embed `client.Client`, use a standard `Reconcile` loop (fetch �
 
 Resources implement `Conditioned` (for status conditions) and `ConditionedObj` (combining `client.Object` + `Conditioned`). See `apis/interface.go`.
 
+### Watcher Pattern
+
+Resource placement watchers monitor CRP and binding changes. The event-driven architecture uses separate watchers for different resource types to enable focused reconciliation.
+
+### Multi-API Version Support
+
+- v1beta1 APIs are the current stable version
+- Feature flags control API version enablement
+
 ## Testing Conventions
 
 - **Unit tests**: `<file>_test.go` in the same directory; table-driven style
@@ -110,6 +176,14 @@ Resources implement `Conditioned` (for status conditions) and `ConditionedObj` (
 - Compare structs in one shot with `cmp.Diff`, not field-by-field
 - Mock external dependencies with `gomock`
 - When adding Ginkgo tests, add to a new `Context`; reuse existing setup
+
+### Test Coding Style
+
+- Comments that are complete sentences should be capitalized and punctuated like standard English sentences.
+- Comments that are sentence fragments have no such requirements for punctuation or capitalization.
+- Documentation comments should always be complete sentences, and as such should always be capitalized and punctuated. Simple end-of-line comments (especially for struct fields) can be simple phrases that assume the field name is the subject.
+- If a function returns a struct, construct the full expected struct and compare in one shot with `cmp.Diff`, not field-by-field. The same rule applies to arrays and maps.
+- If multiple return values need comparison, compare them individually and print each; no need to wrap in a struct.
 
 ## Collaboration Protocol
 
