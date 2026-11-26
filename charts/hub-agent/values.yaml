@@ -30,6 +30,7 @@ forceDeleteWaitTime: 15m0s
 clusterUnhealthyThreshold: 3m0s
 resourceSnapshotCreationMinimumInterval: 30s
 resourceChangesCollectionDuration: 15s
+updateRunStuckThreshold: 5m
 
 namespace: fleet-system
 

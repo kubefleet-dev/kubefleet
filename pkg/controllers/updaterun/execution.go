@@ -47,11 +47,19 @@ var (
 	// stageUpdatingWaitTime is the time to wait before rechecking the stage update status.
 	// Put it as a variable for convenient testing.
 	stageUpdatingWaitTime = 60 * time.Second
-
-	// updateRunStuckThreshold is the time to wait on a single cluster update before marking update run as stuck.
-	// TODO(wantjian): make this configurable
-	updateRunStuckThreshold = 5 * time.Minute
 )
+
+// defaultUpdateRunStuckThreshold is the time to wait on a single cluster update before marking update run as stuck,
+// when the reconciler is not configured with a threshold.
+const defaultUpdateRunStuckThreshold = 5 * time.Minute
+
+// stuckThreshold returns the time to wait on a single cluster update before marking update run as stuck.
+func (r *Reconciler) stuckThreshold() time.Duration {
+	if r.UpdateRunStuckThreshold <= 0 {
+		return defaultUpdateRunStuckThreshold
+	}
+	return r.UpdateRunStuckThreshold
+}
 
 // execute executes the update run by updating the clusters in the updating stage specified by updatingStageIndex.
 // It returns a boolean indicating if the updateRun execution is completed,
@@ -274,8 +282,9 @@ func (r *Reconciler) executeUpdatingStage(
 		} else {
 			// If cluster update has been running for more than "updateRunStuckThreshold", mark the update run as stuck.
 			timeElapsed := time.Since(clusterStartedCond.LastTransitionTime.Time)
-			if timeElapsed > updateRunStuckThreshold {
-				klog.V(2).InfoS("Time waiting for cluster update to finish passes threshold, mark the update run as stuck", "timeElapsed", timeElapsed, "threshold", updateRunStuckThreshold, "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
+			stuckThreshold := r.stuckThreshold()
+			if timeElapsed > stuckThreshold {
+				klog.V(2).InfoS("Time waiting for cluster update to finish passes threshold, mark the update run as stuck", "timeElapsed", timeElapsed, "threshold", stuckThreshold, "cluster", clusterStatus.ClusterName, "stage", updatingStageStatus.StageName, "updateRun", updateRunRef)
 				stuckClusterNames = append(stuckClusterNames, clusterStatus.ClusterName)
 			}
 		}
