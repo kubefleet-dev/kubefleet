@@ -128,7 +128,7 @@ func markMemberClusterAsHealthy(name string) {
 						{
 							Type:               string(clusterv1beta1.AgentJoined),
 							LastTransitionTime: metav1.Now(),
-							ObservedGeneration: 0,
+							ObservedGeneration: imcObj.GetGeneration(),
 							Status:             metav1.ConditionTrue,
 							Reason:             "JoinedCluster",
 							Message:            "set to be joined",
@@ -136,7 +136,7 @@ func markMemberClusterAsHealthy(name string) {
 						{
 							Type:               string(clusterv1beta1.AgentHealthy),
 							LastTransitionTime: metav1.Now(),
-							ObservedGeneration: 0,
+							ObservedGeneration: imcObj.GetGeneration(),
 							Status:             metav1.ConditionTrue,
 							Reason:             "HealthyCluster",
 							Message:            "set to be healthy",
